@@ -131,7 +131,7 @@ export function DetailPageShell({
       {headerBlock}
 
       {isTwoColumn ? (
-        <div className="grid gap-6 lg:grid-cols-[3fr_2fr]">
+        <div className="grid gap-6 lg:grid-cols-[3fr_2.9fr]">
           <div className="space-y-4">{mainContent}</div>
           <div className="space-y-4">{sidebarContent}</div>
         </div>

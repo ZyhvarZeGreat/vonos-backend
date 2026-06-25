@@ -8,7 +8,6 @@ import {
   renderStatusCell,
 } from "@/components/organisms/CompactDataPanel";
 import { KpiRow } from "@/components/organisms/KpiRow";
-import { PendingOrdersPanel } from "@/components/organisms/PendingOrdersPanel";
 import { RankedListPanel } from "@/components/organisms/RankedListPanel";
 import { RevenueHeroPanel } from "@/components/organisms/RevenueHeroPanel";
 import { ScheduleTimelinePanel } from "@/components/organisms/ScheduleTimelinePanel";
@@ -161,7 +160,6 @@ export function OverviewLiveBody({
   const isCafe = tenantCode === "VC";
   const isRetailCatalog = tenantCode === "VISP" || tenantCode === "VSP";
   const isMechanics = tenantCode === "VM";
-  const isKidsWear = tenantCode === "VKW";
 
   if (error) {
     return (
@@ -191,16 +189,6 @@ export function OverviewLiveBody({
     ...(isRetailCatalog && charts[1] ? [charts[1]] : []),
     ...financeCharts,
   ];
-
-  const pendingOrders =
-    dashboard?.table?.rows.map((row) => ({
-      id: String(row.id),
-      ref: String(row.ref ?? row.reference ?? "—"),
-      name: String(row.name ?? row.customer ?? "—"),
-      date: String(row.date ?? row.dueDate ?? "—"),
-      carrier: String(row.carrier ?? row.items ?? "—"),
-      status: String(row.status ?? "Pending"),
-    })) ?? [];
 
   const revenueKpi = kpis.find((k) => k.metricKey === "revenue" || k.metricKey === "todaySales");
 
@@ -316,12 +304,6 @@ export function OverviewLiveBody({
           {charts.map((chart) => renderChart(chart, periodLabel, accent))}
         </div>
       )}
-
-      {archetype === "stock" && !isKidsWear && pendingOrders.length > 0 ? (
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-          <PendingOrdersPanel orders={pendingOrders} />
-        </div>
-      ) : null}
 
       {archetype === "appointment" && dashboard?.table ? (
         <CompactDataPanel

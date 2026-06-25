@@ -1,6 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
+import { PendingOrdersPanel } from "@/components/organisms/PendingOrdersPanel";
 import { FloatingActionButton } from "@/components/atoms/FloatingActionButton";
 import { ActivityFeedPanel } from "@/components/organisms/ActivityFeedPanel";
 import { DateRangeDropdown } from "@/components/molecules/DateRangeDropdown";
@@ -100,6 +101,19 @@ function EntityOverviewView({ tenantCode }: OverviewProps) {
     enabled: Boolean(tenantId),
   });
 
+  const pendingOrders =
+    overviewQuery.data?.table?.rows.map((row) => ({
+      id: String(row.id),
+      ref: String(row.ref ?? row.reference ?? "—"),
+      name: String(row.name ?? row.customer ?? "—"),
+      date: String(row.date ?? row.dueDate ?? "—"),
+      carrier: String(row.carrier ?? row.items ?? "—"),
+      status: String(row.status ?? "Pending"),
+    })) ?? [];
+
+  const showPendingOrders =
+    archetype === "stock" && tenantCode !== "VKW" && pendingOrders.length > 0;
+
   return (
     <DashboardTemplate
       sidebar={sidebar}
@@ -119,6 +133,7 @@ function EntityOverviewView({ tenantCode }: OverviewProps) {
           dateRange={dateRange}
         />
       }
+      table={showPendingOrders ? <PendingOrdersPanel orders={pendingOrders} /> : undefined}
       feed={
         archetype === "appointment" ? (
           <ActivityFeedPanel

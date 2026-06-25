@@ -1,4 +1,5 @@
 import { cn } from "@/lib/utils/cn";
+import { Spinner } from "@/components/atoms/Spinner";
 
 type ButtonVariant = "primary" | "secondary" | "ghost" | "danger";
 type ButtonSize = "sm" | "md" | "lg";
@@ -46,7 +47,14 @@ export function Button({
       disabled={disabled || isLoading}
       {...props}
     >
-      {isLoading ? "Loading..." : children}
+      {isLoading ? (
+        <>
+          <Spinner size={size === "lg" ? "md" : "sm"} />
+          <span>{children}</span>
+        </>
+      ) : (
+        children
+      )}
     </button>
   );
 }

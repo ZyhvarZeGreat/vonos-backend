@@ -84,6 +84,8 @@
   --space-section-gap: 1.5rem;
   --space-kpi-height: 140px;
   --space-chart-height: 400px;
+  /** Activity / history feed column is 45% wider than the paired panel (1.45×). */
+  --dashboard-story-column-ratio: 1.45;
 
   /* Radius — cards use --radius-card (8px); xl maps to card for rounded-xl */
   --radius-sm: 0.375rem;

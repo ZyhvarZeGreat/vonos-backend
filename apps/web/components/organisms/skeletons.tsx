@@ -337,10 +337,8 @@ export function DashboardBodySkeleton({
         </div>
       ) : null}
       {withFeed ? (
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-          <div className="lg:col-span-2">
-            <DataTableSkeleton rows={5} columns={4} />
-          </div>
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_1.45fr]">
+          <DataTableSkeleton rows={5} columns={4} />
           <ActivityFeedSkeleton />
         </div>
       ) : null}

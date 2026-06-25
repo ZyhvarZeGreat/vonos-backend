@@ -331,7 +331,11 @@ export function Sidebar({
           )}
         >
           {collapsed ? (
-            <IconButton label="Sign out" onClick={handleLogout} className="mx-auto">
+            <IconButton
+              label="Sign out"
+              onClick={handleLogout}
+              className="mx-auto text-error hover:bg-[var(--color-error-bg)] hover:text-error"
+            >
               <LogOut className="h-5 w-5" />
             </IconButton>
           ) : (
@@ -345,7 +349,7 @@ export function Sidebar({
               <button
                 type="button"
                 onClick={handleLogout}
-                className="mt-2 inline-flex items-center gap-1.5 text-sm font-medium text-muted transition-colors hover:text-foreground"
+                className="mt-2 inline-flex items-center gap-1.5 text-sm font-medium text-error transition-colors hover:text-error/80"
               >
                 <LogOut className="h-4 w-4" />
                 Sign out

@@ -63,7 +63,12 @@ export function DashboardTemplate({
               </div>
             ) : null}
             {feed || table ? (
-              <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+              <div
+                className={cn(
+                  "grid grid-cols-1 gap-6",
+                  table && feed ? "lg:grid-cols-[1fr_1.45fr]" : "lg:grid-cols-2",
+                )}
+              >
                 {table}
                 {feed}
               </div>

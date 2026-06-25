@@ -61,6 +61,7 @@ export const homeReference = {
   activityFeed: {
     iconBox: "40px blue-500 rounded-lg white icon",
     fields: ["title", "subtitle", "timestamp"],
+    columnRatio: "1.45 (45% wider than pending orders panel)",
   },
   fab: {
     position: "bottom-8 right-8",

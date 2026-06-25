@@ -173,8 +173,8 @@ export function LoginForm() {
             required
           />
           {error ? <p className="text-sm text-error">{error}</p> : null}
-          <Button type="submit" className="w-full" disabled={loading || totpCode.length < 6}>
-            {loading ? "Verifying…" : "Verify and continue"}
+          <Button type="submit" className="w-full" isLoading={loading} disabled={totpCode.length < 6}>
+            Verify and continue
           </Button>
         </form>
       </AuthTemplate>
@@ -195,10 +195,10 @@ export function LoginForm() {
       <Button
         type="button"
         className="w-full"
-        disabled={loading}
+        isLoading={loading}
         onClick={() => signInWithCredential(warehouseCredential)}
       >
-        {loading ? "Signing in…" : "Enter Vonos Warehouse"}
+        Enter Vonos Warehouse
       </Button>
 
       <form onSubmit={handleSubmit} className="space-y-4">
@@ -220,8 +220,8 @@ export function LoginForm() {
           required
         />
         {error ? <p className="text-sm text-error">{error}</p> : null}
-        <Button type="submit" className="w-full" disabled={loading}>
-          {loading ? "Signing in…" : "Sign in"}
+        <Button type="submit" className="w-full" isLoading={loading}>
+          Sign in
         </Button>
       </form>
 

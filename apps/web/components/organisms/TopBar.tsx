@@ -148,7 +148,11 @@ export function TopBar({
             />
           </div>
           {isAuthenticated ? (
-            <IconButton label="Sign out" onClick={handleLogout}>
+            <IconButton
+              label="Sign out"
+              onClick={handleLogout}
+              className="text-error hover:bg-[var(--color-error-bg)] hover:text-error"
+            >
               <LogOut className="h-5 w-5" />
             </IconButton>
           ) : null}
