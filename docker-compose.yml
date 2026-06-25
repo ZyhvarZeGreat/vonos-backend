@@ -1,0 +1,15 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: vonos
+      POSTGRES_PASSWORD: vonos
+      POSTGRES_DB: vonos
+    volumes:
+      - vonos_pg_data:/var/lib/postgresql/data
+
+volumes:
+  vonos_pg_data:

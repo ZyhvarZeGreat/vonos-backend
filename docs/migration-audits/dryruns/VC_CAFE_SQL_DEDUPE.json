@@ -1,0 +1,31 @@
+{
+  "before": {
+    "Item": 59,
+    "Customer": 45,
+    "Supplier": 4,
+    "Sale": 4226,
+    "Payment": 4849,
+    "PaymentAccount": 3,
+    "AccountTransaction": 3524,
+    "LedgerEntry": 4403,
+    "SaleLine": 7257
+  },
+  "remaps": {
+    "items": 0,
+    "customers": 0,
+    "suppliers": 0,
+    "paymentAccounts": 0,
+    "payments": 0
+  },
+  "softDelete": {
+    "items": 0,
+    "customers": 0,
+    "suppliers": 0,
+    "paymentAccounts": 0,
+    "payments": 0,
+    "orphanLedger": 0,
+    "duplicateLedger": 0,
+    "duplicateAccountTransactions": 0,
+    "duplicateSaleLines": 0
+  }
+}

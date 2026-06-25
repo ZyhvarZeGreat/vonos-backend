@@ -1,0 +1,100 @@
+legacy_id,name,email,allow_login,deleted,can_login,roles
+1,Vonos Mr,admin@vonosautos.com,1,no,yes,Admin#1
+2,VICTOR Mr,support@vonosautos.com,1,no,yes,Admin#1
+3,Esther Miss,gesther@vonosautos.com,1,yes,no,role_id:4
+4,Fidelis Mr,info@vonosautos.com,0,yes,no,role_id:3
+7,Justina Miss,ejustina@vonosautos.com,1,no,yes,ACCOUNTANT#1
+8,emenike Mr,cemenike@vonosautos.com,1,yes,no,PARTS AUDITOR#1
+9,Esther Miss,gesther@vonosautos.com,1,yes,no,role_id:7
+11,Lois Miss,olois@vonosautos.com,0,yes,no,FRONT DESK#1
+13,Blessing Miss,Blessing@vonosautos.com,1,yes,no,role_id:7
+14,Yakubu Mr,myakubu@vonosautos.com,0,yes,no,role_id:16
+15,Happy Mr,shappy@yahoo.com,0,yes,no,role_id:16
+16,Solomon James,jsolomon@vonosautos.com,0,yes,no,role_id:16
+17,Eric Mr,ieric@vonosautos.com,0,yes,no,role_id:16
+18,Aminu Abubakar,aaminu@vonosautos.com,0,yes,no,role_id:16
+19,Okezie Azubuike,ookeze@vonosautos.com,0,yes,no,role_id:16
+20,SANDRA Miss,NSANDRA@VONOSAUTOS.COM,1,no,yes,MANAGER#1
+21,Oluwatosin Mr,OEmmanuel@VONOSAUTOS.COM,0,yes,no,role_id:12
+23,Mubarak Mr,hmubarak@vonosautos.com,0,yes,no,role_id:12
+24,Kenneth Mr,gkenneth@vonosautos.com,0,yes,no,role_id:16
+25,Muhammed Mr,imuhammed@vonosautos.com,0,yes,no,role_id:16
+26,Monday Neyedu,nmonday@vonosautos.com,0,yes,no,role_id:16
+29,FRED Mr,Ifred@vonosautos.com,1,no,yes,HR MANAGER#1
+30,Abdulrasheed Mr,Tajudeen@vonosautos.com,0,yes,no,role_id:12
+31,Folajin Mr,Olatunbosun@vonosautos.com,0,yes,no,role_id:19
+33,Shansi Mr,ishamsi@vonosautos.com,0,yes,no,role_id:12
+34,Idris Mr,isheriff@vonosautos.com,0,no,no,role_id:3; Service staff#1
+35,Folorunsho Divine,idivine@vonosautos.com,0,yes,no,role_id:20
+37,Abdulsalam Mr,Iabdulsalam@vonosautos.com,0,yes,no,role_id:12
+38,Ahmed Mr,iahmed@vonosautos.com,0,yes,no,role_id:12
+39,Emenike Mr,iemenike@vonosautos.com,0,yes,no,role_id:21
+41,Muhammed Mr,abdulsamad@vonosautos.com,0,yes,no,role_id:16
+42,Chidiebere Mr,ichidiebere@vonosautos.com,0,yes,no,role_id:16
+43,Umar Lawal,iumar@vonosautos.com,0,yes,no,role_id:16
+44,Samuel Mr,isamuel@vonosautos.com,0,yes,no,role_id:3
+45,John Mr,ijohn@vonosautos.com,0,yes,no,role_id:3
+46,Mustapha Mr,imustapha@vonosautos.com,0,yes,no,role_id:16
+47,Kelvin Mr,ikelvin@vonosautos.com,0,yes,no,role_id:18
+48,Abdulganiyu Mr,iganiyu@vonosauto.com,0,yes,no,role_id:3
+49,Yahaya Mr,iyahaya@vonosautos.com,0,yes,no,role_id:12
+50,Blessing Miss,iadesina@vonosautos.com,0,yes,no,FRONT DESK#1
+51,Mohammed Mr,ialhassan@vonosautos.com,0,yes,no,role_id:3
+52,Yason Mr,yusuf@vonosautos.com,0,yes,no,role_id:23
+53,Julius Mr,ijulius@vonosautos.com,0,yes,no,role_id:12
+55,Sabiu Mr,sabiu@vonosautos.com,0,yes,no,role_id:12
+56,Rosemary Miss,irosemary@vonosautos.com,0,yes,no,role_id:23
+57,Blessed Mr,iblesed@vonosautos.com,0,yes,no,role_id:3
+58,Mohammed Mr,ialhassan@vonosautos.com,0,yes,no,role_id:12
+59,SANDRA 02 Miss,nitri@vonosautos.com,0,yes,no,role_id:3
+60,JUSTINA 02 Miss,justina@vonosautos.com,0,yes,no,role_id:3
+61,KINGSLEY 02 Mr,King@vonosautos.com,0,yes,no,role_id:3
+62,EMMANUEL 02 Mr,emmatosin@gmail.com,0,yes,no,role_id:3
+63,Godswill Mr,igodswill@vonosautos.com,0,yes,no,role_id:3
+64,Isaac Mr,Isaac@vonosautos.com,0,yes,no,role_id:3
+65,Enuka Mrs,imary@vonosautos.com,0,yes,no,role_id:3
+66,HOUSE HELP,househelp@vonosautos.com,0,yes,no,role_id:3
+67,House Teacher,Houseteacher@vonosauto.com,0,yes,no,role_id:3
+68,House Security,HouseSecurity@vonosautos.com,0,yes,no,role_id:3
+69,ALOYSIUS  FORTUNE Mr,ifortune@vonosautos.com,0,yes,no,role_id:3
+70,Emmanuel Mr,Ochristian@vonosautos.com,0,yes,no,role_id:3
+71,Mohammed Mr,Mishaka@vonosautos.com,0,yes,no,role_id:3
+72,Temitope Mr,itemi@vonosautos.com,0,yes,no,role_id:3
+73,Mercy Mrs,Amercy@vonosautos.com,0,yes,no,role_id:3
+74,Habib Mr,Ahabib@vonosautos.com,0,yes,no,role_id:3
+75,Abdulfatah Mr,Afatah@vonosautos.com,0,yes,no,role_id:12
+76,Abner Mr,iabner@vonosautos.com,0,yes,no,role_id:23
+77,Justina 03 Miss,iiessien03@vonosautos.com,0,yes,no,role_id:3
+78,KINGSLEY 03 Mr,iikingsley@vonosautos.com,0,yes,no,role_id:3
+79,SANDRA 03 Miss,isdnaitri@vonosautos.com,0,yes,no,role_id:3
+80,Blessed 02 Mr,iblessed02@vonosautos.com,0,yes,no,role_id:3
+81,John Mr,bjohn@vonosautos.com,0,yes,no,role_id:3
+82,Stephen Mr,istephen@vonosautos.com,0,yes,no,role_id:12
+83,Oyindamola Miss,Koyindamola@vonosautos.com,0,yes,no,role_id:3
+84,Chinedu Mr,iChinedu@vonosautos.com,0,yes,no,role_id:3
+85,Ephraim Mr,ephraim@vonosautos.com,1,no,yes,Admin#1
+86,PENSION REMITTANCE,Spensions@vonosautos.com,0,yes,no,role_id:3
+87,Ruth Miss,Sruth@vonosautos.com,0,yes,no,PARTS AUDITOR#1
+88,Emenike Mr,cemenike@vonosautos.com,1,yes,no,PARTS AUDITOR#1
+89,Manasi Mr,Jmanasi@vonosautos.com,0,yes,no,role_id:16
+90,Obomighie Mr,Ogabriel@vonosautos.com,0,yes,no,role_id:3
+91,Samson Mr,Osamson@vonosautos.com,0,yes,no,role_id:3
+92,Musa Mr,Mshaibu@vonosautos.com,0,yes,no,role_id:12
+93,Muritala Mr,Mmuhammed@vonosautos.com,0,yes,no,role_id:12
+94,Daniel Mr,Daugustine@vonosautos.com,0,yes,no,role_id:23
+95,Joy Miss,Jjoy@vonosautos.com,0,yes,no,role_id:24
+96,Suleiman Mr,Sufedo@vonosautos.com,0,yes,no,role_id:12
+97,Musa Mr,Mshaibu@vonosautos.com,0,yes,no,role_id:12
+98,STAFF WELFARE,staffwelfare@vonosautos.com,0,yes,no,role_id:3
+99,Elimelech Mr,aelimelech@vonosautos.com,0,yes,no,role_id:12
+100,Nurudeen Mr,Snurudeen@vonosautos.com,0,yes,no,role_id:16
+101,Shamsudeen Mr,Sibrahim@vonosautos.com,0,yes,no,role_id:16
+102,Abdullahi Mr,Amusa@vonosautos.com,0,yes,no,role_id:16
+103,Eunice Miss,Teunice@vonosautos.com,1,yes,no,FRONT DESK#1
+104,Eunice Miss,Teunice@vonosautos.com,0,yes,no,FRONT DESK#1
+105,Abubakar Mr,Aabubakar@vonosautos.com,0,yes,no,role_id:3
+106,Adam Mr,Alhassan@vonosautos.com,0,yes,no,role_id:16
+107,Emmanuel Mr,Emmanuel@vonosautos.com,0,yes,no,role_id:3
+108,COMPANY SECURITY,security@vonosautos.com,0,yes,no,role_id:3
+109,Sanusi Mr,Ysanusi@vonosautos.com,0,yes,no,role_id:3
+110,Abdulmalik Mr,Abdulmalik@vonosautos.com,0,yes,no,role_id:3

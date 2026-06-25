@@ -1,0 +1,52 @@
+# Dependencies & build artifacts (Vercel installs fresh)
+node_modules
+**/node_modules
+.next
+**/.next
+dist
+**/dist
+.turbo
+.venv
+
+# Web app (separate Vercel project)
+apps/web
+
+# Secrets & local env
+.env
+.env.*
+**/.env
+**/.env.*
+id_rsa
+id_rsa.pub
+
+# SQL dumps & legacy data
+*.sql
+**/*.sql
+
+# Legacy WordPress sites
+audit.vonosautos.com
+cafe.vonosautos.com
+hq6.vonosautomarket.com
+visp.vonosautomarket.com
+vsp.vonosautomarket.com
+audit.vonosautomarket.com
+**/*.vonosautos.com
+**/*.vonosautomarket.com
+
+# Migration scripts & docs (not needed at runtime)
+scripts
+docs
+.analysis
+
+# Fonts & misc
+helvetica-neue-5
+helvetica-neue-5/**
+.DS_Store
+**/.DS_Store
+
+# Git & IDE
+.git
+.cursor
+
+# SSH keys
+id_rsa*

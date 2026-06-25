@@ -1,0 +1,26 @@
+{
+  "name": "vonos",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "turbo dev",
+    "build": "turbo build",
+    "lint": "turbo lint",
+    "typecheck": "turbo typecheck"
+  },
+  "devDependencies": {
+    "@vercel/node": "^5.3.0",
+    "turbo": "^2.9.18",
+    "typescript": "^5.8.3"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "packageManager": "npm@11.13.0",
+  "optionalDependencies": {
+    "@turbo/darwin-arm64": "^2.9.18"
+  }
+}
