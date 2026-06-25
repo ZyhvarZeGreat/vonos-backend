@@ -34,5 +34,8 @@ vsp.vonosautomarket.com/
 # Vercel local link state
 .vercel
 
+# Split-repo publish output
+.publish/
+
 # Fonts bundle (optional asset)
 helvetica-neue-5/

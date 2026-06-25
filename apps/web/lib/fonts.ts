@@ -13,27 +13,27 @@ export const plusJakartaSans = Plus_Jakarta_Sans({
 export const helveticaNeue = localFont({
   src: [
     {
-      path: "../../../helvetica-neue-5/HelveticaNeueUltraLight.otf",
+      path: "../assets/fonts/helvetica-neue/HelveticaNeueUltraLight.otf",
       weight: "100",
       style: "normal",
     },
     {
-      path: "../../../helvetica-neue-5/HelveticaNeueLight.otf",
+      path: "../assets/fonts/helvetica-neue/HelveticaNeueLight.otf",
       weight: "300",
       style: "normal",
     },
     {
-      path: "../../../helvetica-neue-5/HelveticaNeueRoman.otf",
+      path: "../assets/fonts/helvetica-neue/HelveticaNeueRoman.otf",
       weight: "400",
       style: "normal",
     },
     {
-      path: "../../../helvetica-neue-5/HelveticaNeueMedium.otf",
+      path: "../assets/fonts/helvetica-neue/HelveticaNeueMedium.otf",
       weight: "500",
       style: "normal",
     },
     {
-      path: "../../../helvetica-neue-5/HelveticaNeueBold.otf",
+      path: "../assets/fonts/helvetica-neue/HelveticaNeueBold.otf",
       weight: "700",
       style: "normal",
     },
