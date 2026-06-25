@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import type { Express } from 'express';
 
-let appPromise: Promise<Express> | null = null;
+let appPromise: Promise<Express> | undefined;
 
 export default async function handler(
   req: VercelRequest,
