@@ -113,8 +113,8 @@ export default function AcceptInvitePage() {
             required
           />
           {error && inviteEmail ? <p className="text-sm text-error">{error}</p> : null}
-          <Button type="submit" className="w-full" disabled={loading || !inviteEmail}>
-            {loading ? "Creating account…" : "Activate account"}
+          <Button type="submit" className="w-full" isLoading={loading} disabled={!inviteEmail}>
+            Activate account
           </Button>
           <p className="text-xs text-muted">
             Dev invite URL:{" "}

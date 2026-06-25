@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/atoms/Button";
 import { Input } from "@/components/atoms/Input";
-import { AuthFooterLink, AuthTemplate } from "@/components/templates/AuthTemplate";
+import { AuthTemplate } from "@/components/templates/AuthTemplate";
 import { isTwoFactorChallenge, login, verifyTwoFactor } from "@/lib/api/auth";
 import { getPostLoginPath } from "@/lib/utils/authRedirect";
 import type { Role } from "@vonos/types";
@@ -185,12 +185,6 @@ export function LoginForm() {
     <AuthTemplate
       title="Sign in"
       subtitle="Use your Vonos invite credentials"
-      footer={
-        <>
-          No account?{" "}
-          <AuthFooterLink href="/reset-password">Reset password</AuthFooterLink>
-        </>
-      }
     >
       <Button
         type="button"
