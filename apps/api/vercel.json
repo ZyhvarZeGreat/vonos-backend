@@ -1,7 +1,7 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "installCommand": "cd ../.. && npm install",
-  "buildCommand": "cd ../.. && npm run build --workspace=@vonos/types && npm run build --workspace=api && npx prisma generate --schema=apps/api/prisma/schema.prisma",
+  "buildCommand": "cd ../.. && npm run build --workspace=@vonos/types && npm run build --workspace=api",
   "rewrites": [{ "source": "/(.*)", "destination": "/api" }],
   "functions": {
     "api/index.ts": {

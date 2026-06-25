@@ -88,6 +88,20 @@ assemble_backend() {
   cp "${ROOT}/turbo.json" "${BACKEND_DIR}/turbo.json"
   cp "${ROOT}/.gitignore" "${BACKEND_DIR}/.gitignore"
   cp "${ROOT}/.env.example" "${BACKEND_DIR}/.env.example" 2>/dev/null || true
+  cat > "${BACKEND_DIR}/vercel.json" <<'EOF'
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "installCommand": "npm install",
+  "buildCommand": "npm run build --workspace=@vonos/types && npm run build --workspace=api",
+  "rewrites": [{ "source": "/(.*)", "destination": "/apps/api/api" }],
+  "functions": {
+    "apps/api/api/index.ts": {
+      "maxDuration": 60,
+      "memory": 1024
+    }
+  }
+}
+EOF
   cat > "${BACKEND_DIR}/README.md" <<'EOF'
 # vonos-backend
 
@@ -95,7 +109,10 @@ NestJS API + Prisma for the Vonos multi-tenant platform.
 
 ## Vercel
 
-Import this repo and set **Root Directory** to `apps/api`.
+Import this repo. Either works:
+
+- **Root Directory:** leave empty (uses root `vercel.json`)
+- **Root Directory:** `apps/api` (uses `apps/api/vercel.json`)
 
 Env: `DATABASE_URL`, `JWT_SECRET`, `JWT_ACCESS_EXPIRES`, `JWT_REFRESH_EXPIRES`, `WEB_ORIGIN`, `NODE_ENV=production`
 
@@ -103,9 +120,9 @@ Env: `DATABASE_URL`, `JWT_SECRET`, `JWT_ACCESS_EXPIRES`, `JWT_REFRESH_EXPIRES`, 
 
 ```bash
 npm install
-npm run build --workspace=@vonos/types
-cd apps/api && npx prisma generate && npx prisma migrate deploy
-npm run dev
+npm run build
+cd apps/api && npx prisma migrate deploy
+npm run dev --workspace=api
 ```
 EOF
 }
@@ -159,11 +176,18 @@ main() {
   command -v git >/dev/null
   gh auth setup-git >/dev/null 2>&1 || true
 
-  assemble_backend
-  assemble_frontend
+  local target="${PUBLISH_TARGET:-all}"
 
-  git_push_repo "$BACKEND_DIR" "$BACKEND_REMOTE" "vonos-backend"
-  git_push_repo "$FRONTEND_DIR" "$FRONTEND_REMOTE" "vonos-frontend"
+  if [[ "$target" == "all" || "$target" == "backend" ]]; then
+    assemble_backend
+    git_push_repo "$BACKEND_DIR" "$BACKEND_REMOTE" "vonos-backend"
+  fi
+
+  if [[ "$target" == "all" || "$target" == "frontend" ]]; then
+    assemble_frontend
+    git_push_repo "$FRONTEND_DIR" "$FRONTEND_REMOTE" "vonos-frontend"
+  fi
+
   echo "Done. Backend: ${BACKEND_REMOTE} | Frontend: ${FRONTEND_REMOTE}"
 }
 
