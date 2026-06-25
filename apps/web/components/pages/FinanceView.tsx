@@ -148,7 +148,7 @@ const entityFinanceColumns: ColumnConfig<LedgerEntitySummary & { id: string }>[]
   {
     key: "actions",
     header: "",
-    render: (row) => (
+    render: () => (
       <span className="text-sm font-medium text-info">View finance →</span>
     ),
   },
@@ -223,7 +223,10 @@ export function FinanceView({ groupMode = false }: FinanceViewProps) {
   );
 
   const summary = groupMode || tenantId ? summaryQuery.data : undefined;
-  const chartEntries = chartEntriesQuery.data ?? [];
+  const chartEntries = useMemo(
+    () => chartEntriesQuery.data ?? [],
+    [chartEntriesQuery.data],
+  );
 
   const categories = useMemo(() => {
     return (categoriesQuery.data ?? []).map((c) => ({ value: c, label: c }));

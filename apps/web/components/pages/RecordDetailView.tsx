@@ -733,7 +733,6 @@ function SupplierDetailView({ recordId }: { recordId: string }) {
 
 function GenericReferenceDetailView({
   listSlug,
-  recordId,
   title,
   fields,
 }: {

@@ -82,7 +82,7 @@ export function WarehouseSuppliersView() {
     queryFn: getSupplierKpis,
   });
   const kpis = kpisQuery.data;
-  const suppliers = suppliersQuery.data ?? [];
+  const suppliers = useMemo(() => suppliersQuery.data ?? [], [suppliersQuery.data]);
 
   const filtered = useMemo(() => {
     let rows = suppliers;

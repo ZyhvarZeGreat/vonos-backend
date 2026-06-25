@@ -6,7 +6,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Upload } from "lucide-react";
 import type { KpiCardConfig, ReportsDashboard, ReportsKpi } from "@vonos/types";
 import { ChartPanel } from "@/components/organisms/ChartPanel";
-import { DataTable, type ColumnConfig } from "@/components/organisms/DataTable";
+import { DataTable } from "@/components/organisms/DataTable";
 import { DateRangeDropdown } from "@/components/molecules/DateRangeDropdown";
 import { KpiRow } from "@/components/organisms/KpiRow";
 import { getGroupReports, getReportsDashboard } from "@/lib/api/reports";

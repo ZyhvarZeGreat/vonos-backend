@@ -12,6 +12,7 @@ import { devPasswordHash, hashPassword } from '../../common/utils/password';
 import { TenantDbService } from '../../common/prisma/tenant-db.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { toIso } from '../../common/utils/serializers';
+import { resolvePrimaryWebOrigin } from '../../common/utils/webOrigin';
 import { AuthMailService } from '../auth/auth-mail.service';
 import { INVITE_DAYS } from '../auth/auth.constants';
 
@@ -132,7 +133,7 @@ export class UsersService {
       },
     });
 
-    const webOrigin = process.env.WEB_ORIGIN ?? 'http://localhost:3000';
+    const webOrigin = resolvePrimaryWebOrigin();
     const inviteUrl = `${webOrigin}/invite/${raw}`;
     this.mail.sendInvite(assignment.email, inviteUrl);
 

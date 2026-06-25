@@ -88,6 +88,7 @@ export function ProductItemSearch({
                 <button
                   type="button"
                   role="option"
+                  aria-selected={false}
                   className="flex w-full flex-col gap-0.5 px-3 py-2 text-left text-sm hover:bg-[var(--color-surface-muted)]"
                   onClick={() => {
                     onSelect(item);

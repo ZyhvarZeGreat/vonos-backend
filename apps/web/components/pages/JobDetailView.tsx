@@ -12,7 +12,6 @@ import {
 import { DetailPanelSection } from "@/components/organisms/DetailPanelSection";
 import { EmptyState } from "@/components/atoms/EmptyState";
 import { buildAdaptiveJobStages } from "@/components/organisms/StatusStepper";
-import { useRecordNavigation } from "@/lib/hooks/useRecordNavigation";
 import type { JobDetail } from "@/lib/api/jobs";
 import { advanceJobStatus } from "@/lib/api/jobs";
 import { formatCurrency } from "@/lib/utils/formatCurrency";

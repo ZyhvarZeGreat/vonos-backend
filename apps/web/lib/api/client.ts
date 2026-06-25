@@ -1,7 +1,10 @@
 import { useAuthStore } from "@/stores/authStore";
 import { resolveViewingTenantId } from "./viewingTenant";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
+const API_BASE = (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001").replace(
+  /\/+$/,
+  "",
+);
 
 export function apiUrl(path: string): string {
   const normalized = path.startsWith("/") ? path : `/${path}`;

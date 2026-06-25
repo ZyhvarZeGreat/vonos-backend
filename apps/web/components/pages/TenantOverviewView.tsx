@@ -78,7 +78,6 @@ function useOverviewShell(tenantCode: TenantCode) {
 function EntityOverviewView({ tenantCode }: OverviewProps) {
   const {
     tenantId,
-    finalConfig,
     sidebar,
     topSlot,
     beforeContent,

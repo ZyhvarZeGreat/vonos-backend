@@ -61,7 +61,7 @@ export function KidsWearInventoryView() {
     enabled: Boolean(tenantId),
   });
 
-  const items = itemsQuery.data ?? [];
+  const items = useMemo(() => itemsQuery.data ?? [], [itemsQuery.data]);
 
   const filtered = useMemo(() => {
     let rows = filterByDateField(items, bounds, "createdAt");

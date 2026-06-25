@@ -23,6 +23,7 @@ import {
   isDevPasswordHash,
   verifyPassword,
 } from '../../common/utils/password';
+import { resolvePrimaryWebOrigin } from '../../common/utils/webOrigin';
 import {
   buildOtpauthUrl,
   generateTotpSecret,
@@ -188,7 +189,7 @@ export class AuthService {
         },
       });
 
-      const webOrigin = process.env.WEB_ORIGIN ?? 'http://localhost:3000';
+      const webOrigin = resolvePrimaryWebOrigin();
       const resetUrl = `${webOrigin}/reset-password/${raw}`;
       this.mail.sendPasswordReset(user.email, resetUrl);
 

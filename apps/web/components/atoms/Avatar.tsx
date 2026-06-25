@@ -1,3 +1,4 @@
+import Image from "next/image";
 import { cn } from "@/lib/utils/cn";
 
 export interface AvatarProps {
@@ -13,6 +14,12 @@ const sizeClasses = {
   lg: "h-12 w-12 text-base",
 };
 
+const sizePixels = {
+  sm: 32,
+  md: 40,
+  lg: 48,
+} as const;
+
 function getInitials(name: string): string {
   return name
     .split(" ")
@@ -25,9 +32,11 @@ function getInitials(name: string): string {
 export function Avatar({ name, src, size = "md", className }: AvatarProps) {
   if (src) {
     return (
-      <img
+      <Image
         src={src}
         alt={name}
+        width={sizePixels[size]}
+        height={sizePixels[size]}
         className={cn("rounded-full object-cover", sizeClasses[size], className)}
       />
     );

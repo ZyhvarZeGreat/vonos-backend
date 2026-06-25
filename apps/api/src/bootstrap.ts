@@ -3,22 +3,13 @@ import type { INestApplication } from '@nestjs/common';
 import cookieParser from 'cookie-parser';
 import type { Express } from 'express';
 import { AppModule } from './app.module';
-
-function resolveWebOrigin(): string {
-  if (process.env.WEB_ORIGIN) {
-    return process.env.WEB_ORIGIN;
-  }
-  if (process.env.VERCEL_URL) {
-    return `https://${process.env.VERCEL_URL}`;
-  }
-  return 'http://localhost:3000';
-}
+import { resolveWebOrigins } from './common/utils/webOrigin';
 
 async function createNestApp(): Promise<INestApplication> {
   const app = await NestFactory.create(AppModule);
   app.use(cookieParser());
   app.enableCors({
-    origin: resolveWebOrigin(),
+    origin: resolveWebOrigins(),
     credentials: true,
   });
   await app.init();

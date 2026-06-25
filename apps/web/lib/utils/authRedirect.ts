@@ -1,5 +1,5 @@
 import type { Role } from "@vonos/types";
-import { getTenantCodeFromId, type TenantCode } from "@/lib/registries/tenants";
+import { getTenantCodeFromId } from "@/lib/registries/tenants";
 import { tenantOverviewPath } from "@/lib/utils/tenantRoutes";
 
 export function getPostLoginPath(role: Role, tenantId: string | null): string {

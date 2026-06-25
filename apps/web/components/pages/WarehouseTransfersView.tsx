@@ -112,7 +112,7 @@ export function WarehouseTransfersView() {
     queryFn: getTransfers,
   });
 
-  const transfers = transfersQuery.data ?? [];
+  const transfers = useMemo(() => transfersQuery.data ?? [], [transfersQuery.data]);
 
   const filtered = useMemo(() => {
     let rows = filterByDateField(transfers, bounds, "createdAt");
