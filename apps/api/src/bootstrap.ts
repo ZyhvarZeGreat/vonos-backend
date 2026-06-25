@@ -1,7 +1,7 @@
 import { NestFactory } from '@nestjs/core';
-import { ExpressAdapter } from '@nestjs/platform-express';
+import type { INestApplication } from '@nestjs/common';
 import cookieParser from 'cookie-parser';
-import express from 'express';
+import type { Express } from 'express';
 import { AppModule } from './app.module';
 
 function resolveWebOrigin(): string {
@@ -14,22 +14,24 @@ function resolveWebOrigin(): string {
   return 'http://localhost:3000';
 }
 
-export async function getExpressApp(): Promise<express.Express> {
-  const expressApp = express();
-  const app = await NestFactory.create(AppModule, new ExpressAdapter(expressApp));
+async function createNestApp(): Promise<INestApplication> {
+  const app = await NestFactory.create(AppModule);
   app.use(cookieParser());
   app.enableCors({
     origin: resolveWebOrigin(),
     credentials: true,
   });
   await app.init();
-  return expressApp;
+  return app;
+}
+
+export async function getExpressApp(): Promise<Express> {
+  const app = await createNestApp();
+  return app.getHttpAdapter().getInstance() as Express;
 }
 
 export async function bootstrap(): Promise<void> {
-  const expressApp = await getExpressApp();
+  const app = await createNestApp();
   const port = Number(process.env.PORT ?? 3001);
-  await new Promise<void>((resolve) => {
-    expressApp.listen(port, () => resolve());
-  });
+  await app.listen(port);
 }

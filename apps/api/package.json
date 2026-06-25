@@ -31,7 +31,7 @@
     "@vonos/types": "*",
     "bcrypt": "^6.0.0",
     "cookie-parser": "^1.4.7",
-    "express": "^4.21.2",
+    "express": "^5.2.1",
     "otplib": "^13.4.1",
     "prisma": "^6.11.1",
     "reflect-metadata": "^0.2.2",
