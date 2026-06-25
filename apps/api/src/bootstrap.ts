@@ -33,5 +33,6 @@ export async function getExpressApp(): Promise<Express> {
 export async function bootstrap(): Promise<void> {
   const app = await createNestApp();
   const port = Number(process.env.PORT ?? 3001);
-  await app.listen(port);
+  const host = process.env.HOST ?? '0.0.0.0';
+  await app.listen(port, host);
 }

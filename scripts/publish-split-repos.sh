@@ -94,7 +94,7 @@ builder = "RAILPACK"
 buildCommand = "npm run build --workspace=@vonos/types && npm run build --workspace=api"
 
 [deploy]
-startCommand = "npm run start:prod --workspace=api"
+startCommand = "npm run migrate:deploy --workspace=api && npm run start --workspace=api"
 healthcheckPath = "/health"
 healthcheckTimeout = 120
 restartPolicyType = "ON_FAILURE"
