@@ -94,10 +94,18 @@ builder = "RAILPACK"
 buildCommand = "npm run build --workspace=@vonos/types && npm run build --workspace=api"
 
 [deploy]
-startCommand = "npm run migrate:deploy --workspace=api && npm run start --workspace=api"
+startCommand = "npm run start:railway --workspace=api"
 healthcheckPath = "/health"
-healthcheckTimeout = 120
+healthcheckTimeout = 300
 restartPolicyType = "ON_FAILURE"
+EOF
+  cat > "${BACKEND_DIR}/railpack.json" <<'EOF'
+{
+  "$schema": "https://schema.railpack.com",
+  "deploy": {
+    "startCommand": "npm run start:railway --workspace=api"
+  }
+}
 EOF
   cat > "${BACKEND_DIR}/vercel.json" <<'EOF'
 {

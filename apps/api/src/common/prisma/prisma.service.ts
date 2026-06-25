@@ -41,16 +41,32 @@ function applySoftDeleteFilter(args: { where?: Record<string, unknown> }) {
 @Injectable()
 export class PrismaService extends PrismaClient implements OnModuleInit {
   private readonly logger = new Logger(PrismaService.name);
+  private databaseConnected = false;
 
   async onModuleInit() {
+    void this.connectInBackground();
+  }
+
+  isDatabaseConnected(): boolean {
+    return this.databaseConnected;
+  }
+
+  private async connectInBackground(): Promise<void> {
     for (let attempt = 1; attempt <= CONNECT_MAX_ATTEMPTS; attempt++) {
       try {
         await this.$connect();
+        this.databaseConnected = true;
+        this.logger.log('Database connected');
         return;
       } catch (error) {
         const isLast = attempt === CONNECT_MAX_ATTEMPTS;
         const message = error instanceof Error ? error.message : String(error);
-        if (isLast) throw error;
+        if (isLast) {
+          this.logger.error(
+            `Database unavailable after ${CONNECT_MAX_ATTEMPTS} attempts (${message}). API will start without DB.`,
+          );
+          return;
+        }
         this.logger.warn(
           `Database connect attempt ${attempt}/${CONNECT_MAX_ATTEMPTS} failed (${message}). Retrying in ${CONNECT_RETRY_DELAY_MS}ms…`,
         );
