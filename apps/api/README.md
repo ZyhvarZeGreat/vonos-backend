@@ -9,18 +9,27 @@ Import [vonos-backend](https://github.com/ZyhvarZeGreat/vonos-backend) with **Ro
 
 In **Service Settings → Config-as-code**, set the config file path to `/railway.toml`.
 
-Required env vars:
+### Environment variables (Railway dashboard)
 
-| Variable | Example |
-|----------|---------|
-| `DATABASE_URL` | Postgres connection string (Neon/Railway) |
-| `JWT_SECRET` | long random secret |
-| `JWT_ACCESS_EXPIRES` | `15m` |
-| `JWT_REFRESH_EXPIRES` | `7d` |
-| `WEB_ORIGIN` | `https://app.vonosautos.com` |
-| `NODE_ENV` | `production` |
+Env vars are **not in git**. Set them in Railway:
 
-Optional override if start command is ignored: `RAILPACK_START_CMD=npm run start:railway --workspace=api`
+1. Open your **Project** → select the **API service**
+2. Go to **Variables** (or **Settings → Variables**)
+3. Add each variable below (or use **Add Reference** if you provisioned Postgres via Railway)
+
+| Variable | Required | Example / notes |
+|----------|----------|-----------------|
+| `DATABASE_URL` | **Yes** | `postgresql://user:pass@host:5432/db?sslmode=require` — from Neon or Railway Postgres |
+| `JWT_SECRET` | **Yes** | Long random string (e.g. `openssl rand -base64 32`) |
+| `JWT_ACCESS_EXPIRES` | No | `15m` (default if omitted) |
+| `JWT_REFRESH_EXPIRES` | No | `7d` |
+| `WEB_ORIGIN` | **Yes** | Your frontend URL, e.g. `https://app.vonosautos.com` |
+| `NODE_ENV` | **Yes** | `production` |
+| `PORT` | No | Railway sets this automatically |
+
+If you add a **Railway PostgreSQL** plugin to the same project, link it to the API service — Railway can inject `DATABASE_URL` for you.
+
+Optional if start command is ignored: `RAILPACK_START_CMD=npm run start:railway --workspace=api`
 
 Health check: `GET /health`
 
