@@ -62,3 +62,18 @@ Set `NEXT_PUBLIC_API_URL=http://localhost:3001` in `apps/web/.env.local` so the 
 - Warehouse + entity pages wired to live API
 
 **Next:** Continue entity rollout per AGENTS.md Phase 2.
+
+## Deploy (Vercel)
+
+Two GitHub repos, two Vercel projects:
+
+| Repo | Vercel Root Directory |
+|------|----------------------|
+| [vonos-backend](https://github.com/ZyhvarZeGreat/vonos-backend) | `apps/api` |
+| [vonos](https://github.com/ZyhvarZeGreat/vonos) (frontend) | `apps/web` |
+
+**API env vars:** `DATABASE_URL`, `JWT_SECRET`, `JWT_ACCESS_EXPIRES`, `JWT_REFRESH_EXPIRES`, `WEB_ORIGIN` (web URL), `NODE_ENV=production`
+
+**Web env vars:** `NEXT_PUBLIC_API_URL` (API URL), `NEXT_PUBLIC_SKIP_AUTH=false`
+
+Data lives in Neon — no migration import needed on deploy.
