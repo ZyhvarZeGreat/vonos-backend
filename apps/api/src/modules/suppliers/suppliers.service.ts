@@ -51,7 +51,9 @@ function serializeSupplier(row: {
   };
 }
 
-function toListRow(row: Parameters<typeof serializeSupplier>[0]): SupplierListRow {
+function toListRow(
+  row: Parameters<typeof serializeSupplier>[0],
+): SupplierListRow {
   return {
     ...serializeSupplier(row),
     category: 'General',

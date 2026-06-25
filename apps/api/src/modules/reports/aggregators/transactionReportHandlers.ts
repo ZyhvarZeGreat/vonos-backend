@@ -1,7 +1,7 @@
 import type { ReportsDashboard } from '@vonos/types';
 import type { TenantScopedPrisma } from '../../../common/prisma/prisma.service';
 import { ledgerDateFilter } from '../../../common/utils/ledgerAggregates';
-import { toNumber } from '../../../common/utils/serializers';
+import { toNumber, toStringField } from '../../../common/utils/serializers';
 import {
   bucketKey,
   bucketLabel,
@@ -118,10 +118,40 @@ export async function buildPurchaseSaleReport(
 
   return {
     kpis: [
-      currencyKpi('Total Sales', 'sales', salesTotal, currency, '#059669', 'wallet', computeDelta(salesTotal, priorSalesTotal)),
-      currencyKpi('Total Purchases', 'purchases', purchases, currency, '#2563eb', 'truck', computeDelta(purchases, priorPurchases)),
-      currencyKpi('Gross Profit', 'grossProfit', grossProfit, currency, '#9333ea', 'trending-up'),
-      countKpi('Transactions', 'transactionCount', periodSales.length, '#e11d48', 'receipt', computeDelta(periodSales.length, priorSales.length)),
+      currencyKpi(
+        'Total Sales',
+        'sales',
+        salesTotal,
+        currency,
+        '#059669',
+        'wallet',
+        computeDelta(salesTotal, priorSalesTotal),
+      ),
+      currencyKpi(
+        'Total Purchases',
+        'purchases',
+        purchases,
+        currency,
+        '#2563eb',
+        'truck',
+        computeDelta(purchases, priorPurchases),
+      ),
+      currencyKpi(
+        'Gross Profit',
+        'grossProfit',
+        grossProfit,
+        currency,
+        '#9333ea',
+        'trending-up',
+      ),
+      countKpi(
+        'Transactions',
+        'transactionCount',
+        periodSales.length,
+        '#e11d48',
+        'receipt',
+        computeDelta(periodSales.length, priorSales.length),
+      ),
     ],
     charts: [
       {
@@ -133,7 +163,10 @@ export async function buildPurchaseSaleReport(
           { name: 'Sales', dataKey: 'sales', color: '#059669' },
           { name: 'Purchases', dataKey: 'purchases', color: '#2563eb' },
         ],
-        data: chartData.length > 0 ? chartData : [{ label: '—', sales: 0, purchases: 0 }],
+        data:
+          chartData.length > 0
+            ? chartData
+            : [{ label: '—', sales: 0, purchases: 0 }],
       },
     ],
     table: {
@@ -180,7 +213,13 @@ export async function buildTaxReport(
     saleIds.length > 0
       ? db.sale.findMany({
           where: { id: { in: saleIds } },
-          select: { id: true, reference: true, date: true, total: true, paymentStatus: true },
+          select: {
+            id: true,
+            reference: true,
+            date: true,
+            total: true,
+            paymentStatus: true,
+          },
         })
       : Promise.resolve([]),
   ]);
@@ -208,10 +247,37 @@ export async function buildTaxReport(
 
   return {
     kpis: [
-      currencyKpi('Net Sales (tax incl.)', 'netSales', netSales, currency, '#059669', 'wallet'),
-      currencyKpi('Discounts', 'discounts', Math.round(discounts), currency, '#9333ea', 'percent'),
-      currencyKpi('Line Subtotal', 'gross', Math.round(grossBeforeDiscount), currency, '#2563eb', 'receipt'),
-      countKpi('Transactions', 'transactionCount', periodSales.length, '#e11d48', 'file-text'),
+      currencyKpi(
+        'Net Sales (tax incl.)',
+        'netSales',
+        netSales,
+        currency,
+        '#059669',
+        'wallet',
+      ),
+      currencyKpi(
+        'Discounts',
+        'discounts',
+        Math.round(discounts),
+        currency,
+        '#9333ea',
+        'percent',
+      ),
+      currencyKpi(
+        'Line Subtotal',
+        'gross',
+        Math.round(grossBeforeDiscount),
+        currency,
+        '#2563eb',
+        'receipt',
+      ),
+      countKpi(
+        'Transactions',
+        'transactionCount',
+        periodSales.length,
+        '#e11d48',
+        'file-text',
+      ),
     ],
     charts: [
       {
@@ -222,7 +288,10 @@ export async function buildTaxReport(
         series: [{ name: 'Count', dataKey: 'value', color: '#3b82f6' }],
         data:
           statusCounts.size > 0
-            ? Array.from(statusCounts.entries()).map(([label, value]) => ({ label, value }))
+            ? Array.from(statusCounts.entries()).map(([label, value]) => ({
+                label,
+                value,
+              }))
             : [{ label: 'paid', value: 0 }],
       },
     ],
@@ -273,7 +342,9 @@ export async function buildRegisterReport(
     byDay.set(key, row);
   }
 
-  const days = Array.from(byDay.entries()).sort(([a], [b]) => a.localeCompare(b));
+  const days = Array.from(byDay.entries()).sort(([a], [b]) =>
+    a.localeCompare(b),
+  );
   const chartData = days.map(([, row]) => ({
     label: row.label,
     revenue: Math.round(row.revenue),
@@ -284,9 +355,22 @@ export async function buildRegisterReport(
 
   return {
     kpis: [
-      currencyKpi('Register Revenue', 'revenue', totalRevenue, currency, '#059669', 'wallet'),
+      currencyKpi(
+        'Register Revenue',
+        'revenue',
+        totalRevenue,
+        currency,
+        '#059669',
+        'wallet',
+      ),
       countKpi('Trading Days', 'days', days.length, '#2563eb', 'calendar'),
-      countKpi('Transactions', 'transactionCount', periodSales.length, '#9333ea', 'receipt'),
+      countKpi(
+        'Transactions',
+        'transactionCount',
+        periodSales.length,
+        '#9333ea',
+        'receipt',
+      ),
       currencyKpi(
         'Avg Daily Revenue',
         'avgDaily',
@@ -303,7 +387,10 @@ export async function buildRegisterReport(
         subtitle: 'Revenue per trading day',
         type: 'bar',
         series: [{ name: 'Revenue', dataKey: 'revenue', color: '#059669' }],
-        data: chartData.length > 0 ? chartData : [{ label: '—', revenue: 0, transactions: 0 }],
+        data:
+          chartData.length > 0
+            ? chartData
+            : [{ label: '—', revenue: 0, transactions: 0 }],
       },
     ],
     table: {
@@ -313,7 +400,7 @@ export async function buildRegisterReport(
         { key: 'revenue', header: 'Revenue' },
         { key: 'avgTicket', header: 'Avg Ticket' },
       ],
-      rows: days.map(([key, row]) => ({
+      rows: days.map(([, row]) => ({
         date: row.label,
         transactions: row.count,
         revenue: Math.round(row.revenue),
@@ -375,9 +462,22 @@ export async function buildSalesRepReport(
 
   return {
     kpis: [
-      currencyKpi('Total Revenue', 'revenue', totalRevenue, currency, '#059669', 'wallet'),
+      currencyKpi(
+        'Total Revenue',
+        'revenue',
+        totalRevenue,
+        currency,
+        '#059669',
+        'wallet',
+      ),
       countKpi('Sales Staff', 'reps', rows.length, '#2563eb', 'users'),
-      countKpi('Transactions', 'transactionCount', sales.length, '#9333ea', 'receipt'),
+      countKpi(
+        'Transactions',
+        'transactionCount',
+        sales.length,
+        '#9333ea',
+        'receipt',
+      ),
       currencyKpi(
         'Avg per Rep',
         'avgPerRep',
@@ -452,13 +552,18 @@ export async function buildSellPaymentReport(
   const byMethod = new Map<string, number>();
   for (const payment of payments) {
     const method = payment.method ?? 'other';
-    byMethod.set(method, (byMethod.get(method) ?? 0) + toNumber(payment.amount));
+    byMethod.set(
+      method,
+      (byMethod.get(method) ?? 0) + toNumber(payment.amount),
+    );
   }
 
   if (payments.length === 0) {
     const ctx = await loadSalesReportContext(db, from, to);
     const paidSales = ctx.periodSales.filter((s) => s.paymentStatus === 'paid');
-    const partialSales = ctx.periodSales.filter((s) => s.paymentStatus === 'partial');
+    const partialSales = ctx.periodSales.filter(
+      (s) => s.paymentStatus === 'partial',
+    );
     const dueSales = ctx.periodSales.filter((s) => s.paymentStatus === 'due');
 
     const collected = paidSales.reduce((sum, s) => sum + s.total, 0);
@@ -474,16 +579,44 @@ export async function buildSellPaymentReport(
 
     return {
       kpis: [
-        currencyKpi('Collected (paid)', 'collected', collected, ctx.currency, '#059669', 'wallet'),
-        currencyKpi('Sales Value', 'salesValue', salesTotal, ctx.currency, '#2563eb', 'banknote'),
-        currencyKpi('Outstanding', 'outstanding', partialAmount + dueAmount, ctx.currency, '#e11d48', 'clock'),
-        countKpi('Transactions', 'transactions', ctx.periodSales.length, '#9333ea', 'receipt'),
+        currencyKpi(
+          'Collected (paid)',
+          'collected',
+          collected,
+          ctx.currency,
+          '#059669',
+          'wallet',
+        ),
+        currencyKpi(
+          'Sales Value',
+          'salesValue',
+          salesTotal,
+          ctx.currency,
+          '#2563eb',
+          'banknote',
+        ),
+        currencyKpi(
+          'Outstanding',
+          'outstanding',
+          partialAmount + dueAmount,
+          ctx.currency,
+          '#e11d48',
+          'clock',
+        ),
+        countKpi(
+          'Transactions',
+          'transactions',
+          ctx.periodSales.length,
+          '#9333ea',
+          'receipt',
+        ),
       ],
       charts: [
         {
           id: 'payment-status-amounts',
           title: 'Collections by Payment Status',
-          subtitle: 'Payment rows not migrated — amounts derived from sale payment status',
+          subtitle:
+            'Payment rows not migrated — amounts derived from sale payment status',
           type: 'pie',
           series: [{ name: 'Amount', dataKey: 'value', color: '#3b82f6' }],
           data: statusAmounts,
@@ -511,8 +644,21 @@ export async function buildSellPaymentReport(
 
   return {
     kpis: [
-      currencyKpi('Collected', 'collected', total, currency, '#059669', 'wallet'),
-      countKpi('Payments', 'paymentCount', payments.length, '#2563eb', 'banknote'),
+      currencyKpi(
+        'Collected',
+        'collected',
+        total,
+        currency,
+        '#059669',
+        'wallet',
+      ),
+      countKpi(
+        'Payments',
+        'paymentCount',
+        payments.length,
+        '#2563eb',
+        'banknote',
+      ),
       countKpi('Methods', 'methods', byMethod.size, '#9333ea', 'credit-card'),
     ],
     charts: [
@@ -617,8 +763,7 @@ export async function buildPurchasePaymentReport(
     }),
   ]);
 
-  const currency =
-    payments[0]?.currency ?? expenseRows[0]?.currency ?? 'NGN';
+  const currency = payments[0]?.currency ?? expenseRows[0]?.currency ?? 'NGN';
   const paymentTotal = payments.reduce((sum, p) => sum + toNumber(p.amount), 0);
   const debitTotal = accountDebits.reduce(
     (sum, row) => sum + toNumber(row.amount),
@@ -626,14 +771,20 @@ export async function buildPurchasePaymentReport(
   );
   const expenseTotal = toNumber(expenseAgg._sum.amount ?? 0);
   const total =
-    paymentTotal > 0 ? paymentTotal : debitTotal > 0 ? debitTotal : expenseTotal;
+    paymentTotal > 0
+      ? paymentTotal
+      : debitTotal > 0
+        ? debitTotal
+        : expenseTotal;
 
   const tableRows =
     payments.length > 0
       ? payments.map((payment) => ({
           id: payment.id,
           recordType: 'payment',
-          date: (payment.paidOn ?? payment.createdAt).toISOString().slice(0, 10),
+          date: (payment.paidOn ?? payment.createdAt)
+            .toISOString()
+            .slice(0, 10),
           source: payment.paymentFor ?? 'Purchase payment',
           method: payment.method ?? '—',
           account: payment.account?.name ?? '—',
@@ -664,10 +815,37 @@ export async function buildPurchasePaymentReport(
 
   return {
     kpis: [
-      currencyKpi('Purchase Payments', 'purchasePayments', total, currency, '#059669', 'truck'),
-      currencyKpi('Account Debits', 'accountDebits', debitTotal, currency, '#2563eb', 'banknote'),
-      currencyKpi('Expenses (ledger)', 'expenses', expenseTotal, currency, '#9333ea', 'receipt'),
-      countKpi('Records', 'recordCount', tableRows.length, '#e11d48', 'file-text'),
+      currencyKpi(
+        'Purchase Payments',
+        'purchasePayments',
+        total,
+        currency,
+        '#059669',
+        'truck',
+      ),
+      currencyKpi(
+        'Account Debits',
+        'accountDebits',
+        debitTotal,
+        currency,
+        '#2563eb',
+        'banknote',
+      ),
+      currencyKpi(
+        'Expenses (ledger)',
+        'expenses',
+        expenseTotal,
+        currency,
+        '#9333ea',
+        'receipt',
+      ),
+      countKpi(
+        'Records',
+        'recordCount',
+        tableRows.length,
+        '#e11d48',
+        'file-text',
+      ),
     ],
     charts: [
       {
@@ -767,7 +945,14 @@ export async function buildContactsSummaryReport(
       countKpi('Customers', 'customers', customers.length, '#059669', 'users'),
       countKpi('Suppliers', 'suppliers', suppliers.length, '#2563eb', 'truck'),
       countKpi('Walk-in Sales', 'walkIn', walkInCount, '#9333ea', 'user'),
-      currencyKpi('Walk-in Revenue', 'walkInRevenue', Math.round(walkInRevenue), currency, '#e11d48', 'wallet'),
+      currencyKpi(
+        'Walk-in Revenue',
+        'walkInRevenue',
+        Math.round(walkInRevenue),
+        currency,
+        '#e11d48',
+        'wallet',
+      ),
     ],
     charts: [],
     table: {
@@ -834,8 +1019,20 @@ export async function buildCustomerGroupsReport(
 
   return {
     kpis: [
-      countKpi('Customer Segments', 'segments', rows.length, '#059669', 'users'),
-      countKpi('Transactions', 'transactionCount', sales.length, '#2563eb', 'receipt'),
+      countKpi(
+        'Customer Segments',
+        'segments',
+        rows.length,
+        '#059669',
+        'users',
+      ),
+      countKpi(
+        'Transactions',
+        'transactionCount',
+        sales.length,
+        '#2563eb',
+        'receipt',
+      ),
       currencyKpi(
         'Total Revenue',
         'revenue',
@@ -853,7 +1050,9 @@ export async function buildCustomerGroupsReport(
         type: 'bar',
         horizontal: true,
         series: [{ name: 'Revenue', dataKey: 'revenue', color: '#059669' }],
-        data: rows.slice(0, 15).map((row) => ({ label: row.group, revenue: row.revenue })),
+        data: rows
+          .slice(0, 15)
+          .map((row) => ({ label: row.group, revenue: row.revenue })),
       },
     ],
     table: {
@@ -875,7 +1074,9 @@ export async function buildTrendingProductsReport(
   const ctx = await loadSalesReportContext(db, from, to);
   const topCurrent = aggregateTopProducts(ctx.periodSales, 15);
   const topPrior = aggregateTopProducts(ctx.priorSales, 15);
-  const priorBySku = new Map(topPrior.map((row) => [row.sku.toLowerCase(), row.units]));
+  const priorBySku = new Map(
+    topPrior.map((row) => [row.sku.toLowerCase(), row.units]),
+  );
 
   const rows = topCurrent.map((row) => {
     const priorUnits = priorBySku.get(row.sku.toLowerCase()) ?? 0;
@@ -892,7 +1093,13 @@ export async function buildTrendingProductsReport(
   return {
     kpis: [
       countKpi('Products Sold', 'products', rows.length, '#059669', 'package'),
-      countKpi('Units (period)', 'units', Math.round(rows.reduce((s, r) => s + r.units, 0)), '#2563eb', 'box'),
+      countKpi(
+        'Units (period)',
+        'units',
+        Math.round(rows.reduce((s, r) => s + r.units, 0)),
+        '#2563eb',
+        'box',
+      ),
       currencyKpi(
         'Line Revenue',
         'revenue',
@@ -910,7 +1117,9 @@ export async function buildTrendingProductsReport(
         type: 'bar',
         horizontal: true,
         series: [{ name: 'Units', dataKey: 'units', color: '#3b82f6' }],
-        data: rows.slice(0, 12).map((row) => ({ label: row.name, units: row.units })),
+        data: rows
+          .slice(0, 12)
+          .map((row) => ({ label: row.name, units: row.units })),
       },
     ],
     table: {
@@ -933,7 +1142,9 @@ export async function buildItemsReport(
 ): Promise<ReportsDashboard> {
   const ctx = await loadSalesReportContext(db, from, to);
   const aggregated = aggregateTopProducts(ctx.periodSales, 500);
-  const itemIds = aggregated.map((row) => row.itemId).filter((id): id is string => Boolean(id));
+  const itemIds = aggregated
+    .map((row) => row.itemId)
+    .filter((id): id is string => Boolean(id));
 
   const items =
     itemIds.length > 0
@@ -960,7 +1171,13 @@ export async function buildItemsReport(
   return {
     kpis: [
       countKpi('SKUs Sold', 'skus', rows.length, '#059669', 'package'),
-      countKpi('Units Sold', 'units', Math.round(rows.reduce((s, r) => s + Number(r.unitsSold), 0)), '#2563eb', 'box'),
+      countKpi(
+        'Units Sold',
+        'units',
+        Math.round(rows.reduce((s, r) => s + Number(r.unitsSold), 0)),
+        '#2563eb',
+        'box',
+      ),
       currencyKpi(
         'Revenue',
         'revenue',
@@ -1017,7 +1234,7 @@ export async function buildProductPurchaseReport(
       rows.push({
         reference: movement.reference,
         date: movement.date.toISOString().slice(0, 10),
-        sku: String(line.sku ?? line.name ?? '—'),
+        sku: toStringField(line.sku) || toStringField(line.name) || '—',
         quantity: toNumber(line.quantity as number | string),
       });
     }
@@ -1066,7 +1283,13 @@ export async function buildStockExpiryReport(
 
   return {
     kpis: [
-      countKpi('At-risk SKUs', 'atRisk', lowItems.length, '#e11d48', 'alert-triangle'),
+      countKpi(
+        'At-risk SKUs',
+        'atRisk',
+        lowItems.length,
+        '#e11d48',
+        'alert-triangle',
+      ),
     ],
     charts: [],
     table: {

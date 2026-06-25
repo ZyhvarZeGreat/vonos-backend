@@ -14,7 +14,10 @@ export function buildOtpauthUrl(email: string, secret: string): string {
   });
 }
 
-export async function verifyTotpCode(secret: string, code: string): Promise<boolean> {
+export async function verifyTotpCode(
+  secret: string,
+  code: string,
+): Promise<boolean> {
   const result = await verify({ secret, token: code });
   return result.valid;
 }

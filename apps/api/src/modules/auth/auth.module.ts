@@ -20,7 +20,20 @@ import { AuthService } from './auth.service';
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, AuthMailService, JwtAuthGuard, TenantGuard, RolesGuard],
-  exports: [JwtModule, JwtAuthGuard, TenantGuard, RolesGuard, AuthService, AuthMailService],
+  providers: [
+    AuthService,
+    AuthMailService,
+    JwtAuthGuard,
+    TenantGuard,
+    RolesGuard,
+  ],
+  exports: [
+    JwtModule,
+    JwtAuthGuard,
+    TenantGuard,
+    RolesGuard,
+    AuthService,
+    AuthMailService,
+  ],
 })
 export class AuthModule {}

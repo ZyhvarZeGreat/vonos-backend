@@ -81,12 +81,9 @@ export async function buildStockOverview(
   const movementCount = byKey('movementCount');
 
   const isKidsWear = tenantCode === 'VKW';
-  let kpis = [
-    totalSku,
-    todayInbound,
-    todayOutbound,
-    stockValue,
-  ].filter((k): k is NonNullable<typeof k> => Boolean(k));
+  let kpis = [totalSku, todayInbound, todayOutbound, stockValue].filter(
+    (k): k is NonNullable<typeof k> => Boolean(k),
+  );
 
   if (isKidsWear) {
     const sales = await buildTransactionReports(db, 'sales', from, to);
@@ -101,7 +98,10 @@ export async function buildStockOverview(
         color: '#2563eb',
         value: revenue?.value ?? 0,
         currency: revenue?.currency ?? 'NGN',
-        ...computeDelta(revenue?.value ?? 0, (revenue?.value ?? 0) - (revenue?.delta ?? 0)),
+        ...computeDelta(
+          revenue?.value ?? 0,
+          (revenue?.value ?? 0) - (revenue?.delta ?? 0),
+        ),
       },
       {
         label: 'Returns',
@@ -122,7 +122,13 @@ export async function buildStockOverview(
   if (movementCount && !isKidsWear) {
     const idx = kpis.findIndex((k) => k.metricKey === 'todayOutbound');
     if (idx >= 0 && movementCount.delta !== undefined) {
-      kpis[idx] = { ...kpis[idx], ...computeDelta(movementCount.value, movementCount.value - (movementCount.delta ?? 0)) };
+      kpis[idx] = {
+        ...kpis[idx],
+        ...computeDelta(
+          movementCount.value,
+          movementCount.value - (movementCount.delta ?? 0),
+        ),
+      };
     }
   }
 
@@ -173,16 +179,21 @@ export async function buildTransactionOverview(
   const { financeCharts, financeKpis } = finance;
   const [costsKpi, netKpi] = financeKpis;
 
-  const topProducts = isRetailCatalog ? aggregateTopProducts(periodSales, 8) : [];
+  const topProducts = isRetailCatalog
+    ? aggregateTopProducts(periodSales, 8)
+    : [];
   const rankedList = topProducts.map((row) => ({
     label: row.label,
     units: Math.round(row.units * 100) / 100,
     revenue: Math.round(row.revenue),
-    currency: sales.kpis.find((k) => k.metricKey === 'revenue')?.currency ?? 'NGN',
+    currency:
+      sales.kpis.find((k) => k.metricKey === 'revenue')?.currency ?? 'NGN',
     itemId: row.itemId,
   }));
   const revenue = sales.kpis.find((k) => k.metricKey === 'revenue');
-  const transactionCount = sales.kpis.find((k) => k.metricKey === 'transactionCount');
+  const transactionCount = sales.kpis.find(
+    (k) => k.metricKey === 'transactionCount',
+  );
   const refunded = sales.kpis.find((k) => k.metricKey === 'refundedCount');
 
   const kpis = isCafe
@@ -227,8 +238,8 @@ export async function buildTransactionOverview(
               }
             : {}),
         },
-        costsKpi!,
-        netKpi!,
+        costsKpi,
+        netKpi,
       ]
     : [
         {
@@ -267,8 +278,8 @@ export async function buildTransactionOverview(
           value: revenue?.value ?? 0,
           currency: revenue?.currency ?? 'NGN',
         },
-        costsKpi!,
-        netKpi!,
+        costsKpi,
+        netKpi,
       ];
 
   const topChart = sales.charts[0];
@@ -621,7 +632,6 @@ export async function buildAppointmentOverview(
 
   const revenue = stylist.kpis.find((k) => k.metricKey === 'revenue');
   const noShows = appointments.filter((a) => a.status === 'No-show').length;
-  const booked = stylist.kpis.find((k) => k.metricKey === 'bookedCount');
 
   const kpis = [
     stylist.kpis.find((k) => k.metricKey === 'todayAppts')!,
@@ -654,7 +664,7 @@ export async function buildAppointmentOverview(
           }
         : {}),
     },
-  ].filter(Boolean) as OverviewDashboard['kpis'];
+  ].filter(Boolean);
 
   return {
     kpis,

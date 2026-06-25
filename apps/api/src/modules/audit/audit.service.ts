@@ -1,6 +1,10 @@
 import { Injectable, Scope } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
-import type { AuditLogEntry, AuditLogFilters, NotificationSeverity } from '@vonos/types';
+import type {
+  AuditLogEntry,
+  AuditLogFilters,
+  NotificationSeverity,
+} from '@vonos/types';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { TenantDbService } from '../../common/prisma/tenant-db.service';
 import { buildCursorQuery } from '../../common/utils/pagination';
@@ -60,7 +64,9 @@ export class AuditService {
         actorUserId: actor?.userId ?? null,
         actorName: actor?.name ?? null,
         summary: input.summary,
-        metadata: (input.metadata ?? undefined) as Prisma.InputJsonValue | undefined,
+        metadata: (input.metadata ?? undefined) as
+          | Prisma.InputJsonValue
+          | undefined,
         occurredAt: new Date(),
       },
     });
@@ -121,10 +127,18 @@ export class AuditService {
       user: 'User',
       cafeTable: 'Table',
     };
-    return labels[entityType] ?? entityType.replace(/([A-Z])/g, ' $1').replace(/^./, (c) => c.toUpperCase());
+    return (
+      labels[entityType] ??
+      entityType
+        .replace(/([A-Z])/g, ' $1')
+        .replace(/^./, (c) => c.toUpperCase())
+    );
   }
 
-  private async resolveActor(): Promise<{ userId: string; name: string } | null> {
+  private async resolveActor(): Promise<{
+    userId: string;
+    name: string;
+  } | null> {
     const userId = this.tenantDb.getAuthUserId();
     if (!userId) return null;
     const user = await this.prisma.user.findUnique({
@@ -157,7 +171,9 @@ export class AuditService {
       actorName: row.actorName,
       summary: row.summary,
       metadata:
-        row.metadata && typeof row.metadata === 'object' && !Array.isArray(row.metadata)
+        row.metadata &&
+        typeof row.metadata === 'object' &&
+        !Array.isArray(row.metadata)
           ? (row.metadata as Record<string, unknown>)
           : null,
       occurredAt: toIso(row.occurredAt),

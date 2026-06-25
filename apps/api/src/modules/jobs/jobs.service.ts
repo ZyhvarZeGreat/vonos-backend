@@ -39,9 +39,21 @@ export class JobsService {
         ...(filters.search
           ? {
               OR: [
-                { reference: { contains: filters.search, mode: 'insensitive' } },
-                { description: { contains: filters.search, mode: 'insensitive' } },
-                { customerName: { contains: filters.search, mode: 'insensitive' } },
+                {
+                  reference: { contains: filters.search, mode: 'insensitive' },
+                },
+                {
+                  description: {
+                    contains: filters.search,
+                    mode: 'insensitive',
+                  },
+                },
+                {
+                  customerName: {
+                    contains: filters.search,
+                    mode: 'insensitive',
+                  },
+                },
               ],
             }
           : {}),

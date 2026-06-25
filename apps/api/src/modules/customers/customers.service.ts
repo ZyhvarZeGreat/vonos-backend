@@ -40,7 +40,10 @@ export class CustomersService {
       name: row.name,
       email: row.email,
       phone: row.phone,
-      totalSpend: row.sales.reduce((sum, sale) => sum + toNumber(sale.total), 0),
+      totalSpend: row.sales.reduce(
+        (sum, sale) => sum + toNumber(sale.total),
+        0,
+      ),
       visitCount: row.sales.length,
       createdByUserId: row.createdByUserId,
       createdByName: row.createdByName,
@@ -67,7 +70,10 @@ export class CustomersService {
       name: row.name,
       email: row.email,
       phone: row.phone,
-      totalSpend: row.sales.reduce((sum, sale) => sum + toNumber(sale.total), 0),
+      totalSpend: row.sales.reduce(
+        (sum, sale) => sum + toNumber(sale.total),
+        0,
+      ),
       visitCount: row.sales.length,
       createdByUserId: row.createdByUserId,
       createdByName: row.createdByName,

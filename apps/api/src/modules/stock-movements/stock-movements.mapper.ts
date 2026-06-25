@@ -1,5 +1,9 @@
 import type { StockMovement as PrismaMovement } from '@prisma/client';
-import type { MovementSource, MovementStatus, MovementType, StockMovement, StockMovementLine } from '@vonos/types';
+import type {
+  MovementStatus,
+  StockMovement,
+  StockMovementLine,
+} from '@vonos/types';
 import { parseMovementLines, toIso } from '../../common/utils/serializers';
 
 export interface StockMovementListRow {
@@ -16,14 +20,14 @@ export function serializeMovement(row: PrismaMovement): StockMovement {
   return {
     id: row.id,
     tenantId: row.tenantId,
-    type: row.type as MovementType,
+    type: row.type,
     reference: row.reference,
-    status: row.status as MovementStatus,
+    status: row.status,
     lines,
     notes: row.notes,
     locationCode: row.locationCode,
     supplierId: row.supplierId,
-    source: row.source as MovementSource,
+    source: row.source,
     date: toIso(row.date),
     createdByUserId: row.createdByUserId,
     createdByName: row.createdByName,
@@ -44,7 +48,7 @@ export function toMovementListRow(
     reference: row.reference,
     supplierOrDest,
     itemCount: lines.length,
-    status: row.status as MovementStatus,
+    status: row.status,
     date: toIso(row.date).slice(0, 10),
   };
 }

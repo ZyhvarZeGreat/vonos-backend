@@ -1,5 +1,5 @@
 import type { Item as PrismaItem } from '@prisma/client';
-import type { Item, KpiSummary, StockStatus } from '@vonos/types';
+import type { Item, KpiSummary } from '@vonos/types';
 import { toIso, toNumber } from '../../common/utils/serializers';
 
 export function serializeItem(row: PrismaItem): Item {
@@ -15,7 +15,7 @@ export function serializeItem(row: PrismaItem): Item {
     reorderPoint: row.reorderPoint,
     costPrice: toNumber(row.costPrice),
     currency: row.currency,
-    status: row.status as StockStatus,
+    status: row.status,
     availableForRetail: row.availableForRetail,
     createdByUserId: row.createdByUserId,
     createdByName: row.createdByName,

@@ -5,7 +5,6 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import type { Role } from '@vonos/types';
 import type { AuthenticatedUser } from '../decorators/roles.decorator';
 import { ROLES_KEY } from '../decorators/roles.decorator';
 import { AuthService } from '../../modules/auth/auth.service';
@@ -30,7 +29,7 @@ export class JwtAuthGuard implements CanActivate {
       request.user = {
         sub: payload.sub,
         tenantId: payload.tenantId,
-        role: payload.role as Role,
+        role: payload.role,
       };
       return true;
     } catch {
@@ -73,10 +72,15 @@ export class RolesGuard implements CanActivate {
   constructor(private readonly reflector: Reflector) {}
 
   canActivate(context: ExecutionContext): boolean {
-    const required = this.reflector.get<string[]>(ROLES_KEY, context.getHandler());
+    const required = this.reflector.get<string[]>(
+      ROLES_KEY,
+      context.getHandler(),
+    );
     if (!required?.length) return true;
 
-    const request = context.switchToHttp().getRequest<{ user: AuthenticatedUser }>();
+    const request = context
+      .switchToHttp()
+      .getRequest<{ user: AuthenticatedUser }>();
     return required.includes(request.user.role);
   }
 }

@@ -1,4 +1,8 @@
-import type { GroupEntityStat, GroupOverviewAlert, GroupOverviewDashboard } from '@vonos/types';
+import type {
+  GroupEntityStat,
+  GroupOverviewAlert,
+  GroupOverviewDashboard,
+} from '@vonos/types';
 import type { PrismaClient } from '@prisma/client';
 import { toNumber } from '../../common/utils/serializers';
 import { buildGroupReports } from '../reports/aggregators/groupReports';
@@ -133,7 +137,6 @@ export async function buildGroupEntityStats(
             (sum, a) => sum + toNumber(a.servicePrice),
             0,
           );
-          const noShows = appts.filter((a) => a.status === 'No-show').length;
           return {
             code: tenant.code,
             stats: [

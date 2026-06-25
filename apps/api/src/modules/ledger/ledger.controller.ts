@@ -1,11 +1,4 @@
-import {
-  Body,
-  Controller,
-  Get,
-  Post,
-  Query,
-  UseGuards,
-} from '@nestjs/common';
+import { Body, Controller, Get, Post, Query, UseGuards } from '@nestjs/common';
 import type { LedgerEntryType } from '@vonos/types';
 import { Roles } from '../../common/decorators/roles.decorator';
 import {
@@ -21,45 +14,30 @@ export class LedgerController {
   constructor(private readonly ledgerService: LedgerService) {}
 
   @Get('summary')
-  summary(
-    @Query('from') from?: string,
-    @Query('to') to?: string,
-  ) {
+  summary(@Query('from') from?: string, @Query('to') to?: string) {
     return this.ledgerService.summary(from, to);
   }
 
   @Get('categories')
-  categories(
-    @Query('from') from?: string,
-    @Query('to') to?: string,
-  ) {
+  categories(@Query('from') from?: string, @Query('to') to?: string) {
     return this.ledgerService.categories(from, to);
   }
 
   @Get('group/categories')
   @Roles('super_admin')
-  groupCategories(
-    @Query('from') from?: string,
-    @Query('to') to?: string,
-  ) {
+  groupCategories(@Query('from') from?: string, @Query('to') to?: string) {
     return this.ledgerService.groupCategories(from, to);
   }
 
   @Get('group/summary')
   @Roles('super_admin')
-  groupSummary(
-    @Query('from') from?: string,
-    @Query('to') to?: string,
-  ) {
+  groupSummary(@Query('from') from?: string, @Query('to') to?: string) {
     return this.ledgerService.groupSummary(from, to);
   }
 
   @Get('group/by-entity')
   @Roles('super_admin')
-  groupByEntity(
-    @Query('from') from?: string,
-    @Query('to') to?: string,
-  ) {
+  groupByEntity(@Query('from') from?: string, @Query('to') to?: string) {
     return this.ledgerService.groupByEntity(from, to);
   }
 

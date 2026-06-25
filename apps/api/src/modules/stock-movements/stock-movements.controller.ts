@@ -8,7 +8,11 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import type { MovementSource, MovementStatus, MovementType } from '@vonos/types';
+import type {
+  MovementSource,
+  MovementStatus,
+  MovementType,
+} from '@vonos/types';
 import { Roles } from '../../common/decorators/roles.decorator';
 import {
   JwtAuthGuard,
@@ -52,7 +56,13 @@ export class StockMovementsController {
       type: MovementType;
       reference: string;
       status?: MovementStatus;
-      lines: Array<{ itemId: string; sku: string; name: string; quantity: number; unitCost?: number }>;
+      lines: Array<{
+        itemId: string;
+        sku: string;
+        name: string;
+        quantity: number;
+        unitCost?: number;
+      }>;
       notes?: string;
       supplierId?: string;
       source?: MovementSource;
@@ -83,10 +93,7 @@ export class TransfersController {
   }
 
   @Get()
-  list(
-    @Query('cursor') cursor?: string,
-    @Query('limit') limit?: string,
-  ) {
+  list(@Query('cursor') cursor?: string, @Query('limit') limit?: string) {
     return this.movementsService.listTransfers({
       cursor,
       limit: limit ? Number(limit) : undefined,

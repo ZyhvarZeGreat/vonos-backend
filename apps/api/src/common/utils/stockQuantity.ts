@@ -1,4 +1,5 @@
 import type { StockStatus } from '@vonos/types';
+import { toStringField } from './serializers';
 
 export interface MovementLine {
   itemId: string;
@@ -23,9 +24,7 @@ export function shouldApplyInboundQty(
   previousStatus: string,
   nextStatus: string,
 ): boolean {
-  return (
-    !INBOUND_APPLIED.has(previousStatus) && nextStatus === 'Received'
-  );
+  return !INBOUND_APPLIED.has(previousStatus) && nextStatus === 'Received';
 }
 
 export function shouldApplyOutboundQty(
@@ -33,8 +32,7 @@ export function shouldApplyOutboundQty(
   nextStatus: string,
 ): boolean {
   return (
-    !OUTBOUND_APPLIED.has(previousStatus) &&
-    OUTBOUND_APPLIED.has(nextStatus)
+    !OUTBOUND_APPLIED.has(previousStatus) && OUTBOUND_APPLIED.has(nextStatus)
   );
 }
 
@@ -56,8 +54,8 @@ export function parseMovementLines(lines: unknown): MovementLine[] {
     return [
       {
         itemId,
-        sku: String(record.sku ?? ''),
-        name: String(record.name ?? ''),
+        sku: toStringField(record.sku),
+        name: toStringField(record.name),
         quantity,
       },
     ];

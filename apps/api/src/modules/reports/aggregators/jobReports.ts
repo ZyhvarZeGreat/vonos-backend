@@ -2,11 +2,7 @@ import type { Decimal } from '@prisma/client/runtime/library';
 import type { ReportsDashboard } from '@vonos/types';
 import type { TenantScopedPrisma } from '../../../common/prisma/prisma.service';
 import { toNumber } from '../../../common/utils/serializers';
-import {
-  computeDelta,
-  priorWindow,
-  resolveDateWindow,
-} from './date-utils';
+import { computeDelta, priorWindow, resolveDateWindow } from './date-utils';
 
 type JobTab = 'costing' | 'turnaround';
 
@@ -59,8 +55,12 @@ export async function buildJobReports(
   const priorJobs = jobs.filter(
     (j) => j.createdAt >= prior.from && j.createdAt <= prior.to,
   );
-  const completedJobs = periodJobs.filter((j) => j.status === 'Delivered').length;
-  const priorCompleted = priorJobs.filter((j) => j.status === 'Delivered').length;
+  const completedJobs = periodJobs.filter(
+    (j) => j.status === 'Delivered',
+  ).length;
+  const priorCompleted = priorJobs.filter(
+    (j) => j.status === 'Delivered',
+  ).length;
 
   const totalRevenue = periodJobs
     .filter((j) => j.status === 'Delivered' && j.quoteAmount != null)
@@ -199,7 +199,9 @@ export async function buildJobReports(
                 customer: job.customerName ?? '—',
                 status: job.status,
                 revenue:
-                  job.quoteAmount != null ? Math.round(toNumber(job.quoteAmount)) : '—',
+                  job.quoteAmount != null
+                    ? Math.round(toNumber(job.quoteAmount))
+                    : '—',
                 cost: Math.round(jobCost(job)),
               })),
             }

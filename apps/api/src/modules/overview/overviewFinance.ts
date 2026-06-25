@@ -31,10 +31,16 @@ function summarizeLedger(entries: LedgerRow[]) {
   return { revenue, costs, net: revenue - costs };
 }
 
-function buildPlTrendData(entries: LedgerRow[], window: ReturnType<typeof resolveDateWindow>) {
+function buildPlTrendData(
+  entries: LedgerRow[],
+  window: ReturnType<typeof resolveDateWindow>,
+) {
   const spanDays =
     (window.to.getTime() - window.from.getTime()) / (24 * 60 * 60 * 1000);
-  const buckets = new Map<string, { label: string; revenue: number; costs: number }>();
+  const buckets = new Map<
+    string,
+    { label: string; revenue: number; costs: number }
+  >();
 
   for (const entry of entries) {
     const key = bucketKey(entry.date, spanDays);

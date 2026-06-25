@@ -7,7 +7,12 @@ import {
 import { computeOutstandingReceivables } from '../../../common/utils/outstandingReceivables';
 import { computeSalesRevenueTotal } from '../../../common/utils/salesRevenue';
 import { toNumber } from '../../../common/utils/serializers';
-import { bucketKey, bucketLabel, computeDelta, resolveDateWindow } from './date-utils';
+import {
+  bucketKey,
+  bucketLabel,
+  computeDelta,
+  resolveDateWindow,
+} from './date-utils';
 import { loadSalesReportContext } from './salesData';
 
 export async function buildProfitLossReport(
@@ -41,7 +46,8 @@ export async function buildProfitLossReport(
           deletedAt: null,
           date: {
             gte: new Date(
-              window.from.getTime() - (window.to.getTime() - window.from.getTime()),
+              window.from.getTime() -
+                (window.to.getTime() - window.from.getTime()),
             ),
             lt: window.from,
           },
@@ -52,7 +58,7 @@ export async function buildProfitLossReport(
 
   const summary = buildLedgerSummaryFromGroups(
     groups.map((g) => ({
-      type: g.type as 'revenue' | 'cost' | 'expense',
+      type: g.type,
       _sum: { amount: g._sum.amount },
     })),
     currencyRow?.currency ?? 'NGN',
@@ -166,7 +172,10 @@ export async function buildProfitLossReport(
           { name: 'Revenue', dataKey: 'revenue', color: '#059669' },
           { name: 'Costs', dataKey: 'costs', color: '#2563eb' },
         ],
-        data: trendData.length > 0 ? trendData : [{ label: '—', revenue: 0, costs: 0, net: 0 }],
+        data:
+          trendData.length > 0
+            ? trendData
+            : [{ label: '—', revenue: 0, costs: 0, net: 0 }],
       },
       {
         id: 'revenue-by-category',

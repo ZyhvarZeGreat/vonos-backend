@@ -1,9 +1,6 @@
 import type { ReportsDashboard } from '@vonos/types';
 import type { TenantScopedPrisma } from '../../../common/prisma/prisma.service';
-import {
-  buildTimeSeries,
-  computeDelta,
-} from './date-utils';
+import { buildTimeSeries, computeDelta } from './date-utils';
 import type { StockReportContext } from './stockReportContext';
 import { loadStockReportContext } from './stockReportContext';
 
@@ -92,10 +89,12 @@ export function buildStockReportsFromContext(
 
   if (tab === 'movement') {
     const inbound = periodMovements.filter(
-      (m) => m.type === 'inbound' && m.date >= window.from && m.date <= window.to,
+      (m) =>
+        m.type === 'inbound' && m.date >= window.from && m.date <= window.to,
     );
     const outbound = periodMovements.filter(
-      (m) => m.type === 'outbound' && m.date >= window.from && m.date <= window.to,
+      (m) =>
+        m.type === 'outbound' && m.date >= window.from && m.date <= window.to,
     );
     const inboundSeries = buildTimeSeries(inbound, window, () => 1);
     const outboundSeries = buildTimeSeries(outbound, window, () => 1);

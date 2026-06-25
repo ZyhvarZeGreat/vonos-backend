@@ -9,14 +9,17 @@ import type {
   SaleDetail,
   SaleFilters,
   SaleLine,
-  SaleReturnStatus,
 } from '@vonos/types';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { TenantDbService } from '../../common/prisma/tenant-db.service';
 import { AuditService } from '../audit/audit.service';
 import { buildCursorQuery } from '../../common/utils/pagination';
 import { computeStockStatus } from '../../common/utils/stockQuantity';
-import { mapSaleStatusToUi, toIso, toNumber } from '../../common/utils/serializers';
+import {
+  mapSaleStatusToUi,
+  toIso,
+  toNumber,
+} from '../../common/utils/serializers';
 
 @Injectable()
 export class SalesService {
@@ -35,8 +38,14 @@ export class SalesService {
         ...(filters.search
           ? {
               OR: [
-                { reference: { contains: filters.search, mode: 'insensitive' } },
-                { customer: { name: { contains: filters.search, mode: 'insensitive' } } },
+                {
+                  reference: { contains: filters.search, mode: 'insensitive' },
+                },
+                {
+                  customer: {
+                    name: { contains: filters.search, mode: 'insensitive' },
+                  },
+                },
               ],
             }
           : {}),
@@ -254,7 +263,7 @@ export class SalesService {
       customerName: row.customer?.name ?? 'Walk-in',
       total: toNumber(row.total),
       currency: row.currency,
-      status: mapSaleStatusToUi(row.status) as SaleReturnStatus,
+      status: mapSaleStatusToUi(row.status),
       paymentStatus: row.paymentStatus as PaymentStatus | null,
       locationCode: row.locationCode,
       itemCount: row.lines.length,
@@ -304,7 +313,9 @@ export class SalesService {
       quantity: toNumber(line.quantity),
       unitPrice: toNumber(line.unitPrice),
       lineTotal: toNumber(line.lineTotal),
-      discountAmount: line.discountAmount ? toNumber(line.discountAmount) : null,
+      discountAmount: line.discountAmount
+        ? toNumber(line.discountAmount)
+        : null,
     }));
     return { ...base, lines };
   }

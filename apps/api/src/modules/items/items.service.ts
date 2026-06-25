@@ -1,7 +1,4 @@
-import {
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import type { Item, ItemFilters, KpiSummary, StockStatus } from '@vonos/types';
 import { Prisma } from '@prisma/client';
 import { TenantDbService } from '../../common/prisma/tenant-db.service';
@@ -33,7 +30,9 @@ export class ItemsService {
     private readonly auditService: AuditService,
   ) {}
 
-  async list(filters: ItemFilters & { availableForRetail?: boolean }): Promise<Item[]> {
+  async list(
+    filters: ItemFilters & { availableForRetail?: boolean },
+  ): Promise<Item[]> {
     const tenantId = this.tenantDb.requireTenantId();
     const db = this.tenantDb.db;
     const limit = filters.limit ?? 50;
@@ -83,41 +82,36 @@ export class ItemsService {
 
     const itemWhere = { tenantId, deletedAt: null };
 
-    const [
-      totalSku,
-      stockValueRows,
-      currencyRow,
-      todayInbound,
-      todayOutbound,
-    ] = await Promise.all([
-      db.item.count({ where: itemWhere }),
-      db.$queryRaw<[{ stock_value: Prisma.Decimal | null }]>`
+    const [totalSku, stockValueRows, currencyRow, todayInbound, todayOutbound] =
+      await Promise.all([
+        db.item.count({ where: itemWhere }),
+        db.$queryRaw<[{ stock_value: Prisma.Decimal | null }]>`
         SELECT COALESCE(SUM(quantity * "costPrice"), 0) AS stock_value
         FROM "Item"
         WHERE "tenantId" = ${tenantId} AND "deletedAt" IS NULL
       `,
-      db.item.findFirst({
-        where: itemWhere,
-        select: { currency: true },
-        orderBy: { id: 'asc' },
-      }),
-      db.stockMovement.count({
-        where: {
-          tenantId,
-          deletedAt: null,
-          type: 'inbound',
-          date: { gte: startOfDay, lte: endOfDay },
-        },
-      }),
-      db.stockMovement.count({
-        where: {
-          tenantId,
-          deletedAt: null,
-          type: 'outbound',
-          date: { gte: startOfDay, lte: endOfDay },
-        },
-      }),
-    ]);
+        db.item.findFirst({
+          where: itemWhere,
+          select: { currency: true },
+          orderBy: { id: 'asc' },
+        }),
+        db.stockMovement.count({
+          where: {
+            tenantId,
+            deletedAt: null,
+            type: 'inbound',
+            date: { gte: startOfDay, lte: endOfDay },
+          },
+        }),
+        db.stockMovement.count({
+          where: {
+            tenantId,
+            deletedAt: null,
+            type: 'outbound',
+            date: { gte: startOfDay, lte: endOfDay },
+          },
+        }),
+      ]);
 
     const currency = currencyRow?.currency ?? 'NGN';
     const stockValue = toNumber(stockValueRows[0]?.stock_value ?? 0);
@@ -182,9 +176,15 @@ export class ItemsService {
         ...(dto.name !== undefined ? { name: dto.name } : {}),
         ...(dto.category !== undefined ? { category: dto.category } : {}),
         ...(dto.quantity !== undefined ? { quantity: dto.quantity } : {}),
-        ...(dto.binLocation !== undefined ? { binLocation: dto.binLocation } : {}),
-        ...(resolvedLocation !== undefined ? { locationCode: resolvedLocation } : {}),
-        ...(dto.reorderPoint !== undefined ? { reorderPoint: dto.reorderPoint } : {}),
+        ...(dto.binLocation !== undefined
+          ? { binLocation: dto.binLocation }
+          : {}),
+        ...(resolvedLocation !== undefined
+          ? { locationCode: resolvedLocation }
+          : {}),
+        ...(dto.reorderPoint !== undefined
+          ? { reorderPoint: dto.reorderPoint }
+          : {}),
         ...(dto.costPrice !== undefined ? { costPrice: dto.costPrice } : {}),
         ...(dto.currency !== undefined ? { currency: dto.currency } : {}),
         ...(dto.status !== undefined ? { status: dto.status } : {}),

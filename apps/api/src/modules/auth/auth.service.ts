@@ -9,8 +9,8 @@ import type { AuthTokenType, Role, User } from '@prisma/client';
 import type {
   ForgotPasswordResponse,
   InviteDetails,
-  LoginResponse,
   LoginSuccessResponse,
+  TwoFactorChallengeResponse,
   TwoFactorSetupResponse,
 } from '@vonos/types';
 import { PrismaService } from '../../common/prisma/prisma.service';
@@ -54,7 +54,7 @@ interface LoginDto {
   password: string;
 }
 
-interface SessionResult extends LoginSuccessResponse {
+export interface SessionResult extends LoginSuccessResponse {
   refreshTokenRaw: string;
 }
 
@@ -66,13 +66,19 @@ export class AuthService {
     private readonly mail: AuthMailService,
   ) {}
 
-  async login(body: LoginDto): Promise<LoginResponse & { refreshTokenRaw?: string }> {
+  async login(
+    body: LoginDto,
+  ): Promise<TwoFactorChallengeResponse | SessionResult> {
     const user = await this.findActiveUserByEmail(body.email);
     if (!user || !(await verifyPassword(body.password, user.passwordHash))) {
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    await this.upgradePasswordHashIfNeeded(user.id, body.password, user.passwordHash);
+    await this.upgradePasswordHashIfNeeded(
+      user.id,
+      body.password,
+      user.passwordHash,
+    );
 
     if (
       ROLES_REQUIRING_2FA.has(user.role) &&
@@ -130,7 +136,11 @@ export class AuthService {
       include: { user: true },
     });
 
-    if (!stored?.user || stored.user.deletedAt || stored.user.status !== 'active') {
+    if (
+      !stored?.user ||
+      stored.user.deletedAt ||
+      stored.user.status !== 'active'
+    ) {
       throw new UnauthorizedException('Invalid refresh token');
     }
 
@@ -384,7 +394,9 @@ export class AuthService {
     };
   }
 
-  private signAccessToken(user: Pick<User, 'id' | 'tenantId' | 'role' | 'tokenVersion'>): string {
+  private signAccessToken(
+    user: Pick<User, 'id' | 'tenantId' | 'role' | 'tokenVersion'>,
+  ): string {
     const payload: AccessTokenPayload = {
       sub: user.id,
       tenantId: user.tenantId,
@@ -454,7 +466,10 @@ export class AuthService {
     return token;
   }
 
-  private async invalidateTokens(userId: string, type: AuthTokenType): Promise<void> {
+  private async invalidateTokens(
+    userId: string,
+    type: AuthTokenType,
+  ): Promise<void> {
     await this.prisma.authToken.updateMany({
       where: {
         userId,

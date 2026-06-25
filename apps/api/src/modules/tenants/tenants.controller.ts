@@ -11,10 +11,7 @@ export class TenantsController {
 
   @Get(':id/config')
   @UseGuards(JwtAuthGuard)
-  getConfig(
-    @Param('id') id: string,
-    @CurrentUser() user: AuthenticatedUser,
-  ) {
+  getConfig(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
     return this.tenantsService.getConfig(id, user.tenantId, user.role);
   }
 
@@ -25,11 +22,6 @@ export class TenantsController {
     @Body() body: UpdateTenantConfigRequest,
     @CurrentUser() user: AuthenticatedUser,
   ) {
-    return this.tenantsService.updateConfig(
-      id,
-      user.tenantId,
-      user.role,
-      body,
-    );
+    return this.tenantsService.updateConfig(id, user.tenantId, user.role, body);
   }
 }

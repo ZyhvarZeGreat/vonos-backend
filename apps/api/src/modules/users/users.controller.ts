@@ -1,4 +1,12 @@
-import { Body, Controller, Get, Post, Query, Req, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Post,
+  Query,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
 import type { CreateUserRequest, InviteUserRequest } from '@vonos/types';
 import type { Request } from 'express';
 import type { AuthenticatedUser } from '../../common/decorators/roles.decorator';
@@ -30,19 +38,13 @@ export class UsersController {
 
   @Post('invite')
   @Roles('admin', 'super_admin')
-  invite(
-    @Req() request: AuthedRequest,
-    @Body() body: InviteUserRequest,
-  ) {
+  invite(@Req() request: AuthedRequest, @Body() body: InviteUserRequest) {
     return this.usersService.inviteUser(request.user, body);
   }
 
   @Post()
   @Roles('admin', 'super_admin')
-  create(
-    @Req() request: AuthedRequest,
-    @Body() body: CreateUserRequest,
-  ) {
+  create(@Req() request: AuthedRequest, @Body() body: CreateUserRequest) {
     return this.usersService.createUser(request.user, body);
   }
 }

@@ -1,16 +1,7 @@
-import {
-  Controller,
-  Get,
-  Param,
-  Patch,
-  UseGuards,
-} from '@nestjs/common';
+import { Controller, Get, Param, Patch, UseGuards } from '@nestjs/common';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '../../common/decorators/roles.decorator';
-import {
-  JwtAuthGuard,
-  TenantGuard,
-} from '../../common/guards/auth.guards';
+import { JwtAuthGuard, TenantGuard } from '../../common/guards/auth.guards';
 import { NotificationsService } from './notifications.service';
 
 @Controller('notifications')
@@ -24,10 +15,7 @@ export class NotificationsController {
   }
 
   @Patch(':id/read')
-  markRead(
-    @Param('id') id: string,
-    @CurrentUser() user: AuthenticatedUser,
-  ) {
+  markRead(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
     return this.notificationsService.markRead(id, user.sub);
   }
 }

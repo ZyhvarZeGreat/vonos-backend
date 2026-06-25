@@ -77,8 +77,7 @@ export class UsersService {
     );
 
     return rows.map((row) => {
-      const homeTenant =
-        row.tenant ?? homeTenantByUserId.get(row.id) ?? null;
+      const homeTenant = row.tenant ?? homeTenantByUserId.get(row.id) ?? null;
       const isGroupOnly =
         row.tenantId === null && row.role === 'super_admin' && !homeTenant;
 
@@ -86,8 +85,7 @@ export class UsersService {
         ...this.toUser(row),
         tenantCode: homeTenant?.code ?? (isGroupOnly ? 'VAG' : null),
         tenantName:
-          homeTenant?.name ??
-          (isGroupOnly ? 'Vonos Autos Group' : null),
+          homeTenant?.name ?? (isGroupOnly ? 'Vonos Autos Group' : null),
       };
     });
   }
@@ -250,7 +248,9 @@ export class UsersService {
       );
     }
     if (body.role === 'super_admin' && targetTenantId !== null) {
-      throw new BadRequestException('Super admin users cannot belong to an entity');
+      throw new BadRequestException(
+        'Super admin users cannot belong to an entity',
+      );
     }
 
     if (targetTenantId) {

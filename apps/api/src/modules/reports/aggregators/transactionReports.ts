@@ -1,9 +1,6 @@
 import type { ReportsDashboard } from '@vonos/types';
 import type { TenantScopedPrisma } from '../../../common/prisma/prisma.service';
-import {
-  buildTimeSeries,
-  computeDelta,
-} from './date-utils';
+import { buildTimeSeries, computeDelta } from './date-utils';
 import { aggregateTopProducts } from './productSales';
 import { loadSalesReportContext, type SalesReportContext } from './salesData';
 
@@ -94,8 +91,7 @@ function buildTransactionReportsFromContext(
           type: 'bar',
           horizontal: true,
           series: [{ name: 'Units', dataKey: 'units', color: '#3b82f6' }],
-          data:
-            topByUnits.length > 0 ? topByUnits : [{ label: '—', units: 0 }],
+          data: topByUnits.length > 0 ? topByUnits : [{ label: '—', units: 0 }],
         },
         {
           id: 'top-products-revenue',
@@ -145,10 +141,12 @@ function buildTransactionReportsFromContext(
     const key = sale.paymentStatus ?? 'unknown';
     paymentCounts.set(key, (paymentCounts.get(key) ?? 0) + 1);
   }
-  const paymentPie = Array.from(paymentCounts.entries()).map(([label, value]) => ({
-    label,
-    value,
-  }));
+  const paymentPie = Array.from(paymentCounts.entries()).map(
+    ([label, value]) => ({
+      label,
+      value,
+    }),
+  );
 
   return {
     kpis: [
@@ -192,7 +190,8 @@ function buildTransactionReportsFromContext(
         subtitle: 'Revenue per day',
         type: 'bar',
         series: [{ name: 'Revenue', dataKey: 'revenue', color: '#059669' }],
-        data: dailyRevenue.length > 0 ? dailyRevenue : [{ label: '—', revenue: 0 }],
+        data:
+          dailyRevenue.length > 0 ? dailyRevenue : [{ label: '—', revenue: 0 }],
       },
       {
         id: 'payment-status',

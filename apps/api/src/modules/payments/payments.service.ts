@@ -88,6 +88,6 @@ export class PaymentsService {
       createdByName: row.createdByName,
       createdAt: toIso(row.createdAt),
       ...(balances.has(row.id) ? { accountBalance: balances.get(row.id) } : {}),
-    })) as AccountTransaction[];
+    }));
   }
 }

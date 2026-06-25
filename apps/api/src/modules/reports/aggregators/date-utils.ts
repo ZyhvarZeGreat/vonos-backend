@@ -31,7 +31,11 @@ export function inWindow(date: Date, window: DateWindow): boolean {
 
 export function bucketLabel(date: Date, spanDays: number): string {
   if (spanDays <= 2) {
-    return date.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric' });
+    return date.toLocaleString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+    });
   }
   if (spanDays <= 60) {
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
@@ -70,7 +74,9 @@ export function buildTimeSeries<T extends { date: Date }>(
     }
   }
 
-  return Array.from(buckets.values()).sort((a, b) => a.label.localeCompare(b.label));
+  return Array.from(buckets.values()).sort((a, b) =>
+    a.label.localeCompare(b.label),
+  );
 }
 
 export function computeDelta(
@@ -82,11 +88,7 @@ export function computeDelta(
   }
   const delta = current - prior;
   const pct =
-    prior === 0
-      ? current > 0
-        ? 100
-        : 0
-      : Math.round((delta / prior) * 100);
+    prior === 0 ? (current > 0 ? 100 : 0) : Math.round((delta / prior) * 100);
   return {
     delta,
     deltaLabel: 'vs prior period',

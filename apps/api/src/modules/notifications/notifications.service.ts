@@ -15,10 +15,7 @@ export class NotificationsService {
     const tenantId = this.tenantDb.resolveTenantId();
     const rows = await this.prisma.notification.findMany({
       where: {
-        OR: [
-          { userId },
-          ...(tenantId ? [{ tenantId, userId: null }] : []),
-        ],
+        OR: [{ userId }, ...(tenantId ? [{ tenantId, userId: null }] : [])],
       },
       orderBy: { createdAt: 'desc' },
       take: 50,

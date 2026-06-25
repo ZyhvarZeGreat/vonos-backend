@@ -28,9 +28,14 @@ function isInternalTransferEntry(
   return INTERNAL_TRANSFER_MARKERS.some((marker) => haystack.includes(marker));
 }
 
-function applyTransferElimination<T extends { category: string; description: string; type: string; amount: number }>(
-  rows: T[],
-): T[] {
+function applyTransferElimination<
+  T extends {
+    category: string;
+    description: string;
+    type: string;
+    amount: number;
+  },
+>(rows: T[]): T[] {
   return rows.filter(
     (row) => !isInternalTransferEntry(row.category, row.description),
   );
@@ -164,8 +169,8 @@ export async function buildGroupLedgerSummary(
 
   const grouped = new Map<LedgerEntryType, number>();
   for (const row of filtered) {
-    const current = grouped.get(row.type as LedgerEntryType) ?? 0;
-    grouped.set(row.type as LedgerEntryType, current + row.amount);
+    const current = grouped.get(row.type) ?? 0;
+    grouped.set(row.type, current + row.amount);
   }
 
   return buildLedgerSummaryFromGroups(
@@ -235,7 +240,7 @@ export async function buildGroupLedgerList(
     return {
       id: row.id,
       tenantId: row.tenantId,
-      type: row.type as LedgerEntryType,
+      type: row.type,
       amount: toNumber(row.amount),
       currency: row.currency,
       category: row.category,

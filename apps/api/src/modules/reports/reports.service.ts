@@ -1,8 +1,5 @@
-import {
-  BadRequestException,
-  Injectable,
-} from '@nestjs/common';
-import type { Archetype, ReportsDashboard } from '@vonos/types';
+import { BadRequestException, Injectable } from '@nestjs/common';
+import type { ReportsDashboard } from '@vonos/types';
 import { TenantDbService } from '../../common/prisma/tenant-db.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { ItemsService } from '../items/items.service';
@@ -66,7 +63,7 @@ export class ReportsService {
     }
 
     const db = this.tenantDb.db;
-    const archetype = tenant.archetype as Archetype;
+    const archetype = tenant.archetype;
 
     switch (archetype) {
       case 'stock':
@@ -108,7 +105,11 @@ export class ReportsService {
     return buildGroupReports(this.prisma, from, to);
   }
 
-  async run(reportId: string, from?: string, to?: string): Promise<ReportsDashboard> {
+  async run(
+    reportId: string,
+    from?: string,
+    to?: string,
+  ): Promise<ReportsDashboard> {
     const tenantId = this.tenantDb.requireTenantId();
     const tenant = await this.prisma.tenant.findUnique({
       where: { id: tenantId },

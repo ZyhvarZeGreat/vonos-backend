@@ -1,8 +1,5 @@
-import {
-  BadRequestException,
-  Injectable,
-} from '@nestjs/common';
-import type { Archetype, GroupOverviewDashboard, OverviewDashboard } from '@vonos/types';
+import { BadRequestException, Injectable } from '@nestjs/common';
+import type { GroupOverviewDashboard, OverviewDashboard } from '@vonos/types';
 import { TenantDbService } from '../../common/prisma/tenant-db.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { buildGroupOverview } from './groupOverview';
@@ -31,7 +28,7 @@ export class OverviewService {
     }
 
     const db = this.tenantDb.db;
-    const archetype = tenant.archetype as Archetype;
+    const archetype = tenant.archetype;
 
     switch (archetype) {
       case 'stock':

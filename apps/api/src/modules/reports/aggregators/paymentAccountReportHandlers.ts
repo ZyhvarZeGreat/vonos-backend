@@ -7,7 +7,9 @@ import { resolveDateWindow } from './date-utils';
 
 async function accountBalances(
   db: TenantScopedPrisma,
-): Promise<Array<{ id: string; name: string; balance: number; currency: string }>> {
+): Promise<
+  Array<{ id: string; name: string; balance: number; currency: string }>
+> {
   const accounts = await db.paymentAccount.findMany({
     where: { deletedAt: null, isClosed: false },
     select: { id: true, name: true, currency: true },
@@ -54,7 +56,10 @@ export async function buildBalanceSheetReport(
   ]);
 
   const currency = accounts[0]?.currency ?? 'NGN';
-  const cashAssets = accounts.reduce((sum, a) => sum + Math.max(0, a.balance), 0);
+  const cashAssets = accounts.reduce(
+    (sum, a) => sum + Math.max(0, a.balance),
+    0,
+  );
   const receivables = outstanding;
   const totalAssets = cashAssets + receivables;
 
@@ -71,10 +76,38 @@ export async function buildBalanceSheetReport(
 
   return {
     kpis: [
-      { label: 'Total Assets', icon: 'wallet', metricKey: 'assets', color: '#059669', value: totalAssets, currency },
-      { label: 'Cash & Accounts', icon: 'banknote', metricKey: 'cash', color: '#2563eb', value: cashAssets, currency },
-      { label: 'Receivables', icon: 'clock', metricKey: 'receivables', color: '#9333ea', value: receivables, currency },
-      { label: 'Equity (P&L)', icon: 'trending-up', metricKey: 'equity', color: '#e11d48', value: equity, currency },
+      {
+        label: 'Total Assets',
+        icon: 'wallet',
+        metricKey: 'assets',
+        color: '#059669',
+        value: totalAssets,
+        currency,
+      },
+      {
+        label: 'Cash & Accounts',
+        icon: 'banknote',
+        metricKey: 'cash',
+        color: '#2563eb',
+        value: cashAssets,
+        currency,
+      },
+      {
+        label: 'Receivables',
+        icon: 'clock',
+        metricKey: 'receivables',
+        color: '#9333ea',
+        value: receivables,
+        currency,
+      },
+      {
+        label: 'Equity (P&L)',
+        icon: 'trending-up',
+        metricKey: 'equity',
+        color: '#e11d48',
+        value: equity,
+        currency,
+      },
     ],
     charts: [
       {
@@ -101,8 +134,18 @@ export async function buildBalanceSheetReport(
           amount: Math.round(a.balance),
           currency: a.currency,
         })),
-        { section: 'Asset', name: 'Outstanding receivables', amount: Math.round(receivables), currency },
-        { section: 'Equity', name: 'Retained (revenue − costs − expenses)', amount: Math.round(equity), currency },
+        {
+          section: 'Asset',
+          name: 'Outstanding receivables',
+          amount: Math.round(receivables),
+          currency,
+        },
+        {
+          section: 'Equity',
+          name: 'Retained (revenue − costs − expenses)',
+          amount: Math.round(equity),
+          currency,
+        },
       ],
     },
   };
@@ -158,9 +201,29 @@ export async function buildTrialBalanceReport(
 
   return {
     kpis: [
-      { label: 'Total Debits', icon: 'arrow-up', metricKey: 'debits', color: '#e11d48', value: Math.round(totalDebit), currency },
-      { label: 'Total Credits', icon: 'arrow-down', metricKey: 'credits', color: '#059669', value: Math.round(totalCredit), currency },
-      { label: 'Accounts', icon: 'credit-card', metricKey: 'accounts', color: '#2563eb', value: rows.length },
+      {
+        label: 'Total Debits',
+        icon: 'arrow-up',
+        metricKey: 'debits',
+        color: '#e11d48',
+        value: Math.round(totalDebit),
+        currency,
+      },
+      {
+        label: 'Total Credits',
+        icon: 'arrow-down',
+        metricKey: 'credits',
+        color: '#059669',
+        value: Math.round(totalCredit),
+        currency,
+      },
+      {
+        label: 'Accounts',
+        icon: 'credit-card',
+        metricKey: 'accounts',
+        color: '#2563eb',
+        value: rows.length,
+      },
     ],
     charts: [],
     table: {
@@ -219,9 +282,29 @@ export async function buildPaymentAccountReport(
 
   return {
     kpis: [
-      { label: 'Money In', icon: 'arrow-down', metricKey: 'moneyIn', color: '#059669', value: Math.round(totalIn), currency },
-      { label: 'Money Out', icon: 'arrow-up', metricKey: 'moneyOut', color: '#e11d48', value: Math.round(totalOut), currency },
-      { label: 'Accounts', icon: 'credit-card', metricKey: 'accounts', color: '#2563eb', value: accounts.length },
+      {
+        label: 'Money In',
+        icon: 'arrow-down',
+        metricKey: 'moneyIn',
+        color: '#059669',
+        value: Math.round(totalIn),
+        currency,
+      },
+      {
+        label: 'Money Out',
+        icon: 'arrow-up',
+        metricKey: 'moneyOut',
+        color: '#e11d48',
+        value: Math.round(totalOut),
+        currency,
+      },
+      {
+        label: 'Accounts',
+        icon: 'credit-card',
+        metricKey: 'accounts',
+        color: '#2563eb',
+        value: accounts.length,
+      },
     ],
     charts: [
       {
@@ -293,9 +376,30 @@ export async function buildCashFlowReport(
 
   return {
     kpis: [
-      { label: 'Cash In', icon: 'arrow-down', metricKey: 'cashIn', color: '#059669', value: Math.round(effectiveCashIn), currency },
-      { label: 'Cash Out', icon: 'arrow-up', metricKey: 'cashOut', color: '#e11d48', value: Math.round(cashOut), currency },
-      { label: 'Net Cash', icon: 'wallet', metricKey: 'netCash', color: '#9333ea', value: Math.round(effectiveCashIn - cashOut), currency },
+      {
+        label: 'Cash In',
+        icon: 'arrow-down',
+        metricKey: 'cashIn',
+        color: '#059669',
+        value: Math.round(effectiveCashIn),
+        currency,
+      },
+      {
+        label: 'Cash Out',
+        icon: 'arrow-up',
+        metricKey: 'cashOut',
+        color: '#e11d48',
+        value: Math.round(cashOut),
+        currency,
+      },
+      {
+        label: 'Net Cash',
+        icon: 'wallet',
+        metricKey: 'netCash',
+        color: '#9333ea',
+        value: Math.round(effectiveCashIn - cashOut),
+        currency,
+      },
     ],
     charts: [
       {
@@ -306,7 +410,13 @@ export async function buildCashFlowReport(
           { name: 'In', dataKey: 'in', color: '#059669' },
           { name: 'Out', dataKey: 'out', color: '#e11d48' },
         ],
-        data: [{ label: 'Period', in: Math.round(effectiveCashIn), out: Math.round(cashOut) }],
+        data: [
+          {
+            label: 'Period',
+            in: Math.round(effectiveCashIn),
+            out: Math.round(cashOut),
+          },
+        ],
       },
     ],
     table: null,

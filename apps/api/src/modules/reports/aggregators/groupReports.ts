@@ -152,10 +152,7 @@ export async function buildGroupReports(
           'One line per entity — transfer elimination between entities is deferred',
         type: 'line',
         series: entitySeries,
-        data:
-          trendData.length > 0
-            ? trendData
-            : [{ label: '—', VW: 0 }],
+        data: trendData.length > 0 ? trendData : [{ label: '—', VW: 0 }],
       },
       {
         id: 'entity-comparison',

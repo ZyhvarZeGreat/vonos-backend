@@ -1,11 +1,7 @@
 import type { StockStatus } from '@vonos/types';
 import type { TenantScopedPrisma } from '../../../common/prisma/prisma.service';
 import { toNumber } from '../../../common/utils/serializers';
-import {
-  priorWindow,
-  resolveDateWindow,
-  type DateWindow,
-} from './date-utils';
+import { priorWindow, resolveDateWindow, type DateWindow } from './date-utils';
 
 export interface StockItemRow {
   id: string;

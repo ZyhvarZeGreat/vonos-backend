@@ -3,7 +3,11 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import type { MovementSource, MovementStatus, MovementType } from '@vonos/types';
+import type {
+  MovementSource,
+  MovementStatus,
+  MovementType,
+} from '@vonos/types';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { TenantDbService } from '../../common/prisma/tenant-db.service';
 import { buildCursorQuery } from '../../common/utils/pagination';
@@ -86,7 +90,9 @@ export class StockMovementsService {
             where: { id: line.itemId, tenantId, deletedAt: null },
           });
           if (!item) {
-            throw new BadRequestException(`Item not found: ${line.sku || line.itemId}`);
+            throw new BadRequestException(
+              `Item not found: ${line.sku || line.itemId}`,
+            );
           }
 
           const delta = applyInbound ? line.quantity : -line.quantity;
@@ -158,7 +164,13 @@ export class StockMovementsService {
     type: MovementType;
     reference: string;
     status?: MovementStatus;
-    lines: Array<{ itemId: string; sku: string; name: string; quantity: number; unitCost?: number }>;
+    lines: Array<{
+      itemId: string;
+      sku: string;
+      name: string;
+      quantity: number;
+      unitCost?: number;
+    }>;
     notes?: string;
     locationCode?: string;
     supplierId?: string;
@@ -220,7 +232,8 @@ export class StockMovementsService {
     >();
 
     for (const item of items) {
-      const zoneName = item.binLocation?.split('-')[0]?.trim() || 'Main Warehouse';
+      const zoneName =
+        item.binLocation?.split('-')[0]?.trim() || 'Main Warehouse';
       const current = zoneMap.get(zoneName) ?? { totalSkus: 0, totalUnits: 0 };
       current.totalSkus += 1;
       current.totalUnits += item.quantity;
@@ -238,7 +251,10 @@ export class StockMovementsService {
       _count: { _all: true },
     });
 
-    const pendingTotal = pendingByZone.reduce((sum, row) => sum + row._count._all, 0);
+    const pendingTotal = pendingByZone.reduce(
+      (sum, row) => sum + row._count._all,
+      0,
+    );
     const zones = Array.from(zoneMap.entries());
 
     if (zones.length === 0) {

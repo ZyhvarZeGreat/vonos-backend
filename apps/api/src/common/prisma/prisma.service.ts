@@ -24,7 +24,12 @@ const tenantScopedModels = new Set([
   'CafeTable',
 ]);
 
-const modelsWithoutSoftDelete = new Set(['Notification', 'AuditLog', 'MigrationLegacyId', 'AuthToken']);
+const modelsWithoutSoftDelete = new Set([
+  'Notification',
+  'AuditLog',
+  'MigrationLegacyId',
+  'AuthToken',
+]);
 
 function applySoftDeleteFilter(args: { where?: Record<string, unknown> }) {
   if (!args.where) args.where = {};
@@ -49,7 +54,9 @@ export class PrismaService extends PrismaClient implements OnModuleInit {
         this.logger.warn(
           `Database connect attempt ${attempt}/${CONNECT_MAX_ATTEMPTS} failed (${message}). Retrying in ${CONNECT_RETRY_DELAY_MS}ms…`,
         );
-        await new Promise((resolve) => setTimeout(resolve, CONNECT_RETRY_DELAY_MS));
+        await new Promise((resolve) =>
+          setTimeout(resolve, CONNECT_RETRY_DELAY_MS),
+        );
       }
     }
   }
@@ -62,14 +69,16 @@ export class PrismaService extends PrismaClient implements OnModuleInit {
             if (tenantId !== null && tenantScopedModels.has(model)) {
               args.where = { ...args.where, tenantId };
             }
-            if (!modelsWithoutSoftDelete.has(model)) applySoftDeleteFilter(args);
+            if (!modelsWithoutSoftDelete.has(model))
+              applySoftDeleteFilter(args);
             return query(args);
           },
           async findFirst({ model, args, query }) {
             if (tenantId !== null && tenantScopedModels.has(model)) {
               args.where = { ...args.where, tenantId };
             }
-            if (!modelsWithoutSoftDelete.has(model)) applySoftDeleteFilter(args);
+            if (!modelsWithoutSoftDelete.has(model))
+              applySoftDeleteFilter(args);
             return query(args);
           },
           async findUnique({ model, args, query }) {
@@ -94,21 +103,24 @@ export class PrismaService extends PrismaClient implements OnModuleInit {
             if (tenantId !== null && tenantScopedModels.has(model)) {
               args.where = { ...args.where, tenantId };
             }
-            if (!modelsWithoutSoftDelete.has(model)) applySoftDeleteFilter(args);
+            if (!modelsWithoutSoftDelete.has(model))
+              applySoftDeleteFilter(args);
             return query(args);
           },
           async aggregate({ model, args, query }) {
             if (tenantId !== null && tenantScopedModels.has(model)) {
               args.where = { ...args.where, tenantId };
             }
-            if (!modelsWithoutSoftDelete.has(model)) applySoftDeleteFilter(args);
+            if (!modelsWithoutSoftDelete.has(model))
+              applySoftDeleteFilter(args);
             return query(args);
           },
           async groupBy({ model, args, query }) {
             if (tenantId !== null && tenantScopedModels.has(model)) {
               args.where = { ...args.where, tenantId };
             }
-            if (!modelsWithoutSoftDelete.has(model)) applySoftDeleteFilter(args);
+            if (!modelsWithoutSoftDelete.has(model))
+              applySoftDeleteFilter(args);
             return query(args);
           },
         },

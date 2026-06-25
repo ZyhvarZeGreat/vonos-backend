@@ -81,7 +81,7 @@ export class LedgerService {
     return rows.map((row) => ({
       id: row.id,
       tenantId: row.tenantId,
-      type: row.type as LedgerEntryType,
+      type: row.type,
       amount: toNumber(row.amount),
       currency: row.currency,
       category: row.category,
@@ -113,7 +113,7 @@ export class LedgerService {
 
     const summary = buildLedgerSummaryFromGroups(
       groups.map((group) => ({
-        type: group.type as LedgerEntryType,
+        type: group.type,
         _sum: { amount: group._sum.amount },
       })),
       currencyRow?.currency ?? 'NGN',
@@ -121,7 +121,11 @@ export class LedgerService {
     summary.outstanding = outstanding;
 
     if (summary.revenue === 0) {
-      const salesRevenue = await computeSalesRevenueTotal(this.tenantDb.db, from, to);
+      const salesRevenue = await computeSalesRevenueTotal(
+        this.tenantDb.db,
+        from,
+        to,
+      );
       if (salesRevenue.revenue > 0) {
         summary.revenue = salesRevenue.revenue;
         summary.currency = salesRevenue.currency;
@@ -177,7 +181,7 @@ export class LedgerService {
     return {
       id: row.id,
       tenantId: row.tenantId,
-      type: row.type as LedgerEntryType,
+      type: row.type,
       amount: toNumber(row.amount),
       currency: row.currency,
       category: row.category,

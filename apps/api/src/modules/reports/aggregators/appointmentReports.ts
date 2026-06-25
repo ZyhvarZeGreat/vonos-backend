@@ -119,9 +119,7 @@ export async function buildAppointmentReports(
           horizontal: true,
           series: [{ name: 'Revenue', dataKey: 'value', color: '#059669' }],
           data:
-            stylistChart.length > 0
-              ? stylistChart
-              : [{ label: '—', value: 0 }],
+            stylistChart.length > 0 ? stylistChart : [{ label: '—', value: 0 }],
         },
       ],
       table: null,
@@ -134,7 +132,9 @@ export async function buildAppointmentReports(
   const priorBooked = priorRows.length;
   const priorNoShow = priorRows.filter((r) => r.status === 'No-show').length;
   const noShowRate =
-    bookedCount > 0 ? Number(((noShowCount / bookedCount) * 100).toFixed(1)) : 0;
+    bookedCount > 0
+      ? Number(((noShowCount / bookedCount) * 100).toFixed(1))
+      : 0;
   const priorRate =
     priorBooked > 0
       ? Number(((priorNoShow / priorBooked) * 100).toFixed(1))
