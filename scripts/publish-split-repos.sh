@@ -88,6 +88,17 @@ assemble_backend() {
   cp "${ROOT}/turbo.json" "${BACKEND_DIR}/turbo.json"
   cp "${ROOT}/.gitignore" "${BACKEND_DIR}/.gitignore"
   cp "${ROOT}/.env.example" "${BACKEND_DIR}/.env.example" 2>/dev/null || true
+  cat > "${BACKEND_DIR}/railway.toml" <<'EOF'
+[build]
+builder = "RAILPACK"
+buildCommand = "npm run build --workspace=@vonos/types && npm run build --workspace=api"
+
+[deploy]
+startCommand = "npm run start:prod --workspace=api"
+healthcheckPath = "/health"
+healthcheckTimeout = 120
+restartPolicyType = "ON_FAILURE"
+EOF
   cat > "${BACKEND_DIR}/vercel.json" <<'EOF'
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
