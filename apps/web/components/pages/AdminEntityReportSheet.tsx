@@ -6,13 +6,14 @@ import { Printer, Upload } from "lucide-react";
 import { AdminEntityBanner } from "@/components/molecules/AdminEntityBanner";
 import { Button } from "@/components/atoms/Button";
 import { DateRangeDropdown } from "@/components/molecules/DateRangeDropdown";
-import { ReportDetailSheet } from "@/components/organisms/ReportDetailSheet";
+import { HqReportPageLayout } from "@/components/organisms/HqReportPageLayout";
 import { runReport } from "@/lib/api/reports";
 import { reportEntryBySlug } from "@/lib/registries/reportRegistry";
 import { getTenantByCode, type TenantCode } from "@/lib/registries/tenants";
 import { useListPageFilters } from "@/lib/hooks/useListPageFilters";
 import { ledgerChartSubtitle } from "@/lib/utils/ledgerCharts";
 import { recordDetailPath } from "@/lib/utils/recordDetailPath";
+import type { ReportsTableRow } from "@vonos/types";
 import { useUiStore } from "@/stores/uiStore";
 
 export interface AdminEntityReportSheetProps {
@@ -66,12 +67,25 @@ export function AdminEntityReportSheet({
           key: col.key,
           header: col.header,
         })),
-        rows: data.table.rows.map((row) => ({ ...row })),
+        rows: data.table.rows.map((row) => {
+          const out: Record<string, string | number | null | undefined> = {};
+          for (const [key, value] of Object.entries(row)) {
+            if (key === "actions" || Array.isArray(value)) continue;
+            if (
+              typeof value === "string" ||
+              typeof value === "number" ||
+              value == null
+            ) {
+              out[key] = value;
+            }
+          }
+          return out;
+        }),
       },
     );
   };
 
-  const handleRowClick = (row: Record<string, string | number> & { id: string }) => {
+  const handleRowClick = (row: ReportsTableRow & { id: string }) => {
     const path = recordDetailPath(
       tenantCode,
       String(row.recordType ?? ""),
@@ -113,10 +127,10 @@ export function AdminEntityReportSheet({
       ) : error ? (
         <p className="text-sm text-error">Failed to load report.</p>
       ) : data ? (
-        <ReportDetailSheet
+        <HqReportPageLayout
+          reportId={entry.id}
           title={entry.label}
           subtitle={periodLabel}
-          entityLabel={`${tenant.name} (${tenantCode})`}
           data={data}
           onRowClick={handleRowClick}
         />

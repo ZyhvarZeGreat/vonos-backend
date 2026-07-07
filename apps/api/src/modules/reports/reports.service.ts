@@ -2,6 +2,7 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import type { ReportsDashboard } from '@vonos/types';
 import { TenantDbService } from '../../common/prisma/tenant-db.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { CacheService } from '../../common/cache/cache.service';
 import { ItemsService } from '../items/items.service';
 import { buildAppointmentReports } from './aggregators/appointmentReports';
 import { buildGroupReports } from './aggregators/groupReports';
@@ -21,12 +22,15 @@ export interface ReportsSummary {
   stockValuesLabel: string;
 }
 
+const REPORT_CACHE_TTL_S = 60;
+
 @Injectable()
 export class ReportsService {
   constructor(
     private readonly tenantDb: TenantDbService,
     private readonly prisma: PrismaService,
     private readonly itemsService: ItemsService,
+    private readonly cache: CacheService,
   ) {}
 
   async summary(): Promise<ReportsSummary> {
@@ -54,6 +58,10 @@ export class ReportsService {
     to?: string,
   ): Promise<ReportsDashboard> {
     const tenantId = this.tenantDb.requireTenantId();
+    const cacheKey = `report-dash:${tenantId}:${tab}:${from ?? ''}:${to ?? ''}`;
+    const cached = await this.cache.get<ReportsDashboard>(cacheKey);
+    if (cached) return cached;
+
     const tenant = await this.prisma.tenant.findUnique({
       where: { id: tenantId },
       select: { archetype: true },
@@ -65,44 +73,62 @@ export class ReportsService {
     const db = this.tenantDb.db;
     const archetype = tenant.archetype;
 
+    let result: ReportsDashboard;
     switch (archetype) {
       case 'stock':
-        return buildStockReports(
+        result = await buildStockReports(
           db,
+          tenantId,
           (tab as 'valuation' | 'movement' | 'lowstock') || 'valuation',
           from,
           to,
         );
+        break;
       case 'transaction':
-        return buildTransactionReports(
+        result = await buildTransactionReports(
           db,
+          tenantId,
           (tab as 'sales' | 'closeout') || 'sales',
           from,
           to,
         );
+        break;
       case 'job':
-        return buildJobReports(
+        result = await buildJobReports(
           db,
+          tenantId,
           (tab as 'costing' | 'turnaround') || 'costing',
           from,
           to,
         );
+        break;
       case 'appointment':
-        return buildAppointmentReports(
+        result = await buildAppointmentReports(
           db,
+          tenantId,
           (tab as 'stylist' | 'noshow') || 'stylist',
           from,
           to,
         );
+        break;
       default: {
         const _exhaustive: never = archetype;
         return _exhaustive;
       }
     }
+
+    await this.cache.set(cacheKey, result, REPORT_CACHE_TTL_S);
+    return result;
   }
 
   async group(from?: string, to?: string): Promise<ReportsDashboard> {
-    return buildGroupReports(this.prisma, from, to);
+    const cacheKey = `report-group:${from ?? ''}:${to ?? ''}`;
+    const cached = await this.cache.get<ReportsDashboard>(cacheKey);
+    if (cached) return cached;
+
+    const result = await buildGroupReports(this.prisma, from, to);
+    await this.cache.set(cacheKey, result, REPORT_CACHE_TTL_S);
+    return result;
   }
 
   async run(
@@ -111,6 +137,10 @@ export class ReportsService {
     to?: string,
   ): Promise<ReportsDashboard> {
     const tenantId = this.tenantDb.requireTenantId();
+    const cacheKey = `report-run:${tenantId}:${reportId}:${from ?? ''}:${to ?? ''}`;
+    const cached = await this.cache.get<ReportsDashboard>(cacheKey);
+    if (cached) return cached;
+
     const tenant = await this.prisma.tenant.findUnique({
       where: { id: tenantId },
       select: { archetype: true },
@@ -118,7 +148,7 @@ export class ReportsService {
     if (!tenant) {
       throw new BadRequestException('Tenant not found');
     }
-    return runReportForTenant(
+    const result = await runReportForTenant(
       reportId,
       {
         db: this.tenantDb.db,
@@ -129,9 +159,17 @@ export class ReportsService {
       from,
       to,
     );
+    await this.cache.set(cacheKey, result, REPORT_CACHE_TTL_S);
+    return result;
   }
 
   async runGroup(reportId: string, from?: string, to?: string) {
-    return runGroupReport(this.prisma, reportId, from, to);
+    const cacheKey = `report-group-run:${reportId}:${from ?? ''}:${to ?? ''}`;
+    const cached = await this.cache.get<ReportsDashboard>(cacheKey);
+    if (cached) return cached;
+
+    const result = await runGroupReport(this.prisma, reportId, from, to);
+    await this.cache.set(cacheKey, result, REPORT_CACHE_TTL_S);
+    return result;
   }
 }

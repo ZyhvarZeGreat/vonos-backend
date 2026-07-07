@@ -1,6 +1,25 @@
 import { PrismaClient } from '@prisma/client';
+import { readFileSync } from 'fs';
+import { join } from 'path';
 
 const VA = 'tenant_va_001';
+
+const DRYRUN_TARGETS = {
+  jobs: 16523,
+  payrollGroups: 196,
+  payComponents: 4,
+  payrolls: 1910,
+} as const;
+
+function loadDryRunTargets() {
+  try {
+    const path = join(__dirname, '../../../docs/migration-audits/dryruns/VA_MIGRATION_DRYRUN.json');
+    const raw = JSON.parse(readFileSync(path, 'utf-8')) as { counts?: Record<string, number> };
+    return raw.counts ?? DRYRUN_TARGETS;
+  } catch {
+    return DRYRUN_TARGETS;
+  }
+}
 
 async function main() {
   const p = new PrismaClient();
@@ -24,6 +43,10 @@ async function main() {
     UNION ALL SELECT 'AccountTransaction', "tenantId", COUNT(*)::int FROM "AccountTransaction" GROUP BY "tenantId"
     UNION ALL SELECT 'Payment', "tenantId", COUNT(*)::int FROM "Payment" GROUP BY "tenantId"
     UNION ALL SELECT 'User', "tenantId", COUNT(*)::int FROM "User" GROUP BY "tenantId"
+    UNION ALL SELECT 'PayrollGroup', "tenantId", COUNT(*)::int FROM "PayrollGroup" GROUP BY "tenantId"
+    UNION ALL SELECT 'PayComponent', "tenantId", COUNT(*)::int FROM "PayComponent" GROUP BY "tenantId"
+    UNION ALL SELECT 'Payroll', "tenantId", COUNT(*)::int FROM "Payroll" GROUP BY "tenantId"
+    UNION ALL SELECT 'Expense', "tenantId", COUNT(*)::int FROM "Expense" GROUP BY "tenantId"
     ORDER BY entity, "tenantId"
   `);
 
@@ -114,11 +137,32 @@ async function main() {
     GROUP BY status ORDER BY cnt DESC
   `);
 
+  const hrmCounts = await p.$queryRawUnsafe(`
+    SELECT
+      (SELECT COUNT(*)::int FROM "PayrollGroup" WHERE "tenantId"='${VA}') AS payroll_groups,
+      (SELECT COUNT(*)::int FROM "PayComponent" WHERE "tenantId"='${VA}') AS pay_components,
+      (SELECT COUNT(*)::int FROM "Payroll" WHERE "tenantId"='${VA}') AS payrolls,
+      (SELECT COUNT(*)::int FROM "Expense" WHERE "tenantId"='${VA}') AS expenses
+  `);
+
+  const targets = loadDryRunTargets();
+  const vaJobCount = await p.job.count({ where: { tenantId: VA, deletedAt: null } });
+  const hrm = (hrmCounts as Array<Record<string, number>>)[0] ?? {};
+
+  const verification = {
+    jobs: { actual: vaJobCount, target: targets.jobs ?? DRYRUN_TARGETS.jobs, pass: vaJobCount >= (targets.jobs ?? DRYRUN_TARGETS.jobs) * 0.99 },
+    payrollGroups: { actual: hrm.payroll_groups ?? 0, target: targets.payrollGroups ?? DRYRUN_TARGETS.payrollGroups, pass: (hrm.payroll_groups ?? 0) === (targets.payrollGroups ?? DRYRUN_TARGETS.payrollGroups) },
+    payComponents: { actual: hrm.pay_components ?? 0, target: targets.payComponents ?? DRYRUN_TARGETS.payComponents, pass: (hrm.pay_components ?? 0) === (targets.payComponents ?? DRYRUN_TARGETS.payComponents) },
+    payrolls: { actual: hrm.payrolls ?? 0, target: targets.payrolls ?? DRYRUN_TARGETS.payrolls, pass: (hrm.payrolls ?? 0) === (targets.payrolls ?? DRYRUN_TARGETS.payrolls) },
+  };
+
   console.log(JSON.stringify({
     tenants,
     counts,
     jobSources,
     jobStatus,
+    hrmCounts,
+    verification,
     legacyNs,
     legacyTypes,
     ledger,

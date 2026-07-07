@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import type { AppointmentListRow } from '@vonos/types';
 import { TenantDbService } from '../../common/prisma/tenant-db.service';
 import { AuditService } from '../audit/audit.service';
+import { buildCursorQuery } from '../../common/utils/pagination';
 import { toIso, toNumber } from '../../common/utils/serializers';
 
 function serializeAppointment(row: {
@@ -43,12 +44,43 @@ export class AppointmentsService {
     private readonly auditService: AuditService,
   ) {}
 
-  async list(): Promise<AppointmentListRow[]> {
+  async list(filters: {
+    cursor?: string;
+    limit?: number;
+    search?: string;
+  } = {}): Promise<AppointmentListRow[]> {
     const tenantId = this.tenantDb.requireTenantId();
     const rows = await this.tenantDb.db.appointment.findMany({
-      where: { tenantId, deletedAt: null },
+      where: {
+        tenantId,
+        deletedAt: null,
+        ...(filters.search
+          ? {
+              OR: [
+                {
+                  customer: {
+                    name: { contains: filters.search, mode: 'insensitive' },
+                  },
+                },
+                {
+                  stylistName: {
+                    contains: filters.search,
+                    mode: 'insensitive',
+                  },
+                },
+                {
+                  serviceName: {
+                    contains: filters.search,
+                    mode: 'insensitive',
+                  },
+                },
+              ],
+            }
+          : {}),
+      },
       include: { customer: { select: { name: true } } },
       orderBy: { startTime: 'desc' },
+      ...buildCursorQuery(filters.cursor, filters.limit ?? 25),
     });
     return rows.map(serializeAppointment);
   }

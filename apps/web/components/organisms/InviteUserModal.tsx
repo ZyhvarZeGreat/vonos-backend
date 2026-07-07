@@ -9,7 +9,7 @@ import { Input } from "@/components/atoms/Input";
 import { Modal, ModalFooter, ModalHeader } from "@/components/atoms/Modal";
 import { Select } from "@/components/atoms/Select";
 import { createUser, inviteUser } from "@/lib/api/users";
-import { ENTITY_LIST } from "@/lib/registries/tenants";
+import { AUTOS_GROUP_ENTITIES } from "@/lib/registries/tenants";
 import { cn } from "@/lib/utils/cn";
 import { useAuthStore } from "@/stores/authStore";
 
@@ -51,7 +51,7 @@ export function InviteUserModal({
     defaultTenantId ?? (allTenants ? "" : defaultTenantId ?? ""),
   );
   const [role, setRole] = useState<Role>(isSuperAdmin ? "manager" : "staff");
-  const [devInviteUrl, setDevInviteUrl] = useState<string | null>(null);
+  const [inviteLink, setInviteLink] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const entityOptions = useMemo(() => {
@@ -59,7 +59,7 @@ export function InviteUserModal({
     if (allTenants && isSuperAdmin) {
       options.push({ value: VAG_ENTITY_VALUE, label: "Vonos Autos Group (VAG)" });
     }
-    for (const entity of ENTITY_LIST) {
+    for (const entity of AUTOS_GROUP_ENTITIES) {
       options.push({
         value: entity.tenantId,
         label: `${entity.name} (${entity.code})`,
@@ -108,7 +108,7 @@ export function InviteUserModal({
     successMessage: "Invitation sent",
     onSuccess: (data) => {
       void queryClient.invalidateQueries({ queryKey: ["users"] });
-      setDevInviteUrl(data.devInviteUrl ?? null);
+      setInviteLink(data.devInviteUrl ?? null);
       setError(null);
       if (!data.devInviteUrl) {
         handleClose();
@@ -155,7 +155,7 @@ export function InviteUserModal({
     setConfirmPassword("");
     setEntityValue(defaultTenantId ?? "");
     setRole(isSuperAdmin ? "manager" : "staff");
-    setDevInviteUrl(null);
+    setInviteLink(null);
     setError(null);
     onClose();
   };
@@ -180,17 +180,19 @@ export function InviteUserModal({
         onClose={handleClose}
       />
       <div className="space-y-3.5 px-4 pb-2">
-        {devInviteUrl ? (
+        {inviteLink ? (
           <div className="rounded-lg border border-border bg-[var(--color-surface-muted)] p-3 text-sm">
-            <p className="font-medium text-foreground">Invite sent</p>
-            <p className="mt-1 text-muted">Dev invite link (non-production only):</p>
+            <p className="font-medium text-foreground">Invitation created</p>
+            <p className="mt-1 text-muted">
+              Share this link with the person you invited so they can set their password:
+            </p>
             <a
-              href={devInviteUrl}
+              href={inviteLink}
               className="mt-2 block break-all text-info underline"
               target="_blank"
               rel="noreferrer"
             >
-              {devInviteUrl}
+              {inviteLink}
             </a>
           </div>
         ) : (
@@ -284,9 +286,9 @@ export function InviteUserModal({
       </div>
       <ModalFooter>
         <Button variant="secondary" size="sm" onClick={handleClose}>
-          {devInviteUrl ? "Done" : "Cancel"}
+          {inviteLink ? "Done" : "Cancel"}
         </Button>
-        {!devInviteUrl ? (
+        {!inviteLink ? (
           <Button size="sm" disabled={!canSubmit} onClick={handleSubmit}>
             {isPending
               ? "Saving…"

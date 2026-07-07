@@ -1,20 +1,20 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { StatusPill } from "@/components/atoms/StatusPill";
-import { DataTable, type ColumnConfig } from "@/components/organisms/DataTable";
+import { ServerPaginatedTable } from "@/components/organisms/ServerPaginatedTable";
 import { ListPageShell } from "@/components/organisms/ListPageShell";
-import { getJobs } from "@/lib/api/jobs";
+import { getJobsPage } from "@/lib/api/jobs";
 import { useRecordNavigation } from "@/lib/hooks/useRecordNavigation";
 import { useListPageFilters } from "@/lib/hooks/useListPageFilters";
+import { useServerListPage } from "@/lib/hooks/useServerListPage";
 import { formatCurrency } from "@/lib/utils/formatCurrency";
 import {
   filterByDateField,
-  filterBySearch,
   uniqueFieldOptions,
 } from "@/lib/utils/listFilters";
 import type { Job } from "@vonos/types";
+import type { ColumnConfig } from "@/components/organisms/DataTable";
 import { useTenantId } from "@/lib/hooks/useRouteTenant";
 
 const JOB_TABS = [
@@ -26,6 +26,12 @@ const JOB_TABS = [
 
 const ACTIVE_STATUSES = new Set(["Received", "Quoted", "Approved", "In Progress"]);
 
+function tabStatusFilter(tab: string): string | undefined {
+  if (tab === "qc") return "QC";
+  if (tab === "completed") return "Delivered";
+  return undefined;
+}
+
 export function JobsListView() {
   const { goToDetail } = useRecordNavigation("jobs");
   const tenantId = useTenantId();
@@ -33,10 +39,31 @@ export function JobsListView() {
   const [activeTab, setActiveTab] = useState("all");
   const [statusFilter, setStatusFilter] = useState("");
 
-  const { data: jobs = [], isLoading, error } = useQuery({
+  const apiFilters = useMemo(
+    () => ({
+      status: statusFilter || tabStatusFilter(activeTab),
+      search: search.trim() || undefined,
+    }),
+    [activeTab, search, statusFilter],
+  );
+
+  const {
+    items: jobs,
+    hasMore,
+    pageIndex,
+    pageSize,
+    canGoPrev,
+    goNext,
+    goPrev,
+    setPageSize,
+    isLoading,
+    error,
+  } = useServerListPage({
     queryKey: ["jobs", tenantId],
-    queryFn: () => getJobs(tenantId!),
     enabled: Boolean(tenantId),
+    filters: apiFilters,
+    search,
+    fetchPage: (cursor, limit) => getJobsPage(tenantId!, apiFilters, cursor, limit),
   });
 
   const columns: ColumnConfig<Job>[] = [
@@ -65,14 +92,9 @@ export function JobsListView() {
     let rows = filterByDateField(jobs, bounds, "dueDate");
     if (activeTab === "active") {
       rows = rows.filter((j) => ACTIVE_STATUSES.has(j.status));
-    } else if (activeTab === "qc") {
-      rows = rows.filter((j) => j.status === "QC");
-    } else if (activeTab === "completed") {
-      rows = rows.filter((j) => j.status === "Delivered");
     }
-    if (statusFilter) rows = rows.filter((j) => j.status === statusFilter);
-    return filterBySearch(rows, search, ["reference", "customerName", "description"]);
-  }, [activeTab, bounds, jobs, search, statusFilter]);
+    return rows;
+  }, [activeTab, bounds, jobs]);
 
   const statusOptions = useMemo(
     () => uniqueFieldOptions(jobs, "status"),
@@ -99,11 +121,16 @@ export function JobsListView() {
         },
       ]}
     >
-      <DataTable
-        data={filtered}
+      <ServerPaginatedTable
+        items={filtered}
         columns={columns}
-        displayMode="table"
-        embedded
+        pageIndex={pageIndex}
+        pageSize={pageSize}
+        hasMore={hasMore}
+        canGoPrev={canGoPrev}
+        onNext={goNext}
+        onPrev={goPrev}
+        onPageSizeChange={setPageSize}
         isLoading={isLoading}
         error={error ? "Failed to load jobs" : null}
         onRowClick={(row) => goToDetail(row.id)}

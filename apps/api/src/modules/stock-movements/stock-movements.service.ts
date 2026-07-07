@@ -17,6 +17,7 @@ import {
   shouldApplyInboundQty,
   shouldApplyOutboundQty,
 } from '../../common/utils/stockQuantity';
+import { adjustItemLocationStock } from '../../common/utils/itemLocationStock';
 import {
   serializeMovement,
   toMovementListRow,
@@ -109,6 +110,14 @@ export class StockMovementsService {
               quantity: nextQuantity,
               status: computeStockStatus(nextQuantity, item.reorderPoint),
             },
+          });
+
+          await adjustItemLocationStock(tx, {
+            tenantId,
+            itemId: item.id,
+            locationCode: existing.locationCode ?? item.locationCode,
+            binLocation: item.binLocation,
+            delta,
           });
         }
 

@@ -20,4 +20,14 @@ export interface SupplierListRow extends Supplier {
   leadTimeDays: number;
   location: string;
   rating: number;
+  /** HQ6 contact id display (legacy or short id) */
+  contactId?: string | null;
+  businessName?: string | null;
+  taxNumber?: string | null;
+  payTerm?: string | null;
+  openingBalance?: number;
+  totalPurchase?: number;
+  totalPurchaseDue?: number;
+  totalPurchasePaid?: number;
+  status?: "active" | "inactive";
 }

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
 import {
   JwtAuthGuard,
   RolesGuard,
@@ -12,13 +12,26 @@ export class VehiclesController {
   constructor(private readonly vehiclesService: VehiclesService) {}
 
   @Get()
-  list() {
-    return this.vehiclesService.list();
+  list(
+    @Query('cursor') cursor?: string,
+    @Query('limit') limit?: string,
+    @Query('search') search?: string,
+  ) {
+    return this.vehiclesService.list({
+      cursor,
+      limit: limit ? Number(limit) : undefined,
+      search,
+    });
   }
 
   @Get(':id')
   getById(@Param('id') id: string) {
     return this.vehiclesService.getById(id);
+  }
+
+  @Get(':id/history')
+  getHistory(@Param('id') id: string) {
+    return this.vehiclesService.getHistory(id);
   }
 
   @Post()

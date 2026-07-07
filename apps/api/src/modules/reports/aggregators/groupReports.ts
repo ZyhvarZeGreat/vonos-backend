@@ -1,7 +1,13 @@
 import type { ReportsDashboard } from '@vonos/types';
+import { AUTOS_GROUP_CODES } from '@vonos/types';
 import type { PrismaClient } from '@prisma/client';
 import { toNumber } from '../../../common/utils/serializers';
 import { resolveDateWindow } from './date-utils';
+import {
+  groupJobsByTenant,
+  groupRevenueByTenant,
+  groupRevenueTrendByMonth,
+} from './groupReportQueries';
 
 const ENTITY_COLORS: Record<string, string> = {
   VW: '#059669',
@@ -22,65 +28,81 @@ export async function buildGroupReports(
   const window = resolveDateWindow(from, to);
 
   const tenants = await prisma.tenant.findMany({
-    where: { code: { not: 'VAG' }, deletedAt: null },
+    where: { code: { in: [...AUTOS_GROUP_CODES] }, deletedAt: null },
     select: { id: true, code: true, name: true },
   });
 
   const tenantById = new Map(tenants.map((t) => [t.id, t]));
+  const tenantIds = tenants.map((t) => t.id);
 
-  const ledgerRows = await prisma.ledgerEntry.findMany({
-    where: {
-      deletedAt: null,
-      type: 'revenue',
-      date: { gte: window.from, lte: window.to },
-      tenantId: { in: tenants.map((t) => t.id) },
-    },
-    select: { tenantId: true, amount: true, date: true },
-  });
+  const [
+    revenueRows,
+    jobRows,
+    trendRows,
+    purchasesAgg,
+    expensesAgg,
+    movementCount,
+    lowStockCount,
+  ] = await Promise.all([
+    groupRevenueByTenant(prisma, tenantIds, window.from, window.to),
+    groupJobsByTenant(prisma, tenantIds, window.from, window.to),
+    groupRevenueTrendByMonth(prisma, tenantIds, window.from, window.to),
+    prisma.ledgerEntry.aggregate({
+      where: {
+        tenantId: { in: tenantIds },
+        deletedAt: null,
+        type: 'cost',
+        date: { gte: window.from, lte: window.to },
+      },
+      _sum: { amount: true },
+    }),
+    prisma.ledgerEntry.aggregate({
+      where: {
+        tenantId: { in: tenantIds },
+        deletedAt: null,
+        type: 'expense',
+        date: { gte: window.from, lte: window.to },
+      },
+      _sum: { amount: true },
+    }),
+    prisma.stockMovement.count({
+      where: {
+        tenantId: { in: tenantIds },
+        deletedAt: null,
+        date: { gte: window.from, lte: window.to },
+      },
+    }),
+    prisma.item.count({
+      where: {
+        tenantId: { in: tenantIds },
+        deletedAt: null,
+        status: { in: ['low_stock', 'out_of_stock'] },
+      },
+    }),
+  ]);
 
-  const jobs = await prisma.job.findMany({
-    where: {
-      deletedAt: null,
-      createdAt: { gte: window.from, lte: window.to },
-      tenantId: { in: tenants.map((t) => t.id) },
-    },
-    select: { id: true, tenantId: true },
-  });
+  const totalPurchases = toNumber(purchasesAgg._sum.amount);
+  const totalExpenses = toNumber(expensesAgg._sum.amount);
 
-  const jobsByTenant = new Map<string, number>();
-  for (const job of jobs) {
-    jobsByTenant.set(job.tenantId, (jobsByTenant.get(job.tenantId) ?? 0) + 1);
-  }
-
-  const groupRevenue = ledgerRows.reduce(
-    (sum, row) => sum + toNumber(row.amount),
-    0,
+  const revenueByTenant = new Map(
+    revenueRows.map((row) => [row.tenantId, row.revenue]),
   );
+  const jobsByTenant = new Map(jobRows.map((row) => [row.tenantId, row.jobs]));
 
-  const revenueByTenant = new Map<string, number>();
-  for (const row of ledgerRows) {
-    revenueByTenant.set(
-      row.tenantId,
-      (revenueByTenant.get(row.tenantId) ?? 0) + toNumber(row.amount),
-    );
-  }
+  const groupRevenue = revenueRows.reduce((sum, row) => sum + row.revenue, 0);
+  const totalJobs = jobRows.reduce((sum, row) => sum + row.jobs, 0);
 
   const monthSeries = new Map<
     string,
     { label: string } & Record<string, number | string>
   >();
-  for (const row of ledgerRows) {
+  for (const row of trendRows) {
     const tenant = tenantById.get(row.tenantId);
     if (!tenant) continue;
-    const label = row.date.toLocaleDateString('en-US', {
-      month: 'short',
-      year: '2-digit',
-    });
-    const key = `${row.date.getFullYear()}-${row.date.getMonth()}`;
-    const existing = monthSeries.get(key) ?? { label };
+    const existing = monthSeries.get(row.monthKey) ?? { label: row.label };
     existing[tenant.code] =
-      Number(existing[tenant.code] ?? 0) + toNumber(row.amount);
-    monthSeries.set(key, existing);
+      Number(existing[tenant.code] ?? 0) + row.revenue;
+    monthSeries.set(row.monthKey, existing);
   }
 
   const trendData = Array.from(monthSeries.values()).sort((a, b) =>
@@ -127,7 +149,7 @@ export async function buildGroupReports(
         icon: 'wrench',
         metricKey: 'jobs',
         color: '#2563eb',
-        value: jobs.length,
+        value: totalJobs,
       },
       {
         label: 'Active Entities',
@@ -142,6 +164,36 @@ export async function buildGroupReports(
         metricKey: 'outstanding',
         color: '#e11d48',
         value: 0,
+      },
+      {
+        label: 'Total Purchases',
+        icon: 'shopping-cart',
+        metricKey: 'purchases',
+        color: '#0d9488',
+        value: totalPurchases,
+        currency: 'NGN',
+      },
+      {
+        label: 'Total Expenses',
+        icon: 'receipt',
+        metricKey: 'expenses',
+        color: '#e11d48',
+        value: totalExpenses,
+        currency: 'NGN',
+      },
+      {
+        label: 'Stock Movements',
+        icon: 'truck',
+        metricKey: 'movements',
+        color: '#2563eb',
+        value: movementCount,
+      },
+      {
+        label: 'Low / Out of Stock',
+        icon: 'alert-triangle',
+        metricKey: 'lowStock',
+        color: '#f59e0b',
+        value: lowStockCount,
       },
     ],
     charts: [

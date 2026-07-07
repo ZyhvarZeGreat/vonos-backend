@@ -34,6 +34,12 @@ def main() -> int:
         help="Type tenant code to allow --write (e.g. VISP)",
     )
     parser.add_argument(
+        "--since",
+        default=None,
+        metavar="YYYY-MM-DD",
+        help="Incremental import: only records on/after this date",
+    )
+    parser.add_argument(
         "--output-json",
         type=Path,
         default=Path("docs/migration-audits/dryruns/VISP_MIGRATION_DRYRUN.json"),
@@ -58,7 +64,19 @@ def main() -> int:
     if not args.dry_run:
         resolve_tenant(entity)
 
-    loaded, result = run_entity_migration(entity, args.dump)
+    existing_legacy = None
+    if args.since and not args.dry_run:
+        from migration.audit_transforms import load_legacy_maps_from_postgres
+        from migration.tenant_db import load_database_url
+
+        existing_legacy = load_legacy_maps_from_postgres(entity.tenant_id, load_database_url())
+
+    loaded, result = run_entity_migration(
+        entity,
+        args.dump,
+        since=args.since,
+        existing_legacy=existing_legacy,
+    )
     print_banner(entity, dry_run=args.dry_run, counts=result.counts())
 
     summary = build_summary(entity, loaded, result, dry_run=args.dry_run)

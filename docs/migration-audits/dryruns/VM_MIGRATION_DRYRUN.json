@@ -48,7 +48,9 @@
     "productUnits": 3,
     "warranties": 0,
     "sellingPriceGroups": 0,
-    "legacyIdRows": 30720,
+    "expenseCategories": 122,
+    "expenses": 5720,
+    "legacyIdRows": 36562,
     "auditLogs": 0
   },
   "warnings": [

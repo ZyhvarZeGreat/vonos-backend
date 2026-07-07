@@ -29,16 +29,30 @@ import {
   AppointmentsCalendarView,
   StylistScheduleView,
 } from "@/components/pages/AppointmentsCalendarView";
-import { UsersView, SettingsView } from "@/components/pages/UsersSettingsViews";
+import { HrView, UsersView } from "@/components/pages/HrView";
+import { LocationsView } from "@/components/pages/LocationsView";
+import { SettingsView } from "@/components/pages/UsersSettingsViews";
 import { AddOrderView, AddSaleView } from "@/components/pages/AddSaleView";
 import { AddProductView } from "@/components/pages/AddProductView";
 import { ProductSlugRedirect } from "@/components/pages/ProductSectionRedirect";
 import {
   AccountBookView,
-  PaymentAccountsListView,
+  createPosPlaceholderView,
   PaymentsListView,
   PosPlaceholderViews,
 } from "@/components/pages/PosNavViews";
+import { CatalogMetaListView } from "@/components/pages/CatalogMetaListView";
+import { RolesListView, CommissionAgentsListView } from "@/components/pages/UserManagementViews";
+import { CustomerGroupsListView, ImportContactsView } from "@/components/pages/ContactsGroupViews";
+import { AddExpenseView, ExpenseCategoriesListView, ExpensesListView } from "@/components/pages/ExpensesViews";
+import {
+  PaymentAccountReportView,
+  PaymentAccountsListView,
+} from "@/components/pages/PaymentAccountViews";
+import { AddPurchaseView } from "@/components/pages/AddPurchaseView";
+import { PayrollView } from "@/components/pages/PayrollView";
+import { HrmPageView, HRM_SLUG_TO_TAB, type HrmTab } from "@/components/pages/HrmPageView";
+import { InvoiceSettingsView, BarcodeSettingsView, ReceiptPrintersView, TaxRatesListView } from "@/components/pages/SettingsSubViews";
 import type { TenantCode } from "@/lib/registries/tenants";
 
 import type { CreateFlowKey } from "@/lib/registries/createFlows";
@@ -57,9 +71,35 @@ export interface EntityPageConfig {
 
 type SlugMap = Partial<Record<string, EntityPageConfig>>;
 
-const sharedUsers: EntityPageConfig = { title: "Users", View: UsersView };
+const sharedHr: EntityPageConfig = { title: "HR & People", View: HrView };
+const sharedUsers: EntityPageConfig = { title: "HR & People", View: UsersView };
+const sharedLocations: EntityPageConfig = { title: "Locations", View: LocationsView };
 const sharedSettings: EntityPageConfig = { title: "Settings", View: SettingsView };
 const sharedFinance: EntityPageConfig = { title: "Finance", View: FinanceView };
+const sharedCustomers: EntityPageConfig = {
+  title: "Customers",
+  primaryActionLabel: "Add Customer",
+  openCreateOnPrimary: true,
+  createFlowKey: "customer",
+  createCopy: {
+    title: "Add Customer",
+    subtitle: "Register a new customer profile",
+    submitLabel: "Add Customer",
+  },
+  View: CustomersListView,
+};
+const sharedCatalog: EntityPageConfig = {
+  title: "Catalog",
+  primaryActionLabel: "Add Product",
+  openCreateOnPrimary: true,
+  createFlowKey: "item",
+  createCopy: {
+    title: "Add Product",
+    subtitle: "Add a product to the retail catalog",
+    submitLabel: "Add Product",
+  },
+  View: CatalogListView,
+};
 const sharedSuppliers: EntityPageConfig = {
   title: "Suppliers",
   primaryActionLabel: "Add Supplier",
@@ -112,16 +152,25 @@ function transactionRetailPages(code: TenantCode): SlugMap {
       },
       View: SalesListView,
     },
-    catalog: { title: "Catalog", View: CatalogListView },
+    catalog: sharedCatalog,
     returns: { title: "Returns & Warranty", View: ReturnsListView },
-    customers: { title: "Customers", View: CustomersListView },
+    customers: sharedCustomers,
+    suppliers: sharedSuppliers,
     reports: reportsFor(code),
     finance: sharedFinance,
+    hr: sharedHr,
     users: sharedUsers,
+    locations: sharedLocations,
     settings: sharedSettings,
     ...posSellPages(AddSaleView),
     ...posProductPages,
     ...posPaymentPages,
+    ...procurementPages,
+    ...userManagementPages,
+    ...contactPages,
+    ...expensePages,
+    ...hrmPages,
+    ...settingsPages,
     ...legacyReportPages,
   };
 }
@@ -144,23 +193,59 @@ function posSellPages(addSaleView: ComponentType): SlugMap {
 const posProductPages: SlugMap = {
   "add-product": { title: "Add Product", View: AddProductView },
   "update-price": { title: "Update Price", View: () => <ProductSlugRedirect slug="update-price" /> },
-  "print-labels": { title: "Print Labels", View: PosPlaceholderViews["print-labels"] },
-  variations: { title: "Variations", View: PosPlaceholderViews.variations },
-  "import-products": { title: "Import Products", View: PosPlaceholderViews["import-products"] },
+  "print-labels": { title: "Print Labels", View: createPosPlaceholderView("Print Labels", "Generate and print product labels.") },
+  variations: { title: "Variations", View: createPosPlaceholderView("Variations", "Manage variation templates (e.g. size, color).") },
+  "import-products": { title: "Import Products", View: createPosPlaceholderView("Import Products", "Bulk product import is not available yet.") },
   "import-opening-stock": {
     title: "Import Opening Stock",
-    View: PosPlaceholderViews["import-opening-stock"],
+    View: createPosPlaceholderView("Import Opening Stock", "Bulk opening stock import."),
   },
-  "price-groups": { title: "Selling Price Group", View: () => <ProductSlugRedirect slug="price-groups" /> },
-  units: { title: "Units", View: () => <ProductSlugRedirect slug="units" /> },
-  categories: { title: "Categories", View: () => <ProductSlugRedirect slug="categories" /> },
-  brands: { title: "Brands", View: () => <ProductSlugRedirect slug="brands" /> },
-  warranties: { title: "Warranties", View: () => <ProductSlugRedirect slug="warranties" /> },
+  "price-groups": { title: "Selling Price Group", View: () => <CatalogMetaListView kind="price-groups" /> },
+  units: { title: "Units", View: () => <CatalogMetaListView kind="units" /> },
+  categories: { title: "Categories", View: () => <CatalogMetaListView kind="categories" /> },
+  brands: { title: "Brands", View: () => <CatalogMetaListView kind="brands" /> },
+  warranties: { title: "Warranties", View: () => <CatalogMetaListView kind="warranties" /> },
 };
 
 const procurementPages: SlugMap = {
+  inbound,
   "purchase-orders": { title: "Purchase Orders", View: PurchaseOrdersView },
   "purchase-returns": { title: "Purchase Returns", View: PurchaseReturnsView },
+  "add-purchase": { title: "Add Purchase", View: AddPurchaseView },
+};
+
+const userManagementPages: SlugMap = {
+  roles: { title: "Roles", View: RolesListView },
+  "commission-agents": { title: "Sales Commission Agents", View: CommissionAgentsListView },
+};
+
+const contactPages: SlugMap = {
+  "customer-groups": { title: "Customer Groups", View: CustomerGroupsListView },
+  "import-contacts": { title: "Import Contacts", View: ImportContactsView },
+};
+
+const expensePages: SlugMap = {
+  expenses: { title: "Expenses", View: ExpensesListView },
+  "add-expense": { title: "Add Expense", View: AddExpenseView },
+  "expense-categories": { title: "Expense Categories", View: ExpenseCategoriesListView },
+};
+
+function hrmPage(defaultTab: HrmTab): EntityPageConfig {
+  return {
+    title: "HRM",
+    View: () => <HrmPageView defaultTab={defaultTab} />,
+  };
+}
+
+const hrmPages: SlugMap = Object.fromEntries(
+  Object.entries(HRM_SLUG_TO_TAB).map(([slug, tab]) => [slug, hrmPage(tab)]),
+);
+
+const settingsPages: SlugMap = {
+  "invoice-settings": { title: "Invoice Settings", View: InvoiceSettingsView },
+  "barcode-settings": { title: "Barcode Settings", View: BarcodeSettingsView },
+  "receipt-printers": { title: "Receipt Printers", View: ReceiptPrintersView },
+  "tax-rates": { title: "Tax Rates", View: TaxRatesListView },
 };
 
 function reportRegistryPages(): SlugMap {
@@ -175,18 +260,29 @@ function reportRegistryPages(): SlugMap {
   );
 }
 
-const legacyReportPages = reportRegistryPages();
+const legacyReportPages: SlugMap = {
+  ...reportRegistryPages(),
+};
 
 const posPaymentPages: SlugMap = {
   "payment-accounts": { title: "Payment Accounts", View: PaymentAccountsListView },
   payments: { title: "Payments", View: PaymentsListView },
   "account-book": { title: "Account Book", View: AccountBookView },
-  "balance-sheet": { title: "Balance Sheet", View: () => <ReportRunView slug="balance-sheet" /> },
-  "trial-balance": { title: "Trial Balance", View: () => <ReportRunView slug="trial-balance" /> },
-  "cash-flow": { title: "Cash Flow", View: () => <ReportRunView slug="cash-flow" /> },
+  "balance-sheet": {
+    title: "Balance Sheet",
+    View: () => <PaymentAccountReportView slug="balance-sheet" />,
+  },
+  "trial-balance": {
+    title: "Trial Balance",
+    View: () => <PaymentAccountReportView slug="trial-balance" />,
+  },
+  "cash-flow": {
+    title: "Cash Flow",
+    View: () => <PaymentAccountReportView slug="cash-flow" />,
+  },
   "payment-account-report": {
     title: "Payment Account Report",
-    View: () => <ReportRunView slug="payment-account-report" />,
+    View: () => <PaymentAccountReportView slug="payment-account-report" />,
   },
 };
 
@@ -213,11 +309,19 @@ const ENTITY_PAGES: Record<TenantCode, SlugMap> = {
     reports: reportsFor("VW"),
     finance: sharedFinance,
     suppliers: sharedSuppliers,
+    customers: sharedCustomers,
+    hr: sharedHr,
     users: sharedUsers,
+    locations: sharedLocations,
     settings: sharedSettings,
     ...posProductPages,
     ...posPaymentPages,
     ...procurementPages,
+    ...userManagementPages,
+    ...contactPages,
+    ...expensePages,
+    ...hrmPages,
+    ...settingsPages,
     ...legacyReportPages,
   },
   VKW: {
@@ -234,11 +338,19 @@ const ENTITY_PAGES: Record<TenantCode, SlugMap> = {
     reports: reportsFor("VKW"),
     finance: sharedFinance,
     suppliers: sharedSuppliers,
+    customers: sharedCustomers,
+    hr: sharedHr,
     users: sharedUsers,
+    locations: sharedLocations,
     settings: sharedSettings,
     ...posProductPages,
     ...posPaymentPages,
     ...procurementPages,
+    ...userManagementPages,
+    ...contactPages,
+    ...expensePages,
+    ...hrmPages,
+    ...settingsPages,
     ...legacyReportPages,
   },
   VISP: transactionRetailPages("VISP"),
@@ -262,17 +374,26 @@ const ENTITY_PAGES: Record<TenantCode, SlugMap> = {
     },
     kitchen: { title: "Kitchen Display", View: KitchenDisplayView },
     tables: { title: "Table Management", View: TableManagementView },
+    customers: sharedCustomers,
     reports: reportsFor("VC"),
     finance: sharedFinance,
     suppliers: sharedSuppliers,
+    hr: sharedHr,
     users: sharedUsers,
+    locations: sharedLocations,
     settings: sharedSettings,
     ...posSellPages(AddOrderView),
     ...posProductPages,
     ...posPaymentPages,
+    ...procurementPages,
+    ...userManagementPages,
+    ...contactPages,
+    ...expensePages,
+    ...hrmPages,
+    ...settingsPages,
     ...legacyReportPages,
   },
-  VM: {
+  VA: {
     jobs: {
       title: "Jobs",
       primaryActionLabel: "New Job",
@@ -287,32 +408,19 @@ const ENTITY_PAGES: Record<TenantCode, SlugMap> = {
     },
     vehicles: { title: "Vehicle Registry", View: VehiclesListView },
     requisitions: { title: "Parts Requisition", View: RequisitionsListView },
-    customers: { title: "Customers", View: CustomersListView },
-    reports: reportsFor("VM"),
+    customers: sharedCustomers,
+    reports: reportsFor("VA"),
     finance: sharedFinance,
+    hr: sharedHr,
     users: sharedUsers,
+    locations: sharedLocations,
     settings: sharedSettings,
-    ...legacyReportPages,
-  },
-  VMS: {
-    jobs: {
-      title: "Jobs",
-      primaryActionLabel: "New Job",
-      openCreateOnPrimary: true,
-      createFlowKey: "job",
-      createCopy: {
-        title: "New Job",
-        subtitle: "Create fabrication job",
-        submitLabel: "Create Job",
-      },
-      View: JobsListView,
-    },
-    requisitions: { title: "Material Requisition", View: RequisitionsListView },
-    customers: { title: "Customers", View: CustomersListView },
-    reports: reportsFor("VMS"),
-    finance: sharedFinance,
-    users: sharedUsers,
-    settings: sharedSettings,
+    ...posPaymentPages,
+    ...userManagementPages,
+    ...contactPages,
+    ...expensePages,
+    ...hrmPages,
+    ...settingsPages,
     ...legacyReportPages,
   },
   VS: {
@@ -328,13 +436,21 @@ const ENTITY_PAGES: Record<TenantCode, SlugMap> = {
       },
       View: AppointmentsCalendarView,
     },
-    customers: { title: "Customers", View: CustomersListView },
+    customers: sharedCustomers,
     services: { title: "Services", View: ServicesListView },
     "stylist-schedule": { title: "Stylist Schedule", View: StylistScheduleView },
     reports: reportsFor("VS"),
     finance: sharedFinance,
+    hr: sharedHr,
     users: sharedUsers,
+    locations: sharedLocations,
     settings: sharedSettings,
+    ...posPaymentPages,
+    ...userManagementPages,
+    ...contactPages,
+    ...expensePages,
+    ...hrmPages,
+    ...settingsPages,
     ...legacyReportPages,
   },
 };

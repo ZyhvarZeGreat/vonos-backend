@@ -10,11 +10,15 @@ import type { SaleLineRow } from './productSales';
 
 const SALE_SELECT = {
   id: true,
+  reference: true,
   total: true,
   currency: true,
   status: true,
   paymentStatus: true,
   date: true,
+  locationCode: true,
+  createdByName: true,
+  customer: { select: { name: true } },
   lines: {
     select: {
       name: true,
@@ -28,11 +32,15 @@ const SALE_SELECT = {
 
 export interface NormalizedSale {
   id: string;
+  reference: string;
   date: Date;
   total: number;
   status: string;
   paymentStatus: string | null;
   currency: string;
+  customerName: string;
+  locationCode: string | null;
+  staffName: string | null;
   lines: SaleLineRow[];
 }
 
@@ -63,11 +71,15 @@ export async function loadSalesReportContext(
 
   const normalized: NormalizedSale[] = sales.map((sale) => ({
     id: sale.id,
+    reference: sale.reference,
     date: sale.date,
     total: toNumber(sale.total),
     status: sale.status,
     paymentStatus: sale.paymentStatus,
     currency: sale.currency,
+    customerName: sale.customer?.name ?? 'Walk-in',
+    locationCode: sale.locationCode,
+    staffName: sale.createdByName,
     lines: sale.lines,
   }));
 

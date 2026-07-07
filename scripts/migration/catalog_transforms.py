@@ -135,4 +135,54 @@ def transform_catalog_meta(
             "newId": group_id,
         })
 
+    layout_legacy: dict[int, str] = {**existing.get("invoice_layout", {})}
+    scheme_legacy: dict[int, str] = {**existing.get("invoice_scheme", {})}
+
+    for row in table_rows(tables, "invoice_layouts"):
+        legacy_id = parse_int(row.get("id"))
+        if legacy_id <= 0 or legacy_id in layout_legacy:
+            continue
+        layout_id = new_cuid()
+        design = str(row.get("design") or "classic").strip().lower() or "classic"
+        result.invoice_layouts.append({
+            "id": layout_id,
+            "tenantId": tenant_id,
+            "name": str(row.get("name") or f"Layout {legacy_id}"),
+            "design": design,
+            "headerText": str(row.get("header_text") or "") or None,
+            "footerText": str(row.get("footer_text") or "") or None,
+            "termsText": None,
+            "isDefault": bool(parse_int(row.get("is_default"), 0)),
+        })
+        result.legacy_ids.append({
+            "tenantId": tenant_id,
+            "entityType": "invoice_layout",
+            "legacyId": legacy_id,
+            "newId": layout_id,
+        })
+        layout_legacy[legacy_id] = layout_id
+
+    for row in table_rows(tables, "invoice_schemes"):
+        legacy_id = parse_int(row.get("id"))
+        if legacy_id <= 0 or legacy_id in scheme_legacy:
+            continue
+        scheme_id = new_cuid()
+        result.invoice_schemes.append({
+            "id": scheme_id,
+            "tenantId": tenant_id,
+            "name": str(row.get("name") or f"Scheme {legacy_id}"),
+            "prefix": str(row.get("prefix") or "") or None,
+            "startNumber": parse_int(row.get("start_number"), 1),
+            "invoiceCount": parse_int(row.get("invoice_count"), 0),
+            "totalDigits": parse_int(row.get("total_digits"), 4),
+            "isDefault": bool(parse_int(row.get("is_default"), 0)),
+        })
+        result.legacy_ids.append({
+            "tenantId": tenant_id,
+            "entityType": "invoice_scheme",
+            "legacyId": legacy_id,
+            "newId": scheme_id,
+        })
+        scheme_legacy[legacy_id] = scheme_id
+
     return result

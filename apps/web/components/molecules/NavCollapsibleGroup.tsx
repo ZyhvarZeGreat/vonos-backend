@@ -75,7 +75,7 @@ export function NavCollapsibleGroup({
         className={cn(
           "flex w-full items-center gap-3 rounded-md px-2 py-1.5 text-left transition-colors",
           childActive
-            ? "font-medium text-[var(--color-brand-primary)]"
+            ? "font-medium text-[var(--color-text-nav-active)]"
             : "text-[var(--color-text-nav)] hover:bg-[var(--color-surface-nav-hover)] hover:text-[var(--color-text-nav-active)]",
           typographyRoles.navItem,
         )}
@@ -84,13 +84,13 @@ export function NavCollapsibleGroup({
         <span className="flex-1">{label}</span>
         <ChevronDown
           className={cn(
-            "h-4 w-4 shrink-0 text-muted transition-transform",
+            "h-4 w-4 shrink-0 text-[var(--color-text-nav)] transition-transform",
             open ? "rotate-0" : "-rotate-90",
           )}
         />
       </button>
       {open ? (
-        <nav id={panelId} className="ml-3 flex flex-col gap-0.5 border-l border-border pl-2">
+        <nav id={panelId} className="ml-3 flex flex-col gap-0.5 border-l border-[var(--color-border)] pl-2">
           {items.map((item) => {
             const Icon = iconMap[item.icon] ?? GroupIcon;
             return (

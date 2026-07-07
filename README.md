@@ -63,17 +63,19 @@ Set `NEXT_PUBLIC_API_URL=http://localhost:3001` in `apps/web/.env.local` so the 
 
 **Next:** Continue entity rollout per AGENTS.md Phase 2.
 
-## Deploy (Vercel)
+## Deploy (production)
 
-Two GitHub repos, two Vercel projects:
+**Low-traffic stack:** Neon (DB) + Railway (API) + Vercel (web).
 
-| Repo | Vercel Root Directory |
-|------|----------------------|
-| [vonos-backend](https://github.com/ZyhvarZeGreat/vonos-backend) | `apps/api` |
-| [vonos](https://github.com/ZyhvarZeGreat/vonos) (frontend) | `apps/web` |
+Full step-by-step: **[docs/DEPLOY.md](./docs/DEPLOY.md)**
 
-**API env vars:** `DATABASE_URL`, `JWT_SECRET`, `JWT_ACCESS_EXPIRES`, `JWT_REFRESH_EXPIRES`, `WEB_ORIGIN` (web URL), `NODE_ENV=production`
+Quick reference:
 
-**Web env vars:** `NEXT_PUBLIC_API_URL` (API URL), `NEXT_PUBLIC_SKIP_AUTH=false`
+| Service | Root / config |
+|---------|----------------|
+| Neon | Postgres — `DATABASE_URL` for API |
+| Railway | Repo root — `railway.toml` |
+| Vercel | `apps/web` — `apps/web/vercel.json` |
 
-Data lives in Neon — no migration import needed on deploy.
+**API env:** `DATABASE_URL`, `JWT_SECRET`, `WEB_ORIGIN`, `NODE_ENV=production`  
+**Web env:** `NEXT_PUBLIC_API_URL` (Railway URL), `NEXT_PUBLIC_SKIP_AUTH=false`

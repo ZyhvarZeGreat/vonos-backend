@@ -3,17 +3,11 @@ import type {
   MovementStatus,
   StockMovement,
   StockMovementLine,
+  StockMovementListRow,
 } from '@vonos/types';
-import { parseMovementLines, toIso } from '../../common/utils/serializers';
+import { parseMovementLines, toIso, toNumber } from '../../common/utils/serializers';
 
-export interface StockMovementListRow {
-  id: string;
-  reference: string;
-  supplierOrDest: string;
-  itemCount: number;
-  status: MovementStatus;
-  date: string;
-}
+export type { StockMovementListRow };
 
 export function serializeMovement(row: PrismaMovement): StockMovement {
   const lines = parseMovementLines(row.lines) as StockMovementLine[];
@@ -43,6 +37,13 @@ export function toMovementListRow(
   const supplierOrDest =
     row.supplier?.name ??
     (row.notes?.split('|')[0]?.trim() || row.notes || '—');
+  const grandTotal = lines.reduce(
+    (sum, line) =>
+      sum + line.quantity * toNumber((line as StockMovementLine).unitCost ?? 0),
+    0,
+  );
+  const isPaid =
+    row.status === 'Received' || row.status === 'Delivered';
   return {
     id: row.id,
     reference: row.reference,
@@ -50,6 +51,11 @@ export function toMovementListRow(
     itemCount: lines.length,
     status: row.status,
     date: toIso(row.date).slice(0, 10),
+    locationCode: row.locationCode,
+    locationName: row.locationCode ?? '—',
+    grandTotal,
+    paymentStatus: isPaid ? 'paid' : 'due',
+    paymentDue: isPaid ? 0 : grandTotal,
   };
 }
 

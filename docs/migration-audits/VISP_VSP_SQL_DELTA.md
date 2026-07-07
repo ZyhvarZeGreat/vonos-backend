@@ -12,16 +12,16 @@
 
 | Metric | Baseline | Current dump | Delta |
 |---|---:|---:|---:|
-| transactions | 5,434 | 5,466 | +32 |
-| products | 2,543 | 2,543 | — |
-| contacts | 4,810 | 4,814 | +4 |
-| transaction_payments | 3,055 | 3,062 | +7 |
-| account_transactions | 3,050 | 3,057 | +7 |
-| transaction_sell_lines | 18,567 | 18,595 | +28 |
-| sell + final (scanned) | 3,038 | 3,043 | +5 |
+| transactions | 5,434 | 5,350 | -84 |
+| products | 2,543 | 2,540 | -3 |
+| contacts | 4,810 | 4,799 | -11 |
+| transaction_payments | 3,055 | 3,032 | -23 |
+| account_transactions | 3,050 | 3,027 | -23 |
+| transaction_sell_lines | 18,567 | 18,474 | -93 |
+| sell + final (scanned) | 3,038 | 3,092 | +54 |
 
-| Max `transaction_date` | — | 2026-06-23 | |
-| Transactions on/after 2026-06-18 | — | 134 | import scope |
+| Max `transaction_date` | — | 2026-07-09 | |
+| Transactions on/after 2026-06-18 | — | 243 | import scope |
 
 ---
 
@@ -29,9 +29,9 @@
 
 | Check | Amount (NGN) |
 |---|---:|
-| SUM(`final_total`) sell + final | ₦367,095,670.00 |
-| SUM(`transaction_payments.amount`) on sell/final txns | ₦366,957,670.00 |
-| **Delta** | **₦138,000.00** |
+| SUM(`final_total`) sell + final | ₦373,030,370.00 |
+| SUM(`transaction_payments.amount`) on sell/final txns | ₦371,640,970.00 |
+| **Delta** | **₦1,389,400.00** |
 
 **Tie-out:** Review due/partial sells — migration uses `final_total`
 
@@ -41,25 +41,30 @@
 
 ```json
 {
-  "items": 2543,
-  "customers": 4682,
-  "suppliers": 130,
-  "sales": 3043,
-  "saleLines": 18575,
-  "stockMovements": 0,
+  "items": 2554,
+  "customers": 4703,
+  "suppliers": 133,
+  "sales": 3092,
+  "saleLines": 18742,
+  "stockMovements": 2476,
   "jobs": 0,
   "jobMaterials": 0,
   "jobLabours": 0,
-  "ledgerEntries": 3043,
-  "paymentAccounts": 31,
-  "accountTransactions": 3027,
-  "payments": 3062,
+  "ledgerEntries": 5572,
+  "paymentAccounts": 38,
+  "accountTransactions": 3102,
+  "payments": 3142,
   "productCategories": 39,
   "brands": 4,
   "productUnits": 3,
   "warranties": 0,
   "sellingPriceGroups": 0,
-  "legacyIdRows": 16080,
+  "expenseCategories": 36,
+  "expenses": 4,
+  "payrollGroups": 31,
+  "payComponents": 0,
+  "payrolls": 0,
+  "legacyIdRows": 18809,
   "auditLogs": 0
 }
 ```
@@ -70,4 +75,4 @@
 
 ### **NO-GO**
 
-- Revenue tie-out delta ₦138,000.00 exceeds ₦1
+- Revenue tie-out delta ₦1,389,400.00 exceeds ₦1

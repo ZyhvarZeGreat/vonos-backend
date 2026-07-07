@@ -1,18 +1,44 @@
-/** Default page size for list views (one request instead of unbounded pagination). */
-export const DEFAULT_LIST_LIMIT = 500;
+/** Rows shown per table page — matches DataTable default. */
+export const DEFAULT_TABLE_PAGE_SIZE = 25;
 
-/** Fetch a single cursor page — avoids N round-trips from fetchAllPages. */
+/** @deprecated Use DEFAULT_TABLE_PAGE_SIZE */
+export const DEFAULT_LIST_LIMIT = DEFAULT_TABLE_PAGE_SIZE;
+
+/** Chunk size when explicitly fetching an entire list (export only). */
+export const EXPORT_PAGE_SIZE = 500;
+
+export interface ListPage<T> {
+  items: T[];
+  hasMore: boolean;
+  pageSize: number;
+}
+
+/** Fetch one cursor page and infer whether more rows exist server-side. */
+export async function fetchListPage<T extends { id: string }>(
+  fetchPage: (cursor?: string, limit?: number) => Promise<T[]>,
+  cursor?: string,
+  limit = DEFAULT_TABLE_PAGE_SIZE,
+): Promise<ListPage<T>> {
+  const items = await fetchPage(cursor, limit);
+  return {
+    items,
+    hasMore: items.length >= limit,
+    pageSize: limit,
+  };
+}
+
+/** First page only — default for list views (no unbounded pagination). */
 export async function fetchFirstPage<T extends { id: string }>(
   fetchPage: (cursor?: string, limit?: number) => Promise<T[]>,
-  limit = DEFAULT_LIST_LIMIT,
+  limit = DEFAULT_TABLE_PAGE_SIZE,
 ): Promise<T[]> {
   return fetchPage(undefined, limit);
 }
 
-/** Fetch every page from a cursor-paginated list API (items must have `id`). */
+/** Fetch every page — export / admin tooling only, never for table initial render. */
 export async function fetchAllPages<T extends { id: string }>(
   fetchPage: (cursor?: string, limit?: number) => Promise<T[]>,
-  pageSize = 500,
+  pageSize = EXPORT_PAGE_SIZE,
 ): Promise<T[]> {
   const all: T[] = [];
   let cursor: string | undefined;

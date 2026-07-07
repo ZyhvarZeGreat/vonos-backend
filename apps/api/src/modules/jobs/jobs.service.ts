@@ -12,6 +12,12 @@ import { buildCursorQuery } from '../../common/utils/pagination';
 import { toIso, toNumber } from '../../common/utils/serializers';
 
 export interface JobDetail extends Job {
+  customer?: {
+    id: string;
+    name: string;
+    email: string | null;
+    phone: string | null;
+  } | null;
   materials: JobMaterial[];
   labourEntries: JobLabour[];
 }
@@ -68,11 +74,25 @@ export class JobsService {
     const tenantId = this.tenantDb.requireTenantId();
     const row = await this.tenantDb.db.job.findFirst({
       where: { id, tenantId, deletedAt: null },
-      include: { materials: true, labourEntries: true },
+      include: {
+        materials: true,
+        labourEntries: true,
+        customer: {
+          select: { id: true, name: true, email: true, phone: true },
+        },
+      },
     });
     if (!row) throw new NotFoundException('Job not found');
     return {
       ...this.serializeJob(row),
+      customer: row.customer
+        ? {
+            id: row.customer.id,
+            name: row.customer.name,
+            email: row.customer.email,
+            phone: row.customer.phone,
+          }
+        : null,
       materials: row.materials.map((m) => ({
         id: m.id,
         jobId: m.jobId,
@@ -91,6 +111,7 @@ export class JobsService {
     reference: string;
     description: string;
     customerName?: string;
+    customerId?: string;
     vehicleId?: string;
     locationCode?: string;
     hasQuote?: boolean;
@@ -102,6 +123,18 @@ export class JobsService {
     const locationCode = await this.tenantDb.resolveBusinessLocation(
       body.locationCode,
     );
+    let customerName = body.customerName ?? null;
+    let customerId = body.customerId ?? null;
+    if (customerId) {
+      const customer = await this.tenantDb.db.customer.findFirst({
+        where: { id: customerId, tenantId, deletedAt: null },
+        select: { name: true },
+      });
+      if (!customer) {
+        throw new BadRequestException('Customer not found');
+      }
+      customerName = customer.name;
+    }
     const row = await this.tenantDb.db.job.create({
       data: {
         tenantId,
@@ -110,7 +143,8 @@ export class JobsService {
         status: 'Received',
         hasQuote: body.hasQuote ?? false,
         quoteAmount: body.quoteAmount ?? null,
-        customerName: body.customerName ?? null,
+        customerId,
+        customerName,
         vehicleId: body.vehicleId ?? null,
         locationCode,
         assignedStaffIds: [],
@@ -153,6 +187,63 @@ export class JobsService {
     return this.serializeJob(row);
   }
 
+  async updateBilling(
+    id: string,
+    body: {
+      hasQuote?: boolean;
+      quoteAmount?: number | null;
+      quoteNotes?: string | null;
+      quoteValidUntil?: string | null;
+      invoiceAmount?: number | null;
+      invoiceNotes?: string | null;
+    },
+  ): Promise<JobDetail> {
+    const tenantId = this.tenantDb.requireTenantId();
+    const existing = await this.tenantDb.db.job.findFirst({
+      where: { id, tenantId, deletedAt: null },
+    });
+    if (!existing) throw new NotFoundException('Job not found');
+
+    const hasQuote =
+      body.hasQuote ??
+      (body.quoteAmount != null ? true : existing.hasQuote);
+
+    await this.tenantDb.db.job.update({
+      where: { id },
+      data: {
+        hasQuote,
+        ...(body.quoteAmount !== undefined
+          ? { quoteAmount: body.quoteAmount }
+          : {}),
+        ...(body.quoteNotes !== undefined
+          ? { quoteNotes: body.quoteNotes }
+          : {}),
+        ...(body.quoteValidUntil !== undefined
+          ? {
+              quoteValidUntil: body.quoteValidUntil
+                ? new Date(body.quoteValidUntil)
+                : null,
+            }
+          : {}),
+        ...(body.invoiceAmount !== undefined
+          ? { invoiceAmount: body.invoiceAmount }
+          : {}),
+        ...(body.invoiceNotes !== undefined
+          ? { invoiceNotes: body.invoiceNotes }
+          : {}),
+      },
+    });
+
+    await this.auditService.log({
+      action: 'updated',
+      entityType: 'job',
+      entityId: id,
+      summary: `Updated quote/invoice draft for ${existing.reference}`,
+    });
+
+    return this.getById(id);
+  }
+
   private async resolveLabourWithStaffNames(
     rows: Array<{
       id: string;
@@ -191,7 +282,12 @@ export class JobsService {
     status: string;
     hasQuote: boolean;
     quoteAmount: { toString(): string } | null;
+    quoteNotes: string | null;
+    quoteValidUntil: Date | null;
+    invoiceAmount: { toString(): string } | null;
+    invoiceNotes: string | null;
     customerName: string | null;
+    customerId: string | null;
     vehicleId: string | null;
     locationCode: string | null;
     assignedStaffIds: string[];
@@ -209,6 +305,13 @@ export class JobsService {
       status: row.status,
       hasQuote: row.hasQuote,
       quoteAmount: row.quoteAmount ? toNumber(row.quoteAmount) : null,
+      quoteNotes: row.quoteNotes ?? null,
+      quoteValidUntil: row.quoteValidUntil
+        ? toIso(row.quoteValidUntil).slice(0, 10)
+        : null,
+      invoiceAmount: row.invoiceAmount ? toNumber(row.invoiceAmount) : null,
+      invoiceNotes: row.invoiceNotes ?? null,
+      customerId: row.customerId,
       customerName: row.customerName,
       vehicleId: row.vehicleId,
       locationCode: row.locationCode,

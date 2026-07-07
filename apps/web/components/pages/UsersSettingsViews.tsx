@@ -1,193 +1,28 @@
 "use client";
 
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { useAppMutation } from "@/lib/hooks/useAppMutation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
+import Link from "next/link";
 import { Input } from "@/components/atoms/Input";
 import { Button } from "@/components/atoms/Button";
-import { StatusPill } from "@/components/atoms/StatusPill";
-import { DataTable, type ColumnConfig } from "@/components/organisms/DataTable";
-import { InviteUserModal } from "@/components/organisms/InviteUserModal";
-import { ListPageShell } from "@/components/organisms/ListPageShell";
-import { getUsers, type UserListRow } from "@/lib/api/users";
+import { EntityColorBadge } from "@/components/atoms/EntityColorBadge";
 import { updateTenantConfig } from "@/lib/api/tenants";
-import {
-  formatBusinessLocations,
-  linesToList,
-  listToLines,
-  parseBusinessLocations,
-} from "@/lib/utils/catalogConfig";
+import { linesToList, listToLines } from "@/lib/utils/catalogConfig";
 import { useRouteTenant } from "@/lib/hooks/useRouteTenant";
-import { useListPageFilters } from "@/lib/hooks/useListPageFilters";
-import { filterBySearch, uniqueFieldOptions } from "@/lib/utils/listFilters";
-import { hasPermission } from "@/lib/utils/permissions";
-import { useAuthStore } from "@/stores/authStore";
 import { useTenantStore } from "@/stores/tenantStore";
-import type { User } from "@vonos/types";
-
-function formatRole(role: User["role"]): string {
-  return role
-    .split("_")
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ");
-}
-
-function formatStatus(status: User["status"]): string {
-  if (status === "active") return "Active";
-  if (status === "invited") return "Invited";
-  return "Suspended";
-}
-
-const userColumns: ColumnConfig<UserListRow>[] = [
-  { key: "name", header: "Name", render: (r) => <span className="font-medium">{r.name}</span> },
-  { key: "email", header: "Email" },
-  {
-    key: "role",
-    header: "Role",
-    render: (r) => formatRole(r.role),
-  },
-  {
-    key: "status",
-    header: "Status",
-    render: (r) => (
-      <StatusPill
-        status={formatStatus(r.status)}
-        vocabulary="userStatus"
-      />
-    ),
-  },
-];
-
-const allTenantsColumns: ColumnConfig<UserListRow>[] = [
-  {
-    key: "tenantCode",
-    header: "Entity",
-    render: (r) => (
-      <span className="font-medium">{r.tenantCode ?? "—"}</span>
-    ),
-  },
-  ...userColumns,
-];
-
-export interface UsersViewProps {
-  /** Super-admin group view — all entities' users. */
-  allTenants?: boolean;
-}
-
-export function UsersView({ allTenants = false }: UsersViewProps) {
-  const { tenantId, tenantName } = useRouteTenant();
-  const authRole = useAuthStore((state) => state.role);
-  const { dateRange, setDateRange, search, setSearch } = useListPageFilters();
-  const [roleFilter, setRoleFilter] = useState("");
-  const [statusFilter, setStatusFilter] = useState("");
-  const [inviteOpen, setInviteOpen] = useState(false);
-
-  const canInvite = authRole ? hasPermission(authRole, "manageUsers") : false;
-
-  const { data: users = [], isLoading, error } = useQuery({
-    queryKey: ["users", allTenants ? "all" : tenantId],
-    queryFn: () =>
-      allTenants
-        ? getUsers(null, { allTenants: true })
-        : getUsers(tenantId),
-    enabled: allTenants || Boolean(tenantId),
-  });
-
-  const filtered = useMemo(() => {
-    let rows = users;
-    if (roleFilter) rows = rows.filter((u) => u.role === roleFilter);
-    if (statusFilter) rows = rows.filter((u) => u.status === statusFilter);
-    return filterBySearch(rows, search, ["name", "email", "tenantCode"]);
-  }, [roleFilter, search, statusFilter, users]);
-
-  const roleOptions = useMemo(
-    () => uniqueFieldOptions(users, "role"),
-    [users],
-  );
-  const statusOptions = useMemo(
-    () => uniqueFieldOptions(users, "status"),
-    [users],
-  );
-
-  const columns = allTenants ? allTenantsColumns : userColumns;
-
-  const subtitle = allTenants
-    ? "Includes group super admins and staff imported from legacy systems (linked to their home entity)."
-    : null;
-
-  return (
-    <div className="space-y-6">
-      {!allTenants && tenantName ? (
-        <p className="text-sm text-muted">
-          Team members for <span className="font-medium text-foreground">{tenantName}</span>{" "}
-          — includes legacy imports even if promoted to group admin.
-        </p>
-      ) : null}
-      {subtitle ? <p className="text-sm text-muted">{subtitle}</p> : null}
-      {canInvite ? (
-        <div className="flex justify-end">
-          <Button size="sm" onClick={() => setInviteOpen(true)}>
-            Add user
-          </Button>
-        </div>
-      ) : null}
-      <InviteUserModal
-        open={inviteOpen}
-        onClose={() => setInviteOpen(false)}
-        allTenants={allTenants}
-        defaultTenantId={allTenants ? undefined : tenantId}
-      />
-      <ListPageShell
-        tabs={[{ id: "all", label: "All Users" }]}
-        activeTab="all"
-        onTabChange={() => {}}
-        searchValue={search}
-        onSearchChange={setSearch}
-        searchPlaceholder="Search users..."
-        showImport={false}
-        dateRange={dateRange}
-        onDateRangeChange={setDateRange}
-        showDateRange={false}
-        filterDropdowns={[
-          {
-            id: "role",
-            label: "Role",
-            value: roleFilter,
-            onChange: setRoleFilter,
-            options: roleOptions,
-          },
-          {
-            id: "status",
-            label: "Status",
-            value: statusFilter,
-            onChange: setStatusFilter,
-            options: statusOptions,
-          },
-        ]}
-      >
-        <DataTable
-          data={filtered}
-          columns={columns}
-          displayMode="table"
-          embedded
-          isLoading={isLoading}
-          error={error ? "Could not load users." : null}
-        />
-      </ListPageShell>
-    </div>
-  );
-}
+import { accentForTenantCode } from "@/lib/registries/tenantAccents";
 
 const SETTINGS_TABS = [
   { id: "branding", label: "Branding" },
   { id: "terminology", label: "Terminology" },
-  { id: "catalog", label: "Catalog & locations" },
+  { id: "catalog", label: "Catalog" },
   { id: "notifications", label: "Notifications" },
 ];
 
 export function SettingsView() {
   const [activeTab, setActiveTab] = useState("branding");
-  const { tenantId, tenantName, config } = useRouteTenant();
+  const { tenantId, tenantName, tenantCode, config } = useRouteTenant();
   const setTenantConfig = useTenantStore((state) => state.setTenantConfig);
   const queryClient = useQueryClient();
   const terminology = config?.terminology ?? {};
@@ -195,24 +30,19 @@ export function SettingsView() {
   const [itemLabel, setItemLabel] = useState(terminology.item ?? "Item");
   const [inventoryLabel, setInventoryLabel] = useState(terminology.inventory ?? "Inventory");
   const [categoriesText, setCategoriesText] = useState(listToLines(config?.itemCategories));
-  const [branchesText, setBranchesText] = useState(
-    formatBusinessLocations(config?.businessLocations),
-  );
-  const [storageText, setStorageText] = useState(listToLines(config?.storageLocations));
   const [saveError, setSaveError] = useState<string | null>(null);
+
+  const accent = tenantCode ? accentForTenantCode(tenantCode) : "#2563eb";
+  const locationsHref = tenantCode ? `/${tenantCode}/locations` : "#";
 
   useEffect(() => {
     setDisplayName(config?.name ?? tenantName ?? "");
     setItemLabel(terminology.item ?? "Item");
     setInventoryLabel(terminology.inventory ?? "Inventory");
     setCategoriesText(listToLines(config?.itemCategories));
-    setBranchesText(formatBusinessLocations(config?.businessLocations));
-    setStorageText(listToLines(config?.storageLocations));
   }, [
-    config?.businessLocations,
     config?.itemCategories,
     config?.name,
-    config?.storageLocations,
     tenantName,
     terminology.inventory,
     terminology.item,
@@ -230,14 +60,11 @@ export function SettingsView() {
         ...(activeTab === "catalog"
           ? {
               itemCategories: linesToList(categoriesText),
-              businessLocations: parseBusinessLocations(branchesText),
-              storageLocations: linesToList(storageText),
             }
           : {}),
       });
     },
-    successMessage:
-      activeTab === "catalog" ? "Catalog and locations saved" : "Settings saved",
+    successMessage: activeTab === "catalog" ? "Catalog saved" : "Settings saved",
     onSuccess: (updated) => {
       setTenantConfig(updated);
       setSaveError(null);
@@ -248,6 +75,7 @@ export function SettingsView() {
 
   return (
     <div className="space-y-6">
+      {tenantCode ? <EntityColorBadge code={tenantCode} className="mb-2" /> : null}
       <p className="text-sm text-muted">
         Settings for <span className="font-medium text-foreground">{tenantName}</span>.
       </p>
@@ -270,7 +98,7 @@ export function SettingsView() {
           {SETTINGS_TABS.find((t) => t.id === activeTab)?.label}
         </h3>
         <p className="mt-1 mb-6 text-sm text-muted">
-          Tenant configuration — branding, terminology overrides, and notification preferences.
+          Tenant configuration — branding, terminology, and notification preferences.
         </p>
         <form
           className="space-y-4"
@@ -287,8 +115,22 @@ export function SettingsView() {
                 value={displayName}
                 onChange={(e) => setDisplayName(e.target.value)}
               />
-              <Input label="Accent color" defaultValue="#059669" type="text" disabled />
-              <p className="text-xs text-muted">Accent color is read-only until theme settings are persisted.</p>
+              <div className="space-y-2">
+                <span className="text-sm font-medium text-foreground">Entity color</span>
+                <div className="flex items-center gap-3">
+                  <span
+                    className="h-10 w-10 rounded-lg border border-border shadow-sm"
+                    style={{ backgroundColor: accent }}
+                    aria-hidden
+                  />
+                  <div>
+                    <p className="font-mono text-sm text-foreground">{accent}</p>
+                    <p className="text-xs text-muted">
+                      Applied to charts, finance, reports, and navigation for this entity.
+                    </p>
+                  </div>
+                </div>
+              </div>
             </>
           )}
           {activeTab === "terminology" && (
@@ -307,50 +149,36 @@ export function SettingsView() {
           )}
           {activeTab === "catalog" && (
             <>
-              <label className="block space-y-1.5">
-                <span className="text-sm font-medium text-foreground">Item categories</span>
-                <span className="block text-xs text-muted">One category per line. Used on create forms and sales.</span>
+              <div className="rounded-lg border border-border bg-[var(--color-surface-muted)] px-4 py-3 text-sm text-muted">
+                Branches, counters, and bin slots are managed on the{" "}
+                <Link href={locationsHref} className="font-medium text-foreground underline">
+                  Locations
+                </Link>{" "}
+                page.
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-foreground">Item categories</label>
+                <p className="text-xs text-muted">One category per line.</p>
                 <textarea
-                  className="min-h-[120px] w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
                   value={categoriesText}
                   onChange={(e) => setCategoriesText(e.target.value)}
+                  rows={6}
+                  className="w-full rounded-md border border-border bg-card px-3 py-2 font-mono text-sm text-foreground"
                 />
-              </label>
-              <label className="block space-y-1.5">
-                <span className="text-sm font-medium text-foreground">Business locations</span>
-                <span className="block text-xs text-muted">
-                  Branch / POS sites — one per line as <code className="text-xs">CODE | Name</code> (e.g. BL004 | VONOS HEAD OFFICE).
-                </span>
-                <textarea
-                  className="min-h-[120px] w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
-                  value={branchesText}
-                  onChange={(e) => setBranchesText(e.target.value)}
-                />
-              </label>
-              <label className="block space-y-1.5">
-                <span className="text-sm font-medium text-foreground">Storage locations</span>
-                <span className="block text-xs text-muted">Bin / rack codes for warehouse inventory — one per line.</span>
-                <textarea
-                  className="min-h-[100px] w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
-                  value={storageText}
-                  onChange={(e) => setStorageText(e.target.value)}
-                />
-              </label>
+              </div>
             </>
           )}
           {activeTab === "notifications" && (
-            <p className="text-sm text-muted">Configure email and in-app notification preferences for this entity.</p>
+            <p className="text-sm text-muted">
+              Notification preferences will be configurable in a future release.
+            </p>
           )}
           {saveError ? <p className="text-sm text-error">{saveError}</p> : null}
-          <div className="pt-2">
-            <Button
-              type="submit"
-              size="sm"
-              disabled={saveMutation.isPending || activeTab === "notifications"}
-            >
+          {activeTab !== "notifications" ? (
+            <Button type="submit" size="sm" disabled={saveMutation.isPending}>
               {saveMutation.isPending ? "Saving…" : "Save changes"}
             </Button>
-          </div>
+          ) : null}
         </form>
       </div>
     </div>

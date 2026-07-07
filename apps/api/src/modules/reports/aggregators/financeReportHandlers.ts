@@ -14,6 +14,8 @@ import {
   resolveDateWindow,
 } from './date-utils';
 import { loadSalesReportContext } from './salesData';
+import { computeJobRevenueTotal } from './jobSalesData';
+import { buildHqProfitLossReport } from './profitLossQueries';
 
 export async function buildProfitLossReport(
   db: TenantScopedPrisma,
@@ -98,11 +100,16 @@ export async function buildProfitLossReport(
   // VISP fallback: revenue from sale totals when ledger rows were not backfilled
   if (summary.revenue === 0) {
     const salesRevenue = await computeSalesRevenueTotal(db, from, to);
-    if (salesRevenue.revenue > 0) {
-      summary.revenue = salesRevenue.revenue;
+    const jobRevenue = await computeJobRevenueTotal(db, from, to);
+    const combinedRevenue = salesRevenue.revenue + jobRevenue.revenue;
+    if (combinedRevenue > 0) {
+      summary.revenue = combinedRevenue;
       summary.currency = salesRevenue.currency;
-      summary.net = salesRevenue.revenue - summary.costs;
-      revenueByCategory = new Map([['Sales', salesRevenue.revenue]]);
+      summary.net = combinedRevenue - summary.costs;
+      revenueByCategory = new Map([
+        ...(salesRevenue.revenue > 0 ? [['Sales', salesRevenue.revenue] as const] : []),
+        ...(jobRevenue.revenue > 0 ? [['Jobs', jobRevenue.revenue] as const] : []),
+      ]);
 
       const ctx = await loadSalesReportContext(db, from, to);
       for (const sale of ctx.periodSales) {
@@ -123,6 +130,8 @@ export async function buildProfitLossReport(
       costs: Math.round(row.costs),
       net: Math.round(row.revenue - row.costs),
     }));
+
+  const profitLoss = await buildHqProfitLossReport(db, from, to);
 
   return {
     kpis: [
@@ -201,6 +210,7 @@ export async function buildProfitLossReport(
         currency: summary.currency,
       })),
     },
+    profitLoss,
   };
 }
 

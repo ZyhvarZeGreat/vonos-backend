@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any
 
 from migration.account_transforms import transform_accounts
 from migration.catalog_transforms import transform_catalog_meta
+from migration.hrm_transforms import transform_hrm_records
 from migration.job_transforms import run_job_migration
 from migration.load_dump import load_tables
 from migration.pos_common import build_legacy_user_name_map, legacy_map
@@ -25,7 +26,9 @@ def run_entity_migration(
     progress: ProgressReporter | None = None,
     *,
     since: str | None = None,
+    until: str | None = None,
     existing_legacy: dict[str, dict[int, str]] | None = None,
+    include_purchases: bool = False,
 ) -> tuple[dict[str, int], TransformResult]:
     if progress:
         progress.phase(1, 3, f"Load MySQL tables from `{entity.source_db}`")
@@ -56,7 +59,16 @@ def run_entity_migration(
             existing_legacy=existing_legacy,
         )
     elif entity.archetype == "job":
-        result = run_job_migration(tables, entity.tenant_id, entity.code)  # type: ignore[arg-type]
+        result = run_job_migration(
+            tables,
+            entity.tenant_id,
+            entity.code,  # type: ignore[arg-type]
+            reference_prefix=entity.reference_prefix or f"{entity.code}-",
+            since=since,
+            until=until,
+            existing_legacy=existing_legacy,
+            include_purchases=include_purchases,
+        )
     else:
         raise ValueError(f"Unsupported archetype: {entity.archetype}")
 
@@ -76,6 +88,7 @@ def run_entity_migration(
         entity.tenant_id,
         user_names=user_names,
         since=since,
+        until=until,
         existing_legacy=account_existing,
     )
     result.merge(account_result)
@@ -86,6 +99,18 @@ def run_entity_migration(
         existing_legacy=existing_legacy,
     )
     result.merge(catalog_result)
+
+    hrm_result = transform_hrm_records(
+        tables,
+        entity.tenant_id,
+        user_names=user_names,
+        since=since,
+        until=until,
+        existing_group_legacy=existing_legacy.get("payroll_group") if existing_legacy else None,
+        existing_payroll_legacy=existing_legacy.get("payroll") if existing_legacy else None,
+        existing_component_legacy=existing_legacy.get("pay_component") if existing_legacy else None,
+    )
+    result.merge(hrm_result)
 
     if progress:
         counts = result.counts()

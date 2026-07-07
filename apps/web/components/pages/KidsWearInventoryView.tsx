@@ -1,20 +1,20 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
 import { StatusPill } from "@/components/atoms/StatusPill";
 import { DataTable, type ColumnConfig } from "@/components/organisms/DataTable";
 import { ListPageShell } from "@/components/organisms/ListPageShell";
-import { getItems } from "@/lib/api/items";
+import { getItems, getItemsPage } from "@/lib/api/items";
+import { useServerListPage } from "@/lib/hooks/useServerListPage";
+import { ServerPaginatedTable } from "@/components/organisms/ServerPaginatedTable";
 import { useRecordNavigation } from "@/lib/hooks/useRecordNavigation";
 import { useListPageFilters } from "@/lib/hooks/useListPageFilters";
 import { formatCurrency, formatNumber } from "@/lib/utils/formatCurrency";
 import {
   filterByDateField,
-  filterBySearch,
   uniqueFieldOptions,
 } from "@/lib/utils/listFilters";
-import type { Item } from "@vonos/types";
+import type { Item, StockStatus } from "@vonos/types";
 import { useTenantId } from "@/lib/hooks/useRouteTenant";
 
 const COLLECTION_TABS = [
@@ -55,28 +55,43 @@ export function KidsWearInventoryView() {
   const [categoryFilter, setCategoryFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
 
-  const itemsQuery = useQuery({
-    queryKey: ["items", tenantId],
-    queryFn: () => getItems(tenantId!),
-    enabled: Boolean(tenantId),
-  });
+  const apiFilters = useMemo(() => {
+    const next: { status?: StockStatus; category?: string; search?: string } = {};
+    if (activeTab === "low_stock") next.status = "low_stock";
+    if (categoryFilter) next.category = categoryFilter;
+    if (statusFilter) next.status = statusFilter as StockStatus;
+    if (search.trim()) next.search = search.trim();
+    return next;
+  }, [activeTab, categoryFilter, search, statusFilter]);
 
-  const items = useMemo(() => itemsQuery.data ?? [], [itemsQuery.data]);
+  const {
+    items,
+    hasMore,
+    pageIndex,
+    pageSize,
+    canGoPrev,
+    goNext,
+    goPrev,
+    setPageSize,
+    isLoading,
+    error,
+  } = useServerListPage({
+    queryKey: ["items", tenantId],
+    enabled: Boolean(tenantId),
+    filters: apiFilters,
+    fetchPage: (cursor, limit) => getItemsPage(tenantId!, apiFilters, cursor, limit),
+  });
 
   const filtered = useMemo(() => {
     let rows = filterByDateField(items, bounds, "createdAt");
-    if (activeTab === "low_stock") {
-      rows = rows.filter((item) => item.status === "low_stock");
-    } else if (activeTab === "summer" || activeTab === "spring") {
+    if (activeTab === "summer" || activeTab === "spring") {
       const tag = activeTab === "summer" ? "summer" : "spring";
       rows = rows.filter((item) =>
         (item.category ?? "").toLowerCase().includes(tag),
       );
     }
-    if (categoryFilter) rows = rows.filter((item) => item.category === categoryFilter);
-    if (statusFilter) rows = rows.filter((item) => item.status === statusFilter);
-    return filterBySearch(rows, search, ["name", "sku", "category"]);
-  }, [activeTab, bounds, categoryFilter, items, search, statusFilter]);
+    return rows;
+  }, [activeTab, bounds, items]);
 
   const categoryOptions = useMemo(
     () => uniqueFieldOptions(items, "category"),
@@ -118,13 +133,18 @@ export function KidsWearInventoryView() {
           },
         ]}
       >
-        <DataTable
-          data={filtered}
+        <ServerPaginatedTable
+          items={filtered}
           columns={columns}
-          displayMode="table"
-          embedded
-          isLoading={itemsQuery.isLoading}
-          error={itemsQuery.error ? "Failed to load inventory" : null}
+          pageIndex={pageIndex}
+          pageSize={pageSize}
+          hasMore={hasMore}
+          canGoPrev={canGoPrev}
+          onNext={goNext}
+          onPrev={goPrev}
+          onPageSizeChange={setPageSize}
+          isLoading={isLoading}
+          error={error ? "Failed to load inventory" : null}
           onRowClick={(row) => goToDetail(row.id)}
         />
       </ListPageShell>

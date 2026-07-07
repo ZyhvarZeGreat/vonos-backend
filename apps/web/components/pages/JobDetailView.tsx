@@ -19,6 +19,7 @@ import { formatDate } from "@/lib/utils/formatDate";
 import type { SectionInstance } from "@/lib/registries/sectionTypes";
 import type { JobLabour, JobMaterial } from "@vonos/types";
 import { useAuditHistoryFeed, createdByField } from "@/lib/hooks/useAuditHistoryFeed";
+import { JobQuoteInvoicePanel } from "@/components/molecules/JobQuoteInvoicePanel";
 
 const QC_ITEMS = ["Welds inspected", "Finish quality checked", "Road test completed"];
 
@@ -207,7 +208,7 @@ export interface JobDetailViewProps {
 export function JobDetailView({ job, listPath, onJobChange }: JobDetailViewProps) {
   const params = useParams<{ tenant: string }>();
   const queryClient = useQueryClient();
-  const isMechanics = params.tenant === "VM";
+  const isMechanics = params.tenant === "VA";
 
   const stages = buildAdaptiveJobStages(job.hasQuote);
   const currentIndex = stages.indexOf(job.status);
@@ -264,7 +265,7 @@ export function JobDetailView({ job, listPath, onJobChange }: JobDetailViewProps
       sections={[]}
       footer={
         <div className="space-y-6">
-          {isMechanics && job.vehicleId ? (
+          {params.tenant === "VA" && job.vehicleId ? (
             <div className="inline-flex items-center gap-3 rounded-lg border border-border bg-card px-4 py-3 shadow-card">
               <Car className="h-5 w-5 text-[var(--color-brand-accent)]" />
               <div>
@@ -272,6 +273,10 @@ export function JobDetailView({ job, listPath, onJobChange }: JobDetailViewProps
                 <p className="font-medium text-foreground">{job.vehicleId}</p>
               </div>
             </div>
+          ) : null}
+
+          {isMechanics ? (
+            <JobQuoteInvoicePanel job={job} onJobChange={onJobChange} />
           ) : null}
 
           <div className="grid gap-6 lg:grid-cols-2">

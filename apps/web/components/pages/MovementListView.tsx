@@ -1,16 +1,22 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import type { MovementSource, MovementStatus } from "@vonos/types";
 import { StatusPill } from "@/components/atoms/StatusPill";
-import { DataTable, type ColumnConfig } from "@/components/organisms/DataTable";
+import { type ColumnConfig } from "@/components/organisms/DataTable";
+import { ServerPaginatedTable } from "@/components/organisms/ServerPaginatedTable";
 import { ListPageShell } from "@/components/organisms/ListPageShell";
-import { getStockMovements, type StockMovementListRow } from "@/lib/api/stockMovements";
+import {
+  getAllStockMovements,
+  getStockMovementsPage,
+  type StockMovementListRow,
+} from "@/lib/api/stockMovements";
+import { useServerListPage } from "@/lib/hooks/useServerListPage";
 import { useRecordNavigation } from "@/lib/hooks/useRecordNavigation";
-import { useTenantId } from "@/lib/hooks/useRouteTenant";
+import { useRouteTenant, useTenantId } from "@/lib/hooks/useRouteTenant";
 import { useListPageFilters } from "@/lib/hooks/useListPageFilters";
 import { useListExport } from "@/lib/hooks/useListExport";
+import { formatCurrency } from "@/lib/utils/formatCurrency";
 import {
   filterByDateField,
   filterBySearch,
@@ -31,36 +37,87 @@ export function MovementListView({
   source,
 }: MovementListViewProps) {
   const { goToDetail } = useRecordNavigation(type);
+  const { tenantCode } = useRouteTenant();
   const tenantId = useTenantId();
   const exportList = useListExport();
   const { dateRange, setDateRange, search, setSearch, bounds } = useListPageFilters();
   const [activeTab, setActiveTab] = useState(defaultStatus === "Pending" ? "pending" : "all");
   const [statusFilter, setStatusFilter] = useState("");
 
-  const { data = [], isLoading, error } = useQuery<StockMovementListRow[]>({
+  const apiFilters = useMemo(
+    () => ({
+      type,
+      ...(defaultStatus ? { status: defaultStatus } : {}),
+      ...(source ? { source } : {}),
+    }),
+    [defaultStatus, source, type],
+  );
+
+  const {
+    items: data,
+    hasMore,
+    pageIndex,
+    pageSize,
+    canGoPrev,
+    goNext,
+    goPrev,
+    setPageSize,
+    isLoading,
+    error,
+  } = useServerListPage<StockMovementListRow>({
     queryKey: ["stock-movements", tenantId, type, source, defaultStatus],
-    queryFn: async () => {
-      if (!tenantId) return [];
-      return getStockMovements(tenantId, {
-        type,
-        ...(defaultStatus ? { status: defaultStatus } : {}),
-        ...(source ? { source } : {}),
-      });
-    },
     enabled: Boolean(tenantId),
+    filters: apiFilters,
+    search,
+    fetchPage: (cursor, limit) =>
+      getStockMovementsPage(tenantId!, apiFilters, cursor, limit),
   });
 
-  const columns: ColumnConfig<StockMovementListRow>[] = [
-    { key: "reference", header: "Reference", render: (r) => <span className="font-medium">{r.reference}</span> },
-    { key: "supplierOrDest", header: type === "inbound" ? "Supplier" : "Destination" },
-    { key: "itemCount", header: "Items", sortValue: (r) => r.itemCount },
-    {
-      key: "status",
-      header: "Status",
-      render: (r) => <StatusPill status={r.status} vocabulary="movementStatus" />,
-    },
-    { key: "date", header: "Date", sortValue: (r) => new Date(r.date).getTime() },
-  ];
+  const columns: ColumnConfig<StockMovementListRow>[] = useMemo(() => {
+    const base: ColumnConfig<StockMovementListRow>[] = [
+      { key: "reference", header: "Reference", render: (r) => <span className="font-medium">{r.reference}</span> },
+      { key: "date", header: "Date", sortValue: (r) => new Date(r.date).getTime() },
+      { key: "supplierOrDest", header: type === "inbound" ? "Supplier" : "Destination" },
+    ];
+    if (type === "inbound") {
+      return [
+        ...base,
+        { key: "locationName", header: "Location", render: (r) => r.locationName ?? "—" },
+        {
+          key: "status",
+          header: "Status",
+          render: (r) => <StatusPill status={r.status} vocabulary="movementStatus" />,
+        },
+        {
+          key: "paymentStatus",
+          header: "Payment Status",
+          render: (r) => <StatusPill status={r.paymentStatus ?? "due"} vocabulary="movementStatus" />,
+        },
+        {
+          key: "grandTotal",
+          header: "Grand Total",
+          sortValue: (r) => r.grandTotal ?? 0,
+          render: (r) => formatCurrency(r.grandTotal ?? 0, "NGN"),
+        },
+        {
+          key: "paymentDue",
+          header: "Payment due",
+          sortValue: (r) => r.paymentDue ?? 0,
+          render: (r) => formatCurrency(r.paymentDue ?? 0, "NGN"),
+        },
+        { key: "itemCount", header: "Items", sortValue: (r) => r.itemCount },
+      ];
+    }
+    return [
+      ...base,
+      { key: "itemCount", header: "Items", sortValue: (r) => r.itemCount },
+      {
+        key: "status",
+        header: "Status",
+        render: (r) => <StatusPill status={r.status} vocabulary="movementStatus" />,
+      },
+    ];
+  }, [type]);
 
   const statusOptions = useMemo(
     () => uniqueFieldOptions(data, "status"),
@@ -92,6 +149,16 @@ export function MovementListView({
       searchValue={search}
       onSearchChange={setSearch}
       searchPlaceholder={`Search ${title ?? type}...`}
+      primaryAction={
+        type === "inbound" && tenantCode ? (
+          <a
+            href={`/${tenantCode}/add-purchase`}
+            className="inline-flex h-9 items-center rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground"
+          >
+            Add Purchase
+          </a>
+        ) : undefined
+      }
       dateRange={dateRange}
       onDateRangeChange={setDateRange}
       filterDropdowns={[
@@ -103,7 +170,9 @@ export function MovementListView({
           onChange: setStatusFilter,
         },
       ]}
-      onExport={() =>
+      onExport={async () => {
+        if (!tenantId) return;
+        const rows = await getAllStockMovements(tenantId, apiFilters);
         exportList(
           `${title ?? type}.csv`,
           [
@@ -113,20 +182,26 @@ export function MovementListView({
             { key: "status", header: "Status" },
             { key: "date", header: "Date" },
           ],
-          filtered.map((row) => ({
+          rows.map((row) => ({
             reference: row.reference,
             supplierOrDest: row.supplierOrDest,
             itemCount: row.itemCount,
             status: row.status,
             date: row.date,
           })),
-        )
-      }
+        );
+      }}
     >
-      <DataTable<StockMovementListRow>
-        data={filtered}
+      <ServerPaginatedTable
+        items={filtered}
         columns={columns}
-        displayMode="table"
+        pageIndex={pageIndex}
+        pageSize={pageSize}
+        hasMore={hasMore}
+        canGoPrev={canGoPrev}
+        onNext={goNext}
+        onPrev={goPrev}
+        onPageSizeChange={setPageSize}
         isLoading={isLoading}
         error={error ? "Failed to load movements" : null}
         onRowClick={(row) => goToDetail(row.id)}

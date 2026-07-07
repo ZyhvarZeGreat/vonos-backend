@@ -22,6 +22,7 @@ import { useTenantId } from "@/lib/hooks/useRouteTenant";
 import { useAuthStore } from "@/stores/authStore";
 import { formatApiError } from "@/lib/utils/formatApiError";
 import { toast } from "@/stores/toastStore";
+import { topbarAccentStyle } from "@/lib/registries/tenantAccents";
 import { cn } from "@/lib/utils/cn";
 
 export interface TopBarProps {
@@ -38,7 +39,7 @@ export function TopBar({
   title = "Overview",
   tenantCode = "VW",
   tenantName,
-  primaryActionLabel = "New Order",
+  primaryActionLabel,
   onPrimaryAction,
   primaryAction,
   className,
@@ -109,8 +110,9 @@ export function TopBar({
   return (
     <>
       <header
+        style={topbarAccentStyle(tenantCode)}
         className={cn(
-          "relative flex h-[var(--space-topbar-height)] flex-shrink-0 items-center justify-between border-b border-border bg-[var(--color-surface-topbar)] px-6 lg:px-10",
+          "relative flex h-[var(--space-topbar-height)] flex-shrink-0 items-center justify-between border-b border-[var(--color-topbar-border)] bg-[var(--color-surface-topbar)] px-6 text-[var(--color-topbar-text)] lg:px-10",
           className,
         )}
       >
@@ -124,22 +126,22 @@ export function TopBar({
             variant="topbar"
             className="hidden md:block"
           />
-          <span className="hidden text-muted md:inline" aria-hidden>
+          <span className="hidden text-[var(--color-topbar-text-muted)] md:inline" aria-hidden>
             /
           </span>
-          <h1 className={typographyRoles.pageTitle}>{title}</h1>
+          <h1 className={cn(typographyRoles.pageTitle, "!text-[var(--color-topbar-text)]")}>{title}</h1>
         </div>
 
         <div className="flex items-center gap-4">
-          <IconButton label="Inbox">
+          <IconButton label="Inbox" className="text-white/80 hover:bg-white/10 hover:text-white">
             <Inbox className="h-5 w-5" />
           </IconButton>
           <div className="relative">
-            <IconButton label="Notifications" onClick={toggleNotifications}>
+            <IconButton label="Notifications" onClick={toggleNotifications} className="text-white/80 hover:bg-white/10 hover:text-white">
               <Bell className="h-5 w-5" />
             </IconButton>
             {unreadCount > 0 ? (
-              <span className="absolute right-0.5 top-0.5 h-2 w-2 rounded-full border-2 border-white bg-error" />
+              <span className="absolute right-0.5 top-0.5 h-2 w-2 rounded-full border-2 border-[var(--color-surface-topbar)] bg-white" />
             ) : null}
             <NotificationPanel
               open={notificationsOpen}
@@ -151,27 +153,31 @@ export function TopBar({
             <IconButton
               label="Sign out"
               onClick={handleLogout}
-              className="text-error hover:bg-[var(--color-error-bg)] hover:text-error"
+              className="text-white/80 hover:bg-white/10 hover:text-white"
             >
               <LogOut className="h-5 w-5" />
             </IconButton>
           ) : null}
-          {primaryAction ?? (
-            <Button
-              size="sm"
-              className="ml-2 gap-2"
-              onClick={
-                onPrimaryAction ??
-                (() => {
-                  setNotificationsOpen(false);
-                  openCreateModal("item");
-                })
-              }
-            >
-              <Plus className="h-4 w-4" />
-              {primaryActionLabel}
-            </Button>
-          )}
+          {primaryAction
+            ? primaryAction
+            : primaryActionLabel
+              ? (
+                <Button
+                  size="sm"
+                  className="ml-2 gap-2 border border-white/20 bg-white/15 text-white hover:bg-white/25"
+                  onClick={
+                    onPrimaryAction ??
+                    (() => {
+                      setNotificationsOpen(false);
+                      openCreateModal("item");
+                    })
+                  }
+                >
+                  <Plus className="h-4 w-4" />
+                  {primaryActionLabel}
+                </Button>
+              )
+              : null}
         </div>
       </header>
       <CreateRecordModal />

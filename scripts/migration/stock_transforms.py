@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from collections import defaultdict
 from decimal import Decimal
-from typing import Any
+from typing import Any, Literal
 
 from migration.pos_common import (
     build_legacy_user_name_map,
@@ -15,12 +15,32 @@ from migration.pos_common import (
     parse_decimal,
     parse_int,
     parse_tx_date,
-    row_date_on_or_after,
+    row_date_in_range,
     table_rows,
     transform_contacts,
     transform_items,
 )
 from migration.types import TableData, TransformResult
+
+MovementScope = Literal["all", "retail_purchases"]
+
+
+def _inbound_purchase_tx(tx_type: str, status: str, *, scope: MovementScope) -> bool:
+    if tx_type == "purchase" and status in ("received", "pending", "ordered"):
+        return True
+    return scope == "retail_purchases" and tx_type == "opening_stock" and status == "received"
+
+
+def _purchase_return_tx(tx_type: str, status: str) -> bool:
+    return tx_type == "purchase_return" and status in ("final", "received")
+
+
+def _sell_tx(tx_type: str, status: str) -> bool:
+    return tx_type == "sell" and status == "final"
+
+
+def _sell_transfer_tx(tx_type: str, status: str) -> bool:
+    return tx_type == "sell_transfer" and status == "final"
 
 
 def _bin_by_variation(tables: dict[str, TableData]) -> dict[str, str]:
@@ -85,7 +105,9 @@ def transform_stock_movements(
     user_names: dict[int, str] | None = None,
     user_vonos: dict[int, str] | None = None,
     since: str | None = None,
+    until: str | None = None,
     existing_movement_legacy: dict[int, str] | None = None,
+    scope: MovementScope = "all",
 ) -> TransformResult:
     result = TransformResult()
     user_names = user_names or build_legacy_user_name_map(tables)
@@ -107,7 +129,7 @@ def transform_stock_movements(
         legacy_tx_id = parse_int(txn.get("id"))
         if legacy_tx_id <= 0:
             continue
-        if since and not row_date_on_or_after(txn, "transaction_date", since):
+        if not row_date_in_range(txn, "transaction_date", since=since, until=until):
             continue
         if existing_movement_legacy and legacy_tx_id in existing_movement_legacy:
             continue
@@ -120,7 +142,7 @@ def transform_stock_movements(
         if supplier_id is None and contact_id > 0:
             contact_note = f"Supplier legacy id: {contact_id}"
 
-        if tx_type == "purchase" and status in ("received", "pending", "ordered"):
+        if _inbound_purchase_tx(tx_type, status, scope=scope):
             lines_raw = purchase_lines_by_tx.get(str(legacy_tx_id), [])
             lines = [
                 ln for ln in (
@@ -133,6 +155,7 @@ def transform_stock_movements(
                 continue
             mov_id = new_cuid()
             total = parse_decimal(txn.get("final_total"))
+            ledger_category = "Opening Stock" if tx_type == "opening_stock" else "Purchases"
             result.stock_movements.append({
                 "id": mov_id,
                 "tenantId": tenant_id,
@@ -158,7 +181,7 @@ def transform_stock_movements(
                 "type": "cost",
                 "amount": str(total),
                 "currency": "NGN",
-                "category": "Purchases",
+                "category": ledger_category,
                 "description": f"Purchase {ref}",
                 "linkedRecordType": "stock_movement",
                 "linkedRecordId": mov_id,
@@ -166,7 +189,7 @@ def transform_stock_movements(
             })
             continue
 
-        if tx_type == "purchase_return" and status in ("final", "received"):
+        if _purchase_return_tx(tx_type, status):
             lines_raw = purchase_lines_by_tx.get(str(legacy_tx_id), [])
             lines = [
                 ln for ln in (
@@ -212,7 +235,7 @@ def transform_stock_movements(
             })
             continue
 
-        if tx_type == "sell" and status == "final":
+        if scope == "all" and _sell_tx(tx_type, status):
             lines_raw = sell_lines_by_tx.get(str(legacy_tx_id), [])
             lines = [
                 ln for ln in (
@@ -256,7 +279,7 @@ def transform_stock_movements(
             })
             continue
 
-        if tx_type == "sell_transfer" and status == "final":
+        if scope == "all" and _sell_transfer_tx(tx_type, status):
             lines_raw = sell_lines_by_tx.get(str(legacy_tx_id), [])
             lines = [
                 ln for ln in (
@@ -289,14 +312,52 @@ def transform_stock_movements(
     return result
 
 
-def transform_expense_ledger(
+def transform_expense_records(
     tables: dict[str, TableData],
     tenant_id: str,
     *,
+    user_names: dict[int, str] | None = None,
     since: str | None = None,
+    until: str | None = None,
+    existing_category_legacy: dict[int, str] | None = None,
+    existing_expense_legacy: dict[int, str] | None = None,
 ) -> TransformResult:
+    """Map expense_categories + expense/payroll transactions to Vonos models."""
     result = TransformResult()
-    categories = {
+    user_names = user_names or build_legacy_user_name_map(tables)
+    existing_category_legacy = existing_category_legacy or {}
+    existing_expense_legacy = existing_expense_legacy or {}
+
+    for cat in table_rows(tables, "expense_categories"):
+        legacy_id = parse_int(cat.get("id"))
+        if legacy_id <= 0:
+            continue
+        if legacy_id in existing_category_legacy:
+            continue
+        new_id = new_cuid()
+        code = str(cat.get("code") or "").strip() or None
+        result.expense_categories.append({
+            "id": new_id,
+            "tenantId": tenant_id,
+            "name": str(cat.get("name") or "Other"),
+            "code": code,
+        })
+        result.legacy_ids.append({
+            "tenantId": tenant_id,
+            "entityType": "expense_category",
+            "legacyId": legacy_id,
+            "newId": new_id,
+        })
+
+    category_legacy = {
+        **existing_category_legacy,
+        **{
+            e["legacyId"]: e["newId"]
+            for e in result.legacy_ids
+            if e.get("entityType") == "expense_category"
+        },
+    }
+    category_names = {
         str(r.get("id")): str(r.get("name") or "Other")
         for r in table_rows(tables, "expense_categories")
         if r.get("id") is not None
@@ -304,32 +365,81 @@ def transform_expense_ledger(
 
     for txn in table_rows(tables, "transactions"):
         tx_type = str(txn.get("type") or "")
-        if tx_type not in ("expense", "payroll"):
+        if tx_type not in ("expense",):
             continue
         legacy_tx_id = parse_int(txn.get("id"))
         if legacy_tx_id <= 0:
             continue
-        if since and not row_date_on_or_after(txn, "transaction_date", since):
+        if legacy_tx_id in existing_expense_legacy:
+            continue
+        if not row_date_in_range(txn, "transaction_date", since=since, until=until):
             continue
         amount = parse_decimal(txn.get("final_total"))
         if amount <= 0:
             continue
-        cat_id = str(txn.get("expense_category_id") or "")
-        category = categories.get(cat_id, "Payroll" if tx_type == "payroll" else "Other")
+
+        cat_id = parse_int(txn.get("expense_category_id"), 0)
+        category_id = category_legacy.get(cat_id) if cat_id > 0 else None
+        category_name = category_names.get(str(cat_id), "Payroll" if tx_type == "payroll" else "Other")
         ref = str(txn.get("ref_no") or txn.get("invoice_no") or f"EXP-{legacy_tx_id}").strip()
+        tx_date = parse_tx_date(txn.get("transaction_date"))
+        payment_status = str(txn.get("payment_status") or "due").lower()
+        payment_due = Decimal("0") if payment_status == "paid" else amount
+
+        expense_id = new_cuid()
+        result.expenses.append({
+            "id": expense_id,
+            "tenantId": tenant_id,
+            "refNo": ref,
+            "categoryId": category_id,
+            "subCategory": None,
+            "locationCode": None,
+            "expenseFor": str(txn.get("expense_for") or "") or None,
+            "contactName": None,
+            "totalAmount": str(amount),
+            "taxAmount": str(parse_decimal(txn.get("tax_amount"))),
+            "paymentStatus": payment_status,
+            "paymentDue": str(payment_due),
+            "note": str(txn.get("additional_notes") or txn.get("staff_note") or "") or None,
+            "isRecurring": False,
+            "recurInterval": None,
+            "recurIntervalType": None,
+            "expenseDate": tx_date,
+            "createdById": None,
+        })
+        result.legacy_ids.append({
+            "tenantId": tenant_id,
+            "entityType": "expense",
+            "legacyId": legacy_tx_id,
+            "newId": expense_id,
+        })
         result.ledger_entries.append({
-            "id": new_cuid(),
+            "id": f"mig_ledger_{expense_id}",
             "tenantId": tenant_id,
             "type": "expense",
             "amount": str(amount),
             "currency": "NGN",
-            "category": category,
+            "category": category_name,
             "description": f"{tx_type.title()} {ref}",
-            "linkedRecordType": None,
-            "linkedRecordId": None,
-            "date": parse_tx_date(txn.get("transaction_date")),
+            "linkedRecordType": "expense",
+            "linkedRecordId": expense_id,
+            "date": tx_date,
         })
 
+    return result
+
+
+def transform_expense_ledger(
+    tables: dict[str, TableData],
+    tenant_id: str,
+    *,
+    since: str | None = None,
+) -> TransformResult:
+    """Backward-compatible ledger-only path (categories/expenses use transform_expense_records)."""
+    records = transform_expense_records(tables, tenant_id, since=since)
+    result = TransformResult()
+    result.ledger_entries = records.ledger_entries
+    result.warnings = records.warnings
     return result
 
 
@@ -352,6 +462,7 @@ def run_stock_migration(
         bin_by_variation=bins,
         user_names=user_names,
         existing_item_legacy=existing.get("item"),
+        brand_legacy=existing.get("brand"),
     )
     merged.merge(item_result)
 
@@ -377,7 +488,7 @@ def run_stock_migration(
     )
     merged.merge(mov_result)
 
-    expense_result = transform_expense_ledger(tables, tenant_id, since=since)
+    expense_result = transform_expense_records(tables, tenant_id, since=since)
     merged.merge(expense_result)
 
     return merged

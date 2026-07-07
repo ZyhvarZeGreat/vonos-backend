@@ -42,6 +42,7 @@ export class JobsController {
       reference: string;
       description: string;
       customerName?: string;
+      customerId?: string;
       vehicleId?: string;
       hasQuote?: boolean;
       quoteAmount?: number;
@@ -59,5 +60,21 @@ export class JobsController {
   @Patch(':id/status')
   advanceStatus(@Param('id') id: string) {
     return this.jobsService.advanceStatus(id);
+  }
+
+  @Patch(':id/billing')
+  updateBilling(
+    @Param('id') id: string,
+    @Body()
+    body: {
+      hasQuote?: boolean;
+      quoteAmount?: number | null;
+      quoteNotes?: string | null;
+      quoteValidUntil?: string | null;
+      invoiceAmount?: number | null;
+      invoiceNotes?: string | null;
+    },
+  ) {
+    return this.jobsService.updateBilling(id, body);
   }
 }

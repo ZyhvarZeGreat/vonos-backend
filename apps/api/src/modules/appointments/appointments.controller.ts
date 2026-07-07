@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
 import {
   JwtAuthGuard,
   RolesGuard,
@@ -12,8 +12,16 @@ export class AppointmentsController {
   constructor(private readonly appointmentsService: AppointmentsService) {}
 
   @Get()
-  list() {
-    return this.appointmentsService.list();
+  list(
+    @Query('cursor') cursor?: string,
+    @Query('limit') limit?: string,
+    @Query('search') search?: string,
+  ) {
+    return this.appointmentsService.list({
+      cursor,
+      limit: limit ? Number(limit) : undefined,
+      search,
+    });
   }
 
   @Post()

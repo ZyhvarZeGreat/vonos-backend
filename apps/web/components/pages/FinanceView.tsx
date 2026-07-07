@@ -6,6 +6,8 @@ import { useQuery } from "@tanstack/react-query";
 import { Plus, Upload } from "lucide-react";
 import type { KpiCardConfig, LedgerEntry, LedgerEntitySummary, LedgerListRow } from "@vonos/types";
 import { Button } from "@/components/atoms/Button";
+import { EntityContextBanner } from "@/components/molecules/EntityContextBanner";
+import { EntityColorBadge } from "@/components/atoms/EntityColorBadge";
 import { StatusPill } from "@/components/atoms/StatusPill";
 import { FinanceActionBar } from "@/components/molecules/FinanceActionBar";
 import { ChartPanel } from "@/components/organisms/ChartPanel";
@@ -102,9 +104,12 @@ const groupLedgerColumns: ColumnConfig<LedgerListRow>[] = [
     key: "tenantCode",
     header: "Entity",
     sortValue: (row) => row.tenantCode ?? "",
-    render: (row) => (
-      <span className="font-medium text-foreground">{row.tenantCode ?? "—"}</span>
-    ),
+    render: (row) =>
+      row.tenantCode ? (
+        <EntityColorBadge code={row.tenantCode} size="sm" />
+      ) : (
+        <span className="font-medium text-foreground">—</span>
+      ),
   },
   ...ledgerColumns,
 ];
@@ -114,9 +119,7 @@ const entityFinanceColumns: ColumnConfig<LedgerEntitySummary & { id: string }>[]
     key: "tenantCode",
     header: "Entity",
     sortValue: (row) => row.tenantCode,
-    render: (row) => (
-      <span className="font-medium text-foreground">{row.tenantCode}</span>
-    ),
+    render: (row) => <EntityColorBadge code={row.tenantCode} size="sm" />,
   },
   {
     key: "tenantName",
@@ -395,13 +398,8 @@ export function FinanceView({ groupMode = false }: FinanceViewProps) {
             elimination between entities is not yet applied.
           </p>
         </div>
-      ) : tenantName ? (
-        <p className="text-sm text-muted">
-          Finance for <span className="font-medium text-foreground">{tenantName}</span>
-          {tenantCode ? ` (${tenantCode})` : null}
-          {" · "}
-          scoped to this entity only
-        </p>
+      ) : tenantCode ? (
+        <EntityContextBanner module="Finance" />
       ) : null}
       <FinanceActionBar groupMode={groupMode} />
       <div className="flex flex-wrap items-center justify-between gap-3">

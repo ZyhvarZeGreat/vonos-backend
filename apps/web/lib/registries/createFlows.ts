@@ -8,6 +8,7 @@ export type CreateFlowKey =
   | "job"
   | "sale"
   | "supplier"
+  | "customer"
   | "appointment";
 
 export interface CreateFlowCopy {

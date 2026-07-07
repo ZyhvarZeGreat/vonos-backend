@@ -1,7 +1,8 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import type { Vehicle } from '@vonos/types';
+import type { Vehicle, VehicleJobHistoryEntry } from '@vonos/types';
 import { TenantDbService } from '../../common/prisma/tenant-db.service';
 import { AuditService } from '../audit/audit.service';
+import { buildCursorQuery } from '../../common/utils/pagination';
 import { toIso } from '../../common/utils/serializers';
 
 function serialize(row: {
@@ -39,11 +40,36 @@ export class VehiclesService {
     private readonly auditService: AuditService,
   ) {}
 
-  async list(): Promise<Vehicle[]> {
+  async list(filters: {
+    cursor?: string;
+    limit?: number;
+    search?: string;
+  } = {}): Promise<Vehicle[]> {
     const tenantId = this.tenantDb.requireTenantId();
     const rows = await this.tenantDb.db.vehicle.findMany({
-      where: { tenantId, deletedAt: null },
+      where: {
+        tenantId,
+        deletedAt: null,
+        ...(filters.search
+          ? {
+              OR: [
+                {
+                  plateNumber: {
+                    contains: filters.search,
+                    mode: 'insensitive',
+                  },
+                },
+                { make: { contains: filters.search, mode: 'insensitive' } },
+                { model: { contains: filters.search, mode: 'insensitive' } },
+                {
+                  ownerName: { contains: filters.search, mode: 'insensitive' },
+                },
+              ],
+            }
+          : {}),
+      },
       orderBy: { plateNumber: 'asc' },
+      ...buildCursorQuery(filters.cursor, filters.limit ?? 25),
     });
     return rows.map(serialize);
   }
@@ -55,6 +81,39 @@ export class VehiclesService {
     });
     if (!row) throw new NotFoundException('Vehicle not found');
     return serialize(row);
+  }
+
+  async getHistory(id: string): Promise<VehicleJobHistoryEntry[]> {
+    const tenantId = this.tenantDb.requireTenantId();
+    const vehicle = await this.tenantDb.db.vehicle.findFirst({
+      where: { id, tenantId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!vehicle) throw new NotFoundException('Vehicle not found');
+
+    const jobs = await this.tenantDb.db.job.findMany({
+      where: { tenantId, vehicleId: id, deletedAt: null },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        reference: true,
+        status: true,
+        customerName: true,
+        dueDate: true,
+        quoteAmount: true,
+        invoiceAmount: true,
+      },
+    });
+
+    return jobs.map((row) => ({
+      id: row.id,
+      reference: row.reference,
+      status: row.status,
+      customerName: row.customerName,
+      dueDate: row.dueDate ? toIso(row.dueDate).slice(0, 10) : null,
+      quoteAmount: row.quoteAmount ? Number(row.quoteAmount) : null,
+      invoiceAmount: row.invoiceAmount ? Number(row.invoiceAmount) : null,
+    }));
   }
 
   async create(body: {

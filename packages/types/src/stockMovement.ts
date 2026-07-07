@@ -16,6 +16,23 @@ export interface StockMovementLine {
   sku: string;
   name: string;
   quantity: number;
+  unitCost?: number;
+  /** HQ6 purchase-line expiry — stored on inbound movement JSON lines. */
+  expDate?: string;
+}
+
+export interface StockMovementListRow {
+  id: string;
+  reference: string;
+  supplierOrDest: string;
+  itemCount: number;
+  status: MovementStatus;
+  date: string;
+  locationCode?: string | null;
+  locationName?: string | null;
+  grandTotal?: number;
+  paymentStatus?: string;
+  paymentDue?: number;
 }
 
 export const MOVEMENT_SOURCES = ["standard", "purchase_return"] as const;

@@ -1,4 +1,6 @@
-import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
+import type { RequisitionLine } from '@vonos/types';
+import { Roles } from '../../common/decorators/roles.decorator';
 import {
   JwtAuthGuard,
   RolesGuard,
@@ -12,8 +14,16 @@ export class RequisitionsController {
   constructor(private readonly requisitionsService: RequisitionsService) {}
 
   @Get()
-  list() {
-    return this.requisitionsService.list();
+  list(
+    @Query('cursor') cursor?: string,
+    @Query('limit') limit?: string,
+    @Query('search') search?: string,
+  ) {
+    return this.requisitionsService.list({
+      cursor,
+      limit: limit ? Number(limit) : undefined,
+      search,
+    });
   }
 
   @Get(':id')
@@ -28,8 +38,28 @@ export class RequisitionsController {
       reference: string;
       jobId?: string;
       notes?: string;
+      sourceTenantCode?: string;
+      lines?: RequisitionLine[];
     },
   ) {
     return this.requisitionsService.create(body);
+  }
+
+  @Post(':id/approve')
+  @Roles('manager', 'admin', 'super_admin')
+  approve(@Param('id') id: string) {
+    return this.requisitionsService.approve(id);
+  }
+
+  @Post(':id/reject')
+  @Roles('manager', 'admin', 'super_admin')
+  reject(@Param('id') id: string) {
+    return this.requisitionsService.reject(id);
+  }
+
+  @Post(':id/fulfill')
+  @Roles('manager', 'admin', 'super_admin')
+  fulfill(@Param('id') id: string) {
+    return this.requisitionsService.fulfill(id);
   }
 }

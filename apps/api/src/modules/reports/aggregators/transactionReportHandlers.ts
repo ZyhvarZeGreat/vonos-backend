@@ -1,6 +1,7 @@
-import type { ReportsDashboard } from '@vonos/types';
+import type { ReportRowAction, ReportsDashboard, ReportsTableRow } from '@vonos/types';
 import type { TenantScopedPrisma } from '../../../common/prisma/prisma.service';
 import { ledgerDateFilter } from '../../../common/utils/ledgerAggregates';
+import { parseMovementLines } from '../../../common/utils/stockQuantity';
 import { toNumber, toStringField } from '../../../common/utils/serializers';
 import {
   bucketKey,
@@ -29,6 +30,21 @@ function currencyKpi(
     currency,
     ...delta,
   };
+}
+
+function paymentRowActions(paymentId: string): ReportRowAction[] {
+  return [
+    {
+      kind: 'view-record',
+      label: 'View',
+      payload: { paymentId, recordType: 'payment' },
+    },
+    {
+      kind: 'edit-payment',
+      label: 'Edit payment',
+      payload: { paymentId },
+    },
+  ];
 }
 
 function countKpi(
@@ -690,6 +706,7 @@ export async function buildSellPaymentReport(
         account: payment.account?.name ?? '—',
         amount: Math.round(toNumber(payment.amount)),
         currency: payment.currency,
+        actions: paymentRowActions(payment.id),
       })),
     },
   };
@@ -790,6 +807,7 @@ export async function buildPurchasePaymentReport(
           account: payment.account?.name ?? '—',
           amount: Math.round(toNumber(payment.amount)),
           currency: payment.currency,
+          actions: paymentRowActions(payment.id),
         }))
       : accountDebits.length > 0
         ? accountDebits.map((row) => ({
@@ -1261,32 +1279,153 @@ export async function buildProductPurchaseReport(
 export async function buildStockExpiryReport(
   db: TenantScopedPrisma,
 ): Promise<ReportsDashboard> {
-  const lowItems = await db.item.findMany({
+  const movements = await db.stockMovement.findMany({
     where: {
       deletedAt: null,
-      OR: [
-        { status: 'low_stock' },
-        { status: 'out_of_stock' },
-        { reorderPoint: { not: null }, quantity: { lte: 0 } },
-      ],
+      type: 'inbound',
+      status: 'Received',
     },
     select: {
-      sku: true,
-      name: true,
-      quantity: true,
-      reorderPoint: true,
-      status: true,
+      id: true,
+      reference: true,
+      locationCode: true,
+      lines: true,
+      date: true,
     },
-    orderBy: { quantity: 'asc' },
-    take: 200,
+    orderBy: { date: 'desc' },
+    take: 300,
   });
+
+  const rows: ReportsTableRow[] = [];
+
+  for (const movement of movements) {
+    const lines = parseMovementLines(movement.lines);
+    for (const line of lines) {
+      rows.push({
+        id: `${movement.id}-${line.sku}`,
+        sku: line.sku,
+        name: line.name,
+        reference: movement.reference,
+        locationCode: movement.locationCode ?? '—',
+        expDate: line.expDate ?? '—',
+        actions: [
+          {
+            kind: 'edit-expiry',
+            label: 'Edit expiry',
+            payload: {
+              movementId: movement.id,
+              lineSku: line.sku,
+              expDate: line.expDate ?? '',
+            },
+          },
+        ],
+      });
+    }
+  }
 
   return {
     kpis: [
       countKpi(
-        'At-risk SKUs',
-        'atRisk',
-        lowItems.length,
+        'Inbound lines',
+        'lines',
+        rows.length,
+        '#2563eb',
+        'package',
+      ),
+    ],
+    charts: [],
+    table: {
+      columns: [
+        { key: 'sku', header: 'SKU' },
+        { key: 'name', header: 'Product' },
+        { key: 'reference', header: 'Purchase Ref' },
+        { key: 'locationCode', header: 'Location' },
+        { key: 'expDate', header: 'Expiry Date' },
+      ],
+      rows: rows.slice(0, 200),
+    },
+  };
+}
+
+/** HQ6 product stock details — location qty vs item total with Fix action. */
+export async function buildStockDetailsReport(
+  db: TenantScopedPrisma,
+): Promise<ReportsDashboard> {
+  const items = await db.item.findMany({
+    where: { deletedAt: null },
+    include: { locationStock: true },
+    orderBy: { sku: 'asc' },
+    take: 500,
+  });
+
+  const rows: NonNullable<ReportsDashboard['table']>['rows'] = [];
+
+  for (const item of items) {
+    const locationSum = item.locationStock.reduce(
+      (sum, row) => sum + row.quantity,
+      0,
+    );
+    if (locationSum === item.quantity && item.locationStock.length > 0) {
+      continue;
+    }
+
+    if (item.locationStock.length === 0) {
+      rows.push({
+        id: item.id,
+        sku: item.sku,
+        name: item.name,
+        locationCode: item.locationCode ?? '—',
+        locationQty: 0,
+        itemTotal: item.quantity,
+        calculatedTotal: locationSum,
+        actions: [
+          {
+            kind: 'fix-stock',
+            label: 'Fix',
+            payload: {
+              itemId: item.id,
+              locationCode: item.locationCode ?? 'MAIN',
+              binLocation: item.binLocation ?? '',
+              quantity: item.quantity,
+            },
+          },
+        ],
+      });
+      continue;
+    }
+
+    for (const loc of item.locationStock) {
+      rows.push({
+        id: `${item.id}-${loc.id}`,
+        sku: item.sku,
+        name: item.name,
+        locationCode: loc.locationCode,
+        binLocation: loc.binLocation || '—',
+        locationQty: loc.quantity,
+        itemTotal: item.quantity,
+        calculatedTotal: locationSum,
+        actions: [
+          {
+            kind: 'fix-stock',
+            label: 'Fix',
+            payload: {
+              itemId: item.id,
+              locationCode: loc.locationCode,
+              binLocation: loc.binLocation,
+              quantity: loc.quantity,
+            },
+          },
+        ],
+      });
+    }
+  }
+
+  return {
+    kpis: [
+      countKpi(
+        'Mismatch rows',
+        'mismatches',
+        rows.length,
         '#e11d48',
         'alert-triangle',
       ),
@@ -1296,18 +1435,92 @@ export async function buildStockExpiryReport(
       columns: [
         { key: 'sku', header: 'SKU' },
         { key: 'name', header: 'Product' },
-        { key: 'quantity', header: 'On Hand' },
-        { key: 'reorderPoint', header: 'Reorder At' },
-        { key: 'status', header: 'Status' },
+        { key: 'locationCode', header: 'Location' },
+        { key: 'binLocation', header: 'Bin' },
+        { key: 'locationQty', header: 'Location Qty' },
+        { key: 'itemTotal', header: 'Item Total' },
+        { key: 'calculatedTotal', header: 'Sum of Locations' },
       ],
-      rows: lowItems.map((item) => ({
-        sku: item.sku,
-        name: item.name,
-        quantity: item.quantity,
-        reorderPoint: item.reorderPoint ?? '—',
-        status: item.status,
-        note: 'Expiry dates not tracked — showing low/out-of-stock SKUs',
-      })),
+      rows: rows.slice(0, 200),
+    },
+  };
+}
+
+/** HQ6 service staff report — grouped by sale creator (staff on ticket). */
+export async function buildServiceStaffReport(
+  db: TenantScopedPrisma,
+  from?: string,
+  to?: string,
+): Promise<ReportsDashboard> {
+  const window = resolveDateWindow(from, to);
+  const sales = await db.sale.findMany({
+    where: {
+      deletedAt: null,
+      status: { not: 'draft' },
+      date: { gte: window.from, lte: window.to },
+    },
+    select: {
+      id: true,
+      reference: true,
+      total: true,
+      currency: true,
+      createdByName: true,
+      date: true,
+    },
+    orderBy: { date: 'desc' },
+    take: 500,
+  });
+
+  const currency = sales[0]?.currency ?? 'NGN';
+  const byStaff = new Map<string, { revenue: number; count: number }>();
+
+  for (const sale of sales) {
+    const staff = sale.createdByName?.trim() || 'Unassigned';
+    const row = byStaff.get(staff) ?? { revenue: 0, count: 0 };
+    row.count += 1;
+    row.revenue += toNumber(sale.total);
+    byStaff.set(staff, row);
+  }
+
+  const rows: ReportsTableRow[] = Array.from(byStaff.entries())
+    .map(([staff, stats]) => ({
+      staff,
+      transactions: stats.count,
+      revenue: Math.round(stats.revenue),
+      avgTicket:
+        stats.count > 0 ? Math.round(stats.revenue / stats.count) : 0,
+      currency,
+    }))
+    .sort((a, b) => b.revenue - a.revenue);
+
+  return {
+    kpis: [
+      countKpi('Staff', 'staff', rows.length, '#2563eb', 'users'),
+      countKpi(
+        'Transactions',
+        'transactions',
+        sales.length,
+        '#9333ea',
+        'receipt',
+      ),
+      currencyKpi(
+        'Top ticket',
+        'topTicket',
+        rows[0]?.revenue != null ? Number(rows[0].revenue) : 0,
+        currency,
+        '#059669',
+        'wallet',
+      ),
+    ],
+    charts: [],
+    table: {
+      columns: [
+        { key: 'staff', header: 'Service Staff' },
+        { key: 'transactions', header: 'Orders' },
+        { key: 'revenue', header: 'Revenue' },
+        { key: 'avgTicket', header: 'Avg Ticket' },
+      ],
+      rows,
     },
   };
 }

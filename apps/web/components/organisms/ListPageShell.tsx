@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { ChevronDown, Download, Search, Upload } from "lucide-react";
 import { DateRangeDropdown } from "@/components/molecules/DateRangeDropdown";
 import { DropdownMenu } from "@/components/molecules/DropdownMenu";
@@ -30,12 +31,16 @@ export interface ListPageShellProps {
   showImport?: boolean;
   showExport?: boolean;
   showDateRange?: boolean;
+  showSearch?: boolean;
   dateRange?: DateRangePreset;
   onDateRangeChange?: (preset: DateRangePreset) => void;
   filterDropdowns?: ListFilterDropdown[];
   onExport?: () => void;
+  /** Primary action rendered in the table toolbar (e.g. "Add Customer"). */
+  primaryAction?: React.ReactNode;
   children: React.ReactNode;
   className?: string;
+  searchDebounceMs?: number;
 }
 
 export function ListPageShell({
@@ -48,14 +53,31 @@ export function ListPageShell({
   showImport = true,
   showExport = true,
   showDateRange = true,
+  showSearch = true,
   dateRange,
   onDateRangeChange,
   filterDropdowns = [],
   onExport,
+  primaryAction,
   children,
   className,
+  searchDebounceMs = 300,
 }: ListPageShellProps) {
   const openExportModal = useUiStore((state) => state.openExportModal);
+  const [localSearch, setLocalSearch] = useState(searchValue);
+
+  useEffect(() => {
+    setLocalSearch(searchValue);
+  }, [searchValue]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      if (localSearch !== searchValue) {
+        onSearchChange?.(localSearch);
+      }
+    }, searchDebounceMs);
+    return () => window.clearTimeout(timer);
+  }, [localSearch, onSearchChange, searchDebounceMs, searchValue]);
 
   return (
     <div
@@ -104,6 +126,7 @@ export function ListPageShell({
               Export
             </button>
           ) : null}
+          {primaryAction}
         </div>
       </div>
 
@@ -134,16 +157,18 @@ export function ListPageShell({
           ))}
         </div>
         <div className="flex flex-wrap items-center gap-3">
-          <div className="relative flex h-9 w-full items-center rounded-lg border border-border bg-card px-3 md:w-64">
-            <Search className="mr-2 h-4 w-4 shrink-0 text-muted" />
-            <input
-              type="text"
-              placeholder={searchPlaceholder}
-              value={searchValue}
-              onChange={(event) => onSearchChange?.(event.target.value)}
-              className="flex-1 border-none bg-transparent text-sm text-foreground outline-none placeholder:text-muted"
-            />
-          </div>
+          {showSearch ? (
+            <div className="relative flex h-9 w-full items-center rounded-lg border border-border bg-card px-3 md:w-64">
+              <Search className="mr-2 h-4 w-4 shrink-0 text-muted" />
+              <input
+                type="text"
+                placeholder={searchPlaceholder}
+                value={localSearch}
+                onChange={(event) => setLocalSearch(event.target.value)}
+                className="flex-1 border-none bg-transparent text-sm text-foreground outline-none placeholder:text-muted"
+              />
+            </div>
+          ) : null}
         </div>
       </div>
 

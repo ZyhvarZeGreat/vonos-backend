@@ -2,17 +2,22 @@ import type { OverviewDashboard } from '@vonos/types';
 import type { TenantScopedPrisma } from '../../common/prisma/prisma.service';
 import { toMovementListRow } from '../stock-movements/stock-movements.mapper';
 import { buildAppointmentReports } from '../reports/aggregators/appointmentReports';
+import {
+  appointmentKpiSnapshot,
+  todayAppointmentSummary,
+} from '../reports/aggregators/appointmentReportQueries';
 import { buildJobReports } from '../reports/aggregators/jobReports';
 import { buildStockReportsFromContext } from '../reports/aggregators/stockReports';
 import { loadStockReportContext } from '../reports/aggregators/stockReportContext';
 import { buildTransactionReports } from '../reports/aggregators/transactionReports';
-import { loadSalesReportContext } from '../reports/aggregators/salesData';
-import { aggregateTopProducts } from '../reports/aggregators/productSales';
 import {
-  computeDelta,
-  buildTimeSeries,
-} from '../reports/aggregators/date-utils';
+  hourlyOrderCounts,
+  salesOrderTrend,
+  topProductsInWindow,
+} from '../reports/aggregators/salesReportQueries';
+import { computeDelta, resolveDateWindow, asChartData } from '../reports/aggregators/date-utils';
 import { buildLedgerFinanceSlice } from './overviewFinance';
+import { buildOverviewPanels } from './overviewPanels';
 
 const JOB_STATUS_COLORS: Record<string, string> = {
   Received: '#94a3b8',
@@ -59,17 +64,25 @@ async function pendingMovementsTable(
 
 export async function buildStockOverview(
   db: TenantScopedPrisma,
+  tenantId: string,
   tenantCode: string,
   from?: string,
   to?: string,
 ): Promise<OverviewDashboard> {
-  const stockCtx = await loadStockReportContext(db, from, to);
-  const [movement, valuation, table, finance] = await Promise.all([
-    Promise.resolve(buildStockReportsFromContext(stockCtx, 'movement')),
-    Promise.resolve(buildStockReportsFromContext(stockCtx, 'valuation')),
-    pendingMovementsTable(db),
-    buildLedgerFinanceSlice(db, from, to),
-  ]);
+  const stockCtx = await loadStockReportContext(db, tenantId, from, to);
+  const [movement, valuation, table, finance, lowStockItems] =
+    await Promise.all([
+      buildStockReportsFromContext(stockCtx, db, 'movement'),
+      buildStockReportsFromContext(stockCtx, db, 'valuation'),
+      pendingMovementsTable(db),
+      buildLedgerFinanceSlice(db, tenantId, from, to),
+      db.item.count({
+        where: {
+          deletedAt: null,
+          status: { in: ['low_stock', 'out_of_stock'] },
+        },
+      }),
+    ]);
 
   const byKey = (key: string) =>
     [...valuation.kpis, ...movement.kpis].find((k) => k.metricKey === key);
@@ -81,12 +94,29 @@ export async function buildStockOverview(
   const movementCount = byKey('movementCount');
 
   const isKidsWear = tenantCode === 'VKW';
-  let kpis = [totalSku, todayInbound, todayOutbound, stockValue].filter(
-    (k): k is NonNullable<typeof k> => Boolean(k),
-  );
+  const lowStockKpi = {
+    label: 'Low Stock',
+    icon: 'alert-triangle',
+    metricKey: 'lowStock',
+    color: '#f59e0b',
+    value: lowStockItems,
+  };
+  let kpis = [
+    totalSku,
+    todayInbound,
+    todayOutbound,
+    stockValue,
+    lowStockKpi,
+  ].filter((k): k is NonNullable<typeof k> => Boolean(k));
 
   if (isKidsWear) {
-    const sales = await buildTransactionReports(db, 'sales', from, to);
+    const sales = await buildTransactionReports(
+      db,
+      tenantId,
+      'sales',
+      from,
+      to,
+    );
     const revenue = sales.kpis.find((k) => k.metricKey === 'revenue');
     const refunded = sales.kpis.find((k) => k.metricKey === 'refundedCount');
     kpis = [
@@ -144,7 +174,9 @@ export async function buildStockOverview(
             : 'Inbound vs Outbound'
           : 'Inventory Value by Category',
     })),
+    financeKpis: finance.financeKpis,
     financeCharts: finance.financeCharts,
+    panels: await buildOverviewPanels(db, tenantId),
     table: isKidsWear ? null : table,
     rankedList: null,
     jobStatusPie: null,
@@ -155,34 +187,41 @@ export async function buildStockOverview(
 
 export async function buildTransactionOverview(
   db: TenantScopedPrisma,
+  tenantId: string,
   tenantCode: string,
   from?: string,
   to?: string,
 ): Promise<OverviewDashboard> {
   const isCafe = tenantCode === 'VC';
   const isRetailCatalog = tenantCode === 'VISP' || tenantCode === 'VSP';
+  const window = resolveDateWindow(from, to);
 
-  const salesCtx = await loadSalesReportContext(db, from, to);
-  const { window, periodSales } = salesCtx;
-
-  const [sales, finance, lowStockItems] = await Promise.all([
-    buildTransactionReports(db, 'sales', from, to, salesCtx),
-    buildLedgerFinanceSlice(db, from, to),
-    db.item.count({
-      where: {
-        deletedAt: null,
-        status: { in: ['low_stock', 'out_of_stock'] },
-      },
-    }),
-  ]);
+  const [sales, finance, lowStockItems, topProducts, orderTrend, hourlyOrders] =
+    await Promise.all([
+      buildTransactionReports(db, tenantId, 'sales', from, to),
+      buildLedgerFinanceSlice(db, tenantId, from, to),
+      db.item.count({
+        where: {
+          deletedAt: null,
+          status: { in: ['low_stock', 'out_of_stock'] },
+        },
+      }),
+      isRetailCatalog
+        ? topProductsInWindow(db, tenantId, window.from, window.to, 8)
+        : Promise.resolve([]),
+      isRetailCatalog
+        ? salesOrderTrend(db, tenantId, window)
+        : Promise.resolve([]),
+      isCafe
+        ? hourlyOrderCounts(db, tenantId, window.from, window.to)
+        : Promise.resolve([]),
+    ]);
 
   const { financeCharts, financeKpis } = finance;
   const [costsKpi, netKpi] = financeKpis;
 
-  const topProducts = isRetailCatalog
-    ? aggregateTopProducts(periodSales, 8)
-    : [];
-  const rankedList = topProducts.map((row) => ({
+  const topProductsList = topProducts;
+  const rankedList = topProductsList.map((row) => ({
     label: row.label,
     units: Math.round(row.units * 100) / 100,
     revenue: Math.round(row.revenue),
@@ -289,31 +328,21 @@ export async function buildTransactionOverview(
     subtitle: 'Transaction count in selected period',
     type: 'bar' as const,
     series: [{ name: 'Orders', dataKey: 'orders', color: '#2563eb' }],
-    data: buildTimeSeries(
-      periodSales.map((sale) => ({ date: sale.date })),
-      window,
-      () => 1,
-    ).map((row) => ({ label: row.label, orders: row.value })),
+    data:
+      orderTrend.length > 0 ? orderTrend : [{ label: '—', orders: 0 }],
   };
   let hourlyChart = topChart;
   if (isCafe) {
-    const buckets = new Map<number, number>();
-    for (const sale of periodSales) {
-      const hour = sale.date.getHours();
-      buckets.set(hour, (buckets.get(hour) ?? 0) + 1);
-    }
     hourlyChart = {
       id: 'hourly-orders',
       title: 'Orders Today',
       subtitle: 'Hourly order volume',
       type: 'bar',
       series: [{ name: 'Orders', dataKey: 'orders', color: '#f59e0b' }],
-      data: Array.from(buckets.entries())
-        .sort(([a], [b]) => a - b)
-        .map(([hour, orders]) => ({
-          label: `${hour}:00`,
-          orders,
-        })),
+      data:
+        hourlyOrders.length > 0
+          ? asChartData(hourlyOrders)
+          : asChartData([{ label: '—', orders: 0 }]),
     };
   }
 
@@ -332,7 +361,9 @@ export async function buildTransactionOverview(
       : isCafe
         ? [hourlyChart]
         : sales.charts,
+    financeKpis,
     financeCharts,
+    panels: await buildOverviewPanels(db, tenantId),
     table: null,
     rankedList: isRetailCatalog ? rankedList : null,
     jobStatusPie: null,
@@ -343,11 +374,12 @@ export async function buildTransactionOverview(
 
 export async function buildJobOverview(
   db: TenantScopedPrisma,
+  tenantId: string,
   tenantCode: string,
   from?: string,
   to?: string,
 ): Promise<OverviewDashboard> {
-  const isMechanics = tenantCode === 'VM';
+  const isMechanics = tenantCode === 'VA';
   const now = new Date();
   const soon = new Date(now);
   soon.setDate(soon.getDate() + 7);
@@ -361,8 +393,8 @@ export async function buildJobOverview(
     dueSoon,
     inShop,
   ] = await Promise.all([
-    buildJobReports(db, 'costing', from, to),
-    buildLedgerFinanceSlice(db, from, to),
+    buildJobReports(db, tenantId, 'costing', from, to),
+    buildLedgerFinanceSlice(db, tenantId, from, to),
     db.job.groupBy({
       by: ['status'],
       where: { deletedAt: null },
@@ -549,7 +581,9 @@ export async function buildJobOverview(
         })),
       },
     ],
+    financeKpis: finance.financeKpis,
     financeCharts: finance.financeCharts,
+    panels: await buildOverviewPanels(db, tenantId),
     table,
     rankedList: null,
     jobStatusPie,
@@ -560,26 +594,24 @@ export async function buildJobOverview(
 
 export async function buildAppointmentOverview(
   db: TenantScopedPrisma,
+  tenantId: string,
   from?: string,
   to?: string,
 ): Promise<OverviewDashboard> {
-  const stylist = await buildAppointmentReports(db, 'stylist', from, to);
-
-  const appointments = await db.appointment.findMany({
-    where: { deletedAt: null },
-    include: { customer: { select: { name: true } } },
-    orderBy: { startTime: 'asc' },
-  });
-
+  const window = resolveDateWindow(from, to);
   const todayStart = new Date();
   todayStart.setHours(0, 0, 0, 0);
   const todayEnd = new Date();
   todayEnd.setHours(23, 59, 59, 999);
 
-  const todayAppts = appointments.filter(
-    (a) => a.startTime >= todayStart && a.startTime <= todayEnd,
-  );
+  const [stylist, todayRows, periodKpis, finance] = await Promise.all([
+    buildAppointmentReports(db, tenantId, 'stylist', from, to),
+    todayAppointmentSummary(db, tenantId, todayStart, todayEnd),
+    appointmentKpiSnapshot(db, tenantId, window, todayStart, todayEnd),
+    buildLedgerFinanceSlice(db, tenantId, from, to),
+  ]);
 
+  const todayAppts = todayRows;
   const stylists = [...new Set(todayAppts.map((a) => a.stylistName))];
   const hours = Array.from(
     new Set(
@@ -599,7 +631,7 @@ export async function buildAppointmentOverview(
       hour: 'numeric',
       hour12: true,
     }),
-    client: a.customer?.name ?? 'Walk-in',
+    client: a.client ?? 'Walk-in',
     service: a.serviceName,
     status: a.status,
   }));
@@ -623,7 +655,7 @@ export async function buildAppointmentOverview(
         minute: '2-digit',
         hour12: true,
       }),
-      client: a.customer?.name ?? 'Walk-in',
+      client: a.client ?? 'Walk-in',
       service: a.serviceName,
       stylist: a.stylistName,
       status: a.status,
@@ -631,7 +663,7 @@ export async function buildAppointmentOverview(
   };
 
   const revenue = stylist.kpis.find((k) => k.metricKey === 'revenue');
-  const noShows = appointments.filter((a) => a.status === 'No-show').length;
+  const noShows = periodKpis.noShowCount;
 
   const kpis = [
     stylist.kpis.find((k) => k.metricKey === 'todayAppts')!,
@@ -669,6 +701,9 @@ export async function buildAppointmentOverview(
   return {
     kpis,
     charts: stylist.charts,
+    financeKpis: finance.financeKpis,
+    financeCharts: finance.financeCharts,
+    panels: await buildOverviewPanels(db, tenantId),
     table,
     rankedList: null,
     jobStatusPie: null,

@@ -31,14 +31,14 @@ export function AuthTemplate({
         </div>
         <div className="max-w-md space-y-3">
           <h2 className="text-3xl font-semibold tracking-tight text-foreground">
-            One platform for every entity.
+            Run every Vonos business in one place.
           </h2>
           <p className="text-base leading-relaxed text-muted">
-            Warehouse, shops, workshops, and group admin — config-driven per tenant,
-            shared design system, single codebase.
+            Warehouse, retail, workshop, cafe, and group administration — each team sees the
+            tools and data for their location.
           </p>
         </div>
-        <p className="text-sm text-muted">Internal use only · Invite-based access</p>
+        <p className="text-sm text-muted">Staff access by invitation only</p>
       </div>
 
       <div className="flex flex-1 items-center justify-center p-6">

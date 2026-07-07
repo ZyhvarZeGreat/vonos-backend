@@ -5,6 +5,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import type { CafeTableStatus } from '@vonos/types';
@@ -21,8 +22,16 @@ export class CafeTablesController {
   constructor(private readonly cafeTablesService: CafeTablesService) {}
 
   @Get()
-  list() {
-    return this.cafeTablesService.list();
+  list(
+    @Query('cursor') cursor?: string,
+    @Query('limit') limit?: string,
+    @Query('search') search?: string,
+  ) {
+    return this.cafeTablesService.list({
+      cursor,
+      limit: limit ? Number(limit) : undefined,
+      search,
+    });
   }
 
   @Get(':id')

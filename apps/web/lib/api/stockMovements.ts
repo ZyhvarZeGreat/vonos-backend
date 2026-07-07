@@ -1,14 +1,21 @@
-import type { MovementSource, MovementStatus, MovementType, StockMovement } from "@vonos/types";
+import type {
+  MovementSource,
+  MovementStatus,
+  MovementType,
+  StockMovement,
+  StockMovementListRow,
+} from "@vonos/types";
 import { apiFetch, withTenantQuery } from "@/lib/api/client";
+import {
+  DEFAULT_TABLE_PAGE_SIZE,
+  EXPORT_PAGE_SIZE,
+  fetchAllPages,
+  fetchFirstPage,
+  fetchListPage,
+  type ListPage,
+} from "@/lib/api/fetchAllPages";
 
-export interface StockMovementListRow {
-  id: string;
-  reference: string;
-  supplierOrDest: string;
-  itemCount: number;
-  status: MovementStatus;
-  date: string;
-}
+export type { StockMovementListRow };
 
 export interface StockMovementFilters {
   type?: MovementType;
@@ -18,25 +25,79 @@ export interface StockMovementFilters {
   limit?: number;
 }
 
-export async function getStockMovements(
+function buildStockMovementsPath(
   tenantId: string,
-  filters: StockMovementFilters,
-): Promise<StockMovementListRow[]> {
+  filters: StockMovementFilters | undefined,
+  cursor?: string,
+  limit?: number,
+): string {
   const params = new URLSearchParams();
-  if (filters.type) params.set("type", filters.type);
-  if (filters.status) params.set("status", filters.status);
-  if (filters.source) params.set("source", filters.source);
-  if (filters.cursor) params.set("cursor", filters.cursor);
-  if (filters.limit) params.set("limit", String(filters.limit));
-
+  if (filters?.type) params.set("type", filters.type);
+  if (filters?.status) params.set("status", filters.status);
+  if (filters?.source) params.set("source", filters.source);
+  if (cursor) params.set("cursor", cursor);
+  if (limit) params.set("limit", String(limit));
   const query = params.toString();
-  const path = withTenantQuery(
+  return withTenantQuery(
     query ? `/stock-movements?${query}` : "/stock-movements",
     tenantId,
   );
-  const response = await apiFetch(path);
+}
+
+async function fetchStockMovementsRaw(
+  tenantId: string,
+  filters: StockMovementFilters | undefined,
+  cursor?: string,
+  limit?: number,
+): Promise<StockMovementListRow[]> {
+  const response = await apiFetch(
+    buildStockMovementsPath(tenantId, filters, cursor, limit),
+  );
   if (!response.ok) throw new Error("Failed to fetch stock movements");
   return response.json();
+}
+
+export async function getStockMovementsPage(
+  tenantId: string,
+  filters: StockMovementFilters | undefined,
+  cursor: string | undefined,
+  limit = DEFAULT_TABLE_PAGE_SIZE,
+): Promise<ListPage<StockMovementListRow>> {
+  return fetchListPage(
+    (pageCursor, pageLimit) =>
+      fetchStockMovementsRaw(tenantId, filters, pageCursor, pageLimit),
+    cursor,
+    limit,
+  );
+}
+
+/** Full movement list for export — not for table rendering. */
+export async function getAllStockMovements(
+  tenantId: string,
+  filters?: StockMovementFilters,
+): Promise<StockMovementListRow[]> {
+  return fetchAllPages(
+    (cursor, limit) => fetchStockMovementsRaw(tenantId, filters, cursor, limit),
+    EXPORT_PAGE_SIZE,
+  );
+}
+
+export async function getStockMovements(
+  tenantId: string,
+  filters: StockMovementFilters = {},
+): Promise<StockMovementListRow[]> {
+  if (filters.cursor || filters.limit) {
+    return fetchStockMovementsRaw(
+      tenantId,
+      filters,
+      filters.cursor,
+      filters.limit,
+    );
+  }
+
+  return fetchFirstPage((cursor, limit) =>
+    fetchStockMovementsRaw(tenantId, filters, cursor, limit),
+  );
 }
 
 export async function getStockMovement(id: string): Promise<StockMovement> {

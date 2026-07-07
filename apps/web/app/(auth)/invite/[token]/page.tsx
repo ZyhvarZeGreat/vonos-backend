@@ -116,12 +116,6 @@ export default function AcceptInvitePage() {
           <Button type="submit" className="w-full" isLoading={loading} disabled={!inviteEmail}>
             Activate account
           </Button>
-          <p className="text-xs text-muted">
-            Dev invite URL:{" "}
-            <Link href="/invite/invite-vw-manager" className="underline">
-              /invite/invite-vw-manager
-            </Link>
-          </p>
         </form>
       )}
     </AuthTemplate>

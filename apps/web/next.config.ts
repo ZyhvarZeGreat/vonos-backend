@@ -9,8 +9,13 @@ const nextConfig: NextConfig = {
   async redirects() {
     return [
       {
-        source: "/VA/:path*",
-        destination: "/VM/:path*",
+        source: "/VM/:path*",
+        destination: "/VA/:path*",
+        permanent: true,
+      },
+      {
+        source: "/VMS/:path*",
+        destination: "/VA/:path*",
         permanent: true,
       },
       {

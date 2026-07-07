@@ -8,6 +8,7 @@ import type { InviteUserResponse, User } from '@vonos/types';
 import { ROLES } from '@vonos/types';
 import type { AuthenticatedUser } from '../../common/decorators/roles.decorator';
 import { generateOpaqueToken } from '../../common/utils/auth-token';
+import { buildCursorQuery } from '../../common/utils/pagination';
 import { devPasswordHash, hashPassword } from '../../common/utils/password';
 import { TenantDbService } from '../../common/prisma/tenant-db.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
@@ -29,7 +30,11 @@ export class UsersService {
     private readonly mail: AuthMailService,
   ) {}
 
-  async listForTenant(): Promise<User[]> {
+  async listForTenant(filters: {
+    cursor?: string;
+    limit?: number;
+    search?: string;
+  } = {}): Promise<User[]> {
     const tenantId = this.tenantDb.requireTenantId();
 
     const legacyLinks = await this.prisma.migrationLegacyId.findMany({
@@ -41,26 +46,63 @@ export class UsersService {
     const rows = await this.prisma.user.findMany({
       where: {
         deletedAt: null,
-        OR: [
-          { tenantId },
-          ...(legacyUserIds.length > 0 ? [{ id: { in: legacyUserIds } }] : []),
+        AND: [
+          {
+            OR: [
+              { tenantId },
+              ...(legacyUserIds.length > 0
+                ? [{ id: { in: legacyUserIds } }]
+                : []),
+            ],
+          },
+          ...(filters.search
+            ? [
+                {
+                  OR: [
+                    { name: { contains: filters.search, mode: 'insensitive' as const } },
+                    {
+                      email: { contains: filters.search, mode: 'insensitive' as const },
+                    },
+                  ],
+                },
+              ]
+            : []),
         ],
       },
       orderBy: [{ status: 'asc' }, { name: 'asc' }],
+      ...buildCursorQuery(filters.cursor, filters.limit ?? 25),
     });
 
     return rows.map((row) => this.toUser(row));
   }
 
-  async listAllTenants(requestRole: string): Promise<UserListRow[]> {
+  async listAllTenants(
+    requestRole: string,
+    filters: {
+      cursor?: string;
+      limit?: number;
+      search?: string;
+    } = {},
+  ): Promise<UserListRow[]> {
     if (requestRole !== 'super_admin') {
       throw new ForbiddenException('Super admin access required');
     }
 
     const rows = await this.prisma.user.findMany({
-      where: { deletedAt: null },
+      where: {
+        deletedAt: null,
+        ...(filters.search
+          ? {
+              OR: [
+                { name: { contains: filters.search, mode: 'insensitive' as const } },
+                { email: { contains: filters.search, mode: 'insensitive' as const } },
+              ],
+            }
+          : {}),
+      },
       include: { tenant: { select: { code: true, name: true } } },
       orderBy: [{ tenantId: 'asc' }, { name: 'asc' }],
+      ...buildCursorQuery(filters.cursor, filters.limit ?? 25),
     });
 
     const unscopedIds = rows

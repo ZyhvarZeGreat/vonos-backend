@@ -7,7 +7,7 @@ import { Button } from "@/components/atoms/Button";
 import { Select } from "@/components/atoms/Select";
 import { useRouteTenant } from "@/lib/hooks/useRouteTenant";
 import {
-  ENTITY_LIST,
+  AUTOS_GROUP_ENTITIES,
   getTenantByCode,
   type TenantCode,
 } from "@/lib/registries/tenants";
@@ -21,7 +21,7 @@ export interface FinanceActionBarProps {
   className?: string;
 }
 
-const ENTITY_OPTIONS = ENTITY_LIST.map((entity) => ({
+const ENTITY_OPTIONS = AUTOS_GROUP_ENTITIES.map((entity) => ({
   value: entity.code,
   label: `${entity.code} — ${entity.name}`,
 }));

@@ -5,6 +5,7 @@ import { FileSpreadsheet, FileText, Info } from "lucide-react";
 import { Button } from "@/components/atoms/Button";
 import { Modal, ModalFooter, ModalHeader } from "@/components/atoms/Modal";
 import { downloadCsv } from "@/lib/utils/exportCsv";
+import { exportTablePdf } from "@/lib/utils/exportPdf";
 import { toast } from "@/stores/toastStore";
 import { useUiStore } from "@/stores/uiStore";
 import { cn } from "@/lib/utils/cn";
@@ -21,12 +22,19 @@ export function ExportDocumentModal() {
   const open = activeModal === "export";
 
   const handleExport = () => {
-    if (format === "pdf") {
-      setError("PDF export is not available yet. Use CSV.");
-      return;
-    }
     if (!exportPayload || exportPayload.rows.length === 0) {
       setError("No data available to export from this view.");
+      return;
+    }
+    if (format === "pdf") {
+      try {
+        exportTablePdf(exportPayload);
+        toast.success("PDF export opened — choose Save as PDF in the print dialog");
+        setError(null);
+        closeModal();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "PDF export failed");
+      }
       return;
     }
     downloadCsv(exportPayload);
@@ -59,7 +67,7 @@ export function ExportDocumentModal() {
             {
               id: "pdf" as const,
               label: "PDF",
-              description: "PDF export (coming soon)",
+              description: "Opens print dialog — choose Save as PDF",
               icon: FileText,
             },
           ] as const

@@ -20,6 +20,10 @@
     "prisma:push": "prisma db push",
     "prisma:seed": "prisma db seed",
     "prisma:merge-va": "ts-node --compiler-options '{\"module\":\"CommonJS\"}' prisma/scripts/merge-vm-vms-into-va.ts",
+    "prisma:backfill-location-stock": "ts-node --compiler-options '{\"module\":\"CommonJS\"}' prisma/scripts/backfill-item-location-stock.ts",
+    "prisma:backfill-job-customer-id": "ts-node --compiler-options '{\"module\":\"CommonJS\"}' prisma/scripts/backfill-job-customer-id.ts",
+    "prisma:backfill-job-vehicles": "ts-node --compiler-options '{\"module\":\"CommonJS\"}' prisma/scripts/backfill-job-vehicles.ts",
+    "prisma:va-finance-spotcheck": "ts-node --compiler-options '{\"module\":\"CommonJS\"}' prisma/scripts/sql-va-finance-spotcheck.ts",
     "prisma:studio": "prisma studio"
   },
   "prisma": {
@@ -31,6 +35,7 @@
     "@nestjs/jwt": "^11.0.0",
     "@nestjs/platform-express": "^11.0.1",
     "@prisma/client": "^6.11.1",
+    "@upstash/redis": "^1.38.0",
     "@vonos/types": "*",
     "bcrypt": "^6.0.0",
     "cookie-parser": "^1.4.7",

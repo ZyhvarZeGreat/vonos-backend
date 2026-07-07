@@ -29,11 +29,19 @@ export class UsersController {
   list(
     @Req() request: AuthedRequest,
     @Query('allTenants') allTenants?: string,
+    @Query('cursor') cursor?: string,
+    @Query('limit') limit?: string,
+    @Query('search') search?: string,
   ) {
+    const filters = {
+      cursor,
+      limit: limit ? Number(limit) : undefined,
+      search,
+    };
     if (allTenants === 'true') {
-      return this.usersService.listAllTenants(request.user.role);
+      return this.usersService.listAllTenants(request.user.role, filters);
     }
-    return this.usersService.listForTenant();
+    return this.usersService.listForTenant(filters);
   }
 
   @Post('invite')

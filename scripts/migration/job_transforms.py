@@ -16,13 +16,14 @@ from migration.pos_common import (
     parse_decimal,
     parse_int,
     parse_tx_date,
+    row_date_in_range,
     table_rows,
     transform_contacts,
     transform_items,
 )
 from migration.types import TableData, TransformResult
 
-EntityCode = Literal["VM", "VMS"]
+EntityCode = Literal["VM", "VMS", "HQ3", "HQ2"]
 
 
 def is_job_candidate(txn: dict[str, Any]) -> bool:
@@ -54,7 +55,7 @@ def map_job_status(txn: dict[str, Any], entity_code: EntityCode) -> str | None:
         return "Quoted"
     if status == "received":
         return "Received"
-    if entity_code == "VMS" and status == "ordered":
+    if entity_code in ("VMS", "HQ3", "HQ2") and status == "ordered":
         return "Approved"
     if status == "final":
         if payment == "paid":
@@ -72,9 +73,13 @@ def transform_jobs(
     reference_prefix: str = "",
     user_names: dict[int, str] | None = None,
     user_vonos: dict[int, str] | None = None,
+    since: str | None = None,
+    until: str | None = None,
+    existing_job_legacy: dict[int, str] | None = None,
 ) -> TransformResult:
     result = TransformResult()
     user_names = user_names or build_legacy_user_name_map(tables)
+    existing_job_legacy = existing_job_legacy or {}
     customer_names = {
         parse_int(r.get("id")): contact_display_name(r)
         for r in table_rows(tables, "contacts")
@@ -88,6 +93,10 @@ def transform_jobs(
             continue
         legacy_tx_id = parse_int(txn.get("id"))
         if legacy_tx_id <= 0:
+            continue
+        if legacy_tx_id in existing_job_legacy:
+            continue
+        if not row_date_in_range(txn, "transaction_date", since=since, until=until):
             continue
 
         job_status = map_job_status(txn, entity_code)
@@ -127,6 +136,7 @@ def transform_jobs(
             "status": job_status,
             "hasQuote": has_quote,
             "quoteAmount": quote_amount,
+            "customerId": customer_legacy.get(contact_id) if contact_id > 0 else None,
             "customerName": customer_name,
             "vehicleId": None,
             "assignedStaffIds": [],
@@ -144,7 +154,7 @@ def transform_jobs(
         if str(txn.get("status") or "").lower() == "final":
             total = parse_decimal(txn.get("final_total"))
             result.ledger_entries.append({
-                "id": new_cuid(),
+                "id": f"mig_ledger_{job_id}",
                 "tenantId": tenant_id,
                 "type": "revenue",
                 "amount": str(total),
@@ -221,34 +231,95 @@ def run_job_migration(
     tables: dict[str, TableData],
     tenant_id: str,
     entity_code: EntityCode,
+    *,
+    reference_prefix: str | None = None,
+    since: str | None = None,
+    until: str | None = None,
+    existing_legacy: dict[str, dict[int, str]] | None = None,
+    include_purchases: bool = False,
 ) -> TransformResult:
     merged = TransformResult()
     user_names = build_legacy_user_name_map(tables)
+    existing = existing_legacy or {}
+    prefix = reference_prefix if reference_prefix is not None else f"{entity_code}-"
 
-    contact_result = transform_contacts(tables, tenant_id, user_names=user_names)
+    contact_result = transform_contacts(
+        tables,
+        tenant_id,
+        user_names=user_names,
+        existing_customer_legacy=existing.get("customer"),
+        existing_supplier_legacy=existing.get("supplier"),
+    )
     merged.merge(contact_result)
 
-    item_result = transform_items(tables, tenant_id, available_for_retail=False, user_names=user_names)
+    item_result = transform_items(
+        tables,
+        tenant_id,
+        available_for_retail=False,
+        user_names=user_names,
+        existing_item_legacy=existing.get("item"),
+        brand_legacy=existing.get("brand"),
+    )
     merged.merge(item_result)
 
-    customer_legacy = legacy_map(merged.legacy_ids, "customer")
-    item_legacy = legacy_map(merged.legacy_ids, "item")
+    customer_legacy = {
+        **legacy_map(merged.legacy_ids, "customer"),
+        **(existing.get("customer") or {}),
+    }
+    item_legacy = {
+        **legacy_map(merged.legacy_ids, "item"),
+        **(existing.get("item") or {}),
+    }
+    supplier_legacy = {
+        **legacy_map(merged.legacy_ids, "supplier"),
+        **(existing.get("supplier") or {}),
+    }
 
     job_result = transform_jobs(
         tables,
         tenant_id,
         customer_legacy,
         entity_code=entity_code,
-        reference_prefix=f"{entity_code}-",
+        reference_prefix=prefix,
         user_names=user_names,
+        since=since,
+        until=until,
+        existing_job_legacy=existing.get("job"),
     )
     merged.merge(job_result)
 
-    job_legacy = legacy_map(merged.legacy_ids, "job")
+    job_legacy = {
+        **legacy_map(merged.legacy_ids, "job"),
+        **(existing.get("job") or {}),
+    }
     mat_result = transform_job_materials(tables, job_legacy, item_legacy)
     merged.merge(mat_result)
 
-    expense_result = transform_expense_ledger(tables, tenant_id)
+    from migration.stock_transforms import transform_expense_records, transform_stock_movements
+
+    expense_result = transform_expense_records(
+        tables,
+        tenant_id,
+        user_names=user_names,
+        since=since,
+        until=until,
+        existing_category_legacy=existing.get("expense_category"),
+        existing_expense_legacy=existing.get("expense"),
+    )
     merged.merge(expense_result)
+
+    if include_purchases:
+        purchase_result = transform_stock_movements(
+            tables,
+            tenant_id,
+            item_legacy,
+            supplier_legacy=supplier_legacy,
+            user_names=user_names,
+            since=since,
+            until=until,
+            existing_movement_legacy=existing.get("stock_movement"),
+            scope="all",
+        )
+        merged.merge(purchase_result)
 
     return merged

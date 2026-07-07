@@ -11,9 +11,9 @@ export type ReportSource =
       handler: "balance-sheet" | "trial-balance" | "cash-flow" | "account-summary";
     }
   | { kind: "contacts"; handler: "summary" | "customer-groups" }
-  | { kind: "stock"; handler: "valuation" | "lowstock" | "expiry" | "movement" }
+  | { kind: "stock"; handler: "valuation" | "lowstock" | "expiry" | "movement" | "details" }
   | { kind: "product"; handler: "trending" | "items" | "purchase" | "sell" }
-  | { kind: "sales"; handler: "purchase-sale" | "tax" | "register" | "sales-rep" }
+  | { kind: "sales"; handler: "purchase-sale" | "tax" | "register" | "sales-rep" | "service-staff" }
   | { kind: "audit" };
 
 export interface ReportRegistryEntry {
@@ -104,6 +104,16 @@ export const REPORT_REGISTRY: ReportRegistryEntry[] = [
     groupRollup: false,
   },
   {
+    id: "stock-details",
+    label: "Product Stock Details",
+    slug: "report-stock-details",
+    archetypes: ["stock"],
+    requiredModules: ["inventory"],
+    source: { kind: "stock", handler: "details" },
+    exportable: true,
+    groupRollup: false,
+  },
+  {
     id: "trending",
     label: "Trending Products",
     slug: "report-trending",
@@ -185,6 +195,16 @@ export const REPORT_REGISTRY: ReportRegistryEntry[] = [
     source: { kind: "sales", handler: "sales-rep" },
     exportable: true,
     groupRollup: true,
+  },
+  {
+    id: "service-staff",
+    label: "Service Staff Report",
+    slug: "report-service-staff",
+    archetypes: ["transaction"],
+    requiredModules: ["orders"],
+    source: { kind: "sales", handler: "service-staff" },
+    exportable: true,
+    groupRollup: false,
   },
   {
     id: "activity-log",

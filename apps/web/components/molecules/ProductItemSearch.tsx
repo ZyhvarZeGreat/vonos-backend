@@ -3,7 +3,11 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Search } from "lucide-react";
-import type { Item } from "@vonos/types";
+import type { BusinessLocation, Item } from "@vonos/types";
+import {
+  formatItemLocationLine,
+  formatLocationStockSummary,
+} from "@/lib/utils/locationLabels";
 import { getItems } from "@/lib/api/items";
 import { cn } from "@/lib/utils/cn";
 
@@ -11,6 +15,7 @@ export interface ProductItemSearchProps {
   tenantId: string | null;
   placeholder?: string;
   retailOnly?: boolean;
+  businessLocations?: BusinessLocation[];
   onSelect: (item: Item) => void;
   className?: string;
 }
@@ -19,6 +24,7 @@ export function ProductItemSearch({
   tenantId,
   placeholder = "Enter product name / SKU / scan barcode",
   retailOnly = false,
+  businessLocations,
   onSelect,
   className,
 }: ProductItemSearchProps) {
@@ -100,9 +106,15 @@ export function ProductItemSearch({
                   <span className="font-medium text-foreground">
                     {item.sku} — {item.name}
                   </span>
-                  {item.category ? (
-                    <span className="text-xs text-muted">{item.category}</span>
-                  ) : null}
+                  <span className="text-xs text-muted">
+                    {(item.locationStock?.length ?? 0) > 0
+                      ? formatLocationStockSummary(item, businessLocations)
+                      : formatItemLocationLine(item, businessLocations)}
+                    {item.category ? ` · ${item.category}` : ""}
+                  </span>
+                  <span className="text-xs text-muted">
+                    Available: {item.quantity}
+                  </span>
                 </button>
               </li>
             ))

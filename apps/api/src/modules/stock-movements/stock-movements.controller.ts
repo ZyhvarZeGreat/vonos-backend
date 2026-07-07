@@ -66,6 +66,7 @@ export class StockMovementsController {
       notes?: string;
       supplierId?: string;
       source?: MovementSource;
+      locationCode?: string;
       date?: string;
     },
   ) {

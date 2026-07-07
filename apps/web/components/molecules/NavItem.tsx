@@ -23,12 +23,18 @@ export function NavItem({
       href={href}
       className={cn(
         typographyRoles.navItem,
-        "flex items-center gap-3 rounded-md px-2 py-1.5 transition-colors",
+        "relative flex items-center gap-3 rounded-md px-2 py-1.5 transition-colors",
         active
-          ? "bg-[var(--color-surface-nav-active)] font-medium text-[var(--color-text-nav-active)]"
+          ? "bg-[var(--color-surface-nav-active)] font-medium text-[var(--color-brand-primary)]"
           : "font-normal text-[var(--color-text-nav)] hover:bg-[var(--color-surface-nav-hover)] hover:text-[var(--color-text-nav-active)]",
       )}
     >
+      {active ? (
+        <span
+          aria-hidden
+          className="absolute inset-y-1 left-0 w-1 rounded-full bg-[var(--color-brand-primary)]"
+        />
+      ) : null}
       <Icon className="sidebar-icon" />
       {!collapsed ? <span>{label}</span> : null}
     </Link>

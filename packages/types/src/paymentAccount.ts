@@ -56,3 +56,41 @@ export interface PaymentRecord {
   createdByName: string | null;
   createdAt: string;
 }
+
+export interface CreatePaymentAccountRequest {
+  name: string;
+  accountNumber?: string;
+  accountType?: string;
+  accountSubType?: string;
+  accountDetails?: string;
+  note?: string;
+  currency?: string;
+}
+
+export interface UpdatePaymentAccountRequest {
+  name?: string;
+  accountNumber?: string;
+  accountType?: string | null;
+  accountSubType?: string | null;
+  accountDetails?: string | null;
+  note?: string | null;
+  currency?: string;
+  isClosed?: boolean;
+}
+
+export interface PaymentAccountDepositRequest {
+  amount: number;
+  note?: string;
+  operationDate?: string;
+  paymentMethod?: string;
+  refNo?: string;
+}
+
+export interface PaymentAccountTransferRequest {
+  fromAccountId: string;
+  toAccountId: string;
+  amount: number;
+  note?: string;
+  operationDate?: string;
+  refNo?: string;
+}

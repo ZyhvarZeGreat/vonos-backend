@@ -5,6 +5,16 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
+# Vonos Automotive — merged target (VM Quotation + VMS OPS)
+VA_TENANT_ID = "tenant_va_001"
+VA_LEGACY_ID_OFFSET = 10_000_000
+HQ3_LEGACY_ID_OFFSET = 20_000_000
+HQ2_LEGACY_ID_OFFSET = 30_000_000
+VA_QUOTATION_DUMP = "vonomglk_Quotation.sql"
+VA_OPS_DUMP = "vonomglk_OPS.sql"
+HQ3_DUMP = "vonomglk_hq3temp"
+HQ2_DUMP = "vonomglk_hq2"
+
 Archetype = Literal["stock", "transaction", "job"]
 
 POS_TABLES = frozenset({
@@ -15,6 +25,8 @@ POS_TABLES = frozenset({
     "units",
     "warranties",
     "selling_price_groups",
+    "invoice_layouts",
+    "invoice_schemes",
     "account_types",
     "accounts",
     "account_transactions",
@@ -29,6 +41,9 @@ POS_TABLES = frozenset({
     "purchase_lines",
     "product_racks",
     "expense_categories",
+    "essentials_payroll_groups",
+    "essentials_payroll_group_transactions",
+    "essentials_allowances_and_deductions",
     "users",
     "activity_log",
 })
@@ -84,25 +99,61 @@ ENTITIES: dict[str, EntityMigration] = {
         tables_to_load=TRANSACTION_TABLES,
         available_for_retail=True,
     ),
+    "VA": EntityMigration(
+        code="VA",
+        name="Vonos Automotive",
+        tenant_id=VA_TENANT_ID,
+        source_db="vonomglk_Quotation+vonomglk_OPS",
+        archetype="job",
+        map_doc="docs/migration-audits/VA_MIGRATION_MAP.md",
+        tables_to_load=JOB_TABLES,
+        available_for_retail=False,
+    ),
+    # Staging-only — production imports use VA composite (tenant_va_001).
     "VM": EntityMigration(
         code="VM",
-        name="Vonos Mechanics",
+        name="Vonos Mechanics (staging)",
         tenant_id="tenant_vm_001",
         source_db="vonomglk_Quotation",
         archetype="job",
         map_doc="docs/migration-audits/VM_MIGRATION_MAP.md",
         tables_to_load=JOB_TABLES,
         available_for_retail=False,
+        reference_prefix="VM-",
     ),
     "VMS": EntityMigration(
         code="VMS",
-        name="Vonos Mech Shop",
+        name="Vonos Mech Shop (staging)",
         tenant_id="tenant_vms_001",
         source_db="vonomglk_OPS",
         archetype="job",
         map_doc="docs/migration-audits/VMS_MIGRATION_MAP.md",
         tables_to_load=JOB_TABLES,
         available_for_retail=False,
+        reference_prefix="VMS-",
+    ),
+    # VA delta sources — import into tenant_va_001 with legacy ID offsets (not separate tenants).
+    "HQ3": EntityMigration(
+        code="HQ3",
+        name="Vonos Autos HQ (hq3temp 2026 delta)",
+        tenant_id=VA_TENANT_ID,
+        source_db=HQ3_DUMP,
+        archetype="job",
+        map_doc="docs/migration-audits/VA_MIGRATION_MAP.md",
+        tables_to_load=JOB_TABLES,
+        available_for_retail=False,
+        reference_prefix="HQ3-",
+    ),
+    "HQ2": EntityMigration(
+        code="HQ2",
+        name="Vonos Autos HQ archive (hq2 2025 backfill)",
+        tenant_id=VA_TENANT_ID,
+        source_db=HQ2_DUMP,
+        archetype="job",
+        map_doc="docs/migration-audits/VA_MIGRATION_MAP.md",
+        tables_to_load=JOB_TABLES,
+        available_for_retail=False,
+        reference_prefix="HQ2-",
     ),
     "VC": EntityMigration(
         code="VC",
@@ -116,9 +167,16 @@ ENTITIES: dict[str, EntityMigration] = {
     ),
 }
 
-LEGACY_ENTITY_CODES: tuple[str, ...] = tuple(ENTITIES.keys())
+# Production import order (--entities all). VM/VMS are staging-only.
+MIGRATION_ENTITY_CODES: tuple[str, ...] = ("VC", "VA", "VISP", "VSP", "VW")
 
-PHASED_ENTITY_ORDER: tuple[str, ...] = ("VC", "VM", "VMS", "VISP", "VSP", "VW")
+STAGING_ENTITY_CODES: tuple[str, ...] = ("VM", "VMS")
+
+DELTA_ENTITY_CODES: tuple[str, ...] = ("HQ3", "HQ2")
+
+LEGACY_ENTITY_CODES: tuple[str, ...] = MIGRATION_ENTITY_CODES + STAGING_ENTITY_CODES + DELTA_ENTITY_CODES
+
+PHASED_ENTITY_ORDER: tuple[str, ...] = MIGRATION_ENTITY_CODES
 
 
 def get_entity(code: str) -> EntityMigration:
@@ -130,7 +188,7 @@ def get_entity(code: str) -> EntityMigration:
 
 def parse_entity_list(raw: str, *, phased_order: bool = False) -> list[EntityMigration]:
     if raw.strip().lower() == "all":
-        order = PHASED_ENTITY_ORDER if phased_order else LEGACY_ENTITY_CODES
+        order = PHASED_ENTITY_ORDER if phased_order else MIGRATION_ENTITY_CODES
         return [ENTITIES[c] for c in order]
     codes = [p.strip().upper() for p in raw.split(",") if p.strip()]
     entities = [get_entity(c) for c in codes]

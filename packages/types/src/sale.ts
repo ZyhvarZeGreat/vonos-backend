@@ -61,6 +61,8 @@ export interface SaleDetail extends Sale {
 
 export interface SaleFilters {
   status?: SaleReturnStatus;
+  /** When true, only sales mapped to return statuses (Refunded / Restocked). */
+  returnsOnly?: boolean;
   customerId?: string;
   cursor?: string;
   limit?: number;

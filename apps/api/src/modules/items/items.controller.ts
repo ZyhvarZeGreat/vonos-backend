@@ -8,7 +8,11 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import type { ItemFilters, StockStatus } from '@vonos/types';
+import type {
+  ItemFilters,
+  ItemLocationStockInput,
+  StockStatus,
+} from '@vonos/types';
 import { Roles } from '../../common/decorators/roles.decorator';
 import {
   JwtAuthGuard,
@@ -27,11 +31,17 @@ export class ItemsController {
     return this.itemsService.kpiSummary();
   }
 
+  @Get('stock-availability')
+  stockAvailability(@Query('search') search?: string) {
+    return this.itemsService.stockAvailability(search);
+  }
+
   @Get()
   list(
     @Query('status') status?: StockStatus,
     @Query('category') category?: string,
     @Query('search') search?: string,
+    @Query('locationCode') locationCode?: string,
     @Query('cursor') cursor?: string,
     @Query('limit') limit?: string,
     @Query('availableForRetail') availableForRetail?: string,
@@ -40,6 +50,7 @@ export class ItemsController {
       status,
       category,
       search,
+      locationCode,
       cursor,
       limit: limit ? Number(limit) : undefined,
     };
@@ -64,11 +75,13 @@ export class ItemsController {
       category?: string;
       quantity?: number;
       binLocation?: string;
+      locationCode?: string;
       reorderPoint?: number;
       costPrice: number;
       currency?: string;
       status?: StockStatus;
       availableForRetail?: boolean;
+      locationStock?: ItemLocationStockInput[];
     },
   ) {
     return this.itemsService.create(body);
@@ -85,11 +98,13 @@ export class ItemsController {
       category: string;
       quantity: number;
       binLocation: string;
+      locationCode: string;
       reorderPoint: number;
       costPrice: number;
       currency: string;
       status: StockStatus;
       availableForRetail: boolean;
+      locationStock: ItemLocationStockInput[];
     }>,
   ) {
     return this.itemsService.update(id, body);

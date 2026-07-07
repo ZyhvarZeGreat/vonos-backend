@@ -46,6 +46,11 @@ const TENANT_SCOPED_TABLES = [
   'ProductUnit',
   'Warranty',
   'SellingPriceGroup',
+  'ExpenseCategory',
+  'Expense',
+  'PayrollGroup',
+  'PayComponent',
+  'Payroll',
 ] as const;
 
 const dryRun = process.argv.includes('--dry-run');
@@ -70,6 +75,9 @@ async function countByTenant(prisma: PrismaClient, tenantId: string) {
     auditLog,
     paymentAccount,
     users,
+    payrollGroup,
+    payComponent,
+    payroll,
   ] = await Promise.all([
     prisma.appointment.count({ where: { tenantId } }),
     prisma.item.count({ where: { tenantId } }),
@@ -85,6 +93,9 @@ async function countByTenant(prisma: PrismaClient, tenantId: string) {
     prisma.auditLog.count({ where: { tenantId } }),
     prisma.paymentAccount.count({ where: { tenantId } }),
     prisma.user.count({ where: { tenantId } }),
+    prisma.payrollGroup.count({ where: { tenantId } }),
+    prisma.payComponent.count({ where: { tenantId } }),
+    prisma.payroll.count({ where: { tenantId } }),
   ]);
   return {
     Appointment: appointment,
@@ -101,6 +112,9 @@ async function countByTenant(prisma: PrismaClient, tenantId: string) {
     AuditLog: auditLog,
     PaymentAccount: paymentAccount,
     User: users,
+    PayrollGroup: payrollGroup,
+    PayComponent: payComponent,
+    Payroll: payroll,
   };
 }
 

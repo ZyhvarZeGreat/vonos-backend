@@ -1,4 +1,4 @@
-import { Controller, Get, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Patch, Body, Query, UseGuards } from '@nestjs/common';
 import {
   JwtAuthGuard,
   RolesGuard,
@@ -6,11 +6,15 @@ import {
 } from '../../common/guards/auth.guards';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { ReportsService } from './reports.service';
+import { ReportActionsService } from './report-actions.service';
 
 @Controller('reports')
 @UseGuards(JwtAuthGuard, TenantGuard, RolesGuard)
 export class ReportsController {
-  constructor(private readonly reportsService: ReportsService) {}
+  constructor(
+    private readonly reportsService: ReportsService,
+    private readonly reportActionsService: ReportActionsService,
+  ) {}
 
   @Get('summary')
   summary() {
@@ -49,5 +53,34 @@ export class ReportsController {
     @Query('to') to?: string,
   ) {
     return this.reportsService.runGroup(reportId, from, to);
+  }
+
+  /** HQ6 adjustProductStock — fix per-location quantity mismatch. */
+  @Patch('actions/fix-location-stock')
+  @Roles('manager', 'admin', 'super_admin')
+  fixLocationStock(
+    @Body()
+    body: {
+      itemId: string;
+      locationCode: string;
+      binLocation?: string;
+      quantity: number;
+    },
+  ) {
+    return this.reportActionsService.fixLocationStock(body);
+  }
+
+  /** HQ6 updateStockExpiryReport — set expiry on inbound movement line. */
+  @Patch('actions/movement-line-expiry')
+  @Roles('manager', 'admin', 'super_admin')
+  updateMovementLineExpiry(
+    @Body()
+    body: {
+      movementId: string;
+      lineSku: string;
+      expDate: string;
+    },
+  ) {
+    return this.reportActionsService.updateMovementLineExpiry(body);
   }
 }

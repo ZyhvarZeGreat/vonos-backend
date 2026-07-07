@@ -138,7 +138,7 @@ def _row_values(
             val = row.get(remap[col])
         if col == "lines" and isinstance(val, list):
             val = json.dumps(val)
-        if col in ("date", "dueDate", "createdAt", "updatedAt", "occurredAt") and isinstance(val, str):
+        if col in ("date", "dueDate", "createdAt", "updatedAt", "occurredAt", "expenseDate", "paidOn", "operationDate", "payrollMonth") and isinstance(val, str):
             val = _parse_dt(val)
         if col == "metadata" and isinstance(val, dict):
             val = json.dumps(val)
@@ -319,7 +319,7 @@ def write_postgres(
             cur,
             "Item",
             [
-                "id", "tenantId", "sku", "name", "category", "quantity", "binLocation",
+                "id", "tenantId", "sku", "name", "category", "brandId", "quantity", "binLocation",
                 "reorderPoint", "costPrice", "currency", "status", "availableForRetail",
                 "createdByUserId", "createdByName",
                 "createdAt", "updatedAt",
@@ -339,6 +339,74 @@ def write_postgres(
             "Supplier",
             ["id", "tenantId", "name", "contactName", "email", "phone", "address", "createdByUserId", "createdByName", "createdAt", "updatedAt"],
             result.suppliers,
+            progress=progress,
+        )
+        stats["expenseCategories"] = _insert_rows(
+            cur,
+            "ExpenseCategory",
+            ["id", "tenantId", "name", "code", "createdAt", "updatedAt"],
+            [
+                {
+                    **cat,
+                    "createdAt": cat.get("createdAt"),
+                    "updatedAt": cat.get("updatedAt"),
+                }
+                for cat in result.expense_categories
+            ],
+            progress=progress,
+        )
+        category_ids = _fetch_existing_ids(
+            cur, "ExpenseCategory", [c["id"] for c in result.expense_categories],
+        )
+        stats["expenses"] = _insert_rows(
+            cur,
+            "Expense",
+            [
+                "id", "tenantId", "refNo", "categoryId", "subCategory", "locationCode",
+                "expenseFor", "contactName", "totalAmount", "taxAmount", "paymentStatus",
+                "paymentDue", "note", "isRecurring", "recurInterval", "recurIntervalType",
+                "expenseDate", "createdById", "createdAt", "updatedAt",
+            ],
+            [
+                exp for exp in result.expenses
+                if exp.get("categoryId") is None or exp["categoryId"] in category_ids
+            ],
+            progress=progress,
+        )
+        stats["payrollGroups"] = _insert_rows(
+            cur,
+            "PayrollGroup",
+            ["id", "tenantId", "name", "createdAt", "updatedAt"],
+            result.payroll_groups,
+            progress=progress,
+        )
+        group_ids = _fetch_existing_ids(
+            cur, "PayrollGroup", [g["id"] for g in result.payroll_groups],
+        )
+        cur.execute(
+            'SELECT id FROM "PayrollGroup" WHERE "tenantId" = %s AND "deletedAt" IS NULL',
+            (tenant_id,),
+        )
+        group_ids.update(row[0] for row in cur.fetchall())
+        stats["payComponents"] = _insert_rows(
+            cur,
+            "PayComponent",
+            ["id", "tenantId", "name", "type", "amount", "createdAt", "updatedAt"],
+            result.pay_components,
+            progress=progress,
+        )
+        stats["payrolls"] = _insert_rows(
+            cur,
+            "Payroll",
+            [
+                "id", "tenantId", "payrollGroupId", "employeeName", "employeeId", "locationCode",
+                "grossPay", "totalAllowance", "totalDeduction", "netPay", "status", "paymentStatus",
+                "payrollMonth", "note", "createdAt", "updatedAt",
+            ],
+            [
+                row for row in result.payrolls
+                if row.get("payrollGroupId") is None or row["payrollGroupId"] in group_ids
+            ],
             progress=progress,
         )
         stats["stockMovements"] = _insert_rows(
@@ -382,7 +450,7 @@ def write_postgres(
             "Job",
             [
                 "id", "tenantId", "reference", "description", "status", "hasQuote", "quoteAmount",
-                "customerName", "vehicleId", "assignedStaffIds", "dueDate",
+                "customerId", "customerName", "vehicleId", "assignedStaffIds", "dueDate",
                 "createdByUserId", "createdByName",
                 "createdAt", "updatedAt",
             ],
@@ -507,6 +575,26 @@ def write_postgres(
             "SellingPriceGroup",
             ["id", "tenantId", "name", "description", "isActive", "createdAt", "updatedAt"],
             result.selling_price_groups,
+            progress=progress,
+        )
+        stats["invoiceLayouts"] = _insert_rows(
+            cur,
+            "InvoiceLayout",
+            [
+                "id", "tenantId", "name", "design", "headerText", "footerText",
+                "termsText", "isDefault", "createdAt", "updatedAt",
+            ],
+            result.invoice_layouts,
+            progress=progress,
+        )
+        stats["invoiceSchemes"] = _insert_rows(
+            cur,
+            "InvoiceScheme",
+            [
+                "id", "tenantId", "name", "prefix", "startNumber", "invoiceCount",
+                "totalDigits", "isDefault", "createdAt", "updatedAt",
+            ],
+            result.invoice_schemes,
             progress=progress,
         )
         if progress:

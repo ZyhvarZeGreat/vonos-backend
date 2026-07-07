@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { PrismaModule } from './common/prisma/prisma.module';
+import { CacheModule } from './common/cache/cache.module';
 import { HealthController } from './health/health.controller';
 import { AuthModule } from './modules/auth/auth.module';
 import { CustomersModule } from './modules/customers/customers.module';
@@ -26,10 +27,15 @@ import { CafeTablesModule } from './modules/cafe-tables/cafe-tables.module';
 import { PaymentAccountsModule } from './modules/payment-accounts/payment-accounts.module';
 import { PaymentsModule } from './modules/payments/payments.module';
 import { CatalogMetaModule } from './modules/catalog-meta/catalog-meta.module';
+import { ExpensesModule } from './modules/expenses/expenses.module';
+import { CustomerGroupsModule } from './modules/customer-groups/customer-groups.module';
+import { HrmModule } from './modules/hrm/hrm.module';
+import { InvoiceSettingsModule } from './modules/invoice-settings/invoice-settings.module';
 
 @Module({
   imports: [
     PrismaModule,
+    CacheModule,
     AuthModule,
     AuditModule,
     TenantsModule,
@@ -53,6 +59,10 @@ import { CatalogMetaModule } from './modules/catalog-meta/catalog-meta.module';
     PaymentAccountsModule,
     PaymentsModule,
     CatalogMetaModule,
+    ExpensesModule,
+    CustomerGroupsModule,
+    HrmModule,
+    InvoiceSettingsModule,
   ],
   controllers: [AppController, HealthController],
   providers: [AppService],

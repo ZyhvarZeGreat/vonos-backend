@@ -1,6 +1,6 @@
 import { Archetype, PrismaClient, Role, UserStatus } from '@prisma/client';
 import { createHash } from 'node:crypto';
-import { catalogPresetsForCode } from '@vonos/types';
+import { catalogPresetsForCode, RETAIL_CATALOG_ENABLED_MODULES } from '@vonos/types';
 
 /** Dev-only password hasher; runtime auth upgrades to bcrypt on login. */
 export function devPasswordHash(password: string): string {
@@ -11,11 +11,17 @@ function withCatalog<T extends { code?: string }>(config: T) {
   return { ...config, ...catalogPresetsForCode(config.code) };
 }
 
+const adminNavTail = (code: string) => [
+  { label: 'Finance', icon: 'wallet', route: `/${code}/finance`, pageType: 'dashboard' },
+  { label: 'Reports', icon: 'pie-chart', route: `/${code}/reports`, pageType: 'dashboard' },
+  { label: 'HR', icon: 'users', route: `/${code}/hr`, pageType: 'form' },
+  { label: 'Locations', icon: 'map-pin', route: `/${code}/locations`, pageType: 'form' },
+  { label: 'Settings', icon: 'settings', route: `/${code}/settings`, pageType: 'form' },
+];
+
 const stockNavItems = (code: string) => [
   { label: 'Overview', icon: 'layout-dashboard', route: `/${code}/overview`, pageType: 'dashboard' },
-  { label: 'Finance', icon: 'wallet', route: `/${code}/finance`, pageType: 'dashboard' },
-  { label: 'Users', icon: 'users', route: `/${code}/users`, pageType: 'form' },
-  { label: 'Settings', icon: 'settings', route: `/${code}/settings`, pageType: 'form' },
+  ...adminNavTail(code),
 ];
 
 const warehouseConfig = {
@@ -31,7 +37,7 @@ const warehouseConfig = {
     { label: 'Stock Values', icon: 'calculator', metricKey: 'stockValue', color: '#e11d48' },
   ],
   terminology: { item: 'SKU', inventory: 'Inventory', supplier: 'Supplier' },
-  enabledModules: ['inventory', 'movements', 'suppliers', 'purchases', 'paymentAccounts', 'reports', 'finance'],
+  enabledModules: ['inventory', 'movements', 'suppliers', 'purchases', 'paymentAccounts', 'reports', 'finance', 'hrm'],
 };
 
 const kidsWearConfig = {
@@ -47,15 +53,13 @@ const kidsWearConfig = {
     { label: 'Stock Value', icon: 'calculator', metricKey: 'stockValue', color: '#e11d48' },
   ],
   terminology: { item: 'Variant', inventory: 'Inventory', supplier: 'Supplier', collection: 'Collection' },
-  enabledModules: ['inventory', 'movements', 'suppliers', 'purchases', 'paymentAccounts', 'reports', 'finance', 'variants'],
+  enabledModules: ['inventory', 'movements', 'suppliers', 'purchases', 'paymentAccounts', 'reports', 'finance', 'variants', 'hrm'],
 };
 
 const transactionNavItems = (code: string) => [
   { label: 'Overview', icon: 'layout-dashboard', route: `/${code}/overview`, pageType: 'dashboard' },
   { label: 'Customers', icon: 'users', route: `/${code}/customers`, pageType: 'list' },
-  { label: 'Finance', icon: 'wallet', route: `/${code}/finance`, pageType: 'dashboard' },
-  { label: 'Users', icon: 'users', route: `/${code}/users`, pageType: 'form' },
-  { label: 'Settings', icon: 'settings', route: `/${code}/settings`, pageType: 'form' },
+  ...adminNavTail(code),
 ];
 
 const vispConfig = {
@@ -71,7 +75,7 @@ const vispConfig = {
     { label: 'Revenue', icon: 'wallet', metricKey: 'revenue', color: '#e11d48' },
   ],
   terminology: { sale: 'Sale', customer: 'Customer', return: 'Return' },
-  enabledModules: ['sales', 'returns', 'customers', 'inventory', 'paymentAccounts', 'pos', 'quotations', 'reports', 'finance'],
+  enabledModules: [...RETAIL_CATALOG_ENABLED_MODULES],
 };
 
 const vspConfig = {
@@ -87,7 +91,7 @@ const vspConfig = {
     { label: 'Revenue', icon: 'wallet', metricKey: 'revenue', color: '#e11d48' },
   ],
   terminology: { sale: 'Order', customer: 'Buyer', return: 'Return' },
-  enabledModules: ['sales', 'returns', 'customers', 'inventory', 'paymentAccounts', 'pos', 'quotations', 'reports', 'finance'],
+  enabledModules: [...RETAIL_CATALOG_ENABLED_MODULES],
 };
 
 const cafeConfig = {
@@ -98,10 +102,9 @@ const cafeConfig = {
   navItems: [
     { label: 'Overview', icon: 'layout-dashboard', route: '/VC/overview', pageType: 'dashboard' },
     { label: 'Tables', icon: 'grid-3x3', route: '/VC/tables', pageType: 'list' },
+    { label: 'Customers', icon: 'users', route: '/VC/customers', pageType: 'list' },
     { label: 'Suppliers', icon: 'truck', route: '/VC/suppliers', pageType: 'list' },
-    { label: 'Finance', icon: 'wallet', route: '/VC/finance', pageType: 'dashboard' },
-    { label: 'Users', icon: 'users', route: '/VC/users', pageType: 'form' },
-    { label: 'Settings', icon: 'settings', route: '/VC/settings', pageType: 'form' },
+    ...adminNavTail('VC'),
   ],
   kpiCards: [
     { label: "Today's Orders", icon: 'receipt', metricKey: 'todayOrders', color: '#059669' },
@@ -110,7 +113,7 @@ const cafeConfig = {
     { label: 'Revenue', icon: 'wallet', metricKey: 'revenue', color: '#e11d48' },
   ],
   terminology: { order: 'Order', menuItem: 'Menu Item', table: 'Table' },
-  enabledModules: ['orders', 'tables', 'inventory', 'paymentAccounts', 'pos', 'quotations', 'reports', 'finance'],
+  enabledModules: ['orders', 'tables', 'customers', 'suppliers', 'inventory', 'paymentAccounts', 'pos', 'quotations', 'reports', 'finance', 'hrm'],
 };
 
 const mechanicsConfig = {
@@ -124,10 +127,7 @@ const mechanicsConfig = {
     { label: 'Vehicles', icon: 'car', route: '/VM/vehicles', pageType: 'list' },
     { label: 'Requisitions', icon: 'clipboard-list', route: '/VM/requisitions', pageType: 'list' },
     { label: 'Customers', icon: 'users', route: '/VM/customers', pageType: 'list' },
-    { label: 'Reports', icon: 'pie-chart', route: '/VM/reports', pageType: 'dashboard' },
-    { label: 'Finance', icon: 'wallet', route: '/VM/finance', pageType: 'dashboard' },
-    { label: 'Users', icon: 'users', route: '/VM/users', pageType: 'form' },
-    { label: 'Settings', icon: 'settings', route: '/VM/settings', pageType: 'form' },
+    ...adminNavTail('VM'),
   ],
   kpiCards: [
     { label: 'Open Jobs', icon: 'wrench', metricKey: 'openJobs', color: '#059669' },
@@ -141,7 +141,35 @@ const mechanicsConfig = {
     customer: 'Customer',
     requisition: 'Parts Requisition',
   },
-  enabledModules: ['jobs', 'vehicles', 'requisitions', 'customers', 'reports', 'finance'],
+  enabledModules: ['jobs', 'vehicles', 'requisitions', 'customers', 'suppliers', 'reports', 'finance', 'hrm'],
+};
+
+const automotiveConfig = {
+  tenantId: 'tenant_va_001',
+  code: 'VA',
+  name: 'Vonos Automotive',
+  archetype: 'job',
+  navItems: [
+    { label: 'Overview', icon: 'layout-dashboard', route: '/VA/overview', pageType: 'dashboard' },
+    { label: 'Jobs', icon: 'wrench', route: '/VA/jobs', pageType: 'list' },
+    { label: 'Vehicles', icon: 'car', route: '/VA/vehicles', pageType: 'list' },
+    { label: 'Requisitions', icon: 'clipboard-list', route: '/VA/requisitions', pageType: 'list' },
+    { label: 'Customers', icon: 'users', route: '/VA/customers', pageType: 'list' },
+    ...adminNavTail('VA'),
+  ],
+  kpiCards: [
+    { label: 'Open Jobs', icon: 'wrench', metricKey: 'openJobs', color: '#059669' },
+    { label: 'In Shop', icon: 'car', metricKey: 'inShop', color: '#2563eb' },
+    { label: 'Parts Pending', icon: 'package', metricKey: 'partsPending', color: '#9333ea' },
+    { label: 'Revenue', icon: 'wallet', metricKey: 'revenue', color: '#e11d48' },
+  ],
+  terminology: {
+    job: 'Job',
+    vehicle: 'Vehicle',
+    customer: 'Customer',
+    requisition: 'Parts Requisition',
+  },
+  enabledModules: ['jobs', 'vehicles', 'requisitions', 'customers', 'suppliers', 'reports', 'finance', 'hrm'],
 };
 
 const mechShopConfig = {
@@ -154,10 +182,7 @@ const mechShopConfig = {
     { label: 'Jobs', icon: 'wrench', route: '/VMS/jobs', pageType: 'list' },
     { label: 'Requisitions', icon: 'clipboard-list', route: '/VMS/requisitions', pageType: 'list' },
     { label: 'Customers', icon: 'users', route: '/VMS/customers', pageType: 'list' },
-    { label: 'Reports', icon: 'pie-chart', route: '/VMS/reports', pageType: 'dashboard' },
-    { label: 'Finance', icon: 'wallet', route: '/VMS/finance', pageType: 'dashboard' },
-    { label: 'Users', icon: 'users', route: '/VMS/users', pageType: 'form' },
-    { label: 'Settings', icon: 'settings', route: '/VMS/settings', pageType: 'form' },
+    ...adminNavTail('VMS'),
   ],
   kpiCards: [
     { label: 'Active Jobs', icon: 'wrench', metricKey: 'activeJobs', color: '#059669' },
@@ -170,11 +195,10 @@ const mechShopConfig = {
     customer: 'Customer',
     requisition: 'Material Requisition',
   },
-  enabledModules: ['jobs', 'requisitions', 'customers', 'reports', 'finance'],
+  enabledModules: ['jobs', 'requisitions', 'customers', 'suppliers', 'reports', 'finance', 'hrm'],
 };
 
-/** @deprecated Use mechanicsConfig */
-export { mechanicsConfig as automotiveConfig };
+export { automotiveConfig };
 
 const saloonConfig = {
   tenantId: 'tenant_vs_001',
@@ -187,10 +211,7 @@ const saloonConfig = {
     { label: 'Customers', icon: 'users', route: '/VS/customers', pageType: 'list' },
     { label: 'Services', icon: 'scissors', route: '/VS/services', pageType: 'list' },
     { label: 'Stylist Schedule', icon: 'clock', route: '/VS/stylist-schedule', pageType: 'form' },
-    { label: 'Reports', icon: 'pie-chart', route: '/VS/reports', pageType: 'dashboard' },
-    { label: 'Finance', icon: 'wallet', route: '/VS/finance', pageType: 'dashboard' },
-    { label: 'Users', icon: 'users', route: '/VS/users', pageType: 'form' },
-    { label: 'Settings', icon: 'settings', route: '/VS/settings', pageType: 'form' },
+    ...adminNavTail('VS'),
   ],
   kpiCards: [
     { label: "Today's Appts", icon: 'calendar', metricKey: 'todayAppts', color: '#059669' },
@@ -199,7 +220,7 @@ const saloonConfig = {
     { label: 'Revenue', icon: 'wallet', metricKey: 'revenue', color: '#e11d48' },
   ],
   terminology: { appointment: 'Appointment', customer: 'Customer', service: 'Service', stylist: 'Stylist' },
-  enabledModules: ['appointments', 'services', 'reports', 'finance'],
+  enabledModules: ['appointments', 'services', 'reports', 'finance', 'hrm'],
 };
 
 const tenants: Array<{
@@ -214,6 +235,7 @@ const tenants: Array<{
   { id: 'tenant_visp_001', code: 'VISP', name: 'Vonos Institute Spare Parts', archetype: 'transaction', config: withCatalog(vispConfig) },
   { id: 'tenant_vsp_001', code: 'VSP', name: 'Vonos SP Marketplace', archetype: 'transaction', config: withCatalog(vspConfig) },
   { id: 'tenant_vc_001', code: 'VC', name: 'Vonos Cafe', archetype: 'transaction', config: withCatalog(cafeConfig) },
+  { id: 'tenant_va_001', code: 'VA', name: 'Vonos Automotive', archetype: 'job', config: withCatalog(automotiveConfig) },
   { id: 'tenant_vm_001', code: 'VM', name: 'Vonos Mechanics', archetype: 'job', config: withCatalog(mechanicsConfig) },
   { id: 'tenant_vms_001', code: 'VMS', name: 'Vonos Mech Shop', archetype: 'job', config: withCatalog(mechShopConfig) },
   { id: 'tenant_vs_001', code: 'VS', name: 'Vonos Saloon', archetype: 'appointment', config: withCatalog(saloonConfig) },
@@ -284,8 +306,24 @@ export async function seedTenantsAndUsers(prisma: PrismaClient): Promise<void> {
     { id: 'user_visp_admin', email: 'admin@visp.vonos', tenantId: 'tenant_visp_001', name: 'VISP Admin' },
     { id: 'user_vsp_admin', email: 'admin@vsp.vonos', tenantId: 'tenant_vsp_001', name: 'VSP Admin' },
     { id: 'user_vc_admin', email: 'admin@vc.vonos', tenantId: 'tenant_vc_001', name: 'Cafe Admin' },
-    { id: 'user_vm_admin', email: 'admin@vm.vonos', tenantId: 'tenant_vm_001', name: 'Mechanics Admin' },
-    { id: 'user_vms_admin', email: 'admin@vms.vonos', tenantId: 'tenant_vms_001', name: 'Mech Shop Admin' },
+    {
+      id: 'user_va_admin',
+      email: 'admin@va.vonos',
+      tenantId: 'tenant_va_001',
+      name: 'Automotive Admin',
+    },
+    {
+      id: 'user_vm_admin',
+      email: 'admin@vm.vonos',
+      tenantId: 'tenant_va_001',
+      name: 'Automotive Admin (legacy VM login)',
+    },
+    {
+      id: 'user_vms_admin',
+      email: 'admin@vms.vonos',
+      tenantId: 'tenant_va_001',
+      name: 'Automotive Admin (legacy VMS login)',
+    },
     { id: 'user_vs_admin', email: 'admin@vs.vonos', tenantId: 'tenant_vs_001', name: 'Saloon Admin' },
   ];
 

@@ -6,7 +6,7 @@ import "@/styles/globals.css";
 
 export const metadata: Metadata = {
   title: "Vonos",
-  description: "Vonos Group multi-tenant operations platform",
+  description: "Operations platform for Vonos Autos Group",
 };
 
 export default function RootLayout({

@@ -6,6 +6,7 @@ export interface MovementLine {
   sku: string;
   name: string;
   quantity: number;
+  expDate?: string;
 }
 
 export function computeStockStatus(
@@ -57,6 +58,9 @@ export function parseMovementLines(lines: unknown): MovementLine[] {
         sku: toStringField(record.sku),
         name: toStringField(record.name),
         quantity,
+        ...(typeof record.expDate === 'string' && record.expDate
+          ? { expDate: record.expDate }
+          : {}),
       },
     ];
   });

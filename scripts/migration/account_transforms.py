@@ -12,7 +12,7 @@ from migration.pos_common import (
     parse_decimal,
     parse_int,
     parse_tx_date,
-    row_date_on_or_after,
+    row_date_in_range,
     table_rows,
 )
 from migration.types import TableData, TransformResult
@@ -40,6 +40,7 @@ def transform_accounts(
     *,
     user_names: dict[int, str] | None = None,
     since: str | None = None,
+    until: str | None = None,
     existing_legacy: dict[str, dict[int, str]] | None = None,
 ) -> TransformResult:
     result = TransformResult()
@@ -64,7 +65,7 @@ def transform_accounts(
         if legacy_id <= 0 or legacy_id in account_legacy:
             continue
         if since and row.get("created_at"):
-            if not row_date_on_or_after(row, "created_at", since):
+            if not row_date_in_range(row, "created_at", since=since, until=until):
                 continue
 
         acct_id = new_cuid()
@@ -98,7 +99,7 @@ def transform_accounts(
         legacy_id = parse_int(row.get("id"))
         if legacy_id <= 0:
             continue
-        if since and not row_date_on_or_after(row, "operation_date", since):
+        if not row_date_in_range(row, "operation_date", since=since, until=until):
             continue
 
         legacy_acct = parse_int(row.get("account_id"))
@@ -135,7 +136,7 @@ def transform_accounts(
         if legacy_id <= 0 or legacy_id in payment_legacy:
             continue
         if since and row.get("paid_on"):
-            if not row_date_on_or_after(row, "paid_on", since):
+            if not row_date_in_range(row, "paid_on", since=since, until=until):
                 continue
 
         legacy_acct = parse_int(row.get("account_id"), 0)

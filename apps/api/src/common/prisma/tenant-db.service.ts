@@ -58,4 +58,21 @@ export class TenantDbService {
     });
     return assertBusinessLocation(tenant?.config, locationCode);
   }
+
+  /**
+   * Loads the tenant config once and returns a synchronous validator so callers
+   * can validate many location codes (e.g. per-location stock rows) without
+   * issuing a DB query per row.
+   */
+  async businessLocationValidator(): Promise<
+    (locationCode?: string | null) => string | null
+  > {
+    const tenantId = this.requireTenantId();
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { config: true },
+    });
+    return (locationCode?: string | null) =>
+      assertBusinessLocation(tenant?.config, locationCode);
+  }
 }

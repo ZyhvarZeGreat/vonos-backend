@@ -24,6 +24,15 @@ export function priorWindow(window: DateWindow): DateWindow {
   return { from: priorFrom, to: priorTo };
 }
 
+export type ChartDatum = { label: string } & Record<string, string | number>;
+
+/** Satisfies ReportsChart.data typing for SQL aggregate row shapes. */
+export function asChartData<T extends { label: string }>(
+  rows: T[],
+): ChartDatum[] {
+  return rows as ChartDatum[];
+}
+
 export function inWindow(date: Date, window: DateWindow): boolean {
   const t = date.getTime();
   return t >= window.from.getTime() && t <= window.to.getTime();

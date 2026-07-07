@@ -1,11 +1,12 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 import type { Brand, ProductCategory, ProductUnit, SellingPriceGroup, Warranty } from "@vonos/types";
-import { DataTable, type ColumnConfig } from "@/components/organisms/DataTable";
+import { type ColumnConfig } from "@/components/organisms/DataTable";
+import { ServerPaginatedTable } from "@/components/organisms/ServerPaginatedTable";
 import { ListPageShell } from "@/components/organisms/ListPageShell";
-import { getCatalogMeta, type CatalogMetaKind } from "@/lib/api/catalogMeta";
+import { getCatalogMetaPage, type CatalogMetaKind } from "@/lib/api/catalogMeta";
+import { useServerListPage } from "@/lib/hooks/useServerListPage";
 import { useTenantId } from "@/lib/hooks/useRouteTenant";
 import { useUiStore } from "@/stores/uiStore";
 
@@ -68,16 +69,30 @@ export function CatalogMetaListView({ kind }: { kind: CatalogMetaKind }) {
   const openExportModal = useUiStore((state) => state.openExportModal);
   const label = KIND_LABELS[kind];
 
-  const { data = [], isLoading, error } = useQuery({
+  const {
+    items: data,
+    hasMore,
+    pageIndex,
+    pageSize,
+    canGoPrev,
+    goNext,
+    goPrev,
+    setPageSize,
+    isLoading,
+    error,
+  } = useServerListPage({
     queryKey: ["catalog-meta", tenantId, kind],
-    queryFn: async () => {
-      if (!tenantId) return [];
-      return getCatalogMeta(tenantId, kind);
-    },
     enabled: Boolean(tenantId),
+    fetchPage: async (cursor, limit) => {
+      const page = await getCatalogMetaPage(tenantId!, kind, cursor, limit);
+      return page;
+    },
   });
 
-  const rows = useMemo(() => toMetaRows(kind, data), [data, kind]);
+  const rows = useMemo(
+    () => toMetaRows(kind, data as ProductCategory[] | Brand[] | ProductUnit[] | Warranty[] | SellingPriceGroup[]),
+    [data, kind],
+  );
 
   const columns: ColumnConfig<MetaRow>[] = [
     { key: "name", header: "Name", render: (r) => <span className="font-medium">{r.name}</span> },
@@ -98,13 +113,18 @@ export function CatalogMetaListView({ kind }: { kind: CatalogMetaKind }) {
         })
       }
     >
-      <DataTable<MetaRow>
-        data={rows}
+      <ServerPaginatedTable
+        items={rows}
         columns={columns}
-        displayMode="table"
+        pageIndex={pageIndex}
+        pageSize={pageSize}
+        hasMore={hasMore}
+        canGoPrev={canGoPrev}
+        onNext={goNext}
+        onPrev={goPrev}
+        onPageSizeChange={setPageSize}
         isLoading={isLoading}
         error={error ? `Failed to load ${label.toLowerCase()}` : null}
-        disablePagination={rows.length <= 100}
         emptyState={{ message: `No ${label.toLowerCase()} imported yet.` }}
       />
     </ListPageShell>

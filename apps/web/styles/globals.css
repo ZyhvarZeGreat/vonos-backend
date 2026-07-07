@@ -110,6 +110,7 @@ h6,
   width: var(--sidebar-icon-size);
   height: var(--sidebar-icon-size);
   flex-shrink: 0;
+  color: currentColor;
 }
 
 .type-body {
@@ -143,7 +144,8 @@ h6,
 @media print {
   aside,
   header,
-  nav {
+  nav,
+  .no-print {
     display: none !important;
   }
 
@@ -152,8 +154,21 @@ h6,
     padding: 0 !important;
   }
 
-  [data-print-root] {
+  [data-print-root],
+  .invoice-print-root {
     border: none !important;
     box-shadow: none !important;
+  }
+
+  .invoice-print-overlay {
+    position: static !important;
+    background: transparent !important;
+    padding: 0 !important;
+  }
+
+  .invoice-print-dialog {
+    max-width: none !important;
+    box-shadow: none !important;
+    border: none !important;
   }
 }

@@ -1,14 +1,16 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
 import { useCallback, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Plus } from "lucide-react";
 import { Button } from "@/components/atoms/Button";
+import { RowActionsMenu } from "@/components/molecules/RowActionsMenu";
 import { StatusPill } from "@/components/atoms/StatusPill";
 import { InlinePriceCell } from "@/components/molecules/InlinePriceCell";
 import { ProductItemSearch } from "@/components/molecules/ProductItemSearch";
-import { DataTable, type ColumnConfig } from "@/components/organisms/DataTable";
+import { type ColumnConfig } from "@/components/organisms/DataTable";
+import { ServerPaginatedTable } from "@/components/organisms/ServerPaginatedTable";
+import { useServerListPage } from "@/lib/hooks/useServerListPage";
 import { ListPageShell } from "@/components/organisms/ListPageShell";
 import {
   isProductMetaSection,
@@ -17,25 +19,29 @@ import {
   sectionFromParams,
   type ProductSectionId,
 } from "@/components/organisms/ProductMetaPanel";
-import { getCustomers, getItems, getSales } from "@/lib/api";
-import { getCatalog } from "@/lib/api/catalog";
-import { getOrders } from "@/lib/api/orders";
-import { getReturns } from "@/lib/api/returns";
-import { getRequisitions } from "@/lib/api/requisitions";
-import { getSalonServices } from "@/lib/api/salonServices";
-import { getVehicles } from "@/lib/api/vehicles";
+import { getCustomersPage } from "@/lib/api/customers";
+import { getCatalogPage } from "@/lib/api/catalog";
+import { getSalesPage } from "@/lib/api/sales";
+import { getOrdersPage } from "@/lib/api/orders";
+import { getReturnsPage } from "@/lib/api/returns";
+import { getAllRequisitions, getRequisitionsPage } from "@/lib/api/requisitions";
+import { getAllSalonServices, getSalonServicesPage } from "@/lib/api/salonServices";
+import { getAllVehicles, getVehiclesPage } from "@/lib/api/vehicles";
+import { getItemsPage } from "@/lib/api/items";
 import { useListExport } from "@/lib/hooks/useListExport";
 import type { Order, MenuItemRow, SaleReturnRow } from "@/lib/types/entityRows";
-import type { Customer, Item, Requisition, Sale, SalonService, Vehicle } from "@vonos/types";
+import type { Customer, Item, Requisition, Sale, SalonService, StockStatus, Vehicle } from "@vonos/types";
 import { formatCurrency, formatNumber } from "@/lib/utils/formatCurrency";
 import { useRecordNavigation } from "@/lib/hooks/useRecordNavigation";
-import { useTenantId } from "@/lib/hooks/useRouteTenant";
+import { useRouteTenant, useTenantId } from "@/lib/hooks/useRouteTenant";
 import { useListPageFilters } from "@/lib/hooks/useListPageFilters";
 import {
   filterByDateField,
   filterBySearch,
   uniqueFieldOptions,
 } from "@/lib/utils/listFilters";
+import { ItemLocationCell } from "@/components/molecules/ItemLocationCell";
+import { itemMatchesLocationFilter, locationFilterOptions } from "@/lib/utils/locationLabels";
 import { useUiStore } from "@/stores/uiStore";
 
 export function SalesListView() {
@@ -46,17 +52,37 @@ export function SalesListView() {
   const { dateRange, setDateRange, search, setSearch, bounds } = useListPageFilters();
   const [statusFilter, setStatusFilter] = useState("");
 
-  const { data: sales = [], isLoading, error } = useQuery({
+  const apiFilters = useMemo(
+    () => ({
+      search: search.trim() || undefined,
+    }),
+    [search],
+  );
+
+  const {
+    items: sales,
+    hasMore,
+    pageIndex,
+    pageSize,
+    canGoPrev,
+    goNext,
+    goPrev,
+    setPageSize,
+    isLoading,
+    error,
+  } = useServerListPage({
     queryKey: ["sales", tenantId],
-    queryFn: () => getSales(tenantId!),
     enabled: Boolean(tenantId),
+    filters: apiFilters,
+    search,
+    fetchPage: (cursor, limit) => getSalesPage(tenantId!, apiFilters, cursor, limit),
   });
 
   const filtered = useMemo(() => {
     let rows = filterByDateField(sales, bounds, "date");
     if (statusFilter) rows = rows.filter((s) => s.status === statusFilter);
-    return filterBySearch(rows, search, ["reference", "customerName"]);
-  }, [bounds, sales, search, statusFilter]);
+    return rows;
+  }, [bounds, sales, statusFilter]);
 
   const statusOptions = useMemo(
     () => uniqueFieldOptions(sales, "status"),
@@ -116,23 +142,28 @@ export function SalesListView() {
           "Export Sales Spreadsheet",
         )
       }
+      primaryAction={
+        <Button size="sm" onClick={() => openAddSaleModal()}>
+          <Plus className="mr-1.5 h-4 w-4" />
+          Add Sale
+        </Button>
+      }
     >
-      <div className="space-y-3 p-4 pt-0">
-        <div className="flex justify-end">
-          <Button size="sm" onClick={() => openAddSaleModal()}>
-            <Plus className="mr-1.5 h-4 w-4" />
-            Add sale
-          </Button>
-        </div>
-        <DataTable
-          data={filtered}
+      <div className="p-4 pt-0">
+        <ServerPaginatedTable
+          items={filtered}
           columns={columns}
-          displayMode="table"
-          embedded
+          pageIndex={pageIndex}
+          pageSize={pageSize}
+          hasMore={hasMore}
+          canGoPrev={canGoPrev}
+          onNext={goNext}
+          onPrev={goPrev}
+          onPageSizeChange={setPageSize}
           isLoading={isLoading}
-        error={error ? "Failed to load sales" : null}
-        onRowClick={(row) => goToDetail(row.id)}
-      />
+          error={error ? "Failed to load sales" : null}
+          onRowClick={(row) => goToDetail(row.id)}
+        />
       </div>
     </ListPageShell>
   );
@@ -144,17 +175,37 @@ export function OrdersListView() {
   const { dateRange, setDateRange, search, setSearch, bounds } = useListPageFilters();
   const [statusFilter, setStatusFilter] = useState("");
 
-  const { data: orders = [], isLoading, error } = useQuery({
+  const apiFilters = useMemo(
+    () => ({
+      search: search.trim() || undefined,
+    }),
+    [search],
+  );
+
+  const {
+    items: orders,
+    hasMore,
+    pageIndex,
+    pageSize,
+    canGoPrev,
+    goNext,
+    goPrev,
+    setPageSize,
+    isLoading,
+    error,
+  } = useServerListPage<Order>({
     queryKey: ["orders", tenantId],
-    queryFn: () => getOrders(tenantId!),
     enabled: Boolean(tenantId),
+    filters: apiFilters,
+    search,
+    fetchPage: (cursor, limit) => getOrdersPage(tenantId!, apiFilters, cursor, limit),
   });
 
   const filtered = useMemo(() => {
     let rows = filterByDateField(orders, bounds, "createdAt");
     if (statusFilter) rows = rows.filter((o) => o.status === statusFilter);
-    return filterBySearch(rows, search, ["reference", "tableNumber"]);
-  }, [bounds, orders, search, statusFilter]);
+    return rows;
+  }, [bounds, orders, statusFilter]);
 
   const statusOptions = useMemo(
     () => uniqueFieldOptions(orders, "status"),
@@ -193,11 +244,16 @@ export function OrdersListView() {
         },
       ]}
     >
-      <DataTable
-        data={filtered}
+      <ServerPaginatedTable
+        items={filtered}
         columns={columns}
-        displayMode="table"
-        embedded
+        pageIndex={pageIndex}
+        pageSize={pageSize}
+        hasMore={hasMore}
+        canGoPrev={canGoPrev}
+        onNext={goNext}
+        onPrev={goPrev}
+        onPageSizeChange={setPageSize}
         isLoading={isLoading}
         error={error ? "Failed to load orders" : null}
         onRowClick={(row) => goToDetail(row.id)}
@@ -208,32 +264,83 @@ export function OrdersListView() {
 
 export function CustomersListView() {
   const { goToDetail } = useRecordNavigation("customers");
+  const { tenantCode } = useRouteTenant();
+  const router = useRouter();
   const tenantId = useTenantId();
+  const openCreateModal = useUiStore((state) => state.openCreateModal);
   const { dateRange, setDateRange, search, setSearch, bounds } = useListPageFilters();
 
-  const { data: customers = [], isLoading, error } = useQuery({
+  const apiFilters = useMemo(
+    () => ({
+      search: search.trim() || undefined,
+    }),
+    [search],
+  );
+
+  const {
+    items: customers,
+    hasMore,
+    pageIndex,
+    pageSize,
+    canGoPrev,
+    goNext,
+    goPrev,
+    setPageSize,
+    isLoading,
+    error,
+  } = useServerListPage<Customer>({
     queryKey: ["customers", tenantId],
-    queryFn: () => getCustomers(tenantId!),
     enabled: Boolean(tenantId),
+    filters: apiFilters,
+    search,
+    fetchPage: (cursor, limit) => getCustomersPage(tenantId!, apiFilters, cursor, limit),
   });
 
   const filtered = useMemo(() => {
-    const rows = filterByDateField(customers, bounds, "createdAt");
-    return filterBySearch(rows, search, ["name", "email", "phone"]);
-  }, [bounds, customers, search]);
+    return filterByDateField(customers, bounds, "createdAt");
+  }, [bounds, customers]);
 
   const columns: ColumnConfig<Customer>[] = [
-    { key: "name", header: "Name", render: (r) => <span className="font-medium">{r.name}</span> },
-    { key: "email", header: "Email", render: (r) => r.email ?? "—" },
-    { key: "phone", header: "Phone", render: (r) => r.phone ?? "—" },
-    { key: "visitCount", header: "Visits", sortValue: (r) => r.visitCount },
     {
-      key: "totalSpend",
-      header: "Total Spend",
-      sortValue: (r) => r.totalSpend,
-      render: (r) => formatCurrency(r.totalSpend, "NGN"),
+      key: "actions",
+      header: "Action",
+      sortable: false,
+      render: (row) => (
+        <RowActionsMenu
+          actions={[
+            { id: "view", label: "View", onClick: () => goToDetail(row.id) },
+            { id: "pay", label: "Pay", onClick: () => router.push(`/${tenantCode}/payments`) },
+            { id: "ledger", label: "Ledger", onClick: () => router.push(`/${tenantCode}/finance`) },
+            { id: "sales", label: "Sales", onClick: () => router.push(`/${tenantCode}/sales`) },
+          ]}
+        />
+      ),
     },
-    { key: "createdAt", header: "Joined", sortValue: (r) => new Date(r.createdAt).getTime() },
+    { key: "contactId", header: "Contact ID", render: (r) => r.contactId ?? "—" },
+    { key: "businessName", header: "Business Name", render: (r) => <span className="font-medium">{r.businessName ?? r.name}</span> },
+    { key: "name", header: "Name" },
+    { key: "email", header: "Email", render: (r) => r.email ?? "—" },
+    { key: "phone", header: "Mobile", render: (r) => r.phone ?? "—" },
+    {
+      key: "totalSell",
+      header: "Total Sell",
+      sortValue: (r) => r.totalSell ?? r.totalSpend,
+      render: (r) => formatCurrency(r.totalSell ?? r.totalSpend, "NGN"),
+    },
+    {
+      key: "totalSellDue",
+      header: "Sell Due",
+      sortValue: (r) => r.totalSellDue ?? 0,
+      render: (r) => formatCurrency(r.totalSellDue ?? 0, "NGN"),
+    },
+    {
+      key: "totalSellPaid",
+      header: "Sell Paid",
+      sortValue: (r) => r.totalSellPaid ?? 0,
+      render: (r) => formatCurrency(r.totalSellPaid ?? 0, "NGN"),
+    },
+    { key: "visitCount", header: "Visits", sortValue: (r) => r.visitCount },
+    { key: "createdAt", header: "Added On", sortValue: (r) => new Date(r.createdAt).getTime() },
   ];
   return (
     <ListPageShell
@@ -245,12 +352,23 @@ export function CustomersListView() {
       searchPlaceholder="Search customers..."
       dateRange={dateRange}
       onDateRangeChange={setDateRange}
+      primaryAction={
+        <Button size="sm" onClick={() => openCreateModal("customer")}>
+          <Plus className="mr-1.5 h-4 w-4" />
+          Add Customer
+        </Button>
+      }
     >
-      <DataTable
-        data={filtered}
+      <ServerPaginatedTable
+        items={filtered}
         columns={columns}
-        displayMode="table"
-        embedded
+        pageIndex={pageIndex}
+        pageSize={pageSize}
+        hasMore={hasMore}
+        canGoPrev={canGoPrev}
+        onNext={goNext}
+        onPrev={goPrev}
+        onPageSizeChange={setPageSize}
         isLoading={isLoading}
         error={error ? "Failed to load customers" : null}
         onRowClick={(row) => goToDetail(row.id)}
@@ -265,17 +383,37 @@ export function ReturnsListView() {
   const { dateRange, setDateRange, search, setSearch, bounds } = useListPageFilters();
   const [statusFilter, setStatusFilter] = useState("");
 
-  const { data: returns = [], isLoading, error } = useQuery({
+  const apiFilters = useMemo(
+    () => ({
+      search: search.trim() || undefined,
+    }),
+    [search],
+  );
+
+  const {
+    items: returns,
+    hasMore,
+    pageIndex,
+    pageSize,
+    canGoPrev,
+    goNext,
+    goPrev,
+    setPageSize,
+    isLoading,
+    error,
+  } = useServerListPage<SaleReturnRow>({
     queryKey: ["returns", tenantId],
-    queryFn: () => getReturns(tenantId!),
     enabled: Boolean(tenantId),
+    filters: apiFilters,
+    search,
+    fetchPage: (cursor, limit) => getReturnsPage(tenantId!, apiFilters, cursor, limit),
   });
 
   const filtered = useMemo(() => {
     let rows = filterByDateField(returns, bounds, "date");
     if (statusFilter) rows = rows.filter((r) => r.status === statusFilter);
-    return filterBySearch(rows, search, ["reference", "customerName", "saleReference"]);
-  }, [bounds, returns, search, statusFilter]);
+    return rows;
+  }, [bounds, returns, statusFilter]);
 
   const statusOptions = useMemo(
     () => uniqueFieldOptions(returns, "status"),
@@ -314,11 +452,16 @@ export function ReturnsListView() {
         },
       ]}
     >
-      <DataTable
-        data={filtered}
+      <ServerPaginatedTable
+        items={filtered}
         columns={columns}
-        displayMode="table"
-        embedded
+        pageIndex={pageIndex}
+        pageSize={pageSize}
+        hasMore={hasMore}
+        canGoPrev={canGoPrev}
+        onNext={goNext}
+        onPrev={goPrev}
+        onPageSizeChange={setPageSize}
         isLoading={isLoading}
         error={error ? "Failed to load returns" : null}
         onRowClick={(row) => goToDetail(row.id)}
@@ -333,10 +476,22 @@ export function VehiclesListView() {
   const exportList = useListExport();
   const { search, setSearch } = useListPageFilters();
 
-  const { data: vehicles = [], isLoading, error } = useQuery({
+  const {
+    items: vehicles,
+    hasMore,
+    pageIndex,
+    pageSize,
+    canGoPrev,
+    goNext,
+    goPrev,
+    setPageSize,
+    isLoading,
+    error,
+  } = useServerListPage<Vehicle>({
     queryKey: ["vehicles", tenantId],
-    queryFn: () => getVehicles(tenantId!),
     enabled: Boolean(tenantId),
+    search,
+    fetchPage: (cursor, limit) => getVehiclesPage(tenantId!, cursor, limit),
   });
 
   const filtered = useMemo(
@@ -364,7 +519,9 @@ export function VehiclesListView() {
       searchValue={search}
       onSearchChange={setSearch}
       searchPlaceholder="Search vehicles..."
-      onExport={() =>
+      onExport={async () => {
+        if (!tenantId) return;
+        const rows = await getAllVehicles(tenantId);
         exportList(
           "vehicles",
           [
@@ -374,7 +531,7 @@ export function VehiclesListView() {
             { key: "ownerName", header: "Owner" },
             { key: "year", header: "Year" },
           ],
-          filtered.map((row) => ({
+          rows.map((row) => ({
             plateNumber: row.plateNumber,
             make: row.make,
             model: row.model,
@@ -382,14 +539,19 @@ export function VehiclesListView() {
             year: row.year,
           })),
           "Export Vehicles",
-        )
-      }
+        );
+      }}
     >
-      <DataTable
-        data={filtered}
+      <ServerPaginatedTable
+        items={filtered}
         columns={columns}
-        displayMode="table"
-        embedded
+        pageIndex={pageIndex}
+        pageSize={pageSize}
+        hasMore={hasMore}
+        canGoPrev={canGoPrev}
+        onNext={goNext}
+        onPrev={goPrev}
+        onPageSizeChange={setPageSize}
         isLoading={isLoading}
         error={error ? "Failed to load vehicles" : null}
         onRowClick={(row) => goToDetail(row.id)}
@@ -407,10 +569,22 @@ export function RequisitionsListView() {
   const exportList = useListExport();
   const { search, setSearch } = useListPageFilters();
 
-  const { data: requisitions = [], isLoading, error } = useQuery({
+  const {
+    items: requisitions,
+    hasMore,
+    pageIndex,
+    pageSize,
+    canGoPrev,
+    goNext,
+    goPrev,
+    setPageSize,
+    isLoading,
+    error,
+  } = useServerListPage<Requisition>({
     queryKey: ["requisitions", tenantId],
-    queryFn: () => getRequisitions(tenantId!),
     enabled: Boolean(tenantId),
+    search,
+    fetchPage: (cursor, limit) => getRequisitionsPage(tenantId!, cursor, limit),
   });
 
   const filtered = useMemo(
@@ -439,7 +613,9 @@ export function RequisitionsListView() {
       onTabChange={() => {}}
       searchValue={search}
       onSearchChange={setSearch}
-      onExport={() =>
+      onExport={async () => {
+        if (!tenantId) return;
+        const rows = await getAllRequisitions(tenantId);
         exportList(
           "requisitions",
           [
@@ -447,20 +623,25 @@ export function RequisitionsListView() {
             { key: "status", header: "Status" },
             { key: "createdAt", header: "Created" },
           ],
-          filtered.map((row) => ({
+          rows.map((row) => ({
             reference: row.reference,
             status: row.status,
             createdAt: row.createdAt,
           })),
           "Export Requisitions",
-        )
-      }
+        );
+      }}
     >
-      <DataTable
-        data={filtered}
+      <ServerPaginatedTable
+        items={filtered}
         columns={columns}
-        displayMode="table"
-        embedded
+        pageIndex={pageIndex}
+        pageSize={pageSize}
+        hasMore={hasMore}
+        canGoPrev={canGoPrev}
+        onNext={goNext}
+        onPrev={goPrev}
+        onPageSizeChange={setPageSize}
         isLoading={isLoading}
         error={error ? "Failed to load requisitions" : null}
         onRowClick={(row) => goToDetail(row.id)}
@@ -478,29 +659,51 @@ export function MenuItemsListView() {
   const { dateRange, setDateRange, search, setSearch, bounds } = useListPageFilters();
   const [categoryFilter, setCategoryFilter] = useState("");
 
-  const { data: items = [], isLoading, error } = useQuery({
+  const apiFilters = useMemo(
+    () => ({
+      search: search.trim() || undefined,
+      category: categoryFilter || undefined,
+    }),
+    [categoryFilter, search],
+  );
+
+  const {
+    items,
+    hasMore,
+    pageIndex,
+    pageSize,
+    canGoPrev,
+    goNext,
+    goPrev,
+    setPageSize,
+    isLoading,
+    error,
+  } = useServerListPage<MenuItemRow>({
     queryKey: ["menu-items", tenantId],
-    queryFn: async (): Promise<MenuItemRow[]> => {
-      const rows = await getItems(tenantId!);
-      return rows.map((item) => ({
-        id: item.id,
-        tenantId: item.tenantId,
-        name: item.name,
-        category: item.category ?? "General",
-        price: item.costPrice,
-        modifierGroups: 0,
-        available: item.status !== "out_of_stock",
-        createdAt: item.createdAt,
-      }));
-    },
     enabled: Boolean(tenantId),
+    filters: apiFilters,
+    search,
+    fetchPage: async (cursor, limit) => {
+      const page = await getItemsPage(tenantId!, apiFilters, cursor, limit);
+      return {
+        ...page,
+        items: page.items.map((item) => ({
+          id: item.id,
+          tenantId: item.tenantId,
+          name: item.name,
+          category: item.category ?? "General",
+          price: item.costPrice,
+          modifierGroups: 0,
+          available: item.status !== "out_of_stock",
+          createdAt: item.createdAt,
+        })),
+      };
+    },
   });
 
   const filtered = useMemo(() => {
-    let rows = filterByDateField(items, bounds, "createdAt");
-    if (categoryFilter) rows = rows.filter((r) => r.category === categoryFilter);
-    return filterBySearch(rows, search, ["name", "category"]);
-  }, [bounds, categoryFilter, items, search]);
+    return filterByDateField(items, bounds, "createdAt");
+  }, [bounds, items]);
 
   const categoryOptions = useMemo(
     () => uniqueFieldOptions(items, "category"),
@@ -540,11 +743,16 @@ export function MenuItemsListView() {
           },
         ]}
       >
-        <DataTable
-          data={filtered}
+        <ServerPaginatedTable
+          items={filtered}
           columns={columns}
-          displayMode="table"
-          embedded
+          pageIndex={pageIndex}
+          pageSize={pageSize}
+          hasMore={hasMore}
+          canGoPrev={canGoPrev}
+          onNext={goNext}
+          onPrev={goPrev}
+          onPageSizeChange={setPageSize}
           isLoading={isLoading}
           error={error ? "Failed to load menu items" : null}
           onRowClick={(row) => goToDetail(row.id)}
@@ -559,10 +767,22 @@ export function ServicesListView() {
   const exportList = useListExport();
   const { search, setSearch } = useListPageFilters();
 
-  const { data: services = [], isLoading, error } = useQuery({
+  const {
+    items: services,
+    hasMore,
+    pageIndex,
+    pageSize,
+    canGoPrev,
+    goNext,
+    goPrev,
+    setPageSize,
+    isLoading,
+    error,
+  } = useServerListPage<SalonService>({
     queryKey: ["salon-services", tenantId],
-    queryFn: () => getSalonServices(tenantId!),
     enabled: Boolean(tenantId),
+    search,
+    fetchPage: (cursor, limit) => getSalonServicesPage(tenantId!, cursor, limit),
   });
 
   const filtered = useMemo(
@@ -593,7 +813,9 @@ export function ServicesListView() {
       onTabChange={() => {}}
       searchValue={search}
       onSearchChange={setSearch}
-      onExport={() =>
+      onExport={async () => {
+        if (!tenantId) return;
+        const rows = await getAllSalonServices(tenantId);
         exportList(
           "salon-services",
           [
@@ -601,20 +823,25 @@ export function ServicesListView() {
             { key: "durationMinutes", header: "Duration (min)" },
             { key: "price", header: "Price" },
           ],
-          filtered.map((row) => ({
+          rows.map((row) => ({
             name: row.name,
             durationMinutes: row.durationMinutes,
             price: row.price,
           })),
           "Export Services",
-        )
-      }
+        );
+      }}
     >
-      <DataTable
-        data={filtered}
+      <ServerPaginatedTable
+        items={filtered}
         columns={columns}
-        displayMode="table"
-        embedded
+        pageIndex={pageIndex}
+        pageSize={pageSize}
+        hasMore={hasMore}
+        canGoPrev={canGoPrev}
+        onNext={goNext}
+        onPrev={goPrev}
+        onPageSizeChange={setPageSize}
         isLoading={isLoading}
         error={error ? "Failed to load services" : null}
         emptyState={{
@@ -628,6 +855,7 @@ export function ServicesListView() {
 export function CatalogListView() {
   const { goToDetail } = useRecordNavigation("catalog");
   const tenantId = useTenantId();
+  const { config } = useRouteTenant();
   const router = useRouter();
   const searchParams = useSearchParams();
   const openAddProductModal = useUiStore((state) => state.openAddProductModal);
@@ -635,6 +863,7 @@ export function CatalogListView() {
   const { dateRange, setDateRange, search, setSearch, bounds } = useListPageFilters();
   const [categoryFilter, setCategoryFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
+  const [locationFilter, setLocationFilter] = useState("");
 
   const setSection = useCallback(
     (next: ProductSectionId) => {
@@ -647,26 +876,57 @@ export function CatalogListView() {
     [router, searchParams],
   );
 
-  const { data: items = [], isLoading, error } = useQuery({
+  const apiFilters = useMemo(() => {
+    const next: {
+      status?: StockStatus;
+      category?: string;
+      locationCode?: string;
+      search?: string;
+    } = {};
+    if (categoryFilter) next.category = categoryFilter;
+    if (statusFilter) next.status = statusFilter as StockStatus;
+    if (locationFilter) next.locationCode = locationFilter;
+    if (search.trim()) next.search = search.trim();
+    return next;
+  }, [categoryFilter, locationFilter, search, statusFilter]);
+
+  const {
+    items,
+    hasMore,
+    pageIndex,
+    pageSize,
+    canGoPrev,
+    goNext,
+    goPrev,
+    setPageSize,
+    isLoading,
+    error,
+  } = useServerListPage({
     queryKey: ["catalog", tenantId],
-    queryFn: () => getCatalog(tenantId!),
     enabled: Boolean(tenantId) && section === "products",
+    filters: apiFilters,
+    fetchPage: (cursor, limit) => getCatalogPage(tenantId!, apiFilters, cursor, limit),
   });
 
   const filtered = useMemo(() => {
-    let rows = filterByDateField(items, bounds, "updatedAt");
-    if (categoryFilter) rows = rows.filter((item) => item.category === categoryFilter);
-    if (statusFilter) rows = rows.filter((item) => item.status === statusFilter);
-    return filterBySearch(rows, search, ["name", "sku", "category"]);
-  }, [bounds, categoryFilter, items, search, statusFilter]);
+    return filterByDateField(items, bounds, "updatedAt");
+  }, [bounds, items]);
 
-  const categoryOptions = useMemo(
-    () => uniqueFieldOptions(items, "category"),
-    [items],
-  );
+  const categoryOptions = useMemo(() => {
+    const fromConfig = config?.itemCategories ?? [];
+    return fromConfig.map((c) => ({ value: c, label: c }));
+  }, [config?.itemCategories]);
   const statusOptions = useMemo(
-    () => uniqueFieldOptions(items, "status"),
-    [items],
+    () => [
+      { value: "in_stock", label: "In Stock" },
+      { value: "low_stock", label: "Low Stock" },
+      { value: "out_of_stock", label: "Out of Stock" },
+    ],
+    [],
+  );
+  const locationOptions = useMemo(
+    () => locationFilterOptions(config),
+    [config],
   );
 
   const columns: ColumnConfig<Item>[] = useMemo(
@@ -682,6 +942,13 @@ export function CatalogListView() {
         render: (row) => <span className="font-medium text-foreground">{row.name}</span>,
       },
       { key: "category", header: "Category" },
+      {
+        key: "binLocation",
+        header: "Location",
+        render: (row) => (
+          <ItemLocationCell item={row} locations={config?.businessLocations} />
+        ),
+      },
       {
         key: "quantity",
         header: "Available",
@@ -700,7 +967,7 @@ export function CatalogListView() {
         render: (row) => <StatusPill status={row.status} vocabulary="stockStatus" />,
       },
     ],
-    [],
+    [config?.businessLocations],
   );
 
   return (
@@ -708,7 +975,7 @@ export function CatalogListView() {
       tabs={PRODUCT_SECTION_TABS}
       activeTab={section}
       onTabChange={(tabId) => setSection(tabId as ProductSectionId)}
-      searchPlaceholder={section === "products" ? "Filter visible rows" : "Search"}
+      searchPlaceholder={section === "products" ? "Search catalog…" : "Search"}
       searchValue={search}
       onSearchChange={setSearch}
       dateRange={dateRange}
@@ -731,6 +998,13 @@ export function CatalogListView() {
                 onChange: setStatusFilter,
                 options: statusOptions,
               },
+              {
+                id: "location",
+                label: "Location",
+                value: locationFilter,
+                onChange: setLocationFilter,
+                options: locationOptions,
+              },
             ]
           : []
       }
@@ -742,8 +1016,9 @@ export function CatalogListView() {
               <ProductItemSearch
                 tenantId={tenantId}
                 retailOnly
+                businessLocations={config?.businessLocations}
                 onSelect={(item) => goToDetail(item.id)}
-                placeholder="Search catalog by name or SKU"
+                placeholder="Search by name, SKU, or location / counter"
               />
             </div>
             <Button size="sm" onClick={() => openAddProductModal("item")}>
@@ -751,17 +1026,22 @@ export function CatalogListView() {
               Add product
             </Button>
           </div>
-          <DataTable
-            data={filtered}
+          <ServerPaginatedTable
+            items={filtered}
             columns={columns}
-            displayMode="table"
-            embedded
+            pageIndex={pageIndex}
+            pageSize={pageSize}
+            hasMore={hasMore}
+            canGoPrev={canGoPrev}
+            onNext={goNext}
+            onPrev={goPrev}
+            onPageSizeChange={setPageSize}
             isLoading={isLoading}
-            error={error ? "Could not load catalog items." : undefined}
+            error={error ? "Could not load catalog items." : null}
             onRowClick={(row) => goToDetail(row.id)}
             emptyState={{
               message:
-                "Retail products appear here when items are marked available for retail or imported from legacy POS.",
+                "Retail products appear here when warehouse items are made available for retail.",
             }}
           />
         </div>

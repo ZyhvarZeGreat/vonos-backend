@@ -1,5 +1,6 @@
-import { Controller, Get, Param, Query, UseGuards } from '@nestjs/common';
-import type { CustomerFilters } from '@vonos/types';
+import { Body, Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
+import type { CreateCustomerInput, CustomerFilters } from '@vonos/types';
+import { Roles } from '../../common/decorators/roles.decorator';
 import {
   JwtAuthGuard,
   RolesGuard,
@@ -24,6 +25,12 @@ export class CustomersController {
       limit: limit ? Number(limit) : undefined,
     };
     return this.customersService.list(filters);
+  }
+
+  @Post()
+  @Roles('staff', 'manager', 'admin', 'super_admin')
+  create(@Body() body: CreateCustomerInput) {
+    return this.customersService.create(body);
   }
 
   @Get(':id')

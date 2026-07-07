@@ -1,0 +1,471 @@
+{
+  "generatedAt": "2026-07-07T03:44:46.079Z",
+  "tenants": [
+    {
+      "code": "VA",
+      "id": "tenant_va_001",
+      "name": "Vonos Automotive",
+      "archetype": "job"
+    },
+    {
+      "code": "VC",
+      "id": "tenant_vc_001",
+      "name": "Vonos Cafe",
+      "archetype": "transaction"
+    },
+    {
+      "code": "VISP",
+      "id": "tenant_visp_001",
+      "name": "Vonos Institute Spare Parts",
+      "archetype": "transaction"
+    },
+    {
+      "code": "VKW",
+      "id": "tenant_vkw_001",
+      "name": "Vonos Kids Wear",
+      "archetype": "stock"
+    },
+    {
+      "code": "VS",
+      "id": "tenant_vs_001",
+      "name": "Vonos Saloon",
+      "archetype": "appointment"
+    },
+    {
+      "code": "VSP",
+      "id": "tenant_vsp_001",
+      "name": "Vonos SP Marketplace",
+      "archetype": "transaction"
+    },
+    {
+      "code": "VW",
+      "id": "tenant_vw_001",
+      "name": "Vonos Warehouse",
+      "archetype": "stock"
+    }
+  ],
+  "perTenant": {
+    "VA": {
+      "tenantId": "tenant_va_001",
+      "ledgerByType": [
+        {
+          "type": "cost",
+          "count": 7982,
+          "total_amount": "737489368.080000000000000000000000000000"
+        },
+        {
+          "type": "expense",
+          "count": 21886,
+          "total_amount": "1453116158.110000000000000000000000000000"
+        },
+        {
+          "type": "revenue",
+          "count": 33046,
+          "total_amount": "3227772348.000000000000000000000000000000"
+        }
+      ],
+      "sales": {
+        "count": 0,
+        "total_amount": "0",
+        "date_min": null,
+        "date_max": null
+      },
+      "payments": {
+        "count": 69664,
+        "total_amount": "4642870719.280000000000000000000000000000"
+      },
+      "expenses": {
+        "count": 12623,
+        "total_amount": "839109220.390000000000000000000000000000"
+      },
+      "expenseCategories": {
+        "count": 312
+      },
+      "paymentAccounts": {
+        "count": 104
+      },
+      "accountTransactions": {
+        "count": 56201,
+        "total_amount": "3572318314.730000000000000000000000000000"
+      },
+      "payroll": {
+        "count": 1910,
+        "total_net": "126649899.270000000000000000000000000000"
+      },
+      "payrollGroups": {
+        "count": 196
+      },
+      "payComponents": {
+        "count": 4
+      },
+      "inboundStockMovements": {
+        "count": 7982
+      },
+      "tieOut": {
+        "saleTotalAmount": 0,
+        "ledgerRevenueTotal": 3227772348,
+        "paymentTotal": 4642870719.28,
+        "saleVsLedgerDelta": 3227772348,
+        "saleVsPaymentDelta": 4642870719.28,
+        "revenueTieOutPass": true
+      },
+      "ledgerExpenseCount": 21886,
+      "ledgerCostCount": 7982
+    },
+    "VISP": {
+      "tenantId": "tenant_visp_001",
+      "ledgerByType": [
+        {
+          "type": "cost",
+          "count": 2476,
+          "total_amount": "733301326.560000000000000000000000000000"
+        },
+        {
+          "type": "expense",
+          "count": 8,
+          "total_amount": "606500.000000000000000000000000000000"
+        },
+        {
+          "type": "revenue",
+          "count": 3092,
+          "total_amount": "373030370.000000000000000000000000000000"
+        }
+      ],
+      "sales": {
+        "count": 3092,
+        "total_amount": "373030370.000000000000000000000000000000",
+        "date_min": "2025-01-08 13:22:00",
+        "date_max": "2026-07-06 17:44:00"
+      },
+      "payments": {
+        "count": 3134,
+        "total_amount": "374137570.000000000000000000000000000000"
+      },
+      "expenses": {
+        "count": 2,
+        "total_amount": "151000.000000000000000000000000000000"
+      },
+      "expenseCategories": {
+        "count": 36
+      },
+      "paymentAccounts": {
+        "count": 36
+      },
+      "accountTransactions": {
+        "count": 3090,
+        "total_amount": "372002920.000000000000000000000000000000"
+      },
+      "payroll": {
+        "count": 0,
+        "total_net": "0"
+      },
+      "payrollGroups": {
+        "count": 31
+      },
+      "payComponents": {
+        "count": 0
+      },
+      "inboundStockMovements": {
+        "count": 2476
+      },
+      "tieOut": {
+        "saleTotalAmount": 373030370,
+        "ledgerRevenueTotal": 373030370,
+        "paymentTotal": 374137570,
+        "saleVsLedgerDelta": 0,
+        "saleVsPaymentDelta": 1107200,
+        "revenueTieOutPass": true
+      },
+      "ledgerExpenseCount": 8,
+      "ledgerCostCount": 2476
+    },
+    "VSP": {
+      "tenantId": "tenant_vsp_001",
+      "ledgerByType": [
+        {
+          "type": "cost",
+          "count": 1296,
+          "total_amount": "211771380.000000000000000000000000000000"
+        },
+        {
+          "type": "revenue",
+          "count": 264,
+          "total_amount": "18692980.000000000000000000000000000000"
+        }
+      ],
+      "sales": {
+        "count": 264,
+        "total_amount": "18692980.000000000000000000000000000000",
+        "date_min": "2026-04-22 08:07:00",
+        "date_max": "2026-07-04 10:34:00"
+      },
+      "payments": {
+        "count": 265,
+        "total_amount": "18656250.000000000000000000000000000000"
+      },
+      "expenses": {
+        "count": 0,
+        "total_amount": "0"
+      },
+      "expenseCategories": {
+        "count": 36
+      },
+      "paymentAccounts": {
+        "count": 29
+      },
+      "accountTransactions": {
+        "count": 255,
+        "total_amount": "17946250.000000000000000000000000000000"
+      },
+      "payroll": {
+        "count": 0,
+        "total_net": "0"
+      },
+      "payrollGroups": {
+        "count": 0
+      },
+      "payComponents": {
+        "count": 0
+      },
+      "inboundStockMovements": {
+        "count": 1296
+      },
+      "tieOut": {
+        "saleTotalAmount": 18692980,
+        "ledgerRevenueTotal": 18692980,
+        "paymentTotal": 18656250,
+        "saleVsLedgerDelta": 0,
+        "saleVsPaymentDelta": 36730,
+        "revenueTieOutPass": true
+      },
+      "ledgerExpenseCount": 0,
+      "ledgerCostCount": 1296
+    },
+    "VW": {
+      "tenantId": "tenant_vw_001",
+      "ledgerByType": [
+        {
+          "type": "revenue",
+          "count": 568,
+          "total_amount": "371635600.000000000000000000000000000000"
+        }
+      ],
+      "sales": {
+        "count": 0,
+        "total_amount": "0",
+        "date_min": null,
+        "date_max": null
+      },
+      "payments": {
+        "count": 269,
+        "total_amount": "185817800.000000000000000000000000000000"
+      },
+      "expenses": {
+        "count": 0,
+        "total_amount": "0"
+      },
+      "expenseCategories": {
+        "count": 0
+      },
+      "paymentAccounts": {
+        "count": 0
+      },
+      "accountTransactions": {
+        "count": 0,
+        "total_amount": "0"
+      },
+      "payroll": {
+        "count": 1,
+        "total_net": "130000.000000000000000000000000000000"
+      },
+      "payrollGroups": {
+        "count": 1
+      },
+      "payComponents": {
+        "count": 2
+      },
+      "inboundStockMovements": {
+        "count": 0
+      },
+      "tieOut": {
+        "saleTotalAmount": 0,
+        "ledgerRevenueTotal": 371635600,
+        "paymentTotal": 185817800,
+        "saleVsLedgerDelta": 371635600,
+        "saleVsPaymentDelta": 185817800,
+        "revenueTieOutPass": true
+      },
+      "ledgerExpenseCount": 0,
+      "ledgerCostCount": 0
+    },
+    "VC": {
+      "tenantId": "tenant_vc_001",
+      "ledgerByType": [
+        {
+          "type": "cost",
+          "count": 410,
+          "total_amount": "4277225.809400000000000000000000000000"
+        },
+        {
+          "type": "expense",
+          "count": 388,
+          "total_amount": "1632400.000000000000000000000000000000"
+        },
+        {
+          "type": "revenue",
+          "count": 4715,
+          "total_amount": "4720441.900000000000000000000000000000"
+        }
+      ],
+      "sales": {
+        "count": 4715,
+        "total_amount": "4720441.900000000000000000000000000000",
+        "date_min": "2025-12-10 09:08:00",
+        "date_max": "2026-07-06 17:33:56"
+      },
+      "payments": {
+        "count": 5394,
+        "total_amount": "6464319.710000000000000000000000000000"
+      },
+      "expenses": {
+        "count": 195,
+        "total_amount": "816700.000000000000000000000000000000"
+      },
+      "expenseCategories": {
+        "count": 0
+      },
+      "paymentAccounts": {
+        "count": 3
+      },
+      "accountTransactions": {
+        "count": 3898,
+        "total_amount": "5466870.750000000000000000000000000000"
+      },
+      "payroll": {
+        "count": 0,
+        "total_net": "0"
+      },
+      "payrollGroups": {
+        "count": 0
+      },
+      "payComponents": {
+        "count": 0
+      },
+      "inboundStockMovements": {
+        "count": 410
+      },
+      "tieOut": {
+        "saleTotalAmount": 4720441.9,
+        "ledgerRevenueTotal": 4720441.9,
+        "paymentTotal": 6464319.71,
+        "saleVsLedgerDelta": 0,
+        "saleVsPaymentDelta": 1743877.8099999996,
+        "revenueTieOutPass": true
+      },
+      "ledgerExpenseCount": 388,
+      "ledgerCostCount": 410
+    },
+    "VKW": {
+      "tenantId": "tenant_vkw_001",
+      "ledgerByType": [],
+      "sales": {
+        "count": 0,
+        "total_amount": "0",
+        "date_min": null,
+        "date_max": null
+      },
+      "payments": {
+        "count": 0,
+        "total_amount": "0"
+      },
+      "expenses": {
+        "count": 0,
+        "total_amount": "0"
+      },
+      "expenseCategories": {
+        "count": 0
+      },
+      "paymentAccounts": {
+        "count": 0
+      },
+      "accountTransactions": {
+        "count": 0,
+        "total_amount": "0"
+      },
+      "payroll": {
+        "count": 0,
+        "total_net": "0"
+      },
+      "payrollGroups": {
+        "count": 0
+      },
+      "payComponents": {
+        "count": 0
+      },
+      "inboundStockMovements": {
+        "count": 0
+      },
+      "tieOut": {
+        "saleTotalAmount": 0,
+        "ledgerRevenueTotal": 0,
+        "paymentTotal": 0,
+        "saleVsLedgerDelta": 0,
+        "saleVsPaymentDelta": 0,
+        "revenueTieOutPass": true
+      },
+      "ledgerExpenseCount": 0,
+      "ledgerCostCount": 0
+    },
+    "VS": {
+      "tenantId": "tenant_vs_001",
+      "ledgerByType": [],
+      "sales": {
+        "count": 0,
+        "total_amount": "0",
+        "date_min": null,
+        "date_max": null
+      },
+      "payments": {
+        "count": 0,
+        "total_amount": "0"
+      },
+      "expenses": {
+        "count": 0,
+        "total_amount": "0"
+      },
+      "expenseCategories": {
+        "count": 0
+      },
+      "paymentAccounts": {
+        "count": 0
+      },
+      "accountTransactions": {
+        "count": 0,
+        "total_amount": "0"
+      },
+      "payroll": {
+        "count": 0,
+        "total_net": "0"
+      },
+      "payrollGroups": {
+        "count": 0
+      },
+      "payComponents": {
+        "count": 0
+      },
+      "inboundStockMovements": {
+        "count": 0
+      },
+      "tieOut": {
+        "saleTotalAmount": 0,
+        "ledgerRevenueTotal": 0,
+        "paymentTotal": 0,
+        "saleVsLedgerDelta": 0,
+        "saleVsPaymentDelta": 0,
+        "revenueTieOutPass": true
+      },
+      "ledgerExpenseCount": 0,
+      "ledgerCostCount": 0
+    }
+  }
+}

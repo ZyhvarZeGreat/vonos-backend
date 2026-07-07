@@ -1,8 +1,8 @@
 import type { TenantConfig, NavItem } from "@vonos/types";
-import { catalogPresetsForCode } from "@vonos/types";
+import { catalogPresetsForCode, RETAIL_CATALOG_ENABLED_MODULES } from "@vonos/types";
 import type { NavSection } from "@/components/organisms/Sidebar";
-import { allPosNavItems, posNavSectionsForConfig, usesPosNav } from "@/lib/registries/posNavSections";
-import { reportNavSectionsForConfig } from "@/lib/registries/reportNavSections";
+import { adminNavTail } from "@/lib/registries/adminNavItems";
+import { allPosNavItems, posNavSectionsForConfig } from "@/lib/registries/posNavSections";
 
 function withCatalog(config: TenantConfig): TenantConfig {
   return { ...config, ...catalogPresetsForCode(config.code) };
@@ -10,9 +10,7 @@ function withCatalog(config: TenantConfig): TenantConfig {
 
 const stockNavItems = (code: string) => [
   { label: "Overview", icon: "layout-dashboard", route: `/${code}/overview`, pageType: "dashboard" as const },
-  { label: "Finance", icon: "wallet", route: `/${code}/finance`, pageType: "dashboard" as const },
-  { label: "Users", icon: "users", route: `/${code}/users`, pageType: "form" as const },
-  { label: "Settings", icon: "settings", route: `/${code}/settings`, pageType: "form" as const },
+  ...adminNavTail(code),
 ];
 
 export const warehouseTenantConfig: TenantConfig = withCatalog({
@@ -28,7 +26,7 @@ export const warehouseTenantConfig: TenantConfig = withCatalog({
     { label: "Stock Values", icon: "calculator", metricKey: "stockValue", color: "#e11d48" },
   ],
   terminology: { item: "SKU", inventory: "Inventory", supplier: "Supplier" },
-  enabledModules: ["inventory", "movements", "suppliers", "purchases", "paymentAccounts", "reports", "finance"],
+  enabledModules: ["inventory", "movements", "suppliers", "purchases", "paymentAccounts", "reports", "finance", "hrm"],
 });
 
 export const kidsWearTenantConfig: TenantConfig = withCatalog({
@@ -44,15 +42,13 @@ export const kidsWearTenantConfig: TenantConfig = withCatalog({
     { label: "Stock Value", icon: "calculator", metricKey: "stockValue", color: "#e11d48" },
   ],
   terminology: { item: "Variant", inventory: "Inventory", supplier: "Supplier", collection: "Collection" },
-  enabledModules: ["inventory", "movements", "suppliers", "purchases", "paymentAccounts", "reports", "finance", "variants"],
+  enabledModules: ["inventory", "movements", "suppliers", "purchases", "paymentAccounts", "reports", "finance", "variants", "hrm"],
 });
 
 const transactionNavItems = (code: string) => [
   { label: "Overview", icon: "layout-dashboard", route: `/${code}/overview`, pageType: "dashboard" as const },
   { label: "Customers", icon: "users", route: `/${code}/customers`, pageType: "list" as const },
-  { label: "Finance", icon: "wallet", route: `/${code}/finance`, pageType: "dashboard" as const },
-  { label: "Users", icon: "users", route: `/${code}/users`, pageType: "form" as const },
-  { label: "Settings", icon: "settings", route: `/${code}/settings`, pageType: "form" as const },
+  ...adminNavTail(code),
 ];
 
 export const vispTenantConfig: TenantConfig = withCatalog({
@@ -68,7 +64,7 @@ export const vispTenantConfig: TenantConfig = withCatalog({
     { label: "Revenue", icon: "wallet", metricKey: "revenue", color: "#e11d48" },
   ],
   terminology: { sale: "Sale", customer: "Customer", return: "Return" },
-  enabledModules: ["sales", "returns", "customers", "inventory", "paymentAccounts", "pos", "quotations", "reports", "finance"],
+  enabledModules: [...RETAIL_CATALOG_ENABLED_MODULES],
 });
 
 export const vspTenantConfig: TenantConfig = withCatalog({
@@ -84,7 +80,7 @@ export const vspTenantConfig: TenantConfig = withCatalog({
     { label: "Revenue", icon: "wallet", metricKey: "revenue", color: "#e11d48" },
   ],
   terminology: { sale: "Order", customer: "Buyer", return: "Return" },
-  enabledModules: ["sales", "returns", "customers", "inventory", "paymentAccounts", "pos", "quotations", "reports", "finance"],
+  enabledModules: [...RETAIL_CATALOG_ENABLED_MODULES],
 });
 
 export const cafeTenantConfig: TenantConfig = withCatalog({
@@ -95,10 +91,9 @@ export const cafeTenantConfig: TenantConfig = withCatalog({
   navItems: [
     { label: "Overview", icon: "layout-dashboard", route: "/VC/overview", pageType: "dashboard" },
     { label: "Tables", icon: "grid-3x3", route: "/VC/tables", pageType: "list" },
+    { label: "Customers", icon: "users", route: "/VC/customers", pageType: "list" },
     { label: "Suppliers", icon: "truck", route: "/VC/suppliers", pageType: "list" },
-    { label: "Finance", icon: "wallet", route: "/VC/finance", pageType: "dashboard" },
-    { label: "Users", icon: "users", route: "/VC/users", pageType: "form" },
-    { label: "Settings", icon: "settings", route: "/VC/settings", pageType: "form" },
+    ...adminNavTail("VC"),
   ],
   kpiCards: [
     { label: "Today's Orders", icon: "receipt", metricKey: "todayOrders", color: "#059669" },
@@ -107,23 +102,21 @@ export const cafeTenantConfig: TenantConfig = withCatalog({
     { label: "Revenue", icon: "wallet", metricKey: "revenue", color: "#e11d48" },
   ],
   terminology: { order: "Order", menuItem: "Menu Item", table: "Table" },
-  enabledModules: ["orders", "tables", "inventory", "paymentAccounts", "pos", "quotations", "reports", "finance"],
+  enabledModules: ["orders", "tables", "customers", "suppliers", "inventory", "paymentAccounts", "pos", "quotations", "reports", "finance", "hrm"],
 });
 
-export const mechanicsTenantConfig: TenantConfig = withCatalog({
-  tenantId: "tenant_vm_001",
-  code: "VM",
-  name: "Vonos Mechanics",
+export const automotiveTenantConfig: TenantConfig = withCatalog({
+  tenantId: "tenant_va_001",
+  code: "VA",
+  name: "Vonos Automotive",
   archetype: "job",
   navItems: [
-    { label: "Overview", icon: "layout-dashboard", route: "/VM/overview", pageType: "dashboard" },
-    { label: "Jobs", icon: "wrench", route: "/VM/jobs", pageType: "list" },
-    { label: "Vehicles", icon: "car", route: "/VM/vehicles", pageType: "list" },
-    { label: "Requisitions", icon: "clipboard-list", route: "/VM/requisitions", pageType: "list" },
-    { label: "Customers", icon: "users", route: "/VM/customers", pageType: "list" },
-    { label: "Finance", icon: "wallet", route: "/VM/finance", pageType: "dashboard" },
-    { label: "Users", icon: "users", route: "/VM/users", pageType: "form" },
-    { label: "Settings", icon: "settings", route: "/VM/settings", pageType: "form" },
+    { label: "Overview", icon: "layout-dashboard", route: "/VA/overview", pageType: "dashboard" },
+    { label: "Jobs", icon: "wrench", route: "/VA/jobs", pageType: "list" },
+    { label: "Vehicles", icon: "car", route: "/VA/vehicles", pageType: "list" },
+    { label: "Requisitions", icon: "clipboard-list", route: "/VA/requisitions", pageType: "list" },
+    { label: "Customers", icon: "users", route: "/VA/customers", pageType: "list" },
+    ...adminNavTail("VA"),
   ],
   kpiCards: [
     { label: "Open Jobs", icon: "wrench", metricKey: "openJobs", color: "#059669" },
@@ -137,9 +130,39 @@ export const mechanicsTenantConfig: TenantConfig = withCatalog({
     customer: "Customer",
     requisition: "Parts Requisition",
   },
-  enabledModules: ["jobs", "vehicles", "requisitions", "customers", "reports", "finance"],
+  enabledModules: ["jobs", "vehicles", "requisitions", "customers", "suppliers", "reports", "finance", "hrm"],
 });
 
+/** @deprecated Merged into VA — kept for migration tooling references only. */
+export const mechanicsTenantConfig: TenantConfig = withCatalog({
+  tenantId: "tenant_vm_001",
+  code: "VM",
+  name: "Vonos Mechanics",
+  archetype: "job",
+  navItems: [
+    { label: "Overview", icon: "layout-dashboard", route: "/VM/overview", pageType: "dashboard" },
+    { label: "Jobs", icon: "wrench", route: "/VM/jobs", pageType: "list" },
+    { label: "Vehicles", icon: "car", route: "/VM/vehicles", pageType: "list" },
+    { label: "Requisitions", icon: "clipboard-list", route: "/VM/requisitions", pageType: "list" },
+    { label: "Customers", icon: "users", route: "/VM/customers", pageType: "list" },
+    ...adminNavTail("VM"),
+  ],
+  kpiCards: [
+    { label: "Open Jobs", icon: "wrench", metricKey: "openJobs", color: "#059669" },
+    { label: "In Shop", icon: "car", metricKey: "inShop", color: "#2563eb" },
+    { label: "Parts Pending", icon: "package", metricKey: "partsPending", color: "#9333ea" },
+    { label: "Revenue", icon: "wallet", metricKey: "revenue", color: "#e11d48" },
+  ],
+  terminology: {
+    job: "Job",
+    vehicle: "Vehicle",
+    customer: "Customer",
+    requisition: "Parts Requisition",
+  },
+  enabledModules: ["jobs", "vehicles", "requisitions", "customers", "suppliers", "reports", "finance", "hrm"],
+});
+
+/** @deprecated Merged into VA */
 export const mechShopTenantConfig: TenantConfig = withCatalog({
   tenantId: "tenant_vms_001",
   code: "VMS",
@@ -150,9 +173,7 @@ export const mechShopTenantConfig: TenantConfig = withCatalog({
     { label: "Jobs", icon: "wrench", route: "/VMS/jobs", pageType: "list" },
     { label: "Requisitions", icon: "clipboard-list", route: "/VMS/requisitions", pageType: "list" },
     { label: "Customers", icon: "users", route: "/VMS/customers", pageType: "list" },
-    { label: "Finance", icon: "wallet", route: "/VMS/finance", pageType: "dashboard" },
-    { label: "Users", icon: "users", route: "/VMS/users", pageType: "form" },
-    { label: "Settings", icon: "settings", route: "/VMS/settings", pageType: "form" },
+    ...adminNavTail("VMS"),
   ],
   kpiCards: [
     { label: "Active Jobs", icon: "wrench", metricKey: "activeJobs", color: "#059669" },
@@ -165,11 +186,11 @@ export const mechShopTenantConfig: TenantConfig = withCatalog({
     customer: "Customer",
     requisition: "Material Requisition",
   },
-  enabledModules: ["jobs", "requisitions", "customers", "reports", "finance"],
+  enabledModules: ["jobs", "requisitions", "customers", "suppliers", "reports", "finance", "hrm"],
 });
 
-/** @deprecated VA merged tenant retired — use mechanicsTenantConfig / mechShopTenantConfig */
-export const automotiveTenantConfig: TenantConfig = mechanicsTenantConfig;
+/** @deprecated Use automotiveTenantConfig */
+export const legacyAutomotiveTenantConfig: TenantConfig = mechanicsTenantConfig;
 
 export const saloonTenantConfig: TenantConfig = withCatalog({
   tenantId: "tenant_vs_001",
@@ -182,9 +203,7 @@ export const saloonTenantConfig: TenantConfig = withCatalog({
     { label: "Customers", icon: "users", route: "/VS/customers", pageType: "list" },
     { label: "Services", icon: "scissors", route: "/VS/services", pageType: "list" },
     { label: "Stylist Schedule", icon: "clock", route: "/VS/stylist-schedule", pageType: "form" },
-    { label: "Finance", icon: "wallet", route: "/VS/finance", pageType: "dashboard" },
-    { label: "Users", icon: "users", route: "/VS/users", pageType: "form" },
-    { label: "Settings", icon: "settings", route: "/VS/settings", pageType: "form" },
+    ...adminNavTail("VS"),
   ],
   kpiCards: [
     { label: "Today's Appts", icon: "calendar", metricKey: "todayAppts", color: "#059669" },
@@ -193,7 +212,7 @@ export const saloonTenantConfig: TenantConfig = withCatalog({
     { label: "Revenue", icon: "wallet", metricKey: "revenue", color: "#e11d48" },
   ],
   terminology: { appointment: "Appointment", customer: "Customer", service: "Service", stylist: "Stylist" },
-  enabledModules: ["appointments", "services", "reports", "finance"],
+  enabledModules: ["appointments", "services", "reports", "finance", "hrm"],
 });
 
 export const TENANT_CONFIGS: Record<string, TenantConfig> = {
@@ -202,6 +221,7 @@ export const TENANT_CONFIGS: Record<string, TenantConfig> = {
   tenant_visp_001: vispTenantConfig,
   tenant_vsp_001: vspTenantConfig,
   tenant_vc_001: cafeTenantConfig,
+  tenant_va_001: automotiveTenantConfig,
   tenant_vm_001: mechanicsTenantConfig,
   tenant_vms_001: mechShopTenantConfig,
   tenant_vs_001: saloonTenantConfig,
@@ -217,29 +237,10 @@ export function getTenantConfigByCode(code: string): TenantConfig | null {
 }
 
 export function allNavRoutesForConfig(config: TenantConfig): NavItem[] {
-  if (usesPosNav(config)) {
-    return allPosNavItems(config);
-  }
-  return config.navItems;
+  return allPosNavItems(config);
 }
 
 export function navSectionsForConfig(config: TenantConfig): NavSection[] {
-  if (usesPosNav(config)) {
-    return posNavSectionsForConfig(config);
-  }
-
-  const code = config.code ?? "VW";
-  const analyticsLabels = new Set([
-    "Overview", "Inventory", "Inbound", "Outbound", "Transfers", "Finance",
-    "Sales", "Catalog", "Returns", "Customers", "Orders", "Menu Items", "Kitchen", "Tables",
-    "Jobs", "Requisitions", "Vehicles", "Parts Req.", "Appointments", "Services", "Stylist Schedule",
-  ]);
-  const analytics = config.navItems.filter((item) => analyticsLabels.has(item.label));
-  const configItems = config.navItems.filter((item) => !analyticsLabels.has(item.label) && item.label !== "Reports");
-  return [
-    { label: "Analytics", items: analytics.map((item) => ({ ...item, route: item.route.replace(/^\/[A-Z]{2,3}(?=\/)/, `/${code}`) })) },
-    ...reportNavSectionsForConfig(config),
-    ...(configItems.length > 0 ? [{ label: "Config", items: configItems.map((item) => ({ ...item, route: item.route.replace(/^\/[A-Z]{2,3}(?=\/)/, `/${code}`) })) }] : []),
-  ];
+  return posNavSectionsForConfig(config);
 }
 

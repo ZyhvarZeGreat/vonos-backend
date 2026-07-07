@@ -31,11 +31,24 @@ export interface OverviewTimelineBlock {
   status: string;
 }
 
+/** HQ6 home dashboard bottom table panel (stock alert, payment dues, etc.) */
+export interface OverviewPanel {
+  id: string;
+  title: string;
+  columns: { key: string; header: string }[];
+  rows: Record<string, string | number>[];
+  viewAllRoute?: string | null;
+}
+
 export interface OverviewDashboard {
   kpis: ReportsKpi[];
   charts: ReportsChart[];
+  /** HQ6-style finance KPI strip (revenue, expenses, purchase due, etc.) */
+  financeKpis?: ReportsKpi[] | null;
   /** Finance panels (P&L trend, expense breakdown) — rendered below primary charts */
   financeCharts?: ReportsChart[] | null;
+  /** HQ6 home bottom stacked operational tables */
+  panels?: OverviewPanel[] | null;
   table?: ReportsTable | null;
   rankedList?: OverviewRankedItem[] | null;
   jobStatusPie?: OverviewJobStatusSlice[] | null;

@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import type { CafeTable, CafeTableStatus } from '@vonos/types';
 import { TenantDbService } from '../../common/prisma/tenant-db.service';
 import { AuditService } from '../audit/audit.service';
+import { buildCursorQuery } from '../../common/utils/pagination';
 import { toIso } from '../../common/utils/serializers';
 
 function serialize(row: {
@@ -31,11 +32,22 @@ export class CafeTablesService {
     private readonly auditService: AuditService,
   ) {}
 
-  async list(): Promise<CafeTable[]> {
+  async list(filters: {
+    cursor?: string;
+    limit?: number;
+    search?: string;
+  } = {}): Promise<CafeTable[]> {
     const tenantId = this.tenantDb.requireTenantId();
     const rows = await this.tenantDb.db.cafeTable.findMany({
-      where: { tenantId, deletedAt: null },
+      where: {
+        tenantId,
+        deletedAt: null,
+        ...(filters.search
+          ? { label: { contains: filters.search, mode: 'insensitive' } }
+          : {}),
+      },
       orderBy: { label: 'asc' },
+      ...buildCursorQuery(filters.cursor, filters.limit ?? 25),
     });
     return rows.map(serialize);
   }

@@ -5,6 +5,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -26,8 +27,16 @@ export class SuppliersController {
   }
 
   @Get()
-  list() {
-    return this.suppliersService.list();
+  list(
+    @Query('cursor') cursor?: string,
+    @Query('limit') limit?: string,
+    @Query('search') search?: string,
+  ) {
+    return this.suppliersService.list({
+      cursor,
+      limit: limit ? Number(limit) : undefined,
+      search,
+    });
   }
 
   @Get(':id')

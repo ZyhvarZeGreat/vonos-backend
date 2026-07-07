@@ -6,7 +6,12 @@ export interface Job {
   status: string;
   hasQuote: boolean;
   quoteAmount: number | null;
+  quoteNotes: string | null;
+  quoteValidUntil: string | null;
+  invoiceAmount: number | null;
+  invoiceNotes: string | null;
   customerName: string | null;
+  customerId: string | null;
   vehicleId: string | null;
   locationCode: string | null;
   assignedStaffIds: string[];

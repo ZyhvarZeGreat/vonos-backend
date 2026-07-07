@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo, useState, useCallback } from "react";
-import { useQuery } from "@tanstack/react-query";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Plus } from "lucide-react";
 import { MoreHorizontal } from "lucide-react";
@@ -10,6 +9,7 @@ import { StatusPill } from "@/components/atoms/StatusPill";
 import { InlinePriceCell } from "@/components/molecules/InlinePriceCell";
 import { ProductItemSearch } from "@/components/molecules/ProductItemSearch";
 import { DataTable, type ColumnConfig } from "@/components/organisms/DataTable";
+import { ServerPaginatedTable } from "@/components/organisms/ServerPaginatedTable";
 import { ListPageShell } from "@/components/organisms/ListPageShell";
 import {
   isProductMetaSection,
@@ -18,19 +18,21 @@ import {
   sectionFromParams,
   type ProductSectionId,
 } from "@/components/organisms/ProductMetaPanel";
-import { getItems } from "@/lib/api/items";
+import { getItems, getItemsPage, getAllItems } from "@/lib/api/items";
 import { useRecordNavigation } from "@/lib/hooks/useRecordNavigation";
 import { useListPageFilters } from "@/lib/hooks/useListPageFilters";
 import { useListExport } from "@/lib/hooks/useListExport";
 import { formatNumber } from "@/lib/utils/formatCurrency";
 import {
   filterByDateField,
-  filterBySearch,
   uniqueFieldOptions,
 } from "@/lib/utils/listFilters";
-import type { Item } from "@vonos/types";
-import { useTenantId } from "@/lib/hooks/useRouteTenant";
+import type { Item, StockStatus } from "@vonos/types";
+import { useRouteTenant, useTenantId } from "@/lib/hooks/useRouteTenant";
 import { useUiStore } from "@/stores/uiStore";
+import { ItemLocationCell } from "@/components/molecules/ItemLocationCell";
+import { useServerListPage } from "@/lib/hooks/useServerListPage";
+import { itemMatchesLocationFilter, locationFilterOptions } from "@/lib/utils/locationLabels";
 
 const STOCK_FILTER_TABS = [
   { id: "all", label: "All Items" },
@@ -50,7 +52,9 @@ export function WarehouseInventoryView() {
   const { dateRange, setDateRange, search, setSearch, bounds } = useListPageFilters();
   const [categoryFilter, setCategoryFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
+  const [locationFilter, setLocationFilter] = useState("");
   const tenantId = useTenantId();
+  const { config } = useRouteTenant();
 
   const setSection = useCallback(
     (next: ProductSectionId) => {
@@ -63,37 +67,65 @@ export function WarehouseInventoryView() {
     [router, searchParams],
   );
 
-  const itemsQuery = useQuery({
-    queryKey: ["items", tenantId],
-    queryFn: () => getItems(tenantId!),
-    enabled: Boolean(tenantId) && section === "products",
-  });
+  const apiFilters = useMemo(() => {
+    const next: {
+      status?: StockStatus;
+      category?: string;
+      locationCode?: string;
+      search?: string;
+    } = {};
+    if (stockFilter === "low_stock") next.status = "low_stock";
+    else if (stockFilter === "out_of_stock") next.status = "out_of_stock";
+    if (categoryFilter) next.category = categoryFilter;
+    if (statusFilter) next.status = statusFilter as StockStatus;
+    if (locationFilter) next.locationCode = locationFilter;
+    if (search.trim()) next.search = search.trim();
+    return next;
+  }, [categoryFilter, locationFilter, search, statusFilter, stockFilter]);
 
-  const items = useMemo(() => itemsQuery.data ?? [], [itemsQuery.data]);
+  const {
+    items,
+    hasMore,
+    pageIndex,
+    pageSize,
+    canGoPrev,
+    goNext,
+    goPrev,
+    setPageSize,
+    isLoading,
+    error,
+  } = useServerListPage({
+    queryKey: ["items", tenantId],
+    enabled: Boolean(tenantId) && section === "products",
+    filters: apiFilters,
+    fetchPage: (cursor, limit) => getItemsPage(tenantId!, apiFilters, cursor, limit),
+  });
 
   const filtered = useMemo(() => {
     let rows = filterByDateField(items, bounds, "createdAt");
-    if (stockFilter === "low_stock") {
-      rows = rows.filter((item) => item.status === "low_stock");
-    } else if (stockFilter === "out_of_stock") {
-      rows = rows.filter((item) => item.status === "out_of_stock");
-    } else if (stockFilter === "recent") {
+    if (stockFilter === "recent") {
       rows = [...rows].sort(
         (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
       );
     }
-    if (categoryFilter) rows = rows.filter((item) => item.category === categoryFilter);
-    if (statusFilter) rows = rows.filter((item) => item.status === statusFilter);
-    return filterBySearch(rows, search, ["name", "sku", "category"]);
-  }, [bounds, categoryFilter, items, search, statusFilter, stockFilter]);
+    return rows;
+  }, [bounds, items, stockFilter]);
 
-  const categoryOptions = useMemo(
-    () => uniqueFieldOptions(items, "category"),
-    [items],
-  );
+  const categoryOptions = useMemo(() => {
+    const fromConfig = config?.itemCategories ?? [];
+    return fromConfig.map((c) => ({ value: c, label: c }));
+  }, [config?.itemCategories]);
   const statusOptions = useMemo(
-    () => uniqueFieldOptions(items, "status"),
-    [items],
+    () => [
+      { value: "in_stock", label: "In Stock" },
+      { value: "low_stock", label: "Low Stock" },
+      { value: "out_of_stock", label: "Out of Stock" },
+    ],
+    [],
+  );
+  const locationOptions = useMemo(
+    () => locationFilterOptions(config),
+    [config],
   );
 
   const columns: ColumnConfig<Item>[] = useMemo(
@@ -124,7 +156,9 @@ export function WarehouseInventoryView() {
       {
         key: "binLocation",
         header: "Location",
-        render: (row) => <span className="font-medium">{row.binLocation}</span>,
+        render: (row) => (
+          <ItemLocationCell item={row} locations={config?.businessLocations} />
+        ),
       },
       {
         key: "costPrice",
@@ -150,7 +184,7 @@ export function WarehouseInventoryView() {
         ),
       },
     ],
-    [],
+    [config?.businessLocations],
   );
 
   return (
@@ -159,7 +193,7 @@ export function WarehouseInventoryView() {
         tabs={PRODUCT_SECTION_TABS}
         activeTab={section}
         onTabChange={(tabId) => setSection(tabId as ProductSectionId)}
-        searchPlaceholder={section === "products" ? "Filter visible rows" : "Search"}
+        searchPlaceholder={section === "products" ? "Search inventory…" : "Search"}
         searchValue={search}
         onSearchChange={setSearch}
         dateRange={dateRange}
@@ -182,30 +216,41 @@ export function WarehouseInventoryView() {
                   onChange: setStatusFilter,
                   options: statusOptions,
                 },
+                {
+                  id: "location",
+                  label: "Location",
+                  value: locationFilter,
+                  onChange: setLocationFilter,
+                  options: locationOptions,
+                },
               ]
             : []
         }
         onExport={
-          section === "products"
-            ? () =>
-                exportList(
-                  "inventory",
-                  [
-                    { key: "sku", header: "SKU" },
-                    { key: "name", header: "Name" },
-                    { key: "category", header: "Category" },
-                    { key: "quantity", header: "Qty" },
-                    { key: "status", header: "Status" },
-                  ],
-                  filtered.map((row) => ({
-                    sku: row.sku,
-                    name: row.name,
-                    category: row.category ?? "",
-                    quantity: row.quantity,
-                    status: row.status,
-                  })),
-                  "Export Inventory",
-                )
+          section === "products" && tenantId
+            ? () => {
+                void (async () => {
+                  const rows = await getAllItems(tenantId, apiFilters);
+                  exportList(
+                    "inventory",
+                    [
+                      { key: "sku", header: "SKU" },
+                      { key: "name", header: "Name" },
+                      { key: "category", header: "Category" },
+                      { key: "quantity", header: "Qty" },
+                      { key: "status", header: "Status" },
+                    ],
+                    rows.map((row) => ({
+                      sku: row.sku,
+                      name: row.name,
+                      category: row.category ?? "",
+                      quantity: row.quantity,
+                      status: row.status,
+                    })),
+                    "Export Inventory",
+                  );
+                })();
+              }
             : undefined
         }
       >
@@ -215,8 +260,9 @@ export function WarehouseInventoryView() {
               <div className="min-w-0 flex-1">
                 <ProductItemSearch
                   tenantId={tenantId}
+                  businessLocations={config?.businessLocations}
                   onSelect={(item) => goToDetail(item.id)}
-                  placeholder="Search database by name or SKU"
+                  placeholder="Search by name, SKU, or location / counter"
                 />
               </div>
               <Button size="sm" onClick={() => openAddProductModal("item")}>
@@ -240,14 +286,19 @@ export function WarehouseInventoryView() {
                 </button>
               ))}
             </div>
-            <DataTable
-              embedded
-              data={filtered}
+            <ServerPaginatedTable
+              items={filtered}
               columns={columns}
-              displayMode="table"
+              pageIndex={pageIndex}
+              pageSize={pageSize}
+              hasMore={hasMore}
+              canGoPrev={canGoPrev}
+              onNext={goNext}
+              onPrev={goPrev}
+              onPageSizeChange={setPageSize}
               onRowClick={(row) => goToDetail(row.id)}
-              isLoading={itemsQuery.isLoading}
-              error={itemsQuery.error ? "Failed to load inventory" : null}
+              isLoading={isLoading}
+              error={error ? "Failed to load inventory" : null}
             />
           </div>
         ) : isProductMetaSection(section) ? (

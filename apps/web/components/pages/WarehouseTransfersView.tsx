@@ -4,9 +4,11 @@ import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { MoreHorizontal } from "lucide-react";
 import { StatusPill } from "@/components/atoms/StatusPill";
-import { DataTable, type ColumnConfig } from "@/components/organisms/DataTable";
+import { type ColumnConfig } from "@/components/organisms/DataTable";
+import { ServerPaginatedTable } from "@/components/organisms/ServerPaginatedTable";
 import { ListPageShell } from "@/components/organisms/ListPageShell";
-import { getTransferZones, getTransfers, type TransferRow } from "@/lib/api/transfers";
+import { getTransferZones, getTransfersPage, type TransferRow } from "@/lib/api/transfers";
+import { useServerListPage } from "@/lib/hooks/useServerListPage";
 import { useListPageFilters } from "@/lib/hooks/useListPageFilters";
 import { formatNumberCompact } from "@/lib/utils/formatCurrency";
 import {
@@ -107,12 +109,22 @@ export function WarehouseTransfersView() {
     queryKey: ["transferZones"],
     queryFn: getTransferZones,
   });
-  const transfersQuery = useQuery({
-    queryKey: ["transfers"],
-    queryFn: getTransfers,
-  });
 
-  const transfers = useMemo(() => transfersQuery.data ?? [], [transfersQuery.data]);
+  const {
+    items: transfers,
+    hasMore,
+    pageIndex,
+    pageSize,
+    canGoPrev,
+    goNext,
+    goPrev,
+    setPageSize,
+    isLoading,
+    error,
+  } = useServerListPage<TransferRow>({
+    queryKey: ["transfers"],
+    fetchPage: (cursor, limit) => getTransfersPage(cursor, limit),
+  });
 
   const filtered = useMemo(() => {
     let rows = filterByDateField(transfers, bounds, "createdAt");
@@ -165,13 +177,18 @@ export function WarehouseTransfersView() {
           },
         ]}
       >
-        <DataTable
-          embedded
-          data={filtered}
+        <ServerPaginatedTable
+          items={filtered}
           columns={columns}
-          displayMode="table"
-          isLoading={transfersQuery.isLoading}
-          error={transfersQuery.error ? "Failed to load transfers" : null}
+          pageIndex={pageIndex}
+          pageSize={pageSize}
+          hasMore={hasMore}
+          canGoPrev={canGoPrev}
+          onNext={goNext}
+          onPrev={goPrev}
+          onPageSizeChange={setPageSize}
+          isLoading={isLoading}
+          error={error ? "Failed to load transfers" : null}
         />
       </ListPageShell>
     </div>

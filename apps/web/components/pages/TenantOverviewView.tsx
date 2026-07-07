@@ -17,7 +17,6 @@ import { useRouteTenant } from "@/lib/hooks/useRouteTenant";
 import { useAuthStore } from "@/stores/authStore";
 import { useUiStore } from "@/stores/uiStore";
 import { AdminViewingBanner } from "@/components/molecules/AdminViewingBanner";
-import { TenantDataContextPanel } from "@/components/molecules/TenantDataContextPanel";
 import { OverviewLiveBody } from "@/components/pages/OverviewLiveBody";
 import type { TenantCode } from "@/lib/registries/tenants";
 
@@ -48,9 +47,6 @@ function useOverviewShell(tenantCode: TenantCode) {
     authRole === "super_admin" ? (
       <AdminViewingBanner tenantCode={tenantCode} tenantName={tenantName} />
     ) : undefined;
-  const beforeContent = (
-    <TenantDataContextPanel tenantCode={tenantCode} tenantName={tenantName} />
-  );
 
   const sidebar = (
     <Sidebar
@@ -69,7 +65,6 @@ function useOverviewShell(tenantCode: TenantCode) {
     finalConfig,
     sidebar,
     topSlot,
-    beforeContent,
     activityItems,
     activityLoading,
     tenantName,
@@ -81,7 +76,6 @@ function EntityOverviewView({ tenantCode }: OverviewProps) {
     tenantId,
     sidebar,
     topSlot,
-    beforeContent,
     activityItems,
     activityLoading,
     tenantName,
@@ -118,7 +112,6 @@ function EntityOverviewView({ tenantCode }: OverviewProps) {
     <DashboardTemplate
       sidebar={sidebar}
       topSlot={topSlot}
-      beforeContent={beforeContent}
       title="Overview"
       tenantCode={tenantCode}
       tenantName={tenantName}

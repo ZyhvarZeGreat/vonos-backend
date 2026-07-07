@@ -2,14 +2,14 @@
 
 import Link from "next/link";
 import { ArrowRight, Package } from "lucide-react";
-import { ENTITY_LIST, type TenantCode } from "@/lib/registries/tenants";
+import { AUTOS_GROUP_ENTITIES, type TenantCode } from "@/lib/registries/tenants";
 import { tenantOverviewPath } from "@/lib/utils/authRedirect";
 import { cn } from "@/lib/utils/cn";
 
 export function EntityPicker() {
   return (
     <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-      {ENTITY_LIST.map((entity) => {
+      {AUTOS_GROUP_ENTITIES.map((entity) => {
         const isActive = entity.status === "active";
         const href = isActive ? tenantOverviewPath(entity.code as TenantCode) : undefined;
 
@@ -30,14 +30,14 @@ export function EntityPicker() {
               </span>
             </div>
             <h3 className="text-base font-semibold text-foreground">{entity.name}</h3>
-            <p className="mt-1 text-sm capitalize text-muted">{entity.archetype} · {entity.status}</p>
+            <p className="mt-1 text-sm text-muted capitalize">{entity.status}</p>
             {isActive ? (
               <span className="mt-4 inline-flex items-center gap-1 text-sm font-medium text-foreground">
                 Enter
                 <ArrowRight className="h-4 w-4" />
               </span>
             ) : (
-              <span className="mt-4 text-sm text-muted">Coming in Phase 2</span>
+              <span className="mt-4 text-sm text-muted">Coming soon</span>
             )}
           </div>
         );

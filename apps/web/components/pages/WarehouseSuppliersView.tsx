@@ -1,17 +1,22 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { MoreHorizontal, Star } from "lucide-react";
 import type { KpiCardConfig } from "@vonos/types";
-import { DataTable, type ColumnConfig } from "@/components/organisms/DataTable";
+import { type ColumnConfig } from "@/components/organisms/DataTable";
+import { ServerPaginatedTable } from "@/components/organisms/ServerPaginatedTable";
 import { KpiRow } from "@/components/organisms/KpiRow";
 import { ListPageShell } from "@/components/organisms/ListPageShell";
-import { getSupplierKpis, getSuppliers, type SupplierListRow } from "@/lib/api/suppliers";
+import { RowActionsMenu } from "@/components/molecules/RowActionsMenu";
+import { getSupplierKpis, getSuppliersPage, type SupplierListRow } from "@/lib/api/suppliers";
+import { useServerListPage } from "@/lib/hooks/useServerListPage";
+import { useRouteTenant, useTenantId } from "@/lib/hooks/useRouteTenant";
 import { useRecordNavigation } from "@/lib/hooks/useRecordNavigation";
 import { useListPageFilters } from "@/lib/hooks/useListPageFilters";
 import { formatCurrencyCompact, formatNumberCompact } from "@/lib/utils/formatCurrency";
 import { filterBySearch, uniqueFieldOptions } from "@/lib/utils/listFilters";
+import { formatDate } from "@/lib/utils/formatDate";
 
 const SUPPLIER_TABS = [
   { id: "all", label: "All Suppliers" },
@@ -27,62 +32,99 @@ const supplierKpiCards: KpiCardConfig[] = [
   { label: "Open PO Value", icon: "wallet", metricKey: "openPoValue", color: "#e11d48" },
 ];
 
-const columns: ColumnConfig<SupplierListRow>[] = [
-  {
-    key: "name",
-    header: "Supplier",
-    render: (row) => <span className="font-medium text-foreground">{row.name}</span>,
-  },
-  { key: "phone", header: "No. Telp" },
-  { key: "category", header: "Category" },
-  {
-    key: "leadTimeDays",
-    header: "Lead Time",
-    sortValue: (row) => row.leadTimeDays,
-    render: (row) => `${row.leadTimeDays} days`,
-  },
-  { key: "location", header: "Location" },
-  {
-    key: "rating",
-    header: "Rating",
-    sortValue: (row) => row.rating,
-    render: (row) => (
-      <span className="inline-flex items-center gap-1 text-foreground">
-        <Star className="h-3.5 w-3.5 fill-amber-400 text-amber-400" />
-        {row.rating.toFixed(1)}
-      </span>
-    ),
-  },
-  {
-    key: "actions",
-    header: "Actions",
-    sortable: false,
-    render: () => (
-      <div className="text-right">
-        <button type="button" className="text-muted hover:text-foreground" aria-label="Row actions">
-          <MoreHorizontal className="inline h-4 w-4" />
-        </button>
-      </div>
-    ),
-  },
-];
+function supplierColumns(
+  tenantCode: string,
+  onView: (id: string) => void,
+  router: ReturnType<typeof useRouter>,
+): ColumnConfig<SupplierListRow>[] {
+  return [
+    {
+      key: "actions",
+      header: "Action",
+      sortable: false,
+      render: (row) => (
+        <RowActionsMenu
+          actions={[
+            { id: "view", label: "View", onClick: () => onView(row.id) },
+            { id: "pay", label: "Pay", onClick: () => router.push(`/${tenantCode}/payments`) },
+            { id: "ledger", label: "Ledger", onClick: () => router.push(`/${tenantCode}/finance`) },
+            { id: "purchases", label: "Purchases", onClick: () => router.push(`/${tenantCode}/inbound`) },
+          ]}
+        />
+      ),
+    },
+    { key: "contactId", header: "Contact ID", render: (r) => r.contactId ?? "—" },
+    { key: "businessName", header: "Business Name", render: (r) => <span className="font-medium">{r.businessName ?? r.name}</span> },
+    { key: "contactName", header: "Name", render: (r) => r.contactName ?? "—" },
+    { key: "email", header: "Email", render: (r) => r.email ?? "—" },
+    { key: "phone", header: "Mobile", render: (r) => r.phone ?? "—" },
+    { key: "payTerm", header: "Pay term", render: (r) => r.payTerm ?? "—" },
+    {
+      key: "openingBalance",
+      header: "Opening Balance",
+      sortValue: (r) => r.openingBalance ?? 0,
+      render: (r) => formatCurrencyCompact(r.openingBalance ?? 0, "NGN"),
+    },
+    {
+      key: "totalPurchase",
+      header: "Total Purchase",
+      sortValue: (r) => r.totalPurchase ?? 0,
+      render: (r) => formatCurrencyCompact(r.totalPurchase ?? 0, "NGN"),
+    },
+    {
+      key: "totalPurchaseDue",
+      header: "Purchase Due",
+      sortValue: (r) => r.totalPurchaseDue ?? 0,
+      render: (r) => formatCurrencyCompact(r.totalPurchaseDue ?? 0, "NGN"),
+    },
+    {
+      key: "totalPurchasePaid",
+      header: "Purchase Paid",
+      sortValue: (r) => r.totalPurchasePaid ?? 0,
+      render: (r) => formatCurrencyCompact(r.totalPurchasePaid ?? 0, "NGN"),
+    },
+    { key: "createdAt", header: "Added On", sortValue: (r) => new Date(r.createdAt).getTime(), render: (r) => formatDate(r.createdAt) },
+  ];
+}
 
 export function WarehouseSuppliersView() {
+  const { tenantCode } = useRouteTenant();
+  const router = useRouter();
+  const tenantId = useTenantId();
   const { goToDetail } = useRecordNavigation("suppliers");
   const [activeTab, setActiveTab] = useState("all");
   const { dateRange, setDateRange, search, setSearch } = useListPageFilters();
   const [categoryFilter, setCategoryFilter] = useState("");
 
-  const suppliersQuery = useQuery({
-    queryKey: ["suppliers"],
-    queryFn: getSuppliers,
+  const {
+    items: suppliers,
+    hasMore,
+    pageIndex,
+    pageSize,
+    canGoPrev,
+    goNext,
+    goPrev,
+    setPageSize,
+    isLoading,
+    error,
+  } = useServerListPage<SupplierListRow>({
+    queryKey: ["suppliers", tenantId],
+    enabled: Boolean(tenantId),
+    search,
+    fetchPage: (cursor, limit) => getSuppliersPage(tenantId!, cursor, limit),
   });
+
   const kpisQuery = useQuery({
-    queryKey: ["supplierKpis"],
-    queryFn: getSupplierKpis,
+    queryKey: ["supplierKpis", tenantId],
+    queryFn: () => getSupplierKpis(tenantId!),
+    enabled: Boolean(tenantId),
   });
   const kpis = kpisQuery.data;
-  const suppliers = useMemo(() => suppliersQuery.data ?? [], [suppliersQuery.data]);
+
+  const columns = useMemo(
+    () => supplierColumns(tenantCode ?? "VW", goToDetail, router),
+    [tenantCode, goToDetail, router],
+  );
 
   const filtered = useMemo(() => {
     let rows = suppliers;
@@ -92,7 +134,7 @@ export function WarehouseSuppliersView() {
       rows = rows.filter((row) => row.category.toLowerCase() === "automotive");
     }
     if (categoryFilter) rows = rows.filter((row) => row.category === categoryFilter);
-    return filterBySearch(rows, search, ["name", "category", "phone", "location"]);
+    return filterBySearch(rows, search, ["name", "category", "phone", "location", "contactId", "email"]);
   }, [activeTab, categoryFilter, search, suppliers]);
 
   const categoryOptions = useMemo(
@@ -118,30 +160,35 @@ export function WarehouseSuppliersView() {
         tabs={SUPPLIER_TABS}
         activeTab={activeTab}
         onTabChange={setActiveTab}
-        searchPlaceholder="Search Suppliers"
         searchValue={search}
         onSearchChange={setSearch}
+        searchPlaceholder="Search suppliers…"
         dateRange={dateRange}
         onDateRangeChange={setDateRange}
-        showDateRange={false}
         filterDropdowns={[
           {
             id: "category",
             label: "Category",
+            options: [{ value: "", label: "All categories" }, ...categoryOptions],
             value: categoryFilter,
             onChange: setCategoryFilter,
-            options: categoryOptions,
           },
         ]}
       >
-        <DataTable
-          embedded
-          data={filtered}
+        <ServerPaginatedTable
+          items={filtered}
           columns={columns}
-          displayMode="table"
+          pageIndex={pageIndex}
+          pageSize={pageSize}
+          hasMore={hasMore}
+          canGoPrev={canGoPrev}
+          onNext={goNext}
+          onPrev={goPrev}
+          onPageSizeChange={setPageSize}
+          isLoading={isLoading}
+          error={error ? "Failed to load suppliers" : null}
           onRowClick={(row) => goToDetail(row.id)}
-          isLoading={suppliersQuery.isLoading}
-          error={suppliersQuery.error ? "Failed to load suppliers" : null}
+          emptyState={{ message: "No suppliers yet. Add your first supplier to get started." }}
         />
       </ListPageShell>
     </div>

@@ -99,6 +99,29 @@ def row_date_on_or_after(row: dict[str, Any], field: str, since: str) -> bool:
     return str(raw).strip()[:10] >= since.strip()[:10]
 
 
+def row_date_on_or_before(row: dict[str, Any], field: str, until: str) -> bool:
+    """True when row[field] is on or before until (YYYY-MM-DD comparison)."""
+    raw = row.get(field)
+    if raw is None or str(raw).strip() in ("", "NULL"):
+        return False
+    return str(raw).strip()[:10] <= until.strip()[:10]
+
+
+def row_date_in_range(
+    row: dict[str, Any],
+    field: str,
+    *,
+    since: str | None = None,
+    until: str | None = None,
+) -> bool:
+    """True when row[field] falls within optional since/until bounds (inclusive)."""
+    if since and not row_date_on_or_after(row, field, since):
+        return False
+    if until and not row_date_on_or_before(row, field, until):
+        return False
+    return True
+
+
 def table_rows(tables: dict[str, TableData], name: str) -> list[dict[str, Any]]:
     return tables.get(name, TableData(name)).rows
 
@@ -120,9 +143,11 @@ def transform_items(
     user_names: dict[int, str] | None = None,
     user_vonos: dict[int, str] | None = None,
     existing_item_legacy: dict[int, str] | None = None,
+    brand_legacy: dict[int, str] | None = None,
 ) -> TransformResult:
     result = TransformResult()
     user_names = user_names or build_legacy_user_name_map(tables)
+    brand_id_legacy = brand_legacy or {}
     products = {str(r["id"]): r for r in table_rows(tables, "products") if r.get("id") is not None}
     variation_rows = table_rows(tables, "variations")
     categories = {
@@ -170,6 +195,12 @@ def transform_items(
 
         cat_id = product.get("category_id")
         category = categories.get(str(cat_id)) if cat_id is not None else None
+        legacy_brand_id = parse_int(product.get("brand_id"), 0)
+        brand_id = (
+            brand_id_legacy.get(legacy_brand_id)
+            if legacy_brand_id > 0
+            else None
+        )
 
         qty = qty_by_variation.get(vid, 0)
         if qty <= 0 and opening_qty.get(vid, 0) > 0:
@@ -186,6 +217,7 @@ def transform_items(
             "sku": sku,
             "name": name,
             "category": category,
+            "brandId": brand_id,
             "quantity": qty,
             "binLocation": bin_location,
             "costPrice": str(parse_decimal(variation.get("default_purchase_price"))),
@@ -286,6 +318,7 @@ def transform_sales(
     user_names: dict[int, str] | None = None,
     user_vonos: dict[int, str] | None = None,
     since: str | None = None,
+    until: str | None = None,
     existing_sale_legacy: dict[int, str] | None = None,
     backfill_lines: bool = False,
 ) -> TransformResult:
@@ -314,7 +347,7 @@ def transform_sales(
     seen_references: set[str] = set()
     for txn in sell_txns:
         legacy_tx_id = parse_int(txn.get("id"))
-        if since and not row_date_on_or_after(txn, "transaction_date", since):
+        if not row_date_in_range(txn, "transaction_date", since=since, until=until):
             continue
 
         existing_sale_id = (
@@ -396,7 +429,7 @@ def transform_sales(
             "newId": sale_id,
         })
         result.ledger_entries.append({
-            "id": new_cuid(),
+            "id": f"mig_ledger_{sale_id}",
             "tenantId": tenant_id,
             "type": "revenue",
             "amount": str(total),

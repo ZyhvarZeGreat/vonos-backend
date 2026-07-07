@@ -1,9 +1,7 @@
 import type { ReportsDashboard } from '@vonos/types';
-import { reportEntryById } from '@vonos/types';
+import { AUTOS_GROUP_CODES, reportEntryById } from '@vonos/types';
 import type { PrismaClient } from '@prisma/client';
 import type { TenantDbService } from '../../common/prisma/tenant-db.service';
-import { ledgerDateFilter } from '../../common/utils/ledgerAggregates';
-import { toNumber } from '../../common/utils/serializers';
 import { AuditService } from '../audit/audit.service';
 import { buildStockReports } from './aggregators/stockReports';
 import { buildTransactionReports } from './aggregators/transactionReports';
@@ -18,11 +16,14 @@ import {
   buildRegisterReport,
   buildSalesRepReport,
   buildSellPaymentReport,
+  buildServiceStaffReport,
+  buildStockDetailsReport,
   buildStockExpiryReport,
   buildTaxReport,
   buildTrendingProductsReport,
 } from './aggregators/transactionReportHandlers';
 import { buildGroupReports } from './aggregators/groupReports';
+import { buildEntityRollupForReport } from './aggregators/groupReportRollups';
 import {
   buildExpenseReport,
   buildProfitLossReport,
@@ -74,6 +75,7 @@ export async function runReportForTenant(
       if (archetype === 'stock') {
         return buildStockReports(
           db,
+          tenantId,
           source.tab as 'valuation' | 'movement' | 'lowstock',
           from,
           to,
@@ -81,6 +83,7 @@ export async function runReportForTenant(
       }
       return buildTransactionReports(
         db,
+        tenantId,
         source.tab as 'sales' | 'closeout',
         from,
         to,
@@ -89,8 +92,12 @@ export async function runReportForTenant(
       if (source.handler === 'expiry') {
         return buildStockExpiryReport(db);
       }
+      if (source.handler === 'details') {
+        return buildStockDetailsReport(db);
+      }
       return buildStockReports(
         db,
+        tenantId,
         source.handler === 'lowstock'
           ? 'lowstock'
           : source.handler === 'movement'
@@ -114,6 +121,9 @@ export async function runReportForTenant(
         return buildPurchaseSaleReport(db, from, to);
       if (handler === 'tax') return buildTaxReport(db, from, to);
       if (handler === 'register') return buildRegisterReport(db, from, to);
+      if (handler === 'service-staff') {
+        return buildServiceStaffReport(db, from, to);
+      }
       return buildSalesRepReport(db, from, to);
     }
     case 'payments':
@@ -188,36 +198,14 @@ export async function runGroupReport(
   }
 
   const tenants = await prisma.tenant.findMany({
-    where: { code: { not: 'VAG' }, deletedAt: null },
+    where: { code: { in: [...AUTOS_GROUP_CODES] }, deletedAt: null },
     select: { id: true, code: true, archetype: true },
     orderBy: { code: 'asc' },
   });
 
-  const dateFilter = ledgerDateFilter(from, to);
-  const byEntity: Array<{
-    code: string;
-    rows: Record<string, string | number>[];
-  }> = [];
-
-  if (entry.source.kind === 'ledger') {
-    for (const tenant of tenants) {
-      const groups = await prisma.ledgerEntry.groupBy({
-        by: ['type'],
-        where: { tenantId: tenant.id, deletedAt: null, ...dateFilter },
-        _sum: { amount: true },
-      });
-      const revenue = groups
-        .filter((g) => g.type === 'revenue')
-        .reduce((s, g) => s + toNumber(g._sum.amount ?? 0), 0);
-      const costs = groups
-        .filter((g) => g.type !== 'revenue')
-        .reduce((s, g) => s + toNumber(g._sum.amount ?? 0), 0);
-      byEntity.push({
-        code: tenant.code,
-        rows: [{ revenue, costs, net: revenue - costs }],
-      });
-    }
-  }
+  const byEntity = entry.groupRollup
+    ? await buildEntityRollupForReport(prisma, entry, tenants, from, to)
+    : undefined;
 
   const groupDashboard = await buildGroupReports(prisma, from, to);
   return { ...groupDashboard, byEntity };

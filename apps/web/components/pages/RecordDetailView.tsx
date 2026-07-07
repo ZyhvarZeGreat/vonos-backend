@@ -11,13 +11,21 @@ import { getCustomer, getItem, getJob, getSale, getCatalogItem } from "@/lib/api
 import { getAppointment } from "@/lib/api/appointments";
 import { getReturn } from "@/lib/api/returns";
 import { saleToOrder } from "@/lib/api/orders";
+import { getVehicle, getVehicleHistory } from "@/lib/api/vehicles";
 import { getStockMovement, updateStockMovementStatus, type StockMovementListRow } from "@/lib/api/stockMovements";
 import { getSupplier } from "@/lib/api/suppliers";
 import { useRecordNavigation } from "@/lib/hooks/useRecordNavigation";
 import { formatCurrency } from "@/lib/utils/formatCurrency";
 import { formatDate, formatDateTime } from "@/lib/utils/formatDate";
 import { useTenantId } from "@/lib/hooks/useRouteTenant";
-import type { SectionInstance } from "@/lib/registries/sectionTypes";
+import { useTenantStore } from "@/stores/tenantStore";
+import type { SectionInstance, HistoryFeedEntry } from "@/lib/registries/sectionTypes";
+import type {
+  CustomerProfile,
+  CustomerTransactionHistoryEntry,
+  VehicleJobHistoryEntry,
+} from "@vonos/types";
+import { recordDetailPath } from "@/lib/utils/recordDetailPath";
 import type { JobDetail } from "@/lib/api/jobs";
 import type { SaleDetail, StockMovement, MovementStatus } from "@vonos/types";
 import { useAuditHistoryFeed, createdByField } from "@/lib/hooks/useAuditHistoryFeed";
@@ -27,6 +35,7 @@ import { Button } from "@/components/atoms/Button";
 import { DetailPanelSection } from "@/components/organisms/DetailPanelSection";
 import { getAdvanceLabel } from "@/components/organisms/StatusStepper";
 import { DetailPageSkeleton } from "@/components/organisms/skeletons";
+import { SaleReceiptPanel } from "@/components/molecules/SaleReceiptPanel";
 import { AccountBookView } from "@/components/pages/PosNavViews";
 
 function DetailLoading() {
@@ -61,6 +70,7 @@ function ItemDetailView({
 }) {
   const router = useRouter();
   const tenantId = useTenantId();
+  const tenantConfig = useTenantStore((state) => state.tenantConfig);
   const listSlug = catalogMode ? "catalog" : "inventory";
   const { listPath } = useRecordNavigation(listSlug);
   const { data: item, isLoading } = useQuery({
@@ -85,7 +95,11 @@ function ItemDetailView({
   }
 
   const sections: SectionInstance[] = [
-    { type: "stockInfo", title: "Stock Info", data: item },
+    {
+      type: "stockInfo",
+      title: "Stock Info",
+      data: { item, businessLocations: tenantConfig?.businessLocations },
+    },
   ];
 
   if (showVariantMatrix) {
@@ -156,18 +170,113 @@ function JobRecordDetail({ recordId }: { recordId: string }) {
   return <JobDetailPage job={activeJob} listPath={listPath} onJobChange={setJobState} />;
 }
 
-function VehicleDetailView({ recordId: _recordId }: { recordId: string }) {
+function VehicleDetailView({ recordId }: { recordId: string }) {
   const router = useRouter();
+  const tenantId = useTenantId();
+  const tenantCode = useTenantStore((state) => state.tenantConfig?.code ?? "VA");
   const { listPath } = useRecordNavigation("vehicles");
+  const { data: vehicle, isLoading } = useQuery({
+    queryKey: ["vehicle", tenantId, recordId],
+    queryFn: () => getVehicle(recordId),
+    enabled: Boolean(tenantId),
+  });
+  const { data: history = [] } = useQuery({
+    queryKey: ["vehicle-history", tenantId, recordId],
+    queryFn: () => getVehicleHistory(recordId),
+    enabled: Boolean(tenantId),
+  });
+
+  if (!tenantId || isLoading) {
+    return <DetailLoading />;
+  }
+
+  if (!vehicle) {
+    return (
+      <EmptyState
+        title="Vehicle not found"
+        message="This vehicle record could not be loaded."
+        ctaLabel="Back to registry"
+        onCta={() => router.push(listPath)}
+      />
+    );
+  }
+
+  const fields = [
+    { label: "Plate", value: vehicle.plateNumber },
+    { label: "Make", value: vehicle.make },
+    { label: "Model", value: vehicle.model },
+    { label: "Year", value: vehicle.year ? String(vehicle.year) : "—" },
+    { label: "Owner", value: vehicle.ownerName },
+    { label: "Owner phone", value: vehicle.ownerPhone ?? "—" },
+    { label: "VIN", value: vehicle.vin ?? "—" },
+  ];
+
+  const historyEntries: HistoryFeedEntry[] = history.map((entry: VehicleJobHistoryEntry) => {
+    const subtitleParts = [
+      entry.customerName ?? undefined,
+      entry.invoiceAmount != null
+        ? formatCurrency(entry.invoiceAmount, "NGN")
+        : entry.quoteAmount != null
+          ? `${formatCurrency(entry.quoteAmount, "NGN")} (quote)`
+          : undefined,
+      entry.status,
+    ].filter(Boolean);
+
+    return {
+      id: entry.id,
+      title: `Job ${entry.reference}`,
+      subtitle: subtitleParts.join(" · "),
+      date: entry.dueDate ?? new Date().toISOString(),
+      status: entry.status,
+      href: recordDetailPath(tenantCode, "job", entry.id) ?? undefined,
+    };
+  });
 
   return (
-    <EmptyState
-      title="Vehicle registry not available"
-      message="Vehicle records are not yet stored in the platform database."
-      ctaLabel="Back to registry"
-      onCta={() => router.push(listPath)}
+    <DetailPageShell
+      backHref={listPath}
+      backLabel="Back to registry"
+      title={vehicle.plateNumber}
+      subtitle={`${vehicle.make} ${vehicle.model}`}
+      layout="narrow"
+      sidebarSections={[
+        { type: "genericFields", title: "Vehicle details", data: fields },
+        {
+          type: "historyFeed",
+          title: "Job history",
+          data: historyEntries,
+        },
+      ]}
     />
   );
+}
+
+function transactionHistoryFeed(
+  tenantCode: string,
+  history: CustomerProfile["transactionHistory"],
+): HistoryFeedEntry[] {
+  const kindLabel: Record<CustomerTransactionHistoryEntry["kind"], string> = {
+    sale: "Sale",
+    job: "Job",
+    appointment: "Appointment",
+  };
+
+  return history.map((entry) => {
+    const subtitleParts = [
+      formatCurrency(entry.amount, entry.currency),
+      entry.status,
+      entry.paymentStatus ?? undefined,
+    ].filter(Boolean);
+
+    return {
+      id: `${entry.kind}-${entry.id}`,
+      title: `${kindLabel[entry.kind]} ${entry.reference}`,
+      subtitle: subtitleParts.join(" · "),
+      date: entry.date,
+      status: entry.status,
+      href: recordDetailPath(tenantCode, entry.kind, entry.id) ?? undefined,
+    };
+  });
 }
 
 function CustomerDetailView({ recordId }: { recordId: string }) {
@@ -183,6 +292,9 @@ function CustomerDetailView({ recordId }: { recordId: string }) {
   const { entries: auditEntries } = useAuditHistoryFeed("customer", recordId, tenantId);
   const createdBy = createdByField(customer?.createdByName);
   const isSaloon = params.tenant === "VS";
+  const transactionEntries = customer
+    ? transactionHistoryFeed(params.tenant, customer.transactionHistory)
+    : [];
 
   if (!tenantId || isLoading) {
     return <DetailLoading />;
@@ -199,18 +311,41 @@ function CustomerDetailView({ recordId }: { recordId: string }) {
     );
   }
 
+  const balanceDue = customer.totalSellDue ?? 0;
+  const accountFields = [
+    { label: "Total billed", value: formatCurrency(customer.totalSell ?? 0, "NGN") },
+    { label: "Total paid", value: formatCurrency(customer.totalSellPaid ?? 0, "NGN") },
+    {
+      label: "Balance due",
+      value: formatCurrency(balanceDue, "NGN"),
+    },
+  ];
+
+  const contactFields = [
+    { label: "Email", value: customer.email ?? "—" },
+    { label: "Phone", value: customer.phone ?? "—" },
+    ...(customer.businessName ? [{ label: "Business", value: customer.businessName }] : []),
+    { label: "Total Spend", value: formatCurrency(customer.totalSpend, "NGN") },
+    { label: "Visits", value: String(customer.visitCount) },
+    ...(createdBy ? [createdBy] : []),
+  ];
+
   const saloonSections: SectionInstance[] = isSaloon
     ? [
         {
           type: "genericFields",
           title: "Contact",
-          data: [
-            { label: "Email", value: customer.email ?? "—" },
-            { label: "Phone", value: customer.phone ?? "—" },
-            { label: "Total Spend", value: formatCurrency(customer.totalSpend, "NGN") },
-            { label: "Visits", value: String(customer.visitCount) },
-            ...(createdBy ? [createdBy] : []),
-          ],
+          data: contactFields,
+        },
+        {
+          type: "genericFields",
+          title: "Account",
+          data: accountFields,
+        },
+        {
+          type: "historyFeed",
+          title: "Transaction history",
+          data: transactionEntries,
         },
         {
           type: "historyFeed",
@@ -222,13 +357,17 @@ function CustomerDetailView({ recordId }: { recordId: string }) {
         {
           type: "genericFields",
           title: "Contact",
-          data: [
-            { label: "Email", value: customer.email ?? "—" },
-            { label: "Phone", value: customer.phone ?? "—" },
-            { label: "Total Spend", value: formatCurrency(customer.totalSpend, "NGN") },
-            { label: "Visits", value: String(customer.visitCount) },
-            ...(createdBy ? [createdBy] : []),
-          ],
+          data: contactFields,
+        },
+        {
+          type: "genericFields",
+          title: "Account",
+          data: accountFields,
+        },
+        {
+          type: "historyFeed",
+          title: "Transaction history",
+          data: transactionEntries,
         },
         {
           type: "historyFeed",
@@ -523,6 +662,7 @@ function SaleDetailView({ recordId }: { recordId: string }) {
               </tfoot>
             </table>
           </section>
+          <SaleReceiptPanel sale={sale} />
           <div className="flex items-center justify-between text-sm">
             <span className="text-muted">Payment: {paymentLabel}</span>
             {sale.status === "Completed" ? (

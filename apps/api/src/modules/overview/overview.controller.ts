@@ -1,4 +1,4 @@
-import { Controller, Get, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Query, UseGuards } from '@nestjs/common';
 import {
   JwtAuthGuard,
   RolesGuard,
@@ -6,20 +6,52 @@ import {
 } from '../../common/guards/auth.guards';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { OverviewService } from './overview.service';
+import { CacheService } from '../../common/cache/cache.service';
 
 @Controller('overview')
 @UseGuards(JwtAuthGuard, TenantGuard, RolesGuard)
 export class OverviewController {
-  constructor(private readonly overviewService: OverviewService) {}
+  constructor(
+    private readonly overviewService: OverviewService,
+    private readonly cache: CacheService,
+  ) {}
 
   @Get('dashboard')
   dashboard(@Query('from') from?: string, @Query('to') to?: string) {
     return this.overviewService.dashboard(from, to);
   }
 
+  @Get('panels/stock-alert')
+  stockAlertPanel() {
+    return this.overviewService.stockAlertPanel();
+  }
+
+  @Get('panels/purchase-payment-dues')
+  purchasePaymentDuesPanel() {
+    return this.overviewService.purchasePaymentDuesPanel();
+  }
+
+  @Get('panels/sales-payment-dues')
+  salesPaymentDuesPanel() {
+    return this.overviewService.salesPaymentDuesPanel();
+  }
+
   @Get('group')
   @Roles('super_admin')
   group(@Query('from') from?: string, @Query('to') to?: string) {
     return this.overviewService.group(from, to);
+  }
+
+  @Get('cache/stats')
+  @Roles('super_admin')
+  cacheStats() {
+    return this.cache.stats();
+  }
+
+  @Post('cache/flush')
+  @Roles('super_admin')
+  async cacheFlush() {
+    await this.cache.invalidatePrefix('');
+    return { flushed: true };
   }
 }

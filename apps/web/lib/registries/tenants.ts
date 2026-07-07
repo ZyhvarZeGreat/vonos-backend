@@ -1,4 +1,8 @@
-/** URL tenant code → backend tenant id. All 6 operating entities are active in the shell. */
+/**
+ * URL tenant code → backend tenant id. All 8 operating entities are active in the shell.
+ * `group: "autos"` entities roll up into the Vonos Autos Group (VAG) admin surfaces;
+ * `group: "other"` entities stay in the system but are hidden from the group.
+ */
 export const TENANT_REGISTRY = {
   VW: {
     tenantId: "tenant_vw_001",
@@ -6,6 +10,7 @@ export const TENANT_REGISTRY = {
     name: "Vonos Warehouse",
     archetype: "stock" as const,
     status: "active" as const,
+    group: "autos" as const,
   },
   VKW: {
     tenantId: "tenant_vkw_001",
@@ -13,6 +18,7 @@ export const TENANT_REGISTRY = {
     name: "Vonos Kids Wear",
     archetype: "stock" as const,
     status: "active" as const,
+    group: "other" as const,
   },
   VISP: {
     tenantId: "tenant_visp_001",
@@ -20,6 +26,7 @@ export const TENANT_REGISTRY = {
     name: "Vonos Institute Spare Parts",
     archetype: "transaction" as const,
     status: "active" as const,
+    group: "autos" as const,
   },
   VSP: {
     tenantId: "tenant_vsp_001",
@@ -27,6 +34,15 @@ export const TENANT_REGISTRY = {
     name: "Vonos SP Marketplace",
     archetype: "transaction" as const,
     status: "active" as const,
+    group: "autos" as const,
+  },
+  VA: {
+    tenantId: "tenant_va_001",
+    code: "VA",
+    name: "Vonos Automotive",
+    archetype: "job" as const,
+    status: "active" as const,
+    group: "autos" as const,
   },
   VC: {
     tenantId: "tenant_vc_001",
@@ -34,20 +50,7 @@ export const TENANT_REGISTRY = {
     name: "Vonos Cafe",
     archetype: "transaction" as const,
     status: "active" as const,
-  },
-  VM: {
-    tenantId: "tenant_vm_001",
-    code: "VM",
-    name: "Vonos Mechanics",
-    archetype: "job" as const,
-    status: "active" as const,
-  },
-  VMS: {
-    tenantId: "tenant_vms_001",
-    code: "VMS",
-    name: "Vonos Mech Shop",
-    archetype: "job" as const,
-    status: "active" as const,
+    group: "other" as const,
   },
   VS: {
     tenantId: "tenant_vs_001",
@@ -55,6 +58,7 @@ export const TENANT_REGISTRY = {
     name: "Vonos Saloon",
     archetype: "appointment" as const,
     status: "active" as const,
+    group: "other" as const,
   },
 } as const;
 
@@ -77,5 +81,15 @@ export function getTenantCodeFromId(tenantId: string | null): TenantCode | null 
 
 export const ENTITY_LIST = Object.values(TENANT_REGISTRY);
 
+/** Entities that belong to the Vonos Autos Group (VAG) admin roll-up. */
+export const AUTOS_GROUP_ENTITIES = ENTITY_LIST.filter(
+  (entity) => entity.group === "autos",
+);
+
+export function isAutosGroupEntity(code: string): boolean {
+  const entry = getTenantByCode(code);
+  return entry?.group === "autos";
+}
+
 /** Retired entity codes — redirect in next.config. */
-export const RETIRED_TENANT_CODES = ["VA", "VSS"] as const;
+export const RETIRED_TENANT_CODES = ["VM", "VMS", "VSS"] as const;

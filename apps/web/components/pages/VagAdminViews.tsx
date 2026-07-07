@@ -6,8 +6,7 @@ import { DateRangeDropdown } from "@/components/molecules/DateRangeDropdown";
 import { EntityOverviewCard } from "@/components/organisms/EntityOverviewCard";
 import { KpiRow } from "@/components/organisms/KpiRow";
 import { getGroupOverview } from "@/lib/api/overview";
-import { ENTITY_LIST } from "@/lib/registries/tenants";
-import { getMigrationSource } from "@/lib/registries/migrationSources";
+import { AUTOS_GROUP_ENTITIES } from "@/lib/registries/tenants";
 import { tenantOverviewPath } from "@/lib/utils/authRedirect";
 import { TENANT_ACCENT } from "@/lib/registries/tenantAccents";
 import { useListPageFilters } from "@/lib/hooks/useListPageFilters";
@@ -67,11 +66,10 @@ export function VagGroupOverview() {
       </div>
 
       <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-100">
-        <p className="font-medium">How group data is organized</p>
+        <p className="font-medium">Group overview</p>
         <p className="mt-1 text-amber-900/90 dark:text-amber-100/90">
-          Each card below is a separate business with its own database partition (
-          <code className="text-xs">tenant_*_001</code>). Use <strong>Enter</strong> or the entity
-          switcher to view one at a time.
+          Each card is a separate Vonos business. Select <strong>Enter</strong> or use the entity
+          switcher in the top bar to work in that location.
         </p>
       </div>
 
@@ -110,20 +108,15 @@ export function VagGroupOverview() {
           <section>
             <h3 className="mb-4 text-base font-semibold text-foreground">Entities</h3>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-              {ENTITY_LIST.map((entity) => {
-                const source = getMigrationSource(entity.code);
-                return (
+              {AUTOS_GROUP_ENTITIES.map((entity) => (
                   <EntityOverviewCard
                     key={entity.code}
                     code={entity.code}
                     name={entity.name}
-                    archetype={entity.archetype}
                     stats={entityStats.get(entity.code) ?? ["—", "—", "—"]}
                     href={tenantOverviewPath(entity.code)}
-                    legacyDatabase={source.legacyDatabase}
                   />
-                );
-              })}
+              ))}
             </div>
           </section>
 

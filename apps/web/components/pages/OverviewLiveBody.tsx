@@ -24,6 +24,7 @@ import type { TenantCode } from "@/lib/registries/tenants";
 import { TENANT_ACCENT } from "@/lib/registries/tenantAccents";
 import { recordDetailPath } from "@/lib/utils/recordDetailPath";
 import { DashboardBodySkeleton } from "@/components/organisms/skeletons";
+import { EntityOverviewPanels } from "@/components/organisms/EntityOverviewPanels";
 
 type OverviewTableRow = Record<string, string | number> & { id: string };
 
@@ -159,7 +160,7 @@ export function OverviewLiveBody({
   const periodLabel = ledgerChartSubtitle(dateRange);
   const isCafe = tenantCode === "VC";
   const isRetailCatalog = tenantCode === "VISP" || tenantCode === "VSP";
-  const isMechanics = tenantCode === "VM";
+  const isMechanics = tenantCode === "VA";
 
   if (error) {
     return (
@@ -177,6 +178,8 @@ export function OverviewLiveBody({
   const { deltas, deltaLabels, deltaPercents } = kpiDeltas(kpis);
   const charts = dashboard?.charts ?? [];
   const financeCharts = dashboard?.financeCharts ?? [];
+  const financeKpis = dashboard?.financeKpis ?? [];
+  const panels = dashboard?.panels ?? [];
   const ledgerCurrency =
     kpis.find((k) => k.metricKey === "revenue" || k.metricKey === "net")?.currency ?? "NGN";
 
@@ -324,6 +327,14 @@ export function OverviewLiveBody({
         />
       ) : null}
 
+      {financeKpis.length > 0 ? (
+        <KpiRow
+          cards={kpiToCards(financeKpis)}
+          values={kpiValues(financeKpis)}
+          {...kpiDeltas(financeKpis)}
+        />
+      ) : null}
+
       {secondaryCharts.length > 0 ? (
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
           {secondaryCharts.map((chart) =>
@@ -335,6 +346,10 @@ export function OverviewLiveBody({
             ),
           )}
         </div>
+      ) : null}
+
+      {panels.length > 0 ? (
+        <EntityOverviewPanels panels={panels} tenantCode={tenantCode} />
       ) : null}
     </div>
   );

@@ -1,5 +1,6 @@
-import type { Sale } from "@vonos/types";
-import { getSales } from "@/lib/api";
+import type { Sale, SaleFilters } from "@vonos/types";
+import { getAllSales, getSales, getSalesPage } from "@/lib/api/sales";
+import type { ListPage } from "@/lib/api/fetchAllPages";
 import type { SaleReturnRow } from "@/lib/types/entityRows";
 
 const RETURN_STATUSES = new Set(["Refunded", "Restocked", "Written Off"]);
@@ -17,8 +18,40 @@ function saleToReturnRow(sale: Sale): SaleReturnRow {
   };
 }
 
+const returnsFilters = (filters?: SaleFilters): SaleFilters => ({
+  ...filters,
+  returnsOnly: true,
+});
+
+export async function getReturnsPage(
+  tenantId: string,
+  filters: SaleFilters | undefined,
+  cursor: string | undefined,
+  limit?: number,
+): Promise<ListPage<SaleReturnRow>> {
+  const salesPage = await getSalesPage(
+    tenantId,
+    returnsFilters(filters),
+    cursor,
+    limit,
+  );
+  return {
+    ...salesPage,
+    items: salesPage.items.map(saleToReturnRow),
+  };
+}
+
+/** Full returns list for export — not for table rendering. */
+export async function getAllReturns(
+  tenantId: string,
+  filters?: SaleFilters,
+): Promise<SaleReturnRow[]> {
+  const sales = await getAllSales(tenantId, returnsFilters(filters));
+  return sales.map(saleToReturnRow);
+}
+
 export async function getReturns(tenantId: string): Promise<SaleReturnRow[]> {
-  const sales = await getSales(tenantId);
+  const sales = await getSales(tenantId, { returnsOnly: true });
   return sales.filter((sale) => RETURN_STATUSES.has(sale.status)).map(saleToReturnRow);
 }
 

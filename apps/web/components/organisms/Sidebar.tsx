@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -10,8 +11,11 @@ import {
   BadgeDollarSign,
   Banknote,
   Box,
+  Briefcase,
+  CheckSquare,
   ChefHat,
   CircleArrowUp,
+  Coins,
   CreditCard,
   FileBarChart,
   FilePlus,
@@ -24,6 +28,7 @@ import {
   Layers,
   LayoutDashboard,
   ListChecks,
+  MapPin,
   Monitor,
   Package,
   PackageOpen,
@@ -41,10 +46,12 @@ import {
   ShieldCheck,
   ShoppingCart,
   Sparkles,
+  Star,
   Tags,
   TrendingUp,
   Truck,
   Upload,
+  UserX,
   Users,
   Utensils,
   Wallet,
@@ -64,6 +71,7 @@ import { TenantSwitcher } from "@/components/molecules/TenantSwitcher";
 import { IconButton } from "@/components/atoms/IconButton";
 import { SearchBar } from "@/components/atoms/SearchBar";
 import { typographyRoles } from "@/lib/registries/typography";
+import { sidebarAccentStyle, sidebarHeaderStyle } from "@/lib/registries/tenantAccents";
 import { cn } from "@/lib/utils/cn";
 import { logout } from "@/lib/api/auth";
 import { useAuthStore } from "@/stores/authStore";
@@ -107,6 +115,9 @@ const iconMap: Record<string, IconComponent> = {
   "shield-check": ShieldCheck,
   "credit-card": CreditCard,
   banknote: Banknote,
+  briefcase: Briefcase,
+  "check-square": CheckSquare,
+  coins: Coins,
   scale: Scale,
   "list-checks": ListChecks,
   "trending-up": TrendingUp,
@@ -120,16 +131,24 @@ const iconMap: Record<string, IconComponent> = {
   "clipboard-list": ClipboardList,
   scissors: Scissors,
   clock: Clock,
+  "map-pin": MapPin,
   settings: Settings,
   "shopping-cart": ShoppingCart,
+  star: Star,
+  "user-x": UserX,
 };
 
 const groupIconMap: Record<string, IconComponent> = {
-  Sell: CircleArrowUp,
+  "User Management": Users,
+  Contacts: Users,
   Products: Box,
-  Purchases: Truck,
+  Purchases: ShoppingCart,
+  Sell: CircleArrowUp,
+  Expenses: Receipt,
   "Payment Accounts": CreditCard,
   Reports: PieChart,
+  HRM: Briefcase,
+  Settings: Settings,
 };
 
 export interface NavSection {
@@ -175,6 +194,27 @@ export function Sidebar({
   const displayName = userName ?? storeName ?? storeEmail ?? "Account";
   const displayEmail = userEmail ?? storeEmail;
 
+  // Per-user dismissal of the 2FA promo, persisted in localStorage so once a
+  // user closes it, it never comes back for them. Start hidden to avoid a
+  // show-then-hide flash; reveal in an effect only if not previously dismissed.
+  const promoStorageKey = useMemo(
+    () => `vonos:promo-dismissed:2fa:${storeEmail ?? "anon"}`,
+    [storeEmail],
+  );
+  const [promoDismissed, setPromoDismissed] = useState(true);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    setPromoDismissed(window.localStorage.getItem(promoStorageKey) === "1");
+  }, [promoStorageKey]);
+
+  const handleDismissPromo = () => {
+    setPromoDismissed(true);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(promoStorageKey, "1");
+    }
+  };
+
   const handleLogout = async () => {
     try {
       await logout();
@@ -192,15 +232,19 @@ export function Sidebar({
 
   return (
     <aside
+      style={sidebarAccentStyle(tenantCode ?? "")}
       className={cn(
-        "flex h-full flex-shrink-0 flex-col border-r border-border bg-[var(--color-surface-sidebar)]",
+        "flex h-full flex-shrink-0 flex-col border-r border-[var(--color-border)] bg-[var(--color-surface-sidebar)] text-[var(--color-text-primary)]",
         collapsed ? "w-20" : "w-[var(--space-sidebar-width)]",
         className,
       )}
     >
-      {/* Active entity — switch tenants, not screens */}
+      {/* Accent-colored header — height matches the top bar */}
       {!collapsed ? (
-        <div className="p-5">
+        <div
+          style={sidebarHeaderStyle(tenantCode ?? "")}
+          className="flex h-[var(--space-topbar-height)] shrink-0 items-center px-5"
+        >
           <TenantSwitcher
             tenantCode={tenantCode ?? ""}
             tenantName={tenantName}
@@ -209,14 +253,12 @@ export function Sidebar({
         </div>
       ) : null}
 
-      {/* Sidebar search with ⌘K */}
-      {!collapsed ? (
-        <div className="mb-4 px-5">
-          <SearchBar placeholder="Search" showShortcut />
-        </div>
-      ) : null}
-
       <div className="flex flex-1 flex-col gap-1 overflow-y-auto px-3 pb-6">
+        {!collapsed ? (
+          <div className="px-2 pb-2 pt-3">
+            <SearchBar placeholder="Search" showShortcut />
+          </div>
+        ) : null}
         {groupedSections.map((section) => (
           <div key={section.label}>
             {section.collapsible ? (
@@ -236,7 +278,9 @@ export function Sidebar({
             ) : (
               <>
                 {!collapsed ? (
-                  <p className={cn("mb-1 px-2", typographyRoles.navSection)}>{section.label}</p>
+                  <p className={cn("mb-1 px-2", typographyRoles.navSection, "!text-[var(--color-text-nav)]")}>
+                    {section.label}
+                  </p>
                 ) : null}
                 <nav className="flex flex-col gap-0.5">
                   {section.items.map((item) => {
@@ -263,10 +307,11 @@ export function Sidebar({
         ))}
 
         {/* 2FA promo card */}
-        {showPromo && !collapsed ? (
+        {showPromo && !collapsed && !promoDismissed ? (
           <div className="relative mx-2 mt-auto rounded-xl border border-border bg-card p-4 shadow-sm">
             <button
               type="button"
+              onClick={handleDismissPromo}
               className="absolute right-3 top-3 text-muted hover:text-foreground"
               aria-label="Dismiss"
             >
@@ -276,16 +321,16 @@ export function Sidebar({
               <Lock className="h-4 w-4" />
             </div>
             <h3 className="mb-1 text-base font-semibold leading-tight text-foreground">
-              Add an extra security to your account
+              Secure your account
             </h3>
             <p className="mb-4 text-sm leading-snug text-muted">
-              Add a secondary method of verified during login.
+              Add two-step verification for an extra layer of protection at sign-in.
             </p>
             <button
               type="button"
               className="mb-2 w-full rounded-lg bg-[var(--color-brand-primary)] py-2 text-base font-medium text-white transition-colors hover:bg-[var(--color-brand-primary-hover)]"
             >
-              Enable 2-step verif
+              Enable two-step verification
             </button>
             <button
               type="button"
@@ -326,7 +371,7 @@ export function Sidebar({
       {isAuthenticated ? (
         <div
           className={cn(
-            "shrink-0 border-t border-border bg-[var(--color-surface-sidebar)]",
+            "shrink-0 border-t border-[var(--color-border)] bg-[var(--color-surface-sidebar)]",
             collapsed ? "p-3" : "px-5 py-4",
           )}
         >
@@ -340,16 +385,21 @@ export function Sidebar({
             </IconButton>
           ) : (
             <>
-              <p className={typographyRoles.tenantTitle}>{displayName}</p>
+              <p className={cn(typographyRoles.tenantTitle, "!text-[var(--color-text-primary)]")}>{displayName}</p>
               {displayEmail && displayEmail !== displayName ? (
-                <p className={cn(typographyRoles.tenantMeta, "normal-case tracking-normal")}>
+                <p
+                  className={cn(
+                    typographyRoles.tenantMeta,
+                    "normal-case tracking-normal !text-[var(--color-text-nav)]",
+                  )}
+                >
                   {displayEmail}
                 </p>
               ) : null}
               <button
                 type="button"
                 onClick={handleLogout}
-                className="mt-2 inline-flex items-center gap-1.5 text-sm font-medium text-error transition-colors hover:text-error/80"
+                className="mt-2 inline-flex items-center gap-1.5 text-sm font-medium text-[var(--color-text-secondary)] transition-colors hover:text-[var(--color-text-primary)]"
               >
                 <LogOut className="h-4 w-4" />
                 Sign out

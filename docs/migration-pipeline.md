@@ -2,9 +2,23 @@
 
 One-time migration path for legacy Ultimate POS MySQL databases into Vonos multi-tenant Postgres.
 
+Each department has its **own SQL dump file** and import wrapper — not a single `localhost.sql` only.
+
+## Per-tenant dump files
+
+| Code | Expected dump file(s) | Import wrapper |
+|------|----------------------|----------------|
+| **VA** | `vonomglk_Quotation.sql` + `vonomglk_OPS.sql` (or `localhost.sql`) | `./scripts/migrate_va.sh` |
+| **VISP** | `vonomglk_vsp.sql` | `./scripts/migrate_visp_from_vsp.py` |
+| **VSP** | `vonomglk_spmarket.sql` | `./scripts/migrate_vsp_from_spmarket.py` |
+| **VW** | `Vonos warehouse.sql` | `./scripts/migrate.sh --entities VW` |
+| **VC** | `vonomglk_cafe.sql` (or `localhost.sql`) | `./scripts/migrate_vc.sh` |
+
+Delta reports: `python scripts/entity_sql_delta.py {VA|VISP|VSP|VW|VC}`
+
 ## Pipeline stages
 
-1. **Export** — phpMyAdmin/mysqldump from each cPanel site → `localhost.sql`
+1. **Export** — phpMyAdmin/mysqldump from each cPanel site → per-entity `.sql` file
 2. **Inspect** — [audit_mysql_dump.py](../scripts/audit_mysql_dump.py) per database
 3. **Map** — field-level `*_MIGRATION_MAP.md` per entity (maps-first gate before Postgres write)
 4. **Transform** — shared Python package under [scripts/migration/](../scripts/migration/)
@@ -23,9 +37,16 @@ python3 -m venv .venv
 # Dry-run all legacy entities (default)
 ./scripts/migrate.sh --dump localhost.sql --entities all
 
-# Phased dry-run: one entity at a time (VC → VMS → VM → VSS → VW); VM/VMS → tenant_va_001
+# Phased dry-run: VC → VA → VISP → VSP → VW (production tenant codes)
 # Shows [1/3] load, [2/3] transform, [3/3] write per entity + overall entity bar
 ./scripts/migrate_phased.sh --dump localhost.sql
+
+# Vonos Automotive composite (Quotation + OPS → tenant_va_001)
+./scripts/migrate_va.sh --dump localhost.sql
+./scripts/migrate_va.sh --hrm-only --write --confirm-tenant VA
+
+# Vonos Cafe
+./scripts/migrate_vc.sh --dump localhost.sql
 
 # Phased live import (recommended)
 ./scripts/migrate_phased.sh --dump localhost.sql --write --confirm-all
@@ -54,12 +75,13 @@ Equivalent without wrappers: `.venv/bin/python scripts/migrate_all.py …`
 
 | Code | MySQL DB | Map | Dry-run | Postgres write |
 |---|---|---|---|---|
-| VW | `vonomglk_audit` (`Vonos warehouse.sql`) | [VW_MIGRATION_MAP.md](./migration-audits/VW_MIGRATION_MAP.md) | Done (664 items) | After sign-off |
-| VSS | `vonomglk_vsp` | [VSS_MIGRATION_MAP.md](./migration-audits/VSS_MIGRATION_MAP.md) | Done | After sign-off |
-| VA | `vonomglk_Quotation` + `vonomglk_OPS` | [VA_MIGRATION_MAP.md](./migration-audits/VA_MIGRATION_MAP.md) | Done | Merged (`tenant_va_001`) |
-| VM | `vonomglk_Quotation` | *(superseded → VA)* | — | Import code → `tenant_va_001` |
-| VMS | `vonomglk_OPS` | *(superseded → VA)* | — | Import code → `tenant_va_001` |
-| VC | `vonomglk_cafe` | [VC_MIGRATION_MAP.md](./migration-audits/VC_MIGRATION_MAP.md) | Done | After sign-off |
+| VW | `vonomglk_audit` (`Vonos warehouse.sql`) | [VW_MIGRATION_MAP.md](./migration-audits/VW_MIGRATION_MAP.md) | Done | After sign-off |
+| VISP | `vonomglk_vsp` (`vonomglk_vsp.sql`) | [VISP migration map](./migration-audits/VISP_MIGRATION_MAP.md) | Done | After sign-off |
+| VSP | `vonomglk_spmarket` (`vonomglk_spmarket.sql`) | [VSP migration map](./migration-audits/VSP_MIGRATION_MAP.md) | Done | After sign-off |
+| VA | `vonomglk_Quotation` + `vonomglk_OPS` | [VA_MIGRATION_MAP.md](./migration-audits/VA_MIGRATION_MAP.md) | Done | Merged (`tenant_va_001`); HRM imported |
+| VM | `vonomglk_Quotation` | *(superseded → VA)* | — | Staging only (`tenant_vm_001`) |
+| VMS | `vonomglk_OPS` | *(superseded → VA)* | — | Staging only (`tenant_vms_001`) |
+| VC | `vonomglk_cafe` (`vonomglk_cafe.sql`) | [VC_MIGRATION_MAP.md](./migration-audits/VC_MIGRATION_MAP.md) | Done | After sign-off |
 | VKW, VS | — | N/A (new build) | Seed only | — |
 | VAG | — | N/A (admin rollup) | Seed only | — |
 

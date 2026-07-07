@@ -33,6 +33,13 @@ class TransformResult:
     product_units: list[dict[str, Any]] = field(default_factory=list)
     warranties: list[dict[str, Any]] = field(default_factory=list)
     selling_price_groups: list[dict[str, Any]] = field(default_factory=list)
+    invoice_layouts: list[dict[str, Any]] = field(default_factory=list)
+    invoice_schemes: list[dict[str, Any]] = field(default_factory=list)
+    expense_categories: list[dict[str, Any]] = field(default_factory=list)
+    expenses: list[dict[str, Any]] = field(default_factory=list)
+    payroll_groups: list[dict[str, Any]] = field(default_factory=list)
+    pay_components: list[dict[str, Any]] = field(default_factory=list)
+    payrolls: list[dict[str, Any]] = field(default_factory=list)
     legacy_ids: list[dict[str, Any]] = field(default_factory=list)
     audit_logs: list[dict[str, Any]] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
@@ -56,6 +63,13 @@ class TransformResult:
         self.product_units.extend(other.product_units)
         self.warranties.extend(other.warranties)
         self.selling_price_groups.extend(other.selling_price_groups)
+        self.invoice_layouts.extend(other.invoice_layouts)
+        self.invoice_schemes.extend(other.invoice_schemes)
+        self.expense_categories.extend(other.expense_categories)
+        self.expenses.extend(other.expenses)
+        self.payroll_groups.extend(other.payroll_groups)
+        self.pay_components.extend(other.pay_components)
+        self.payrolls.extend(other.payrolls)
         self.legacy_ids.extend(other.legacy_ids)
         self.audit_logs.extend(other.audit_logs)
         self.warnings.extend(other.warnings)
@@ -80,6 +94,13 @@ class TransformResult:
             "productUnits": len(self.product_units),
             "warranties": len(self.warranties),
             "sellingPriceGroups": len(self.selling_price_groups),
+            "invoiceLayouts": len(self.invoice_layouts),
+            "invoiceSchemes": len(self.invoice_schemes),
+            "expenseCategories": len(self.expense_categories),
+            "expenses": len(self.expenses),
+            "payrollGroups": len(self.payroll_groups),
+            "payComponents": len(self.pay_components),
+            "payrolls": len(self.payrolls),
             "legacyIdRows": len(self.legacy_ids),
             "auditLogs": len(self.audit_logs),
         }

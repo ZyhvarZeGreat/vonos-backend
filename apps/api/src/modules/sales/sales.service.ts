@@ -12,11 +12,14 @@ import type {
 } from '@vonos/types';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { TenantDbService } from '../../common/prisma/tenant-db.service';
+import { CacheService } from '../../common/cache/cache.service';
 import { AuditService } from '../audit/audit.service';
 import { buildCursorQuery } from '../../common/utils/pagination';
 import { computeStockStatus } from '../../common/utils/stockQuantity';
+import { adjustItemLocationStock } from '../../common/utils/itemLocationStock';
 import {
   mapSaleStatusToUi,
+  saleStatusWhereClause,
   toIso,
   toNumber,
 } from '../../common/utils/serializers';
@@ -27,6 +30,7 @@ export class SalesService {
     private readonly tenantDb: TenantDbService,
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
+    private readonly cache: CacheService,
   ) {}
 
   async list(filters: SaleFilters): Promise<Sale[]> {
@@ -35,6 +39,7 @@ export class SalesService {
       where: {
         tenantId,
         deletedAt: null,
+        ...saleStatusWhereClause(filters),
         ...(filters.search
           ? {
               OR: [
@@ -159,18 +164,23 @@ export class SalesService {
           throw new BadRequestException(`Item not found: ${line.sku}`);
         }
         const currentQty = toNumber(item.quantity);
+        // Ultimate POS-style: quantity does not hard-block the sale/invoice.
+        // Overselling is allowed (stock may go negative) and flagged for later
+        // reconciliation rather than rejected outright.
         const nextQuantity = currentQty - line.quantity;
-        if (nextQuantity < 0) {
-          throw new BadRequestException(
-            `Insufficient stock for ${line.sku} (need ${line.quantity}, have ${currentQty})`,
-          );
-        }
         await tx.item.update({
           where: { id: item.id },
           data: {
             quantity: nextQuantity,
             status: computeStockStatus(nextQuantity, item.reorderPoint),
           },
+        });
+        await adjustItemLocationStock(tx, {
+          tenantId,
+          itemId: item.id,
+          locationCode: locationCode ?? item.locationCode,
+          binLocation: item.binLocation,
+          delta: -line.quantity,
         });
       }
 
@@ -233,6 +243,14 @@ export class SalesService {
       summary: `Recorded sale ${row.reference}`,
       metadata: { total, paymentStatus },
     });
+
+    const tenantIdForCache = this.tenantDb.requireTenantId();
+    void Promise.all([
+      this.cache.invalidatePrefix(`entity-overview:${tenantIdForCache}`),
+      this.cache.invalidatePrefix(`report-dash:${tenantIdForCache}`),
+      this.cache.invalidatePrefix('group-overview:'),
+      this.cache.invalidatePrefix('report-group:'),
+    ]);
 
     return this.toSaleDetail(row);
   }

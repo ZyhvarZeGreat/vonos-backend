@@ -29,6 +29,10 @@ const modelsWithoutSoftDelete = new Set([
   'AuditLog',
   'MigrationLegacyId',
   'AuthToken',
+  'ItemLocationStock',
+  'SaleLine',
+  'JobMaterial',
+  'JobLabour',
 ]);
 
 function applySoftDeleteFilter(args: { where?: Record<string, unknown> }) {

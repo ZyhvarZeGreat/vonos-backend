@@ -1,8 +1,21 @@
-import type { Item as PrismaItem } from '@prisma/client';
+import type {
+  Item as PrismaItem,
+  ItemLocationStock as PrismaItemLocationStock,
+} from '@prisma/client';
 import type { Item, KpiSummary } from '@vonos/types';
 import { toIso, toNumber } from '../../common/utils/serializers';
 
-export function serializeItem(row: PrismaItem): Item {
+type ItemWithStock = PrismaItem & {
+  locationStock?: PrismaItemLocationStock[];
+};
+
+export function serializeItem(row: ItemWithStock): Item {
+  const locationStock = (row.locationStock ?? []).map((entry) => ({
+    locationCode: entry.locationCode,
+    binLocation: entry.binLocation === '' ? null : entry.binLocation,
+    quantity: entry.quantity,
+  }));
+
   return {
     id: row.id,
     tenantId: row.tenantId,
@@ -17,6 +30,7 @@ export function serializeItem(row: PrismaItem): Item {
     currency: row.currency,
     status: row.status,
     availableForRetail: row.availableForRetail,
+    locationStock,
     createdByUserId: row.createdByUserId,
     createdByName: row.createdByName,
     createdAt: toIso(row.createdAt),

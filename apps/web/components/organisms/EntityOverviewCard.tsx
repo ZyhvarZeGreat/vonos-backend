@@ -9,20 +9,16 @@ import { cn } from "@/lib/utils/cn";
 export interface EntityOverviewCardProps {
   code: TenantCode;
   name: string;
-  archetype: string;
   stats: [string, string, string];
   href: string;
-  legacyDatabase?: string;
   className?: string;
 }
 
 export function EntityOverviewCard({
   code,
   name,
-  archetype,
   stats,
   href,
-  legacyDatabase,
   className,
 }: EntityOverviewCardProps) {
   const accent = accentForTenantCode(code);
@@ -50,12 +46,6 @@ export function EntityOverviewCard({
               {code}
             </span>
             <h4 className="mt-2 font-semibold text-foreground">{name}</h4>
-            <p className="text-xs capitalize text-muted">{archetype}</p>
-            {legacyDatabase && legacyDatabase !== "—" ? (
-              <p className="mt-1 font-mono text-[10px] text-muted">MySQL: {legacyDatabase}</p>
-            ) : legacyDatabase === "—" ? (
-              <p className="mt-1 text-[10px] text-muted">New build</p>
-            ) : null}
           </div>
         </div>
         <ul className="mb-4 space-y-1 text-sm text-muted">

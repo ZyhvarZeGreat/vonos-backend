@@ -23,11 +23,15 @@ export class SalesController {
   @Get()
   list(
     @Query('search') search?: string,
+    @Query('status') status?: SaleFilters['status'],
+    @Query('returnsOnly') returnsOnly?: string,
     @Query('cursor') cursor?: string,
     @Query('limit') limit?: string,
   ) {
     const filters: SaleFilters = {
       search,
+      status,
+      returnsOnly: returnsOnly === 'true',
       cursor,
       limit: limit ? Number(limit) : undefined,
     };

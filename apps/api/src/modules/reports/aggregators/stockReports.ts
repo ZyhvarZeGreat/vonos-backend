@@ -1,19 +1,24 @@
 import type { ReportsDashboard } from '@vonos/types';
 import type { TenantScopedPrisma } from '../../../common/prisma/prisma.service';
-import { buildTimeSeries, computeDelta } from './date-utils';
+import { asChartData, computeDelta } from './date-utils';
 import type { StockReportContext } from './stockReportContext';
 import { loadStockReportContext } from './stockReportContext';
+import {
+  lowStockByCategory,
+  lowStockItems,
+  stockMovementTrend,
+  stockValueByCategory,
+} from './stockReportQueries';
 
 type StockTab = 'valuation' | 'movement' | 'lowstock';
 
-export function buildStockReportsFromContext(
+export async function buildStockReportsFromContext(
   ctx: StockReportContext,
+  db: TenantScopedPrisma,
   tab: StockTab,
-): ReportsDashboard {
+): Promise<ReportsDashboard> {
+  const { window, metrics, tenantId } = ctx;
   const {
-    window,
-    items,
-    periodMovements,
     stockValue,
     totalSku,
     totalUnits,
@@ -26,19 +31,10 @@ export function buildStockReportsFromContext(
     velocity,
     priorVelocity,
     currency,
-  } = ctx;
+  } = metrics;
 
   if (tab === 'valuation') {
-    const byCategory = new Map<string, number>();
-    for (const item of items) {
-      const cat = item.category ?? 'Uncategorized';
-      const value = item.quantity * item.costPrice;
-      byCategory.set(cat, (byCategory.get(cat) ?? 0) + value);
-    }
-    const chartData = Array.from(byCategory.entries())
-      .map(([label, value]) => ({ label, value: Math.round(value) }))
-      .sort((a, b) => b.value - a.value)
-      .slice(0, 12);
+    const chartData = await stockValueByCategory(db, tenantId);
 
     return {
       kpis: [
@@ -80,7 +76,7 @@ export function buildStockReportsFromContext(
           type: 'bar',
           horizontal: true,
           series: [{ name: 'Value', dataKey: 'value', color: '#10b981' }],
-          data: chartData,
+          data: asChartData(chartData),
         },
       ],
       table: null,
@@ -88,29 +84,7 @@ export function buildStockReportsFromContext(
   }
 
   if (tab === 'movement') {
-    const inbound = periodMovements.filter(
-      (m) =>
-        m.type === 'inbound' && m.date >= window.from && m.date <= window.to,
-    );
-    const outbound = periodMovements.filter(
-      (m) =>
-        m.type === 'outbound' && m.date >= window.from && m.date <= window.to,
-    );
-    const inboundSeries = buildTimeSeries(inbound, window, () => 1);
-    const outboundSeries = buildTimeSeries(outbound, window, () => 1);
-    const keys = new Set([
-      ...inboundSeries.map((r) => r.label),
-      ...outboundSeries.map((r) => r.label),
-    ]);
-    const inboundMap = new Map(inboundSeries.map((r) => [r.label, r.value]));
-    const outboundMap = new Map(outboundSeries.map((r) => [r.label, r.value]));
-    const chartData = Array.from(keys)
-      .sort()
-      .map((label) => ({
-        label,
-        inbound: inboundMap.get(label) ?? 0,
-        outbound: outboundMap.get(label) ?? 0,
-      }));
+    const chartData = await stockMovementTrend(db, tenantId, window);
 
     return {
       kpis: [
@@ -155,32 +129,17 @@ export function buildStockReportsFromContext(
             { name: 'Inbound', dataKey: 'inbound', color: '#3b82f6' },
             { name: 'Outbound', dataKey: 'outbound', color: '#93c5fd' },
           ],
-          data: chartData,
+          data: asChartData(chartData),
         },
       ],
       table: null,
     };
   }
 
-  // lowstock
-  const lowItems = items
-    .filter(
-      (item) =>
-        item.status === 'low_stock' ||
-        item.status === 'out_of_stock' ||
-        (item.reorderPoint != null && item.quantity <= item.reorderPoint),
-    )
-    .sort((a, b) => a.quantity - b.quantity);
-
-  const byCategoryLow = new Map<string, number>();
-  for (const item of lowItems) {
-    const cat = item.category ?? 'Uncategorized';
-    byCategoryLow.set(cat, (byCategoryLow.get(cat) ?? 0) + 1);
-  }
-  const pieData = Array.from(byCategoryLow.entries()).map(([label, value]) => ({
-    label,
-    value,
-  }));
+  const [pieData, lowItems] = await Promise.all([
+    lowStockByCategory(db, tenantId),
+    lowStockItems(db, tenantId),
+  ]);
 
   return {
     kpis: [
@@ -221,7 +180,7 @@ export function buildStockReportsFromContext(
         subtitle: 'SKUs at or below reorder point',
         type: 'pie',
         series: [{ name: 'SKUs', dataKey: 'value', color: '#f59e0b' }],
-        data: pieData.length > 0 ? pieData : [{ label: 'None', value: 0 }],
+        data: pieData.length > 0 ? asChartData(pieData) : asChartData([{ label: 'None', value: 0 }]),
       },
     ],
     table: {
@@ -232,7 +191,7 @@ export function buildStockReportsFromContext(
         { key: 'reorderPoint', header: 'Reorder' },
         { key: 'status', header: 'Status' },
       ],
-      rows: lowItems.slice(0, 50).map((item) => ({
+      rows: lowItems.map((item) => ({
         id: item.id,
         recordType: 'item',
         sku: item.sku,
@@ -247,10 +206,11 @@ export function buildStockReportsFromContext(
 
 export async function buildStockReports(
   db: TenantScopedPrisma,
+  tenantId: string,
   tab: StockTab,
   from?: string,
   to?: string,
 ): Promise<ReportsDashboard> {
-  const ctx = await loadStockReportContext(db, from, to);
-  return buildStockReportsFromContext(ctx, tab);
+  const ctx = await loadStockReportContext(db, tenantId, from, to);
+  return buildStockReportsFromContext(ctx, db, tab);
 }

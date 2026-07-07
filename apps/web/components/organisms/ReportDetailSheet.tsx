@@ -1,8 +1,10 @@
 "use client";
 
 import { useMemo } from "react";
-import type { ReportsDashboard, ReportsKpi, ReportsTable } from "@vonos/types";
+import type { ReportsDashboard, ReportsKpi, ReportsTable, ReportRowAction, ReportsTableRow } from "@vonos/types";
+import { ReportTableActions } from "@/components/molecules/ReportTableActions";
 import { KpiRow } from "@/components/organisms/KpiRow";
+import { ChartPanel } from "@/components/organisms/ChartPanel";
 import type { KpiCardConfig } from "@vonos/types";
 import { formatCurrency, formatCurrencyCompact, formatNumberCompact } from "@/lib/utils/formatCurrency";
 import { formatDate } from "@/lib/utils/formatDate";
@@ -15,7 +17,12 @@ export interface ReportDetailSheetProps {
   data: ReportsDashboard;
   generatedAt?: Date;
   showCharts?: boolean;
-  onRowClick?: (row: Record<string, string | number> & { id: string }) => void;
+  onRowClick?: (row: ReportsTableRow & { id: string }) => void;
+  onRowAction?: (action: ReportRowAction) => void;
+  chartGridClassName?: string;
+  kpiClassName?: string;
+  /** When true, render table above charts (activity-log style). */
+  tableFirst?: boolean;
 }
 
 function formatKpiValue(kpi: ReportsKpi): string {
@@ -36,15 +43,19 @@ function ReportTable({
   table,
   currency,
   onRowClick,
+  onRowAction,
 }: {
   table: ReportsTable;
   currency?: string;
-  onRowClick?: (row: Record<string, string | number> & { id: string }) => void;
+  onRowClick?: (row: ReportsTableRow & { id: string }) => void;
+  onRowAction?: (action: ReportRowAction) => void;
 }) {
   const rows = table.rows.map((row, index) => ({
     id: String(row.id ?? `row-${index}`),
     ...row,
   }));
+  const showActions =
+    Boolean(onRowAction) && rows.some((row) => row.actions && row.actions.length > 0);
 
   return (
     <div className="overflow-x-auto">
@@ -56,13 +67,16 @@ function ReportTable({
                 {col.header}
               </th>
             ))}
+            {showActions ? (
+              <th className="px-4 py-2.5 text-right font-medium">Actions</th>
+            ) : null}
           </tr>
         </thead>
         <tbody>
           {rows.length === 0 ? (
             <tr>
               <td
-                colSpan={table.columns.length}
+                colSpan={table.columns.length + (showActions ? 1 : 0)}
                 className="px-4 py-8 text-center text-muted"
               >
                 No rows for this period.
@@ -97,6 +111,17 @@ function ReportTable({
                     </td>
                   );
                 })}
+                {showActions ? (
+                  <td
+                    className="px-4 py-2 text-right"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <ReportTableActions
+                      actions={row.actions}
+                      onAction={(action) => onRowAction?.(action)}
+                    />
+                  </td>
+                ) : null}
               </tr>
             ))
           )}
@@ -114,6 +139,10 @@ export function ReportDetailSheet({
   generatedAt = new Date(),
   showCharts = false,
   onRowClick,
+  onRowAction,
+  chartGridClassName = "grid gap-6 lg:grid-cols-2",
+  kpiClassName,
+  tableFirst = false,
 }: ReportDetailSheetProps) {
   const kpiValues = useMemo(
     () =>
@@ -124,6 +153,48 @@ export function ReportDetailSheet({
   );
 
   const currency = data.kpis.find((k) => k.currency)?.currency;
+
+  const kpiBlock =
+    data.kpis.length > 0 ? (
+      <div className={cn("px-6 print:px-0", kpiClassName)}>
+        <KpiRow cards={kpiToCards(data.kpis)} values={kpiValues} />
+      </div>
+    ) : null;
+
+  const tableBlock = data.table ? (
+    <div className="px-2 pb-4 sm:px-4">
+      <ReportTable
+        table={data.table}
+        currency={currency}
+        onRowClick={onRowClick}
+        onRowAction={onRowAction}
+      />
+    </div>
+  ) : (
+    <p className="px-6 pb-6 text-sm text-muted">No detail table for this report.</p>
+  );
+
+  const chartsBlock =
+    showCharts && data.charts.length > 0 ? (
+      <div className={cn("px-6 pb-4 print:px-0", chartGridClassName)}>
+        {data.charts.map((chart) => (
+          <div
+            key={chart.id}
+            className="rounded-xl border border-border bg-[var(--color-surface-muted)]/30 p-4"
+          >
+            <ChartPanel
+              title={chart.title}
+              subtitle={chart.subtitle}
+              type={chart.type}
+              data={chart.data}
+              series={chart.series}
+              horizontal={chart.horizontal}
+              hidePeriodControl
+            />
+          </div>
+        ))}
+      </div>
+    ) : null;
 
   return (
     <div
@@ -139,25 +210,19 @@ export function ReportDetailSheet({
         <p className="mt-1 text-xs text-muted">Generated {formatDate(generatedAt)}</p>
       </div>
 
-      {data.kpis.length > 0 ? (
-        <div className="px-6 print:px-0">
-          <KpiRow cards={kpiToCards(data.kpis)} values={kpiValues} />
-        </div>
-      ) : null}
+      {kpiBlock}
 
-      {data.table ? (
-        <div className="px-2 pb-4 sm:px-4">
-          <ReportTable table={data.table} currency={currency} onRowClick={onRowClick} />
-        </div>
+      {tableFirst ? (
+        <>
+          {tableBlock}
+          {chartsBlock}
+        </>
       ) : (
-        <p className="px-6 pb-6 text-sm text-muted">No detail table for this report.</p>
+        <>
+          {chartsBlock}
+          {tableBlock}
+        </>
       )}
-
-      {showCharts && data.charts.length > 0 ? (
-        <p className="px-6 pb-4 text-xs text-muted">
-          {data.charts.length} chart panel(s) available on the reports hub.
-        </p>
-      ) : null}
     </div>
   );
 }

@@ -1,121 +1,114 @@
-import type { Decimal } from '@prisma/client/runtime/library';
 import type { ReportsDashboard } from '@vonos/types';
 import type { TenantScopedPrisma } from '../../../common/prisma/prisma.service';
-import { toNumber } from '../../../common/utils/serializers';
 import { computeDelta, priorWindow, resolveDateWindow } from './date-utils';
+import {
+  avgDeliveredTurnaroundDays,
+  deliveredTurnaroundDays,
+  jobCostByMonth,
+  jobCostSummaryInWindow,
+  jobTableRowsInWindow,
+  sumDeliveredQuoteRevenue,
+} from './jobReportQueries';
 
 type JobTab = 'costing' | 'turnaround';
 
-function jobCost(job: {
-  materials: { totalCost: Decimal }[];
-  labourEntries: { totalCost: Decimal }[];
-}): number {
-  const materials = job.materials.reduce(
-    (sum, m) => sum + toNumber(m.totalCost),
-    0,
-  );
-  const labour = job.labourEntries.reduce(
-    (sum, l) => sum + toNumber(l.totalCost),
-    0,
-  );
-  return materials + labour;
+function avgCost(summary: { jobCount: number; totalCost: number }): number {
+  return summary.jobCount > 0 ? summary.totalCost / summary.jobCount : 0;
 }
 
 export async function buildJobReports(
   db: TenantScopedPrisma,
+  tenantId: string,
   tab: JobTab,
   from?: string,
   to?: string,
 ): Promise<ReportsDashboard> {
   const window = resolveDateWindow(from, to);
   const prior = priorWindow(window);
+  const pipelineFrom = prior.from;
+  const pipelineTo = window.to;
 
-  const [jobs, activeJobs] = await Promise.all([
-    db.job.findMany({
-      where: {
-        deletedAt: null,
-        createdAt: { gte: prior.from, lte: window.to },
-      },
-      include: {
-        materials: true,
-        labourEntries: true,
-      },
-    }),
+  const jobCountWhere = (range: { from: Date; to: Date }, status?: string) => ({
+    tenantId,
+    deletedAt: null,
+    createdAt: { gte: range.from, lte: range.to },
+    ...(status ? { status } : {}),
+  });
+
+  const [
+    activeJobs,
+    completedJobs,
+    priorCompleted,
+    totalRevenue,
+    priorRevenue,
+    periodCostSummary,
+    priorCostSummary,
+    statusGroups,
+    periodTableRows,
+    costByMonth,
+    turnaroundDays,
+    periodAvgTurnaround,
+    priorAvgTurnaround,
+    periodDelivered,
+    priorDelivered,
+  ] = await Promise.all([
     db.job.count({
       where: {
+        tenantId,
         deletedAt: null,
         status: { notIn: ['Delivered', 'Cancelled'] },
       },
     }),
+    db.job.count({
+      where: jobCountWhere(window, 'Delivered'),
+    }),
+    db.job.count({
+      where: jobCountWhere(prior, 'Delivered'),
+    }),
+    sumDeliveredQuoteRevenue(db, tenantId, window.from, window.to),
+    sumDeliveredQuoteRevenue(db, tenantId, prior.from, prior.to),
+    jobCostSummaryInWindow(db, tenantId, window.from, window.to),
+    jobCostSummaryInWindow(db, tenantId, prior.from, prior.to),
+    db.job.groupBy({
+      by: ['status'],
+      where: {
+        tenantId,
+        deletedAt: null,
+        createdAt: { gte: pipelineFrom, lte: pipelineTo },
+      },
+      _count: { _all: true },
+    }),
+    tab === 'costing'
+      ? jobTableRowsInWindow(db, tenantId, window.from, window.to)
+      : Promise.resolve([]),
+    tab === 'costing'
+      ? jobCostByMonth(db, tenantId, window.from, window.to)
+      : Promise.resolve([]),
+    tab === 'turnaround'
+      ? deliveredTurnaroundDays(db, tenantId, pipelineFrom, pipelineTo)
+      : Promise.resolve([]),
+    tab === 'turnaround'
+      ? avgDeliveredTurnaroundDays(db, tenantId, window.from, window.to)
+      : Promise.resolve(0),
+    tab === 'turnaround'
+      ? avgDeliveredTurnaroundDays(db, tenantId, prior.from, prior.to)
+      : Promise.resolve(0),
+    tab === 'turnaround'
+      ? db.job.count({ where: jobCountWhere(window, 'Delivered') })
+      : Promise.resolve(0),
+    tab === 'turnaround'
+      ? db.job.count({ where: jobCountWhere(prior, 'Delivered') })
+      : Promise.resolve(0),
   ]);
 
-  const periodJobs = jobs.filter(
-    (j) => j.createdAt >= window.from && j.createdAt <= window.to,
-  );
-  const priorJobs = jobs.filter(
-    (j) => j.createdAt >= prior.from && j.createdAt <= prior.to,
-  );
-  const completedJobs = periodJobs.filter(
-    (j) => j.status === 'Delivered',
-  ).length;
-  const priorCompleted = priorJobs.filter(
-    (j) => j.status === 'Delivered',
-  ).length;
-
-  const totalRevenue = periodJobs
-    .filter((j) => j.status === 'Delivered' && j.quoteAmount != null)
-    .reduce((sum, j) => sum + toNumber(j.quoteAmount), 0);
-  const priorRevenue = priorJobs
-    .filter((j) => j.status === 'Delivered' && j.quoteAmount != null)
-    .reduce((sum, j) => sum + toNumber(j.quoteAmount), 0);
-
-  const costs = periodJobs.map((j) => jobCost(j));
-  const avgJobCost =
-    costs.length > 0 ? costs.reduce((a, b) => a + b, 0) / costs.length : 0;
-  const priorCosts = priorJobs.map((j) => jobCost(j));
-  const priorAvgCost =
-    priorCosts.length > 0
-      ? priorCosts.reduce((a, b) => a + b, 0) / priorCosts.length
-      : 0;
+  const avgJobCost = avgCost(periodCostSummary);
+  const priorAvgCost = avgCost(priorCostSummary);
 
   if (tab === 'costing') {
-    const monthBuckets = new Map<
-      string,
-      { label: string; materials: number; labour: number }
-    >();
-    for (const job of periodJobs) {
-      const label = job.createdAt.toLocaleDateString('en-US', {
-        month: 'short',
-        year: '2-digit',
-      });
-      const key = `${job.createdAt.getFullYear()}-${job.createdAt.getMonth()}`;
-      const materials = job.materials.reduce(
-        (sum, m) => sum + toNumber(m.totalCost),
-        0,
-      );
-      const labour = job.labourEntries.reduce(
-        (sum, l) => sum + toNumber(l.totalCost),
-        0,
-      );
-      const existing = monthBuckets.get(key);
-      if (existing) {
-        existing.materials += materials;
-        existing.labour += labour;
-      } else {
-        monthBuckets.set(key, { label, materials, labour });
-      }
-    }
-    const costChart = Array.from(monthBuckets.values()).sort((a, b) =>
-      a.label.localeCompare(b.label),
-    );
-
-    const statusCounts = new Map<string, number>();
-    for (const job of jobs) {
-      statusCounts.set(job.status, (statusCounts.get(job.status) ?? 0) + 1);
-    }
-    const pipelineData = Array.from(statusCounts.entries()).map(
-      ([label, value]) => ({ label, value }),
-    );
+    const pipelineData = statusGroups.map((group) => ({
+      label: group.status,
+      value: group._count._all,
+    }));
 
     return {
       kpis: [
@@ -164,11 +157,11 @@ export async function buildJobReports(
             { name: 'Labour', dataKey: 'labour', color: '#93c5fd' },
           ],
           data:
-            costChart.length > 0
-              ? costChart.map((r) => ({
-                  label: r.label,
-                  materials: Math.round(r.materials),
-                  labour: Math.round(r.labour),
+            costByMonth.length > 0
+              ? costByMonth.map((row) => ({
+                  label: row.label,
+                  materials: Math.round(row.materials),
+                  labour: Math.round(row.labour),
                 }))
               : [{ label: '—', materials: 0, labour: 0 }],
         },
@@ -183,7 +176,7 @@ export async function buildJobReports(
         },
       ],
       table:
-        periodJobs.length > 0
+        periodTableRows.length > 0
           ? {
               columns: [
                 { key: 'reference', header: 'Reference' },
@@ -192,52 +185,25 @@ export async function buildJobReports(
                 { key: 'revenue', header: 'Quote' },
                 { key: 'cost', header: 'Cost' },
               ],
-              rows: periodJobs.slice(0, 50).map((job) => ({
+              rows: periodTableRows.map((job) => ({
                 id: job.id,
                 recordType: 'job',
                 reference: job.reference,
                 customer: job.customerName ?? '—',
                 status: job.status,
                 revenue:
-                  job.quoteAmount != null
-                    ? Math.round(toNumber(job.quoteAmount))
-                    : '—',
-                cost: Math.round(jobCost(job)),
+                  job.quoteAmount != null ? Math.round(job.quoteAmount) : '—',
+                cost: Math.round(job.cost),
               })),
             }
           : null,
     };
   }
-  const delivered = jobs.filter((j) => j.status === 'Delivered');
-  const turnaroundDays = delivered.map((j) => {
-    const days =
-      (j.updatedAt.getTime() - j.createdAt.getTime()) / (24 * 60 * 60 * 1000);
-    return Math.max(0, Math.round(days));
-  });
+
   const avgTurnaround =
     turnaroundDays.length > 0
-      ? turnaroundDays.reduce((a, b) => a + b, 0) / turnaroundDays.length
-      : 0;
-
-  const periodDelivered = periodJobs.filter((j) => j.status === 'Delivered');
-  const priorDelivered = priorJobs.filter((j) => j.status === 'Delivered');
-  const periodAvg =
-    periodDelivered.length > 0
-      ? periodDelivered.reduce((sum, j) => {
-          const days =
-            (j.updatedAt.getTime() - j.createdAt.getTime()) /
-            (24 * 60 * 60 * 1000);
-          return sum + Math.max(0, days);
-        }, 0) / periodDelivered.length
-      : 0;
-  const priorAvg =
-    priorDelivered.length > 0
-      ? priorDelivered.reduce((sum, j) => {
-          const days =
-            (j.updatedAt.getTime() - j.createdAt.getTime()) /
-            (24 * 60 * 60 * 1000);
-          return sum + Math.max(0, days);
-        }, 0) / priorDelivered.length
+      ? turnaroundDays.reduce((sum, days) => sum + days, 0) /
+        turnaroundDays.length
       : 0;
 
   const histogram = new Map<number, number>();
@@ -257,15 +223,15 @@ export async function buildJobReports(
         metricKey: 'avgTurnaroundDays',
         color: '#9333ea',
         value: Number(avgTurnaround.toFixed(1)),
-        ...computeDelta(periodAvg, priorAvg),
+        ...computeDelta(periodAvgTurnaround, priorAvgTurnaround),
       },
       {
         label: 'Jobs Delivered',
         icon: 'check-circle',
         metricKey: 'jobsDelivered',
         color: '#059669',
-        value: periodDelivered.length,
-        ...computeDelta(periodDelivered.length, priorDelivered.length),
+        value: periodDelivered,
+        ...computeDelta(periodDelivered, priorDelivered),
       },
       {
         label: 'Active Jobs',

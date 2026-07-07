@@ -67,7 +67,7 @@ export function TableManagementView() {
     return (
       <EmptyState
         title="Failed to load tables"
-        message="Could not fetch table status from the API."
+        message="We could not load table status. Try again in a moment."
       />
     );
   }
@@ -76,7 +76,7 @@ export function TableManagementView() {
     return (
       <EmptyState
         title="No tables configured"
-        message="Add cafe tables via the API or seed data to manage floor status here."
+        message="No tables are set up yet. Contact your administrator to add floor tables."
       />
     );
   }

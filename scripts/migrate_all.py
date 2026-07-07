@@ -14,6 +14,7 @@ sys.path.insert(0, str(SCRIPTS_DIR))
 
 from migration.progress import ProgressReporter
 from migration.run_entity import build_summary, run_entity_migration
+from migration.va_migration import build_va_summary, run_va_migration
 from migration.tenant_db import (
     confirm_tenant,
     list_tenants,
@@ -196,17 +197,33 @@ def main() -> int:
                 existing_legacy = {}
                 progress.message(f"  {entity.code}: Postgres unavailable for legacy map (dry-run continues)")
 
-        loaded, result = run_entity_migration(
-            entity,
-            args.dump,
-            progress=progress,
-            since=args.since,
-            existing_legacy=existing_legacy,
-        )
+        if entity.code == "VA":
+            loaded, result = run_va_migration(
+                args.dump,
+                args.dump,
+                progress=progress,
+                since=args.since,
+                existing_legacy=existing_legacy,
+            )
+            summary = build_va_summary(
+                loaded,
+                result,
+                dry_run=args.dry_run,
+                quotation_dump=args.dump,
+                ops_dump=args.dump,
+            )
+        else:
+            loaded, result = run_entity_migration(
+                entity,
+                args.dump,
+                progress=progress,
+                since=args.since,
+                existing_legacy=existing_legacy,
+            )
+            summary = build_summary(entity, loaded, result, dry_run=args.dry_run)
+
         counts = result.counts()
         print_banner(entity, dry_run=args.dry_run, counts=counts)
-
-        summary = build_summary(entity, loaded, result, dry_run=args.dry_run)
         summaries.append(summary)
 
         if args.output_dir:

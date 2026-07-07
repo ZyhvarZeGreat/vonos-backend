@@ -11,3 +11,13 @@ export interface Vehicle {
   createdAt: string;
   updatedAt: string;
 }
+
+export interface VehicleJobHistoryEntry {
+  id: string;
+  reference: string;
+  status: string;
+  customerName: string | null;
+  dueDate: string | null;
+  quoteAmount: number | null;
+  invoiceAmount: number | null;
+}

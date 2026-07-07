@@ -7,24 +7,8 @@ import { Input } from "@/components/atoms/Input";
 import { AuthTemplate } from "@/components/templates/AuthTemplate";
 import { isTwoFactorChallenge, login, verifyTwoFactor } from "@/lib/api/auth";
 import { getPostLoginPath } from "@/lib/utils/authRedirect";
-import type { Role } from "@vonos/types";
 import { useAuthStore } from "@/stores/authStore";
 import { toast } from "@/stores/toastStore";
-
-const DEMO_ACCOUNTS = [
-  {
-    email: "admin@vonos.test",
-    password: "password",
-    name: "Warehouse Admin",
-    role: "admin" as Role,
-  },
-  {
-    email: "admin@vag.vonos",
-    password: "demo123",
-    name: "VAG Super Admin",
-    role: "super_admin" as Role,
-  },
-];
 
 export function LoginForm() {
   const router = useRouter();
@@ -65,28 +49,6 @@ export function LoginForm() {
     toast.success(`Welcome back, ${result.user.name}`);
   }
 
-  async function signInWithCredential(credential: (typeof DEMO_ACCOUNTS)[number]) {
-    setError(null);
-    setLoading(true);
-    try {
-      const result = await login(credential.email, credential.password);
-      if (isTwoFactorChallenge(result)) {
-        setChallengeToken(result.challengeToken);
-        setChallengeEmail(result.user.email);
-        setEmail(credential.email);
-        setPassword(credential.password);
-        return;
-      }
-      completeLogin(result);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Login failed";
-      setError(message);
-      toast.error(message);
-    } finally {
-      setLoading(false);
-    }
-  }
-
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     setError(null);
@@ -124,17 +86,6 @@ export function LoginForm() {
       setLoading(false);
     }
   }
-
-  function fillDemo(credential: (typeof DEMO_ACCOUNTS)[number]) {
-    setEmail(credential.email);
-    setPassword(credential.password);
-    setChallengeToken(null);
-    setChallengeEmail(null);
-    setTotpCode("");
-    setError(null);
-  }
-
-  const warehouseCredential = DEMO_ACCOUNTS.find((c) => c.role === "admin")!;
 
   if (challengeToken) {
     return (
@@ -184,17 +135,8 @@ export function LoginForm() {
   return (
     <AuthTemplate
       title="Sign in"
-      subtitle="Use your Vonos invite credentials"
+      subtitle="Use the email and password from your invitation"
     >
-      <Button
-        type="button"
-        className="w-full"
-        isLoading={loading}
-        onClick={() => signInWithCredential(warehouseCredential)}
-      >
-        Enter Vonos Warehouse
-      </Button>
-
       <form onSubmit={handleSubmit} className="space-y-4">
         <Input
           label="Email"
@@ -218,29 +160,6 @@ export function LoginForm() {
           Sign in
         </Button>
       </form>
-
-      <div className="space-y-3 rounded-xl border border-border bg-card p-4">
-        <p className="text-xs font-medium uppercase tracking-wide text-muted">Demo accounts</p>
-        <div className="grid gap-2">
-          {DEMO_ACCOUNTS.map((credential) => (
-            <button
-              key={credential.email}
-              type="button"
-              onClick={() => fillDemo(credential)}
-              className="rounded-lg border border-border px-3 py-2 text-left text-sm transition-colors hover:bg-[var(--color-surface-muted)]"
-            >
-              <span className="font-medium text-foreground">{credential.name}</span>
-              <span className="mt-0.5 block text-muted">
-                {credential.email} ·{" "}
-                {credential.role === "super_admin" ? "Group admin" : "Warehouse"}
-              </span>
-            </button>
-          ))}
-        </div>
-        <p className="text-xs text-muted">
-          Warehouse: password · VAG super admin: demo123
-        </p>
-      </div>
     </AuthTemplate>
   );
 }

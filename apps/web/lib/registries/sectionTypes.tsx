@@ -1,5 +1,10 @@
-import type { Item, StockMovement, Supplier } from "@vonos/types";
+import type { BusinessLocation, Item, StockMovement, Supplier } from "@vonos/types";
+import {
+  businessLocationName,
+  formatItemLocationLine,
+} from "@/lib/utils/locationLabels";
 import type React from "react";
+import Link from "next/link";
 import { formatCurrency } from "@/lib/utils/formatCurrency";
 import { formatDate } from "@/lib/utils/formatDate";
 
@@ -20,6 +25,7 @@ export interface HistoryFeedEntry {
   status?: string;
   actorName?: string;
   action?: string;
+  href?: string;
 }
 
 export interface GenericField {
@@ -60,7 +66,11 @@ function FieldGrid({ fields }: { fields: { label: string; value: string }[] }) {
 }
 
 function StockInfoSection({ title, data }: SectionRendererProps) {
-  const item = data as Item;
+  const payload = data as Item | { item: Item; businessLocations?: BusinessLocation[] };
+  const item = "item" in payload ? payload.item : payload;
+  const locations = "item" in payload ? payload.businessLocations : undefined;
+  const branch = businessLocationName(item.locationCode, locations);
+
   return (
     <section className="rounded-lg border border-border bg-card p-5 shadow-card">
       <h3 className="mb-4 text-base font-semibold">{title}</h3>
@@ -69,11 +79,40 @@ function StockInfoSection({ title, data }: SectionRendererProps) {
           { label: "SKU", value: item.sku },
           { label: "Category", value: item.category ?? "—" },
           { label: "Quantity", value: String(item.quantity) },
-          { label: "Bin Location", value: item.binLocation ?? "—" },
+          { label: "Branch / site", value: branch ?? "—" },
+          { label: "Counter / bin", value: item.binLocation ?? "—" },
+          { label: "Full location", value: formatItemLocationLine(item, locations) },
           { label: "Reorder Point", value: String(item.reorderPoint ?? "—") },
           { label: "Status", value: item.status.replace(/_/g, " ") },
         ]}
       />
+      {(item.locationStock?.length ?? 0) > 0 ? (
+        <div className="mt-5">
+          <h4 className="mb-2 text-xs font-medium uppercase tracking-wide text-muted">
+            Stock by location
+          </h4>
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border text-left text-muted">
+                <th className="py-1.5 pr-3 font-medium">Branch</th>
+                <th className="py-1.5 pr-3 font-medium">Counter / bin</th>
+                <th className="py-1.5 font-medium text-right">Quantity</th>
+              </tr>
+            </thead>
+            <tbody>
+              {item.locationStock.map((row, index) => (
+                <tr key={`${row.locationCode}-${row.binLocation ?? ""}-${index}`} className="border-b border-border/50">
+                  <td className="py-1.5 pr-3 text-foreground">
+                    {businessLocationName(row.locationCode, locations) ?? row.locationCode}
+                  </td>
+                  <td className="py-1.5 pr-3 text-muted">{row.binLocation ?? "—"}</td>
+                  <td className="py-1.5 text-right text-foreground">{row.quantity}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
     </section>
   );
 }
@@ -161,7 +200,16 @@ function HistoryFeedSection({ title, data }: SectionRendererProps) {
             <li key={entry.id} className="border-b border-border pb-4 last:border-0 last:pb-0">
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <p className="text-sm font-medium text-foreground">{entry.title}</p>
+                  {entry.href ? (
+                    <Link
+                      href={entry.href}
+                      className="text-sm font-medium text-brand hover:underline"
+                    >
+                      {entry.title}
+                    </Link>
+                  ) : (
+                    <p className="text-sm font-medium text-foreground">{entry.title}</p>
+                  )}
                   {entry.subtitle ? (
                     <p className="mt-0.5 text-xs text-muted">{entry.subtitle}</p>
                   ) : null}

@@ -1,15 +1,9 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import type { Supplier } from '@vonos/types';
+import type { Supplier, SupplierListRow } from '@vonos/types';
 import { TenantDbService } from '../../common/prisma/tenant-db.service';
 import { AuditService } from '../audit/audit.service';
-import { toIso } from '../../common/utils/serializers';
-
-export interface SupplierListRow extends Supplier {
-  category: string;
-  leadTimeDays: number;
-  location: string;
-  rating: number;
-}
+import { buildCursorQuery } from '../../common/utils/pagination';
+import { parseMovementLines, toIso, toNumber } from '../../common/utils/serializers';
 
 export interface SupplierKpiSummary {
   totalSuppliers: number;
@@ -53,6 +47,12 @@ function serializeSupplier(row: {
 
 function toListRow(
   row: Parameters<typeof serializeSupplier>[0],
+  extras?: {
+    contactId?: string | null;
+    totalPurchase?: number;
+    totalPurchaseDue?: number;
+    totalPurchasePaid?: number;
+  },
 ): SupplierListRow {
   return {
     ...serializeSupplier(row),
@@ -60,7 +60,24 @@ function toListRow(
     leadTimeDays: 7,
     location: row.locationCode ?? row.address ?? '—',
     rating: 4.5,
+    contactId: extras?.contactId ?? row.id.slice(0, 8).toUpperCase(),
+    businessName: row.name,
+    taxNumber: null,
+    payTerm: null,
+    openingBalance: 0,
+    totalPurchase: extras?.totalPurchase ?? 0,
+    totalPurchaseDue: extras?.totalPurchaseDue ?? 0,
+    totalPurchasePaid: extras?.totalPurchasePaid ?? 0,
+    status: 'active',
   };
+}
+
+function movementLineTotal(lines: ReturnType<typeof parseMovementLines>): number {
+  return lines.reduce(
+    (sum, line) =>
+      sum + line.quantity * toNumber((line as { unitCost?: number }).unitCost ?? 0),
+    0,
+  );
 }
 
 @Injectable()
@@ -70,13 +87,88 @@ export class SuppliersService {
     private readonly auditService: AuditService,
   ) {}
 
-  async list(): Promise<SupplierListRow[]> {
+  async list(filters: {
+    cursor?: string;
+    limit?: number;
+    search?: string;
+  } = {}): Promise<SupplierListRow[]> {
     const tenantId = this.tenantDb.requireTenantId();
     const rows = await this.tenantDb.db.supplier.findMany({
-      where: { tenantId, deletedAt: null },
+      where: {
+        tenantId,
+        deletedAt: null,
+        ...(filters.search
+          ? {
+              OR: [
+                { name: { contains: filters.search, mode: 'insensitive' } },
+                {
+                  contactName: {
+                    contains: filters.search,
+                    mode: 'insensitive',
+                  },
+                },
+                { email: { contains: filters.search, mode: 'insensitive' } },
+              ],
+            }
+          : {}),
+      },
       orderBy: { name: 'asc' },
+      ...buildCursorQuery(filters.cursor, filters.limit ?? 25),
     });
-    return rows.map(toListRow);
+
+    if (rows.length === 0) return [];
+
+    const supplierIds = rows.map((row) => row.id);
+    const [movements, legacyIds] = await Promise.all([
+      this.tenantDb.db.stockMovement.findMany({
+        where: {
+          tenantId,
+          deletedAt: null,
+          type: 'inbound',
+          supplierId: { in: supplierIds },
+        },
+        select: { supplierId: true, lines: true, status: true },
+      }),
+      this.tenantDb.db.migrationLegacyId.findMany({
+        where: { tenantId, entityType: 'supplier', newId: { in: supplierIds } },
+        select: { newId: true, legacyId: true },
+      }),
+    ]);
+
+    const legacyById = new Map(
+      legacyIds.map((l) => [l.newId, `CO${String(l.legacyId).padStart(4, '0')}`]),
+    );
+    const purchaseBySupplier = new Map<
+      string,
+      { total: number; due: number; paid: number }
+    >();
+
+    for (const movement of movements) {
+      if (!movement.supplierId) continue;
+      const amount = movementLineTotal(parseMovementLines(movement.lines));
+      const bucket = purchaseBySupplier.get(movement.supplierId) ?? {
+        total: 0,
+        due: 0,
+        paid: 0,
+      };
+      bucket.total += amount;
+      if (movement.status === 'Received' || movement.status === 'Delivered') {
+        bucket.paid += amount;
+      } else {
+        bucket.due += amount;
+      }
+      purchaseBySupplier.set(movement.supplierId, bucket);
+    }
+
+    return rows.map((row) => {
+      const agg = purchaseBySupplier.get(row.id);
+      return toListRow(row, {
+        contactId: legacyById.get(row.id) ?? null,
+        totalPurchase: agg?.total ?? 0,
+        totalPurchaseDue: agg?.due ?? 0,
+        totalPurchasePaid: agg?.paid ?? 0,
+      });
+    });
   }
 
   async kpiSummary(): Promise<SupplierKpiSummary> {

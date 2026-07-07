@@ -1,21 +1,119 @@
 import type { AccountTransaction, PaymentRecord } from "@vonos/types";
 import { apiFetch, withTenantQuery } from "@/lib/api/client";
+import {
+  DEFAULT_TABLE_PAGE_SIZE,
+  EXPORT_PAGE_SIZE,
+  fetchAllPages,
+  fetchFirstPage,
+  type ListPage,
+} from "@/lib/api/fetchAllPages";
+import { appendListQuery, fetchJsonListPage, fetchTenantListPage } from "@/lib/api/listPageHelpers";
 
-export async function getPayments(
+const PAYMENTS_PATH = "/payments";
+
+export interface PaymentFilters {
+  accountId?: string;
+  cursor?: string;
+  limit?: number;
+}
+
+async function fetchPaymentsRaw(
   tenantId: string,
-  filters?: { accountId?: string },
+  filters: PaymentFilters | undefined,
+  cursor?: string,
+  limit?: number,
 ): Promise<PaymentRecord[]> {
-  const params = new URLSearchParams();
-  if (filters?.accountId) params.set("accountId", filters.accountId);
-  const qs = params.toString();
-  const path = withTenantQuery(qs ? `/payments?${qs}` : "/payments", tenantId);
-  const response = await apiFetch(path);
+  const tenantPath = withTenantQuery(PAYMENTS_PATH, tenantId);
+  const url = appendListQuery(tenantPath, {
+    accountId: filters?.accountId,
+    cursor,
+    limit,
+  });
+  const response = await apiFetch(url);
   if (!response.ok) throw new Error("Failed to fetch payments");
   return response.json();
 }
 
-export async function getAccountBook(accountId: string): Promise<AccountTransaction[]> {
-  const response = await apiFetch(`/payments/account-book/${accountId}`);
+async function fetchAccountBookRaw(
+  accountId: string,
+  cursor?: string,
+  limit?: number,
+): Promise<AccountTransaction[]> {
+  const url = appendListQuery(`/payments/account-book/${accountId}`, {
+    cursor,
+    limit,
+  });
+  const response = await apiFetch(url);
   if (!response.ok) throw new Error("Failed to fetch account book");
   return response.json();
+}
+
+export async function getPaymentsPage(
+  tenantId: string,
+  filters: PaymentFilters | undefined,
+  cursor: string | undefined,
+  limit = DEFAULT_TABLE_PAGE_SIZE,
+): Promise<ListPage<PaymentRecord>> {
+  return fetchTenantListPage(PAYMENTS_PATH, tenantId, cursor, limit, {
+    accountId: filters?.accountId,
+  });
+}
+
+export async function getAccountBookPage(
+  accountId: string,
+  cursor: string | undefined,
+  limit = DEFAULT_TABLE_PAGE_SIZE,
+): Promise<ListPage<AccountTransaction>> {
+  return fetchJsonListPage(
+    `/payments/account-book/${accountId}`,
+    cursor,
+    limit,
+  );
+}
+
+/** Full payment list for export — not for table rendering. */
+export async function getAllPayments(
+  tenantId: string,
+  filters?: PaymentFilters,
+): Promise<PaymentRecord[]> {
+  return fetchAllPages(
+    (cursor, limit) => fetchPaymentsRaw(tenantId, filters, cursor, limit),
+    EXPORT_PAGE_SIZE,
+  );
+}
+
+/** Full account book for export — not for table rendering. */
+export async function getAllAccountBook(
+  accountId: string,
+): Promise<AccountTransaction[]> {
+  return fetchAllPages(
+    (cursor, limit) => fetchAccountBookRaw(accountId, cursor, limit),
+    EXPORT_PAGE_SIZE,
+  );
+}
+
+export async function getPayments(
+  tenantId: string,
+  filters?: PaymentFilters,
+): Promise<PaymentRecord[]> {
+  if (filters?.cursor || filters?.limit) {
+    return fetchPaymentsRaw(
+      tenantId,
+      filters,
+      filters.cursor,
+      filters.limit,
+    );
+  }
+
+  return fetchFirstPage((cursor, limit) =>
+    fetchPaymentsRaw(tenantId, filters, cursor, limit),
+  );
+}
+
+export async function getAccountBook(
+  accountId: string,
+): Promise<AccountTransaction[]> {
+  return fetchFirstPage((cursor, limit) =>
+    fetchAccountBookRaw(accountId, cursor, limit),
+  );
 }

@@ -9,7 +9,7 @@ from migration.pos_common import (
     transform_items,
     transform_sales,
 )
-from migration.stock_transforms import transform_expense_ledger
+from migration.stock_transforms import transform_expense_records, transform_stock_movements
 from migration.types import TableData, TransformResult
 
 
@@ -33,6 +33,7 @@ def run_transaction_migration(
         available_for_retail=available_for_retail,
         user_names=user_names,
         existing_item_legacy=existing.get("item"),
+        brand_legacy=existing.get("brand"),
     )
     merged.merge(item_result)
 
@@ -61,7 +62,26 @@ def run_transaction_migration(
     )
     merged.merge(sale_result)
 
-    expense_result = transform_expense_ledger(tables, tenant_id, since=since)
+    supplier_legacy = {**existing.get("supplier", {}), **legacy_map(merged.legacy_ids, "supplier")}
+    purchase_result = transform_stock_movements(
+        tables,
+        tenant_id,
+        item_legacy,
+        supplier_legacy=supplier_legacy,
+        user_names=user_names,
+        since=since,
+        existing_movement_legacy=existing.get("stock_movement"),
+        scope="retail_purchases",
+    )
+    merged.merge(purchase_result)
+
+    expense_result = transform_expense_records(
+        tables,
+        tenant_id,
+        user_names=user_names,
+        since=since,
+        existing_category_legacy=existing.get("expense_category"),
+    )
     merged.merge(expense_result)
 
     return merged

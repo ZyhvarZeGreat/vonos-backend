@@ -10,6 +10,7 @@ const SUCCESS_MESSAGES: Record<CreateFlowKey, string> = {
   job: "Job created",
   sale: "Sale recorded",
   supplier: "Supplier added",
+  customer: "Customer added",
   appointment: "Appointment booked",
 };
 

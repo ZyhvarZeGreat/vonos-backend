@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
 import { Button } from "@/components/atoms/Button";
 import { Input } from "@/components/atoms/Input";
 import { AuthFooterLink, AuthTemplate } from "@/components/templates/AuthTemplate";
@@ -10,7 +9,6 @@ import { requestPasswordReset } from "@/lib/api/auth";
 export default function ResetPasswordPage() {
   const [email, setEmail] = useState("");
   const [sent, setSent] = useState(false);
-  const [devResetUrl, setDevResetUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -20,7 +18,7 @@ export default function ResetPasswordPage() {
     setLoading(true);
     try {
       const result = await requestPasswordReset(email);
-      setDevResetUrl(result.devResetUrl ?? null);
+      void result;
       setSent(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Request failed");
@@ -45,14 +43,6 @@ export default function ResetPasswordPage() {
             If an account exists for <strong className="text-foreground">{email}</strong>, a reset
             link is on its way.
           </p>
-          {devResetUrl ? (
-            <p>
-              Dev reset link:{" "}
-              <Link href={devResetUrl.replace(/^https?:\/\/[^/]+/, "")} className="underline">
-                open reset page
-              </Link>
-            </p>
-          ) : null}
         </div>
       ) : (
         <form onSubmit={handleSubmit} className="space-y-4">

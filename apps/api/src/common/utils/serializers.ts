@@ -1,4 +1,5 @@
 import type { Prisma } from '@prisma/client';
+import { SaleStatus } from '@prisma/client';
 import type { SaleReturnStatus } from '@vonos/types';
 
 export function toNumber(
@@ -38,6 +39,32 @@ const SALE_STATUS_TO_UI: Record<string, SaleReturnStatus> = {
 
 export function mapSaleStatusToUi(status: string): SaleReturnStatus {
   return SALE_STATUS_TO_UI[status] ?? 'Completed';
+}
+
+const RETURN_PRISMA_STATUSES: SaleStatus[] = [
+  SaleStatus.refunded,
+  SaleStatus.partially_refunded,
+];
+
+export function prismaSaleStatusesForUi(
+  uiStatus: SaleReturnStatus,
+): SaleStatus[] {
+  return Object.entries(SALE_STATUS_TO_UI)
+    .filter(([, ui]) => ui === uiStatus)
+    .map(([db]) => db as SaleStatus);
+}
+
+export function saleStatusWhereClause(filters: {
+  status?: SaleReturnStatus;
+  returnsOnly?: boolean;
+}): Pick<Prisma.SaleWhereInput, 'status'> {
+  if (filters.returnsOnly) {
+    return { status: { in: RETURN_PRISMA_STATUSES } };
+  }
+  if (filters.status) {
+    return { status: { in: prismaSaleStatusesForUi(filters.status) } };
+  }
+  return {};
 }
 
 export function parseMovementLines(lines: unknown): Array<{

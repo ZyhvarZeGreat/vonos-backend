@@ -1,34 +1,46 @@
 import type { ReportsDashboard } from '@vonos/types';
 import type { TenantScopedPrisma } from '../../../common/prisma/prisma.service';
-import { buildTimeSeries, computeDelta } from './date-utils';
-import { aggregateTopProducts } from './productSales';
-import { loadSalesReportContext, type SalesReportContext } from './salesData';
+import { computeDelta, priorWindow, resolveDateWindow, asChartData } from './date-utils';
+import {
+  hourlyOrderCounts,
+  paymentStatusBreakdown,
+  salesKpiSnapshot,
+  salesRevenueTrend,
+  topProductsInWindow,
+} from './salesReportQueries';
 
 type TransactionTab = 'sales' | 'closeout';
 
-function buildTransactionReportsFromContext(
-  ctx: SalesReportContext,
+export async function buildTransactionReports(
+  db: TenantScopedPrisma,
+  tenantId: string,
   tab: TransactionTab,
-): ReportsDashboard {
-  const { window, periodSales, priorSales, currency } = ctx;
+  from?: string,
+  to?: string,
+): Promise<ReportsDashboard> {
+  const window = resolveDateWindow(from, to);
+  const prior = priorWindow(window);
 
-  const revenue = periodSales.reduce((sum, s) => sum + s.total, 0);
-  const priorRevenue = priorSales.reduce((sum, s) => sum + s.total, 0);
-  const transactionCount = periodSales.length;
-  const priorCount = priorSales.length;
+  const [period, priorPeriod, trendData, topProducts] = await Promise.all([
+    salesKpiSnapshot(db, tenantId, window.from, window.to),
+    salesKpiSnapshot(db, tenantId, prior.from, prior.to),
+    salesRevenueTrend(db, tenantId, window),
+    tab === 'sales'
+      ? topProductsInWindow(db, tenantId, window.from, window.to, 12)
+      : Promise.resolve([]),
+  ]);
+
+  const {
+    transactionCount,
+    revenue,
+    refundedCount,
+    currency,
+  } = period;
+  const priorCount = priorPeriod.transactionCount;
+  const priorRevenue = priorPeriod.revenue;
   const avgTicket = transactionCount > 0 ? revenue / transactionCount : 0;
   const priorAvg = priorCount > 0 ? priorRevenue / priorCount : 0;
-  const refundedCount = periodSales.filter(
-    (s) => s.status === 'refunded' || s.status === 'partially_refunded',
-  ).length;
 
-  const trendData = buildTimeSeries(
-    periodSales.map((s) => ({ date: s.date, total: s.total })),
-    window,
-    (row) => row.total,
-  ).map((row) => ({ label: row.label, revenue: Math.round(row.value) }));
-
-  const topProducts = aggregateTopProducts(periodSales, 12);
   const topByUnits = topProducts.map((row) => ({
     label: row.label,
     units: Math.round(row.units * 100) / 100,
@@ -82,7 +94,7 @@ function buildTransactionReportsFromContext(
           subtitle: 'Revenue over selected period',
           type: 'line',
           series: [{ name: 'Revenue', dataKey: 'revenue', color: '#059669' }],
-          data: trendData.length > 0 ? trendData : [{ label: '—', revenue: 0 }],
+          data: trendData.length > 0 ? asChartData(trendData) : asChartData([{ label: '—', revenue: 0 }]),
         },
         {
           id: 'top-products-units',
@@ -129,24 +141,10 @@ function buildTransactionReportsFromContext(
     };
   }
 
-  // closeout — daily revenue bars + payment status pie
-  const dailyRevenue = buildTimeSeries(
-    periodSales.map((s) => ({ date: s.date, total: s.total })),
-    window,
-    (row) => row.total,
-  ).map((row) => ({ label: row.label, revenue: Math.round(row.value) }));
-
-  const paymentCounts = new Map<string, number>();
-  for (const sale of periodSales) {
-    const key = sale.paymentStatus ?? 'unknown';
-    paymentCounts.set(key, (paymentCounts.get(key) ?? 0) + 1);
-  }
-  const paymentPie = Array.from(paymentCounts.entries()).map(
-    ([label, value]) => ({
-      label,
-      value,
-    }),
-  );
+  const [dailyRevenue, paymentPie] = await Promise.all([
+    salesRevenueTrend(db, tenantId, window),
+    paymentStatusBreakdown(db, tenantId, window.from, window.to),
+  ]);
 
   return {
     kpis: [
@@ -191,7 +189,9 @@ function buildTransactionReportsFromContext(
         type: 'bar',
         series: [{ name: 'Revenue', dataKey: 'revenue', color: '#059669' }],
         data:
-          dailyRevenue.length > 0 ? dailyRevenue : [{ label: '—', revenue: 0 }],
+          dailyRevenue.length > 0
+            ? asChartData(dailyRevenue)
+            : asChartData([{ label: '—', revenue: 0 }]),
       },
       {
         id: 'payment-status',
@@ -200,20 +200,11 @@ function buildTransactionReportsFromContext(
         type: 'pie',
         series: [{ name: 'Count', dataKey: 'value', color: '#3b82f6' }],
         data:
-          paymentPie.length > 0 ? paymentPie : [{ label: 'paid', value: 0 }],
+          paymentPie.length > 0
+            ? asChartData(paymentPie)
+            : asChartData([{ label: 'paid', value: 0 }]),
       },
     ],
     table: null,
   };
-}
-
-export async function buildTransactionReports(
-  db: TenantScopedPrisma,
-  tab: TransactionTab,
-  from?: string,
-  to?: string,
-  ctx?: SalesReportContext,
-): Promise<ReportsDashboard> {
-  const salesCtx = ctx ?? (await loadSalesReportContext(db, from, to));
-  return buildTransactionReportsFromContext(salesCtx, tab);
 }

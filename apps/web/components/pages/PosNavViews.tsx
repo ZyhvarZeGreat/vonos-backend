@@ -1,18 +1,17 @@
 "use client";
 
 import { useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { useRouter } from "next/navigation";
 import { Button } from "@/components/atoms/Button";
 import { EmptyState } from "@/components/atoms/EmptyState";
-import { DataTable, type ColumnConfig } from "@/components/organisms/DataTable";
+import { type ColumnConfig } from "@/components/organisms/DataTable";
+import { ServerPaginatedTable } from "@/components/organisms/ServerPaginatedTable";
 import { ListPageShell } from "@/components/organisms/ListPageShell";
-import { getPaymentAccounts } from "@/lib/api/paymentAccounts";
-import { getAccountBook, getPayments } from "@/lib/api/payments";
+import { getAccountBookPage, getPaymentsPage } from "@/lib/api/payments";
+import { useServerListPage } from "@/lib/hooks/useServerListPage";
 import { useRouteTenant } from "@/lib/hooks/useRouteTenant";
 import { formatCurrency } from "@/lib/utils/formatCurrency";
 import { useUiStore } from "@/stores/uiStore";
-import type { AccountTransaction, PaymentAccount, PaymentRecord } from "@vonos/types";
+import type { AccountTransaction, PaymentRecord } from "@vonos/types";
 import { CatalogMetaListView } from "@/components/pages/CatalogMetaListView";
 import { PosTerminalView } from "@/components/pages/PosTerminalView";
 
@@ -23,113 +22,11 @@ export function createPosPlaceholderView(title: string, message?: string) {
         title={title}
         message={
           message ??
-          "This screen matches the legacy POS menu. Data import and full workflows are coming next."
+          "This section is not available yet. Contact your administrator if you need access."
         }
       />
     );
   };
-}
-
-interface PaymentAccountRow extends PaymentAccount {
-  accountSubType: string;
-  addedBy: string;
-}
-
-export function PaymentAccountsListView() {
-  const router = useRouter();
-  const { tenantCode, tenantId } = useRouteTenant();
-  const openExportModal = useUiStore((state) => state.openExportModal);
-
-  const { data = [], isLoading, error } = useQuery({
-    queryKey: ["payment-accounts", tenantId],
-    queryFn: async () => {
-      if (!tenantId) return [];
-      return getPaymentAccounts(tenantId);
-    },
-    enabled: Boolean(tenantId),
-  });
-
-  const rows: PaymentAccountRow[] = useMemo(
-    () =>
-      data.map((account) => ({
-        ...account,
-        accountSubType: account.accountSubType ?? "",
-        addedBy: account.createdByName ?? "—",
-      })),
-    [data],
-  );
-
-  const columns: ColumnConfig<PaymentAccountRow>[] = useMemo(
-    () => [
-      { key: "name", header: "Name", render: (row) => <span className="font-medium">{row.name}</span> },
-      { key: "accountType", header: "Account Type" },
-      { key: "accountSubType", header: "Account Sub Type" },
-      { key: "accountNumber", header: "Account Number" },
-      { key: "note", header: "Note" },
-      {
-        key: "balance",
-        header: "Balance",
-        sortValue: (row) => row.balance,
-        render: (row) => formatCurrency(row.balance, "NGN"),
-      },
-      { key: "addedBy", header: "Added By" },
-      {
-        key: "actions",
-        header: "Action",
-        render: (row) => (
-          <div className="flex flex-wrap gap-1">
-            <Button variant="secondary" size="sm" className="text-violet-600">
-              Edit
-            </Button>
-            <Button
-              variant="secondary"
-              size="sm"
-              className="text-amber-600"
-              onClick={() => router.push(`/${tenantCode}/account-book/${row.id}`)}
-            >
-              Account Book
-            </Button>
-            <Button variant="secondary" size="sm" className="text-sky-600">
-              Fund Transfer
-            </Button>
-            <Button variant="secondary" size="sm" className="text-emerald-600">
-              Deposit
-            </Button>
-            <Button variant="secondary" size="sm" className="text-red-600">
-              Close
-            </Button>
-          </div>
-        ),
-      },
-    ],
-    [router, tenantCode],
-  );
-
-  return (
-    <ListPageShell
-      tabs={[{ id: "all", label: "All Accounts" }]}
-      activeTab="all"
-      onTabChange={() => {}}
-      showImport={false}
-      showDateRange={false}
-      onExport={() =>
-        openExportModal({
-          title: "Export Payment Accounts",
-          subtitle: "Download account list as CSV",
-        })
-      }
-    >
-      <DataTable<PaymentAccountRow>
-        data={rows}
-        columns={columns}
-        displayMode="table"
-        isLoading={isLoading}
-        error={error ? "Failed to load payment accounts" : null}
-        disablePagination={rows.length <= 50}
-        emptyState={{ message: "No payment accounts yet. Import from legacy POS or add manually." }}
-      />
-    </ListPageShell>
-  );
 }
 
 interface AccountBookRow {
@@ -144,20 +41,24 @@ interface AccountBookRow {
   accountBalance: number;
 }
 
-interface AccountBookViewProps {
-  accountId?: string;
-}
-
-export function AccountBookView({ accountId }: AccountBookViewProps) {
+export function AccountBookView({ accountId }: { accountId?: string }) {
   const openExportModal = useUiStore((state) => state.openExportModal);
 
-  const { data = [], isLoading, error } = useQuery({
+  const {
+    items: data,
+    hasMore,
+    pageIndex,
+    pageSize,
+    canGoPrev,
+    goNext,
+    goPrev,
+    setPageSize,
+    isLoading,
+    error,
+  } = useServerListPage<AccountTransaction>({
     queryKey: ["account-book", accountId],
-    queryFn: async () => {
-      if (!accountId) return [];
-      return getAccountBook(accountId);
-    },
     enabled: Boolean(accountId),
+    fetchPage: (cursor, limit) => getAccountBookPage(accountId!, cursor, limit),
   });
 
   const rows: AccountBookRow[] = useMemo(() => {
@@ -222,13 +123,18 @@ export function AccountBookView({ accountId }: AccountBookViewProps) {
         })
       }
     >
-      <DataTable<AccountBookRow>
-        data={rows}
+      <ServerPaginatedTable
+        items={rows}
         columns={columns}
-        displayMode="table"
+        pageIndex={pageIndex}
+        pageSize={pageSize}
+        hasMore={hasMore}
+        canGoPrev={canGoPrev}
+        onNext={goNext}
+        onPrev={goPrev}
+        onPageSizeChange={setPageSize}
         isLoading={isLoading}
         error={error ? "Failed to load account book" : null}
-        disablePagination={rows.length <= 100}
         emptyState={{
           message: accountId
             ? "No ledger entries for this account."
@@ -254,13 +160,21 @@ export function PaymentsListView() {
   const { tenantId } = useRouteTenant();
   const openExportModal = useUiStore((state) => state.openExportModal);
 
-  const { data = [], isLoading, error } = useQuery({
+  const {
+    items: data,
+    hasMore,
+    pageIndex,
+    pageSize,
+    canGoPrev,
+    goNext,
+    goPrev,
+    setPageSize,
+    isLoading,
+    error,
+  } = useServerListPage<PaymentRecord>({
     queryKey: ["payments", tenantId],
-    queryFn: async () => {
-      if (!tenantId) return [];
-      return getPayments(tenantId);
-    },
     enabled: Boolean(tenantId),
+    fetchPage: (cursor, limit) => getPaymentsPage(tenantId!, undefined, cursor, limit),
   });
 
   const rows: PaymentRow[] = useMemo(
@@ -323,13 +237,18 @@ export function PaymentsListView() {
         })
       }
     >
-      <DataTable<PaymentRow>
-        data={rows}
+      <ServerPaginatedTable
+        items={rows}
         columns={columns}
-        displayMode="table"
+        pageIndex={pageIndex}
+        pageSize={pageSize}
+        hasMore={hasMore}
+        canGoPrev={canGoPrev}
+        onNext={goNext}
+        onPrev={goPrev}
+        onPageSizeChange={setPageSize}
         isLoading={isLoading}
         error={error ? "Failed to load payments" : null}
-        disablePagination={rows.length <= 100}
         emptyState={{ message: "No payments recorded yet." }}
       />
     </ListPageShell>
@@ -345,12 +264,12 @@ export const PosPlaceholderViews = {
   quotations: createPosPlaceholderView("List Quotations"),
   shipments: createPosPlaceholderView("Shipments"),
   discounts: createPosPlaceholderView("Discounts"),
-  "import-sales": createPosPlaceholderView("Import Sales", "Bulk import will connect to the migration pipeline."),
+  "import-sales": createPosPlaceholderView("Import Sales", "Bulk sales import is not available yet."),
   "add-product": createPosPlaceholderView("Add Product"),
   "update-price": createPosPlaceholderView("Update Price"),
   "print-labels": createPosPlaceholderView("Print Labels"),
   variations: createPosPlaceholderView("Variations"),
-  "import-products": createPosPlaceholderView("Import Products", "Use the migration scripts for bulk product import."),
+  "import-products": createPosPlaceholderView("Import Products", "Bulk product import is not available yet."),
   "import-opening-stock": createPosPlaceholderView("Import Opening Stock"),
   "price-groups": () => <CatalogMetaListView kind="price-groups" />,
   units: () => <CatalogMetaListView kind="units" />,

@@ -1,10 +1,13 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { Upload } from "lucide-react";
-import type { KpiCardConfig, ReportsDashboard, ReportsKpi } from "@vonos/types";
+import type { GroupReportEntityRollup, KpiCardConfig, ReportsDashboard, ReportsKpi, ReportsTableRow } from "@vonos/types";
+import { REPORT_REGISTRY } from "@/lib/registries/reportRegistry";
+import { EntityContextBanner } from "@/components/molecules/EntityContextBanner";
 import { ChartPanel } from "@/components/organisms/ChartPanel";
 import { DataTable } from "@/components/organisms/DataTable";
 import { DateRangeDropdown } from "@/components/molecules/DateRangeDropdown";
@@ -118,10 +121,39 @@ function ChartHeader({
   );
 }
 
-type ReportsTableRow = {
-  id: string;
-  recordType?: string;
-} & Record<string, string | number>;
+function entityRollupRows(
+  byEntity: GroupReportEntityRollup[],
+): Array<ReportsTableRow & { id: string }> {
+  return byEntity.flatMap((entity) =>
+    entity.rows.map((row, index) => ({
+      id: `${entity.code}-${index}`,
+      tenantCode: entity.code,
+      entity: entity.code,
+      ...row,
+    })),
+  );
+}
+
+function entityRollupColumns(
+  byEntity: GroupReportEntityRollup[],
+): Array<{ key: string; header: string }> {
+  const sample = byEntity[0]?.rows[0];
+  if (!sample) {
+    return [
+      { key: "entity", header: "Entity" },
+      { key: "revenue", header: "Revenue" },
+    ];
+  }
+  return [
+    { key: "entity", header: "Entity" },
+    ...Object.keys(sample).map((key) => ({
+      key,
+      header: key
+        .replace(/([A-Z])/g, " $1")
+        .replace(/^./, (char) => char.toUpperCase()),
+    })),
+  ];
+}
 
 export function ReportsDashboardBody({
   tenantCode,
@@ -205,6 +237,53 @@ export function ReportsDashboardBody({
         </div>
       ) : null}
 
+      {dashboard?.byEntity && dashboard.byEntity.length > 0 ? (
+        <div className="rounded-xl border border-border bg-card p-6 shadow-card">
+          <ChartHeader
+            title="By entity"
+            subtitle="Roll-up for the selected report across all operating entities"
+            onExport={() => openExportModal()}
+            dateRange={dateRange}
+            onDateRangeChange={setDateRange}
+          />
+          <DataTable<ReportsTableRow & { id: string }>
+            data={entityRollupRows(dashboard.byEntity)}
+            columns={entityRollupColumns(dashboard.byEntity).map((col) => {
+              const base = {
+                key: col.key as keyof ReportsTableRow & string,
+                header: col.header,
+              };
+              if (
+                col.key === "revenue" ||
+                col.key === "costs" ||
+                col.key === "net" ||
+                col.key === "salesRevenue" ||
+                col.key === "jobRevenue" ||
+                col.key === "stockValue" ||
+                col.key === "amount"
+              ) {
+                return {
+                  ...base,
+                  render: (row: ReportsTableRow) =>
+                    typeof row[col.key] === "number"
+                      ? formatCurrency(Number(row[col.key]), "NGN")
+                      : String(row[col.key] ?? "—"),
+                };
+              }
+              return base;
+            })}
+            displayMode="table"
+            embedded
+            disablePagination={(dashboard.byEntity?.length ?? 0) <= 12}
+            onRowClick={(row) => {
+              if (!onEntityReportsClick) return;
+              const code = String(row.entity ?? row.tenantCode ?? "");
+              if (code) onEntityReportsClick(code);
+            }}
+          />
+        </div>
+      ) : null}
+
       {dashboard?.table && dashboard.table.rows.length > 0 ? (
         <div className="rounded-xl border border-border bg-card p-6 shadow-card">
           <ChartHeader
@@ -218,7 +297,7 @@ export function ReportsDashboardBody({
             dateRange={dateRange}
             onDateRangeChange={setDateRange}
           />
-          <DataTable<ReportsTableRow>
+          <DataTable<ReportsTableRow & { id: string }>
             data={dashboard.table.rows.map((row, index) => ({
               id: String(row.id ?? `row-${index}`),
               ...row,
@@ -295,6 +374,7 @@ export function ReportsView({ tenantCode }: { tenantCode: TenantCode }) {
 
   return (
     <div className="space-y-6">
+      <EntityContextBanner module="Reports" />
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex gap-1 rounded-lg border border-border bg-[var(--color-surface-muted)] p-1">
           {tabs.map((tab) => (
@@ -355,6 +435,29 @@ export function VagGroupReportsView() {
       <div className="flex justify-end">
         <DateRangeDropdown value={dateRange} onChange={setDateRange} />
       </div>
+
+      <section className="space-y-3">
+        <div>
+          <h3 className="text-base font-semibold text-foreground">Group report drill-down</h3>
+          <p className="text-sm text-muted">
+            Open a consolidated report with per-entity breakdown rows.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {REPORT_REGISTRY.filter((entry) => entry.groupRollup)
+            .slice(0, 10)
+            .map((entry) => (
+              <Link
+                key={entry.id}
+                href={`/admin/reports/group/${entry.id}`}
+                className="rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium text-foreground hover:bg-[var(--color-surface-muted)]"
+              >
+                {entry.label}
+              </Link>
+            ))}
+        </div>
+      </section>
+
       <ReportsDashboardBody
         dashboard={query.data}
         isLoading={query.isLoading}

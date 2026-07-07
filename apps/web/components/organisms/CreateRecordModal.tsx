@@ -13,6 +13,7 @@ import { createJob } from "@/lib/api/jobs";
 import { createSale } from "@/lib/api/sales";
 import { createStockMovement } from "@/lib/api/stockMovements";
 import { createSupplier } from "@/lib/api/suppliers";
+import { createCustomer } from "@/lib/api/customers";
 import { createAppointment } from "@/lib/api/appointments";
 import { getItems } from "@/lib/api/items";
 import { useTenantId, useRouteTenant } from "@/lib/hooks/useRouteTenant";
@@ -101,7 +102,7 @@ export function CreateRecordModal() {
 
   const { data: items = [] } = useQuery({
     queryKey: ["items", tenantId],
-    queryFn: () => getItems(tenantId!),
+    queryFn: () => getItems(tenantId!, { limit: 100 }),
     enabled:
       Boolean(tenantId) &&
       open &&
@@ -146,12 +147,15 @@ export function CreateRecordModal() {
     label: `${item.sku} — ${item.name}`,
   }));
 
-  const showLocationField = (tenantConfig?.businessLocations?.length ?? 0) > 0;
+  const showLocationField =
+    createFlow !== "customer" && (tenantConfig?.businessLocations?.length ?? 0) > 0;
 
   const mutation = useAppMutation({
     mutationFn: async (flow: CreateFlowKey) => {
       if (!tenantId) throw new Error("No tenant selected");
-      assertBusinessLocationSelected(locationRequired, form.locationCode);
+      if (flow !== "customer") {
+        assertBusinessLocationSelected(locationRequired, form.locationCode);
+      }
       const locationCode = form.locationCode.trim() || undefined;
 
       if (isItemFlow(flow)) {
@@ -170,7 +174,8 @@ export function CreateRecordModal() {
           costPrice: cost,
           binLocation: form.binLocation.trim() || undefined,
           locationCode,
-          availableForRetail: flow === "menu-item",
+          availableForRetail:
+            flow === "menu-item" || tenantConfig?.archetype === "transaction",
         });
       }
 
@@ -258,6 +263,15 @@ export function CreateRecordModal() {
         });
       }
 
+      if (flow === "customer") {
+        if (!form.name.trim()) throw new Error("Customer name is required");
+        return createCustomer(tenantId, {
+          name: form.name.trim(),
+          email: form.email.trim() || undefined,
+          phone: form.phone.trim() || undefined,
+        });
+      }
+
       if (flow === "appointment") {
         if (!form.stylistName.trim() || !form.serviceName.trim()) {
           throw new Error("Stylist and service are required");
@@ -282,6 +296,7 @@ export function CreateRecordModal() {
     onSuccess: async (_data, flow) => {
       if (isItemFlow(flow)) {
         await queryClient.invalidateQueries({ queryKey: ["items"] });
+        await queryClient.invalidateQueries({ queryKey: ["catalog"] });
       } else if (movementTypeForFlow(flow)) {
         await queryClient.invalidateQueries({ queryKey: ["stock-movements"] });
       } else if (flow === "job") {
@@ -291,6 +306,8 @@ export function CreateRecordModal() {
         await queryClient.invalidateQueries({ queryKey: ["orders"] });
       } else if (flow === "supplier") {
         await queryClient.invalidateQueries({ queryKey: ["suppliers"] });
+      } else if (flow === "customer") {
+        await queryClient.invalidateQueries({ queryKey: ["customers"] });
       } else if (flow === "appointment") {
         await queryClient.invalidateQueries({ queryKey: ["appointments"] });
       }
@@ -572,6 +589,14 @@ export function CreateRecordModal() {
               value={form.address}
               onChange={(e) => setField("address", e.target.value)}
             />
+          </>
+        ) : null}
+
+        {createFlow === "customer" ? (
+          <>
+            <Input label="Name" value={form.name} onChange={(e) => setField("name", e.target.value)} />
+            <Input label="Email" value={form.email} onChange={(e) => setField("email", e.target.value)} />
+            <Input label="Phone" value={form.phone} onChange={(e) => setField("phone", e.target.value)} />
           </>
         ) : null}
 

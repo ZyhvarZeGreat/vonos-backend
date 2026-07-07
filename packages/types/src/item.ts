@@ -6,6 +6,20 @@ export const STOCK_STATUSES = [
 
 export type StockStatus = (typeof STOCK_STATUSES)[number];
 
+/** Per-location quantity breakdown for an item (branch/counter + qty). */
+export interface ItemLocationStock {
+  locationCode: string;
+  binLocation: string | null;
+  quantity: number;
+}
+
+/** Input shape when writing per-location stock rows (create/update). */
+export interface ItemLocationStockInput {
+  locationCode: string;
+  binLocation?: string | null;
+  quantity: number;
+}
+
 export interface Item {
   id: string;
   tenantId: string;
@@ -20,6 +34,8 @@ export interface Item {
   currency: string;
   status: StockStatus;
   availableForRetail: boolean;
+  /** Per-location breakdown; `quantity` above is the sum across these. */
+  locationStock: ItemLocationStock[];
   createdByUserId?: string | null;
   createdByName?: string | null;
   createdAt: string;
@@ -29,9 +45,10 @@ export interface Item {
 export interface ItemFilters {
   status?: StockStatus;
   category?: string;
+  search?: string;
+  locationCode?: string;
   cursor?: string;
   limit?: number;
-  search?: string;
 }
 
 export interface KpiSummary {

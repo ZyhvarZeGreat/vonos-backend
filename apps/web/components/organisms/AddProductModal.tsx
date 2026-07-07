@@ -1,7 +1,9 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { Plus, Trash2 } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import type { ItemLocationStockInput } from "@vonos/types";
 import { Button } from "@/components/atoms/Button";
 import { Input } from "@/components/atoms/Input";
 import { Modal, ModalFooter, ModalHeader } from "@/components/atoms/Modal";
@@ -49,13 +51,16 @@ export function AddProductModal() {
   const open = activeModal === "addProduct";
 
   const [form, setForm] = useState(emptyProductForm);
+  const [locationRows, setLocationRows] = useState<
+    Array<{ locationCode: string; binLocation: string; quantity: string }>
+  >([]);
   const [error, setError] = useState<string | null>(null);
 
   const retailMode = productFlow === "menu-item";
 
   const { data: items = [] } = useQuery({
     queryKey: ["items", tenantId],
-    queryFn: () => getItems(tenantId!),
+    queryFn: () => getItems(tenantId!, { limit: 50 }),
     enabled: Boolean(tenantId) && open,
   });
 
@@ -101,9 +106,29 @@ export function AddProductModal() {
   );
 
   const showLocationField = (tenantConfig?.businessLocations?.length ?? 0) > 0;
+  const hasLocationRows = locationRows.length > 0;
+
+  const addLocationRow = () =>
+    setLocationRows((prev) => [
+      ...prev,
+      { locationCode: "", binLocation: "", quantity: "" },
+    ]);
+
+  const updateLocationRow = (
+    index: number,
+    key: "locationCode" | "binLocation" | "quantity",
+    value: string,
+  ) =>
+    setLocationRows((prev) =>
+      prev.map((row, i) => (i === index ? { ...row, [key]: value } : row)),
+    );
+
+  const removeLocationRow = (index: number) =>
+    setLocationRows((prev) => prev.filter((_, i) => i !== index));
 
   const reset = () => {
     setForm(emptyProductForm());
+    setLocationRows([]);
     setError(null);
   };
 
@@ -127,19 +152,45 @@ export function AddProductModal() {
   const mutation = useAppMutation({
     mutationFn: async () => {
       if (!tenantId) throw new Error("No tenant selected");
-      assertBusinessLocationSelected(locationRequired, form.locationCode);
       const cost = Number(form.sellingExcTax || form.purchaseExcTax);
       if (!form.name.trim()) throw new Error("Product name is required");
       if (!form.sku.trim()) throw new Error("SKU is required");
       if (!Number.isFinite(cost) || cost < 0) throw new Error("Enter a valid selling price");
+
+      // Per-location rows, when present, drive quantity + primary location.
+      let locationStock: ItemLocationStockInput[] | undefined;
+      if (hasLocationRows) {
+        locationStock = [];
+        for (const row of locationRows) {
+          if (!row.locationCode.trim()) {
+            throw new Error("Select a branch for each location row");
+          }
+          const qty = Number(row.quantity);
+          locationStock.push({
+            locationCode: row.locationCode.trim(),
+            binLocation: row.binLocation.trim() || undefined,
+            quantity: Number.isFinite(qty) ? qty : 0,
+          });
+        }
+      } else {
+        assertBusinessLocationSelected(locationRequired, form.locationCode);
+      }
+
       return createItem(tenantId, {
         sku: form.sku.trim(),
         name: form.name.trim(),
         category: form.category.trim() || undefined,
-        quantity: form.manageStock ? Number(form.alertQuantity) || 0 : 0,
+        quantity: hasLocationRows
+          ? undefined
+          : form.manageStock
+            ? Number(form.alertQuantity) || 0
+            : 0,
         costPrice: cost,
         reorderPoint: form.manageStock ? Number(form.alertQuantity) || undefined : undefined,
-        locationCode: form.locationCode.trim() || undefined,
+        locationCode: hasLocationRows
+          ? undefined
+          : form.locationCode.trim() || undefined,
+        locationStock,
         availableForRetail: retailMode ? true : !form.notForSelling,
       });
     },
@@ -244,6 +295,73 @@ export function AddProductModal() {
             />
           </label>
         </section>
+
+        {showLocationField ? (
+          <section className="space-y-3 rounded-lg border border-border p-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-foreground">Locations</p>
+                <p className="text-xs text-muted">
+                  Track quantity per branch and counter/bin. Overrides the single
+                  location + alert quantity above.
+                </p>
+              </div>
+              <Button type="button" variant="secondary" size="sm" onClick={addLocationRow}>
+                <Plus className="mr-1.5 h-4 w-4" />
+                Add location
+              </Button>
+            </div>
+            {hasLocationRows ? (
+              <div className="space-y-2">
+                {locationRows.map((row, index) => (
+                  <div
+                    key={index}
+                    className="grid items-end gap-2 sm:grid-cols-[1fr_1fr_120px_auto]"
+                  >
+                    <Select
+                      label="Branch"
+                      value={row.locationCode}
+                      onChange={(e) =>
+                        updateLocationRow(index, "locationCode", e.target.value)
+                      }
+                      options={businessLocationOptions}
+                    />
+                    <Input
+                      label="Counter / bin"
+                      placeholder="e.g. C1"
+                      value={row.binLocation}
+                      onChange={(e) =>
+                        updateLocationRow(index, "binLocation", e.target.value)
+                      }
+                    />
+                    <Input
+                      label="Quantity"
+                      type="number"
+                      min="0"
+                      value={row.quantity}
+                      onChange={(e) =>
+                        updateLocationRow(index, "quantity", e.target.value)
+                      }
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => removeLocationRow(index)}
+                      aria-label="Remove location"
+                    >
+                      <Trash2 className="h-4 w-4 text-error" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-muted">
+                No per-location rows — stock uses the single business location above.
+              </p>
+            )}
+          </section>
+        ) : null}
 
         <section className="space-y-3 rounded-lg border border-border p-3">
           <p className="text-sm font-medium text-foreground">Pricing & tax</p>
