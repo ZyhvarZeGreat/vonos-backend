@@ -36,6 +36,10 @@ export interface HqReportPageLayoutProps {
   title: string;
   subtitle: string;
   data: ReportsDashboard;
+  tenantId?: string;
+  from?: string;
+  to?: string;
+  summaryLoading?: boolean;
   onRowClick?: (row: ReportsTableRow & { id: string }) => void;
   onRowAction?: (action: ReportRowAction) => void;
 }
@@ -49,6 +53,10 @@ export function HqReportPageLayout({
   title,
   subtitle,
   data,
+  tenantId,
+  from,
+  to,
+  summaryLoading,
   onRowClick,
   onRowAction,
 }: HqReportPageLayoutProps) {
@@ -61,7 +69,14 @@ export function HqReportPageLayout({
           <h2 className="text-lg font-semibold text-foreground">{title}</h2>
           <p className="text-sm text-muted">{subtitle}</p>
         </div>
-        <ProfitLossReportPanel report={data.profitLoss} onPrint={() => window.print()} />
+        <ProfitLossReportPanel
+          report={data.profitLoss}
+          tenantId={tenantId}
+          from={from}
+          to={to}
+          summaryLoading={summaryLoading}
+          onPrint={() => window.print()}
+        />
       </div>
     );
   }

@@ -11,13 +11,12 @@ import {
   buildTransactionOverview,
 } from './overviewAggregators';
 import {
-  buildOverviewPanels,
   buildPurchasePaymentDuesPanel,
   buildSalesPaymentDuesPanel,
   buildStockAlertPanel,
 } from './overviewPanels';
 
-const ENTITY_CACHE_TTL_S = 30;
+const ENTITY_CACHE_TTL_S = 300;
 
 @Injectable()
 export class OverviewService {

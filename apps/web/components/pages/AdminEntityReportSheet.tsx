@@ -32,6 +32,8 @@ export function AdminEntityReportSheet({
   const openExportModal = useUiStore((state) => state.openExportModal);
   const periodLabel = ledgerChartSubtitle(dateRange);
 
+  const isProfitLoss = entry?.id === "profit-loss";
+
   const { data, isLoading, error } = useQuery({
     queryKey: ["adminReportRun", tenant?.tenantId, entry?.id, bounds?.from ?? "all", bounds?.to ?? "all"],
     queryFn: () =>
@@ -40,8 +42,10 @@ export function AdminEntityReportSheet({
         from: bounds?.from,
         to: bounds?.to,
         tenantId: tenant!.tenantId,
+        mode: isProfitLoss ? "pl-core" : "full",
       }),
     enabled: Boolean(tenant && entry),
+    staleTime: 5 * 60_000,
   });
 
   if (!tenant) {

@@ -12,6 +12,7 @@ import {
   ledgerDateFilter,
 } from '../../common/utils/ledgerAggregates';
 import { toIso, toNumber } from '../../common/utils/serializers';
+import { resolveDateWindow } from '../reports/aggregators/date-utils';
 
 /** Categories/descriptions for internal Warehouse ↔ entity stock moves — excluded from group P&L roll-up. */
 const INTERNAL_TRANSFER_MARKERS = [
@@ -21,25 +22,21 @@ const INTERNAL_TRANSFER_MARKERS = [
   'inter-entity transfer',
 ];
 
+const TRANSFER_SQL = Prisma.sql`
+  AND NOT (
+    LOWER(COALESCE(category, '') || ' ' || COALESCE(description, '')) LIKE '%internal transfer%'
+    OR LOWER(COALESCE(category, '') || ' ' || COALESCE(description, '')) LIKE '%stock transfer%'
+    OR LOWER(COALESCE(category, '') || ' ' || COALESCE(description, '')) LIKE '%requisition fulfillment%'
+    OR LOWER(COALESCE(category, '') || ' ' || COALESCE(description, '')) LIKE '%inter-entity transfer%'
+  )
+`;
+
 function isInternalTransferEntry(
   category: string,
   description: string,
 ): boolean {
   const haystack = `${category} ${description}`.toLowerCase();
   return INTERNAL_TRANSFER_MARKERS.some((marker) => haystack.includes(marker));
-}
-
-function applyTransferElimination<
-  T extends {
-    category: string;
-    description: string;
-    type: string;
-    amount: number;
-  },
->(rows: T[]): T[] {
-  return rows.filter(
-    (row) => !isInternalTransferEntry(row.category, row.description),
-  );
 }
 
 async function nonVagTenants(prisma: PrismaClient) {
@@ -66,34 +63,27 @@ export async function buildGroupLedgerByEntity(
   }>
 > {
   const tenants = await nonVagTenants(prisma);
-
-  const dateFilter = ledgerDateFilter(from, to);
+  const window = resolveDateWindow(from, to);
   const tenantIds = tenants.map((t) => t.id);
 
-  const ledgerRows = await prisma.ledgerEntry.findMany({
-    where: {
-      tenantId: { in: tenantIds },
-      deletedAt: null,
-      ...dateFilter,
-    },
-    select: {
-      tenantId: true,
-      type: true,
-      category: true,
-      description: true,
-      amount: true,
-    },
-  });
+  if (tenantIds.length === 0) return [];
 
-  const filtered = applyTransferElimination(
-    ledgerRows.map((row) => ({
-      tenantId: row.tenantId,
-      type: row.type,
-      category: row.category,
-      description: row.description,
-      amount: toNumber(row.amount),
-    })),
-  );
+  const aggRows = await prisma.$queryRaw<
+    Array<{
+      tenantId: string;
+      type: string;
+      total: Prisma.Decimal | null;
+    }>
+  >`
+    SELECT "tenantId", type, COALESCE(SUM(amount), 0) AS total
+    FROM "LedgerEntry"
+    WHERE "tenantId" IN (${Prisma.join(tenantIds)})
+      AND "deletedAt" IS NULL
+      AND date >= ${window.from}
+      AND date <= ${window.to}
+      ${TRANSFER_SQL}
+    GROUP BY "tenantId", type
+  `;
 
   const byTenant = new Map(
     tenants.map((tenant) => [
@@ -109,11 +99,12 @@ export async function buildGroupLedgerByEntity(
     ]),
   );
 
-  for (const row of filtered) {
+  for (const row of aggRows) {
     const bucket = byTenant.get(row.tenantId);
     if (!bucket) continue;
-    if (row.type === 'revenue') bucket.revenue += row.amount;
-    else bucket.costs += row.amount;
+    const amount = toNumber(row.total ?? 0);
+    if (row.type === 'revenue') bucket.revenue += amount;
+    else bucket.costs += amount;
   }
 
   return [...byTenant.values()]
@@ -133,21 +124,25 @@ export async function buildGroupLedgerSummary(
   const tenants = await nonVagTenants(prisma);
   const tenantIds = tenants.map((t) => t.id);
   const dateFilter = ledgerDateFilter(from, to);
+  const window = resolveDateWindow(from, to);
 
-  const [ledgerRows, currencyRow] = await Promise.all([
-    prisma.ledgerEntry.findMany({
-      where: {
-        tenantId: { in: tenantIds },
-        deletedAt: null,
-        ...dateFilter,
-      },
-      select: {
-        type: true,
-        category: true,
-        description: true,
-        amount: true,
-      },
-    }),
+  if (tenantIds.length === 0) {
+    return buildLedgerSummaryFromGroups([], 'NGN');
+  }
+
+  const [aggRows, currencyRow] = await Promise.all([
+    prisma.$queryRaw<
+      Array<{ type: string; total: Prisma.Decimal | null }>
+    >`
+      SELECT type, COALESCE(SUM(amount), 0) AS total
+      FROM "LedgerEntry"
+      WHERE "tenantId" IN (${Prisma.join(tenantIds)})
+        AND "deletedAt" IS NULL
+        AND date >= ${window.from}
+        AND date <= ${window.to}
+        ${TRANSFER_SQL}
+      GROUP BY type
+    `,
     prisma.ledgerEntry.findFirst({
       where: {
         tenantId: { in: tenantIds },
@@ -159,25 +154,10 @@ export async function buildGroupLedgerSummary(
     }),
   ]);
 
-  const filtered = applyTransferElimination(
-    ledgerRows.map((row) => ({
-      type: row.type,
-      category: row.category,
-      description: row.description,
-      amount: toNumber(row.amount),
-    })),
-  );
-
-  const grouped = new Map<LedgerEntryType, number>();
-  for (const row of filtered) {
-    const current = grouped.get(row.type) ?? 0;
-    grouped.set(row.type, current + row.amount);
-  }
-
   return buildLedgerSummaryFromGroups(
-    [...grouped.entries()].map(([type, amount]) => ({
-      type,
-      _sum: { amount: new Prisma.Decimal(amount) },
+    aggRows.map((row) => ({
+      type: row.type as LedgerEntryType,
+      _sum: { amount: row.total },
     })),
     currencyRow?.currency ?? 'NGN',
   );
@@ -236,24 +216,29 @@ export async function buildGroupLedgerList(
     ...buildCursorQuery(filters.cursor, filters.limit ?? 50),
   });
 
-  return rows.map((row) => {
-    const tenant = tenantById.get(row.tenantId);
-    return {
-      id: row.id,
-      tenantId: row.tenantId,
-      type: row.type,
-      amount: toNumber(row.amount),
-      currency: row.currency,
-      category: row.category,
-      description: row.description,
-      linkedRecordType: row.linkedRecordType,
-      linkedRecordId: row.linkedRecordId,
-      date: toIso(row.date),
-      createdAt: toIso(row.createdAt),
-      tenantCode: tenant?.code ?? null,
-      tenantName: tenant?.name ?? null,
-    };
-  });
+  return rows
+    .filter(
+      (row) =>
+        !isInternalTransferEntry(row.category, row.description ?? ''),
+    )
+    .map((row) => {
+      const tenant = tenantById.get(row.tenantId);
+      return {
+        id: row.id,
+        tenantId: row.tenantId,
+        type: row.type,
+        amount: toNumber(row.amount),
+        currency: row.currency,
+        category: row.category,
+        description: row.description,
+        linkedRecordType: row.linkedRecordType,
+        linkedRecordId: row.linkedRecordId,
+        date: toIso(row.date),
+        createdAt: toIso(row.createdAt),
+        tenantCode: tenant?.code ?? null,
+        tenantName: tenant?.name ?? null,
+      };
+    });
 }
 
 export async function buildGroupLedgerCategories(

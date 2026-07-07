@@ -12,7 +12,11 @@ import { computeSalesRevenueTotal } from '../../../common/utils/salesRevenue';
 import { toNumber } from '../../../common/utils/serializers';
 import { resolveDateWindow } from './date-utils';
 import { loadJobReportContext, type NormalizedJobSale } from './jobSalesData';
-import { loadSalesReportContext } from './salesData';
+import {
+  loadPeriodSalesOnly,
+  type NormalizedSale,
+  type SalesReportContext,
+} from './salesData';
 
 type MovementLine = {
   quantity?: number | string;
@@ -50,35 +54,34 @@ function lineAmount(label: string, key: string, amount: number): ProfitLossLine 
 
 async function stockValuation(
   db: TenantScopedPrisma,
+  tenantId: string,
 ): Promise<{ byPurchase: number; bySale: number; currency: string }> {
-  const [purchaseRow, saleRow, currencyRow] = await Promise.all([
-    db.$queryRaw<[{ val: Prisma.Decimal | null }]>`
-      SELECT COALESCE(SUM(quantity * "costPrice"), 0) AS val
-      FROM "Item"
-      WHERE "deletedAt" IS NULL
-    `,
-    db.$queryRaw<[{ val: Prisma.Decimal | null }]>`
-      SELECT COALESCE(SUM(
-        i.quantity * COALESCE(sp.sell_price, i."costPrice")
-      ), 0) AS val
-      FROM "Item" i
-      LEFT JOIN (
-        SELECT DISTINCT ON (sl."itemId")
-          sl."itemId",
-          sl."unitPrice" AS sell_price
-        FROM "SaleLine" sl
-        INNER JOIN "Sale" s ON s.id = sl."saleId" AND s."deletedAt" IS NULL
-        WHERE sl."itemId" IS NOT NULL
-        ORDER BY sl."itemId", s.date DESC
-      ) sp ON sp."itemId" = i.id
-      WHERE i."deletedAt" IS NULL
-    `,
-    db.item.findFirst({
-      where: { deletedAt: null },
-      select: { currency: true },
-      orderBy: { id: 'asc' },
-    }),
-  ]);
+  const purchaseRow = await db.$queryRaw<[{ val: Prisma.Decimal | null }]>`
+    SELECT COALESCE(SUM(quantity * "costPrice"), 0) AS val
+    FROM "Item"
+    WHERE "deletedAt" IS NULL AND "tenantId" = ${tenantId}
+  `;
+  const saleRow = await db.$queryRaw<[{ val: Prisma.Decimal | null }]>`
+    SELECT COALESCE(SUM(
+      i.quantity * COALESCE(sp.sell_price, i."costPrice")
+    ), 0) AS val
+    FROM "Item" i
+    LEFT JOIN (
+      SELECT DISTINCT ON (sl."itemId")
+        sl."itemId",
+        sl."unitPrice" AS sell_price
+      FROM "SaleLine" sl
+      INNER JOIN "Sale" s ON s.id = sl."saleId" AND s."deletedAt" IS NULL
+      WHERE sl."itemId" IS NOT NULL AND s."tenantId" = ${tenantId}
+      ORDER BY sl."itemId", s.date DESC
+    ) sp ON sp."itemId" = i.id
+    WHERE i."deletedAt" IS NULL AND i."tenantId" = ${tenantId}
+  `;
+  const currencyRow = await db.item.findFirst({
+    where: { deletedAt: null },
+    select: { currency: true },
+    orderBy: { id: 'asc' },
+  });
 
   return {
     byPurchase: toNumber(purchaseRow[0]?.val ?? 0),
@@ -103,21 +106,19 @@ async function totalPayroll(
         }
       : {};
 
-  const [payrollRows, ledgerPayroll] = await Promise.all([
-    db.payroll.aggregate({
-      where: { deletedAt: null, ...payrollMonthFilter },
-      _sum: { netPay: true },
-    }),
-    db.ledgerEntry.aggregate({
-      where: {
-        deletedAt: null,
-        type: 'expense',
-        category: { contains: 'payroll', mode: 'insensitive' },
-        ...dateFilter,
-      },
-      _sum: { amount: true },
-    }),
-  ]);
+  const payrollRows = await db.payroll.aggregate({
+    where: { deletedAt: null, ...payrollMonthFilter },
+    _sum: { netPay: true },
+  });
+  const ledgerPayroll = await db.ledgerEntry.aggregate({
+    where: {
+      deletedAt: null,
+      type: 'expense',
+      category: { contains: 'payroll', mode: 'insensitive' },
+      ...dateFilter,
+    },
+    _sum: { amount: true },
+  });
 
   const fromPayroll = toNumber(payrollRows._sum.netPay ?? 0);
   const fromLedger = toNumber(ledgerPayroll._sum.amount ?? 0);
@@ -245,7 +246,7 @@ function mergeJobIntoBreakdowns(
 }
 
 function buildBreakdowns(
-  ctx: Awaited<ReturnType<typeof loadSalesReportContext>>,
+  ctx: SalesReportContext,
   jobCtx: Awaited<ReturnType<typeof loadJobReportContext>>,
   itemMeta: Map<string, ItemMeta>,
 ): Partial<Record<ProfitLossBreakdownTab, ReportsTable>> {
@@ -498,17 +499,38 @@ function buildBreakdowns(
   };
 }
 
-export async function buildHqProfitLossReport(
+export interface ProfitLossLoadContext {
+  stock: { byPurchase: number; bySale: number; currency: string };
+  ledgerGroups: Array<{
+    type: string;
+    category: string | null;
+    _sum: { amount: Prisma.Decimal | null };
+  }>;
+  salesRevenue: { revenue: number; currency: string };
+  payrollTotal: number;
+  inboundMovements: Array<{ lines: Prisma.JsonValue }>;
+  transferMovements: Array<{ lines: Prisma.JsonValue }>;
+  outboundMovements: Array<{ lines: Prisma.JsonValue }>;
+  saleDiscountTotal: number;
+  returnSalesTotal: number;
+  ctx: SalesReportContext;
+  jobCtx: Awaited<ReturnType<typeof loadJobReportContext>>;
+  itemMeta: Map<string, ItemMeta>;
+  jobTotals: { revenue: number; directCost: number };
+}
+
+/** Load P&L inputs sequentially — avoids pool stampede from parallel reads. */
+export async function loadProfitLossContext(
   db: TenantScopedPrisma,
+  tenantId: string,
   from?: string,
   to?: string,
-): Promise<ProfitLossReport> {
+): Promise<ProfitLossLoadContext> {
   const window = resolveDateWindow(from, to);
   const dateFilter = ledgerDateFilter(from, to);
   const movementDate = { date: { gte: window.from, lte: window.to } };
 
-  // Keep query fan-out low to avoid exhausting Prisma pool on report pages.
-  const stock = await stockValuation(db);
+  const stock = await stockValuation(db, tenantId);
   const ledgerGroups = await db.ledgerEntry.groupBy({
     by: ['type', 'category'],
     where: { deletedAt: null, ...dateFilter },
@@ -542,26 +564,41 @@ export async function buildHqProfitLossReport(
     },
     _sum: { total: true },
   });
-  const ctx = await loadSalesReportContext(db, from, to);
+  const salesCtx = await loadPeriodSalesOnly(db, from, to);
   const jobCtx = await loadJobReportContext(db, from, to);
-  const jobTotals = jobCtx.periodJobs.reduce(
-    (acc, job) => ({
-      revenue: acc.revenue + job.revenue,
-      directCost: acc.directCost + job.directCost,
-    }),
-    { revenue: 0, directCost: 0 },
-  );
-  const items = await db.item.findMany({
-    where: { deletedAt: null },
-    select: {
-      id: true,
-      costPrice: true,
-      category: true,
-      brand: { select: { name: true } },
-    },
-  });
+  const ctx: SalesReportContext = {
+    window: salesCtx.window,
+    prior: salesCtx.window,
+    periodSales: salesCtx.periodSales,
+    priorSales: [],
+    currency: salesCtx.currency,
+  };
 
-  const currency = stock.currency || salesRevenue.currency || 'NGN';
+  const itemIds = new Set<string>();
+  for (const sale of salesCtx.periodSales) {
+    for (const line of sale.lines) {
+      if (line.itemId) itemIds.add(line.itemId);
+    }
+  }
+  for (const job of jobCtx.periodJobs) {
+    for (const material of job.materials) {
+      if (material.itemId) itemIds.add(material.itemId);
+    }
+  }
+
+  const items =
+    itemIds.size > 0
+      ? await db.item.findMany({
+          where: { deletedAt: null, id: { in: [...itemIds] } },
+          select: {
+            id: true,
+            costPrice: true,
+            category: true,
+            brand: { select: { name: true } },
+          },
+        })
+      : [];
+
   const itemMeta = new Map<string, ItemMeta>(
     items.map((item) => [
       item.id,
@@ -572,6 +609,49 @@ export async function buildHqProfitLossReport(
       },
     ]),
   );
+
+  const jobTotals = jobCtx.periodJobs.reduce(
+    (acc, job) => ({
+      revenue: acc.revenue + job.revenue,
+      directCost: acc.directCost + job.directCost,
+    }),
+    { revenue: 0, directCost: 0 },
+  );
+
+  return {
+    stock,
+    ledgerGroups,
+    salesRevenue,
+    payrollTotal,
+    inboundMovements,
+    transferMovements,
+    outboundMovements,
+    saleDiscountTotal: toNumber(saleDiscountAgg._sum.discountAmount ?? 0),
+    returnSalesTotal: toNumber(returnSales._sum.total ?? 0),
+    ctx,
+    jobCtx,
+    itemMeta,
+    jobTotals,
+  };
+}
+
+export function buildProfitLossSummaryFromContext(
+  loaded: ProfitLossLoadContext,
+): ProfitLossSummary {
+  const {
+    stock,
+    ledgerGroups,
+    salesRevenue,
+    payrollTotal,
+    inboundMovements,
+    transferMovements,
+    outboundMovements,
+    saleDiscountTotal,
+    returnSalesTotal,
+    jobTotals,
+  } = loaded;
+
+  const currency = stock.currency || salesRevenue.currency || 'NGN';
 
   let totalExpense = 0;
   for (const group of ledgerGroups) {
@@ -584,8 +664,8 @@ export async function buildHqProfitLossReport(
   const totalPurchase = sumMovementValue(inboundMovements);
   const totalStockAdjustment = 0;
   const totalTransferShipping = sumMovementValue(transferMovements);
-  const totalSellDiscount = toNumber(saleDiscountAgg._sum.discountAmount ?? 0);
-  const totalSellReturn = toNumber(returnSales._sum.total ?? 0);
+  const totalSellDiscount = saleDiscountTotal;
+  const totalSellReturn = returnSalesTotal;
   const totalSales = salesRevenue.revenue + jobTotals.revenue;
 
   const closingStockPurchase = stock.byPurchase;
@@ -660,7 +740,7 @@ export async function buildHqProfitLossReport(
     totalSellDiscount -
     totalSellReturn;
 
-  const summary: ProfitLossSummary = {
+  return {
     currency,
     debits,
     credits,
@@ -668,9 +748,145 @@ export async function buildHqProfitLossReport(
     grossProfit: Math.round(grossProfit * 100) / 100,
     netProfit: Math.round(netProfit * 100) / 100,
   };
+}
 
+export async function buildHqProfitLossSummaryOnly(
+  db: TenantScopedPrisma,
+  tenantId: string,
+  from?: string,
+  to?: string,
+  loaded?: ProfitLossLoadContext,
+): Promise<ProfitLossSummary> {
+  const context = loaded ?? (await loadProfitLossContext(db, tenantId, from, to));
+  return buildProfitLossSummaryFromContext(context);
+}
+
+export async function buildHqProfitLossBreakdownTab(
+  db: TenantScopedPrisma,
+  tenantId: string,
+  from: string | undefined,
+  to: string | undefined,
+  tab: ProfitLossBreakdownTab,
+  loaded?: ProfitLossLoadContext,
+): Promise<ReportsTable> {
+  const context = loaded ?? (await loadProfitLossContext(db, tenantId, from, to));
+  const breakdowns = buildBreakdowns(context.ctx, context.jobCtx, context.itemMeta);
+  const table = breakdowns[tab];
+  return (
+    table ?? {
+      columns: [{ key: 'label', header: '—' }],
+      rows: [],
+    }
+  );
+}
+
+export function buildHqProfitLossFromContext(
+  loaded: ProfitLossLoadContext,
+): ProfitLossReport {
   return {
-    summary,
-    breakdowns: buildBreakdowns(ctx, jobCtx, itemMeta),
+    summary: buildProfitLossSummaryFromContext(loaded),
+    breakdowns: buildBreakdowns(loaded.ctx, loaded.jobCtx, loaded.itemMeta),
+  };
+}
+
+export async function buildHqProfitLossReport(
+  db: TenantScopedPrisma,
+  tenantId: string,
+  from?: string,
+  to?: string,
+): Promise<ProfitLossReport> {
+  const loaded = await loadProfitLossContext(db, tenantId, from, to);
+  return buildHqProfitLossFromContext(loaded);
+}
+
+/** JSON-safe cache shape for ProfitLossLoadContext (Redis / in-memory). */
+export type ProfitLossLoadContextCached = Omit<
+  ProfitLossLoadContext,
+  'itemMeta' | 'ctx' | 'jobCtx'
+> & {
+  itemMeta: Array<[string, ItemMeta]>;
+  ctx: {
+    window: { from: string; to: string };
+    prior: { from: string; to: string };
+    periodSales: Array<Omit<NormalizedSale, 'date'> & { date: string }>;
+    priorSales: [];
+    currency: string;
+  };
+  jobCtx: {
+    window: { from: string; to: string };
+    periodJobs: Array<Omit<NormalizedJobSale, 'date'> & { date: string }>;
+    currency: string;
+  };
+};
+
+export function serializeProfitLossContext(
+  ctx: ProfitLossLoadContext,
+): ProfitLossLoadContextCached {
+  return {
+    ...ctx,
+    itemMeta: [...ctx.itemMeta.entries()],
+    ctx: {
+      window: {
+        from: ctx.ctx.window.from.toISOString(),
+        to: ctx.ctx.window.to.toISOString(),
+      },
+      prior: {
+        from: ctx.ctx.prior.from.toISOString(),
+        to: ctx.ctx.prior.to.toISOString(),
+      },
+      periodSales: ctx.ctx.periodSales.map((sale) => ({
+        ...sale,
+        date: sale.date.toISOString(),
+      })),
+      priorSales: [],
+      currency: ctx.ctx.currency,
+    },
+    jobCtx: {
+      window: {
+        from: ctx.jobCtx.window.from.toISOString(),
+        to: ctx.jobCtx.window.to.toISOString(),
+      },
+      periodJobs: ctx.jobCtx.periodJobs.map((job) => ({
+        ...job,
+        date: job.date.toISOString(),
+      })),
+      currency: ctx.jobCtx.currency,
+    },
+  };
+}
+
+export function deserializeProfitLossContext(
+  cached: ProfitLossLoadContextCached,
+): ProfitLossLoadContext {
+  return {
+    ...cached,
+    itemMeta: new Map(cached.itemMeta),
+    ctx: {
+      window: {
+        from: new Date(cached.ctx.window.from),
+        to: new Date(cached.ctx.window.to),
+      },
+      prior: {
+        from: new Date(cached.ctx.prior.from),
+        to: new Date(cached.ctx.prior.to),
+      },
+      periodSales: cached.ctx.periodSales.map((sale) => ({
+        ...sale,
+        date: new Date(sale.date),
+      })),
+      priorSales: [],
+      currency: cached.ctx.currency,
+    },
+    jobCtx: {
+      window: {
+        from: new Date(cached.jobCtx.window.from),
+        to: new Date(cached.jobCtx.window.to),
+      },
+      periodJobs: cached.jobCtx.periodJobs.map((job) => ({
+        ...job,
+        date: new Date(job.date),
+      })),
+      currency: cached.jobCtx.currency,
+    },
   };
 }

@@ -356,6 +356,7 @@ export function PaymentAccountReportView({ slug }: { slug: PaymentAccountPageSlu
         tenantId: tenantId ?? undefined,
       }),
     enabled: Boolean(tenantId && entry),
+    staleTime: 5 * 60_000,
   });
 
   if (!entry) {

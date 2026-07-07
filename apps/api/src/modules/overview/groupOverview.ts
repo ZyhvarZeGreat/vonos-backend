@@ -277,7 +277,7 @@ async function buildLowStockAlerts(
   return alerts;
 }
 
-const GROUP_CACHE_TTL_S = 45;
+const GROUP_CACHE_TTL_S = 300;
 
 export async function buildGroupOverview(
   prisma: PrismaClient,

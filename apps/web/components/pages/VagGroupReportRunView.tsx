@@ -27,6 +27,7 @@ export function VagGroupReportRunView() {
         to: bounds?.to,
       }),
     enabled: Boolean(entry?.groupRollup),
+    staleTime: 5 * 60_000,
   });
 
   if (!entry) {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ReportRowAction } from "@vonos/types";
@@ -44,23 +44,53 @@ export function ReportRunView({ slug }: ReportRunViewProps) {
   const [expiryEdit, setExpiryEdit] = useState<ExpiryEditPayload | null>(null);
   const [fixStock, setFixStock] = useState<FixStockPayload | null>(null);
 
-  const queryKey = ["report-run", tenantId, entry?.id, bounds?.from ?? "all", bounds?.to ?? "all"];
+  const isProfitLoss = entry?.id === "profit-loss";
+  const reportStaleMs = 5 * 60_000;
+  const periodKey = [bounds?.from ?? "all", bounds?.to ?? "all"] as const;
 
-  const { data, isLoading, error } = useQuery({
-    queryKey,
+  const plCoreQuery = useQuery({
+    queryKey: ["report-run", tenantId, entry?.id, "pl-core", ...periodKey],
     queryFn: async () => {
       if (!tenantId || !entry) return null;
       return runReport({
         reportId: entry.id,
         from: bounds?.from,
         to: bounds?.to,
+        tenantId,
+        mode: "pl-core",
       });
     },
-    enabled: Boolean(tenantId && entry),
+    enabled: Boolean(tenantId && entry && isProfitLoss),
+    staleTime: reportStaleMs,
   });
 
+  const fullQuery = useQuery({
+    queryKey: ["report-run", tenantId, entry?.id, "full", ...periodKey],
+    queryFn: async () => {
+      if (!tenantId || !entry) return null;
+      return runReport({
+        reportId: entry.id,
+        from: bounds?.from,
+        to: bounds?.to,
+        tenantId,
+        mode: "full",
+      });
+    },
+    enabled: Boolean(tenantId && entry && !isProfitLoss),
+    staleTime: reportStaleMs,
+  });
+
+  const data = useMemo(() => {
+    if (isProfitLoss) return plCoreQuery.data ?? null;
+    return fullQuery.data ?? null;
+  }, [isProfitLoss, plCoreQuery.data, fullQuery.data]);
+
+  const isLoading = isProfitLoss ? plCoreQuery.isLoading : fullQuery.isLoading;
+  const error = isProfitLoss ? plCoreQuery.error : fullQuery.error;
+  const summaryLoading = false;
+
   const invalidateReport = () => {
-    void queryClient.invalidateQueries({ queryKey });
+    void queryClient.invalidateQueries({ queryKey: ["report-run", tenantId, entry?.id] });
   };
 
   const fixStockMutation = useMutation({
@@ -203,6 +233,10 @@ export function ReportRunView({ slug }: ReportRunViewProps) {
             title={entry.label}
             subtitle={periodLabel}
             data={data}
+            tenantId={tenantId ?? undefined}
+            from={bounds?.from}
+            to={bounds?.to}
+            summaryLoading={summaryLoading}
             onRowClick={
               tenantCode
                 ? (row) => {

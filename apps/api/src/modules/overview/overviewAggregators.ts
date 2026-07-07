@@ -17,8 +17,6 @@ import {
 } from '../reports/aggregators/salesReportQueries';
 import { computeDelta, resolveDateWindow, asChartData } from '../reports/aggregators/date-utils';
 import { buildLedgerFinanceSlice } from './overviewFinance';
-import { buildOverviewPanels } from './overviewPanels';
-
 const JOB_STATUS_COLORS: Record<string, string> = {
   Received: '#94a3b8',
   Quoted: '#64748b',
@@ -176,7 +174,7 @@ export async function buildStockOverview(
     })),
     financeKpis: finance.financeKpis,
     financeCharts: finance.financeCharts,
-    panels: await buildOverviewPanels(db, tenantId),
+    panels: [],
     table: isKidsWear ? null : table,
     rankedList: null,
     jobStatusPie: null,
@@ -363,7 +361,7 @@ export async function buildTransactionOverview(
         : sales.charts,
     financeKpis,
     financeCharts,
-    panels: await buildOverviewPanels(db, tenantId),
+    panels: [],
     table: null,
     rankedList: isRetailCatalog ? rankedList : null,
     jobStatusPie: null,
@@ -583,7 +581,7 @@ export async function buildJobOverview(
     ],
     financeKpis: finance.financeKpis,
     financeCharts: finance.financeCharts,
-    panels: await buildOverviewPanels(db, tenantId),
+    panels: [],
     table,
     rankedList: null,
     jobStatusPie,
@@ -703,7 +701,7 @@ export async function buildAppointmentOverview(
     charts: stylist.charts,
     financeKpis: finance.financeKpis,
     financeCharts: finance.financeCharts,
-    panels: await buildOverviewPanels(db, tenantId),
+    panels: [],
     table,
     rankedList: null,
     jobStatusPie: null,

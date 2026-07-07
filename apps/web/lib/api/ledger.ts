@@ -211,6 +211,43 @@ export async function getGroupLedgerByEntity(
   return response.json();
 }
 
+export interface LedgerCharts {
+  plTrend: Array<{ label: string; revenue: number; costs: number }>;
+  revenueByCategory: Array<{ label: string; value: number }>;
+}
+
+export async function getLedgerCharts(
+  tenantId: string,
+  from?: string,
+  to?: string,
+): Promise<LedgerCharts> {
+  const params = new URLSearchParams();
+  if (from) params.set("from", from);
+  if (to) params.set("to", to);
+  const qs = params.toString();
+  const path = withTenantQuery(
+    qs ? `/ledger/charts?${qs}` : "/ledger/charts",
+    tenantId,
+  );
+  const response = await apiFetch(path);
+  if (!response.ok) throw new Error("Failed to fetch ledger charts");
+  return response.json();
+}
+
+export async function getGroupLedgerCharts(
+  from?: string,
+  to?: string,
+): Promise<LedgerCharts> {
+  const params = new URLSearchParams();
+  if (from) params.set("from", from);
+  if (to) params.set("to", to);
+  const qs = params.toString();
+  const path = qs ? `/ledger/group/charts?${qs}` : "/ledger/group/charts";
+  const response = await apiFetch(path);
+  if (!response.ok) throw new Error("Failed to fetch group ledger charts");
+  return response.json();
+}
+
 export async function createManualExpense(
   tenantId: string,
   body: CreateManualExpenseRequest,

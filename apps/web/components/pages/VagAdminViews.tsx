@@ -37,6 +37,7 @@ export function VagGroupOverview() {
         from: bounds?.from,
         to: bounds?.to,
       }),
+    staleTime: 5 * 60_000,
   });
 
   const dashboard = query.data;

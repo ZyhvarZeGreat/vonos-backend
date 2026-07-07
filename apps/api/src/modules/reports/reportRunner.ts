@@ -60,7 +60,7 @@ export async function runReportForTenant(
   switch (source.kind) {
     case 'ledger':
       return source.handler === 'pl'
-        ? buildProfitLossReport(db, from, to)
+        ? buildProfitLossReport(db, tenantId, from, to)
         : buildExpenseReport(db, from, to);
     case 'payment-accounts': {
       const handler = source.handler;

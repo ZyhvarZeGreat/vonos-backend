@@ -1,103 +1,96 @@
-import type { ReportsDashboard } from '@vonos/types';
+import type {
+  ProfitLossBreakdownTab,
+  ReportsDashboard,
+  ReportsTable,
+} from '@vonos/types';
 import type { TenantScopedPrisma } from '../../../common/prisma/prisma.service';
-import {
-  buildLedgerSummaryFromGroups,
-  ledgerDateFilter,
-} from '../../../common/utils/ledgerAggregates';
+import { buildLedgerSummaryFromGroups, ledgerDateFilter } from '../../../common/utils/ledgerAggregates';
 import { computeOutstandingReceivables } from '../../../common/utils/outstandingReceivables';
 import { computeSalesRevenueTotal } from '../../../common/utils/salesRevenue';
 import { toNumber } from '../../../common/utils/serializers';
-import {
-  bucketKey,
-  bucketLabel,
-  computeDelta,
-  resolveDateWindow,
-} from './date-utils';
-import { loadSalesReportContext } from './salesData';
+import { computeDelta, resolveDateWindow } from './date-utils';
 import { computeJobRevenueTotal } from './jobSalesData';
-import { buildHqProfitLossReport } from './profitLossQueries';
+import {
+  ledgerCurrency,
+  ledgerPlTrend,
+  ledgerSummaryInWindow,
+} from './ledgerReportQueries';
+import {
+  buildHqProfitLossBreakdownTab,
+  buildHqProfitLossFromContext,
+  buildHqProfitLossSummaryOnly,
+  buildProfitLossSummaryFromContext,
+  loadProfitLossContext,
+  type ProfitLossLoadContext,
+} from './profitLossQueries';
 
-export async function buildProfitLossReport(
+function priorWindow(window: { from: Date; to: Date }) {
+  const spanMs = window.to.getTime() - window.from.getTime();
+  return {
+    from: new Date(window.from.getTime() - spanMs),
+    to: new Date(window.from.getTime()),
+  };
+}
+
+async function assembleProfitLossShell(
   db: TenantScopedPrisma,
+  tenantId: string,
   from?: string,
   to?: string,
-): Promise<ReportsDashboard> {
-  const dateFilter = ledgerDateFilter(from, to);
+  loaded?: ProfitLossLoadContext,
+): Promise<Omit<ReportsDashboard, 'profitLoss'>> {
   const window = resolveDateWindow(from, to);
+  const prior = priorWindow(window);
 
-  const [groups, currencyRow, ledgerRows, outstanding, priorGroups] =
-    await Promise.all([
-      db.ledgerEntry.groupBy({
-        by: ['type', 'category'],
-        where: { deletedAt: null, ...dateFilter },
-        _sum: { amount: true },
-      }),
-      db.ledgerEntry.findFirst({
-        where: { deletedAt: null, ...dateFilter },
-        select: { currency: true },
-        orderBy: { date: 'desc' },
-      }),
-      db.ledgerEntry.findMany({
-        where: { deletedAt: null, ...dateFilter },
-        select: { type: true, amount: true, date: true, category: true },
-      }),
-      computeOutstandingReceivables(db, from, to),
-      db.ledgerEntry.groupBy({
-        by: ['type'],
-        where: {
-          deletedAt: null,
-          date: {
-            gte: new Date(
-              window.from.getTime() -
-                (window.to.getTime() - window.from.getTime()),
-            ),
-            lt: window.from,
-          },
-        },
-        _sum: { amount: true },
-      }),
-    ]);
+  const groups =
+    loaded?.ledgerGroups ??
+    (await db.ledgerEntry.groupBy({
+      by: ['type', 'category'],
+      where: {
+        deletedAt: null,
+        date: { gte: window.from, lte: window.to },
+      },
+      _sum: { amount: true },
+    }));
+
+  const currency =
+    loaded?.salesRevenue.currency ??
+    (await ledgerCurrency(db, tenantId));
+
+  const outstanding = await computeOutstandingReceivables(db, from, to);
+  const priorLedger = await ledgerSummaryInWindow(
+    db,
+    tenantId,
+    prior.from,
+    prior.to,
+  );
+  const trendRows = await ledgerPlTrend(db, tenantId, window);
 
   const summary = buildLedgerSummaryFromGroups(
     groups.map((g) => ({
-      type: g.type,
+      type: g.type as 'revenue' | 'cost' | 'expense',
       _sum: { amount: g._sum.amount },
     })),
-    currencyRow?.currency ?? 'NGN',
+    currency,
   );
   summary.outstanding = outstanding;
   summary.net = summary.revenue - summary.costs;
 
-  const priorRevenue = priorGroups
-    .filter((g) => g.type === 'revenue')
-    .reduce((sum, g) => sum + toNumber(g._sum.amount ?? 0), 0);
-  const priorCosts = priorGroups
-    .filter((g) => g.type !== 'revenue')
-    .reduce((sum, g) => sum + toNumber(g._sum.amount ?? 0), 0);
-
-  const spanDays =
-    (window.to.getTime() - window.from.getTime()) / (24 * 60 * 60 * 1000);
-  const trendBuckets = new Map<
-    string,
-    { label: string; revenue: number; costs: number }
-  >();
-
-  for (const row of ledgerRows) {
-    const key = bucketKey(row.date, spanDays);
-    const label = bucketLabel(row.date, spanDays);
-    const bucket = trendBuckets.get(key) ?? { label, revenue: 0, costs: 0 };
-    const amount = toNumber(row.amount);
-    if (row.type === 'revenue') bucket.revenue += amount;
-    else bucket.costs += amount;
-    trendBuckets.set(key, bucket);
-  }
-
   let revenueByCategory = new Map<string, number>();
   for (const group of groups.filter((g) => g.type === 'revenue')) {
-    revenueByCategory.set(group.category, toNumber(group._sum.amount ?? 0));
+    revenueByCategory.set(
+      group.category ?? 'Other',
+      toNumber(group._sum.amount ?? 0),
+    );
   }
 
-  // VISP fallback: revenue from sale totals when ledger rows were not backfilled
+  let trendData = trendRows.map((row) => ({
+    label: row.label,
+    revenue: Math.round(row.revenue),
+    costs: Math.round(row.costs),
+    net: Math.round(row.revenue - row.costs),
+  }));
+
   if (summary.revenue === 0) {
     const salesRevenue = await computeSalesRevenueTotal(db, from, to);
     const jobRevenue = await computeJobRevenueTotal(db, from, to);
@@ -107,31 +100,13 @@ export async function buildProfitLossReport(
       summary.currency = salesRevenue.currency;
       summary.net = combinedRevenue - summary.costs;
       revenueByCategory = new Map([
-        ...(salesRevenue.revenue > 0 ? [['Sales', salesRevenue.revenue] as const] : []),
+        ...(salesRevenue.revenue > 0
+          ? [['Sales', salesRevenue.revenue] as const]
+          : []),
         ...(jobRevenue.revenue > 0 ? [['Jobs', jobRevenue.revenue] as const] : []),
       ]);
-
-      const ctx = await loadSalesReportContext(db, from, to);
-      for (const sale of ctx.periodSales) {
-        const key = bucketKey(sale.date, spanDays);
-        const label = bucketLabel(sale.date, spanDays);
-        const bucket = trendBuckets.get(key) ?? { label, revenue: 0, costs: 0 };
-        bucket.revenue += sale.total;
-        trendBuckets.set(key, bucket);
-      }
     }
   }
-
-  const trendData = Array.from(trendBuckets.values())
-    .sort((a, b) => a.label.localeCompare(b.label))
-    .map((row) => ({
-      label: row.label,
-      revenue: Math.round(row.revenue),
-      costs: Math.round(row.costs),
-      net: Math.round(row.revenue - row.costs),
-    }));
-
-  const profitLoss = await buildHqProfitLossReport(db, from, to);
 
   return {
     kpis: [
@@ -142,7 +117,7 @@ export async function buildProfitLossReport(
         color: '#059669',
         value: summary.revenue,
         currency: summary.currency,
-        ...computeDelta(summary.revenue, priorRevenue),
+        ...computeDelta(summary.revenue, priorLedger.revenue),
       },
       {
         label: 'Costs',
@@ -151,7 +126,7 @@ export async function buildProfitLossReport(
         color: '#2563eb',
         value: summary.costs,
         currency: summary.currency,
-        ...computeDelta(summary.costs, priorCosts),
+        ...computeDelta(summary.costs, priorLedger.costs),
       },
       {
         label: 'Net',
@@ -160,7 +135,7 @@ export async function buildProfitLossReport(
         color: '#9333ea',
         value: summary.net,
         currency: summary.currency,
-        ...computeDelta(summary.net, priorRevenue - priorCosts),
+        ...computeDelta(summary.net, priorLedger.net),
       },
       {
         label: 'Outstanding',
@@ -204,14 +179,109 @@ export async function buildProfitLossReport(
         { key: 'amount', header: 'Amount' },
       ],
       rows: groups.map((g) => ({
-        category: g.category,
+        category: g.category ?? 'Other',
         type: g.type,
         amount: toNumber(g._sum.amount ?? 0),
         currency: summary.currency,
       })),
     },
-    profitLoss,
   };
+}
+
+/** KPIs + charts + ledger table only — fast first paint. */
+export async function buildProfitLossShell(
+  db: TenantScopedPrisma,
+  tenantId: string,
+  from?: string,
+  to?: string,
+): Promise<ReportsDashboard> {
+  return assembleProfitLossShell(db, tenantId, from, to);
+}
+
+/** Shell + HQ P&L summary in one context load — preferred initial request. */
+export async function buildProfitLossCore(
+  db: TenantScopedPrisma,
+  tenantId: string,
+  from?: string,
+  to?: string,
+  loaded?: ProfitLossLoadContext,
+): Promise<ReportsDashboard> {
+  const context =
+    loaded ?? (await loadProfitLossContext(db, tenantId, from, to));
+  const shell = await assembleProfitLossShell(
+    db,
+    tenantId,
+    from,
+    to,
+    context,
+  );
+  return {
+    ...shell,
+    profitLoss: {
+      summary: buildProfitLossSummaryFromContext(context),
+      breakdowns: {},
+    },
+  };
+}
+
+/** HQ6 debit/credit summary block — loaded after shell. */
+export async function buildProfitLossSummarySection(
+  db: TenantScopedPrisma,
+  tenantId: string,
+  from?: string,
+  to?: string,
+  loaded?: ProfitLossLoadContext,
+): Promise<ReportsDashboard> {
+  const summary = await buildHqProfitLossSummaryOnly(
+    db,
+    tenantId,
+    from,
+    to,
+    loaded,
+  );
+  return {
+    kpis: [],
+    charts: [],
+    profitLoss: { summary, breakdowns: {} },
+  };
+}
+
+/** Single breakdown tab — loaded on demand when user picks a tab. */
+export async function buildProfitLossBreakdownSection(
+  db: TenantScopedPrisma,
+  tenantId: string,
+  tab: ProfitLossBreakdownTab,
+  from?: string,
+  to?: string,
+  loaded?: ProfitLossLoadContext,
+): Promise<{ breakdown: ReportsTable; tab: ProfitLossBreakdownTab }> {
+  const breakdown = await buildHqProfitLossBreakdownTab(
+    db,
+    tenantId,
+    from,
+    to,
+    tab,
+    loaded,
+  );
+  return { breakdown, tab };
+}
+
+/** Full report (shell + summary + all breakdowns) — export / legacy. */
+export async function buildProfitLossReport(
+  db: TenantScopedPrisma,
+  tenantId: string,
+  from?: string,
+  to?: string,
+): Promise<ReportsDashboard> {
+  const loaded = await loadProfitLossContext(db, tenantId, from, to);
+  const shell = await assembleProfitLossShell(
+    db,
+    tenantId,
+    from,
+    to,
+    loaded,
+  );
+  return { ...shell, profitLoss: buildHqProfitLossFromContext(loaded) };
 }
 
 export async function buildExpenseReport(
@@ -221,32 +291,30 @@ export async function buildExpenseReport(
 ): Promise<ReportsDashboard> {
   const dateFilter = ledgerDateFilter(from, to);
 
-  const [expenseGroups, currencyRow, expenseRows] = await Promise.all([
-    db.ledgerEntry.groupBy({
-      by: ['category'],
-      where: { deletedAt: null, type: 'expense', ...dateFilter },
-      _sum: { amount: true },
-      orderBy: { category: 'asc' },
-    }),
-    db.ledgerEntry.findFirst({
-      where: { deletedAt: null, type: 'expense', ...dateFilter },
-      select: { currency: true },
-      orderBy: { date: 'desc' },
-    }),
-    db.ledgerEntry.findMany({
-      where: { deletedAt: null, type: 'expense', ...dateFilter },
-      select: {
-        id: true,
-        category: true,
-        description: true,
-        amount: true,
-        currency: true,
-        date: true,
-      },
-      orderBy: { date: 'desc' },
-      take: 200,
-    }),
-  ]);
+  const expenseGroups = await db.ledgerEntry.groupBy({
+    by: ['category'],
+    where: { deletedAt: null, type: 'expense', ...dateFilter },
+    _sum: { amount: true },
+    orderBy: { category: 'asc' },
+  });
+  const currencyRow = await db.ledgerEntry.findFirst({
+    where: { deletedAt: null, type: 'expense', ...dateFilter },
+    select: { currency: true },
+    orderBy: { date: 'desc' },
+  });
+  const expenseRows = await db.ledgerEntry.findMany({
+    where: { deletedAt: null, type: 'expense', ...dateFilter },
+    select: {
+      id: true,
+      category: true,
+      description: true,
+      amount: true,
+      currency: true,
+      date: true,
+    },
+    orderBy: { date: 'desc' },
+    take: 200,
+  });
 
   const currency = currencyRow?.currency ?? expenseRows[0]?.currency ?? 'NGN';
   const totalExpenses = expenseGroups.reduce(

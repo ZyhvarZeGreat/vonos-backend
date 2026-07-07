@@ -5,6 +5,7 @@ import type {
   LedgerListRow,
   LedgerSummary,
 } from '@vonos/types';
+import { AUTOS_GROUP_CODES } from '@vonos/types';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { TenantDbService } from '../../common/prisma/tenant-db.service';
 import { AuditService } from '../audit/audit.service';
@@ -22,6 +23,13 @@ import {
   buildGroupLedgerList,
   buildGroupLedgerSummary,
 } from './groupLedger';
+import {
+  buildGroupLedgerCharts,
+  buildTenantLedgerCharts,
+} from './ledgerCharts';
+import { CacheService } from '../../common/cache/cache.service';
+
+const LEDGER_CACHE_TTL_S = 300;
 
 @Injectable()
 export class LedgerService {
@@ -29,6 +37,7 @@ export class LedgerService {
     private readonly tenantDb: TenantDbService,
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
+    private readonly cache: CacheService,
   ) {}
 
   async list(filters: {
@@ -95,6 +104,10 @@ export class LedgerService {
 
   async summary(from?: string, to?: string): Promise<LedgerSummary> {
     const tenantId = this.tenantDb.requireTenantId();
+    const cacheKey = `ledger-summary:${tenantId}:${from ?? ''}:${to ?? ''}`;
+    const cached = await this.cache.get<LedgerSummary>(cacheKey);
+    if (cached) return cached;
+
     const dateFilter = ledgerDateFilter(from, to);
 
     const [groups, currencyRow, outstanding] = await Promise.all([
@@ -135,7 +148,24 @@ export class LedgerService {
       summary.net = summary.revenue - summary.costs;
     }
 
+    await this.cache.set(cacheKey, summary, LEDGER_CACHE_TTL_S);
     return summary;
+  }
+
+  async charts(from?: string, to?: string) {
+    const tenantId = this.tenantDb.requireTenantId();
+    const cacheKey = `ledger-charts:${tenantId}:${from ?? ''}:${to ?? ''}`;
+    const cached = await this.cache.get<Awaited<ReturnType<typeof buildTenantLedgerCharts>>>(cacheKey);
+    if (cached) return cached;
+
+    const result = await buildTenantLedgerCharts(
+      this.tenantDb.db,
+      tenantId,
+      from,
+      to,
+    );
+    await this.cache.set(cacheKey, result, LEDGER_CACHE_TTL_S);
+    return result;
   }
 
   async categories(from?: string, to?: string): Promise<string[]> {
@@ -210,10 +240,53 @@ export class LedgerService {
   }
 
   groupSummary(from?: string, to?: string): Promise<LedgerSummary> {
-    return buildGroupLedgerSummary(this.prisma, from, to);
+    return this.cachedGroupSummary(from, to);
   }
 
   groupByEntity(from?: string, to?: string) {
-    return buildGroupLedgerByEntity(this.prisma, from, to);
+    return this.cachedGroupByEntity(from, to);
+  }
+
+  async groupCharts(from?: string, to?: string) {
+    const cacheKey = `ledger-group-charts:${from ?? ''}:${to ?? ''}`;
+    const cached = await this.cache.get<Awaited<ReturnType<typeof buildGroupLedgerCharts>>>(cacheKey);
+    if (cached) return cached;
+
+    const tenants = await this.prisma.tenant.findMany({
+      where: {
+        code: { in: [...AUTOS_GROUP_CODES] },
+        deletedAt: null,
+      },
+      select: { id: true },
+    });
+    const result = await buildGroupLedgerCharts(
+      this.prisma,
+      tenants.map((t) => t.id),
+      from,
+      to,
+    );
+    await this.cache.set(cacheKey, result, LEDGER_CACHE_TTL_S);
+    return result;
+  }
+
+  private async cachedGroupSummary(
+    from?: string,
+    to?: string,
+  ): Promise<LedgerSummary> {
+    const cacheKey = `ledger-group-summary:${from ?? ''}:${to ?? ''}`;
+    const cached = await this.cache.get<LedgerSummary>(cacheKey);
+    if (cached) return cached;
+    const result = await buildGroupLedgerSummary(this.prisma, from, to);
+    await this.cache.set(cacheKey, result, LEDGER_CACHE_TTL_S);
+    return result;
+  }
+
+  private async cachedGroupByEntity(from?: string, to?: string) {
+    const cacheKey = `ledger-group-by-entity:${from ?? ''}:${to ?? ''}`;
+    const cached = await this.cache.get<Awaited<ReturnType<typeof buildGroupLedgerByEntity>>>(cacheKey);
+    if (cached) return cached;
+    const result = await buildGroupLedgerByEntity(this.prisma, from, to);
+    await this.cache.set(cacheKey, result, LEDGER_CACHE_TTL_S);
+    return result;
   }
 }

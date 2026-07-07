@@ -6,6 +6,8 @@ import type {
   ProfitLossReport,
   ReportsTable,
 } from "@vonos/types";
+import { useQuery } from "@tanstack/react-query";
+import { runReport, type ReportRunMode } from "@/lib/api/reports";
 import { formatCurrency } from "@/lib/utils/formatCurrency";
 import { cn } from "@/lib/utils/cn";
 
@@ -100,15 +102,44 @@ function BreakdownTable({
 
 export function ProfitLossReportPanel({
   report,
+  tenantId,
+  from,
+  to,
+  summaryLoading = false,
   onPrint,
 }: {
   report: ProfitLossReport;
+  tenantId?: string;
+  from?: string;
+  to?: string;
+  summaryLoading?: boolean;
   onPrint?: () => void;
 }) {
-  const [activeTab, setActiveTab] = useState<ProfitLossBreakdownTab>("date");
+  const [activeTab, setActiveTab] = useState<ProfitLossBreakdownTab | null>(null);
   const { summary, breakdowns } = report;
   const currency = summary.currency;
-  const activeTable = breakdowns[activeTab];
+
+  const breakdownQuery = useQuery({
+    queryKey: ["report-pl-breakdown", tenantId, from ?? "all", to ?? "all", activeTab],
+    queryFn: async () => {
+      if (!tenantId || !activeTab) return null;
+      const data = await runReport({
+        reportId: "profit-loss",
+        from,
+        to,
+        tenantId,
+        mode: "pl-breakdown" as ReportRunMode,
+        breakdownTab: activeTab,
+      });
+      return data.profitLoss?.breakdowns?.[activeTab] ?? null;
+    },
+    enabled: Boolean(tenantId && activeTab),
+    staleTime: 5 * 60_000,
+  });
+
+  const activeTable =
+    (activeTab ? breakdowns[activeTab] : undefined) ?? breakdownQuery.data ?? undefined;
+  const breakdownLoading = Boolean(activeTab) && breakdownQuery.isLoading && !activeTable;
 
   return (
     <div className="space-y-6" data-print-root>
@@ -124,15 +155,32 @@ export function ProfitLossReportPanel({
         </div>
       ) : null}
       <div className="grid gap-4 lg:grid-cols-2">
-        <div className="rounded-xl border border-border bg-card p-4 shadow-card">
-          <LineList lines={summary.debits} currency={currency} />
-        </div>
-        <div className="rounded-xl border border-border bg-card p-4 shadow-card">
-          <LineList lines={summary.credits} currency={currency} />
-        </div>
+        {summaryLoading ? (
+          <>
+            <div className="h-48 animate-pulse rounded-xl border border-border bg-card" />
+            <div className="h-48 animate-pulse rounded-xl border border-border bg-card" />
+          </>
+        ) : (
+          <>
+            <div className="rounded-xl border border-border bg-card p-4 shadow-card">
+              <LineList lines={summary.debits} currency={currency} />
+            </div>
+            <div className="rounded-xl border border-border bg-card p-4 shadow-card">
+              <LineList lines={summary.credits} currency={currency} />
+            </div>
+          </>
+        )}
       </div>
 
       <div className="grid gap-3 sm:grid-cols-3">
+        {summaryLoading ? (
+          <>
+            <div className="h-20 animate-pulse rounded-xl border border-border bg-card" />
+            <div className="h-20 animate-pulse rounded-xl border border-border bg-card" />
+            <div className="h-20 animate-pulse rounded-xl border border-border bg-card" />
+          </>
+        ) : (
+          <>
         <div className="rounded-xl border border-border bg-card px-4 py-3 shadow-card">
           <p className="text-xs font-semibold uppercase tracking-wide text-muted">COGS</p>
           <p className="mt-1 text-lg font-semibold tabular-nums text-foreground">
@@ -156,6 +204,8 @@ export function ProfitLossReportPanel({
             {formatCurrency(summary.netProfit, currency)}
           </p>
         </div>
+          </>
+        )}
       </div>
 
       <div className="overflow-x-auto">
@@ -178,10 +228,14 @@ export function ProfitLossReportPanel({
         </div>
       </div>
 
-      {activeTable ? (
+      {breakdownLoading ? (
+        <div className="h-64 animate-pulse rounded-xl border border-border bg-card" />
+      ) : activeTab && activeTable ? (
         <BreakdownTable table={activeTable} currency={currency} />
       ) : (
-        <p className="text-sm text-muted">No breakdown available.</p>
+        <p className="text-sm text-muted">
+          Select a breakdown tab above to load detail.
+        </p>
       )}
     </div>
   );

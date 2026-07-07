@@ -1,5 +1,7 @@
-import type { ReportsDashboard } from "@vonos/types";
+import type { ProfitLossBreakdownTab, ReportsDashboard } from "@vonos/types";
 import { apiFetch, withTenantQuery } from "@/lib/api/client";
+
+export type ReportRunMode = "shell" | "pl-core" | "pl-summary" | "pl-breakdown" | "full";
 
 export async function getReportsDashboard(params: {
   tab: string;
@@ -37,10 +39,14 @@ export async function runReport(params: {
   from?: string;
   to?: string;
   tenantId?: string;
+  mode?: ReportRunMode;
+  breakdownTab?: ProfitLossBreakdownTab;
 }): Promise<ReportsDashboard> {
   const search = new URLSearchParams({ reportId: params.reportId });
   if (params.from) search.set("from", params.from);
   if (params.to) search.set("to", params.to);
+  if (params.mode) search.set("mode", params.mode);
+  if (params.breakdownTab) search.set("breakdownTab", params.breakdownTab);
   const path = withTenantQuery(`/reports/run?${search.toString()}`, params.tenantId);
   const response = await apiFetch(path);
   if (!response.ok) throw new Error("Failed to run report");

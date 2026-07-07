@@ -147,10 +147,8 @@ export async function buildOverviewPanels(
   db: TenantScopedPrisma,
   tenantId: string,
 ): Promise<OverviewPanel[]> {
-  const [stockAlert, purchaseDues, salesDues] = await Promise.all([
-    buildStockAlertPanel(db, tenantId),
-    buildPurchasePaymentDuesPanel(db, tenantId),
-    buildSalesPaymentDuesPanel(db, tenantId),
-  ]);
+  const stockAlert = await buildStockAlertPanel(db, tenantId);
+  const purchaseDues = await buildPurchasePaymentDuesPanel(db, tenantId);
+  const salesDues = await buildSalesPaymentDuesPanel(db, tenantId);
   return [stockAlert, purchaseDues, salesDues];
 }

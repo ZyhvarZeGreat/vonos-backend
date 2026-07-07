@@ -370,6 +370,7 @@ export function ReportsView({ tenantCode }: { tenantCode: TenantCode }) {
         from: bounds?.from,
         to: bounds?.to,
       }),
+    staleTime: 5 * 60_000,
   });
 
   return (
@@ -421,6 +422,7 @@ export function VagGroupReportsView() {
         from: bounds?.from,
         to: bounds?.to,
       }),
+    staleTime: 5 * 60_000,
   });
 
   return (

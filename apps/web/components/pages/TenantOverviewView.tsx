@@ -93,6 +93,7 @@ function EntityOverviewView({ tenantCode }: OverviewProps) {
         to: bounds?.to,
       }),
     enabled: Boolean(tenantId),
+    staleTime: 5 * 60_000,
   });
 
   const pendingOrders =

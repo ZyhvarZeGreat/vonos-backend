@@ -20,22 +20,24 @@ import {
   getAllGroupLedgerEntries,
   getGroupLedgerByEntity,
   getGroupLedgerCategories,
+  getGroupLedgerCharts,
   getGroupLedgerSummary,
   getLedgerCategories,
+  getLedgerCharts,
   getLedgerSummary,
 } from "@/lib/api/ledger";
 import { useRouteTenant } from "@/lib/hooks/useRouteTenant";
 import { formatCurrency, formatCurrencyCompact } from "@/lib/utils/formatCurrency";
 import {
-  ledgerCategoryBreakdown,
   ledgerChartSubtitle,
-  ledgerPlTrend,
 } from "@/lib/utils/ledgerCharts";
-import { dateRangePresetToBounds, isWithinDateRange } from "@/lib/utils/dateRange";
+import { dateRangePresetToBounds } from "@/lib/utils/dateRange";
 import { DateRangeDropdown } from "@/components/molecules/DateRangeDropdown";
 import { recordDetailPath } from "@/lib/utils/recordDetailPath";
 import { useUiStore, type DateRangePreset } from "@/stores/uiStore";
 import type { CsvExportPayload } from "@/lib/utils/exportCsv";
+
+const FINANCE_STALE_MS = 5 * 60_000;
 
 const FINANCE_TABS = [
   { id: "overview", label: "Overview" },
@@ -182,24 +184,27 @@ export function FinanceView({ groupMode = false }: FinanceViewProps) {
       groupMode
         ? getGroupLedgerSummary(bounds?.from, bounds?.to)
         : getLedgerSummary(tenantId!, bounds?.from, bounds?.to),
-    enabled: groupMode || Boolean(tenantId),
+    enabled: (groupMode || Boolean(tenantId)) && activeTab === "overview",
+    staleTime: FINANCE_STALE_MS,
   });
 
   const chartsEnabled =
     (groupMode || Boolean(tenantId)) &&
     (activeTab === "overview" || activeTab === "analysis");
 
-  const chartEntriesQuery = useQuery({
-    queryKey: ["ledgerChartEntries", groupMode ? "group" : tenantId, bounds?.from, bounds?.to],
+  const chartsQuery = useQuery({
+    queryKey: ["ledgerCharts", groupMode ? "group" : tenantId, bounds?.from, bounds?.to],
     queryFn: () =>
       groupMode
-        ? getAllGroupLedgerEntries(bounds ? { from: bounds.from, to: bounds.to } : undefined)
-        : getAllLedgerEntries(
-            tenantId!,
-            bounds ? { from: bounds.from, to: bounds.to } : undefined,
-          ),
+        ? getGroupLedgerCharts(bounds?.from, bounds?.to)
+        : getLedgerCharts(tenantId!, bounds?.from, bounds?.to),
     enabled: chartsEnabled,
+    staleTime: FINANCE_STALE_MS,
   });
+
+  const categoriesEnabled =
+    (groupMode || Boolean(tenantId)) &&
+    (activeTab === "ledger" || activeTab === "expenses");
 
   const categoriesQuery = useQuery({
     queryKey: ["ledgerCategories", groupMode ? "group" : tenantId, bounds?.from, bounds?.to],
@@ -207,13 +212,15 @@ export function FinanceView({ groupMode = false }: FinanceViewProps) {
       groupMode
         ? getGroupLedgerCategories(bounds?.from, bounds?.to)
         : getLedgerCategories(tenantId!, bounds?.from, bounds?.to),
-    enabled: groupMode || Boolean(tenantId),
+    enabled: categoriesEnabled,
+    staleTime: FINANCE_STALE_MS,
   });
 
   const entitySummaryQuery = useQuery({
     queryKey: ["ledgerByEntity", bounds?.from, bounds?.to],
     queryFn: () => getGroupLedgerByEntity(bounds?.from, bounds?.to),
-    enabled: groupMode,
+    enabled: groupMode && activeTab === "overview",
+    staleTime: FINANCE_STALE_MS,
   });
 
   const entityRows = useMemo(
@@ -226,34 +233,19 @@ export function FinanceView({ groupMode = false }: FinanceViewProps) {
   );
 
   const summary = groupMode || tenantId ? summaryQuery.data : undefined;
-  const chartEntries = useMemo(
-    () => chartEntriesQuery.data ?? [],
-    [chartEntriesQuery.data],
-  );
 
   const categories = useMemo(() => {
     return (categoriesQuery.data ?? []).map((c) => ({ value: c, label: c }));
   }, [categoriesQuery.data]);
 
-  const chartScopedEntries = useMemo(
-    () => chartEntries.filter((e) => isWithinDateRange(e.date, bounds)),
-    [bounds, chartEntries],
-  );
-
-  const plTrend = useMemo(
-    () => ledgerPlTrend(chartScopedEntries, { preset: dateRange, bounds }),
-    [bounds, chartScopedEntries, dateRange],
-  );
-  const categoryBreakdown = useMemo(
-    () => ledgerCategoryBreakdown(chartScopedEntries),
-    [chartScopedEntries],
-  );
+  const plTrend = chartsQuery.data?.plTrend ?? [];
+  const categoryBreakdown = chartsQuery.data?.revenueByCategory ?? [];
   const chartSubtitle = ledgerChartSubtitle(dateRange);
   const formatChartValue = (value: number) =>
     formatCurrencyCompact(value, summary?.currency ?? "NGN");
 
-  const chartsLoading = chartEntriesQuery.isLoading;
-  const chartsError = chartEntriesQuery.error ? "Failed to load ledger data for charts." : null;
+  const chartsLoading = chartsQuery.isLoading;
+  const chartsError = chartsQuery.error ? "Failed to load ledger data for charts." : null;
 
   const handleExport = async () => {
     let payload: CsvExportPayload;

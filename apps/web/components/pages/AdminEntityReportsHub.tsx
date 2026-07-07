@@ -38,6 +38,7 @@ export function AdminEntityReportsHub({ tenantCode }: AdminEntityReportsHubProps
         tenantId: tenantId!,
       }),
     enabled: Boolean(tenantId),
+    staleTime: 5 * 60_000,
   });
 
   const registryReports = reportsForArchetype(archetype, enabledModules);

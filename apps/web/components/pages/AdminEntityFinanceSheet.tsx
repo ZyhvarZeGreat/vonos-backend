@@ -98,6 +98,7 @@ export function AdminEntityFinanceSheet({ tenantCode }: AdminEntityFinanceSheetP
     queryKey: ["adminFinanceSummary", tenantId, bounds?.from, bounds?.to],
     queryFn: () => getLedgerSummary(tenantId!, bounds?.from, bounds?.to),
     enabled: Boolean(tenantId),
+    staleTime: 5 * 60_000,
   });
 
   if (!tenant) {

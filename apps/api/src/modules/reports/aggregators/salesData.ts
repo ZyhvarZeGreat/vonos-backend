@@ -94,3 +94,41 @@ export async function loadSalesReportContext(
     currency: normalized[0]?.currency ?? 'NGN',
   };
 }
+
+/** Period window only — skips prior-period sales fetch (used by P&L). */
+export async function loadPeriodSalesOnly(
+  db: TenantScopedPrisma,
+  from?: string,
+  to?: string,
+): Promise<Pick<SalesReportContext, 'window' | 'periodSales' | 'currency'>> {
+  const window = resolveDateWindow(from, to);
+
+  const sales = await db.sale.findMany({
+    where: {
+      deletedAt: null,
+      status: { not: 'draft' },
+      date: { gte: window.from, lte: window.to },
+    },
+    select: SALE_SELECT,
+  });
+
+  const periodSales: NormalizedSale[] = sales.map((sale) => ({
+    id: sale.id,
+    reference: sale.reference,
+    date: sale.date,
+    total: toNumber(sale.total),
+    status: sale.status,
+    paymentStatus: sale.paymentStatus,
+    currency: sale.currency,
+    customerName: sale.customer?.name ?? 'Walk-in',
+    locationCode: sale.locationCode,
+    staffName: sale.createdByName,
+    lines: sale.lines,
+  }));
+
+  return {
+    window,
+    periodSales,
+    currency: periodSales[0]?.currency ?? 'NGN',
+  };
+}

@@ -1,4 +1,5 @@
 import { Controller, Get, Patch, Body, Query, UseGuards } from '@nestjs/common';
+import type { ProfitLossBreakdownTab } from '@vonos/types';
 import {
   JwtAuthGuard,
   RolesGuard,
@@ -41,8 +42,10 @@ export class ReportsController {
     @Query('reportId') reportId: string,
     @Query('from') from?: string,
     @Query('to') to?: string,
+    @Query('mode') mode?: 'shell' | 'pl-core' | 'pl-summary' | 'pl-breakdown' | 'full',
+    @Query('breakdownTab') breakdownTab?: ProfitLossBreakdownTab,
   ) {
-    return this.reportsService.run(reportId, from, to);
+    return this.reportsService.run(reportId, from, to, mode, breakdownTab);
   }
 
   @Get('group/run')

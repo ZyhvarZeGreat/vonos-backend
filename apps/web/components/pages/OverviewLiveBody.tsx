@@ -24,7 +24,7 @@ import type { TenantCode } from "@/lib/registries/tenants";
 import { TENANT_ACCENT } from "@/lib/registries/tenantAccents";
 import { recordDetailPath } from "@/lib/utils/recordDetailPath";
 import { DashboardBodySkeleton } from "@/components/organisms/skeletons";
-import { EntityOverviewPanels } from "@/components/organisms/EntityOverviewPanels";
+import { OverviewPanelsLazy } from "@/components/organisms/OverviewPanelsLazy";
 
 type OverviewTableRow = Record<string, string | number> & { id: string };
 
@@ -179,7 +179,6 @@ export function OverviewLiveBody({
   const charts = dashboard?.charts ?? [];
   const financeCharts = dashboard?.financeCharts ?? [];
   const financeKpis = dashboard?.financeKpis ?? [];
-  const panels = dashboard?.panels ?? [];
   const ledgerCurrency =
     kpis.find((k) => k.metricKey === "revenue" || k.metricKey === "net")?.currency ?? "NGN";
 
@@ -348,9 +347,7 @@ export function OverviewLiveBody({
         </div>
       ) : null}
 
-      {panels.length > 0 ? (
-        <EntityOverviewPanels panels={panels} tenantCode={tenantCode} />
-      ) : null}
+      <OverviewPanelsLazy tenantCode={tenantCode} enabled={!isLoading && Boolean(dashboard)} />
     </div>
   );
 }

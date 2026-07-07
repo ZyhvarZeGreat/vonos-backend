@@ -23,6 +23,17 @@ export class LedgerController {
     return this.ledgerService.categories(from, to);
   }
 
+  @Get('charts')
+  charts(@Query('from') from?: string, @Query('to') to?: string) {
+    return this.ledgerService.charts(from, to);
+  }
+
+  @Get('group/charts')
+  @Roles('super_admin')
+  groupCharts(@Query('from') from?: string, @Query('to') to?: string) {
+    return this.ledgerService.groupCharts(from, to);
+  }
+
   @Get('group/categories')
   @Roles('super_admin')
   groupCategories(@Query('from') from?: string, @Query('to') to?: string) {

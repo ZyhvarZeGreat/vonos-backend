@@ -140,3 +140,36 @@ export async function ledgerExpenseBreakdown(
   }));
   return data.length > 0 ? data : [{ label: '—', value: 0 }];
 }
+
+export async function ledgerRevenueBreakdown(
+  db: TenantScopedPrisma,
+  tenantId: string,
+  from: Date,
+  to: Date,
+): Promise<LedgerCategoryRow[]> {
+  const rows = await db.$queryRaw<
+    Array<{ category: string; total: Prisma.Decimal | null }>
+  >`
+    SELECT category, COALESCE(SUM(amount), 0) AS total
+    FROM "LedgerEntry"
+    WHERE "tenantId" = ${tenantId}
+      AND "deletedAt" IS NULL
+      AND type = 'revenue'
+      AND date >= ${from}
+      AND date <= ${to}
+    GROUP BY category
+    ORDER BY total DESC
+    LIMIT 12
+  `;
+
+  const data = rows.map((row) => ({
+    label: row.category,
+    value: toNumber(row.total ?? 0),
+  }));
+  return data.length > 0 ? data : [{ label: '—', value: 0 }];
+}
+
+export interface LedgerChartsPayload {
+  plTrend: LedgerTrendRow[];
+  revenueByCategory: LedgerCategoryRow[];
+}
