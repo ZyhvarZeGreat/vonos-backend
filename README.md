@@ -1,7 +1,6 @@
 # Vonos
 
 Multi-tenant operations platform for Vonos Group (8 entities, one codebase).
-
 ## Docs
 
 - [AGENTS.md](./AGENTS.md) — product + architecture source of truth
