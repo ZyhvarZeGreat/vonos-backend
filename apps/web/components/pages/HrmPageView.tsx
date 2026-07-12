@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Users, Wallet } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/atoms/Button";
@@ -11,6 +11,7 @@ import { PayrollView } from "@/components/pages/PayrollView";
 import { createPosPlaceholderView } from "@/components/pages/PosNavViews";
 import { getWorkforce } from "@/lib/api/hrm";
 import { useRouteTenant } from "@/lib/hooks/useRouteTenant";
+import { useTenantStore } from "@/stores/tenantStore";
 import { formatCurrency } from "@/lib/utils/formatCurrency";
 
 export const HRM_TABS = [
@@ -188,10 +189,36 @@ function HrmDashboardPanel({ onOpenPayroll }: { onOpenPayroll: () => void }) {
 
 export function HrmPageView({ defaultTab = "dashboard" }: { defaultTab?: HrmTab }) {
   const [activeTab, setActiveTab] = useState<HrmTab>(defaultTab);
+  const tenantConfig = useTenantStore((state) => state.tenantConfig);
+  const essentialsEnabled = tenantConfig?.enabledModules.includes("hrmEssentials") ?? false;
+
+  const visibleTabs = useMemo(
+    () =>
+      HRM_TABS.filter((tab) => {
+        if (essentialsEnabled) return true;
+        return ![
+          "leave-type",
+          "leave",
+          "attendance",
+          "holiday",
+          "departments",
+          "designations",
+          "sales-targets",
+          "settings",
+        ].includes(tab.id);
+      }),
+    [essentialsEnabled],
+  );
 
   useEffect(() => {
     setActiveTab(defaultTab);
   }, [defaultTab]);
+
+  useEffect(() => {
+    if (!visibleTabs.some((tab) => tab.id === activeTab)) {
+      setActiveTab("dashboard");
+    }
+  }, [activeTab, visibleTabs]);
 
   const tabContent = (() => {
     switch (activeTab) {
@@ -230,7 +257,7 @@ export function HrmPageView({ defaultTab = "dashboard" }: { defaultTab?: HrmTab 
 
   return (
     <ListPageShell
-      tabs={HRM_TABS.map((tab) => ({ id: tab.id, label: tab.label }))}
+      tabs={visibleTabs.map((tab) => ({ id: tab.id, label: tab.label }))}
       activeTab={activeTab}
       onTabChange={(id) => setActiveTab(id as HrmTab)}
       showImport={false}

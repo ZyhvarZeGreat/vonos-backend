@@ -1,5 +1,5 @@
 import { apiFetch, withTenantQuery } from "@/lib/api/client";
-import type { SupplierListRow } from "@vonos/types";
+import type { SupplierListRow, ContactDueSummary, ContactLedgerEntry, CsvImportResult } from "@vonos/types";
 import {
   DEFAULT_TABLE_PAGE_SIZE,
   EXPORT_PAGE_SIZE,
@@ -101,5 +101,40 @@ export async function updateSupplier(
     body: JSON.stringify(body),
   });
   if (!response.ok) throw new Error("Failed to update supplier");
+  return response.json();
+}
+
+export async function getSupplierSummary(
+  tenantId: string,
+  supplierId: string,
+): Promise<ContactDueSummary> {
+  const response = await apiFetch(
+    withTenantQuery(`/suppliers/${supplierId}/summary`, tenantId),
+  );
+  if (!response.ok) throw new Error("Failed to fetch supplier summary");
+  return response.json();
+}
+
+export async function getSupplierLedger(
+  tenantId: string,
+  supplierId: string,
+): Promise<ContactLedgerEntry[]> {
+  const response = await apiFetch(
+    withTenantQuery(`/suppliers/${supplierId}/ledger`, tenantId),
+  );
+  if (!response.ok) throw new Error("Failed to fetch supplier ledger");
+  return response.json();
+}
+
+export async function importSuppliers(
+  tenantId: string,
+  csv: string,
+): Promise<CsvImportResult> {
+  const response = await apiFetch(withTenantQuery("/suppliers/import", tenantId), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ csv }),
+  });
+  if (!response.ok) throw new Error("Failed to import suppliers");
   return response.json();
 }

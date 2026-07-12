@@ -62,11 +62,14 @@ Set `NEXT_PUBLIC_API_URL=http://localhost:3001` in `apps/web/.env.local` so the 
 
 **Next:** Continue entity rollout per AGENTS.md Phase 2.
 
-## Deploy (production)
+## Deploy
 
 **Low-traffic stack:** Neon (DB) + Railway (API) + Vercel (web).
 
-Full step-by-step: **[docs/DEPLOY.md](./docs/DEPLOY.md)**
+| Doc | Purpose |
+|-----|---------|
+| **[docs/DEPLOY.md](./docs/DEPLOY.md)** | First-time production setup |
+| **[docs/ENVIRONMENTS.md](./docs/ENVIRONMENTS.md)** | Dev / staging (beta) / prod isolation + branch workflow |
 
 Quick reference:
 

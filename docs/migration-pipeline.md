@@ -16,6 +16,8 @@ Each department has its **own SQL dump file** and import wrapper — not a singl
 
 Delta reports: `python scripts/entity_sql_delta.py {VA|VISP|VSP|VW|VC}`
 
+**Ongoing delta imports** (legacy still live until cutover): see [DELTA_ETL_RUNBOOK.md](./migration-audits/DELTA_ETL_RUNBOOK.md) and [CUTOVER_CHECKLIST_VISP_VSP.md](./migration-audits/CUTOVER_CHECKLIST_VISP_VSP.md).
+
 ## Pipeline stages
 
 1. **Export** — phpMyAdmin/mysqldump from each cPanel site → per-entity `.sql` file

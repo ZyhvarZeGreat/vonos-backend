@@ -27,6 +27,7 @@ export function serializeItem(row: ItemWithStock): Item {
     locationCode: row.locationCode,
     reorderPoint: row.reorderPoint,
     costPrice: toNumber(row.costPrice),
+    sellPrice: row.sellPrice != null ? toNumber(row.sellPrice) : null,
     currency: row.currency,
     status: row.status,
     availableForRetail: row.availableForRetail,

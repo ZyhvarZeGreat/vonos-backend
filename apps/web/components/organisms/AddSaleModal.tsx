@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Trash2 } from "lucide-react";
 import type { Item } from "@vonos/types";
@@ -9,7 +9,8 @@ import { Input } from "@/components/atoms/Input";
 import { Modal, ModalFooter, ModalHeader } from "@/components/atoms/Modal";
 import { Select } from "@/components/atoms/Select";
 import { ProductItemSearch } from "@/components/molecules/ProductItemSearch";
-import { createSale } from "@/lib/api/sales";
+import { createSale, finalizeSale } from "@/lib/api/sales";
+import { itemSellPrice } from "@/lib/utils/itemPricing";
 import { useAppMutation } from "@/lib/hooks/useAppMutation";
 import {
   assertBusinessLocationSelected,
@@ -18,7 +19,7 @@ import {
 import { useRouteTenant, useTenantId } from "@/lib/hooks/useRouteTenant";
 import { getTenantConfigById } from "@/lib/registries/tenantConfigs";
 import { formatCurrency } from "@/lib/utils/formatCurrency";
-import { useUiStore } from "@/stores/uiStore";
+import { useUiStore, type SaleFormPresetStatus } from "@/stores/uiStore";
 
 interface SaleLineDraft {
   key: string;
@@ -34,13 +35,13 @@ function lineSubtotal(line: SaleLineDraft): number {
   return Math.max(0, line.quantity * line.unitPrice - line.discount);
 }
 
-function emptySaleForm() {
+function emptySaleForm(presetStatus: SaleFormPresetStatus = "final") {
   return {
     reference: "",
     customerName: "",
     locationCode: "",
     saleDate: new Date().toISOString().slice(0, 16),
-    status: "final",
+    status: presetStatus,
     invoiceNo: "",
     discountType: "fixed",
     discountAmount: "0",
@@ -56,6 +57,7 @@ export function AddSaleModal() {
   const activeModal = useUiStore((state) => state.activeModal);
   const closeModal = useUiStore((state) => state.closeModal);
   const financeActionTenantId = useUiStore((state) => state.financeActionTenantId);
+  const salePresetStatus = useUiStore((state) => state.salePresetStatus);
   const routeTenantId = useTenantId();
   const tenantId = financeActionTenantId ?? routeTenantId;
   const { config: routeConfig } = useRouteTenant();
@@ -67,10 +69,32 @@ export function AddSaleModal() {
     useBusinessLocationOptions(tenantConfig);
   const queryClient = useQueryClient();
   const open = activeModal === "addSale";
+  const presetStatus = salePresetStatus ?? "final";
+  const isProvisional = presetStatus === "draft" || presetStatus === "quotation";
+  const modalTitle =
+    presetStatus === "draft"
+      ? "Add Draft"
+      : presetStatus === "quotation"
+        ? "Add Quotation"
+        : "Add Sale";
+  const modalSubtitle =
+    presetStatus === "draft"
+      ? "Save a draft sale without affecting stock or payments"
+      : presetStatus === "quotation"
+        ? "Create a quotation for the customer"
+        : "Record a sale with line items";
 
-  const [form, setForm] = useState(emptySaleForm);
+  const [form, setForm] = useState(() => emptySaleForm(presetStatus));
   const [lines, setLines] = useState<SaleLineDraft[]>([]);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (open) {
+      setForm(emptySaleForm(presetStatus));
+      setLines([]);
+      setError(null);
+    }
+  }, [open, presetStatus]);
 
   const showLocationField = (tenantConfig?.businessLocations?.length ?? 0) > 0;
 
@@ -106,7 +130,7 @@ export function AddSaleModal() {
           sku: item.sku,
           name: item.name,
           quantity: 1,
-          unitPrice: item.costPrice,
+          unitPrice: itemSellPrice(item),
           discount: 0,
         },
       ];
@@ -122,7 +146,7 @@ export function AddSaleModal() {
   };
 
   const reset = () => {
-    setForm(emptySaleForm());
+    setForm(emptySaleForm(presetStatus));
     setLines([]);
     setError(null);
   };
@@ -146,23 +170,35 @@ export function AddSaleModal() {
         customerName: form.customerName.trim() || undefined,
         locationCode: form.locationCode.trim() || undefined,
         date: form.saleDate ? new Date(form.saleDate).toISOString() : undefined,
+        status: form.status as "final" | "draft" | "quotation",
+        discountAmount: orderDiscount,
+        taxAmount: orderTax,
+        notes: form.sellNote.trim() || undefined,
         lines: lines.map((line) => ({
           itemId: line.itemId,
           sku: line.sku,
           name: line.name,
           quantity: line.quantity,
           unitPrice: line.unitPrice,
+          discountAmount: line.discount > 0 ? line.discount : undefined,
         })),
-        payments: [
-          {
-            amount: Number(form.paymentAmount) || totalPayable,
-            method: form.paymentMethod,
-            note: form.paymentNote.trim() || undefined,
-          },
-        ],
+        payments: isProvisional
+          ? []
+          : [
+              {
+                amount: Number(form.paymentAmount) || totalPayable,
+                method: form.paymentMethod,
+                note: form.paymentNote.trim() || undefined,
+              },
+            ],
       });
     },
-    successMessage: "Sale recorded",
+    successMessage:
+      presetStatus === "draft"
+        ? "Draft saved"
+        : presetStatus === "quotation"
+          ? "Quotation saved"
+          : "Sale recorded",
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["sales"] });
       await queryClient.invalidateQueries({ queryKey: ["items"] });
@@ -180,7 +216,7 @@ export function AddSaleModal() {
 
   return (
     <Modal open={open} onClose={handleClose} panelClassName="max-w-5xl max-h-[92vh] flex flex-col">
-      <ModalHeader title="Add Sale" subtitle="Record a sale with line items" onClose={handleClose} />
+      <ModalHeader title={modalTitle} subtitle={modalSubtitle} onClose={handleClose} />
       <div className="flex-1 space-y-4 overflow-y-auto px-4 pb-2">
         <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
           {showLocationField ? (
@@ -206,7 +242,12 @@ export function AddSaleModal() {
           <Select
             label="Status"
             value={form.status}
-            onChange={(e) => setForm((prev) => ({ ...prev, status: e.target.value }))}
+            onChange={(e) =>
+              setForm((prev) => ({
+                ...prev,
+                status: e.target.value as SaleFormPresetStatus,
+              }))
+            }
             options={[
               { value: "final", label: "Final" },
               { value: "draft", label: "Draft" },
@@ -372,6 +413,8 @@ export function AddSaleModal() {
 
           <div className="space-y-3 rounded-lg border border-border p-3">
             <p className="text-sm font-medium text-foreground">Payment</p>
+            {!isProvisional ? (
+              <>
             <Input
               label="Amount"
               type="number"
@@ -404,6 +447,13 @@ export function AddSaleModal() {
                 <span className="font-semibold text-foreground">{formatCurrency(totalPayable)}</span>
               </div>
             </div>
+              </>
+            ) : (
+              <p className="text-sm text-muted">
+                Payment is recorded when the {presetStatus === "draft" ? "draft" : "quotation"} is
+                converted to a final sale.
+              </p>
+            )}
           </div>
         </div>
 

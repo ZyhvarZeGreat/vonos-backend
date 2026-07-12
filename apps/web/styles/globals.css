@@ -3,6 +3,7 @@
 
 @theme inline {
   --color-background: var(--color-surface-page);
+  --color-canvas: var(--color-surface-canvas);
   --color-foreground: var(--color-text-primary);
   --color-brand: var(--color-brand-primary);
   --color-brand-hover: var(--color-brand-primary-hover);

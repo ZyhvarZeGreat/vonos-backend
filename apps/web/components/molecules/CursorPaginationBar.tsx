@@ -1,6 +1,7 @@
 "use client";
 
 import { ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
+import { Spinner } from "@/components/atoms/Spinner";
 import { DropdownMenu } from "@/components/molecules/DropdownMenu";
 import { cn } from "@/lib/utils/cn";
 
@@ -13,6 +14,8 @@ export interface CursorPaginationBarProps {
   onPrev: () => void;
   onNext: () => void;
   onPageSizeChange: (size: number) => void;
+  /** Disables navigation while the current page is refetching. */
+  isBusy?: boolean;
   className?: string;
 }
 
@@ -25,6 +28,7 @@ export function CursorPaginationBar({
   onPrev,
   onNext,
   onPageSizeChange,
+  isBusy = false,
   className,
 }: CursorPaginationBarProps) {
   const start = itemCount === 0 ? 0 : pageIndex * pageSize + 1;
@@ -35,18 +39,25 @@ export function CursorPaginationBar({
     <div
       className={cn(
         "flex flex-wrap items-center justify-between gap-4 border-t border-[var(--color-border-subtle)] p-4 text-sm text-[var(--color-text-secondary)]",
+        isBusy && "opacity-80",
         className,
       )}
+      aria-busy={isBusy || undefined}
     >
-      <div>
-        {itemCount === 0
-          ? "No entries"
-          : `Showing ${start}–${totalLabel}`}
+      <div className="flex items-center gap-2">
+        {isBusy ? (
+          <Spinner size="sm" className="text-[var(--color-brand-primary)]" />
+        ) : null}
+        <span>
+          {itemCount === 0
+            ? "No entries"
+            : `Showing ${start}–${totalLabel}`}
+        </span>
       </div>
       <div className="flex items-center gap-1">
         <button
           type="button"
-          disabled={!canGoPrev}
+          disabled={!canGoPrev || isBusy}
           onClick={onPrev}
           className="flex h-8 w-8 items-center justify-center text-muted hover:text-foreground disabled:opacity-40"
           aria-label="Previous page"
@@ -58,7 +69,7 @@ export function CursorPaginationBar({
         </span>
         <button
           type="button"
-          disabled={!hasMore}
+          disabled={!hasMore || isBusy}
           onClick={onNext}
           className="flex h-8 w-8 items-center justify-center text-muted hover:text-foreground disabled:opacity-40"
           aria-label="Next page"
@@ -79,7 +90,8 @@ export function CursorPaginationBar({
           trigger={
             <button
               type="button"
-              className="inline-flex h-8 items-center gap-1 rounded-lg border border-border bg-card px-2.5 text-sm hover:bg-[var(--color-surface-muted)]"
+              disabled={isBusy}
+              className="inline-flex h-8 items-center gap-1 rounded-lg border border-border bg-card px-2.5 text-sm hover:bg-[var(--color-surface-muted)] disabled:opacity-50"
             >
               {pageSize}
               <ChevronDown className="h-4 w-4 text-muted" />

@@ -1,13 +1,17 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import type {
+  ContactDueSummary,
+  ContactLedgerEntry,
   CreateCustomerInput,
   Customer,
   CustomerFilters,
   CustomerProfile,
   CustomerTransactionHistoryEntry,
+  CsvImportResult,
 } from '@vonos/types';
 import { TenantDbService } from '../../common/prisma/tenant-db.service';
 import { buildCursorQuery } from '../../common/utils/pagination';
+import { parseCsv, pickCsvField } from '../../common/utils/csvImport';
 import { toIso, toNumber } from '../../common/utils/serializers';
 import { AuditService } from '../audit/audit.service';
 
@@ -267,5 +271,103 @@ export class CustomersService {
       totalSellPaid,
       transactionHistory,
     });
+  }
+
+  async getSummary(id: string): Promise<ContactDueSummary> {
+    const profile = await this.getById(id);
+    return {
+      contactId: profile.id,
+      totalAmount: profile.totalSell ?? profile.totalSpend,
+      totalPaid: profile.totalSellPaid ?? 0,
+      totalDue: profile.totalSellDue ?? 0,
+      currency: 'NGN',
+    };
+  }
+
+  async getLedger(
+    id: string,
+    cursor?: string,
+    limit = 50,
+  ): Promise<ContactLedgerEntry[]> {
+    const tenantId = this.tenantDb.requireTenantId();
+    const customer = await this.tenantDb.db.customer.findFirst({
+      where: { id, tenantId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!customer) throw new NotFoundException('Customer not found');
+
+    const sales = await this.tenantDb.db.sale.findMany({
+      where: { tenantId, customerId: id, deletedAt: null },
+      select: { id: true, reference: true },
+    });
+    const saleIds = sales.map((sale) => sale.id);
+    const saleRefById = new Map(sales.map((sale) => [sale.id, sale.reference]));
+
+    const ledgerRows = await this.tenantDb.db.ledgerEntry.findMany({
+      where: {
+        tenantId,
+        deletedAt: null,
+        OR: [
+          { linkedRecordType: 'sale', linkedRecordId: { in: saleIds } },
+          {
+            linkedRecordType: 'payment',
+            linkedRecordId: {
+              in: (
+                await this.tenantDb.db.payment.findMany({
+                  where: { tenantId, saleId: { in: saleIds }, deletedAt: null },
+                  select: { id: true },
+                })
+              ).map((payment) => payment.id),
+            },
+          },
+        ],
+      },
+      orderBy: { date: 'desc' },
+      ...buildCursorQuery(cursor, limit),
+    });
+
+    return ledgerRows.map((entry) => ({
+      id: entry.id,
+      date: toIso(entry.date),
+      type: entry.type,
+      description: entry.description,
+      amount: toNumber(entry.amount),
+      currency: entry.currency,
+      linkedRecordType: entry.linkedRecordType,
+      linkedRecordId: entry.linkedRecordId,
+      reference:
+        entry.linkedRecordType === 'sale' && entry.linkedRecordId
+          ? (saleRefById.get(entry.linkedRecordId) ?? null)
+          : null,
+    }));
+  }
+
+  async importCsv(csv: string): Promise<CsvImportResult> {
+    const rows = parseCsv(csv);
+    const result: CsvImportResult = { created: 0, updated: 0, errors: [] };
+
+    for (let index = 0; index < rows.length; index += 1) {
+      const row = rows[index];
+      const name = pickCsvField(row, 'name', 'business name', 'customer name');
+      if (!name) {
+        result.errors.push({ row: index + 2, message: 'Name is required' });
+        continue;
+      }
+      try {
+        await this.create({
+          name,
+          email: pickCsvField(row, 'email') || undefined,
+          phone: pickCsvField(row, 'phone', 'mobile', 'contact number') || undefined,
+        });
+        result.created += 1;
+      } catch (error) {
+        result.errors.push({
+          row: index + 2,
+          message: error instanceof Error ? error.message : 'Import failed',
+        });
+      }
+    }
+
+    return result;
   }
 }

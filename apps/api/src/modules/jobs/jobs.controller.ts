@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   Patch,
@@ -8,6 +9,7 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
+import { Roles } from '../../common/decorators/roles.decorator';
 import {
   JwtAuthGuard,
   RolesGuard,
@@ -36,6 +38,7 @@ export class JobsController {
   }
 
   @Post()
+  @Roles('staff', 'manager', 'admin', 'super_admin')
   create(
     @Body()
     body: {
@@ -58,11 +61,22 @@ export class JobsController {
   }
 
   @Patch(':id/status')
+  @Roles('staff', 'manager', 'admin', 'super_admin')
   advanceStatus(@Param('id') id: string) {
     return this.jobsService.advanceStatus(id);
   }
 
+  @Patch(':id/vehicle')
+  @Roles('staff', 'manager', 'admin', 'super_admin')
+  setVehicle(
+    @Param('id') id: string,
+    @Body() body: { vehicleId: string | null },
+  ) {
+    return this.jobsService.setVehicle(id, body.vehicleId ?? null);
+  }
+
   @Patch(':id/billing')
+  @Roles('staff', 'manager', 'admin', 'super_admin')
   updateBilling(
     @Param('id') id: string,
     @Body()
@@ -76,5 +90,97 @@ export class JobsController {
     },
   ) {
     return this.jobsService.updateBilling(id, body);
+  }
+
+  @Patch(':id/qc')
+  @Roles('staff', 'manager', 'admin', 'super_admin')
+  updateQc(
+    @Param('id') id: string,
+    @Body()
+    body: {
+      qcChecklist?: Record<string, boolean> | null;
+      qcNotes?: string | null;
+    },
+  ) {
+    return this.jobsService.updateQc(id, body);
+  }
+
+  @Post(':id/materials')
+  @Roles('staff', 'manager', 'admin', 'super_admin')
+  addMaterial(
+    @Param('id') id: string,
+    @Body()
+    body: {
+      itemId?: string;
+      name: string;
+      quantity: number;
+      unitCost: number;
+      source?: string;
+      sourceType?: 'shop' | 'internal' | 'external';
+      sourceDepartment?: string;
+      supplierId?: string;
+    },
+  ) {
+    return this.jobsService.addMaterial(id, body);
+  }
+
+  @Patch(':id/materials/:materialId')
+  @Roles('staff', 'manager', 'admin', 'super_admin')
+  updateMaterial(
+    @Param('id') id: string,
+    @Param('materialId') materialId: string,
+    @Body()
+    body: {
+      name?: string;
+      quantity?: number;
+      unitCost?: number;
+      source?: string | null;
+    },
+  ) {
+    return this.jobsService.updateMaterial(id, materialId, body);
+  }
+
+  @Delete(':id/materials/:materialId')
+  @Roles('staff', 'manager', 'admin', 'super_admin')
+  removeMaterial(
+    @Param('id') id: string,
+    @Param('materialId') materialId: string,
+  ) {
+    return this.jobsService.removeMaterial(id, materialId);
+  }
+
+  @Post(':id/labour')
+  @Roles('staff', 'manager', 'admin', 'super_admin')
+  addLabour(
+    @Param('id') id: string,
+    @Body()
+    body: {
+      staffId: string;
+      hours: number;
+      rate: number;
+    },
+  ) {
+    return this.jobsService.addLabour(id, body);
+  }
+
+  @Patch(':id/labour/:labourId')
+  @Roles('staff', 'manager', 'admin', 'super_admin')
+  updateLabour(
+    @Param('id') id: string,
+    @Param('labourId') labourId: string,
+    @Body()
+    body: {
+      staffId?: string;
+      hours?: number;
+      rate?: number;
+    },
+  ) {
+    return this.jobsService.updateLabour(id, labourId, body);
+  }
+
+  @Delete(':id/labour/:labourId')
+  @Roles('staff', 'manager', 'admin', 'super_admin')
+  removeLabour(@Param('id') id: string, @Param('labourId') labourId: string) {
+    return this.jobsService.removeLabour(id, labourId);
   }
 }

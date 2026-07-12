@@ -8,6 +8,9 @@ import {
 } from './date-utils';
 import type { SaleLineRow } from './productSales';
 
+/** Safety cap for row-level sale graphs (all-time detail is truncated). */
+export const SALE_REPORT_ROW_CAP = 5_000;
+
 const SALE_SELECT = {
   id: true,
   reference: true,
@@ -52,6 +55,34 @@ export interface SalesReportContext {
   currency: string;
 }
 
+function normalizeSale(sale: {
+  id: string;
+  reference: string;
+  date: Date;
+  total: Parameters<typeof toNumber>[0];
+  status: string;
+  paymentStatus: string | null;
+  currency: string;
+  locationCode: string | null;
+  createdByName: string | null;
+  customer: { name: string } | null;
+  lines: SaleLineRow[];
+}): NormalizedSale {
+  return {
+    id: sale.id,
+    reference: sale.reference,
+    date: sale.date,
+    total: toNumber(sale.total),
+    status: sale.status,
+    paymentStatus: sale.paymentStatus,
+    currency: sale.currency,
+    customerName: sale.customer?.name ?? 'Walk-in',
+    locationCode: sale.locationCode,
+    staffName: sale.createdByName,
+    lines: sale.lines,
+  };
+}
+
 export async function loadSalesReportContext(
   db: TenantScopedPrisma,
   from?: string,
@@ -67,22 +98,11 @@ export async function loadSalesReportContext(
       date: { gte: prior.from, lte: window.to },
     },
     select: SALE_SELECT,
+    orderBy: { date: 'desc' },
+    take: SALE_REPORT_ROW_CAP,
   });
 
-  const normalized: NormalizedSale[] = sales.map((sale) => ({
-    id: sale.id,
-    reference: sale.reference,
-    date: sale.date,
-    total: toNumber(sale.total),
-    status: sale.status,
-    paymentStatus: sale.paymentStatus,
-    currency: sale.currency,
-    customerName: sale.customer?.name ?? 'Walk-in',
-    locationCode: sale.locationCode,
-    staffName: sale.createdByName,
-    lines: sale.lines,
-  }));
-
+  const normalized: NormalizedSale[] = sales.map(normalizeSale);
   const periodSales = normalized.filter((sale) => inWindow(sale.date, window));
   const priorSales = normalized.filter((sale) => inWindow(sale.date, prior));
 
@@ -110,21 +130,11 @@ export async function loadPeriodSalesOnly(
       date: { gte: window.from, lte: window.to },
     },
     select: SALE_SELECT,
+    orderBy: { date: 'desc' },
+    take: SALE_REPORT_ROW_CAP,
   });
 
-  const periodSales: NormalizedSale[] = sales.map((sale) => ({
-    id: sale.id,
-    reference: sale.reference,
-    date: sale.date,
-    total: toNumber(sale.total),
-    status: sale.status,
-    paymentStatus: sale.paymentStatus,
-    currency: sale.currency,
-    customerName: sale.customer?.name ?? 'Walk-in',
-    locationCode: sale.locationCode,
-    staffName: sale.createdByName,
-    lines: sale.lines,
-  }));
+  const periodSales: NormalizedSale[] = sales.map(normalizeSale);
 
   return {
     window,

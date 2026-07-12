@@ -82,17 +82,45 @@ export function ChartPanelSkeleton({
   );
 }
 
+export function CursorPaginationBarSkeleton({ className }: { className?: string }) {
+  return (
+    <div
+      className={cn(
+        "flex flex-wrap items-center justify-between gap-4 border-t border-[var(--color-border-subtle)] p-4",
+        className,
+      )}
+      aria-hidden
+    >
+      <Skeleton className="h-4 w-28" />
+      <div className="flex items-center gap-1">
+        <Skeleton className="h-8 w-8 rounded-lg" />
+        <Skeleton className="h-4 w-16" />
+        <Skeleton className="h-8 w-8 rounded-lg" />
+      </div>
+      <Skeleton className="h-8 w-16 rounded-lg" />
+    </div>
+  );
+}
+
 export function DataTableSkeleton({
-  rows = 6,
+  rows = 8,
   columns = 5,
+  columnHeaders,
+  selectable = false,
   withFilters = false,
+  withPagination = false,
   embedded = false,
 }: {
   rows?: number;
   columns?: number;
+  columnHeaders?: string[];
+  selectable?: boolean;
   withFilters?: boolean;
+  withPagination?: boolean;
   embedded?: boolean;
 }) {
+  const columnCount = columnHeaders?.length ?? columns;
+
   return (
     <div
       className={cn(!embedded && "rounded-xl border border-border bg-card shadow-card")}
@@ -106,28 +134,51 @@ export function DataTableSkeleton({
           <Skeleton className="h-10 w-36 rounded-lg" />
         </div>
       ) : null}
-      <div className="border-b border-border bg-[var(--color-surface-muted)] px-4 py-3">
-        <div className="flex gap-4">
-          {Array.from({ length: columns }).map((_, index) => (
-            <Skeleton key={index} className="h-3 w-20" />
-          ))}
-        </div>
-      </div>
-      <div className="space-y-0 p-0">
-        {Array.from({ length: rows }).map((_, rowIndex) => (
-          <div
-            key={rowIndex}
-            className="flex items-center gap-4 border-b border-border px-4 py-3 last:border-0"
-          >
-            {Array.from({ length: columns }).map((_, colIndex) => (
-              <Skeleton
-                key={colIndex}
-                className={cn("h-4", colIndex === 0 ? "w-32" : "w-20")}
-              />
+      <div className="overflow-x-auto">
+        <table className="min-w-full">
+          <thead className="bg-[var(--color-surface-muted)]">
+            <tr>
+              {selectable ? (
+                <th className="px-4 py-3 text-left">
+                  <Skeleton className="h-4 w-4 rounded" />
+                </th>
+              ) : null}
+              {columnHeaders
+                ? columnHeaders.map((header) => (
+                    <th key={header} className="px-4 py-3 text-left">
+                      <span className="text-xs font-semibold uppercase tracking-wide text-muted">
+                        {header}
+                      </span>
+                    </th>
+                  ))
+                : Array.from({ length: columnCount }).map((_, index) => (
+                    <th key={index} className="px-4 py-3 text-left">
+                      <Skeleton className="h-3 w-20" />
+                    </th>
+                  ))}
+            </tr>
+          </thead>
+          <tbody>
+            {Array.from({ length: rows }).map((_, rowIndex) => (
+              <tr key={rowIndex} className="border-b border-border last:border-0">
+                {selectable ? (
+                  <td className="px-4 py-3">
+                    <Skeleton className="h-4 w-4 rounded" />
+                  </td>
+                ) : null}
+                {Array.from({ length: columnCount }).map((_, colIndex) => (
+                  <td key={colIndex} className="px-4 py-3">
+                    <Skeleton
+                      className={cn("h-4", colIndex === 0 ? "w-32" : "w-20")}
+                    />
+                  </td>
+                ))}
+              </tr>
             ))}
-          </div>
-        ))}
+          </tbody>
+        </table>
       </div>
+      {withPagination ? <CursorPaginationBarSkeleton /> : null}
     </div>
   );
 }

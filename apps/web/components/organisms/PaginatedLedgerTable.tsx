@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { LedgerEntry, LedgerEntryType, LedgerListRow } from "@vonos/types";
 import { DataTable, type ColumnConfig } from "@/components/organisms/DataTable";
+import { DataTableSkeleton } from "@/components/organisms/skeletons";
 import { CursorPaginationBar } from "@/components/molecules/CursorPaginationBar";
 import {
   getGroupLedgerEntriesPage,
@@ -84,6 +85,8 @@ export function PaginatedLedgerTable<T extends LedgerEntry | LedgerListRow>({
 
   const items = (pageQuery.data?.items ?? []) as T[];
   const hasMore = pageQuery.data?.hasMore ?? false;
+  const isLoading = pageQuery.isLoading && items.length === 0;
+  const isFetching = pageQuery.isFetching && !isLoading;
 
   const handleNext = () => {
     const last = items[items.length - 1];
@@ -95,6 +98,21 @@ export function PaginatedLedgerTable<T extends LedgerEntry | LedgerListRow>({
     reset();
   };
 
+  const columnHeaders = columns.map((column) => column.header);
+
+  if (isLoading) {
+    return (
+      <div className="overflow-hidden rounded-xl border border-border bg-card shadow-card">
+        <DataTableSkeleton
+          rows={8}
+          columnHeaders={columnHeaders}
+          withPagination
+          embedded
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="overflow-hidden rounded-xl border border-border bg-card shadow-card">
       <DataTable
@@ -104,7 +122,7 @@ export function PaginatedLedgerTable<T extends LedgerEntry | LedgerListRow>({
         embedded
         virtualized
         disablePagination
-        isLoading={pageQuery.isLoading && items.length === 0}
+        isFetching={isFetching}
         error={pageQuery.error ? "Failed to load ledger entries" : null}
         onRowClick={onRowClick}
         emptyState={emptyState}
@@ -119,6 +137,7 @@ export function PaginatedLedgerTable<T extends LedgerEntry | LedgerListRow>({
           onPrev={goPrev}
           onNext={handleNext}
           onPageSizeChange={handlePageSizeChange}
+          isBusy={isFetching}
         />
       ) : null}
     </div>

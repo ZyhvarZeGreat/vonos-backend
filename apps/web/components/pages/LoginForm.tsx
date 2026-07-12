@@ -2,13 +2,17 @@
 
 import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { ArrowRight, Lock, Mail } from "lucide-react";
 import { Button } from "@/components/atoms/Button";
 import { Input } from "@/components/atoms/Input";
-import { AuthTemplate } from "@/components/templates/AuthTemplate";
+import { AuthFooterLink, AuthTemplate } from "@/components/templates/AuthTemplate";
 import { isTwoFactorChallenge, login, verifyTwoFactor } from "@/lib/api/auth";
 import { getPostLoginPath } from "@/lib/utils/authRedirect";
 import { useAuthStore } from "@/stores/authStore";
 import { toast } from "@/stores/toastStore";
+
+const authFieldClass =
+  "h-12 rounded-lg border-0 bg-[var(--auth-blue-soft,#e8f1fb)] px-4 pr-11 text-sm text-foreground placeholder:text-muted focus:border-transparent focus:ring-2 focus:ring-[var(--auth-blue,#0b5ed7)]/25";
 
 export function LoginForm() {
   const router = useRouter();
@@ -97,35 +101,40 @@ export function LoginForm() {
             : "Enter the 6-digit code from your authenticator app"
         }
         footer={
-          <>
-            <button
-              type="button"
-              className="text-sm text-muted underline"
-              onClick={() => {
-                setChallengeToken(null);
-                setChallengeEmail(null);
-                setTotpCode("");
-                setError(null);
-              }}
-            >
-              Back to sign in
-            </button>
-          </>
+          <button
+            type="button"
+            className="text-sm font-medium text-[var(--auth-blue,#0b5ed7)] underline-offset-4 hover:underline"
+            onClick={() => {
+              setChallengeToken(null);
+              setChallengeEmail(null);
+              setTotpCode("");
+              setError(null);
+            }}
+          >
+            Back to sign in
+          </button>
         }
       >
-        <form onSubmit={handleVerifyTotp} className="space-y-4">
+        <form onSubmit={handleVerifyTotp} className="space-y-5">
           <Input
-            label="Authentication code"
+            label="AUTHENTICATION CODE"
             inputMode="numeric"
             autoComplete="one-time-code"
             value={totpCode}
             onChange={(e) => setTotpCode(e.target.value)}
             placeholder="000000"
             required
+            className={authFieldClass}
           />
           {error ? <p className="text-sm text-error">{error}</p> : null}
-          <Button type="submit" className="w-full" isLoading={loading} disabled={totpCode.length < 6}>
+          <Button
+            type="submit"
+            className="h-12 w-full rounded-lg text-base"
+            isLoading={loading}
+            disabled={totpCode.length < 6}
+          >
             Verify and continue
+            <ArrowRight className="h-4 w-4" />
           </Button>
         </form>
       </AuthTemplate>
@@ -133,31 +142,47 @@ export function LoginForm() {
   }
 
   return (
-    <AuthTemplate
-      title="Sign in"
-      subtitle="Use the email and password from your invitation"
-    >
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <Input
-          label="Email"
-          type="email"
-          autoComplete="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          placeholder="you@company.com"
-          required
-        />
-        <Input
-          label="Password"
-          type="password"
-          autoComplete="current-password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          required
-        />
+    <AuthTemplate title="Dashboard Log In" subtitle="Use the email and password from your invitation">
+      <form onSubmit={handleSubmit} className="space-y-5">
+        <div className="relative">
+          <Input
+            label="EMAIL ADDRESS"
+            type="email"
+            autoComplete="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="you@company.com"
+            required
+            className={authFieldClass}
+          />
+          <Mail
+            className="pointer-events-none absolute right-3.5 bottom-3 h-4 w-4 text-[var(--auth-blue,#0b5ed7)]/70"
+            aria-hidden
+          />
+        </div>
+        <div className="relative">
+          <Input
+            label="PASSWORD"
+            type="password"
+            autoComplete="current-password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="Min 8 characters"
+            required
+            className={authFieldClass}
+          />
+          <Lock
+            className="pointer-events-none absolute right-3.5 bottom-3 h-4 w-4 text-[var(--auth-blue,#0b5ed7)]/70"
+            aria-hidden
+          />
+        </div>
+        <div className="flex justify-end">
+          <AuthFooterLink href="/reset-password">Forgot Password?</AuthFooterLink>
+        </div>
         {error ? <p className="text-sm text-error">{error}</p> : null}
-        <Button type="submit" className="w-full" isLoading={loading}>
-          Sign in
+        <Button type="submit" className="h-12 w-full rounded-lg text-base" isLoading={loading}>
+          Log In
+          <ArrowRight className="h-4 w-4" />
         </Button>
       </form>
     </AuthTemplate>

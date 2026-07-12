@@ -1,4 +1,10 @@
-import type { Job } from "@vonos/types";
+import type {
+  CreateJobLabourRequest,
+  CreateJobMaterialRequest,
+  Job,
+  UpdateJobLabourRequest,
+  UpdateJobMaterialRequest,
+} from "@vonos/types";
 import { apiFetch, withTenantQuery } from "@/lib/api/client";
 import {
   DEFAULT_TABLE_PAGE_SIZE,
@@ -16,6 +22,13 @@ export interface JobDetail extends Job {
     email: string | null;
     phone: string | null;
   } | null;
+  vehicle?: {
+    id: string;
+    plateNumber: string;
+    make: string;
+    model: string;
+    year: number | null;
+  } | null;
   materials: Array<{
     id: string;
     jobId: string;
@@ -25,6 +38,11 @@ export interface JobDetail extends Job {
     unitCost: number;
     totalCost: number;
     source: string | null;
+    sourceType: "shop" | "internal" | "external" | null;
+    sourceDepartment: string | null;
+    supplierId: string | null;
+    supplierName: string | null;
+    purchaseMovementId: string | null;
   }>;
   labourEntries: Array<{
     id: string;
@@ -136,6 +154,19 @@ export async function advanceJobStatus(id: string): Promise<Job> {
   return response.json();
 }
 
+export async function linkJobVehicle(
+  jobId: string,
+  vehicleId: string | null,
+): Promise<JobDetail> {
+  const response = await apiFetch(`/jobs/${jobId}/vehicle`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ vehicleId }),
+  });
+  if (!response.ok) throw new Error("Failed to update job vehicle");
+  return response.json();
+}
+
 export interface UpdateJobBillingRequest {
   hasQuote?: boolean;
   quoteAmount?: number | null;
@@ -155,6 +186,98 @@ export async function updateJobBilling(
     body: JSON.stringify(body),
   });
   if (!response.ok) throw new Error("Failed to update job billing");
+  return response.json();
+}
+
+export async function updateJobQc(
+  id: string,
+  body: {
+    qcChecklist?: Record<string, boolean> | null;
+    qcNotes?: string | null;
+  },
+): Promise<JobDetail> {
+  const response = await apiFetch(`/jobs/${id}/qc`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) throw new Error("Failed to update QC");
+  return response.json();
+}
+
+export async function addJobMaterial(
+  jobId: string,
+  body: CreateJobMaterialRequest,
+): Promise<JobDetail> {
+  const response = await apiFetch(`/jobs/${jobId}/materials`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) throw new Error("Failed to add material");
+  return response.json();
+}
+
+export async function updateJobMaterial(
+  jobId: string,
+  materialId: string,
+  body: UpdateJobMaterialRequest,
+): Promise<JobDetail> {
+  const response = await apiFetch(`/jobs/${jobId}/materials/${materialId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) throw new Error("Failed to update material");
+  return response.json();
+}
+
+export async function removeJobMaterial(
+  jobId: string,
+  materialId: string,
+): Promise<JobDetail> {
+  const response = await apiFetch(`/jobs/${jobId}/materials/${materialId}`, {
+    method: "DELETE",
+  });
+  if (!response.ok) throw new Error("Failed to remove material");
+  return response.json();
+}
+
+export async function addJobLabour(
+  jobId: string,
+  body: CreateJobLabourRequest,
+): Promise<JobDetail> {
+  const response = await apiFetch(`/jobs/${jobId}/labour`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) throw new Error("Failed to add labour");
+  return response.json();
+}
+
+export async function updateJobLabour(
+  jobId: string,
+  labourId: string,
+  body: UpdateJobLabourRequest,
+): Promise<JobDetail> {
+  const response = await apiFetch(`/jobs/${jobId}/labour/${labourId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) throw new Error("Failed to update labour");
+  return response.json();
+}
+
+export async function removeJobLabour(
+  jobId: string,
+  labourId: string,
+): Promise<JobDetail> {
+  const response = await apiFetch(`/jobs/${jobId}/labour/${labourId}`, {
+    method: "DELETE",
+  });
+  if (!response.ok) throw new Error("Failed to remove labour");
   return response.json();
 }
 

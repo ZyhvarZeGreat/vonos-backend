@@ -386,8 +386,9 @@ export function FinanceView({ groupMode = false }: FinanceViewProps) {
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-100">
           <p className="font-medium">Group roll-up</p>
           <p className="mt-1 text-amber-900/90 dark:text-amber-100/90">
-            Ledger totals and entries are summed across all entities. Internal transfer
-            elimination between entities is not yet applied.
+            Ledger totals and entries are summed across entity books. Rows tagged
+            as internal transfers are excluded; stock requisitions do not post
+            money, so fulfilment does not double-count group P&L.
           </p>
         </div>
       ) : tenantCode ? (

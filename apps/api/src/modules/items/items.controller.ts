@@ -12,6 +12,7 @@ import type {
   ItemFilters,
   ItemLocationStockInput,
   StockStatus,
+  CsvImportResult,
 } from '@vonos/types';
 import { Roles } from '../../common/decorators/roles.decorator';
 import {
@@ -36,6 +37,18 @@ export class ItemsController {
     return this.itemsService.stockAvailability(search);
   }
 
+  /** Available qty at a source tenant for a SKU (requisition planning). */
+  @Get('source-availability')
+  sourceAvailability(
+    @Query('sku') sku?: string,
+    @Query('sourceTenantCode') sourceTenantCode?: string,
+  ) {
+    return this.itemsService.sourceAvailability(
+      sku ?? '',
+      sourceTenantCode ?? 'VW',
+    );
+  }
+
   @Get()
   list(
     @Query('status') status?: StockStatus,
@@ -58,6 +71,26 @@ export class ItemsController {
       filters.availableForRetail = true;
     }
     return this.itemsService.list(filters);
+  }
+
+  @Post('import')
+  @Roles('manager', 'admin', 'super_admin')
+  import(@Body() body: { csv: string }) {
+    return this.itemsService.importCsv(body.csv ?? '');
+  }
+
+  @Post('bulk-price')
+  @Roles('manager', 'admin', 'super_admin')
+  bulkUpdatePrice(
+    @Body()
+    body: {
+      category?: string;
+      itemIds?: string[];
+      adjustmentType: 'fixed' | 'percentage';
+      adjustmentValue: number;
+    },
+  ) {
+    return this.itemsService.bulkUpdatePrice(body);
   }
 
   @Get(':id')

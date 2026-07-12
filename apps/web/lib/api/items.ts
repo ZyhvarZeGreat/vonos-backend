@@ -5,6 +5,7 @@ import type {
   KpiSummary,
   StockAvailabilityResult,
   StockStatus,
+  CsvImportResult,
 } from "@vonos/types";
 import { apiFetch, withTenantQuery } from "@/lib/api/client";
 import {
@@ -95,6 +96,33 @@ export async function getStockAvailability(
   return response.json();
 }
 
+export type SourceAvailability = {
+  sku: string;
+  sourceTenantCode: string;
+  onHand: number;
+  reserved: number;
+  available: number;
+};
+
+/** Available qty at a source tenant for requisition planning. */
+export async function getSourceAvailability(
+  tenantId: string,
+  sku: string,
+  sourceTenantCode: string,
+): Promise<SourceAvailability> {
+  const params = new URLSearchParams({
+    sku,
+    sourceTenantCode,
+  });
+  const path = withTenantQuery(
+    `/items/source-availability?${params.toString()}`,
+    tenantId,
+  );
+  const response = await apiFetch(path);
+  if (!response.ok) throw new Error("Failed to fetch source availability");
+  return response.json();
+}
+
 export async function getItem(id: string): Promise<Item> {
   const response = await apiFetch(`/items/${id}`);
   if (!response.ok) throw new Error("Failed to fetch item");
@@ -150,5 +178,36 @@ export async function updateItem(
     body: JSON.stringify(body),
   });
   if (!response.ok) throw new Error("Failed to update item");
+  return response.json();
+}
+
+export async function importItems(
+  tenantId: string,
+  csv: string,
+): Promise<CsvImportResult> {
+  const response = await apiFetch(withTenantQuery("/items/import", tenantId), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ csv }),
+  });
+  if (!response.ok) throw new Error("Failed to import products");
+  return response.json();
+}
+
+export async function bulkUpdatePrices(
+  tenantId: string,
+  body: {
+    category?: string;
+    itemIds?: string[];
+    adjustmentType: "fixed" | "percentage";
+    adjustmentValue: number;
+  },
+): Promise<{ updated: number }> {
+  const response = await apiFetch(withTenantQuery("/items/bulk-price", tenantId), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) throw new Error("Failed to update prices");
   return response.json();
 }

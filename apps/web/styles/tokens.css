@@ -4,6 +4,7 @@
 :root {
   /* Surfaces */
   --color-surface-page: #f9fafb;
+  --color-surface-canvas: #eff6ff;
   --color-surface-sidebar: #fdfdfd;
   --color-surface-card: #ffffff;
   --color-surface-topbar: #ffffff;

@@ -2,6 +2,7 @@
 
 import type { ReactNode } from "react";
 import { CursorPaginationBar } from "@/components/molecules/CursorPaginationBar";
+import { DataTableSkeleton } from "@/components/organisms/skeletons";
 import { DataTable, type ColumnConfig, type FilterConfig } from "@/components/organisms/DataTable";
 
 export interface ServerPaginatedTableProps<T extends { id: string }> {
@@ -15,6 +16,7 @@ export interface ServerPaginatedTableProps<T extends { id: string }> {
   onPrev: () => void;
   onPageSizeChange: (size: number) => void;
   isLoading?: boolean;
+  isFetching?: boolean;
   error?: string | null;
   onRowClick?: (row: T) => void;
   emptyState?: { message: string; ctaLabel?: string; onCta?: () => void };
@@ -35,6 +37,7 @@ export function ServerPaginatedTable<T extends { id: string }>({
   onPrev,
   onPageSizeChange,
   isLoading = false,
+  isFetching = false,
   error = null,
   onRowClick,
   emptyState,
@@ -42,6 +45,24 @@ export function ServerPaginatedTable<T extends { id: string }>({
   virtualized = false,
   toolbar,
 }: ServerPaginatedTableProps<T>) {
+  const columnHeaders = columns.map((column) => column.header);
+  const showPagination = items.length > 0 || canGoPrev || isLoading;
+  const busy = isFetching && !isLoading;
+
+  if (isLoading) {
+    return (
+      <div className="overflow-hidden rounded-xl border border-border bg-card shadow-card">
+        {toolbar}
+        <DataTableSkeleton
+          rows={8}
+          columnHeaders={columnHeaders}
+          withPagination
+          embedded
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="overflow-hidden rounded-xl border border-border bg-card shadow-card">
       {toolbar}
@@ -53,12 +74,12 @@ export function ServerPaginatedTable<T extends { id: string }>({
         embedded
         virtualized={virtualized}
         disablePagination
-        isLoading={isLoading}
+        isFetching={busy}
         error={error}
         onRowClick={onRowClick}
         emptyState={emptyState}
       />
-      {items.length > 0 || canGoPrev ? (
+      {showPagination ? (
         <CursorPaginationBar
           pageIndex={pageIndex}
           pageSize={pageSize}
@@ -68,6 +89,7 @@ export function ServerPaginatedTable<T extends { id: string }>({
           onPrev={onPrev}
           onNext={onNext}
           onPageSizeChange={onPageSizeChange}
+          isBusy={busy}
         />
       ) : null}
     </div>

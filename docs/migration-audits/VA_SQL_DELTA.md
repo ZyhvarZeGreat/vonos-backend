@@ -15,7 +15,7 @@
 |---|---:|---:|---:|
 | jobs | 9,666 | 0 | -9,666 |
 | payroll_groups | 61 | 61 | — |
-| payrolls | 787 | 787 | — |
+| payrolls | 787 | 0 | -787 |
 | pay_components | 4 | 4 | — |
 
 ---
@@ -46,8 +46,8 @@
   "expenses": 0,
   "payrollGroups": 61,
   "payComponents": 4,
-  "payrolls": 787,
-  "legacyIdRows": 852,
+  "payrolls": 0,
+  "legacyIdRows": 65,
   "auditLogs": 0
 }
 ```

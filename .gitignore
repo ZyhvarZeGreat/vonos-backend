@@ -23,6 +23,7 @@ apps/api/prisma/*.db
 
 # SQL dumps (large; keep out of git)
 *.sql
+!apps/api/prisma/migrations/**/*.sql
 
 # Archives
 *.zip

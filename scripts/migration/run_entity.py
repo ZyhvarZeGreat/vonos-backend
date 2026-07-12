@@ -29,6 +29,7 @@ def run_entity_migration(
     until: str | None = None,
     existing_legacy: dict[str, dict[int, str]] | None = None,
     include_purchases: bool = False,
+    include_sales: bool = False,
 ) -> tuple[dict[str, int], TransformResult]:
     if progress:
         progress.phase(1, 3, f"Load MySQL tables from `{entity.source_db}`")
@@ -68,6 +69,7 @@ def run_entity_migration(
             until=until,
             existing_legacy=existing_legacy,
             include_purchases=include_purchases,
+            include_sales=include_sales,
         )
     else:
         raise ValueError(f"Unsupported archetype: {entity.archetype}")

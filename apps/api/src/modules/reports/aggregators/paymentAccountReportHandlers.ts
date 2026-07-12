@@ -5,37 +5,83 @@ import { toNumber } from '../../../common/utils/serializers';
 import { ledgerDateFilter } from '../../../common/utils/ledgerAggregates';
 import { resolveDateWindow } from './date-utils';
 
+type AccountBalance = {
+  id: string;
+  name: string;
+  balance: number;
+  currency: string;
+};
+
+type PeriodActivity = {
+  debit: number;
+  credit: number;
+};
+
+/** One grouped query for all account balances — avoids per-account N+1. */
 async function accountBalances(
   db: TenantScopedPrisma,
-): Promise<
-  Array<{ id: string; name: string; balance: number; currency: string }>
-> {
+): Promise<AccountBalance[]> {
   const accounts = await db.paymentAccount.findMany({
     where: { deletedAt: null, isClosed: false },
     select: { id: true, name: true, currency: true },
     orderBy: { name: 'asc' },
   });
 
-  const balances = await Promise.all(
-    accounts.map(async (account) => {
-      const txns = await db.accountTransaction.findMany({
-        where: { accountId: account.id, deletedAt: null },
-        select: { type: true, amount: true },
-      });
-      const balance = txns.reduce((sum, row) => {
-        const amount = toNumber(row.amount);
-        return row.type === 'credit' ? sum + amount : sum - amount;
-      }, 0);
-      return {
-        id: account.id,
-        name: account.name,
-        balance,
-        currency: account.currency,
-      };
-    }),
-  );
+  if (accounts.length === 0) return [];
 
-  return balances;
+  const aggregates = await db.accountTransaction.groupBy({
+    by: ['accountId', 'type'],
+    where: {
+      deletedAt: null,
+      accountId: { in: accounts.map((a) => a.id) },
+    },
+    _sum: { amount: true },
+  });
+
+  const byAccount = new Map<string, number>();
+  for (const row of aggregates) {
+    const amount = toNumber(row._sum.amount ?? 0);
+    const delta = row.type === 'credit' ? amount : -amount;
+    byAccount.set(row.accountId, (byAccount.get(row.accountId) ?? 0) + delta);
+  }
+
+  return accounts.map((account) => ({
+    id: account.id,
+    name: account.name,
+    balance: byAccount.get(account.id) ?? 0,
+    currency: account.currency,
+  }));
+}
+
+/** Period debit/credit totals per account in one groupBy. */
+async function accountPeriodActivity(
+  db: TenantScopedPrisma,
+  accountIds: string[],
+  from: Date,
+  to: Date,
+): Promise<Map<string, PeriodActivity>> {
+  const result = new Map<string, PeriodActivity>();
+  if (accountIds.length === 0) return result;
+
+  const aggregates = await db.accountTransaction.groupBy({
+    by: ['accountId', 'type'],
+    where: {
+      deletedAt: null,
+      accountId: { in: accountIds },
+      operationDate: { gte: from, lte: to },
+    },
+    _sum: { amount: true },
+  });
+
+  for (const row of aggregates) {
+    const current = result.get(row.accountId) ?? { debit: 0, credit: 0 };
+    const amount = toNumber(row._sum.amount ?? 0);
+    if (row.type === 'debit') current.debit += amount;
+    else current.credit += amount;
+    result.set(row.accountId, current);
+  }
+
+  return result;
 }
 
 /** Balance sheet — cash accounts + receivables vs ledger costs/expenses. */
@@ -164,36 +210,28 @@ export async function buildTrialBalanceReport(
     orderBy: { name: 'asc' },
   });
 
+  const activity = await accountPeriodActivity(
+    db,
+    accounts.map((a) => a.id),
+    window.from,
+    window.to,
+  );
+
   const rows: Array<Record<string, string | number>> = [];
   let totalDebit = 0;
   let totalCredit = 0;
   const currency = accounts[0]?.currency ?? 'NGN';
 
   for (const account of accounts) {
-    const txns = await db.accountTransaction.findMany({
-      where: {
-        accountId: account.id,
-        deletedAt: null,
-        operationDate: { gte: window.from, lte: window.to },
-      },
-      select: { type: true, amount: true },
-    });
+    const period = activity.get(account.id) ?? { debit: 0, credit: 0 };
+    totalDebit += period.debit;
+    totalCredit += period.credit;
 
-    const debit = txns
-      .filter((t) => t.type === 'debit')
-      .reduce((sum, t) => sum + toNumber(t.amount), 0);
-    const credit = txns
-      .filter((t) => t.type === 'credit')
-      .reduce((sum, t) => sum + toNumber(t.amount), 0);
-
-    totalDebit += debit;
-    totalCredit += credit;
-
-    if (debit > 0 || credit > 0) {
+    if (period.debit > 0 || period.credit > 0) {
       rows.push({
         account: account.name,
-        debit: Math.round(debit),
-        credit: Math.round(credit),
+        debit: Math.round(period.debit),
+        credit: Math.round(period.credit),
         currency: account.currency,
       });
     }
@@ -246,35 +284,26 @@ export async function buildPaymentAccountReport(
   const window = resolveDateWindow(from, to);
   const accounts = await accountBalances(db);
   const currency = accounts[0]?.currency ?? 'NGN';
+  const activity = await accountPeriodActivity(
+    db,
+    accounts.map((a) => a.id),
+    window.from,
+    window.to,
+  );
 
   const rows: Array<Record<string, string | number>> = [];
   let totalIn = 0;
   let totalOut = 0;
 
   for (const account of accounts) {
-    const txns = await db.accountTransaction.findMany({
-      where: {
-        accountId: account.id,
-        deletedAt: null,
-        operationDate: { gte: window.from, lte: window.to },
-      },
-      select: { type: true, amount: true },
-    });
-
-    const credits = txns
-      .filter((t) => t.type === 'credit')
-      .reduce((sum, t) => sum + toNumber(t.amount), 0);
-    const debits = txns
-      .filter((t) => t.type === 'debit')
-      .reduce((sum, t) => sum + toNumber(t.amount), 0);
-
-    totalIn += credits;
-    totalOut += debits;
+    const period = activity.get(account.id) ?? { debit: 0, credit: 0 };
+    totalIn += period.credit;
+    totalOut += period.debit;
 
     rows.push({
       account: account.name,
-      moneyIn: Math.round(credits),
-      moneyOut: Math.round(debits),
+      moneyIn: Math.round(period.credit),
+      moneyOut: Math.round(period.debit),
       balance: Math.round(account.balance),
       currency: account.currency,
     });

@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import type { TenantScopedPrisma } from '../../../common/prisma/prisma.service';
 import { toNumber } from '../../../common/utils/serializers';
 import { inWindow, resolveDateWindow, type DateWindow } from './date-utils';
@@ -27,6 +28,9 @@ export interface JobReportContext {
   periodJobs: NormalizedJobSale[];
   currency: string;
 }
+
+/** Safety cap for row-level job graphs (all-time detail is truncated). */
+export const JOB_REPORT_ROW_CAP = 5_000;
 
 function jobRevenue(
   invoiceAmount: unknown,
@@ -71,6 +75,7 @@ export async function loadJobReportContext(
       labourEntries: { select: { totalCost: true } },
     },
     orderBy: { updatedAt: 'desc' },
+    take: JOB_REPORT_ROW_CAP,
   });
 
   const periodJobs: NormalizedJobSale[] = jobs
@@ -114,17 +119,59 @@ export async function loadJobReportContext(
   };
 }
 
+/** SQL aggregate — no job graph load. Used by P&L summary / shell. */
 export async function computeJobRevenueTotal(
   db: TenantScopedPrisma,
+  tenantId: string,
   from?: string,
   to?: string,
 ): Promise<{ revenue: number; directCost: number }> {
-  const ctx = await loadJobReportContext(db, from, to);
-  return ctx.periodJobs.reduce(
-    (acc, job) => ({
-      revenue: acc.revenue + job.revenue,
-      directCost: acc.directCost + job.directCost,
-    }),
-    { revenue: 0, directCost: 0 },
-  );
+  const window = resolveDateWindow(from, to);
+
+  const rows = await db.$queryRaw<
+    [{ revenue: Prisma.Decimal | null; direct_cost: Prisma.Decimal | null }]
+  >`
+    SELECT
+      COALESCE(SUM(
+        CASE
+          WHEN j."invoiceAmount" IS NOT NULL AND j."invoiceAmount" > 0
+            THEN j."invoiceAmount"
+          ELSE COALESCE(j."quoteAmount", 0)
+        END
+      ), 0) AS revenue,
+      COALESCE(SUM(COALESCE(m.total, 0) + COALESCE(l.total, 0)), 0) AS direct_cost
+    FROM "Job" j
+    LEFT JOIN (
+      SELECT jm."jobId", SUM(jm."totalCost") AS total
+      FROM "JobMaterial" jm
+      INNER JOIN "Job" j2 ON j2.id = jm."jobId"
+      WHERE j2."tenantId" = ${tenantId}
+        AND j2."deletedAt" IS NULL
+        AND j2.status = 'Delivered'
+        AND j2."updatedAt" >= ${window.from}
+        AND j2."updatedAt" <= ${window.to}
+      GROUP BY jm."jobId"
+    ) m ON m."jobId" = j.id
+    LEFT JOIN (
+      SELECT jl."jobId", SUM(jl."totalCost") AS total
+      FROM "JobLabour" jl
+      INNER JOIN "Job" j3 ON j3.id = jl."jobId"
+      WHERE j3."tenantId" = ${tenantId}
+        AND j3."deletedAt" IS NULL
+        AND j3.status = 'Delivered'
+        AND j3."updatedAt" >= ${window.from}
+        AND j3."updatedAt" <= ${window.to}
+      GROUP BY jl."jobId"
+    ) l ON l."jobId" = j.id
+    WHERE j."tenantId" = ${tenantId}
+      AND j."deletedAt" IS NULL
+      AND j.status = 'Delivered'
+      AND j."updatedAt" >= ${window.from}
+      AND j."updatedAt" <= ${window.to}
+  `;
+
+  return {
+    revenue: toNumber(rows[0]?.revenue ?? 0),
+    directCost: toNumber(rows[0]?.direct_cost ?? 0),
+  };
 }

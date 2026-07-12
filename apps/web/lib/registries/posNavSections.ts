@@ -71,12 +71,34 @@ function homeItems(code: string, config: TenantConfig): NavItem[] {
   return items;
 }
 
-function userManagementItems(code: string): NavItem[] {
-  return [
-    { label: "Users", icon: "users", route: r(code, "users"), pageType: "list" },
-    { label: "Roles", icon: "shield-check", route: r(code, "roles"), pageType: "list" },
-    { label: "Sales Commission Agents", icon: "badge-dollar-sign", route: r(code, "commission-agents"), pageType: "list" },
-  ];
+function filterNavItems(
+  items: NavItem[],
+  config: TenantConfig,
+  rules: Array<{ routeSuffix: string; moduleId: string }>,
+): NavItem[] {
+  return items.filter((item) => {
+    for (const rule of rules) {
+      if (item.route.endsWith(rule.routeSuffix) && !has(config, rule.moduleId)) {
+        return false;
+      }
+    }
+    return true;
+  });
+}
+
+function userManagementItems(code: string, config: TenantConfig): NavItem[] {
+  return filterNavItems(
+    [
+      { label: "Users", icon: "users", route: r(code, "users"), pageType: "list" },
+      { label: "Roles", icon: "shield-check", route: r(code, "roles"), pageType: "list" },
+      { label: "Sales Commission Agents", icon: "badge-dollar-sign", route: r(code, "commission-agents"), pageType: "list" },
+    ],
+    config,
+    [
+      { routeSuffix: "/roles", moduleId: "legacyRoles" },
+      { routeSuffix: "/commission-agents", moduleId: "legacyRoles" },
+    ],
+  );
 }
 
 function contactsItems(code: string, config: TenantConfig): NavItem[] {
@@ -91,31 +113,47 @@ function contactsItems(code: string, config: TenantConfig): NavItem[] {
     );
   }
   if (items.length > 0) {
-    items.push({ label: "Import Contacts", icon: "upload", route: r(code, "import-contacts"), pageType: "list" });
+    items.push(
+      ...(has(config, "bulkImport")
+        ? [{ label: "Import Contacts", icon: "upload", route: r(code, "import-contacts"), pageType: "list" as const }]
+        : []),
+    );
   }
   return items;
 }
 
 function productsItems(code: string, config: TenantConfig): NavItem[] {
   const listSlug =
-    config.archetype === "transaction"
-      ? code === "VC" ? "menu-items" : "catalog"
-      : "inventory";
+    code === "VC"
+      ? "menu-items"
+      : config.archetype === "stock"
+        ? "inventory"
+        : "catalog";
 
-  return [
-    { label: "List Products", icon: "package", route: r(code, listSlug), pageType: "list" },
-    { label: "Add Product", icon: "plus-circle", route: r(code, "add-product"), pageType: "list" },
-    { label: "Update Price", icon: "badge-dollar-sign", route: r(code, "update-price"), pageType: "list" },
-    { label: "Print Labels", icon: "printer", route: r(code, "print-labels"), pageType: "list" },
-    { label: "Variations", icon: "layers", route: r(code, "variations"), pageType: "list" },
-    { label: "Import Products", icon: "upload", route: r(code, "import-products"), pageType: "list" },
-    { label: "Import Opening Stock", icon: "package-open", route: r(code, "import-opening-stock"), pageType: "list" },
-    { label: "Selling Price Group", icon: "tags", route: r(code, "price-groups"), pageType: "list" },
-    { label: "Units", icon: "ruler", route: r(code, "units"), pageType: "list" },
-    { label: "Categories", icon: "folder-tree", route: r(code, "categories"), pageType: "list" },
-    { label: "Brands", icon: "award", route: r(code, "brands"), pageType: "list" },
-    { label: "Warranties", icon: "shield-check", route: r(code, "warranties"), pageType: "list" },
-  ];
+  return filterNavItems(
+    [
+      { label: "List Products", icon: "package", route: r(code, listSlug), pageType: "list" },
+      { label: "Add Product", icon: "plus-circle", route: r(code, "add-product"), pageType: "list" },
+      { label: "Update Price", icon: "badge-dollar-sign", route: r(code, "update-price"), pageType: "list" },
+      { label: "Print Labels", icon: "printer", route: r(code, "print-labels"), pageType: "list" },
+      { label: "Variations", icon: "layers", route: r(code, "variations"), pageType: "list" },
+      { label: "Import Products", icon: "upload", route: r(code, "import-products"), pageType: "list" },
+      { label: "Import Opening Stock", icon: "package-open", route: r(code, "import-opening-stock"), pageType: "list" },
+      { label: "Selling Price Group", icon: "tags", route: r(code, "price-groups"), pageType: "list" },
+      { label: "Units", icon: "ruler", route: r(code, "units"), pageType: "list" },
+      { label: "Categories", icon: "folder-tree", route: r(code, "categories"), pageType: "list" },
+      { label: "Brands", icon: "award", route: r(code, "brands"), pageType: "list" },
+      { label: "Warranties", icon: "shield-check", route: r(code, "warranties"), pageType: "list" },
+    ],
+    config,
+    [
+      { routeSuffix: "/update-price", moduleId: "bulkPriceUpdate" },
+      { routeSuffix: "/print-labels", moduleId: "productLabels" },
+      { routeSuffix: "/variations", moduleId: "productVariations" },
+      { routeSuffix: "/import-products", moduleId: "bulkImport" },
+      { routeSuffix: "/import-opening-stock", moduleId: "bulkImport" },
+    ],
+  );
 }
 
 function purchasesItems(code: string, config: TenantConfig): NavItem[] {
@@ -137,28 +175,51 @@ function purchasesItems(code: string, config: TenantConfig): NavItem[] {
     if (code === "VW") {
       items.push({ label: "Transfers", icon: "arrow-right-left", route: r(code, "transfers"), pageType: "list" });
     }
+    if (code === "VW" && has(config, "incomingRequisitions")) {
+      items.push({
+        label: "Incoming Requests",
+        icon: "clipboard-list",
+        route: r(code, "incoming-requisitions"),
+        pageType: "list",
+      });
+    }
   }
 
   return items;
 }
 
 function sellItems(code: string, config: TenantConfig): NavItem[] {
-  if (config.archetype !== "transaction") return [];
+  if (!has(config, "sales") && !has(config, "orders")) return [];
   const salesSlug = code === "VC" ? "orders" : "sales";
-  return [
-    { label: "All sales", icon: "receipt", route: r(code, salesSlug), pageType: "list" },
-    { label: "Add Sale", icon: "plus-circle", route: r(code, "add-sale"), pageType: "list" },
-    { label: "List POS", icon: "monitor", route: r(code, "pos"), pageType: "list" },
-    { label: "POS", icon: "scan-line", route: r(code, "pos-terminal"), pageType: "list" },
-    { label: "Add Draft", icon: "file-plus", route: r(code, "add-draft"), pageType: "list" },
-    { label: "List Drafts", icon: "files", route: r(code, "drafts"), pageType: "list" },
-    { label: "Add Quotation", icon: "file-text", route: r(code, "add-quotation"), pageType: "list" },
-    { label: "List quotations", icon: "file-stack", route: r(code, "quotations"), pageType: "list" },
-    { label: "List Sell Return", icon: "rotate-ccw", route: r(code, "returns"), pageType: "list" },
-    { label: "Shipments", icon: "truck", route: r(code, "shipments"), pageType: "list" },
-    { label: "Discounts", icon: "percent", route: r(code, "discounts"), pageType: "list" },
-    { label: "Import Sales", icon: "upload", route: r(code, "import-sales"), pageType: "list" },
-  ];
+  return filterNavItems(
+    [
+      { label: "All sales", icon: "receipt", route: r(code, salesSlug), pageType: "list" },
+      { label: "Add Sale", icon: "plus-circle", route: r(code, "add-sale"), pageType: "list" },
+      { label: "List POS", icon: "monitor", route: r(code, "pos"), pageType: "list" },
+      { label: "POS", icon: "scan-line", route: r(code, "pos-terminal"), pageType: "list" },
+      { label: "Add Draft", icon: "file-plus", route: r(code, "add-draft"), pageType: "list" },
+      { label: "List Drafts", icon: "files", route: r(code, "drafts"), pageType: "list" },
+      { label: "Add Quotation", icon: "file-text", route: r(code, "add-quotation"), pageType: "list" },
+      { label: "List quotations", icon: "file-stack", route: r(code, "quotations"), pageType: "list" },
+      { label: "List Sell Return", icon: "rotate-ccw", route: r(code, "returns"), pageType: "list" },
+      { label: "Shipments", icon: "truck", route: r(code, "shipments"), pageType: "list" },
+      { label: "Discounts", icon: "percent", route: r(code, "discounts"), pageType: "list" },
+      { label: "Import Sales", icon: "upload", route: r(code, "import-sales"), pageType: "list" },
+    ],
+    config,
+    [
+      { routeSuffix: "/pos", moduleId: "pos" },
+      { routeSuffix: "/pos-terminal", moduleId: "pos" },
+      { routeSuffix: "/add-draft", moduleId: "quotations" },
+      { routeSuffix: "/drafts", moduleId: "quotations" },
+      { routeSuffix: "/add-quotation", moduleId: "quotations" },
+      { routeSuffix: "/quotations", moduleId: "quotations" },
+      { routeSuffix: "/returns", moduleId: "returns" },
+      { routeSuffix: "/shipments", moduleId: "shipments" },
+      { routeSuffix: "/discounts", moduleId: "discounts" },
+      { routeSuffix: "/import-sales", moduleId: "bulkImport" },
+    ],
+  );
 }
 
 function expensesItems(code: string): NavItem[] {
@@ -169,14 +230,23 @@ function expensesItems(code: string): NavItem[] {
   ];
 }
 
-function paymentAccountItems(code: string): NavItem[] {
-  return [
-    { label: "List Accounts", icon: "credit-card", route: r(code, "payment-accounts"), pageType: "list" },
-    { label: "Balance Sheet", icon: "scale", route: r(code, "balance-sheet"), pageType: "dashboard" },
-    { label: "Trial Balance", icon: "list-checks", route: r(code, "trial-balance"), pageType: "dashboard" },
-    { label: "Cash Flow", icon: "trending-up", route: r(code, "cash-flow"), pageType: "dashboard" },
-    { label: "Payment Account Report", icon: "file-bar-chart", route: r(code, "payment-account-report"), pageType: "dashboard" },
-  ];
+function paymentAccountItems(code: string, config: TenantConfig): NavItem[] {
+  return filterNavItems(
+    [
+      { label: "List Accounts", icon: "credit-card", route: r(code, "payment-accounts"), pageType: "list" },
+      { label: "Balance Sheet", icon: "scale", route: r(code, "balance-sheet"), pageType: "dashboard" },
+      { label: "Trial Balance", icon: "list-checks", route: r(code, "trial-balance"), pageType: "dashboard" },
+      { label: "Cash Flow", icon: "trending-up", route: r(code, "cash-flow"), pageType: "dashboard" },
+      { label: "Payment Account Report", icon: "file-bar-chart", route: r(code, "payment-account-report"), pageType: "dashboard" },
+    ],
+    config,
+    [
+      { routeSuffix: "/balance-sheet", moduleId: "accountingReports" },
+      { routeSuffix: "/trial-balance", moduleId: "accountingReports" },
+      { routeSuffix: "/cash-flow", moduleId: "accountingReports" },
+      { routeSuffix: "/payment-account-report", moduleId: "accountingReports" },
+    ],
+  );
 }
 
 /** HQ6 Reports dropdown — one sidebar sublink per report page (filtered like AdminSidebarMenu.php). */
@@ -226,7 +296,7 @@ export function posNavSectionsForConfig(config: TenantConfig): NavSection[] {
     label: "User Management",
     icon: "users",
     collapsible: true,
-    items: userManagementItems(code),
+    items: userManagementItems(code, config),
   });
 
   // 3. Contacts
@@ -272,7 +342,7 @@ export function posNavSectionsForConfig(config: TenantConfig): NavSection[] {
       label: "Payment Accounts",
       icon: "credit-card",
       collapsible: true,
-      items: paymentAccountItems(code),
+      items: paymentAccountItems(code, config),
     });
   }
 

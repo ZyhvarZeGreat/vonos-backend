@@ -34,8 +34,17 @@ const SALE_STATUS_TO_UI: Record<string, SaleReturnStatus> = {
   completed: 'Completed',
   refunded: 'Refunded',
   partially_refunded: 'Restocked',
+  written_off: 'Written Off',
   draft: 'Completed',
+  quotation: 'Completed',
 };
+
+/** Human label for list badges when recordStatus differs from return vocabulary. */
+export function mapSaleRecordStatusLabel(status: string): string {
+  if (status === 'draft') return 'Draft';
+  if (status === 'quotation') return 'Quotation';
+  return mapSaleStatusToUi(status);
+}
 
 export function mapSaleStatusToUi(status: string): SaleReturnStatus {
   return SALE_STATUS_TO_UI[status] ?? 'Completed';
@@ -44,6 +53,7 @@ export function mapSaleStatusToUi(status: string): SaleReturnStatus {
 const RETURN_PRISMA_STATUSES: SaleStatus[] = [
   SaleStatus.refunded,
   SaleStatus.partially_refunded,
+  SaleStatus.written_off,
 ];
 
 export function prismaSaleStatusesForUi(
@@ -56,10 +66,18 @@ export function prismaSaleStatusesForUi(
 
 export function saleStatusWhereClause(filters: {
   status?: SaleReturnStatus;
+  saleStatus?: string;
   returnsOnly?: boolean;
-}): Pick<Prisma.SaleWhereInput, 'status'> {
+  shipmentsOnly?: boolean;
+}): Pick<Prisma.SaleWhereInput, 'status' | 'shippingStatus'> {
+  if (filters.shipmentsOnly) {
+    return { shippingStatus: { not: null } };
+  }
   if (filters.returnsOnly) {
     return { status: { in: RETURN_PRISMA_STATUSES } };
+  }
+  if (filters.saleStatus) {
+    return { status: filters.saleStatus as SaleStatus };
   }
   if (filters.status) {
     return { status: { in: prismaSaleStatusesForUi(filters.status) } };

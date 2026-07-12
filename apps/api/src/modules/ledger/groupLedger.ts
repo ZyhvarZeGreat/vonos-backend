@@ -11,33 +11,12 @@ import {
   buildLedgerSummaryFromGroups,
   ledgerDateFilter,
 } from '../../common/utils/ledgerAggregates';
+import {
+  EXCLUDE_INTERNAL_TRANSFER_SQL,
+  isInternalTransferEntry,
+} from '../../common/utils/internalTransfer';
 import { toIso, toNumber } from '../../common/utils/serializers';
 import { resolveDateWindow } from '../reports/aggregators/date-utils';
-
-/** Categories/descriptions for internal Warehouse ↔ entity stock moves — excluded from group P&L roll-up. */
-const INTERNAL_TRANSFER_MARKERS = [
-  'internal transfer',
-  'stock transfer',
-  'requisition fulfillment',
-  'inter-entity transfer',
-];
-
-const TRANSFER_SQL = Prisma.sql`
-  AND NOT (
-    LOWER(COALESCE(category, '') || ' ' || COALESCE(description, '')) LIKE '%internal transfer%'
-    OR LOWER(COALESCE(category, '') || ' ' || COALESCE(description, '')) LIKE '%stock transfer%'
-    OR LOWER(COALESCE(category, '') || ' ' || COALESCE(description, '')) LIKE '%requisition fulfillment%'
-    OR LOWER(COALESCE(category, '') || ' ' || COALESCE(description, '')) LIKE '%inter-entity transfer%'
-  )
-`;
-
-function isInternalTransferEntry(
-  category: string,
-  description: string,
-): boolean {
-  const haystack = `${category} ${description}`.toLowerCase();
-  return INTERNAL_TRANSFER_MARKERS.some((marker) => haystack.includes(marker));
-}
 
 async function nonVagTenants(prisma: PrismaClient) {
   return prisma.tenant.findMany({
@@ -81,7 +60,7 @@ export async function buildGroupLedgerByEntity(
       AND "deletedAt" IS NULL
       AND date >= ${window.from}
       AND date <= ${window.to}
-      ${TRANSFER_SQL}
+      ${EXCLUDE_INTERNAL_TRANSFER_SQL}
     GROUP BY "tenantId", type
   `;
 
@@ -140,7 +119,7 @@ export async function buildGroupLedgerSummary(
         AND "deletedAt" IS NULL
         AND date >= ${window.from}
         AND date <= ${window.to}
-        ${TRANSFER_SQL}
+        ${EXCLUDE_INTERNAL_TRANSFER_SQL}
       GROUP BY type
     `,
     prisma.ledgerEntry.findFirst({
@@ -219,7 +198,11 @@ export async function buildGroupLedgerList(
   return rows
     .filter(
       (row) =>
-        !isInternalTransferEntry(row.category, row.description ?? ''),
+        !isInternalTransferEntry(
+          row.category,
+          row.description ?? '',
+          row.isInternalTransfer,
+        ),
     )
     .map((row) => {
       const tenant = tenantById.get(row.tenantId);

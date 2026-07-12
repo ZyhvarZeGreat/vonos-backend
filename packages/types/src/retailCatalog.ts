@@ -13,9 +13,15 @@ export const RETAIL_CATALOG_ENABLED_MODULES = [
   "paymentAccounts",
   "pos",
   "quotations",
+  "discounts",
+  "shipments",
+  "bulkPriceUpdate",
+  "productVariations",
+  "productLabels",
   "reports",
   "finance",
   "hrm",
+  "bulkImport",
 ] as const;
 
 export type RetailCatalogModule = (typeof RETAIL_CATALOG_ENABLED_MODULES)[number];

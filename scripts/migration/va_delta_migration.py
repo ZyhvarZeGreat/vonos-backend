@@ -69,6 +69,7 @@ def run_va_delta_migration(
         until=until,
         existing_legacy=scoped_existing,
         include_purchases=True,
+        include_sales=True,
     )
     retarget_tenant(result, VA_TENANT_ID)
     apply_legacy_id_offset(result, offset)

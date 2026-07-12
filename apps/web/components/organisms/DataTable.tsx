@@ -8,6 +8,7 @@ import { DataTableSkeleton, KanbanSkeleton, CalendarGridSkeleton } from "@/compo
 import { Input } from "@/components/atoms/Input";
 import { Select } from "@/components/atoms/Select";
 import { PaginationBar } from "@/components/molecules/PaginationBar";
+import { TableFetchingOverlay } from "@/components/molecules/TableFetchingOverlay";
 import { TableRow } from "@/components/molecules/TableRow";
 import { assertDisplayModeImplemented } from "@/lib/registries/displayModes";
 import { formatTableCellValue } from "@/lib/utils/formatDisplay";
@@ -61,6 +62,8 @@ export interface DataTableProps<T extends { id: string }> {
   onRowClick?: (row: T) => void;
   emptyState?: { message: string; ctaLabel?: string; onCta?: () => void };
   isLoading?: boolean;
+  /** Refetch/pagination — keeps visible rows and shows a light overlay. */
+  isFetching?: boolean;
   error?: string | null;
   className?: string;
 }
@@ -104,6 +107,7 @@ export function DataTable<T extends { id: string }>({
   onRowClick,
   emptyState,
   isLoading = false,
+  isFetching = false,
   error = null,
   className,
 }: DataTableProps<T>) {
@@ -252,7 +256,7 @@ export function DataTable<T extends { id: string }>({
     offsetPagination?.onPageChange(1);
   }
 
-  if (isLoading) {
+  if (isLoading || (isFetching && data.length === 0)) {
     const shellClass = cn(
       embedded ? "overflow-hidden" : "overflow-hidden rounded-xl border border-border bg-card shadow-card",
       className,
@@ -274,8 +278,9 @@ export function DataTable<T extends { id: string }>({
     return (
       <section className={shellClass}>
         <DataTableSkeleton
-          rows={6}
-          columns={Math.max(columns.length, 4)}
+          rows={8}
+          columnHeaders={columns.map((column) => column.header)}
+          selectable={selectable}
           withFilters={filters.length > 0}
           embedded
         />
@@ -357,9 +362,10 @@ export function DataTable<T extends { id: string }>({
       ) : (
         <div
           ref={virtualized ? scrollRef : undefined}
-          className="overflow-x-auto"
+          className="relative overflow-x-auto"
           style={virtualized ? { maxHeight: maxBodyHeight, overflow: "auto" } : undefined}
         >
+          {isFetching ? <TableFetchingOverlay /> : null}
           <table className="min-w-full">
             <thead className="bg-[var(--color-surface-muted)]">
               <tr>

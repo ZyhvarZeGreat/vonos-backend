@@ -45,6 +45,47 @@ export async function getRequisitions(tenantId: string): Promise<Requisition[]> 
   );
 }
 
+export async function getRequisition(
+  tenantId: string,
+  id: string,
+): Promise<Requisition> {
+  const path = withTenantQuery(`/requisitions/${id}`, tenantId);
+  const response = await apiFetch(path);
+  if (!response.ok) throw new Error("Failed to fetch requisition");
+  return response.json();
+}
+
+const INCOMING_PATH = "/requisitions/incoming";
+
+async function fetchIncomingRequisitionsRaw(
+  tenantId: string,
+  cursor?: string,
+  limit?: number,
+): Promise<Requisition[]> {
+  const tenantPath = withTenantQuery(INCOMING_PATH, tenantId);
+  const url = appendListQuery(tenantPath, { cursor, limit });
+  const response = await apiFetch(url);
+  if (!response.ok) throw new Error("Failed to fetch incoming requisitions");
+  return response.json();
+}
+
+export async function getIncomingRequisitionsPage(
+  tenantId: string,
+  cursor: string | undefined,
+  limit = DEFAULT_TABLE_PAGE_SIZE,
+): Promise<ListPage<Requisition>> {
+  return fetchTenantListPage(INCOMING_PATH, tenantId, cursor, limit);
+}
+
+export async function getAllIncomingRequisitions(
+  tenantId: string,
+): Promise<Requisition[]> {
+  return fetchAllPages(
+    (cursor, limit) => fetchIncomingRequisitionsRaw(tenantId, cursor, limit),
+    EXPORT_PAGE_SIZE,
+  );
+}
+
 export async function createRequisition(
   tenantId: string,
   body: CreateRequisitionRequest,
@@ -62,11 +103,19 @@ export async function createRequisition(
 async function transitionRequisition(
   tenantId: string,
   id: string,
-  action: "approve" | "reject" | "fulfill",
+  action: "approve" | "reject" | "fulfill" | "cancel",
 ): Promise<Requisition> {
   const path = withTenantQuery(`/requisitions/${id}/${action}`, tenantId);
   const response = await apiFetch(path, { method: "POST" });
-  if (!response.ok) throw new Error(`Failed to ${action} requisition`);
+  if (!response.ok) {
+    const body = (await response.json().catch(() => null)) as {
+      message?: string | string[];
+    } | null;
+    const message = Array.isArray(body?.message)
+      ? body.message.join(", ")
+      : body?.message;
+    throw new Error(message || `Failed to ${action} requisition`);
+  }
   return response.json();
 }
 
@@ -90,4 +139,12 @@ export function fulfillRequisition(
   id: string,
 ): Promise<Requisition> {
   return transitionRequisition(tenantId, id, "fulfill");
+}
+
+/** Requesting tenant cancels a Pending requisition. */
+export function cancelRequisition(
+  tenantId: string,
+  id: string,
+): Promise<Requisition> {
+  return transitionRequisition(tenantId, id, "cancel");
 }

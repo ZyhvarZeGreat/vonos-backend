@@ -4,7 +4,20 @@ import { formatCurrency } from "@/lib/utils/formatCurrency";
 import { formatDate } from "@/lib/utils/formatDate";
 import { cn } from "@/lib/utils/cn";
 
-export type InvoiceDocumentKind = "quotation" | "invoice" | "receipt";
+export type InvoiceDocumentKind =
+  | "quotation"
+  | "invoice"
+  | "receipt"
+  | "purchase"
+  | "statement";
+
+export interface InvoiceStatementRow {
+  date: string;
+  reference: string;
+  kind: string;
+  amount: number;
+  status?: string;
+}
 
 export interface InvoiceContact {
   name: string;
@@ -34,6 +47,8 @@ export interface InvoiceDocumentProps {
   notes?: string | null;
   validUntil?: string | null;
   balanceDue?: number | null;
+  /** For customer account statements — transaction rows instead of SKU lines. */
+  statementRows?: InvoiceStatementRow[];
   className?: string;
 }
 
@@ -41,6 +56,8 @@ const KIND_LABELS: Record<InvoiceDocumentKind, string> = {
   quotation: "Quotation",
   invoice: "Tax Invoice",
   receipt: "Receipt",
+  purchase: "Purchase Order",
+  statement: "Account Statement",
 };
 
 export function InvoiceDocument({
@@ -56,8 +73,11 @@ export function InvoiceDocument({
   notes,
   validUntil,
   balanceDue,
+  statementRows,
   className,
 }: InvoiceDocumentProps) {
+  const isStatement = kind === "statement" && statementRows && statementRows.length > 0;
+
   return (
     <article
       className={cn(
@@ -83,7 +103,9 @@ export function InvoiceDocument({
 
       <section className="mb-8 grid gap-6 sm:grid-cols-2">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-wider text-muted">Bill to</p>
+          <p className="text-xs font-semibold uppercase tracking-wider text-muted">
+            {kind === "purchase" ? "Supplier" : kind === "statement" ? "Account holder" : "Bill to"}
+          </p>
           <p className="mt-2 text-base font-semibold">{contact.name}</p>
           {contact.businessName && contact.businessName !== contact.name ? (
             <p className="text-sm text-muted">{contact.businessName}</p>
@@ -106,15 +128,50 @@ export function InvoiceDocument({
       <table className="mb-6 w-full text-sm">
         <thead>
           <tr className="border-b border-border text-left text-xs text-muted">
-            <th className="pb-2 font-medium">Description</th>
-            <th className="pb-2 font-medium">Type</th>
-            <th className="pb-2 text-right font-medium">Qty</th>
-            <th className="pb-2 text-right font-medium">Unit</th>
-            <th className="pb-2 text-right font-medium">Total</th>
+            {isStatement ? (
+              <>
+                <th className="pb-2 font-medium">Date</th>
+                <th className="pb-2 font-medium">Reference</th>
+                <th className="pb-2 font-medium">Type</th>
+                <th className="pb-2 font-medium">Status</th>
+                <th className="pb-2 text-right font-medium">Amount</th>
+              </>
+            ) : (
+              <>
+                <th className="pb-2 font-medium">Description</th>
+                <th className="pb-2 font-medium">Type</th>
+                <th className="pb-2 text-right font-medium">Qty</th>
+                <th className="pb-2 text-right font-medium">Unit</th>
+                <th className="pb-2 text-right font-medium">Total</th>
+              </>
+            )}
           </tr>
         </thead>
         <tbody>
-          {lineItems.length === 0 ? (
+          {isStatement ? (
+            statementRows.length === 0 ? (
+              <tr>
+                <td colSpan={5} className="py-6 text-center text-muted">
+                  No transactions yet
+                </td>
+              </tr>
+            ) : (
+              statementRows.map((row) => (
+                <tr
+                  key={`${row.reference}-${row.date}`}
+                  className="border-b border-border last:border-0"
+                >
+                  <td className="py-2.5 whitespace-nowrap">{formatDate(row.date)}</td>
+                  <td className="py-2.5 pr-2">{row.reference}</td>
+                  <td className="py-2.5 capitalize text-muted">{row.kind}</td>
+                  <td className="py-2.5 text-muted">{row.status ?? "—"}</td>
+                  <td className="py-2.5 text-right font-medium tabular-nums">
+                    {formatCurrency(row.amount, currency)}
+                  </td>
+                </tr>
+              ))
+            )
+          ) : lineItems.length === 0 ? (
             <tr>
               <td colSpan={5} className="py-6 text-center text-muted">
                 No line items
@@ -136,6 +193,7 @@ export function InvoiceDocument({
             ))
           )}
         </tbody>
+        {!isStatement ? (
         <tfoot>
           <tr>
             <td colSpan={4} className="pt-4 text-right text-sm font-medium text-muted">
@@ -154,6 +212,18 @@ export function InvoiceDocument({
             </td>
           </tr>
         </tfoot>
+        ) : (
+        <tfoot>
+          <tr>
+            <td colSpan={4} className="pt-4 text-right text-base font-semibold">
+              Total activity
+            </td>
+            <td className="pt-4 text-right text-base font-bold tabular-nums">
+              {formatCurrency(total, currency)}
+            </td>
+          </tr>
+        </tfoot>
+        )}
       </table>
 
       {notes ? (

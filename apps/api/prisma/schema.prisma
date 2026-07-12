@@ -81,7 +81,9 @@ enum SaleStatus {
   completed
   refunded
   partially_refunded
+  written_off
   draft
+  quotation
 }
 
 model Tenant {
@@ -127,6 +129,8 @@ model Tenant {
   invoiceLayouts      InvoiceLayout[]
   invoiceSchemes      InvoiceScheme[]
   receiptPrinters     ReceiptPrinter[]
+  discounts           Discount[]
+  variationTemplates  VariationTemplate[]
 }
 
 model Appointment {
@@ -207,6 +211,7 @@ model Item {
   locationCode       String?
   reorderPoint       Int?
   costPrice          Decimal
+  sellPrice          Decimal?
   currency           String      @default("NGN")
   status             StockStatus @default(in_stock)
   availableForRetail Boolean     @default(false)
@@ -319,6 +324,8 @@ model Job {
   locationCode     String?
   assignedStaffIds String[]
   dueDate          DateTime?
+  qcChecklist      Json?
+  qcNotes          String?
   createdByUserId  String?
   createdByUser    User?     @relation("JobCreatedBy", fields: [createdByUserId], references: [id])
   createdByName    String?
@@ -333,20 +340,26 @@ model Job {
   @@index([tenantId])
   @@index([tenantId, status])
   @@index([tenantId, createdAt])
+  @@index([tenantId, updatedAt])
   @@index([tenantId, customerId])
 }
 
 model JobMaterial {
-  id        String   @id @default(cuid())
-  jobId     String
-  job       Job      @relation(fields: [jobId], references: [id])
-  itemId    String?
-  name      String
-  quantity  Decimal
-  unitCost  Decimal
-  totalCost Decimal
-  source    String?
-  createdAt DateTime @default(now())
+  id                 String   @id @default(cuid())
+  jobId              String
+  job                Job      @relation(fields: [jobId], references: [id])
+  itemId             String?
+  name               String
+  quantity           Decimal
+  unitCost           Decimal
+  totalCost          Decimal
+  source             String?
+  sourceType         String?
+  sourceDepartment   String?
+  supplierId         String?
+  supplierName       String?
+  purchaseMovementId String?
+  createdAt          DateTime @default(now())
 
   @@index([jobId])
 }
@@ -375,6 +388,9 @@ model LedgerEntry {
   description      String
   linkedRecordType String?
   linkedRecordId   String?
+  /** True when this row is an inter-entity transfer (excluded from VAG group P&L). */
+  isInternalTransfer Boolean @default(false)
+  counterpartyTenantId String?
   date             DateTime
   createdAt        DateTime        @default(now())
   deletedAt        DateTime?
@@ -382,6 +398,8 @@ model LedgerEntry {
   @@index([tenantId])
   @@index([tenantId, date])
   @@index([tenantId, type])
+  @@index([tenantId, type, date])
+  @@index([tenantId, isInternalTransfer])
 }
 
 model Customer {
@@ -413,10 +431,16 @@ model Sale {
   customerId    String?
   customer      Customer?      @relation(fields: [customerId], references: [id])
   total         Decimal
+  discountAmount Decimal?
+  taxAmount      Decimal?
+  notes          String?
   currency      String         @default("NGN")
   status        SaleStatus     @default(completed)
   paymentStatus PaymentStatus?
   locationCode  String?
+  shippingStatus  String?
+  shippingAddress String?
+  trackingNumber  String?
   date            DateTime
   createdByUserId String?
   createdByUser   User?          @relation("SaleCreatedBy", fields: [createdByUserId], references: [id])
@@ -425,13 +449,50 @@ model Sale {
   updatedAt     DateTime       @updatedAt
   deletedAt     DateTime?
 
+  originalSaleId String?
+  originalSale   Sale?  @relation("SaleReturns", fields: [originalSaleId], references: [id])
+  returns        Sale[] @relation("SaleReturns")
+
   lines SaleLine[]
   payments Payment[]
 
   @@unique([tenantId, reference])
   @@index([tenantId])
   @@index([tenantId, date])
+  @@index([tenantId, status, date])
   @@index([customerId])
+  @@index([tenantId, shippingStatus])
+  @@index([originalSaleId])
+}
+
+model Discount {
+  id           String    @id @default(cuid())
+  tenantId     String
+  tenant       Tenant    @relation(fields: [tenantId], references: [id])
+  name         String
+  discountType String
+  amount       Decimal
+  isActive     Boolean   @default(true)
+  startsAt     DateTime?
+  endsAt       DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  deletedAt    DateTime?
+
+  @@index([tenantId])
+}
+
+model VariationTemplate {
+  id        String    @id @default(cuid())
+  tenantId  String
+  tenant    Tenant    @relation(fields: [tenantId], references: [id])
+  name      String
+  values    String[]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@index([tenantId])
 }
 
 model SaleLine {

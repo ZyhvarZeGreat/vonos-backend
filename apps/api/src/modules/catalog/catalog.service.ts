@@ -3,6 +3,10 @@ import type { Item, ItemFilters } from '@vonos/types';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { TenantDbService } from '../../common/prisma/tenant-db.service';
 import { buildCursorQuery } from '../../common/utils/pagination';
+import {
+  breakdownFromOnHand,
+  reservedQtyBySku,
+} from '../../common/utils/availableStock';
 import { serializeItem } from '../items/items.mapper';
 
 @Injectable()
@@ -27,6 +31,32 @@ export class CatalogService {
       if (warehouse) ids.add(warehouse.id);
     }
     return [...ids];
+  }
+
+  private async withAvailableQuantity(rows: Item[]): Promise<Item[]> {
+    if (rows.length === 0) return rows;
+
+    const byTenant = new Map<string, string[]>();
+    for (const row of rows) {
+      const list = byTenant.get(row.tenantId) ?? [];
+      list.push(row.sku);
+      byTenant.set(row.tenantId, list);
+    }
+
+    const reservedByTenant = new Map<string, Map<string, number>>();
+    for (const [tenantId, skus] of byTenant) {
+      reservedByTenant.set(
+        tenantId,
+        await reservedQtyBySku(this.prisma, tenantId, [...new Set(skus)]),
+      );
+    }
+
+    return rows.map((row) => {
+      const reserved =
+        reservedByTenant.get(row.tenantId)?.get(row.sku.toUpperCase()) ?? 0;
+      const { available } = breakdownFromOnHand(row.quantity, reserved);
+      return { ...row, availableQuantity: available };
+    });
   }
 
   async list(filters: ItemFilters): Promise<Item[]> {
@@ -54,7 +84,7 @@ export class CatalogService {
       ...buildCursorQuery(filters.cursor, limit),
     });
 
-    return rows.map(serializeItem);
+    return this.withAvailableQuantity(rows.map(serializeItem));
   }
 
   async getById(id: string): Promise<Item> {
@@ -70,6 +100,9 @@ export class CatalogService {
       },
     });
     if (!row) throw new NotFoundException('Catalog item not found');
-    return serializeItem(row);
+    const [withAvailable] = await this.withAvailableQuantity([
+      serializeItem(row),
+    ]);
+    return withAvailable!;
   }
 }

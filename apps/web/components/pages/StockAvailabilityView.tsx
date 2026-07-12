@@ -35,8 +35,8 @@ export function StockAvailabilityView() {
           Stock Availability
         </h2>
         <p className="mt-1 text-sm text-muted">
-          Look up a part across the Autos Group. Quantities roll up across
-          Warehouse, Mechanics, Mech Shop and Spare Parts.
+          Look up a part across the Autos Group. Available = on hand minus
+          Approved requisition holds. Warehouse, Automotive, VISP and VSP.
         </p>
       </div>
 
@@ -76,7 +76,10 @@ export function StockAvailabilityView() {
                   ) : null}
                 </div>
                 <p className="text-sm font-semibold text-foreground">
-                  {group.totalQuantity.toLocaleString()} total
+                  {group.totalAvailable.toLocaleString()} available
+                  <span className="ml-2 font-normal text-muted">
+                    ({group.totalQuantity.toLocaleString()} on hand)
+                  </span>
                 </p>
               </div>
               <table className="mt-3 w-full text-sm">
@@ -85,7 +88,9 @@ export function StockAvailabilityView() {
                     <th className="py-1.5 pr-3 font-medium">Entity</th>
                     <th className="py-1.5 pr-3 font-medium">Locations</th>
                     <th className="py-1.5 pr-3 font-medium">Status</th>
-                    <th className="py-1.5 font-medium text-right">Quantity</th>
+                    <th className="py-1.5 pr-3 font-medium text-right">On hand</th>
+                    <th className="py-1.5 pr-3 font-medium text-right">Reserved</th>
+                    <th className="py-1.5 font-medium text-right">Available</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -111,8 +116,14 @@ export function StockAvailabilityView() {
                       <td className="py-1.5 pr-3 text-muted">
                         {entity.status.replace(/_/g, " ")}
                       </td>
-                      <td className="py-1.5 text-right text-foreground">
+                      <td className="py-1.5 pr-3 text-right text-foreground">
                         {entity.quantity.toLocaleString()}
+                      </td>
+                      <td className="py-1.5 pr-3 text-right text-muted">
+                        {entity.reserved.toLocaleString()}
+                      </td>
+                      <td className="py-1.5 text-right font-medium text-foreground">
+                        {entity.available.toLocaleString()}
                       </td>
                     </tr>
                   ))}

@@ -12,7 +12,12 @@ export interface StockAvailabilityEntityRow {
   tenantCode: string;
   tenantName: string;
   itemId: string;
+  /** On-hand quantity (physical). */
   quantity: number;
+  /** Qty held by Approved, unfulfilled requisitions. */
+  reserved: number;
+  /** Sellable / transferable: onHand − reserved. */
+  available: number;
   reorderPoint: number | null;
   status: StockStatus;
   availableForRetail: boolean;
@@ -25,6 +30,7 @@ export interface StockAvailabilityGroup {
   name: string;
   category: string | null;
   totalQuantity: number;
+  totalAvailable: number;
   entities: StockAvailabilityEntityRow[];
 }
 

@@ -16,6 +16,11 @@ import { buildCursorQuery } from '../../common/utils/pagination';
 import { toIso } from '../../common/utils/serializers';
 import { computeStockStatus } from '../../common/utils/stockQuantity';
 import { adjustItemLocationStock } from '../../common/utils/itemLocationStock';
+import {
+  assertSourceHasAvailableStock,
+  reservedQtyBySku,
+  breakdownFromOnHand,
+} from '../../common/utils/availableStock';
 
 /** Default fulfilling entity for the warehouse-first workflow. */
 const DEFAULT_SOURCE_CODE = 'VW';
@@ -74,6 +79,39 @@ export class RequisitionsService {
     private readonly auditService: AuditService,
   ) {}
 
+  /** Requisitions where this tenant is the fulfilment source (e.g. Warehouse inbox). */
+  async listIncoming(filters: {
+    cursor?: string;
+    limit?: number;
+    search?: string;
+  } = {}): Promise<Requisition[]> {
+    const sourceTenantId = this.tenantDb.requireTenantId();
+    const rows = await this.prisma.requisition.findMany({
+      where: {
+        sourceTenantId,
+        deletedAt: null,
+        ...(filters.search
+          ? {
+              OR: [
+                {
+                  reference: {
+                    contains: filters.search,
+                    mode: 'insensitive',
+                  },
+                },
+                {
+                  notes: { contains: filters.search, mode: 'insensitive' },
+                },
+              ],
+            }
+          : {}),
+      },
+      orderBy: { createdAt: 'desc' },
+      ...buildCursorQuery(filters.cursor, filters.limit ?? 25),
+    });
+    return rows.map(serialize);
+  }
+
   async list(filters: {
     cursor?: string;
     limit?: number;
@@ -106,10 +144,18 @@ export class RequisitionsService {
     return rows.map(serialize);
   }
 
+  /**
+   * Readable by requesting tenant or source (fulfilling) tenant.
+   * Fixes Warehouse detail for incoming requisitions.
+   */
   async getById(id: string): Promise<Requisition> {
     const tenantId = this.tenantDb.requireTenantId();
-    const row = await this.tenantDb.db.requisition.findFirst({
-      where: { id, tenantId, deletedAt: null },
+    const row = await this.prisma.requisition.findFirst({
+      where: {
+        id,
+        deletedAt: null,
+        OR: [{ tenantId }, { sourceTenantId: tenantId }],
+      },
     });
     if (!row) throw new NotFoundException('Requisition not found');
     return serialize(row);
@@ -150,32 +196,101 @@ export class RequisitionsService {
     return serialize(row);
   }
 
-  async approve(id: string): Promise<Requisition> {
-    return this.setStatus(id, 'Approved', 'Pending');
+  /** Requesting tenant cancels a Pending requisition only. */
+  async cancel(id: string): Promise<Requisition> {
+    const requestingTenantId = this.tenantDb.requireTenantId();
+    const existing = await this.prisma.requisition.findFirst({
+      where: { id, tenantId: requestingTenantId, deletedAt: null },
+    });
+    if (!existing) throw new NotFoundException('Requisition not found');
+    if (existing.status !== 'Pending') {
+      throw new BadRequestException(
+        'Only Pending requisitions can be cancelled',
+      );
+    }
+    await this.prisma.requisition.update({
+      where: { id },
+      data: { status: 'Cancelled' },
+    });
+    await this.auditService.log({
+      action: 'updated',
+      entityType: 'requisition',
+      entityId: id,
+      summary: `Status → Cancelled`,
+      metadata: { previousStatus: existing.status, status: 'Cancelled' },
+    });
+    return this.getById(id);
   }
 
+  /** Source tenant approves Pending → Approved after available-stock check. */
+  async approve(id: string): Promise<Requisition> {
+    const sourceTenantId = this.tenantDb.requireTenantId();
+    const existing = await this.findIncoming(id, sourceTenantId);
+    if (existing.status !== 'Pending') {
+      throw new BadRequestException(
+        'Requisition must be Pending to become Approved',
+      );
+    }
+    const lines = parseLines(existing.lines);
+    try {
+      await assertSourceHasAvailableStock(this.prisma, sourceTenantId, lines);
+    } catch (err) {
+      throw new BadRequestException(
+        err instanceof Error ? err.message : 'Insufficient available stock',
+      );
+    }
+    await this.prisma.requisition.update({
+      where: { id },
+      data: { status: 'Approved' },
+    });
+    await this.auditService.log({
+      action: 'updated',
+      entityType: 'requisition',
+      entityId: id,
+      summary: `Status → Approved`,
+      metadata: { previousStatus: existing.status, status: 'Approved' },
+    });
+    return this.getById(id);
+  }
+
+  /** Source tenant rejects Pending → Rejected. */
   async reject(id: string): Promise<Requisition> {
-    return this.setStatus(id, 'Rejected', 'Pending');
+    const sourceTenantId = this.tenantDb.requireTenantId();
+    const existing = await this.findIncoming(id, sourceTenantId);
+    if (existing.status !== 'Pending') {
+      throw new BadRequestException(
+        'Requisition must be Pending to become Rejected',
+      );
+    }
+    await this.prisma.requisition.update({
+      where: { id },
+      data: { status: 'Rejected' },
+    });
+    await this.auditService.log({
+      action: 'updated',
+      entityType: 'requisition',
+      entityId: id,
+      summary: `Status → Rejected`,
+      metadata: { previousStatus: existing.status, status: 'Rejected' },
+    });
+    return this.getById(id);
   }
 
   /**
-   * Fulfils an approved requisition as a warehouse-first transfer: decrement the
-   * source entity's stock and increment the requesting entity's stock for each
-   * line, keeping both single-quantity and per-location stock in sync. Stock
-   * only moves between entities here — no money ledger (internal transfer
-   * elimination is deferred per AGENTS.md).
+   * Source tenant fulfils Approved requisition: decrement source stock,
+   * increment requesting tenant stock. Stock-only — no money ledger.
    */
   async fulfill(id: string): Promise<Requisition> {
-    const requestingTenantId = this.tenantDb.requireTenantId();
-    const requisition = await this.tenantDb.db.requisition.findFirst({
-      where: { id, tenantId: requestingTenantId, deletedAt: null },
-    });
-    if (!requisition) throw new NotFoundException('Requisition not found');
+    const sourceTenantId = this.tenantDb.requireTenantId();
+    const requisition = await this.findIncoming(id, sourceTenantId);
+
     if (requisition.status === 'Fulfilled') {
       throw new BadRequestException('Requisition already fulfilled');
     }
-    if (requisition.status === 'Rejected') {
-      throw new BadRequestException('Cannot fulfil a rejected requisition');
+    if (requisition.status !== 'Approved') {
+      throw new BadRequestException(
+        'Requisition must be Approved before fulfilment',
+      );
     }
 
     const lines = parseLines(requisition.lines);
@@ -183,19 +298,15 @@ export class RequisitionsService {
       throw new BadRequestException('Requisition has no line items to transfer');
     }
 
-    const sourceTenantId =
-      requisition.sourceTenantId ??
-      (await this.resolveSourceTenantId(DEFAULT_SOURCE_CODE));
-    if (!sourceTenantId) {
-      throw new BadRequestException(
-        'No source entity is configured to fulfil this requisition',
-      );
-    }
+    const requestingTenantId = requisition.tenantId;
     if (sourceTenantId === requestingTenantId) {
       throw new BadRequestException(
         'Source and requesting entity must be different',
       );
     }
+
+    // Physical on-hand must cover the transfer (hold already counted in reserved).
+    await this.assertSourceHasOnHand(sourceTenantId, lines);
 
     const movementLines = lines.map((line) => ({
       itemId: line.itemId ?? '',
@@ -216,6 +327,11 @@ export class RequisitionsService {
         }
 
         const sourceNext = sourceItem.quantity - line.quantity;
+        if (sourceNext < 0) {
+          throw new BadRequestException(
+            `Insufficient on-hand stock for SKU ${line.sku}: need ${line.quantity}, on hand ${sourceItem.quantity}`,
+          );
+        }
         await tx.item.update({
           where: { id: sourceItem.id },
           data: {
@@ -315,33 +431,53 @@ export class RequisitionsService {
     return this.getById(id);
   }
 
-  private async setStatus(
-    id: string,
-    status: RequisitionStatus,
-    requiredCurrent: RequisitionStatus,
-  ): Promise<Requisition> {
-    const tenantId = this.tenantDb.requireTenantId();
-    const existing = await this.tenantDb.db.requisition.findFirst({
-      where: { id, tenantId, deletedAt: null },
+  private async findIncoming(id: string, sourceTenantId: string) {
+    const row = await this.prisma.requisition.findFirst({
+      where: { id, sourceTenantId, deletedAt: null },
     });
-    if (!existing) throw new NotFoundException('Requisition not found');
-    if (existing.status !== requiredCurrent) {
-      throw new BadRequestException(
-        `Requisition must be ${requiredCurrent} to become ${status}`,
-      );
+    if (!row) throw new NotFoundException('Requisition not found');
+    return row;
+  }
+
+  /** Ensure physical on-hand covers requested qty (for fulfill). */
+  private async assertSourceHasOnHand(
+    sourceTenantId: string,
+    lines: RequisitionLine[],
+  ): Promise<void> {
+    const skus = [...new Set(lines.map((l) => l.sku))];
+    const items = await this.prisma.item.findMany({
+      where: {
+        tenantId: sourceTenantId,
+        deletedAt: null,
+        sku: { in: skus },
+      },
+      select: { sku: true, quantity: true },
+    });
+    const onHandBySku = new Map(
+      items.map((item) => [item.sku.toUpperCase(), item.quantity]),
+    );
+    const reservedMap = await reservedQtyBySku(
+      this.prisma,
+      sourceTenantId,
+      skus,
+    );
+
+    const requestedBySku = new Map<string, number>();
+    for (const line of lines) {
+      const key = line.sku.toUpperCase();
+      requestedBySku.set(key, (requestedBySku.get(key) ?? 0) + line.quantity);
     }
-    await this.tenantDb.db.requisition.update({
-      where: { id },
-      data: { status },
-    });
-    await this.auditService.log({
-      action: 'updated',
-      entityType: 'requisition',
-      entityId: id,
-      summary: `Status → ${status}`,
-      metadata: { previousStatus: existing.status, status },
-    });
-    return this.getById(id);
+
+    for (const [sku, requested] of requestedBySku) {
+      const onHand = onHandBySku.get(sku) ?? 0;
+      if (requested > onHand) {
+        const reserved = reservedMap.get(sku) ?? 0;
+        const { available } = breakdownFromOnHand(onHand, reserved);
+        throw new BadRequestException(
+          `Insufficient on-hand stock for SKU ${sku}: need ${requested}, on hand ${onHand} (available ${available}, reserved ${reserved})`,
+        );
+      }
+    }
   }
 
   private async resolveSourceTenantId(code: string): Promise<string | null> {

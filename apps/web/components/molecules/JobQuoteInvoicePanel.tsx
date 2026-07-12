@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Eye, FileText, Receipt } from "lucide-react";
+import { Eye, FileText, Receipt, Printer } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAppMutation } from "@/lib/hooks/useAppMutation";
 import { useRouteTenant } from "@/lib/hooks/useRouteTenant";
@@ -319,6 +319,14 @@ export function JobQuoteInvoicePanel({ job, onJobChange }: JobQuoteInvoicePanelP
           >
             <Eye className="h-4 w-4" />
             Preview
+          </button>
+          <button
+            type="button"
+            onClick={() => setPreviewOpen(true)}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-[var(--color-surface-nav-hover)]"
+          >
+            <Printer className="h-4 w-4" />
+            {tab === "quotation" ? "Generate quote PDF" : "Print invoice"}
           </button>
           <button
             type="button"

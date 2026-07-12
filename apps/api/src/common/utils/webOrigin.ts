@@ -1,6 +1,8 @@
 const DEFAULT_ORIGINS = [
   'http://localhost:3000',
   'https://vonos-web-7w14.vercel.app',
+  'https://app.vonosautos.com',
+  'https://app.vonosautosmarket.com',
 ];
 
 function normalizeOrigin(value: string): string {

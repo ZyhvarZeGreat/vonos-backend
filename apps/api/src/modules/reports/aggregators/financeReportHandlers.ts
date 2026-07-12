@@ -93,7 +93,7 @@ async function assembleProfitLossShell(
 
   if (summary.revenue === 0) {
     const salesRevenue = await computeSalesRevenueTotal(db, from, to);
-    const jobRevenue = await computeJobRevenueTotal(db, from, to);
+    const jobRevenue = await computeJobRevenueTotal(db, tenantId, from, to);
     const combinedRevenue = salesRevenue.revenue + jobRevenue.revenue;
     if (combinedRevenue > 0) {
       summary.revenue = combinedRevenue;
@@ -273,7 +273,9 @@ export async function buildProfitLossReport(
   from?: string,
   to?: string,
 ): Promise<ReportsDashboard> {
-  const loaded = await loadProfitLossContext(db, tenantId, from, to);
+  const loaded = await loadProfitLossContext(db, tenantId, from, to, {
+    includeBreakdown: true,
+  });
   const shell = await assembleProfitLossShell(
     db,
     tenantId,

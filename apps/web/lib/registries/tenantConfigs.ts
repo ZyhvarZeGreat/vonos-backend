@@ -26,7 +26,7 @@ export const warehouseTenantConfig: TenantConfig = withCatalog({
     { label: "Stock Values", icon: "calculator", metricKey: "stockValue", color: "#e11d48" },
   ],
   terminology: { item: "SKU", inventory: "Inventory", supplier: "Supplier" },
-  enabledModules: ["inventory", "movements", "suppliers", "purchases", "paymentAccounts", "reports", "finance", "hrm"],
+  enabledModules: ["inventory", "movements", "suppliers", "purchases", "paymentAccounts", "reports", "finance", "hrm", "incomingRequisitions"],
 });
 
 export const kidsWearTenantConfig: TenantConfig = withCatalog({
@@ -101,8 +101,22 @@ export const cafeTenantConfig: TenantConfig = withCatalog({
     { label: "Low Stock", icon: "alert-triangle", metricKey: "lowStock", color: "#9333ea" },
     { label: "Revenue", icon: "wallet", metricKey: "revenue", color: "#e11d48" },
   ],
-  terminology: { order: "Order", menuItem: "Menu Item", table: "Table" },
-  enabledModules: ["orders", "tables", "customers", "suppliers", "inventory", "paymentAccounts", "pos", "quotations", "reports", "finance", "hrm"],
+  terminology: { order: "Order", menuItem: "Menu Item", table: "Table", supplier: "Supplier" },
+  enabledModules: [
+    "orders",
+    "tables",
+    "customers",
+    "suppliers",
+    "inventory",
+    "purchases",
+    "movements",
+    "paymentAccounts",
+    "pos",
+    "quotations",
+    "reports",
+    "finance",
+    "hrm",
+  ],
 });
 
 export const automotiveTenantConfig: TenantConfig = withCatalog({
@@ -121,6 +135,7 @@ export const automotiveTenantConfig: TenantConfig = withCatalog({
   kpiCards: [
     { label: "Open Jobs", icon: "wrench", metricKey: "openJobs", color: "#059669" },
     { label: "In Shop", icon: "car", metricKey: "inShop", color: "#2563eb" },
+    { label: "Pending QC", icon: "shield-check", metricKey: "pendingQc", color: "#f59e0b" },
     { label: "Parts Pending", icon: "package", metricKey: "partsPending", color: "#9333ea" },
     { label: "Revenue", icon: "wallet", metricKey: "revenue", color: "#e11d48" },
   ],
@@ -129,8 +144,29 @@ export const automotiveTenantConfig: TenantConfig = withCatalog({
     vehicle: "Vehicle",
     customer: "Customer",
     requisition: "Parts Requisition",
+    sale: "Sale",
   },
-  enabledModules: ["jobs", "vehicles", "requisitions", "customers", "suppliers", "reports", "finance", "hrm"],
+  enabledModules: [
+    "jobs",
+    "vehicles",
+    "requisitions",
+    "customers",
+    "suppliers",
+    "purchases",
+    "movements",
+    "sales",
+    "returns",
+    "inventory",
+    "paymentAccounts",
+    "pos",
+    "quotations",
+    "discounts",
+    "shipments",
+    "bulkImport",
+    "reports",
+    "finance",
+    "hrm",
+  ],
 });
 
 /** @deprecated Merged into VA — kept for migration tooling references only. */

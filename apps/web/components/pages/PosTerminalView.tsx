@@ -10,6 +10,7 @@ import { Input } from "@/components/atoms/Input";
 import { Select } from "@/components/atoms/Select";
 import { ProductItemSearch } from "@/components/molecules/ProductItemSearch";
 import { createSale } from "@/lib/api/sales";
+import { itemSellPrice } from "@/lib/utils/itemPricing";
 import { useAppMutation } from "@/lib/hooks/useAppMutation";
 import {
   assertBusinessLocationSelected,
@@ -66,7 +67,7 @@ export function PosTerminalView() {
           sku: item.sku,
           name: item.name,
           quantity: 1,
-          unitPrice: item.costPrice,
+          unitPrice: itemSellPrice(item),
         },
       ];
     });

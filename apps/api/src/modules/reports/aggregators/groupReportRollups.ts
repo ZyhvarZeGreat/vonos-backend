@@ -27,7 +27,12 @@ export async function buildEntityRollupForReport(
       for (const tenant of tenants) {
         const groups = await prisma.ledgerEntry.groupBy({
           by: ['type'],
-          where: { tenantId: tenant.id, deletedAt: null, ...dateFilter },
+          where: {
+            tenantId: tenant.id,
+            deletedAt: null,
+            isInternalTransfer: false,
+            ...dateFilter,
+          },
           _sum: { amount: true },
         });
         const revenue = groups

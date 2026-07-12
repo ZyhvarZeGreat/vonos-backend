@@ -1,5 +1,6 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import type {
+  CsvImportResult,
   Item,
   ItemFilters,
   ItemLocationStockInput,
@@ -14,8 +15,14 @@ import { PrismaService } from '../../common/prisma/prisma.service';
 import { CacheService } from '../../common/cache/cache.service';
 import { AuditService } from '../audit/audit.service';
 import { buildCursorQuery } from '../../common/utils/pagination';
+import { parseCsv, pickCsvField } from '../../common/utils/csvImport';
 import { toNumber } from '../../common/utils/serializers';
 import { serializeItem } from './items.mapper';
+import {
+  breakdownFromOnHand,
+  computeAvailableStock,
+  reservedQtyBySku,
+} from '../../common/utils/availableStock';
 
 interface CreateItemDto {
   sku: string;
@@ -390,6 +397,53 @@ export class ItemsService {
   }
 
   /**
+   * Available stock at a source tenant for one SKU — used when planning
+   * cross-tenant requisitions (e.g. VA → VW).
+   */
+  async sourceAvailability(
+    sku: string,
+    sourceTenantCode: string,
+  ): Promise<{
+    sku: string;
+    sourceTenantCode: string;
+    onHand: number;
+    reserved: number;
+    available: number;
+  }> {
+    const trimmed = sku.trim();
+    if (!trimmed) {
+      throw new BadRequestException('sku is required');
+    }
+    const source = await this.prisma.tenant.findFirst({
+      where: { code: sourceTenantCode, deletedAt: null },
+      select: { id: true, code: true },
+    });
+    if (!source) {
+      throw new NotFoundException(`Source tenant ${sourceTenantCode} not found`);
+    }
+    const item = await this.prisma.item.findFirst({
+      where: {
+        tenantId: source.id,
+        sku: trimmed,
+        deletedAt: null,
+      },
+      select: { quantity: true, sku: true },
+    });
+    const onHand = item?.quantity ?? 0;
+    const breakdown = await computeAvailableStock(
+      this.prisma,
+      source.id,
+      item?.sku ?? trimmed,
+      onHand,
+    );
+    return {
+      sku: item?.sku ?? trimmed,
+      sourceTenantCode: source.code,
+      ...breakdown,
+    };
+  }
+
+  /**
    * Cross-entity stock lookup for the Autos Group. Given a search term, returns
    * matching SKUs and the quantity each auto-group entity holds (with per-location
    * breakdown). Read-only and restricted to auto-group staff + super admins.
@@ -435,11 +489,22 @@ export class ItemsService {
       take: 200,
     });
 
+    const reservedByTenant = new Map<string, Map<string, number>>();
+    for (const tenant of tenants) {
+      reservedByTenant.set(
+        tenant.id,
+        await reservedQtyBySku(this.prisma, tenant.id),
+      );
+    }
+
     const groups = new Map<string, StockAvailabilityResult['groups'][number]>();
     for (const item of items) {
       const tenant = tenantById.get(item.tenantId);
       if (!tenant) continue;
       const key = item.sku;
+      const reserved =
+        reservedByTenant.get(item.tenantId)?.get(item.sku.toUpperCase()) ?? 0;
+      const { available } = breakdownFromOnHand(item.quantity, reserved);
       const group =
         groups.get(key) ??
         ({
@@ -447,15 +512,19 @@ export class ItemsService {
           name: item.name,
           category: item.category,
           totalQuantity: 0,
+          totalAvailable: 0,
           entities: [],
         } satisfies StockAvailabilityResult['groups'][number]);
 
       group.totalQuantity += item.quantity;
+      group.totalAvailable += available;
       group.entities.push({
         tenantCode: tenant.code,
         tenantName: tenant.name,
         itemId: item.id,
         quantity: item.quantity,
+        reserved,
+        available,
         reorderPoint: item.reorderPoint,
         status: item.status,
         availableForRetail: item.availableForRetail,
@@ -472,5 +541,87 @@ export class ItemsService {
       query: term ?? '',
       groups: Array.from(groups.values()),
     };
+  }
+
+  async importCsv(csv: string): Promise<CsvImportResult> {
+    const rows = parseCsv(csv);
+    const result: CsvImportResult = { created: 0, updated: 0, errors: [] };
+
+    for (let index = 0; index < rows.length; index += 1) {
+      const row = rows[index];
+      const sku = pickCsvField(row, 'sku', 'product sku');
+      const name = pickCsvField(row, 'name', 'product name');
+      if (!sku || !name) {
+        result.errors.push({ row: index + 2, message: 'SKU and name are required' });
+        continue;
+      }
+      const costRaw = pickCsvField(row, 'cost', 'cost price', 'purchase price');
+      const costPrice = Number(costRaw || '0');
+      if (!Number.isFinite(costPrice) || costPrice < 0) {
+        result.errors.push({ row: index + 2, message: 'Invalid cost price' });
+        continue;
+      }
+      try {
+        await this.create({
+          sku,
+          name,
+          category: pickCsvField(row, 'category') || undefined,
+          quantity: Number(pickCsvField(row, 'quantity', 'stock') || '0') || 0,
+          costPrice,
+          currency: pickCsvField(row, 'currency') || 'NGN',
+        });
+        result.created += 1;
+      } catch (error) {
+        result.errors.push({
+          row: index + 2,
+          message: error instanceof Error ? error.message : 'Import failed',
+        });
+      }
+    }
+
+    return result;
+  }
+
+  async bulkUpdatePrice(body: {
+    category?: string;
+    itemIds?: string[];
+    adjustmentType: 'fixed' | 'percentage';
+    adjustmentValue: number;
+  }): Promise<{ updated: number }> {
+    const tenantId = this.tenantDb.requireTenantId();
+    if (!Number.isFinite(body.adjustmentValue)) {
+      throw new BadRequestException('Invalid adjustment value');
+    }
+
+    const items = await this.tenantDb.db.item.findMany({
+      where: {
+        tenantId,
+        deletedAt: null,
+        ...(body.itemIds?.length ? { id: { in: body.itemIds } } : {}),
+        ...(body.category
+          ? { category: { equals: body.category, mode: 'insensitive' } }
+          : {}),
+      },
+    });
+
+    let updated = 0;
+    for (const item of items) {
+      const current = toNumber(item.sellPrice ?? item.costPrice);
+      const next =
+        body.adjustmentType === 'percentage'
+          ? Math.max(0, current * (1 + body.adjustmentValue / 100))
+          : Math.max(0, current + body.adjustmentValue);
+      if (next === current) continue;
+      await this.tenantDb.db.item.update({
+        where: { id: item.id },
+        data: { sellPrice: next },
+      });
+      updated += 1;
+    }
+
+    const tenantIdForCache = this.tenantDb.requireTenantId();
+    void this.cache.invalidatePrefix(`entity-overview:${tenantIdForCache}`);
+
+    return { updated };
   }
 }

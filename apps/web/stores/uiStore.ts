@@ -7,6 +7,8 @@ import type { CsvExportPayload } from "@/lib/utils/exportCsv";
 
 export type ActiveModal = "create" | "export" | "addExpense" | "addSale" | "addProduct" | null;
 
+export type SaleFormPresetStatus = "final" | "draft" | "quotation";
+
 export type ProductFlowKey = "item" | "menu-item";
 
 export interface CreateModalCopy {
@@ -53,6 +55,7 @@ interface UiState {
   exportPayload: CsvExportPayload | null;
   /** When set, expense/sale modals post to this tenant (VAG admin group finance). */
   financeActionTenantId: string | null;
+  salePresetStatus: SaleFormPresetStatus | null;
   dateRange: DateRangePreset;
   toggleSidebar: () => void;
   setActiveNav: (route: string) => void;
@@ -64,7 +67,7 @@ interface UiState {
     copy?: Partial<CreateModalCopy>,
   ) => void;
   openAddExpenseModal: (tenantId?: string) => void;
-  openAddSaleModal: (tenantId?: string) => void;
+  openAddSaleModal: (tenantId?: string, presetStatus?: SaleFormPresetStatus) => void;
   openAddProductModal: (flow?: ProductFlowKey) => void;
   openExportModal: (
     copy?: Partial<ExportModalCopy>,
@@ -86,7 +89,8 @@ export const useUiStore = create<UiState>((set) => ({
   exportCopy: defaultExportCopy,
   exportPayload: null,
   financeActionTenantId: null,
-  dateRange: "all_time",
+  salePresetStatus: null,
+  dateRange: "last_7_days",
   toggleSidebar: () =>
     set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),
   setActiveNav: (route) => set({ activeNav: route }),
@@ -106,11 +110,12 @@ export const useUiStore = create<UiState>((set) => ({
       createFlow: null,
       financeActionTenantId: tenantId ?? null,
     }),
-  openAddSaleModal: (tenantId) =>
+  openAddSaleModal: (tenantId, presetStatus = "final") =>
     set({
       activeModal: "addSale",
       createFlow: null,
       financeActionTenantId: tenantId ?? null,
+      salePresetStatus: presetStatus,
     }),
   openAddProductModal: (flow = "item") =>
     set({
@@ -131,6 +136,7 @@ export const useUiStore = create<UiState>((set) => ({
       productFlow: "item",
       exportPayload: null,
       financeActionTenantId: null,
+      salePresetStatus: null,
     }),
   setDateRange: (dateRange) => set({ dateRange }),
 }));

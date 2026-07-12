@@ -27,6 +27,8 @@ export interface UseServerListPageOptions<T extends { id: string }> {
   search?: string;
   defaultPageSize?: number;
   debounceSearchMs?: number;
+  /** Poll interval in ms for live views (e.g. kitchen display). */
+  refetchInterval?: number;
 }
 
 export function useServerListPage<T extends { id: string }>({
@@ -37,6 +39,7 @@ export function useServerListPage<T extends { id: string }>({
   search = "",
   defaultPageSize = DEFAULT_TABLE_PAGE_SIZE,
   debounceSearchMs = 300,
+  refetchInterval,
 }: UseServerListPageOptions<T>) {
   const debouncedSearch = useDebouncedValue(search.trim(), debounceSearchMs);
   const { cursor, pageIndex, canGoPrev, goNext, goPrev, reset } = useCursorPage();
@@ -55,6 +58,7 @@ export function useServerListPage<T extends { id: string }>({
     queryKey: [...queryKey, filterKey, cursor, pageSize],
     queryFn: () => fetchPage(cursor, pageSize),
     enabled,
+    refetchInterval,
     placeholderData: (prev) => prev,
   });
 

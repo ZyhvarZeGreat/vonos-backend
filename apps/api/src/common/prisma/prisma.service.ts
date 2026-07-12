@@ -42,10 +42,34 @@ function applySoftDeleteFilter(args: { where?: Record<string, unknown> }) {
   }
 }
 
+function prismaLogQueriesEnabled(): boolean {
+  return process.env.PRISMA_LOG_QUERIES === 'true';
+}
+
 @Injectable()
 export class PrismaService extends PrismaClient implements OnModuleInit {
   private readonly logger = new Logger(PrismaService.name);
   private databaseConnected = false;
+
+  constructor() {
+    super(
+      prismaLogQueriesEnabled()
+        ? { log: [{ emit: 'event', level: 'query' }] }
+        : undefined,
+    );
+
+    if (prismaLogQueriesEnabled()) {
+      // Prisma event typing is narrow; cast keeps query logging opt-in only.
+      (
+        this as PrismaClient & {
+          $on(event: 'query', cb: (e: { duration: number; query: string }) => void): void;
+        }
+      ).$on('query', (event) => {
+        const sql = event.query.length > 200 ? `${event.query.slice(0, 200)}…` : event.query;
+        this.logger.debug(`query ${event.duration}ms ${sql}`);
+      });
+    }
+  }
 
   async onModuleInit() {
     void this.connectInBackground();

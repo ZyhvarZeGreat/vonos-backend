@@ -3,7 +3,9 @@
 import { useMemo, useState } from "react";
 import { StatusPill } from "@/components/atoms/StatusPill";
 import { CursorPaginationBar } from "@/components/molecules/CursorPaginationBar";
+import { TableFetchingOverlay } from "@/components/molecules/TableFetchingOverlay";
 import { ListPageShell } from "@/components/organisms/ListPageShell";
+import { KanbanSkeleton } from "@/components/organisms/skeletons";
 import { getOrdersPage } from "@/lib/api/orders";
 import { useServerListPage } from "@/lib/hooks/useServerListPage";
 import { formatCurrency } from "@/lib/utils/formatCurrency";
@@ -15,8 +17,21 @@ import {
 } from "@/lib/utils/listFilters";
 import { useTenantId } from "@/lib/hooks/useRouteTenant";
 import type { Order } from "@/lib/types/entityRows";
+import { cn } from "@/lib/utils/cn";
 
 const KANBAN_COLUMNS = ["New", "Preparing", "Ready", "Served"] as const;
+const KITCHEN_OVERDUE_MINUTES = 12;
+
+function minutesSince(iso: string): number {
+  return Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 60_000));
+}
+
+function formatElapsed(iso: string): string {
+  const mins = minutesSince(iso);
+  if (mins < 1) return "Just now";
+  if (mins < 60) return `${mins}m ago`;
+  return `${Math.floor(mins / 60)}h ${mins % 60}m ago`;
+}
 
 export function KitchenDisplayView() {
   const tenantId = useTenantId();
@@ -33,12 +48,14 @@ export function KitchenDisplayView() {
     goPrev,
     setPageSize,
     isLoading,
+    isFetching,
     error,
   } = useServerListPage<Order>({
     queryKey: ["kitchen-orders", tenantId],
     enabled: Boolean(tenantId),
     search,
     defaultPageSize: 50,
+    refetchInterval: 30_000,
     fetchPage: (cursor, limit) => getOrdersPage(tenantId!, undefined, cursor, limit),
   });
 
@@ -89,9 +106,12 @@ export function KitchenDisplayView() {
         {error ? (
           <p className="p-4 text-sm text-error">Failed to load kitchen orders.</p>
         ) : isLoading ? (
-          <p className="p-4 text-sm text-muted">Loading orders…</p>
-        ) : (
           <div className="overflow-hidden rounded-xl border border-border bg-card shadow-card">
+            <KanbanSkeleton />
+          </div>
+        ) : (
+          <div className="relative overflow-hidden rounded-xl border border-border bg-card shadow-card">
+            {isFetching ? <TableFetchingOverlay label="Updating orders" /> : null}
             <div className="grid grid-cols-1 gap-4 p-4 md:grid-cols-2 xl:grid-cols-4">
               {byStatus.map(({ status, orders: columnOrders }) => (
                 <div key={status} className="flex flex-col rounded-xl border border-border bg-[var(--color-surface-muted)] p-4">
@@ -105,10 +125,17 @@ export function KitchenDisplayView() {
                     {columnOrders.length === 0 ? (
                       <p className="py-8 text-center text-sm text-muted">No orders</p>
                     ) : (
-                      columnOrders.map((order) => (
+                      columnOrders.map((order) => {
+                        const elapsed = minutesSince(order.createdAt);
+                        const overdue =
+                          order.status === "Preparing" && elapsed >= KITCHEN_OVERDUE_MINUTES;
+                        return (
                         <div
                           key={order.id}
-                          className="rounded-lg border border-border bg-card p-4 shadow-sm transition-shadow hover:shadow-md"
+                          className={cn(
+                            "rounded-lg border bg-card p-4 shadow-sm transition-shadow hover:shadow-md",
+                            overdue ? "border-warning ring-1 ring-warning/30" : "border-border",
+                          )}
                         >
                           <div className="flex items-start justify-between gap-2">
                             <span className="text-lg font-bold text-foreground">{order.reference}</span>
@@ -117,11 +144,16 @@ export function KitchenDisplayView() {
                           <p className="mt-2 text-sm text-muted">
                             {order.tableNumber ? `Table ${order.tableNumber}` : "Takeaway"} · {order.itemCount} items
                           </p>
+                          <p className={cn("mt-1 text-xs", overdue ? "font-medium text-warning" : "text-muted")}>
+                            {formatElapsed(order.createdAt)}
+                            {overdue ? " · overdue" : ""}
+                          </p>
                           <p className="mt-3 text-base font-semibold text-foreground">
                             {formatCurrency(order.total, order.currency)}
                           </p>
                         </div>
-                      ))
+                        );
+                      })
                     )}
                   </div>
                 </div>
@@ -137,6 +169,7 @@ export function KitchenDisplayView() {
                 onPrev={goPrev}
                 onNext={goNext}
                 onPageSizeChange={setPageSize}
+                isBusy={isFetching}
               />
             ) : null}
           </div>

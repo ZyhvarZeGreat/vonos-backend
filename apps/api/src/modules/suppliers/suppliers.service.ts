@@ -1,8 +1,10 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import type { Supplier, SupplierListRow } from '@vonos/types';
+import type { ContactDueSummary, ContactLedgerEntry, CsvImportResult } from '@vonos/types';
 import { TenantDbService } from '../../common/prisma/tenant-db.service';
 import { AuditService } from '../audit/audit.service';
 import { buildCursorQuery } from '../../common/utils/pagination';
+import { parseCsv, pickCsvField } from '../../common/utils/csvImport';
 import { parseMovementLines, toIso, toNumber } from '../../common/utils/serializers';
 
 export interface SupplierKpiSummary {
@@ -258,5 +260,93 @@ export class SuppliersService {
       summary: `Updated supplier ${row.name}`,
     });
     return toListRow(row);
+  }
+
+  async getSummary(id: string): Promise<ContactDueSummary> {
+    const row = await this.getById(id);
+    return {
+      contactId: row.id,
+      totalAmount: row.totalPurchase ?? 0,
+      totalPaid: row.totalPurchasePaid ?? 0,
+      totalDue: row.totalPurchaseDue ?? 0,
+      currency: 'NGN',
+    };
+  }
+
+  async getLedger(
+    id: string,
+    cursor?: string,
+    limit = 50,
+  ): Promise<ContactLedgerEntry[]> {
+    const tenantId = this.tenantDb.requireTenantId();
+    const supplier = await this.tenantDb.db.supplier.findFirst({
+      where: { id, tenantId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!supplier) throw new NotFoundException('Supplier not found');
+
+    const movements = await this.tenantDb.db.stockMovement.findMany({
+      where: { tenantId, supplierId: id, deletedAt: null },
+      select: { id: true, reference: true },
+    });
+    const movementIds = movements.map((movement) => movement.id);
+    const refById = new Map(movements.map((movement) => [movement.id, movement.reference]));
+
+    const ledgerRows = await this.tenantDb.db.ledgerEntry.findMany({
+      where: {
+        tenantId,
+        deletedAt: null,
+        linkedRecordType: 'stock_movement',
+        linkedRecordId: { in: movementIds },
+      },
+      orderBy: { date: 'desc' },
+      ...buildCursorQuery(cursor, limit),
+    });
+
+    return ledgerRows.map((entry) => ({
+      id: entry.id,
+      date: toIso(entry.date),
+      type: entry.type,
+      description: entry.description,
+      amount: toNumber(entry.amount),
+      currency: entry.currency,
+      linkedRecordType: entry.linkedRecordType,
+      linkedRecordId: entry.linkedRecordId,
+      reference:
+        entry.linkedRecordId != null
+          ? (refById.get(entry.linkedRecordId) ?? null)
+          : null,
+    }));
+  }
+
+  async importCsv(csv: string): Promise<CsvImportResult> {
+    const rows = parseCsv(csv);
+    const result: CsvImportResult = { created: 0, updated: 0, errors: [] };
+
+    for (let index = 0; index < rows.length; index += 1) {
+      const row = rows[index];
+      const name = pickCsvField(row, 'name', 'supplier name', 'business name');
+      if (!name) {
+        result.errors.push({ row: index + 2, message: 'Name is required' });
+        continue;
+      }
+      try {
+        await this.create({
+          name,
+          contactName: pickCsvField(row, 'contact name') || undefined,
+          email: pickCsvField(row, 'email') || undefined,
+          phone: pickCsvField(row, 'phone', 'mobile') || undefined,
+          address: pickCsvField(row, 'address') || undefined,
+        });
+        result.created += 1;
+      } catch (error) {
+        result.errors.push({
+          row: index + 2,
+          message: error instanceof Error ? error.message : 'Import failed',
+        });
+      }
+    }
+
+    return result;
   }
 }

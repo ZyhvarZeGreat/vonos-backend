@@ -1,4 +1,12 @@
-import type { CreateCustomerInput, Customer, CustomerFilters, CustomerProfile } from "@vonos/types";
+import type {
+  ContactDueSummary,
+  ContactLedgerEntry,
+  CreateCustomerInput,
+  Customer,
+  CustomerFilters,
+  CustomerProfile,
+  CsvImportResult,
+} from "@vonos/types";
 import { apiFetch, withTenantQuery } from "@/lib/api/client";
 import {
   DEFAULT_TABLE_PAGE_SIZE,
@@ -86,5 +94,40 @@ export async function createCustomer(
     const body = (await response.json().catch(() => null)) as { message?: string } | null;
     throw new Error(body?.message ?? "Failed to create customer");
   }
+  return response.json();
+}
+
+export async function getCustomerSummary(
+  tenantId: string,
+  customerId: string,
+): Promise<ContactDueSummary> {
+  const response = await apiFetch(
+    withTenantQuery(`/customers/${customerId}/summary`, tenantId),
+  );
+  if (!response.ok) throw new Error("Failed to fetch customer summary");
+  return response.json();
+}
+
+export async function getCustomerLedger(
+  tenantId: string,
+  customerId: string,
+): Promise<ContactLedgerEntry[]> {
+  const response = await apiFetch(
+    withTenantQuery(`/customers/${customerId}/ledger`, tenantId),
+  );
+  if (!response.ok) throw new Error("Failed to fetch customer ledger");
+  return response.json();
+}
+
+export async function importCustomers(
+  tenantId: string,
+  csv: string,
+): Promise<CsvImportResult> {
+  const response = await apiFetch(withTenantQuery("/customers/import", tenantId), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ csv }),
+  });
+  if (!response.ok) throw new Error("Failed to import customers");
   return response.json();
 }

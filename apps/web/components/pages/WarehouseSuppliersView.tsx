@@ -8,8 +8,9 @@ import { type ColumnConfig } from "@/components/organisms/DataTable";
 import { ServerPaginatedTable } from "@/components/organisms/ServerPaginatedTable";
 import { KpiRow } from "@/components/organisms/KpiRow";
 import { ListPageShell } from "@/components/organisms/ListPageShell";
+import { ContactLedgerModal, useContactLedgerQuery } from "@/components/organisms/ContactLedgerModal";
 import { RowActionsMenu } from "@/components/molecules/RowActionsMenu";
-import { getSupplierKpis, getSuppliersPage, type SupplierListRow } from "@/lib/api/suppliers";
+import { getSupplierKpis, getSupplierLedger, getSupplierSummary, getSuppliersPage, type SupplierListRow } from "@/lib/api/suppliers";
 import { useServerListPage } from "@/lib/hooks/useServerListPage";
 import { useRouteTenant, useTenantId } from "@/lib/hooks/useRouteTenant";
 import { useRecordNavigation } from "@/lib/hooks/useRecordNavigation";
@@ -35,6 +36,7 @@ const supplierKpiCards: KpiCardConfig[] = [
 function supplierColumns(
   tenantCode: string,
   onView: (id: string) => void,
+  onLedger: (id: string, name: string) => void,
   router: ReturnType<typeof useRouter>,
 ): ColumnConfig<SupplierListRow>[] {
   return [
@@ -46,8 +48,16 @@ function supplierColumns(
         <RowActionsMenu
           actions={[
             { id: "view", label: "View", onClick: () => onView(row.id) },
-            { id: "pay", label: "Pay", onClick: () => router.push(`/${tenantCode}/payments`) },
-            { id: "ledger", label: "Ledger", onClick: () => router.push(`/${tenantCode}/finance`) },
+            {
+              id: "pay",
+              label: "Pay",
+              onClick: () => router.push(`/${tenantCode}/payments?supplierId=${row.id}`),
+            },
+            {
+              id: "ledger",
+              label: "Ledger",
+              onClick: () => onLedger(row.id, row.businessName ?? row.name),
+            },
             { id: "purchases", label: "Purchases", onClick: () => router.push(`/${tenantCode}/inbound`) },
           ]}
         />
@@ -95,6 +105,15 @@ export function WarehouseSuppliersView() {
   const [activeTab, setActiveTab] = useState("all");
   const { dateRange, setDateRange, search, setSearch } = useListPageFilters();
   const [categoryFilter, setCategoryFilter] = useState("");
+  const [ledgerSupplierId, setLedgerSupplierId] = useState<string | null>(null);
+  const [ledgerSupplierName, setLedgerSupplierName] = useState("");
+
+  const { summary, ledger, isLoading: ledgerLoading } = useContactLedgerQuery(
+    () => getSupplierSummary(tenantId!, ledgerSupplierId!),
+    () => getSupplierLedger(tenantId!, ledgerSupplierId!),
+    ledgerSupplierId,
+    "supplier-ledger",
+  );
 
   const {
     items: suppliers,
@@ -106,6 +125,8 @@ export function WarehouseSuppliersView() {
     goPrev,
     setPageSize,
     isLoading,
+
+    isFetching,
     error,
   } = useServerListPage<SupplierListRow>({
     queryKey: ["suppliers", tenantId],
@@ -122,7 +143,16 @@ export function WarehouseSuppliersView() {
   const kpis = kpisQuery.data;
 
   const columns = useMemo(
-    () => supplierColumns(tenantCode ?? "VW", goToDetail, router),
+    () =>
+      supplierColumns(
+        tenantCode ?? "VW",
+        goToDetail,
+        (id, name) => {
+          setLedgerSupplierId(id);
+          setLedgerSupplierName(name);
+        },
+        router,
+      ),
     [tenantCode, goToDetail, router],
   );
 
@@ -186,11 +216,20 @@ export function WarehouseSuppliersView() {
           onPrev={goPrev}
           onPageSizeChange={setPageSize}
           isLoading={isLoading}
+          isFetching={isFetching}
           error={error ? "Failed to load suppliers" : null}
           onRowClick={(row) => goToDetail(row.id)}
           emptyState={{ message: "No suppliers yet. Add your first supplier to get started." }}
         />
       </ListPageShell>
+      <ContactLedgerModal
+        open={Boolean(ledgerSupplierId)}
+        onClose={() => setLedgerSupplierId(null)}
+        title={`${ledgerSupplierName} — Ledger`}
+        summary={summary}
+        ledger={ledger}
+        isLoading={ledgerLoading}
+      />
     </div>
   );
 }

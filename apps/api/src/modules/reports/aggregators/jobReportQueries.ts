@@ -22,16 +22,26 @@ export interface JobTableRow {
   cost: number;
 }
 
-const materialSubquery = Prisma.sql`
-  SELECT "jobId", SUM("totalCost") AS total
-  FROM "JobMaterial"
-  GROUP BY "jobId"
+const materialSubquery = (tenantId: string, from: Date, to: Date) => Prisma.sql`
+  SELECT jm."jobId", SUM(jm."totalCost") AS total
+  FROM "JobMaterial" jm
+  INNER JOIN "Job" jw ON jw.id = jm."jobId"
+  WHERE jw."tenantId" = ${tenantId}
+    AND jw."deletedAt" IS NULL
+    AND jw."createdAt" >= ${from}
+    AND jw."createdAt" <= ${to}
+  GROUP BY jm."jobId"
 `;
 
-const labourSubquery = Prisma.sql`
-  SELECT "jobId", SUM("totalCost") AS total
-  FROM "JobLabour"
-  GROUP BY "jobId"
+const labourSubquery = (tenantId: string, from: Date, to: Date) => Prisma.sql`
+  SELECT jl."jobId", SUM(jl."totalCost") AS total
+  FROM "JobLabour" jl
+  INNER JOIN "Job" jw ON jw.id = jl."jobId"
+  WHERE jw."tenantId" = ${tenantId}
+    AND jw."deletedAt" IS NULL
+    AND jw."createdAt" >= ${from}
+    AND jw."createdAt" <= ${to}
+  GROUP BY jl."jobId"
 `;
 
 export async function jobCostSummaryInWindow(
@@ -47,8 +57,8 @@ export async function jobCostSummaryInWindow(
       COUNT(*)::bigint AS job_count,
       COALESCE(SUM(COALESCE(m.total, 0) + COALESCE(l.total, 0)), 0) AS total_cost
     FROM "Job" j
-    LEFT JOIN (${materialSubquery}) m ON m."jobId" = j.id
-    LEFT JOIN (${labourSubquery}) l ON l."jobId" = j.id
+    LEFT JOIN (${materialSubquery(tenantId, from, to)}) m ON m."jobId" = j.id
+    LEFT JOIN (${labourSubquery(tenantId, from, to)}) l ON l."jobId" = j.id
     WHERE j."tenantId" = ${tenantId}
       AND j."deletedAt" IS NULL
       AND j."createdAt" >= ${from}
@@ -80,8 +90,8 @@ export async function jobCostByMonth(
       COALESCE(SUM(COALESCE(m.total, 0)), 0) AS materials,
       COALESCE(SUM(COALESCE(l.total, 0)), 0) AS labour
     FROM "Job" j
-    LEFT JOIN (${materialSubquery}) m ON m."jobId" = j.id
-    LEFT JOIN (${labourSubquery}) l ON l."jobId" = j.id
+    LEFT JOIN (${materialSubquery(tenantId, from, to)}) m ON m."jobId" = j.id
+    LEFT JOIN (${labourSubquery(tenantId, from, to)}) l ON l."jobId" = j.id
     WHERE j."tenantId" = ${tenantId}
       AND j."deletedAt" IS NULL
       AND j."createdAt" >= ${from}
@@ -122,8 +132,8 @@ export async function jobTableRowsInWindow(
       j."quoteAmount",
       COALESCE(m.total, 0) + COALESCE(l.total, 0) AS cost
     FROM "Job" j
-    LEFT JOIN (${materialSubquery}) m ON m."jobId" = j.id
-    LEFT JOIN (${labourSubquery}) l ON l."jobId" = j.id
+    LEFT JOIN (${materialSubquery(tenantId, from, to)}) m ON m."jobId" = j.id
+    LEFT JOIN (${labourSubquery(tenantId, from, to)}) l ON l."jobId" = j.id
     WHERE j."tenantId" = ${tenantId}
       AND j."deletedAt" IS NULL
       AND j."createdAt" >= ${from}

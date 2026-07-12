@@ -167,6 +167,7 @@ export function HrView({ allTenants = false, embedded = false }: HrViewProps) {
     goPrev,
     setPageSize,
     isLoading: usersLoading,
+    isFetching: usersFetching,
     error: usersError,
   } = useServerListPage<UserListRow>({
     queryKey: ["users", allTenants ? "all" : tenantId],
@@ -306,6 +307,7 @@ export function HrView({ allTenants = false, embedded = false }: HrViewProps) {
             onPrev={() => {}}
             onPageSizeChange={() => {}}
             isLoading={workforceQuery.isLoading}
+            isFetching={workforceQuery.isFetching}
             error={
               workforceQuery.error
                 ? workforceQuery.error instanceof Error
@@ -330,6 +332,7 @@ export function HrView({ allTenants = false, embedded = false }: HrViewProps) {
             onPrev={goPrev}
             onPageSizeChange={setPageSize}
             isLoading={usersLoading}
+            isFetching={usersFetching}
             error={usersError ? "Could not load app users." : null}
             emptyState={{ message: "No staff with app login yet. Use Invite staff to add users." }}
           />

@@ -52,3 +52,29 @@ export interface CustomerTransactionHistoryEntry {
 export interface CustomerProfile extends Customer {
   transactionHistory: CustomerTransactionHistoryEntry[];
 }
+
+export interface ContactDueSummary {
+  contactId: string;
+  totalAmount: number;
+  totalPaid: number;
+  totalDue: number;
+  currency: string;
+}
+
+export interface ContactLedgerEntry {
+  id: string;
+  date: string;
+  type: string;
+  description: string;
+  amount: number;
+  currency: string;
+  linkedRecordType?: string | null;
+  linkedRecordId?: string | null;
+  reference?: string | null;
+}
+
+export interface CsvImportResult {
+  created: number;
+  updated: number;
+  errors: Array<{ row: number; message: string }>;
+}

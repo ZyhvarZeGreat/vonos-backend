@@ -3,11 +3,13 @@ import {
   Controller,
   Get,
   Param,
+  Patch,
   Post,
   Query,
   UseGuards,
 } from '@nestjs/common';
 import type { SaleFilters } from '@vonos/types';
+import { Roles } from '../../common/decorators/roles.decorator';
 import {
   JwtAuthGuard,
   RolesGuard,
@@ -24,18 +26,28 @@ export class SalesController {
   list(
     @Query('search') search?: string,
     @Query('status') status?: SaleFilters['status'],
+    @Query('saleStatus') saleStatus?: SaleFilters['saleStatus'],
     @Query('returnsOnly') returnsOnly?: string,
+    @Query('shipmentsOnly') shipmentsOnly?: string,
     @Query('cursor') cursor?: string,
     @Query('limit') limit?: string,
   ) {
     const filters: SaleFilters = {
       search,
       status,
+      saleStatus,
       returnsOnly: returnsOnly === 'true',
+      shipmentsOnly: shipmentsOnly === 'true',
       cursor,
       limit: limit ? Number(limit) : undefined,
     };
     return this.salesService.list(filters);
+  }
+
+  @Post('import')
+  @Roles('manager', 'admin', 'super_admin')
+  import(@Body() body: { csv: string }) {
+    return this.salesService.importCsv(body.csv ?? '');
   }
 
   @Post()
@@ -51,9 +63,17 @@ export class SalesController {
         name: string;
         quantity: number;
         unitPrice: number;
+        discountAmount?: number;
       }>;
       currency?: string;
       date?: string;
+      status?: SaleFilters['saleStatus'] | 'final';
+      shippingStatus?: string;
+      shippingAddress?: string;
+      trackingNumber?: string;
+      discountAmount?: number;
+      taxAmount?: number;
+      notes?: string;
       payments?: Array<{
         amount: number;
         method?: string;
@@ -68,5 +88,50 @@ export class SalesController {
   @Get(':id')
   getById(@Param('id') id: string) {
     return this.salesService.getById(id);
+  }
+
+  @Post(':id/finalize')
+  @Roles('staff', 'manager', 'admin', 'super_admin')
+  finalize(
+    @Param('id') id: string,
+    @Body()
+    body: {
+      payments?: Array<{
+        amount: number;
+        method?: string;
+        note?: string;
+        accountId?: string;
+      }>;
+    },
+  ) {
+    return this.salesService.finalize(id, body);
+  }
+
+  @Post(':id/return')
+  @Roles('staff', 'manager', 'admin', 'super_admin')
+  createReturn(
+    @Param('id') id: string,
+    @Body()
+    body: {
+      disposition: 'refunded' | 'restocked' | 'written_off';
+      notes?: string;
+      lines?: Array<{ saleLineId: string; quantity: number }>;
+    },
+  ) {
+    return this.salesService.createReturn(id, body);
+  }
+
+  @Patch(':id/shipping')
+  @Roles('staff', 'manager', 'admin', 'super_admin')
+  updateShipping(
+    @Param('id') id: string,
+    @Body()
+    body: {
+      shippingStatus?: string | null;
+      shippingAddress?: string | null;
+      trackingNumber?: string | null;
+    },
+  ) {
+    return this.salesService.updateShipping(id, body);
   }
 }

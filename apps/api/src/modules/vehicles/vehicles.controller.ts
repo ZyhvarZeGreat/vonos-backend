@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import {
   JwtAuthGuard,
   RolesGuard,
@@ -48,5 +48,22 @@ export class VehiclesController {
     },
   ) {
     return this.vehiclesService.create(body);
+  }
+
+  @Patch(':id')
+  update(
+    @Param('id') id: string,
+    @Body()
+    body: {
+      plateNumber?: string;
+      vin?: string | null;
+      make?: string;
+      model?: string;
+      year?: number | null;
+      ownerName?: string;
+      ownerPhone?: string | null;
+    },
+  ) {
+    return this.vehiclesService.update(id, body);
   }
 }

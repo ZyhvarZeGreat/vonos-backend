@@ -103,6 +103,8 @@ def run_va_migration(
                 progress=progress,
                 since=since,
                 existing_legacy=cumulative_legacy,
+                include_purchases=True,
+                include_sales=True,
             )
             for key, val in source_loaded.items():
                 loaded[f"{label}:{key}"] = val
@@ -115,8 +117,9 @@ def run_va_migration(
             from migration.pos_common import legacy_map
 
             for entity_type in (
-                "item", "customer", "supplier", "job", "sale", "payment_account",
-                "payment", "expense_category", "payroll_group", "payroll", "pay_component",
+                "item", "customer", "supplier", "job", "sale", "stock_movement",
+                "payment_account", "payment", "expense_category", "payroll_group",
+                "payroll", "pay_component",
             ):
                 cumulative_legacy[entity_type] = {
                     **cumulative_legacy.get(entity_type, {}),

@@ -28,3 +28,6 @@ export * from "./customerGroup";
 export * from "./invoice";
 export * from "./payroll";
 export * from "./retailCatalog";
+export * from "./discount";
+export * from "./variation";
+export * from "./bulkPrice";

@@ -51,6 +51,7 @@ export async function buildGroupReports(
       where: {
         tenantId: { in: tenantIds },
         deletedAt: null,
+        isInternalTransfer: false,
         type: 'cost',
         date: { gte: window.from, lte: window.to },
       },
@@ -60,6 +61,7 @@ export async function buildGroupReports(
       where: {
         tenantId: { in: tenantIds },
         deletedAt: null,
+        isInternalTransfer: false,
         type: 'expense',
         date: { gte: window.from, lte: window.to },
       },

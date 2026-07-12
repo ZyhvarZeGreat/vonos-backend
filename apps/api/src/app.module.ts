@@ -31,6 +31,8 @@ import { ExpensesModule } from './modules/expenses/expenses.module';
 import { CustomerGroupsModule } from './modules/customer-groups/customer-groups.module';
 import { HrmModule } from './modules/hrm/hrm.module';
 import { InvoiceSettingsModule } from './modules/invoice-settings/invoice-settings.module';
+import { DiscountsModule } from './modules/discounts/discounts.module';
+import { VariationsModule } from './modules/variations/variations.module';
 
 @Module({
   imports: [
@@ -63,6 +65,8 @@ import { InvoiceSettingsModule } from './modules/invoice-settings/invoice-settin
     CustomerGroupsModule,
     HrmModule,
     InvoiceSettingsModule,
+    DiscountsModule,
+    VariationsModule,
   ],
   controllers: [AppController, HealthController],
   providers: [AppService],

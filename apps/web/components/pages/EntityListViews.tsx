@@ -19,22 +19,31 @@ import {
   sectionFromParams,
   type ProductSectionId,
 } from "@/components/organisms/ProductMetaPanel";
-import { getCustomersPage } from "@/lib/api/customers";
+import { getCustomersPage, getCustomerLedger, getCustomerSummary, importCustomers } from "@/lib/api/customers";
 import { getCatalogPage } from "@/lib/api/catalog";
 import { getSalesPage } from "@/lib/api/sales";
 import { getOrdersPage } from "@/lib/api/orders";
 import { getReturnsPage } from "@/lib/api/returns";
-import { getAllRequisitions, getRequisitionsPage } from "@/lib/api/requisitions";
+import { getAllRequisitions, getAllIncomingRequisitions, getIncomingRequisitionsPage, getRequisitionsPage } from "@/lib/api/requisitions";
 import { getAllSalonServices, getSalonServicesPage } from "@/lib/api/salonServices";
-import { getAllVehicles, getVehiclesPage } from "@/lib/api/vehicles";
+import { getAllVehicles, createVehicle, getVehiclesPage } from "@/lib/api/vehicles";
 import { getItemsPage } from "@/lib/api/items";
 import { useListExport } from "@/lib/hooks/useListExport";
 import type { Order, MenuItemRow, SaleReturnRow } from "@/lib/types/entityRows";
-import type { Customer, Item, Requisition, Sale, SalonService, StockStatus, Vehicle } from "@vonos/types";
+import type { Customer, Item, Requisition, Sale, SaleStatus, SalonService, StockStatus, Vehicle } from "@vonos/types";
+import { ContactLedgerModal, useContactLedgerQuery } from "@/components/organisms/ContactLedgerModal";
+import { CustomerRecordModal } from "@/components/organisms/CustomerRecordModal";
+import { SaleRecordModal } from "@/components/organisms/SaleRecordModal";
+import { RequisitionRecordModal } from "@/components/organisms/RequisitionRecordModal";
+import { useListRecordModal } from "@/lib/hooks/useListRecordModal";
 import { formatCurrency, formatNumber } from "@/lib/utils/formatCurrency";
 import { useRecordNavigation } from "@/lib/hooks/useRecordNavigation";
 import { useRouteTenant, useTenantId } from "@/lib/hooks/useRouteTenant";
 import { useListPageFilters } from "@/lib/hooks/useListPageFilters";
+import { useAppMutation } from "@/lib/hooks/useAppMutation";
+import { useQueryClient } from "@tanstack/react-query";
+import { Input } from "@/components/atoms/Input";
+import { Modal, ModalFooter, ModalHeader } from "@/components/atoms/Modal";
 import {
   filterByDateField,
   filterBySearch,
@@ -43,9 +52,22 @@ import {
 import { ItemLocationCell } from "@/components/molecules/ItemLocationCell";
 import { itemMatchesLocationFilter, locationFilterOptions } from "@/lib/utils/locationLabels";
 import { useUiStore } from "@/stores/uiStore";
+import { useTenantStore } from "@/stores/tenantStore";
 
-export function SalesListView() {
-  const { goToDetail } = useRecordNavigation("sales");
+interface SalesListViewProps {
+  saleStatus?: SaleStatus;
+  shipmentsOnly?: boolean;
+  tabLabel?: string;
+  hidePrimaryAction?: boolean;
+}
+
+export function SalesListView({
+  saleStatus,
+  shipmentsOnly,
+  tabLabel = "All Sales",
+  hidePrimaryAction = false,
+}: SalesListViewProps = {}) {
+  const { recordId, openRecord, closeRecord } = useListRecordModal();
   const tenantId = useTenantId();
   const openAddSaleModal = useUiStore((state) => state.openAddSaleModal);
   const exportList = useListExport();
@@ -55,8 +77,10 @@ export function SalesListView() {
   const apiFilters = useMemo(
     () => ({
       search: search.trim() || undefined,
+      saleStatus,
+      shipmentsOnly,
     }),
-    [search],
+    [search, saleStatus, shipmentsOnly],
   );
 
   const {
@@ -69,9 +93,11 @@ export function SalesListView() {
     goPrev,
     setPageSize,
     isLoading,
+
+    isFetching,
     error,
   } = useServerListPage({
-    queryKey: ["sales", tenantId],
+    queryKey: ["sales", tenantId, saleStatus ?? "all"],
     enabled: Boolean(tenantId),
     filters: apiFilters,
     search,
@@ -99,30 +125,46 @@ export function SalesListView() {
       sortValue: (r) => r.total,
       render: (r) => formatCurrency(r.total, r.currency),
     },
-    { key: "status", header: "Status", render: (r) => <StatusPill status={r.status} vocabulary="saleReturnStatus" /> },
+    {
+      key: "status",
+      header: "Status",
+      render: (r) => {
+        const label =
+          r.recordStatus === "draft"
+            ? "Draft"
+            : r.recordStatus === "quotation"
+              ? "Quotation"
+              : r.status;
+        return <StatusPill status={label} vocabulary="saleReturnStatus" />;
+      },
+    },
     { key: "date", header: "Date", sortValue: (r) => new Date(r.date).getTime() },
   ];
   return (
     <ListPageShell
-      tabs={[{ id: "all", label: "All Sales" }]}
+      tabs={[{ id: "all", label: tabLabel }]}
       activeTab="all"
       onTabChange={() => {}}
       searchValue={search}
       onSearchChange={setSearch}
       dateRange={dateRange}
       onDateRangeChange={setDateRange}
-      filterDropdowns={[
-        {
-          id: "status",
-          label: "Status",
-          value: statusFilter,
-          onChange: setStatusFilter,
-          options: statusOptions,
-        },
-      ]}
+      filterDropdowns={
+        saleStatus
+          ? undefined
+          : [
+              {
+                id: "status",
+                label: "Status",
+                value: statusFilter,
+                onChange: setStatusFilter,
+                options: statusOptions,
+              },
+            ]
+      }
       onExport={() =>
         exportList(
-          "sales",
+          saleStatus ? `${saleStatus}-sales` : "sales",
           [
             { key: "reference", header: "Sale #" },
             { key: "customerName", header: "Customer" },
@@ -139,14 +181,16 @@ export function SalesListView() {
             status: row.status,
             date: row.date,
           })),
-          "Export Sales Spreadsheet",
+          `Export ${tabLabel} Spreadsheet`,
         )
       }
       primaryAction={
-        <Button size="sm" onClick={() => openAddSaleModal()}>
-          <Plus className="mr-1.5 h-4 w-4" />
-          Add Sale
-        </Button>
+        hidePrimaryAction ? undefined : (
+          <Button size="sm" onClick={() => openAddSaleModal()}>
+            <Plus className="mr-1.5 h-4 w-4" />
+            Add Sale
+          </Button>
+        )
       }
     >
       <div className="p-4 pt-0">
@@ -161,16 +205,30 @@ export function SalesListView() {
           onPrev={goPrev}
           onPageSizeChange={setPageSize}
           isLoading={isLoading}
+          isFetching={isFetching}
           error={error ? "Failed to load sales" : null}
-          onRowClick={(row) => goToDetail(row.id)}
+          onRowClick={(row) => openRecord(row.id)}
         />
       </div>
+      <SaleRecordModal saleId={recordId} listSlug="sales" onClose={closeRecord} />
     </ListPageShell>
   );
 }
 
+export function DraftsListView() {
+  return (
+    <SalesListView saleStatus="draft" tabLabel="All Drafts" hidePrimaryAction />
+  );
+}
+
+export function QuotationsListView() {
+  return (
+    <SalesListView saleStatus="quotation" tabLabel="All Quotations" hidePrimaryAction />
+  );
+}
+
 export function OrdersListView() {
-  const { goToDetail } = useRecordNavigation("orders");
+  const { recordId, openRecord, closeRecord } = useListRecordModal();
   const tenantId = useTenantId();
   const { dateRange, setDateRange, search, setSearch, bounds } = useListPageFilters();
   const [statusFilter, setStatusFilter] = useState("");
@@ -192,6 +250,8 @@ export function OrdersListView() {
     goPrev,
     setPageSize,
     isLoading,
+
+    isFetching,
     error,
   } = useServerListPage<Order>({
     queryKey: ["orders", tenantId],
@@ -255,20 +315,33 @@ export function OrdersListView() {
         onPrev={goPrev}
         onPageSizeChange={setPageSize}
         isLoading={isLoading}
+        isFetching={isFetching}
         error={error ? "Failed to load orders" : null}
-        onRowClick={(row) => goToDetail(row.id)}
+        onRowClick={(row) => openRecord(row.id)}
       />
+      <SaleRecordModal saleId={recordId} listSlug="orders" onClose={closeRecord} />
     </ListPageShell>
   );
 }
 
 export function CustomersListView() {
-  const { goToDetail } = useRecordNavigation("customers");
+  const { recordId, openRecord, closeRecord } = useListRecordModal();
   const { tenantCode } = useRouteTenant();
   const router = useRouter();
   const tenantId = useTenantId();
   const openCreateModal = useUiStore((state) => state.openCreateModal);
+  const tenantConfig = useTenantStore((state) => state.tenantConfig);
+  const bulkImportEnabled = tenantConfig?.enabledModules.includes("bulkImport") ?? false;
   const { dateRange, setDateRange, search, setSearch, bounds } = useListPageFilters();
+  const [ledgerCustomerId, setLedgerCustomerId] = useState<string | null>(null);
+  const [ledgerCustomerName, setLedgerCustomerName] = useState("");
+
+  const { summary, ledger, isLoading: ledgerLoading } = useContactLedgerQuery(
+    () => getCustomerSummary(tenantId!, ledgerCustomerId!),
+    () => getCustomerLedger(tenantId!, ledgerCustomerId!),
+    ledgerCustomerId,
+    "customer-ledger",
+  );
 
   const apiFilters = useMemo(
     () => ({
@@ -287,6 +360,8 @@ export function CustomersListView() {
     goPrev,
     setPageSize,
     isLoading,
+
+    isFetching,
     error,
   } = useServerListPage<Customer>({
     queryKey: ["customers", tenantId],
@@ -300,6 +375,18 @@ export function CustomersListView() {
     return filterByDateField(customers, bounds, "createdAt");
   }, [bounds, customers]);
 
+  const handleCustomerImport = useCallback(
+    async (file: File) => {
+      if (!tenantId) return;
+      const csv = await file.text();
+      const result = await importCustomers(tenantId, csv);
+      window.alert(
+        `Imported ${result.created} customer(s)${result.errors.length ? ` with ${result.errors.length} error(s)` : ""}.`,
+      );
+    },
+    [tenantId],
+  );
+
   const columns: ColumnConfig<Customer>[] = [
     {
       key: "actions",
@@ -308,9 +395,16 @@ export function CustomersListView() {
       render: (row) => (
         <RowActionsMenu
           actions={[
-            { id: "view", label: "View", onClick: () => goToDetail(row.id) },
-            { id: "pay", label: "Pay", onClick: () => router.push(`/${tenantCode}/payments`) },
-            { id: "ledger", label: "Ledger", onClick: () => router.push(`/${tenantCode}/finance`) },
+            { id: "view", label: "View", onClick: () => openRecord(row.id) },
+            { id: "pay", label: "Pay", onClick: () => router.push(`/${tenantCode}/payments?customerId=${row.id}`) },
+            {
+              id: "ledger",
+              label: "Ledger",
+              onClick: () => {
+                setLedgerCustomerId(row.id);
+                setLedgerCustomerName(row.businessName ?? row.name);
+              },
+            },
             { id: "sales", label: "Sales", onClick: () => router.push(`/${tenantCode}/sales`) },
           ]}
         />
@@ -352,6 +446,8 @@ export function CustomersListView() {
       searchPlaceholder="Search customers..."
       dateRange={dateRange}
       onDateRangeChange={setDateRange}
+      showImport={bulkImportEnabled}
+      onImport={bulkImportEnabled ? handleCustomerImport : undefined}
       primaryAction={
         <Button size="sm" onClick={() => openCreateModal("customer")}>
           <Plus className="mr-1.5 h-4 w-4" />
@@ -370,15 +466,25 @@ export function CustomersListView() {
         onPrev={goPrev}
         onPageSizeChange={setPageSize}
         isLoading={isLoading}
+        isFetching={isFetching}
         error={error ? "Failed to load customers" : null}
-        onRowClick={(row) => goToDetail(row.id)}
+        onRowClick={(row) => openRecord(row.id)}
+      />
+      <CustomerRecordModal customerId={recordId} onClose={closeRecord} />
+      <ContactLedgerModal
+        open={Boolean(ledgerCustomerId)}
+        onClose={() => setLedgerCustomerId(null)}
+        title={`Ledger — ${ledgerCustomerName}`}
+        summary={summary}
+        ledger={ledger}
+        isLoading={ledgerLoading}
       />
     </ListPageShell>
   );
 }
 
 export function ReturnsListView() {
-  const { goToDetail } = useRecordNavigation("returns");
+  const { recordId, openRecord, closeRecord } = useListRecordModal();
   const tenantId = useTenantId();
   const { dateRange, setDateRange, search, setSearch, bounds } = useListPageFilters();
   const [statusFilter, setStatusFilter] = useState("");
@@ -400,6 +506,8 @@ export function ReturnsListView() {
     goPrev,
     setPageSize,
     isLoading,
+
+    isFetching,
     error,
   } = useServerListPage<SaleReturnRow>({
     queryKey: ["returns", tenantId],
@@ -463,9 +571,11 @@ export function ReturnsListView() {
         onPrev={goPrev}
         onPageSizeChange={setPageSize}
         isLoading={isLoading}
+        isFetching={isFetching}
         error={error ? "Failed to load returns" : null}
-        onRowClick={(row) => goToDetail(row.id)}
+        onRowClick={(row) => openRecord(row.id)}
       />
+      <SaleRecordModal saleId={recordId} listSlug="returns" onClose={closeRecord} />
     </ListPageShell>
   );
 }
@@ -473,8 +583,53 @@ export function ReturnsListView() {
 export function VehiclesListView() {
   const { goToDetail } = useRecordNavigation("vehicles");
   const tenantId = useTenantId();
+  const queryClient = useQueryClient();
   const exportList = useListExport();
   const { search, setSearch } = useListPageFilters();
+  const [createOpen, setCreateOpen] = useState(false);
+  const [form, setForm] = useState({
+    plateNumber: "",
+    make: "",
+    model: "",
+    year: "",
+    ownerName: "",
+    ownerPhone: "",
+  });
+
+  const createMutation = useAppMutation({
+    mutationFn: () => {
+      if (!tenantId) throw new Error("No tenant");
+      return createVehicle(tenantId, {
+        plateNumber: form.plateNumber.trim(),
+        make: form.make.trim(),
+        model: form.model.trim(),
+        year: form.year ? Number(form.year) : null,
+        ownerName: form.ownerName.trim(),
+        ownerPhone: form.ownerPhone.trim() || null,
+        vin: null,
+      });
+    },
+    successMessage: "Vehicle registered",
+    onSuccess: async (vehicle) => {
+      setCreateOpen(false);
+      setForm({
+        plateNumber: "",
+        make: "",
+        model: "",
+        year: "",
+        ownerName: "",
+        ownerPhone: "",
+      });
+      await queryClient.invalidateQueries({ queryKey: ["vehicles", tenantId] });
+      goToDetail(vehicle.id);
+    },
+  });
+
+  const canCreate =
+    form.plateNumber.trim() &&
+    form.make.trim() &&
+    form.model.trim() &&
+    form.ownerName.trim();
 
   const {
     items: vehicles,
@@ -486,6 +641,8 @@ export function VehiclesListView() {
     goPrev,
     setPageSize,
     isLoading,
+
+    isFetching,
     error,
   } = useServerListPage<Vehicle>({
     queryKey: ["vehicles", tenantId],
@@ -512,6 +669,7 @@ export function VehiclesListView() {
   ];
 
   return (
+    <>
     <ListPageShell
       tabs={[{ id: "all", label: "All Vehicles" }]}
       activeTab="all"
@@ -519,6 +677,12 @@ export function VehiclesListView() {
       searchValue={search}
       onSearchChange={setSearch}
       searchPlaceholder="Search vehicles..."
+      primaryAction={
+        <Button size="sm" onClick={() => setCreateOpen(true)}>
+          <Plus className="mr-1.5 h-4 w-4" />
+          Register vehicle
+        </Button>
+      }
       onExport={async () => {
         if (!tenantId) return;
         const rows = await getAllVehicles(tenantId);
@@ -553,6 +717,7 @@ export function VehiclesListView() {
         onPrev={goPrev}
         onPageSizeChange={setPageSize}
         isLoading={isLoading}
+        isFetching={isFetching}
         error={error ? "Failed to load vehicles" : null}
         onRowClick={(row) => goToDetail(row.id)}
         emptyState={{
@@ -560,11 +725,63 @@ export function VehiclesListView() {
         }}
       />
     </ListPageShell>
+
+    {createOpen ? (
+      <Modal open onClose={() => setCreateOpen(false)} panelClassName="max-w-lg">
+        <ModalHeader title="Register vehicle" onClose={() => setCreateOpen(false)} />
+        <div className="grid gap-3 border-t border-border px-4 py-4 sm:grid-cols-2">
+          <Input
+            label="Plate number"
+            value={form.plateNumber}
+            onChange={(e) => setForm((p) => ({ ...p, plateNumber: e.target.value }))}
+          />
+          <Input
+            label="Owner name"
+            value={form.ownerName}
+            onChange={(e) => setForm((p) => ({ ...p, ownerName: e.target.value }))}
+          />
+          <Input
+            label="Make"
+            value={form.make}
+            onChange={(e) => setForm((p) => ({ ...p, make: e.target.value }))}
+          />
+          <Input
+            label="Model"
+            value={form.model}
+            onChange={(e) => setForm((p) => ({ ...p, model: e.target.value }))}
+          />
+          <Input
+            label="Year"
+            type="number"
+            value={form.year}
+            onChange={(e) => setForm((p) => ({ ...p, year: e.target.value }))}
+          />
+          <Input
+            label="Owner phone"
+            value={form.ownerPhone}
+            onChange={(e) => setForm((p) => ({ ...p, ownerPhone: e.target.value }))}
+          />
+        </div>
+        <ModalFooter>
+          <Button variant="ghost" size="sm" onClick={() => setCreateOpen(false)}>
+            Cancel
+          </Button>
+          <Button
+            size="sm"
+            disabled={!canCreate || createMutation.isPending}
+            onClick={() => createMutation.mutate()}
+          >
+            Register
+          </Button>
+        </ModalFooter>
+      </Modal>
+    ) : null}
+    </>
   );
 }
 
 export function RequisitionsListView() {
-  const { goToDetail } = useRecordNavigation("requisitions");
+  const { recordId, openRecord, closeRecord } = useListRecordModal();
   const tenantId = useTenantId();
   const exportList = useListExport();
   const { search, setSearch } = useListPageFilters();
@@ -579,6 +796,8 @@ export function RequisitionsListView() {
     goPrev,
     setPageSize,
     isLoading,
+
+    isFetching,
     error,
   } = useServerListPage<Requisition>({
     queryKey: ["requisitions", tenantId],
@@ -603,53 +822,180 @@ export function RequisitionsListView() {
       header: "Status",
       render: (r) => <StatusPill status={r.status} vocabulary="movementStatus" />,
     },
+    {
+      key: "lines",
+      header: "Lines",
+      render: (r) => r.lines.length,
+    },
     { key: "createdAt", header: "Created", sortValue: (r) => new Date(r.createdAt).getTime() },
   ];
 
   return (
-    <ListPageShell
-      tabs={[{ id: "all", label: "All Requisitions" }]}
-      activeTab="all"
-      onTabChange={() => {}}
-      searchValue={search}
-      onSearchChange={setSearch}
-      onExport={async () => {
-        if (!tenantId) return;
-        const rows = await getAllRequisitions(tenantId);
-        exportList(
-          "requisitions",
-          [
-            { key: "reference", header: "Req #" },
-            { key: "status", header: "Status" },
-            { key: "createdAt", header: "Created" },
-          ],
-          rows.map((row) => ({
-            reference: row.reference,
-            status: row.status,
-            createdAt: row.createdAt,
-          })),
-          "Export Requisitions",
-        );
-      }}
-    >
-      <ServerPaginatedTable
-        items={filtered}
-        columns={columns}
-        pageIndex={pageIndex}
-        pageSize={pageSize}
-        hasMore={hasMore}
-        canGoPrev={canGoPrev}
-        onNext={goNext}
-        onPrev={goPrev}
-        onPageSizeChange={setPageSize}
-        isLoading={isLoading}
-        error={error ? "Failed to load requisitions" : null}
-        onRowClick={(row) => goToDetail(row.id)}
-        emptyState={{
-          message: "No material requisitions yet.",
+    <>
+      <ListPageShell
+        tabs={[{ id: "all", label: "All Requisitions" }]}
+        activeTab="all"
+        onTabChange={() => {}}
+        searchValue={search}
+        onSearchChange={setSearch}
+        onExport={async () => {
+          if (!tenantId) return;
+          const rows = await getAllRequisitions(tenantId);
+          exportList(
+            "requisitions",
+            [
+              { key: "reference", header: "Req #" },
+              { key: "status", header: "Status" },
+              { key: "createdAt", header: "Created" },
+            ],
+            rows.map((row) => ({
+              reference: row.reference,
+              status: row.status,
+              createdAt: row.createdAt,
+            })),
+            "Export Requisitions",
+          );
+        }}
+      >
+        <ServerPaginatedTable
+          items={filtered}
+          columns={columns}
+          pageIndex={pageIndex}
+          pageSize={pageSize}
+          hasMore={hasMore}
+          canGoPrev={canGoPrev}
+          onNext={goNext}
+          onPrev={goPrev}
+          onPageSizeChange={setPageSize}
+          isLoading={isLoading}
+          isFetching={isFetching}
+          error={error ? "Failed to load requisitions" : null}
+          onRowClick={(row) => openRecord(row.id)}
+          emptyState={{
+            message: "No material requisitions yet. Request parts from a job detail page.",
+          }}
+        />
+      </ListPageShell>
+      <RequisitionRecordModal
+        requisitionId={recordId}
+        mode="outgoing"
+        onClose={closeRecord}
+      />
+    </>
+  );
+}
+
+/** Warehouse inbox — requisitions fulfilled from this tenant's stock. */
+export function IncomingRequisitionsListView() {
+  const { recordId, openRecord, closeRecord } = useListRecordModal();
+  const tenantId = useTenantId();
+  const exportList = useListExport();
+  const { search, setSearch } = useListPageFilters();
+  const [selectedRow, setSelectedRow] = useState<Requisition | null>(null);
+
+  const {
+    items: requisitions,
+    hasMore,
+    pageIndex,
+    pageSize,
+    canGoPrev,
+    goNext,
+    goPrev,
+    setPageSize,
+    isLoading,
+    isFetching,
+    error,
+  } = useServerListPage<Requisition>({
+    queryKey: ["incoming-requisitions", tenantId],
+    enabled: Boolean(tenantId),
+    search,
+    fetchPage: (cursor, limit) =>
+      getIncomingRequisitionsPage(tenantId!, cursor, limit),
+  });
+
+  const filtered = useMemo(
+    () => filterBySearch(requisitions, search, ["reference", "notes"]),
+    [requisitions, search],
+  );
+
+  const columns: ColumnConfig<Requisition>[] = [
+    {
+      key: "reference",
+      header: "Req #",
+      render: (r) => <span className="font-medium">{r.reference}</span>,
+    },
+    {
+      key: "status",
+      header: "Status",
+      render: (r) => <StatusPill status={r.status} vocabulary="movementStatus" />,
+    },
+    {
+      key: "lines",
+      header: "Lines",
+      render: (r) => r.lines.length,
+    },
+    { key: "createdAt", header: "Created", sortValue: (r) => new Date(r.createdAt).getTime() },
+  ];
+
+  return (
+    <>
+      <ListPageShell
+        tabs={[{ id: "incoming", label: "Incoming Requests" }]}
+        activeTab="incoming"
+        onTabChange={() => {}}
+        searchValue={search}
+        onSearchChange={setSearch}
+        onExport={async () => {
+          if (!tenantId) return;
+          const rows = await getAllIncomingRequisitions(tenantId);
+          exportList(
+            "incoming-requisitions",
+            [
+              { key: "reference", header: "Req #" },
+              { key: "status", header: "Status" },
+              { key: "createdAt", header: "Created" },
+            ],
+            rows.map((row) => ({
+              reference: row.reference,
+              status: row.status,
+              createdAt: row.createdAt,
+            })),
+            "Export Incoming Requisitions",
+          );
+        }}
+      >
+        <ServerPaginatedTable
+          items={filtered}
+          columns={columns}
+          pageIndex={pageIndex}
+          pageSize={pageSize}
+          hasMore={hasMore}
+          canGoPrev={canGoPrev}
+          onNext={goNext}
+          onPrev={goPrev}
+          onPageSizeChange={setPageSize}
+          isLoading={isLoading}
+          isFetching={isFetching}
+          error={error ? "Failed to load incoming requisitions" : null}
+          onRowClick={(row) => {
+            setSelectedRow(row);
+            openRecord(row.id);
+          }}
+          emptyState={{
+            message: "No incoming requisition requests from other entities.",
+          }}
+        />
+      </ListPageShell>
+      <RequisitionRecordModal
+        requisitionId={recordId}
+        initialRecord={selectedRow}
+        mode="incoming"
+        onClose={() => {
+          setSelectedRow(null);
+          closeRecord();
         }}
       />
-    </ListPageShell>
+    </>
   );
 }
 
@@ -677,6 +1023,8 @@ export function MenuItemsListView() {
     goPrev,
     setPageSize,
     isLoading,
+
+    isFetching,
     error,
   } = useServerListPage<MenuItemRow>({
     queryKey: ["menu-items", tenantId],
@@ -754,6 +1102,7 @@ export function MenuItemsListView() {
           onPrev={goPrev}
           onPageSizeChange={setPageSize}
           isLoading={isLoading}
+          isFetching={isFetching}
           error={error ? "Failed to load menu items" : null}
           onRowClick={(row) => goToDetail(row.id)}
         />
@@ -777,6 +1126,8 @@ export function ServicesListView() {
     goPrev,
     setPageSize,
     isLoading,
+
+    isFetching,
     error,
   } = useServerListPage<SalonService>({
     queryKey: ["salon-services", tenantId],
@@ -843,6 +1194,7 @@ export function ServicesListView() {
         onPrev={goPrev}
         onPageSizeChange={setPageSize}
         isLoading={isLoading}
+        isFetching={isFetching}
         error={error ? "Failed to load services" : null}
         emptyState={{
           message: "No salon services configured yet.",
@@ -900,6 +1252,8 @@ export function CatalogListView() {
     goPrev,
     setPageSize,
     isLoading,
+
+    isFetching,
     error,
   } = useServerListPage({
     queryKey: ["catalog", tenantId],
@@ -1037,6 +1391,7 @@ export function CatalogListView() {
             onPrev={goPrev}
             onPageSizeChange={setPageSize}
             isLoading={isLoading}
+            isFetching={isFetching}
             error={error ? "Could not load catalog items." : null}
             onRowClick={(row) => goToDetail(row.id)}
             emptyState={{

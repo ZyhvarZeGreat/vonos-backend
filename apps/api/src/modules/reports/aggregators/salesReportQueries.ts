@@ -60,7 +60,7 @@ export async function salesKpiSnapshot(
     db.sale.count({
       where: {
         ...saleBaseWhere(tenantId, from, to),
-        status: { in: ['refunded', 'partially_refunded'] },
+        status: { in: ['refunded', 'partially_refunded', 'written_off'] },
       },
     }),
     salesCurrency(db, tenantId),

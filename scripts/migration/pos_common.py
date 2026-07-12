@@ -76,13 +76,30 @@ def map_payment_status(raw: Any) -> str | None:
     return "paid"
 
 
-def map_sale_status(raw: Any) -> str:
+def map_sale_status(raw: Any, sub_status: Any = None) -> str:
+    sub = str(sub_status or "").lower()
+    if sub == "quotation":
+        return "quotation"
     s = str(raw or "").lower()
     if s == "final":
         return "completed"
     if s == "draft":
         return "draft"
     return "completed"
+
+
+def _include_sell_transaction(txn: dict[str, Any]) -> bool:
+    if str(txn.get("type") or "") != "sell":
+        return False
+    status = str(txn.get("status") or "").lower()
+    sub_status = str(txn.get("sub_status") or "").lower()
+    if status == "final":
+        return True
+    if status == "draft":
+        return True
+    if sub_status == "quotation":
+        return True
+    return False
 
 
 def parse_tx_date(raw: Any) -> str:
@@ -327,10 +344,7 @@ def transform_sales(
     products = {str(r["id"]): r for r in table_rows(tables, "products") if r.get("id") is not None}
     variations = {str(r["id"]): r for r in table_rows(tables, "variations") if r.get("id") is not None}
 
-    sell_txns = [
-        t for t in table_rows(tables, "transactions")
-        if str(t.get("type") or "") == "sell" and str(t.get("status") or "").lower() == "final"
-    ]
+    sell_txns = [t for t in table_rows(tables, "transactions") if _include_sell_transaction(t)]
 
     sell_lines_by_tx: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for sl in table_rows(tables, "transaction_sell_lines"):
@@ -408,6 +422,7 @@ def transform_sales(
         if existing_sale_id:
             continue
 
+        sale_status = map_sale_status(txn.get("status"), txn.get("sub_status"))
         result.sales.append({
             "id": sale_id,
             "tenantId": tenant_id,
@@ -415,7 +430,7 @@ def transform_sales(
             "customerId": customer_id,
             "total": str(total),
             "currency": "NGN",
-            "status": map_sale_status(txn.get("status")),
+            "status": sale_status,
             "paymentStatus": map_payment_status(txn.get("payment_status")),
             "date": sale_date,
             "itemCount": len(sale_lines_out),
@@ -428,20 +443,120 @@ def transform_sales(
             "legacyId": legacy_tx_id,
             "newId": sale_id,
         })
-        result.ledger_entries.append({
-            "id": f"mig_ledger_{sale_id}",
-            "tenantId": tenant_id,
-            "type": "revenue",
-            "amount": str(total),
-            "currency": "NGN",
-            "category": "Sales",
-            "description": f"Sale {ref}",
-            "linkedRecordType": "sale",
-            "linkedRecordId": sale_id,
-            "date": sale_date,
-        })
+        if sale_status == "completed":
+            result.ledger_entries.append({
+                "id": f"mig_ledger_{sale_id}",
+                "tenantId": tenant_id,
+                "type": "revenue",
+                "amount": str(total),
+                "currency": "NGN",
+                "category": "Sales",
+                "description": f"Sale {ref}",
+                "linkedRecordType": "sale",
+                "linkedRecordId": sale_id,
+                "date": sale_date,
+            })
 
     if orphan_variations:
         result.warnings.append(f"{orphan_variations} sell lines reference unmapped variation_id")
+
+    return result
+
+
+def transform_sell_returns(
+    tables: dict[str, TableData],
+    tenant_id: str,
+    item_legacy: dict[int, str],
+    customer_legacy: dict[int, str],
+    *,
+    reference_prefix: str = "",
+    user_names: dict[int, str] | None = None,
+    since: str | None = None,
+    existing_sale_legacy: dict[int, str] | None = None,
+) -> TransformResult:
+    """Map legacy sell_return transactions to refunded Sale rows."""
+    result = TransformResult()
+    user_names = user_names or build_legacy_user_name_map(tables)
+    existing_sale_legacy = existing_sale_legacy or {}
+    products = {str(r["id"]): r for r in table_rows(tables, "products") if r.get("id") is not None}
+    variations = {str(r["id"]): r for r in table_rows(tables, "variations") if r.get("id") is not None}
+
+    return_txns = [
+        t for t in table_rows(tables, "transactions")
+        if str(t.get("type") or "") == "sell_return"
+        and str(t.get("status") or "").lower() in ("final", "received")
+    ]
+
+    sell_lines_by_tx: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for sl in table_rows(tables, "transaction_sell_lines"):
+        tid = str(sl.get("transaction_id") or "")
+        sell_lines_by_tx[tid].append(sl)
+
+    for txn in return_txns:
+        legacy_tx_id = parse_int(txn.get("id"))
+        if legacy_tx_id <= 0 or legacy_tx_id in existing_sale_legacy:
+            continue
+        if not row_date_in_range(txn, "transaction_date", since=since, until=until):
+            continue
+
+        sale_id = new_cuid()
+        ref_raw = str(txn.get("invoice_no") or txn.get("ref_no") or f"RET-{reference_prefix}{legacy_tx_id}").strip()
+        ref = ref_raw if not reference_prefix or ref_raw.startswith(reference_prefix) else f"{reference_prefix}{ref_raw}"
+
+        contact_id_raw = txn.get("contact_id")
+        customer_id = None
+        if contact_id_raw is not None and str(contact_id_raw) not in ("", "NULL"):
+            customer_id = customer_legacy.get(parse_int(contact_id_raw))
+
+        total = abs(parse_decimal(txn.get("final_total")))
+        sale_date = parse_tx_date(txn.get("transaction_date"))
+        lines = sell_lines_by_tx.get(str(legacy_tx_id), [])
+        sale_lines_out: list[dict[str, Any]] = []
+
+        for sl in lines:
+            vid = parse_int(sl.get("variation_id"))
+            item_id = item_legacy.get(vid)
+            variation = variations.get(str(vid), {})
+            product = products.get(str(sl.get("product_id") or variation.get("product_id") or ""), {})
+            sku = str(variation.get("sub_sku") or product.get("sku") or f"SKU-{vid}")
+            name = str(product.get("name") or "Line item")
+            qty = abs(parse_decimal(sl.get("quantity"), Decimal("1")))
+            unit_price = parse_decimal(sl.get("unit_price_inc_tax") or sl.get("unit_price"))
+            line_total = unit_price * qty
+            sale_lines_out.append({
+                "id": new_cuid(),
+                "saleId": sale_id,
+                "itemId": item_id,
+                "sku": sku,
+                "name": name,
+                "quantity": str(qty),
+                "unitPrice": str(unit_price),
+                "lineTotal": str(line_total),
+                "discountAmount": None,
+            })
+
+        return_status = "refunded"
+
+        result.sales.append({
+            "id": sale_id,
+            "tenantId": tenant_id,
+            "reference": ref,
+            "customerId": customer_id,
+            "total": str(total),
+            "currency": "NGN",
+            "status": return_status,
+            "paymentStatus": map_payment_status(txn.get("payment_status")),
+            "date": sale_date,
+            "itemCount": len(sale_lines_out),
+            "legacyTransactionId": legacy_tx_id,
+            **created_by_fields(txn.get("created_by"), user_names),
+        })
+        result.sale_lines.extend(sale_lines_out)
+        result.legacy_ids.append({
+            "tenantId": tenant_id,
+            "entityType": "sale",
+            "legacyId": legacy_tx_id,
+            "newId": sale_id,
+        })
 
     return result

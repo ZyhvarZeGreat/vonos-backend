@@ -1,6 +1,7 @@
 import { Prisma } from '@prisma/client';
 import type { PrismaClient } from '@prisma/client';
 import type { TenantScopedPrisma } from '../../common/prisma/prisma.service';
+import { EXCLUDE_INTERNAL_TRANSFER_SQL } from '../../common/utils/internalTransfer';
 import { toNumber } from '../../common/utils/serializers';
 import { resolveDateWindow } from '../reports/aggregators/date-utils';
 import {
@@ -8,15 +9,6 @@ import {
   ledgerRevenueBreakdown,
   type LedgerChartsPayload,
 } from '../reports/aggregators/ledgerReportQueries';
-
-const TRANSFER_SQL = Prisma.sql`
-  AND NOT (
-    LOWER(COALESCE(category, '') || ' ' || COALESCE(description, '')) LIKE '%internal transfer%'
-    OR LOWER(COALESCE(category, '') || ' ' || COALESCE(description, '')) LIKE '%stock transfer%'
-    OR LOWER(COALESCE(category, '') || ' ' || COALESCE(description, '')) LIKE '%requisition fulfillment%'
-    OR LOWER(COALESCE(category, '') || ' ' || COALESCE(description, '')) LIKE '%inter-entity transfer%'
-  )
-`;
 
 function dateTruncUnit(spanDays: number): 'hour' | 'day' | 'month' {
   if (spanDays <= 2) return 'hour';
@@ -79,7 +71,7 @@ export async function buildGroupLedgerCharts(
       AND "deletedAt" IS NULL
       AND date >= ${window.from}
       AND date <= ${window.to}
-      ${TRANSFER_SQL}
+      ${EXCLUDE_INTERNAL_TRANSFER_SQL}
     GROUP BY bucket, type
     ORDER BY bucket ASC
   `;
@@ -108,7 +100,7 @@ export async function buildGroupLedgerCharts(
       AND type = 'revenue'
       AND date >= ${window.from}
       AND date <= ${window.to}
-      ${TRANSFER_SQL}
+      ${EXCLUDE_INTERNAL_TRANSFER_SQL}
     GROUP BY category
     ORDER BY total DESC
     LIMIT 12

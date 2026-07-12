@@ -4,6 +4,8 @@
 
 Estimated cost for internal use: **~$0–25/mo** (Neon free/Launch + Railway Hobby + Vercel Hobby).
 
+> **Staging / beta:** Use a separate Neon DB + Railway Staging environment + Vercel staging project on a `staging` branch so beta work never touches production. Full guide: **[ENVIRONMENTS.md](./ENVIRONMENTS.md)**.
+
 ---
 
 ## Overview
@@ -96,7 +98,7 @@ Do **not** deploy the API to Vercel serverless for production (reports and Prism
    ```
    Comma-separate multiple origins if needed:
    ```
-   https://vonos-web-xxx.vercel.app,https://app.vonosautos.com
+   https://vonos-web-xxx.vercel.app,https://app.vonosautos.com,https://app.vonosautosmarket.com
    ```
 
 2. Redeploy Railway after changing `WEB_ORIGIN` (CORS).
@@ -110,9 +112,14 @@ Do **not** deploy the API to Vercel serverless for production (reports and Prism
 | Host | Point to |
 |------|----------|
 | `app.vonosautos.com` | Vercel project → Domains |
+| `app.vonosautosmarket.com` | Vercel project → Domains (VSP / marketplace) |
 | API subdomain (optional) | Railway → Settings → Networking → Custom Domain |
 
-Update `WEB_ORIGIN` and `NEXT_PUBLIC_API_URL` accordingly.
+Update `WEB_ORIGIN` and `NEXT_PUBLIC_API_URL` accordingly. Comma-separate multiple frontends, e.g.:
+```
+https://app.vonosautos.com,https://app.vonosautosmarket.com
+```
+(no trailing slashes)
 
 ---
 

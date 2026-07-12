@@ -59,6 +59,94 @@ def _map_payment_status(raw: Any) -> str:
     return "due"
 
 
+def _is_payroll_like_transaction(txn: dict[str, Any]) -> bool:
+    tx_type = str(txn.get("type") or "").lower()
+    if tx_type == "payroll":
+        return True
+    if tx_type in ("sell", "opening_stock", "purchase", "sell_return"):
+        return False
+    expense_for = parse_int(txn.get("expense_for"), 0)
+    rate = parse_decimal(txn.get("essentials_amount_per_unit_duration"))
+    duration = parse_decimal(txn.get("essentials_duration"))
+    if expense_for > 0 and (rate > 0 or duration > 0):
+        return True
+    return tx_type == "expense" and expense_for > 0
+
+
+def _append_payroll_from_txn(
+    result: TransformResult,
+    txn: dict[str, Any],
+    *,
+    tenant_id: str,
+    legacy_id: int,
+    users: dict[int, dict[str, Any]],
+    user_names: dict[int, str],
+    txn_to_group: dict[int, int],
+    group_legacy: dict[int, str],
+    group_rows: list[dict[str, Any]],
+    locations: dict[int, dict[str, Any]],
+) -> None:
+    employee_id = parse_int(txn.get("expense_for"), 0)
+    employee_name = _user_display_name(users.get(employee_id), employee_id)
+    if employee_id > 0 and employee_id in user_names:
+        employee_name = user_names[employee_id]
+
+    duration = parse_decimal(txn.get("essentials_duration"), Decimal("1"))
+    rate = parse_decimal(txn.get("essentials_amount_per_unit_duration"))
+    gross_pay = rate * duration if rate > 0 else parse_decimal(txn.get("total_before_tax"))
+    total_allowance = _sum_json_amounts(txn.get("essentials_allowances"), "allowance_amounts")
+    total_deduction = _sum_json_amounts(txn.get("essentials_deductions"), "deduction_amounts")
+    net_pay = parse_decimal(txn.get("final_total"))
+    if net_pay <= 0:
+        net_pay = gross_pay + total_allowance - total_deduction
+
+    group_legacy_id = txn_to_group.get(legacy_id)
+    payroll_group_id = group_legacy.get(group_legacy_id) if group_legacy_id else None
+
+    location_id = parse_int(txn.get("location_id"), 0)
+    if location_id <= 0 and group_legacy_id:
+        group_row = next(
+            (g for g in group_rows if parse_int(g.get("id")) == group_legacy_id),
+            None,
+        )
+        if group_row:
+            location_id = parse_int(group_row.get("location_id"), 0)
+
+    note_parts = [
+        str(txn.get("additional_notes") or "").strip(),
+        str(txn.get("staff_note") or "").strip(),
+        str(txn.get("ref_no") or "").strip(),
+    ]
+    note = " — ".join(p for p in note_parts if p) or None
+
+    new_id = new_cuid()
+    tx_date = parse_tx_date(txn.get("transaction_date"))
+    result.payrolls.append({
+        "id": new_id,
+        "tenantId": tenant_id,
+        "payrollGroupId": payroll_group_id,
+        "employeeName": employee_name,
+        "employeeId": str(employee_id) if employee_id > 0 else None,
+        "locationCode": _location_code(location_id, locations),
+        "grossPay": gross_pay,
+        "totalAllowance": total_allowance,
+        "totalDeduction": total_deduction,
+        "netPay": net_pay,
+        "status": _map_payroll_status(txn.get("status")),
+        "paymentStatus": _map_payment_status(txn.get("payment_status")),
+        "payrollMonth": tx_date,
+        "note": note,
+        "createdAt": parse_tx_date(txn.get("created_at") or txn.get("transaction_date")),
+        "updatedAt": parse_tx_date(txn.get("updated_at") or txn.get("transaction_date")),
+    })
+    result.legacy_ids.append({
+        "tenantId": tenant_id,
+        "entityType": "payroll",
+        "legacyId": legacy_id,
+        "newId": new_id,
+    })
+
+
 def _location_code(
     location_id: Any,
     locations: dict[int, dict[str, Any]],
@@ -131,16 +219,18 @@ def transform_hrm_records(
         if group_id > 0 and txn_id > 0:
             txn_to_group[txn_id] = group_id
 
+    group_rows = table_rows(tables, "essentials_payroll_groups")
+    txn_by_id = {
+        parse_int(row.get("id")): row
+        for row in table_rows(tables, "transactions")
+        if parse_int(row.get("id")) > 0
+    }
+
     payroll_txns = [
         row for row in table_rows(tables, "transactions")
         if str(row.get("type") or "") == "payroll"
     ]
-    if not payroll_txns and table_rows(tables, "essentials_payroll_group_transactions"):
-        junction_count = len(table_rows(tables, "essentials_payroll_group_transactions"))
-        result.warnings.append(
-            f"HRM: {junction_count} payroll group links found but no transactions with type=payroll "
-            "(employee payroll rows missing from legacy export)"
-        )
+    payroll_legacy_ids: set[int] = set()
 
     for txn in payroll_txns:
         legacy_id = parse_int(txn.get("id"))
@@ -148,69 +238,88 @@ def transform_hrm_records(
             continue
         if not row_date_in_range(txn, "transaction_date", since=since, until=until):
             continue
+        _append_payroll_from_txn(
+            result,
+            txn,
+            tenant_id=tenant_id,
+            legacy_id=legacy_id,
+            users=users,
+            user_names=user_names,
+            txn_to_group=txn_to_group,
+            group_legacy=group_legacy,
+            group_rows=group_rows,
+            locations=locations,
+        )
+        payroll_legacy_ids.add(legacy_id)
 
-        employee_id = parse_int(txn.get("expense_for"), 0)
-        employee_name = _user_display_name(users.get(employee_id), employee_id)
-        if employee_id > 0 and employee_id in user_names:
-            employee_name = user_names[employee_id]
+    if not payroll_txns and table_rows(tables, "essentials_payroll_group_transactions"):
+        for link in table_rows(tables, "essentials_payroll_group_transactions"):
+            txn_id = parse_int(link.get("transaction_id"))
+            group_id = parse_int(link.get("payroll_group_id"))
+            if txn_id <= 0 or txn_id in existing_payroll_legacy or txn_id in payroll_legacy_ids:
+                continue
 
-        duration = parse_decimal(txn.get("essentials_duration"), Decimal("1"))
-        rate = parse_decimal(txn.get("essentials_amount_per_unit_duration"))
-        gross_pay = rate * duration if rate > 0 else parse_decimal(txn.get("total_before_tax"))
-        total_allowance = _sum_json_amounts(txn.get("essentials_allowances"), "allowance_amounts")
-        total_deduction = _sum_json_amounts(txn.get("essentials_deductions"), "deduction_amounts")
-        net_pay = parse_decimal(txn.get("final_total"))
-        if net_pay <= 0:
-            net_pay = gross_pay + total_allowance - total_deduction
+            txn = txn_by_id.get(txn_id)
+            if txn and _is_payroll_like_transaction(txn):
+                if not row_date_in_range(txn, "transaction_date", since=since, until=until):
+                    continue
+                _append_payroll_from_txn(
+                    result,
+                    txn,
+                    tenant_id=tenant_id,
+                    legacy_id=txn_id,
+                    users=users,
+                    user_names=user_names,
+                    txn_to_group=txn_to_group,
+                    group_legacy=group_legacy,
+                    group_rows=group_rows,
+                    locations=locations,
+                )
+                payroll_legacy_ids.add(txn_id)
+                continue
 
-        group_legacy_id = txn_to_group.get(legacy_id)
-        payroll_group_id = group_legacy.get(group_legacy_id) if group_legacy_id else None
+            if txn:
+                continue
 
-        location_id = parse_int(txn.get("location_id"), 0)
-        if location_id <= 0 and group_legacy_id:
-            group_row = next(
-                (
-                    g for g in table_rows(tables, "essentials_payroll_groups")
-                    if parse_int(g.get("id")) == group_legacy_id
-                ),
-                None,
+            group_name = next(
+                (str(g.get("name") or "") for g in group_rows if parse_int(g.get("id")) == group_id),
+                f"Group {group_id}",
             )
-            if group_row:
-                location_id = parse_int(group_row.get("location_id"), 0)
+            payroll_group_id = group_legacy.get(group_id) if group_id > 0 else None
+            new_id = new_cuid()
+            result.payrolls.append({
+                "id": new_id,
+                "tenantId": tenant_id,
+                "payrollGroupId": payroll_group_id,
+                "employeeName": f"Legacy payroll #{txn_id}",
+                "employeeId": None,
+                "locationCode": None,
+                "grossPay": Decimal("0"),
+                "totalAllowance": Decimal("0"),
+                "totalDeduction": Decimal("0"),
+                "netPay": Decimal("0"),
+                "status": "final",
+                "paymentStatus": "due",
+                "payrollMonth": parse_tx_date(link.get("created_at")),
+                "note": f"{group_name} — transaction #{txn_id} missing from export",
+                "createdAt": parse_tx_date(link.get("created_at")),
+                "updatedAt": parse_tx_date(link.get("updated_at") or link.get("created_at")),
+            })
+            result.legacy_ids.append({
+                "tenantId": tenant_id,
+                "entityType": "payroll",
+                "legacyId": txn_id,
+                "newId": new_id,
+            })
+            payroll_legacy_ids.add(txn_id)
 
-        note_parts = [
-            str(txn.get("additional_notes") or "").strip(),
-            str(txn.get("staff_note") or "").strip(),
-            str(txn.get("ref_no") or "").strip(),
-        ]
-        note = " — ".join(p for p in note_parts if p) or None
-
-        new_id = new_cuid()
-        tx_date = parse_tx_date(txn.get("transaction_date"))
-        result.payrolls.append({
-            "id": new_id,
-            "tenantId": tenant_id,
-            "payrollGroupId": payroll_group_id,
-            "employeeName": employee_name,
-            "employeeId": str(employee_id) if employee_id > 0 else None,
-            "locationCode": _location_code(location_id, locations),
-            "grossPay": gross_pay,
-            "totalAllowance": total_allowance,
-            "totalDeduction": total_deduction,
-            "netPay": net_pay,
-            "status": _map_payroll_status(txn.get("status")),
-            "paymentStatus": _map_payment_status(txn.get("payment_status")),
-            "payrollMonth": tx_date,
-            "note": note,
-            "createdAt": parse_tx_date(txn.get("created_at") or txn.get("transaction_date")),
-            "updatedAt": parse_tx_date(txn.get("updated_at") or txn.get("transaction_date")),
-        })
-        result.legacy_ids.append({
-            "tenantId": tenant_id,
-            "entityType": "payroll",
-            "legacyId": legacy_id,
-            "newId": new_id,
-        })
+        imported = len(payroll_legacy_ids)
+        junction_count = len(table_rows(tables, "essentials_payroll_group_transactions"))
+        if imported < junction_count:
+            result.warnings.append(
+                f"HRM: imported {imported}/{junction_count} payroll rows from junction links "
+                "(some linked transactions are non-payroll types or missing from export)"
+            )
 
     for component in table_rows(tables, "essentials_allowances_and_deductions"):
         legacy_id = parse_int(component.get("id"))

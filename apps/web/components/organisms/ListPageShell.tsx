@@ -30,6 +30,9 @@ export interface ListPageShellProps {
   onSearchChange?: (value: string) => void;
   showImport?: boolean;
   showExport?: boolean;
+  /** When set, enables the Import CSV toolbar button and invokes this handler with the selected file. */
+  onImport?: (file: File) => void | Promise<void>;
+  importDisabled?: boolean;
   showDateRange?: boolean;
   showSearch?: boolean;
   dateRange?: DateRangePreset;
@@ -52,6 +55,8 @@ export function ListPageShell({
   onSearchChange,
   showImport = true,
   showExport = true,
+  onImport,
+  importDisabled = false,
   showDateRange = true,
   showSearch = true,
   dateRange,
@@ -106,15 +111,43 @@ export function ListPageShell({
         </div>
         <div className="hidden items-center gap-3 pb-3 md:flex">
           {showImport ? (
-            <button
-              type="button"
-              disabled
-              title="CSV import requires a backend upload endpoint (not yet available)"
-              className="inline-flex cursor-not-allowed items-center gap-2 rounded-lg border border-border bg-card px-3 py-1.5 text-sm font-medium text-muted opacity-60 shadow-sm"
-            >
-              <Download className="h-4 w-4 text-muted" />
-              Import CSV
-            </button>
+            onImport ? (
+              <>
+                <input
+                  type="file"
+                  accept=".csv"
+                  className="hidden"
+                  id="list-page-shell-import"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    if (file) void onImport(file);
+                    event.target.value = "";
+                  }}
+                />
+                <label
+                  htmlFor="list-page-shell-import"
+                  className={cn(
+                    "inline-flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-1.5 text-sm font-medium shadow-sm",
+                    importDisabled
+                      ? "cursor-not-allowed text-muted opacity-60"
+                      : "cursor-pointer text-foreground hover:bg-[var(--color-surface-muted)]",
+                  )}
+                >
+                  <Download className="h-4 w-4 text-muted" />
+                  Import CSV
+                </label>
+              </>
+            ) : (
+              <button
+                type="button"
+                disabled
+                title="CSV import requires a backend upload endpoint (not yet available)"
+                className="inline-flex cursor-not-allowed items-center gap-2 rounded-lg border border-border bg-card px-3 py-1.5 text-sm font-medium text-muted opacity-60 shadow-sm"
+              >
+                <Download className="h-4 w-4 text-muted" />
+                Import CSV
+              </button>
+            )
           ) : null}
           {showExport ? (
             <button

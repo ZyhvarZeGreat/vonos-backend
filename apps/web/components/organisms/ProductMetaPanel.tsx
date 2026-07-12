@@ -77,7 +77,7 @@ const metaColumns: ColumnConfig<MetaRow>[] = [
 export function ProductMetaPanel({ kind }: { kind: CatalogMetaKind }) {
   const tenantId = useTenantId();
 
-  const { data = [], isLoading, error } = useQuery({
+  const { data = [], isLoading, isFetching, error } = useQuery({
     queryKey: ["catalog-meta", tenantId, kind],
     queryFn: async () => {
       if (!tenantId) return [];
@@ -98,7 +98,8 @@ export function ProductMetaPanel({ kind }: { kind: CatalogMetaKind }) {
         data={rows}
         columns={metaColumns}
         displayMode="table"
-        isLoading={isLoading}
+        isLoading={isLoading && rows.length === 0}
+        isFetching={isFetching}
         error={error ? `Failed to load ${KIND_LABELS[kind].toLowerCase()}` : null}
         emptyState={{ message: `No ${KIND_LABELS[kind].toLowerCase()} yet.` }}
       />

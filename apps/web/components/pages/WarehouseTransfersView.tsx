@@ -120,6 +120,8 @@ export function WarehouseTransfersView() {
     goPrev,
     setPageSize,
     isLoading,
+
+    isFetching,
     error,
   } = useServerListPage<TransferRow>({
     queryKey: ["transfers"],
@@ -188,6 +190,7 @@ export function WarehouseTransfersView() {
           onPrev={goPrev}
           onPageSizeChange={setPageSize}
           isLoading={isLoading}
+          isFetching={isFetching}
           error={error ? "Failed to load transfers" : null}
         />
       </ListPageShell>

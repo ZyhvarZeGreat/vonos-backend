@@ -20,6 +20,7 @@ from migration.pos_common import (
     table_rows,
     transform_contacts,
     transform_items,
+    transform_sales,
 )
 from migration.types import TableData, TransformResult
 
@@ -237,6 +238,7 @@ def run_job_migration(
     until: str | None = None,
     existing_legacy: dict[str, dict[int, str]] | None = None,
     include_purchases: bool = False,
+    include_sales: bool = False,
 ) -> TransformResult:
     merged = TransformResult()
     user_names = build_legacy_user_name_map(tables)
@@ -308,6 +310,22 @@ def run_job_migration(
     )
     merged.merge(expense_result)
 
+    if include_sales:
+        # Also materialize HQ6/Ultimate POS sells as Sale rows (Sell UI),
+        # while keeping the job mapping above for workshop workflow.
+        sale_result = transform_sales(
+            tables,
+            tenant_id,
+            item_legacy,
+            customer_legacy,
+            reference_prefix=prefix,
+            user_names=user_names,
+            since=since,
+            until=until,
+            existing_sale_legacy=existing.get("sale"),
+        )
+        merged.merge(sale_result)
+
     if include_purchases:
         purchase_result = transform_stock_movements(
             tables,
@@ -318,7 +336,9 @@ def run_job_migration(
             since=since,
             until=until,
             existing_movement_legacy=existing.get("stock_movement"),
-            scope="all",
+            # Purchases (+ opening stock) only — do not map sells to outbound
+            # (VA sells are jobs + optional Sale rows).
+            scope="retail_purchases",
         )
         merged.merge(purchase_result)
 

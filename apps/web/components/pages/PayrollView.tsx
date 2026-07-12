@@ -246,6 +246,7 @@ export function PayrollView({
               onPrev={payrollsPage.goPrev}
               onPageSizeChange={payrollsPage.setPageSize}
               isLoading={payrollsPage.isLoading}
+              isFetching={payrollsPage.isFetching}
               error={listLoadError(payrollsPage.error, "Failed to load payrolls.")}
               emptyState={{ message: "No payroll records yet." }}
             />
@@ -281,6 +282,7 @@ export function PayrollView({
               onPrev={groupsPage.goPrev}
               onPageSizeChange={groupsPage.setPageSize}
               isLoading={groupsPage.isLoading}
+              isFetching={groupsPage.isFetching}
               error={listLoadError(groupsPage.error, "Failed to load payroll groups.")}
               emptyState={{ message: "No payroll groups yet." }}
             />
@@ -345,6 +347,7 @@ export function PayrollView({
               onPrev={componentsPage.goPrev}
               onPageSizeChange={componentsPage.setPageSize}
               isLoading={componentsPage.isLoading}
+              isFetching={componentsPage.isFetching}
               error={listLoadError(componentsPage.error, "Failed to load pay components.")}
               emptyState={{ message: "No pay components yet." }}
             />

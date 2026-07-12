@@ -5,7 +5,7 @@ import { QueryProvider } from "@/components/providers/QueryProvider";
 import "@/styles/globals.css";
 
 export const metadata: Metadata = {
-  title: "Vonos",
+  title: "Vonos Autos",
   description: "Operations platform for Vonos Autos Group",
 };
 

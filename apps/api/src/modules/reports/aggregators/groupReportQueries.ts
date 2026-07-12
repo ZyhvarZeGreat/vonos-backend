@@ -1,5 +1,6 @@
 import { Prisma } from '@prisma/client';
 import type { PrismaClient } from '@prisma/client';
+import { EXCLUDE_INTERNAL_TRANSFER_SQL } from '../../../common/utils/internalTransfer';
 import { toNumber } from '../../../common/utils/serializers';
 
 export interface TenantRevenueRow {
@@ -35,6 +36,7 @@ export async function groupRevenueByTenant(
       AND date >= ${from}
       AND date <= ${to}
       AND "tenantId" IN (${Prisma.join(tenantIds)})
+      ${EXCLUDE_INTERNAL_TRANSFER_SQL}
     GROUP BY "tenantId"
   `;
 
@@ -99,6 +101,7 @@ export async function groupRevenueTrendByMonth(
       AND date >= ${from}
       AND date <= ${to}
       AND "tenantId" IN (${Prisma.join(tenantIds)})
+      ${EXCLUDE_INTERNAL_TRANSFER_SQL}
     GROUP BY "monthKey", label, "tenantId"
     ORDER BY "monthKey" ASC
   `;
@@ -134,7 +137,7 @@ export async function tenantTodaySalesRevenue(
   >`
     SELECT
       COALESCE(SUM(total), 0) AS revenue,
-      COUNT(*) FILTER (WHERE status = 'refunded')::bigint AS returns
+      COUNT(*) FILTER (WHERE status IN ('refunded', 'partially_refunded', 'written_off'))::bigint AS returns
     FROM "Sale"
     WHERE "tenantId" = ${tenantId}
       AND "deletedAt" IS NULL

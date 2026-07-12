@@ -96,6 +96,8 @@ export function ExpensesListView() {
     goPrev,
     setPageSize,
     isLoading,
+
+    isFetching,
     error,
   } = useServerListPage<Expense>({
     queryKey: ["expenses", tenantId],
@@ -286,6 +288,7 @@ export function ExpensesListView() {
           onPrev={goPrev}
           onPageSizeChange={setPageSize}
           isLoading={isLoading || exporting}
+          isFetching={isFetching}
           error={error ? "Failed to load expenses" : null}
           emptyState={{
             message: "No expenses recorded yet. Add an expense to start tracking.",
@@ -723,6 +726,8 @@ export function ExpenseCategoriesListView() {
     goPrev,
     setPageSize,
     isLoading,
+
+    isFetching,
     error,
   } = useServerListPage<ExpenseCategory>({
     queryKey: ["expense-categories", tenantId],
@@ -886,6 +891,7 @@ export function ExpenseCategoriesListView() {
         onPrev={goPrev}
         onPageSizeChange={setPageSize}
         isLoading={isLoading}
+        isFetching={isFetching}
         error={error ? "Failed to load expense categories" : null}
         emptyState={{
           message: "No expense categories yet. Create one to classify business expenses.",

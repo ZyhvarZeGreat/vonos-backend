@@ -70,3 +70,20 @@ export async function createVehicle(
   if (!response.ok) throw new Error("Failed to create vehicle");
   return response.json();
 }
+
+export async function updateVehicle(
+  tenantId: string,
+  id: string,
+  body: Partial<
+    Pick<Vehicle, "plateNumber" | "vin" | "make" | "model" | "year" | "ownerName" | "ownerPhone">
+  >,
+): Promise<Vehicle> {
+  const path = withTenantQuery(`/vehicles/${id}`, tenantId);
+  const response = await apiFetch(path, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) throw new Error("Failed to update vehicle");
+  return response.json();
+}

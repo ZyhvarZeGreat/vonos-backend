@@ -77,6 +77,8 @@ export function PaymentAccountsListView() {
     goPrev,
     setPageSize,
     isLoading,
+
+    isFetching,
     error,
   } = useServerListPage<PaymentAccount>({
     queryKey: ["payment-accounts", tenantId],
@@ -287,6 +289,7 @@ export function PaymentAccountsListView() {
           onPrev={goPrev}
           onPageSizeChange={setPageSize}
           isLoading={isLoading || exporting}
+          isFetching={isFetching}
           error={error ? "Failed to load payment accounts" : null}
           emptyState={{
             message: "No payment accounts yet. Add one to get started.",

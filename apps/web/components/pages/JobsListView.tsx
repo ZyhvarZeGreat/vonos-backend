@@ -57,6 +57,8 @@ export function JobsListView() {
     goPrev,
     setPageSize,
     isLoading,
+
+    isFetching,
     error,
   } = useServerListPage({
     queryKey: ["jobs", tenantId],
@@ -132,6 +134,7 @@ export function JobsListView() {
         onPrev={goPrev}
         onPageSizeChange={setPageSize}
         isLoading={isLoading}
+        isFetching={isFetching}
         error={error ? "Failed to load jobs" : null}
         onRowClick={(row) => goToDetail(row.id)}
       />

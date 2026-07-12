@@ -146,4 +146,47 @@ export class VehiclesService {
     });
     return serialize(row);
   }
+
+  async update(
+    id: string,
+    body: {
+      plateNumber?: string;
+      vin?: string | null;
+      make?: string;
+      model?: string;
+      year?: number | null;
+      ownerName?: string;
+      ownerPhone?: string | null;
+    },
+  ): Promise<Vehicle> {
+    const tenantId = this.tenantDb.requireTenantId();
+    const existing = await this.tenantDb.db.vehicle.findFirst({
+      where: { id, tenantId, deletedAt: null },
+    });
+    if (!existing) throw new NotFoundException('Vehicle not found');
+
+    const row = await this.tenantDb.db.vehicle.update({
+      where: { id },
+      data: {
+        ...(body.plateNumber !== undefined
+          ? { plateNumber: body.plateNumber }
+          : {}),
+        ...(body.vin !== undefined ? { vin: body.vin } : {}),
+        ...(body.make !== undefined ? { make: body.make } : {}),
+        ...(body.model !== undefined ? { model: body.model } : {}),
+        ...(body.year !== undefined ? { year: body.year } : {}),
+        ...(body.ownerName !== undefined ? { ownerName: body.ownerName } : {}),
+        ...(body.ownerPhone !== undefined ? { ownerPhone: body.ownerPhone } : {}),
+      },
+    });
+
+    await this.auditService.log({
+      action: 'updated',
+      entityType: 'vehicle',
+      entityId: row.id,
+      summary: `Updated vehicle ${row.plateNumber}`,
+    });
+
+    return serialize(row);
+  }
 }

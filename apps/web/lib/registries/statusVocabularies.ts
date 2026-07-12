@@ -16,6 +16,8 @@ export const statusVocabularies = {
     "In Transit": "info",
     Completed: "success",
     Rejected: "error",
+    Fulfilled: "success",
+    Cancelled: "error",
   },
   jobStatus: {
     Received: "neutral",
@@ -44,6 +46,8 @@ export const statusVocabularies = {
     Refunded: "warning",
     Restocked: "info",
     "Written Off": "error",
+    Draft: "neutral",
+    Quotation: "info",
   },
   userStatus: {
     Active: "success",

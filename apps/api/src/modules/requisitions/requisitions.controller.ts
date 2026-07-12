@@ -26,6 +26,19 @@ export class RequisitionsController {
     });
   }
 
+  @Get('incoming')
+  listIncoming(
+    @Query('cursor') cursor?: string,
+    @Query('limit') limit?: string,
+    @Query('search') search?: string,
+  ) {
+    return this.requisitionsService.listIncoming({
+      cursor,
+      limit: limit ? Number(limit) : undefined,
+      search,
+    });
+  }
+
   @Get(':id')
   getById(@Param('id') id: string) {
     return this.requisitionsService.getById(id);
@@ -43,6 +56,12 @@ export class RequisitionsController {
     },
   ) {
     return this.requisitionsService.create(body);
+  }
+
+  @Post(':id/cancel')
+  @Roles('staff', 'manager', 'admin', 'super_admin')
+  cancel(@Param('id') id: string) {
+    return this.requisitionsService.cancel(id);
   }
 
   @Post(':id/approve')

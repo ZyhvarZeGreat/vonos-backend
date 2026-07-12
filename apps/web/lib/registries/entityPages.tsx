@@ -14,11 +14,14 @@ import { KidsWearInventoryView } from "@/components/pages/KidsWearInventoryView"
 import { JobsListView } from "@/components/pages/JobsListView";
 import {
   SalesListView,
+  DraftsListView,
+  QuotationsListView,
   OrdersListView,
   CustomersListView,
   ReturnsListView,
   VehiclesListView,
   RequisitionsListView,
+  IncomingRequisitionsListView,
   MenuItemsListView,
   ServicesListView,
   CatalogListView,
@@ -32,7 +35,15 @@ import {
 import { HrView, UsersView } from "@/components/pages/HrView";
 import { LocationsView } from "@/components/pages/LocationsView";
 import { SettingsView } from "@/components/pages/UsersSettingsViews";
-import { AddOrderView, AddSaleView } from "@/components/pages/AddSaleView";
+import { AddOrderView, AddDraftView, AddQuotationView, AddSaleView } from "@/components/pages/AddSaleView";
+import {
+  DiscountsListView,
+  ListPosView,
+  PrintLabelsView,
+  ShipmentsListView,
+  UpdatePriceView,
+  VariationsListView,
+} from "@/components/pages/PosExtrasViews";
 import { AddProductView } from "@/components/pages/AddProductView";
 import { ProductSlugRedirect } from "@/components/pages/ProductSectionRedirect";
 import {
@@ -43,7 +54,7 @@ import {
 } from "@/components/pages/PosNavViews";
 import { CatalogMetaListView } from "@/components/pages/CatalogMetaListView";
 import { RolesListView, CommissionAgentsListView } from "@/components/pages/UserManagementViews";
-import { CustomerGroupsListView, ImportContactsView } from "@/components/pages/ContactsGroupViews";
+import { CustomerGroupsListView, ImportContactsView, ImportProductsView, ImportSalesView } from "@/components/pages/ContactsGroupViews";
 import { AddExpenseView, ExpenseCategoriesListView, ExpensesListView } from "@/components/pages/ExpensesViews";
 import {
   PaymentAccountReportView,
@@ -178,27 +189,27 @@ function transactionRetailPages(code: TenantCode): SlugMap {
 function posSellPages(addSaleView: ComponentType): SlugMap {
   return {
     "add-sale": { title: "Add Sale", View: addSaleView },
-    pos: { title: "List POS", View: PosPlaceholderViews.pos },
+    pos: { title: "List POS", View: ListPosView },
     "pos-terminal": { title: "POS", View: PosPlaceholderViews["pos-terminal"] },
-    "add-draft": { title: "Add Draft", View: PosPlaceholderViews["add-draft"] },
-    drafts: { title: "List Drafts", View: PosPlaceholderViews.drafts },
-    "add-quotation": { title: "Add Quotation", View: PosPlaceholderViews["add-quotation"] },
-    quotations: { title: "List Quotations", View: PosPlaceholderViews.quotations },
-    shipments: { title: "Shipments", View: PosPlaceholderViews.shipments },
-    discounts: { title: "Discounts", View: PosPlaceholderViews.discounts },
-    "import-sales": { title: "Import Sales", View: PosPlaceholderViews["import-sales"] },
+    "add-draft": { title: "Add Draft", View: AddDraftView },
+    drafts: { title: "List Drafts", View: DraftsListView },
+    "add-quotation": { title: "Add Quotation", View: AddQuotationView },
+    quotations: { title: "List Quotations", View: QuotationsListView },
+    shipments: { title: "Shipments", View: ShipmentsListView },
+    discounts: { title: "Discounts", View: DiscountsListView },
+    "import-sales": { title: "Import Sales", View: ImportSalesView },
   };
 }
 
 const posProductPages: SlugMap = {
   "add-product": { title: "Add Product", View: AddProductView },
-  "update-price": { title: "Update Price", View: () => <ProductSlugRedirect slug="update-price" /> },
-  "print-labels": { title: "Print Labels", View: createPosPlaceholderView("Print Labels", "Generate and print product labels.") },
-  variations: { title: "Variations", View: createPosPlaceholderView("Variations", "Manage variation templates (e.g. size, color).") },
-  "import-products": { title: "Import Products", View: createPosPlaceholderView("Import Products", "Bulk product import is not available yet.") },
+  "update-price": { title: "Update Price", View: UpdatePriceView },
+  "print-labels": { title: "Print Labels", View: PrintLabelsView },
+  variations: { title: "Variations", View: VariationsListView },
+  "import-products": { title: "Import Products", View: ImportProductsView },
   "import-opening-stock": {
     title: "Import Opening Stock",
-    View: createPosPlaceholderView("Import Opening Stock", "Bulk opening stock import."),
+    View: ImportProductsView,
   },
   "price-groups": { title: "Selling Price Group", View: () => <CatalogMetaListView kind="price-groups" /> },
   units: { title: "Units", View: () => <CatalogMetaListView kind="units" /> },
@@ -306,6 +317,10 @@ const ENTITY_PAGES: Record<TenantCode, SlugMap> = {
       createCopy: { title: "New Transfer", subtitle: "Request stock transfer", submitLabel: "Create Transfer" },
       View: WarehouseTransfersView,
     },
+    "incoming-requisitions": {
+      title: "Incoming Requests",
+      View: IncomingRequisitionsListView,
+    },
     reports: reportsFor("VW"),
     finance: sharedFinance,
     suppliers: sharedSuppliers,
@@ -408,13 +423,31 @@ const ENTITY_PAGES: Record<TenantCode, SlugMap> = {
     },
     vehicles: { title: "Vehicle Registry", View: VehiclesListView },
     requisitions: { title: "Parts Requisition", View: RequisitionsListView },
+    sales: {
+      title: "Sales",
+      primaryActionLabel: "New Sale",
+      openCreateOnPrimary: true,
+      createFlowKey: "sale",
+      createCopy: {
+        title: "New Sale",
+        subtitle: "Record a parts or service sale",
+        submitLabel: "Complete Sale",
+      },
+      View: SalesListView,
+    },
+    catalog: sharedCatalog,
+    returns: { title: "Returns & Warranty", View: ReturnsListView },
     customers: sharedCustomers,
+    suppliers: sharedSuppliers,
     reports: reportsFor("VA"),
     finance: sharedFinance,
     hr: sharedHr,
     users: sharedUsers,
     locations: sharedLocations,
     settings: sharedSettings,
+    ...posSellPages(AddSaleView),
+    ...posProductPages,
+    ...procurementPages,
     ...posPaymentPages,
     ...userManagementPages,
     ...contactPages,

@@ -79,6 +79,8 @@ export function CatalogMetaListView({ kind }: { kind: CatalogMetaKind }) {
     goPrev,
     setPageSize,
     isLoading,
+
+    isFetching,
     error,
   } = useServerListPage({
     queryKey: ["catalog-meta", tenantId, kind],
@@ -124,6 +126,7 @@ export function CatalogMetaListView({ kind }: { kind: CatalogMetaKind }) {
         onPrev={goPrev}
         onPageSizeChange={setPageSize}
         isLoading={isLoading}
+        isFetching={isFetching}
         error={error ? `Failed to load ${label.toLowerCase()}` : null}
         emptyState={{ message: `No ${label.toLowerCase()} imported yet.` }}
       />

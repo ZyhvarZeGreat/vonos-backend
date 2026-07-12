@@ -54,6 +54,8 @@ export function AccountBookView({ accountId }: { accountId?: string }) {
     goPrev,
     setPageSize,
     isLoading,
+
+    isFetching,
     error,
   } = useServerListPage<AccountTransaction>({
     queryKey: ["account-book", accountId],
@@ -134,6 +136,7 @@ export function AccountBookView({ accountId }: { accountId?: string }) {
         onPrev={goPrev}
         onPageSizeChange={setPageSize}
         isLoading={isLoading}
+        isFetching={isFetching}
         error={error ? "Failed to load account book" : null}
         emptyState={{
           message: accountId
@@ -170,6 +173,8 @@ export function PaymentsListView() {
     goPrev,
     setPageSize,
     isLoading,
+
+    isFetching,
     error,
   } = useServerListPage<PaymentRecord>({
     queryKey: ["payments", tenantId],
@@ -248,6 +253,7 @@ export function PaymentsListView() {
         onPrev={goPrev}
         onPageSizeChange={setPageSize}
         isLoading={isLoading}
+        isFetching={isFetching}
         error={error ? "Failed to load payments" : null}
         emptyState={{ message: "No payments recorded yet." }}
       />

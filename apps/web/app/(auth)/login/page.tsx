@@ -6,7 +6,7 @@ export default function LoginPage() {
   return (
     <Suspense
       fallback={
-        <div className="flex min-h-screen items-center justify-center bg-background p-6">
+        <div className="flex min-h-screen items-center justify-center bg-[#0b5ed7] p-6">
           <AuthFormSkeleton />
         </div>
       }

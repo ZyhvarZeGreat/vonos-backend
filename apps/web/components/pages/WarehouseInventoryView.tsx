@@ -93,6 +93,8 @@ export function WarehouseInventoryView() {
     goPrev,
     setPageSize,
     isLoading,
+
+    isFetching,
     error,
   } = useServerListPage({
     queryKey: ["items", tenantId],
@@ -298,6 +300,7 @@ export function WarehouseInventoryView() {
               onPageSizeChange={setPageSize}
               onRowClick={(row) => goToDetail(row.id)}
               isLoading={isLoading}
+              isFetching={isFetching}
               error={error ? "Failed to load inventory" : null}
             />
           </div>

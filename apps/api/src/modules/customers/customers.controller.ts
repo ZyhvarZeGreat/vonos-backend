@@ -33,6 +33,30 @@ export class CustomersController {
     return this.customersService.create(body);
   }
 
+  @Post('import')
+  @Roles('manager', 'admin', 'super_admin')
+  import(@Body() body: { csv: string }) {
+    return this.customersService.importCsv(body.csv ?? '');
+  }
+
+  @Get(':id/summary')
+  getSummary(@Param('id') id: string) {
+    return this.customersService.getSummary(id);
+  }
+
+  @Get(':id/ledger')
+  getLedger(
+    @Param('id') id: string,
+    @Query('cursor') cursor?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.customersService.getLedger(
+      id,
+      cursor,
+      limit ? Number(limit) : undefined,
+    );
+  }
+
   @Get(':id')
   getById(@Param('id') id: string) {
     return this.customersService.getById(id);

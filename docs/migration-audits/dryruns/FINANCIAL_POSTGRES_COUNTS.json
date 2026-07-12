@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-07T03:44:46.079Z",
+  "generatedAt": "2026-07-08T00:51:26.269Z",
   "tenants": [
     {
       "code": "VA",
@@ -261,8 +261,8 @@
         "total_amount": "185817800.000000000000000000000000000000"
       },
       "expenses": {
-        "count": 0,
-        "total_amount": "0"
+        "count": 1,
+        "total_amount": "222.000000000000000000000000000000"
       },
       "expenseCategories": {
         "count": 0

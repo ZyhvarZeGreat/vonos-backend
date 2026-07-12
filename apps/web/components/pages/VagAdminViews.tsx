@@ -154,8 +154,9 @@ export function VagCrossEntityFinance() {
   return (
     <div className="space-y-4">
       <p className="text-sm text-muted">
-        Consolidated finance view — same 4-tab structure, unscoped and grouped by entity.
-        Internal transfer elimination logic is deferred.
+        Consolidated finance view — same 4-tab structure, unscoped and grouped by
+        entity. Group P&L excludes ledger rows tagged as internal transfers;
+        stock requisitions remain stock-only.
       </p>
     </div>
   );

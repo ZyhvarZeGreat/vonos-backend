@@ -12,7 +12,8 @@ import {
   type StockMovementListRow,
 } from "@/lib/api/stockMovements";
 import { useServerListPage } from "@/lib/hooks/useServerListPage";
-import { useRecordNavigation } from "@/lib/hooks/useRecordNavigation";
+import { MovementRecordModal } from "@/components/organisms/MovementRecordModal";
+import { useListRecordModal } from "@/lib/hooks/useListRecordModal";
 import { useRouteTenant, useTenantId } from "@/lib/hooks/useRouteTenant";
 import { useListPageFilters } from "@/lib/hooks/useListPageFilters";
 import { useListExport } from "@/lib/hooks/useListExport";
@@ -36,7 +37,7 @@ export function MovementListView({
   defaultStatus,
   source,
 }: MovementListViewProps) {
-  const { goToDetail } = useRecordNavigation(type);
+  const { recordId, openRecord, closeRecord } = useListRecordModal();
   const { tenantCode } = useRouteTenant();
   const tenantId = useTenantId();
   const exportList = useListExport();
@@ -63,6 +64,8 @@ export function MovementListView({
     goPrev,
     setPageSize,
     isLoading,
+
+    isFetching,
     error,
   } = useServerListPage<StockMovementListRow>({
     queryKey: ["stock-movements", tenantId, type, source, defaultStatus],
@@ -203,9 +206,15 @@ export function MovementListView({
         onPrev={goPrev}
         onPageSizeChange={setPageSize}
         isLoading={isLoading}
+        isFetching={isFetching}
         error={error ? "Failed to load movements" : null}
-        onRowClick={(row) => goToDetail(row.id)}
+        onRowClick={(row) => openRecord(row.id)}
         emptyState={{ message: `No ${title?.toLowerCase() ?? type} records yet.` }}
+      />
+      <MovementRecordModal
+        movementId={recordId}
+        listSlug={type}
+        onClose={closeRecord}
       />
     </ListPageShell>
   );

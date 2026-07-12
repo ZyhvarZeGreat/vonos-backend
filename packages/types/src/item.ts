@@ -27,10 +27,17 @@ export interface Item {
   name: string;
   category: string | null;
   quantity: number;
+  /**
+   * Available for sale/transfer after Approved requisition holds.
+   * When omitted, treat as equal to `quantity` (on-hand).
+   */
+  availableQuantity?: number;
   binLocation: string | null;
   locationCode: string | null;
   reorderPoint: number | null;
   costPrice: number;
+  /** Selling price for POS; falls back to costPrice when unset. */
+  sellPrice: number | null;
   currency: string;
   status: StockStatus;
   availableForRetail: boolean;

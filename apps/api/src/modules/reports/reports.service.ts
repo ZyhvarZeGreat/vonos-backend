@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import type { ProfitLossBreakdownTab, ReportsDashboard } from '@vonos/types';
 import { TenantDbService } from '../../common/prisma/tenant-db.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
@@ -18,6 +18,7 @@ import {
 } from './aggregators/financeReportHandlers';
 import {
   deserializeProfitLossContext,
+  ensureProfitLossBreakdownData,
   loadProfitLossContext,
   serializeProfitLossContext,
   type ProfitLossLoadContext,
@@ -59,6 +60,8 @@ export type ReportRunMode =
 
 @Injectable()
 export class ReportsService {
+  private readonly logger = new Logger(ReportsService.name);
+
   constructor(
     private readonly tenantDb: TenantDbService,
     private readonly prisma: PrismaService,
@@ -74,26 +77,70 @@ export class ReportsService {
     return `pl-ctx:${tenantId}:${from ?? ''}:${to ?? ''}`;
   }
 
+  private logReportTiming(
+    label: string,
+    startedAt: number,
+    meta: Record<string, string | undefined> & { cache: 'hit' | 'miss' },
+  ): void {
+    const ms = Date.now() - startedAt;
+    const parts = Object.entries(meta)
+      .filter(([, value]) => value !== undefined && value !== '')
+      .map(([key, value]) => `${key}=${value}`)
+      .join(' ');
+    this.logger.log(`${label} ${ms}ms ${parts}`);
+  }
+
   private async getProfitLossContext(
     tenantId: string,
     from?: string,
     to?: string,
+    includeBreakdown = false,
   ): Promise<ProfitLossLoadContext> {
-    const key = this.profitLossContextKey(tenantId, from, to);
+    const startedAt = Date.now();
+    const key = `${this.profitLossContextKey(tenantId, from, to)}:bd=${includeBreakdown ? 1 : 0}`;
     const cached = await this.cache.get<ProfitLossLoadContextCached>(key);
-    if (cached) return deserializeProfitLossContext(cached);
+    if (cached) {
+      this.logReportTiming('pl-ctx', startedAt, {
+        tenant: tenantId,
+        from,
+        to,
+        cache: 'hit',
+      });
+      let loaded = deserializeProfitLossContext(cached);
+      if (includeBreakdown && !loaded.hasBreakdownData) {
+        loaded = await ensureProfitLossBreakdownData(
+          this.tenantDb.db,
+          loaded,
+          from,
+          to,
+        );
+        await this.cache.set(
+          key,
+          serializeProfitLossContext(loaded),
+          PROFIT_LOSS_CACHE_TTL_S,
+        );
+      }
+      return loaded;
+    }
 
     const loaded = await loadProfitLossContext(
       this.tenantDb.db,
       tenantId,
       from,
       to,
+      { includeBreakdown },
     );
     await this.cache.set(
       key,
       serializeProfitLossContext(loaded),
       PROFIT_LOSS_CACHE_TTL_S,
     );
+    this.logReportTiming('pl-ctx', startedAt, {
+      tenant: tenantId,
+      from,
+      to,
+      cache: 'miss',
+    });
     return loaded;
   }
 
@@ -121,10 +168,20 @@ export class ReportsService {
     from?: string,
     to?: string,
   ): Promise<ReportsDashboard> {
+    const startedAt = Date.now();
     const tenantId = this.tenantDb.requireTenantId();
     const cacheKey = `report-dash:${tenantId}:${tab}:${from ?? ''}:${to ?? ''}`;
     const cached = await this.cache.get<ReportsDashboard>(cacheKey);
-    if (cached) return cached;
+    if (cached) {
+      this.logReportTiming('dashboard', startedAt, {
+        tenant: tenantId,
+        tab,
+        from,
+        to,
+        cache: 'hit',
+      });
+      return cached;
+    }
 
     const tenant = await this.prisma.tenant.findUnique({
       where: { id: tenantId },
@@ -182,16 +239,28 @@ export class ReportsService {
     }
 
     await this.cache.set(cacheKey, result, REPORT_CACHE_TTL_S);
+    this.logReportTiming('dashboard', startedAt, {
+      tenant: tenantId,
+      tab,
+      from,
+      to,
+      cache: 'miss',
+    });
     return result;
   }
 
   async group(from?: string, to?: string): Promise<ReportsDashboard> {
+    const startedAt = Date.now();
     const cacheKey = `report-group:${from ?? ''}:${to ?? ''}`;
     const cached = await this.cache.get<ReportsDashboard>(cacheKey);
-    if (cached) return cached;
+    if (cached) {
+      this.logReportTiming('group', startedAt, { from, to, cache: 'hit' });
+      return cached;
+    }
 
     const result = await buildGroupReports(this.prisma, from, to);
     await this.cache.set(cacheKey, result, REPORT_CACHE_TTL_S);
+    this.logReportTiming('group', startedAt, { from, to, cache: 'miss' });
     return result;
   }
 
@@ -202,12 +271,23 @@ export class ReportsService {
     mode?: ReportRunMode,
     breakdownTab?: ProfitLossBreakdownTab,
   ): Promise<ReportsDashboard> {
+    const startedAt = Date.now();
     const tenantId = this.tenantDb.requireTenantId();
     const resolvedMode =
       mode ?? (reportId === 'profit-loss' ? 'pl-core' : 'full');
     const cacheKey = `report-run:${tenantId}:${reportId}:${resolvedMode}:${breakdownTab ?? ''}:${from ?? ''}:${to ?? ''}`;
     const cached = await this.cache.get<ReportsDashboard>(cacheKey);
-    if (cached) return cached;
+    if (cached) {
+      this.logReportTiming('run', startedAt, {
+        tenant: tenantId,
+        report: reportId,
+        mode: resolvedMode,
+        from,
+        to,
+        cache: 'hit',
+      });
+      return cached;
+    }
 
     if (reportId === 'profit-loss' && resolvedMode !== 'full') {
       const db = this.tenantDb.db;
@@ -217,12 +297,22 @@ export class ReportsService {
           result = await buildProfitLossShell(db, tenantId, from, to);
           break;
         case 'pl-core': {
-          const loaded = await this.getProfitLossContext(tenantId, from, to);
+          const loaded = await this.getProfitLossContext(
+            tenantId,
+            from,
+            to,
+            false,
+          );
           result = await buildProfitLossCore(db, tenantId, from, to, loaded);
           break;
         }
         case 'pl-summary': {
-          const loaded = await this.getProfitLossContext(tenantId, from, to);
+          const loaded = await this.getProfitLossContext(
+            tenantId,
+            from,
+            to,
+            false,
+          );
           result = await buildProfitLossSummarySection(
             db,
             tenantId,
@@ -238,7 +328,12 @@ export class ReportsService {
               'breakdownTab is required for pl-breakdown mode',
             );
           }
-          const loaded = await this.getProfitLossContext(tenantId, from, to);
+          const loaded = await this.getProfitLossContext(
+            tenantId,
+            from,
+            to,
+            true,
+          );
           const section = await buildProfitLossBreakdownSection(
             db,
             tenantId,
@@ -270,6 +365,14 @@ export class ReportsService {
         }
       }
       await this.cache.set(cacheKey, result, PROFIT_LOSS_CACHE_TTL_S);
+      this.logReportTiming('run', startedAt, {
+        tenant: tenantId,
+        report: reportId,
+        mode: resolvedMode,
+        from,
+        to,
+        cache: 'miss',
+      });
       return result;
     }
 
@@ -292,16 +395,39 @@ export class ReportsService {
       to,
     );
     await this.cache.set(cacheKey, result, REPORT_CACHE_TTL_S);
+    this.logReportTiming('run', startedAt, {
+      tenant: tenantId,
+      report: reportId,
+      mode: resolvedMode,
+      from,
+      to,
+      cache: 'miss',
+    });
     return result;
   }
 
   async runGroup(reportId: string, from?: string, to?: string) {
+    const startedAt = Date.now();
     const cacheKey = `report-group-run:${reportId}:${from ?? ''}:${to ?? ''}`;
     const cached = await this.cache.get<ReportsDashboard>(cacheKey);
-    if (cached) return cached;
+    if (cached) {
+      this.logReportTiming('group-run', startedAt, {
+        report: reportId,
+        from,
+        to,
+        cache: 'hit',
+      });
+      return cached;
+    }
 
     const result = await runGroupReport(this.prisma, reportId, from, to);
     await this.cache.set(cacheKey, result, REPORT_CACHE_TTL_S);
+    this.logReportTiming('group-run', startedAt, {
+      report: reportId,
+      from,
+      to,
+      cache: 'miss',
+    });
     return result;
   }
 }

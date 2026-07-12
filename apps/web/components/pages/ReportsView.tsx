@@ -430,8 +430,9 @@ export function VagGroupReportsView() {
       <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-100">
         <p className="font-medium">Group roll-up</p>
         <p className="mt-1 text-amber-900/90 dark:text-amber-100/90">
-          Revenue is summed across all entities from ledger entries. Internal transfer elimination
-          between entities is not yet applied.
+          Revenue is summed across entity books. Internal transfers tagged on the
+          ledger are excluded; stock requisitions do not post money (no
+          double-count from fulfilment).
         </p>
       </div>
       <div className="flex justify-end">

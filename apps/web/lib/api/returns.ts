@@ -9,8 +9,12 @@ function saleToReturnRow(sale: Sale): SaleReturnRow {
   return {
     id: sale.id,
     tenantId: sale.tenantId,
-    reference: `RET-${sale.reference}`,
-    saleReference: sale.reference,
+    reference: sale.reference,
+    saleReference:
+      sale.originalSaleReference ??
+      (sale.reference.startsWith("RET-")
+        ? sale.reference.replace(/^RET-/, "")
+        : sale.reference),
     customerName: sale.customerName ?? "Walk-in",
     amount: sale.total,
     status: sale.status,

@@ -8,6 +8,7 @@ from migration.pos_common import (
     transform_contacts,
     transform_items,
     transform_sales,
+    transform_sell_returns,
 )
 from migration.stock_transforms import transform_expense_records, transform_stock_movements
 from migration.types import TableData, TransformResult
@@ -61,6 +62,18 @@ def run_transaction_migration(
         backfill_lines=backfill_lines,
     )
     merged.merge(sale_result)
+
+    return_result = transform_sell_returns(
+        tables,
+        tenant_id,
+        item_legacy,
+        customer_legacy,
+        reference_prefix=reference_prefix,
+        user_names=user_names,
+        since=since,
+        existing_sale_legacy=existing.get("sale"),
+    )
+    merged.merge(return_result)
 
     supplier_legacy = {**existing.get("supplier", {}), **legacy_map(merged.legacy_ids, "supplier")}
     purchase_result = transform_stock_movements(

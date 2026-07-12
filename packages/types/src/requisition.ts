@@ -3,6 +3,7 @@ export const REQUISITION_STATUSES = [
   "Approved",
   "Fulfilled",
   "Rejected",
+  "Cancelled",
 ] as const;
 
 export type RequisitionStatus = (typeof REQUISITION_STATUSES)[number];

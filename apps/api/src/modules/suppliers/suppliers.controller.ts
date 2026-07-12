@@ -39,6 +39,30 @@ export class SuppliersController {
     });
   }
 
+  @Post('import')
+  @Roles('manager', 'admin', 'super_admin')
+  import(@Body() body: { csv: string }) {
+    return this.suppliersService.importCsv(body.csv ?? '');
+  }
+
+  @Get(':id/summary')
+  getSummary(@Param('id') id: string) {
+    return this.suppliersService.getSummary(id);
+  }
+
+  @Get(':id/ledger')
+  getLedger(
+    @Param('id') id: string,
+    @Query('cursor') cursor?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.suppliersService.getLedger(
+      id,
+      cursor,
+      limit ? Number(limit) : undefined,
+    );
+  }
+
   @Get(':id')
   getById(@Param('id') id: string) {
     return this.suppliersService.getById(id);
