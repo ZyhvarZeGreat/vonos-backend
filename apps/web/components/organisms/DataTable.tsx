@@ -41,6 +41,12 @@ export interface OffsetPaginationConfig {
 
 export type SortDirection = "asc" | "desc";
 
+export interface ServerSortConfig {
+  sortBy: string | null;
+  sortDir: SortDirection;
+  onSortChange: (sortBy: string, sortDir: SortDirection) => void;
+}
+
 export interface DataTableProps<T extends { id: string }> {
   data: T[];
   columns: ColumnConfig<T>[];
@@ -50,7 +56,7 @@ export interface DataTableProps<T extends { id: string }> {
   selectable?: boolean;
   pagination?: { cursor: string | null; pageSize: number };
   offsetPagination?: OffsetPaginationConfig;
-  /** Built-in pagination when offsetPagination is omitted. Default 25. */
+  /** Built-in pagination when offsetPagination is omitted. Default 10. */
   defaultPageSize?: number;
   /** Disable built-in pagination (show all rows after sort/filter). */
   disablePagination?: boolean;
@@ -66,6 +72,11 @@ export interface DataTableProps<T extends { id: string }> {
   isFetching?: boolean;
   error?: string | null;
   className?: string;
+  /**
+   * When set, column header clicks request a server sort instead of
+   * reordering only the current page of rows.
+   */
+  serverSort?: ServerSortConfig;
 }
 
 function isColumnSortable<T>(column: ColumnConfig<T>): boolean {
@@ -98,7 +109,7 @@ export function DataTable<T extends { id: string }>({
   selectable = false,
   pagination,
   offsetPagination,
-  defaultPageSize = 25,
+  defaultPageSize = 10,
   disablePagination = false,
   virtualized = false,
   virtualRowHeight = 48,
@@ -110,6 +121,7 @@ export function DataTable<T extends { id: string }>({
   isFetching = false,
   error = null,
   className,
+  serverSort,
 }: DataTableProps<T>) {
   const [filterValues, setFilterValues] = useState<Record<string, string>>({});
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -121,6 +133,9 @@ export function DataTable<T extends { id: string }>({
   assertDisplayModeImplemented(displayMode);
 
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  const activeSortKey = serverSort ? serverSort.sortBy : sortKey;
+  const activeSortDirection = serverSort ? serverSort.sortDir : sortDirection;
 
   const filteredData = useMemo(() => {
     return data.filter((row) =>
@@ -134,7 +149,7 @@ export function DataTable<T extends { id: string }>({
   }, [data, filterValues, filters]);
 
   const sortedData = useMemo(() => {
-    if (!sortKey) return filteredData;
+    if (serverSort || !sortKey) return filteredData;
     const column = columns.find((c) => String(c.key) === sortKey);
     return [...filteredData].sort((a, b) => {
       const av = column?.sortValue
@@ -145,7 +160,7 @@ export function DataTable<T extends { id: string }>({
         : (b as Record<string, unknown>)[sortKey];
       return compareValues(av, bv, sortDirection);
     });
-  }, [columns, filteredData, sortDirection, sortKey]);
+  }, [columns, filteredData, serverSort, sortDirection, sortKey]);
 
   const useInternalPagination =
     !offsetPagination && !pagination && !disablePagination;
@@ -243,6 +258,16 @@ export function DataTable<T extends { id: string }>({
   function handleSort(column: ColumnConfig<T>) {
     if (!isColumnSortable(column)) return;
     const key = String(column.key);
+    if (serverSort) {
+      if (serverSort.sortBy !== key) {
+        serverSort.onSortChange(key, "asc");
+      } else if (serverSort.sortDir === "asc") {
+        serverSort.onSortChange(key, "desc");
+      } else {
+        serverSort.onSortChange(key, "asc");
+      }
+      return;
+    }
     if (sortKey !== key) {
       setSortKey(key);
       setSortDirection("asc");
@@ -377,7 +402,7 @@ export function DataTable<T extends { id: string }>({
                 {columns.map((column) => {
                   const key = String(column.key);
                   const sortable = isColumnSortable(column);
-                  const isActive = sortKey === key;
+                  const isActive = activeSortKey === key;
                   return (
                     <th
                       key={key}
@@ -391,7 +416,7 @@ export function DataTable<T extends { id: string }>({
                         >
                           {column.header}
                           {isActive ? (
-                            sortDirection === "asc" ? (
+                            activeSortDirection === "asc" ? (
                               <ArrowUp className="h-3.5 w-3.5" />
                             ) : (
                               <ArrowDown className="h-3.5 w-3.5" />

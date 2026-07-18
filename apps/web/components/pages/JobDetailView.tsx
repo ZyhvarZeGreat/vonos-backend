@@ -9,13 +9,14 @@ import {
   getStepperHeaderAction,
 } from "@/components/pages/DetailPageShell";
 import { DetailPanelSection } from "@/components/organisms/DetailPanelSection";
-import { buildAdaptiveJobStages } from "@/components/organisms/StatusStepper";
+import { buildAdaptiveJobStages, coerceJobStatusForStepper } from "@/components/organisms/StatusStepper";
 import type { JobDetail } from "@/lib/api/jobs";
 import { advanceJobStatus, updateJobQc } from "@/lib/api/jobs";
 import { formatDate } from "@/lib/utils/formatDate";
 import type { SectionInstance } from "@/lib/registries/sectionTypes";
 import { useAuditHistoryFeed, createdByField } from "@/lib/hooks/useAuditHistoryFeed";
 import { JobQuoteInvoicePanel } from "@/components/molecules/JobQuoteInvoicePanel";
+import { Button } from "@/components/atoms/Button";
 import {
   JobCostSummaryPanel,
   JobLabourPanel,
@@ -62,14 +63,16 @@ function QcPanel({
     <section className="rounded-lg border border-border bg-card p-5 shadow-card">
       <div className="mb-4 flex items-center justify-between gap-3">
         <h3 className="text-base font-semibold">Quality Control</h3>
-        <button
+        <Button
           type="button"
-          disabled={saveMutation.isPending}
+          size="sm"
+          variant="secondary"
+          isLoading={saveMutation.isPending}
+          loadingText="Saving…"
           onClick={() => saveMutation.mutate()}
-          className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium hover:bg-[var(--color-surface-muted)] disabled:opacity-60"
         >
-          {saveMutation.isPending ? "Saving…" : "Save QC"}
-        </button>
+          Save QC
+        </Button>
       </div>
       <ul className="space-y-3">
         {QC_ITEMS.map((item) => (
@@ -113,7 +116,8 @@ export function JobDetailView({ job, listPath, onJobChange }: JobDetailViewProps
   const isMechanics = params.tenant === "VA";
 
   const stages = buildAdaptiveJobStages(job.hasQuote);
-  const currentIndex = stages.indexOf(job.status);
+  const currentStage = coerceJobStatusForStepper(job.status, job.hasQuote);
+  const currentIndex = stages.indexOf(currentStage);
   const nextStage =
     currentIndex >= 0 && currentIndex < stages.length - 1 ? stages[currentIndex + 1] : null;
 
@@ -140,8 +144,8 @@ export function JobDetailView({ job, listPath, onJobChange }: JobDetailViewProps
   const materialsTotal = job.materials.reduce((sum, row) => sum + row.totalCost, 0);
   const labourTotal = job.labourEntries.reduce((sum, row) => sum + row.totalCost, 0);
 
-  const stepper = { stages, currentStage: job.status };
-  const showQc = ["QC", "Delivered"].includes(job.status);
+  const stepper = { stages, currentStage };
+  const showQc = ["QC", "Delivered"].includes(job.status) || ["QC", "Delivered"].includes(currentStage);
 
   const descriptionSection: SectionInstance = {
     type: "genericFields",

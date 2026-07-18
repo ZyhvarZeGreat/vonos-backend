@@ -13,6 +13,9 @@ const PAYMENTS_PATH = "/payments";
 
 export interface PaymentFilters {
   accountId?: string;
+  from?: string;
+  to?: string;
+  search?: string;
   cursor?: string;
   limit?: number;
 }
@@ -26,6 +29,9 @@ async function fetchPaymentsRaw(
   const tenantPath = withTenantQuery(PAYMENTS_PATH, tenantId);
   const url = appendListQuery(tenantPath, {
     accountId: filters?.accountId,
+    from: filters?.from,
+    to: filters?.to,
+    search: filters?.search,
     cursor,
     limit,
   });
@@ -38,10 +44,15 @@ async function fetchAccountBookRaw(
   accountId: string,
   cursor?: string,
   limit?: number,
+  filters: { from?: string; to?: string; search?: string; type?: string } = {},
 ): Promise<AccountTransaction[]> {
   const url = appendListQuery(`/payments/account-book/${accountId}`, {
     cursor,
     limit,
+    from: filters.from,
+    to: filters.to,
+    search: filters.search,
+    type: filters.type,
   });
   const response = await apiFetch(url);
   if (!response.ok) throw new Error("Failed to fetch account book");
@@ -56,6 +67,9 @@ export async function getPaymentsPage(
 ): Promise<ListPage<PaymentRecord>> {
   return fetchTenantListPage(PAYMENTS_PATH, tenantId, cursor, limit, {
     accountId: filters?.accountId,
+    from: filters?.from,
+    to: filters?.to,
+    search: filters?.search,
   });
 }
 
@@ -63,11 +77,13 @@ export async function getAccountBookPage(
   accountId: string,
   cursor: string | undefined,
   limit = DEFAULT_TABLE_PAGE_SIZE,
+  filters: { from?: string; to?: string; search?: string; type?: string } = {},
 ): Promise<ListPage<AccountTransaction>> {
   return fetchJsonListPage(
     `/payments/account-book/${accountId}`,
     cursor,
     limit,
+    filters,
   );
 }
 

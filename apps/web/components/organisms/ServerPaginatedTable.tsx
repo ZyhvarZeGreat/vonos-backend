@@ -3,48 +3,79 @@
 import type { ReactNode } from "react";
 import { CursorPaginationBar } from "@/components/molecules/CursorPaginationBar";
 import { DataTableSkeleton } from "@/components/organisms/skeletons";
-import { DataTable, type ColumnConfig, type FilterConfig } from "@/components/organisms/DataTable";
+import { DataTable, type ColumnConfig, type FilterConfig, type ServerSortConfig } from "@/components/organisms/DataTable";
+import type { ServerListPaginationProps } from "@/lib/hooks/useServerListPage";
 
-export interface ServerPaginatedTableProps<T extends { id: string }> {
+type ServerPaginatedTableBaseProps<T extends { id: string }> = {
   items: T[];
   columns: ColumnConfig<T>[];
-  pageIndex: number;
-  pageSize: number;
-  hasMore: boolean;
-  canGoPrev: boolean;
-  onNext: () => void;
-  onPrev: () => void;
-  onPageSizeChange: (size: number) => void;
   isLoading?: boolean;
-  isFetching?: boolean;
   error?: string | null;
   onRowClick?: (row: T) => void;
   emptyState?: { message: string; ctaLabel?: string; onCta?: () => void };
   filters?: FilterConfig[];
   virtualized?: boolean;
   toolbar?: ReactNode;
+  serverSort?: ServerSortConfig;
+};
+
+export type ServerPaginatedTableProps<T extends { id: string }> =
+  ServerPaginatedTableBaseProps<T> &
+    (
+      | { pagination: ServerListPaginationProps }
+      | (ServerListPaginationProps & { pagination?: undefined })
+    );
+
+function resolvePagination<T extends { id: string }>(
+  props: ServerPaginatedTableProps<T>,
+): ServerListPaginationProps {
+  if ("pagination" in props && props.pagination) {
+    return props.pagination;
+  }
+  return {
+    pageIndex: props.pageIndex,
+    pageSize: props.pageSize,
+    hasMore: props.hasMore,
+    canGoPrev: props.canGoPrev,
+    onNext: props.onNext,
+    onPrev: props.onPrev,
+    onPageSizeChange: props.onPageSizeChange,
+    onPageSelect: props.onPageSelect,
+    canSelectPage: props.canSelectPage,
+    isFetching: props.isFetching,
+  };
 }
 
-/** Server cursor-paginated table — one API page at a time, prev/next at the footer. */
-export function ServerPaginatedTable<T extends { id: string }>({
-  items,
-  columns,
-  pageIndex,
-  pageSize,
-  hasMore,
-  canGoPrev,
-  onNext,
-  onPrev,
-  onPageSizeChange,
-  isLoading = false,
-  isFetching = false,
-  error = null,
-  onRowClick,
-  emptyState,
-  filters,
-  virtualized = false,
-  toolbar,
-}: ServerPaginatedTableProps<T>) {
+/** Server cursor-paginated table — one API page at a time, numbered page nav when URL-synced. */
+export function ServerPaginatedTable<T extends { id: string }>(
+  props: ServerPaginatedTableProps<T>,
+) {
+  const {
+    items,
+    columns,
+    isLoading = false,
+    error = null,
+    onRowClick,
+    emptyState,
+    filters,
+    virtualized = false,
+    toolbar,
+    serverSort,
+  } = props;
+
+  const {
+    pageIndex,
+    pageSize,
+    hasMore,
+    canGoPrev,
+    onNext,
+    onPrev,
+    onPageSizeChange,
+    onPageSelect,
+    canSelectPage,
+    isFetching = false,
+  } = resolvePagination(props);
+
   const columnHeaders = columns.map((column) => column.header);
   const showPagination = items.length > 0 || canGoPrev || isLoading;
   const busy = isFetching && !isLoading;
@@ -78,6 +109,7 @@ export function ServerPaginatedTable<T extends { id: string }>({
         error={error}
         onRowClick={onRowClick}
         emptyState={emptyState}
+        serverSort={serverSort}
       />
       {showPagination ? (
         <CursorPaginationBar
@@ -89,6 +121,8 @@ export function ServerPaginatedTable<T extends { id: string }>({
           onPrev={onPrev}
           onNext={onNext}
           onPageSizeChange={onPageSizeChange}
+          onPageSelect={onPageSelect}
+          canSelectPage={canSelectPage}
           isBusy={busy}
         />
       ) : null}

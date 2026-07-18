@@ -1,21 +1,32 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { ReportRowAction } from "@vonos/types";
+import type { ProductSellReportView, ReportRowAction, ReportRunOptions } from "@vonos/types";
+import { isPaginatedTableReport } from "@vonos/types";
 import { reportEntryBySlug } from "@/lib/registries/reportRegistry";
+import {
+  compactReportFilters,
+  emptyReportFilters,
+  REPORT_TABLE_UI,
+  TABLE_REPORT_PAGE_SIZE,
+} from "@/lib/registries/reportTableUi";
 import { runReport } from "@/lib/api/reports";
 import {
   fixReportLocationStock,
   updateReportMovementLineExpiry,
 } from "@/lib/api/reportActions";
+import { useCursorPage } from "@/lib/hooks/useCursorPage";
 import { useListPageFilters } from "@/lib/hooks/useListPageFilters";
+import { useReportFilterOptions } from "@/lib/hooks/useReportFilterOptions";
+import { useDebouncedValue } from "@/lib/hooks/useDebouncedValue";
 import { useRouteTenant } from "@/lib/hooks/useRouteTenant";
 import { ledgerChartSubtitle } from "@/lib/utils/ledgerCharts";
 import { recordDetailPath } from "@/lib/utils/recordDetailPath";
 import { ListPageShell } from "@/components/organisms/ListPageShell";
-import { HqReportPageLayout } from "@/components/organisms/HqReportPageLayout";
+import { HqReportPageLayout, HqReportPageSkeleton } from "@/components/organisms/HqReportPageLayout";
+import { ReportFilterShell } from "@/components/organisms/ReportFilterShell";
 import {
   ReportExpiryEditModal,
   type ExpiryEditPayload,
@@ -27,6 +38,7 @@ import {
 import { useUiStore } from "@/stores/uiStore";
 import { Button } from "@/components/atoms/Button";
 import { Printer } from "lucide-react";
+import { cn } from "@/lib/utils/cn";
 
 interface ReportRunViewProps {
   slug: string;
@@ -43,13 +55,40 @@ export function ReportRunView({ slug }: ReportRunViewProps) {
 
   const [expiryEdit, setExpiryEdit] = useState<ExpiryEditPayload | null>(null);
   const [fixStock, setFixStock] = useState<FixStockPayload | null>(null);
+  const [filters, setFilters] = useState<ReportRunOptions>(() => emptyReportFilters());
+  const debouncedFilters = useDebouncedValue(filters, 400);
 
   const isProfitLoss = entry?.id === "profit-loss";
+  const isPaginated = Boolean(entry && isPaginatedTableReport(entry.id));
+  const tableUi = entry ? REPORT_TABLE_UI[entry.id] : undefined;
+  const hasFilters = Boolean(tableUi && tableUi.filters.length > 0);
   const reportStaleMs = 5 * 60_000;
-  const periodKey = [bounds?.from ?? "all", bounds?.to ?? "all"] as const;
+  const periodFrom = bounds?.from ?? "all";
+  const periodTo = bounds?.to ?? "all";
+
+  const {
+    cursor,
+    pageIndex,
+    canGoPrev,
+    goNext,
+    goPrev,
+    reset: resetTablePage,
+  } = useCursorPage();
+  const [pageSize, setPageSize] = useState(TABLE_REPORT_PAGE_SIZE);
+
+  const filterKey = useMemo(
+    () => JSON.stringify(compactReportFilters(debouncedFilters)),
+    [debouncedFilters],
+  );
+
+  useEffect(() => {
+    resetTablePage();
+  }, [periodFrom, periodTo, pageSize, filterKey, resetTablePage]);
+
+  const optionSets = useReportFilterOptions(tenantId, tableUi?.filters);
 
   const plCoreQuery = useQuery({
-    queryKey: ["report-run", tenantId, entry?.id, "pl-core", ...periodKey],
+    queryKey: ["report-run", tenantId, entry?.id, "pl-core", periodFrom, periodTo],
     queryFn: async () => {
       if (!tenantId || !entry) return null;
       return runReport({
@@ -65,19 +104,38 @@ export function ReportRunView({ slug }: ReportRunViewProps) {
   });
 
   const fullQuery = useQuery({
-    queryKey: ["report-run", tenantId, entry?.id, "full", ...periodKey],
+    queryKey: [
+      "report-run",
+      tenantId,
+      entry?.id,
+      "full",
+      periodFrom,
+      periodTo,
+      isPaginated ? cursor : null,
+      isPaginated ? pageSize : null,
+      hasFilters || isPaginated ? filterKey : null,
+    ],
     queryFn: async () => {
       if (!tenantId || !entry) return null;
+      const filterOpts =
+        hasFilters || isPaginated
+          ? compactReportFilters({
+              ...debouncedFilters,
+              ...(isPaginated ? { cursor, limit: pageSize } : {}),
+            })
+          : {};
       return runReport({
         reportId: entry.id,
         from: bounds?.from,
         to: bounds?.to,
         tenantId,
         mode: "full",
+        ...filterOpts,
       });
     },
     enabled: Boolean(tenantId && entry && !isProfitLoss),
     staleTime: reportStaleMs,
+    placeholderData: isPaginated ? (prev) => prev : undefined,
   });
 
   const data = useMemo(() => {
@@ -86,8 +144,28 @@ export function ReportRunView({ slug }: ReportRunViewProps) {
   }, [isProfitLoss, plCoreQuery.data, fullQuery.data]);
 
   const isLoading = isProfitLoss ? plCoreQuery.isLoading : fullQuery.isLoading;
+  const isFetching = isProfitLoss ? plCoreQuery.isFetching : fullQuery.isFetching;
   const error = isProfitLoss ? plCoreQuery.error : fullQuery.error;
   const summaryLoading = false;
+
+  const tablePagination = isPaginated
+    ? {
+        pageIndex,
+        pageSize: data?.table?.pageSize ?? pageSize,
+        hasMore: Boolean(data?.table?.hasMore),
+        canGoPrev,
+        isBusy: isFetching && !isLoading,
+        onPrev: goPrev,
+        onNext: () => {
+          const next = data?.table?.nextCursor;
+          if (next) goNext(next);
+        },
+        onPageSizeChange: (size: number) => {
+          setPageSize(size);
+          resetTablePage();
+        },
+      }
+    : undefined;
 
   const invalidateReport = () => {
     void queryClient.invalidateQueries({ queryKey: ["report-run", tenantId, entry?.id] });
@@ -189,6 +267,8 @@ export function ReportRunView({ slug }: ReportRunViewProps) {
     return <p className="p-6 text-sm text-muted-foreground">Unknown report.</p>;
   }
 
+  const activeView = (filters.view ?? "detailed") as ProductSellReportView;
+
   return (
     <>
       <ListPageShell
@@ -198,6 +278,7 @@ export function ReportRunView({ slug }: ReportRunViewProps) {
         showImport={false}
         dateRange={dateRange}
         onDateRangeChange={setDateRange}
+        contentClassName="p-6 sm:p-8"
         primaryAction={
           <Button
             type="button"
@@ -223,35 +304,71 @@ export function ReportRunView({ slug }: ReportRunViewProps) {
             : undefined
         }
       >
-        {isLoading ? (
-          <p className="text-sm text-muted-foreground">Loading report…</p>
-        ) : error ? (
-          <p className="text-sm text-red-600">Failed to load report.</p>
-        ) : data ? (
-          <HqReportPageLayout
-            reportId={entry.id}
-            title={entry.label}
-            subtitle={periodLabel}
-            data={data}
-            tenantId={tenantId ?? undefined}
-            from={bounds?.from}
-            to={bounds?.to}
-            summaryLoading={summaryLoading}
-            onRowClick={
-              tenantCode
-                ? (row) => {
-                    const path = recordDetailPath(
-                      tenantCode,
-                      String(row.recordType ?? ""),
-                      String(row.id ?? ""),
-                    );
-                    if (path) router.push(path);
+        <div className="space-y-4">
+          {tableUi && tableUi.filters.length > 0 ? (
+            <ReportFilterShell
+              fields={tableUi.filters}
+              values={filters}
+              optionSets={optionSets}
+              onChange={(patch) =>
+                setFilters((prev) => ({ ...prev, ...patch }))
+              }
+            />
+          ) : null}
+
+          {tableUi?.views ? (
+            <div className="flex flex-wrap gap-2 print:hidden">
+              {tableUi.views.map((view) => (
+                <button
+                  key={view.id}
+                  type="button"
+                  className={cn(
+                    "rounded-md border px-3 py-1.5 text-sm font-medium transition-colors",
+                    activeView === view.id
+                      ? "border-brand bg-brand/10 text-brand"
+                      : "border-border bg-card text-muted hover:text-foreground",
+                  )}
+                  onClick={() =>
+                    setFilters((prev) => ({ ...prev, view: view.id }))
                   }
-                : undefined
-            }
-            onRowAction={handleRowAction}
-          />
-        ) : null}
+                >
+                  {view.label}
+                </button>
+              ))}
+            </div>
+          ) : null}
+
+          {isLoading ? (
+            <HqReportPageSkeleton reportId={entry.id} />
+          ) : error ? (
+            <p className="text-sm text-red-600">Failed to load report.</p>
+          ) : data ? (
+            <HqReportPageLayout
+              reportId={entry.id}
+              title={entry.label}
+              subtitle={periodLabel}
+              data={data}
+              tenantId={tenantId ?? undefined}
+              from={bounds?.from}
+              to={bounds?.to}
+              summaryLoading={summaryLoading}
+              tablePagination={tablePagination}
+              onRowClick={
+                tenantCode
+                  ? (row) => {
+                      const path = recordDetailPath(
+                        tenantCode,
+                        String(row.recordType ?? ""),
+                        String(row.id ?? ""),
+                      );
+                      if (path) router.push(path);
+                    }
+                  : undefined
+              }
+              onRowAction={handleRowAction}
+            />
+          ) : null}
+        </div>
       </ListPageShell>
 
       <ReportExpiryEditModal

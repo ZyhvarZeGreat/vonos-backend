@@ -6,6 +6,9 @@ export interface Payroll {
   tenantId: string;
   payrollGroupId: string | null;
   payrollGroupName: string | null;
+  employeeRecordId: string | null;
+  designationId: string | null;
+  designationName: string | null;
   employeeName: string;
   employeeId: string | null;
   locationCode: string | null;
@@ -28,6 +31,29 @@ export interface PayrollGroup {
   createdAt: string;
 }
 
+export interface Designation {
+  id: string;
+  tenantId: string;
+  name: string;
+  employeeCount: number;
+  createdAt: string;
+}
+
+export interface Employee {
+  id: string;
+  tenantId: string;
+  name: string;
+  employeeCode: string | null;
+  locationCode: string | null;
+  payrollGroupId: string | null;
+  payrollGroupName: string | null;
+  designationId: string;
+  designationName: string;
+  userId: string | null;
+  isServiceStaff: boolean;
+  createdAt: string;
+}
+
 export interface PayComponent {
   id: string;
   tenantId: string;
@@ -38,9 +64,12 @@ export interface PayComponent {
 }
 
 export interface CreatePayrollRequest {
-  employeeName: string;
+  /** Preferred: pick from workforce Employee record (required for new payrolls). */
+  employeeRecordId?: string;
+  employeeName?: string;
   employeeId?: string;
   payrollGroupId?: string;
+  designationId?: string;
   locationCode?: string;
   grossPay: number;
   totalAllowance?: number;
@@ -49,8 +78,34 @@ export interface CreatePayrollRequest {
   note?: string;
 }
 
+/** Add (or set) deduction on an existing payroll run. */
+export interface UpdatePayrollDeductionRequest {
+  /** Absolute deduction total. Prefer `addAmount` for incremental adds. */
+  totalDeduction?: number;
+  /** Amount to add on top of the current deduction total. */
+  addAmount?: number;
+  /** Pay component label or deduction type (e.g. PAYE). */
+  note?: string;
+  /** Why this deduction was applied — shown on payslip. */
+  reason?: string;
+}
+
 export interface CreatePayrollGroupRequest {
   name: string;
+}
+
+export interface CreateDesignationRequest {
+  name: string;
+}
+
+export interface CreateEmployeeRequest {
+  name: string;
+  employeeCode?: string;
+  locationCode?: string;
+  payrollGroupId?: string;
+  designationId: string;
+  userId?: string;
+  isServiceStaff?: boolean;
 }
 
 export interface CreatePayComponentRequest {
@@ -59,7 +114,23 @@ export interface CreatePayComponentRequest {
   amount: number;
 }
 
-/** Distinct employee roster derived from imported payroll history. */
+export interface PayrollFilters {
+  cursor?: string;
+  limit?: number;
+  search?: string;
+  payrollGroupId?: string;
+  employeeRecordId?: string;
+  locationCode?: string;
+  designationId?: string;
+  month?: number;
+  year?: number;
+  status?: string;
+  paymentStatus?: string;
+  sortBy?: string;
+  sortDir?: "asc" | "desc";
+}
+
+/** Distinct employee roster derived from imported payroll history / Employee table. */
 export interface WorkforceMember {
   id: string;
   tenantId: string;
@@ -68,6 +139,10 @@ export interface WorkforceMember {
   employeeName: string;
   employeeId: string | null;
   locationCode: string | null;
+  designationId?: string | null;
+  designationName?: string | null;
+  payrollGroupId?: string | null;
+  payrollGroupName?: string | null;
   payrollCount: number;
   lastPayrollMonth: string;
   totalNetPay: number;

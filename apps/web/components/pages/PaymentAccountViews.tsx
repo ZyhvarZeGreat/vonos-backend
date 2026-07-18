@@ -9,7 +9,7 @@ import { Button } from "@/components/atoms/Button";
 import { type ColumnConfig } from "@/components/organisms/DataTable";
 import { ServerPaginatedTable } from "@/components/organisms/ServerPaginatedTable";
 import { ListPageShell } from "@/components/organisms/ListPageShell";
-import { HqReportPageLayout } from "@/components/organisms/HqReportPageLayout";
+import { HqReportPageLayout, HqReportPageSkeleton } from "@/components/organisms/HqReportPageLayout";
 import {
   PaymentAccountDepositModal,
   PaymentAccountFormModal,
@@ -26,7 +26,7 @@ import {
   updatePaymentAccount,
 } from "@/lib/api/paymentAccounts";
 import { runReport } from "@/lib/api/reports";
-import { useServerListPage } from "@/lib/hooks/useServerListPage";
+import { useServerListPage, serverPaginationBarProps } from "@/lib/hooks/useServerListPage";
 import { useRouteTenant, useTenantId } from "@/lib/hooks/useRouteTenant";
 import { useListPageFilters } from "@/lib/hooks/useListPageFilters";
 import { usePaymentAccountPageTabs } from "@/lib/hooks/usePaymentAccountPageTabs";
@@ -35,7 +35,9 @@ import { reportEntryBySlug } from "@/lib/registries/reportRegistry";
 import type { PaymentAccountPageSlug } from "@/lib/registries/paymentAccountNav";
 import { ledgerChartSubtitle } from "@/lib/utils/ledgerCharts";
 import { formatCurrency } from "@/lib/utils/formatCurrency";
+import { uniqueFieldOptions } from "@/lib/utils/listFilters";
 import { useUiStore } from "@/stores/uiStore";
+import type { ReportsDashboard } from "@vonos/types";
 
 const EXPORT_COLUMNS = [
   { key: "name", header: "Name" },
@@ -66,29 +68,37 @@ export function PaymentAccountsListView() {
   const [transferAccount, setTransferAccount] =
     useState<PaymentAccount | null>(null);
   const [exporting, setExporting] = useState(false);
+  const [statusFilter, setStatusFilter] = useState("");
+  const [typeFilter, setTypeFilter] = useState("");
 
-  const {
-    items,
-    hasMore,
-    pageIndex,
-    pageSize,
-    canGoPrev,
-    goNext,
-    goPrev,
-    setPageSize,
-    isLoading,
-
-    isFetching,
-    error,
-  } = useServerListPage<PaymentAccount>({
+  const listPage = useServerListPage<PaymentAccount>({
     queryKey: ["payment-accounts", tenantId],
     enabled: Boolean(tenantId),
     search,
+    filters: {
+      status: statusFilter || undefined,
+      type: typeFilter || undefined,
+    },
     fetchPage: (cursor, limit) =>
       getPaymentAccountsPage(tenantId!, cursor, limit, {
         search: search.trim() || undefined,
       }),
   });
+
+  const { items, isLoading, isFetching, error } = listPage;
+
+  const typeOptions = useMemo(
+    () => uniqueFieldOptions(items, (row) => row.accountType),
+    [items],
+  );
+
+  const filteredItems = useMemo(() => {
+    let rows = items;
+    if (statusFilter === "open") rows = rows.filter((row) => !row.isClosed);
+    if (statusFilter === "closed") rows = rows.filter((row) => row.isClosed);
+    if (typeFilter) rows = rows.filter((row) => row.accountType === typeFilter);
+    return rows;
+  }, [items, statusFilter, typeFilter]);
 
   const invalidate = () => {
     void queryClient.invalidateQueries({ queryKey: ["payment-accounts", tenantId] });
@@ -252,6 +262,25 @@ export function PaymentAccountsListView() {
         showImport={false}
         showExport
         showDateRange={false}
+        filterDropdowns={[
+          {
+            id: "status",
+            label: "Status",
+            value: statusFilter,
+            onChange: setStatusFilter,
+            options: [
+              { value: "open", label: "Open" },
+              { value: "closed", label: "Closed" },
+            ],
+          },
+          {
+            id: "type",
+            label: "Type",
+            value: typeFilter,
+            onChange: setTypeFilter,
+            options: typeOptions,
+          },
+        ]}
         onExport={handleExport}
         primaryAction={
           <div className="flex gap-2">
@@ -279,17 +308,10 @@ export function PaymentAccountsListView() {
         }
       >
         <ServerPaginatedTable
-          items={items}
+          items={filteredItems}
           columns={columns}
-          pageIndex={pageIndex}
-          pageSize={pageSize}
-          hasMore={hasMore}
-          canGoPrev={canGoPrev}
-          onNext={goNext}
-          onPrev={goPrev}
-          onPageSizeChange={setPageSize}
+          pagination={serverPaginationBarProps(listPage)}
           isLoading={isLoading || exporting}
-          isFetching={isFetching}
           error={error ? "Failed to load payment accounts" : null}
           emptyState={{
             message: "No payment accounts yet. Add one to get started.",
@@ -348,14 +370,21 @@ export function PaymentAccountReportView({ slug }: { slug: PaymentAccountPageSlu
   const { dateRange, setDateRange, bounds } = useListPageFilters();
   const periodLabel = ledgerChartSubtitle(dateRange);
   const entry = reportEntryBySlug(slug);
+  const isSnapshotReport = slug === "balance-sheet";
 
   const { data, isLoading, error } = useQuery({
-    queryKey: ["payment-account-report", tenantId, entry?.id, bounds?.from, bounds?.to],
+    queryKey: [
+      "payment-account-report",
+      tenantId,
+      entry?.id,
+      isSnapshotReport ? "snapshot" : bounds?.from,
+      isSnapshotReport ? "snapshot" : bounds?.to,
+    ],
     queryFn: () =>
       runReport({
         reportId: entry!.id,
-        from: bounds?.from,
-        to: bounds?.to,
+        from: isSnapshotReport ? undefined : bounds?.from,
+        to: isSnapshotReport ? undefined : bounds?.to,
         tenantId: tenantId ?? undefined,
       }),
     enabled: Boolean(tenantId && entry),
@@ -367,28 +396,8 @@ export function PaymentAccountReportView({ slug }: { slug: PaymentAccountPageSlu
   }
 
   const exportPayload =
-    data?.table && entry.exportable
-      ? {
-          filename: entry.slug,
-          columns: data.table.columns.map((col) => ({
-            key: col.key,
-            header: col.header,
-          })),
-          rows: data.table.rows.map((row) => {
-            const out: Record<string, string | number | null | undefined> = {};
-            for (const [key, value] of Object.entries(row)) {
-              if (key === "actions" || Array.isArray(value)) continue;
-              if (
-                typeof value === "string" ||
-                typeof value === "number" ||
-                value == null
-              ) {
-                out[key] = value;
-              }
-            }
-            return out;
-          }),
-        }
+    entry.exportable && data
+      ? buildPaymentAccountReportExport(entry.id, entry.slug, data)
       : null;
 
   return (
@@ -397,8 +406,10 @@ export function PaymentAccountReportView({ slug }: { slug: PaymentAccountPageSlu
       activeTab={activeTab}
       onTabChange={onTabChange}
       showImport={false}
+      showDateRange={!isSnapshotReport}
       dateRange={dateRange}
       onDateRangeChange={setDateRange}
+      contentClassName="p-6 sm:p-8"
       primaryAction={
         <Button
           type="button"
@@ -425,17 +436,105 @@ export function PaymentAccountReportView({ slug }: { slug: PaymentAccountPageSlu
       }
     >
       {isLoading ? (
-        <p className="text-sm text-muted-foreground">Loading report…</p>
+        <HqReportPageSkeleton reportId={entry.id} />
       ) : error ? (
         <p className="text-sm text-red-600">Failed to load report.</p>
       ) : data ? (
         <HqReportPageLayout
           reportId={entry.id}
           title={entry.label}
-          subtitle={periodLabel}
+          subtitle={isSnapshotReport ? "Current snapshot" : periodLabel}
           data={data}
         />
       ) : null}
     </ListPageShell>
   );
+}
+
+function buildPaymentAccountReportExport(
+  reportId: string,
+  slug: string,
+  data: ReportsDashboard,
+) {
+
+  if (reportId === "balance-sheet" && data.balanceSheet) {
+    const { balanceSheet } = data;
+    return {
+      filename: slug,
+      columns: [
+        { key: "section", header: "Section" },
+        { key: "name", header: "Account" },
+        { key: "amount", header: "Amount" },
+      ],
+      rows: [
+        ...balanceSheet.liabilities.map((line) => ({
+          section: "Liability",
+          name: line.label,
+          amount: line.amount,
+        })),
+        ...balanceSheet.assets.map((line) => ({
+          section: "Asset",
+          name: line.label,
+          amount: line.amount,
+        })),
+        ...balanceSheet.accountBalances.map((line) => ({
+          section: "Asset",
+          name: line.name,
+          amount: line.balance,
+        })),
+      ],
+    };
+  }
+
+  if (reportId === "cash-flow" && data.cashFlow) {
+    return {
+      filename: slug,
+      columns: [
+        { key: "date", header: "Date" },
+        { key: "account", header: "Account" },
+        { key: "description", header: "Description" },
+        { key: "paymentMethod", header: "Payment Method" },
+        { key: "receiptVoucher", header: "Receipt/Voucher" },
+        { key: "debit", header: "Debit" },
+        { key: "credit", header: "Credit" },
+        { key: "previousBalance", header: "Previous Balance" },
+        { key: "totalBalance", header: "Total Balance" },
+      ],
+      rows: data.cashFlow.rows.map((row) => ({
+        date: row.date,
+        account: row.account,
+        description: row.description,
+        paymentMethod: row.paymentMethod,
+        receiptVoucher: row.receiptVoucher,
+        debit: row.debit ?? "",
+        credit: row.credit ?? "",
+        previousBalance: row.previousBalance,
+        totalBalance: row.totalBalance,
+      })),
+    };
+  }
+
+  if (!data.table) return null;
+
+  return {
+    filename: slug,
+    columns: data.table.columns.map((col) => ({
+      key: col.key,
+      header: col.header,
+    })),
+    rows: data.table.rows.map((row) => {
+      const out: Record<string, string | number | null | undefined> = {};
+      for (const [key, value] of Object.entries(row)) {
+        if (key === "actions" || Array.isArray(value)) continue;
+        if (
+          typeof value === "string" ||
+          typeof value === "number" ||
+          value == null
+        ) {
+          out[key] = value;
+        }
+      }
+      return out;
+    }),
+  };
 }

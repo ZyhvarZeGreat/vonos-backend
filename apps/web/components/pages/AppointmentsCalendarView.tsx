@@ -11,11 +11,7 @@ import { getAppointmentsPage } from "@/lib/api/appointments";
 import { useServerListPage } from "@/lib/hooks/useServerListPage";
 import { useRecordNavigation } from "@/lib/hooks/useRecordNavigation";
 import { useListPageFilters } from "@/lib/hooks/useListPageFilters";
-import {
-  filterByDateField,
-  filterBySearch,
-  uniqueFieldOptions,
-} from "@/lib/utils/listFilters";
+import { uniqueFieldOptions } from "@/lib/utils/listFilters";
 import { useTenantId, useRouteTenant } from "@/lib/hooks/useRouteTenant";
 
 export function AppointmentsCalendarView() {
@@ -41,8 +37,19 @@ export function AppointmentsCalendarView() {
     queryKey: ["appointments", tenantId],
     enabled: Boolean(tenantId),
     search,
-    defaultPageSize: 50,
-    fetchPage: (cursor, limit) => getAppointmentsPage(tenantId!, cursor, limit),
+    filters: {
+      from: bounds?.from,
+      to: bounds?.to,
+      status: statusFilter || undefined,
+    },
+    defaultPageSize: 10,
+    fetchPage: (cursor, limit) =>
+      getAppointmentsPage(tenantId!, cursor, limit, {
+        search: search.trim() || undefined,
+        from: bounds?.from,
+        to: bounds?.to,
+        status: statusFilter || undefined,
+      }),
   });
 
   const stylists = useMemo(
@@ -62,15 +69,23 @@ export function AppointmentsCalendarView() {
   }, [appointments]);
 
   const filtered = useMemo(() => {
-    let rows = filterByDateField(appointments, bounds, "startTime");
-    if (statusFilter) rows = rows.filter((a) => a.status === statusFilter);
-    if (stylistFilter) rows = rows.filter((a) => a.stylistName === stylistFilter);
-    return filterBySearch(rows, search, ["customerName", "serviceName", "stylistName"]);
-  }, [appointments, bounds, search, statusFilter, stylistFilter]);
+    if (!stylistFilter) return appointments;
+    return appointments.filter((a) => a.stylistName === stylistFilter);
+  }, [appointments, stylistFilter]);
 
   const statusOptions = useMemo(
-    () => uniqueFieldOptions(appointments, "status"),
-    [appointments],
+    () =>
+      (
+        [
+          "Booked",
+          "Confirmed",
+          "In Progress",
+          "Completed",
+          "No-show",
+          "Cancelled",
+        ] as const
+      ).map((value) => ({ value, label: value })),
+    [],
   );
   const stylistOptions = useMemo(
     () => uniqueFieldOptions(appointments, "stylistName"),

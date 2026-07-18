@@ -1,15 +1,23 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Button } from "@/components/atoms/Button";
 import { EmptyState } from "@/components/atoms/EmptyState";
 import { type ColumnConfig } from "@/components/organisms/DataTable";
 import { ServerPaginatedTable } from "@/components/organisms/ServerPaginatedTable";
 import { ListPageShell } from "@/components/organisms/ListPageShell";
 import { getAccountBookPage, getPaymentsPage } from "@/lib/api/payments";
-import { useServerListPage } from "@/lib/hooks/useServerListPage";
+import { serverPaginationBarProps, useServerListPage } from "@/lib/hooks/useServerListPage";
+import { useListPageFilters } from "@/lib/hooks/useListPageFilters";
 import { useRouteTenant } from "@/lib/hooks/useRouteTenant";
+import { uniqueFieldOptions } from "@/lib/utils/listFilters";
 import { formatCurrency } from "@/lib/utils/formatCurrency";
+import {
+  amountCellClassName,
+  formatCreditCell,
+  formatDebitCell,
+} from "@/lib/utils/ledgerAmountStyles";
+import { cn } from "@/lib/utils/cn";
 import { useUiStore } from "@/stores/uiStore";
 import type { AccountTransaction, PaymentRecord } from "@vonos/types";
 import { CatalogMetaListView } from "@/components/pages/CatalogMetaListView";
@@ -39,29 +47,34 @@ interface AccountBookRow {
   debit: number | null;
   credit: number | null;
   accountBalance: number;
+  type: "debit" | "credit";
 }
 
 export function AccountBookView({ accountId }: { accountId?: string }) {
   const openExportModal = useUiStore((state) => state.openExportModal);
+  const { dateRange, setDateRange, search, setSearch, bounds } = useListPageFilters();
+  const [typeFilter, setTypeFilter] = useState("");
 
-  const {
-    items: data,
-    hasMore,
-    pageIndex,
-    pageSize,
-    canGoPrev,
-    goNext,
-    goPrev,
-    setPageSize,
-    isLoading,
+  const apiFilters = useMemo(
+    () => ({
+      from: bounds?.from,
+      to: bounds?.to,
+      search: search.trim() || undefined,
+      type: typeFilter || undefined,
+    }),
+    [bounds?.from, bounds?.to, search, typeFilter],
+  );
 
-    isFetching,
-    error,
-  } = useServerListPage<AccountTransaction>({
+  const listPage = useServerListPage<AccountTransaction>({
     queryKey: ["account-book", accountId],
     enabled: Boolean(accountId),
-    fetchPage: (cursor, limit) => getAccountBookPage(accountId!, cursor, limit),
+    search,
+    filters: apiFilters,
+    fetchPage: (cursor, limit) =>
+      getAccountBookPage(accountId!, cursor, limit, apiFilters),
   });
+
+  const { items: data, isLoading, error } = listPage;
 
   const rows: AccountBookRow[] = useMemo(() => {
     return data.map((txn: AccountTransaction & { accountBalance?: number }) => ({
@@ -76,8 +89,11 @@ export function AccountBookView({ accountId }: { accountId?: string }) {
       debit: txn.type === "debit" ? txn.amount : null,
       credit: txn.type === "credit" ? txn.amount : null,
       accountBalance: txn.accountBalance ?? 0,
+      type: txn.type,
     }));
   }, [data]);
+
+  const filtered = rows;
 
   const columns: ColumnConfig<AccountBookRow>[] = useMemo(
     () => [
@@ -95,17 +111,27 @@ export function AccountBookView({ accountId }: { accountId?: string }) {
       {
         key: "debit",
         header: "Debit",
-        render: (row) => (row.debit != null ? formatCurrency(row.debit, "NGN") : "—"),
+        render: (row) => {
+          const cell = formatDebitCell(row.debit, "NGN");
+          return <span className={cell.className}>{cell.text}</span>;
+        },
       },
       {
         key: "credit",
         header: "Credit",
-        render: (row) => (row.credit != null ? formatCurrency(row.credit, "NGN") : "—"),
+        render: (row) => {
+          const cell = formatCreditCell(row.credit, "NGN");
+          return <span className={cell.className}>{cell.text}</span>;
+        },
       },
       {
         key: "accountBalance",
         header: "Account Balance",
-        render: (row) => formatCurrency(row.accountBalance, "NGN"),
+        render: (row) => (
+          <span className={cn(amountCellClassName("balance", row.accountBalance))}>
+            {formatCurrency(row.accountBalance, "NGN")}
+          </span>
+        ),
       },
     ],
     [],
@@ -117,7 +143,23 @@ export function AccountBookView({ accountId }: { accountId?: string }) {
       activeTab="ledger"
       onTabChange={() => {}}
       showImport={false}
-      showDateRange={false}
+      searchValue={search}
+      onSearchChange={setSearch}
+      searchPlaceholder="Search ledger…"
+      dateRange={dateRange}
+      onDateRangeChange={setDateRange}
+      filterDropdowns={[
+        {
+          id: "type",
+          label: "Type",
+          value: typeFilter,
+          onChange: setTypeFilter,
+          options: [
+            { value: "debit", label: "Debit" },
+            { value: "credit", label: "Credit" },
+          ],
+        },
+      ]}
       onExport={() =>
         openExportModal({
           title: "Export Account Book",
@@ -126,17 +168,10 @@ export function AccountBookView({ accountId }: { accountId?: string }) {
       }
     >
       <ServerPaginatedTable
-        items={rows}
+        items={filtered}
         columns={columns}
-        pageIndex={pageIndex}
-        pageSize={pageSize}
-        hasMore={hasMore}
-        canGoPrev={canGoPrev}
-        onNext={goNext}
-        onPrev={goPrev}
-        onPageSizeChange={setPageSize}
+        pagination={serverPaginationBarProps(listPage)}
         isLoading={isLoading}
-        isFetching={isFetching}
         error={error ? "Failed to load account book" : null}
         emptyState={{
           message: accountId
@@ -162,31 +197,41 @@ interface PaymentRow {
 export function PaymentsListView() {
   const { tenantId } = useRouteTenant();
   const openExportModal = useUiStore((state) => state.openExportModal);
+  const { dateRange, setDateRange, search, setSearch, bounds } = useListPageFilters();
+  const [typeFilter, setTypeFilter] = useState("");
+  const [accountFilter, setAccountFilter] = useState("");
 
-  const {
-    items: data,
-    hasMore,
-    pageIndex,
-    pageSize,
-    canGoPrev,
-    goNext,
-    goPrev,
-    setPageSize,
-    isLoading,
+  const apiFilters = useMemo(
+    () => ({
+      from: bounds?.from,
+      to: bounds?.to,
+      search: search.trim() || undefined,
+    }),
+    [bounds?.from, bounds?.to, search],
+  );
 
-    isFetching,
-    error,
-  } = useServerListPage<PaymentRecord>({
+  const listPage = useServerListPage<PaymentRecord>({
     queryKey: ["payments", tenantId],
     enabled: Boolean(tenantId),
-    fetchPage: (cursor, limit) => getPaymentsPage(tenantId!, undefined, cursor, limit),
+    search,
+    filters: {
+      ...apiFilters,
+      type: typeFilter || undefined,
+      account: accountFilter || undefined,
+    },
+    fetchPage: (cursor, limit) =>
+      getPaymentsPage(tenantId!, apiFilters, cursor, limit),
   });
+
+  const { items: data, isLoading, error } = listPage;
 
   const rows: PaymentRow[] = useMemo(
     () =>
       data.map((payment: PaymentRecord) => ({
         id: payment.id,
-        date: payment.paidOn?.slice(0, 16).replace("T", " ") ?? payment.createdAt.slice(0, 16).replace("T", " "),
+        date:
+          payment.paidOn?.slice(0, 16).replace("T", " ") ??
+          payment.createdAt.slice(0, 16).replace("T", " "),
         paymentRef: payment.paymentRefNo ?? "—",
         invoiceRef: payment.saleReference ?? "—",
         amount: payment.amount,
@@ -196,6 +241,18 @@ export function PaymentsListView() {
       })),
     [data],
   );
+
+  const accountOptions = useMemo(
+    () => uniqueFieldOptions(rows, "account").filter((o) => o.value !== "—"),
+    [rows],
+  );
+
+  const filtered = useMemo(() => {
+    let next = rows;
+    if (typeFilter) next = next.filter((row) => row.paymentType === typeFilter);
+    if (accountFilter) next = next.filter((row) => row.account === accountFilter);
+    return next;
+  }, [accountFilter, rows, typeFilter]);
 
   const columns: ColumnConfig<PaymentRow>[] = useMemo(
     () => [
@@ -234,7 +291,30 @@ export function PaymentsListView() {
       activeTab="all"
       onTabChange={() => {}}
       showImport={false}
-      showDateRange={false}
+      searchValue={search}
+      onSearchChange={setSearch}
+      searchPlaceholder="Search payments…"
+      dateRange={dateRange}
+      onDateRangeChange={setDateRange}
+      filterDropdowns={[
+        {
+          id: "type",
+          label: "Type",
+          value: typeFilter,
+          onChange: setTypeFilter,
+          options: [
+            { value: "Payment", label: "Payment" },
+            { value: "Return", label: "Return" },
+          ],
+        },
+        {
+          id: "account",
+          label: "Account",
+          value: accountFilter,
+          onChange: setAccountFilter,
+          options: accountOptions,
+        },
+      ]}
       onExport={() =>
         openExportModal({
           title: "Export Payments",
@@ -243,17 +323,10 @@ export function PaymentsListView() {
       }
     >
       <ServerPaginatedTable
-        items={rows}
+        items={filtered}
         columns={columns}
-        pageIndex={pageIndex}
-        pageSize={pageSize}
-        hasMore={hasMore}
-        canGoPrev={canGoPrev}
-        onNext={goNext}
-        onPrev={goPrev}
-        onPageSizeChange={setPageSize}
+        pagination={serverPaginationBarProps(listPage)}
         isLoading={isLoading}
-        isFetching={isFetching}
         error={error ? "Failed to load payments" : null}
         emptyState={{ message: "No payments recorded yet." }}
       />

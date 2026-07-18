@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/atoms/Button";
+import { MenuSelect } from "@/components/molecules/MenuSelect";
 import { DataTable, type ColumnConfig } from "@/components/organisms/DataTable";
 import { ListPageShell } from "@/components/organisms/ListPageShell";
 import { EmptyState } from "@/components/atoms/EmptyState";
@@ -66,32 +67,27 @@ export function InvoiceSettingsView() {
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
             <label className="mb-1 block text-sm font-medium text-foreground">Invoice Scheme</label>
-            <select
-              className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm"
+            <MenuSelect
               value={schemeId}
-              onChange={(e) => setSchemeId(e.target.value)}
-            >
-              {settings.schemes.map((scheme) => (
-                <option key={scheme.id} value={scheme.id}>
-                  {scheme.name}
-                  {scheme.prefix ? ` (${scheme.prefix})` : ""}
-                </option>
-              ))}
-            </select>
+              onChange={setSchemeId}
+              options={settings.schemes.map((scheme) => ({
+                value: scheme.id,
+                label: scheme.prefix
+                  ? `${scheme.name} (${scheme.prefix})`
+                  : scheme.name,
+              }))}
+            />
           </div>
           <div>
             <label className="mb-1 block text-sm font-medium text-foreground">Invoice Layout</label>
-            <select
-              className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm"
+            <MenuSelect
               value={layoutId}
-              onChange={(e) => setLayoutId(e.target.value)}
-            >
-              {settings.layouts.map((layout) => (
-                <option key={layout.id} value={layout.id}>
-                  {layout.name} ({layout.design})
-                </option>
-              ))}
-            </select>
+              onChange={setLayoutId}
+              options={settings.layouts.map((layout) => ({
+                value: layout.id,
+                label: `${layout.name} (${layout.design})`,
+              }))}
+            />
           </div>
         </div>
 
@@ -107,8 +103,12 @@ export function InvoiceSettingsView() {
         </div>
 
         <div className="flex justify-end">
-          <Button disabled={saveMutation.isPending} onClick={() => saveMutation.mutate()}>
-            {saveMutation.isPending ? "Saving…" : "Save Settings"}
+          <Button
+            isLoading={saveMutation.isPending}
+            loadingText="Saving…"
+            onClick={() => saveMutation.mutate()}
+          >
+            Save Settings
           </Button>
         </div>
       </div>
@@ -128,22 +128,30 @@ export function BarcodeSettingsView() {
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
             <label className="mb-1 block text-sm font-medium text-foreground">Barcode Type</label>
-            <select className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm">
-              <option>C128</option>
-              <option>C39</option>
-              <option>EAN-13</option>
-              <option>EAN-8</option>
-              <option>UPC-A</option>
-              <option>UPC-E</option>
-            </select>
+            <MenuSelect
+              value="C128"
+              onChange={() => {}}
+              options={[
+                { value: "C128", label: "C128" },
+                { value: "C39", label: "C39" },
+                { value: "EAN-13", label: "EAN-13" },
+                { value: "EAN-8", label: "EAN-8" },
+                { value: "UPC-A", label: "UPC-A" },
+                { value: "UPC-E", label: "UPC-E" },
+              ]}
+            />
           </div>
           <div>
             <label className="mb-1 block text-sm font-medium text-foreground">Sticker Sheet</label>
-            <select className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm">
-              <option>20 per sheet (4 × 5)</option>
-              <option>30 per sheet (3 × 10)</option>
-              <option>40 per sheet (4 × 10)</option>
-            </select>
+            <MenuSelect
+              value="20"
+              onChange={() => {}}
+              options={[
+                { value: "20", label: "20 per sheet (4 × 5)" },
+                { value: "30", label: "30 per sheet (3 × 10)" },
+                { value: "40", label: "40 per sheet (4 × 10)" },
+              ]}
+            />
           </div>
         </div>
 
@@ -231,14 +239,15 @@ export function ReceiptPrintersView() {
               value={name}
               onChange={(e) => setName(e.target.value)}
             />
-            <select
-              className="rounded-md border border-border bg-surface px-3 py-2 text-sm"
+            <MenuSelect
               value={printerType}
-              onChange={(e) => setPrinterType(e.target.value)}
-            >
-              <option value="browser">Browser</option>
-              <option value="network">Network</option>
-            </select>
+              searchable={false}
+              onChange={setPrinterType}
+              options={[
+                { value: "browser", label: "Browser" },
+                { value: "network", label: "Network" },
+              ]}
+            />
             <input
               className="rounded-md border border-border bg-surface px-3 py-2 text-sm"
               placeholder="Connection (optional)"

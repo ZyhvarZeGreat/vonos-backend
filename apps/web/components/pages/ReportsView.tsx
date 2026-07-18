@@ -213,7 +213,7 @@ export function ReportsDashboardBody({
           {dashboard.charts.map((chart) => (
             <div
               key={chart.id}
-              className="rounded-xl border border-border bg-card p-6 shadow-card"
+              className="rounded-xl border border-border bg-card p-6 shadow-card sm:p-8"
             >
               <ChartHeader
                 title={chart.title}
@@ -238,7 +238,7 @@ export function ReportsDashboardBody({
       ) : null}
 
       {dashboard?.byEntity && dashboard.byEntity.length > 0 ? (
-        <div className="rounded-xl border border-border bg-card p-6 shadow-card">
+        <div className="rounded-xl border border-border bg-card p-6 shadow-card sm:p-8">
           <ChartHeader
             title="By entity"
             subtitle="Roll-up for the selected report across all operating entities"
@@ -285,7 +285,7 @@ export function ReportsDashboardBody({
       ) : null}
 
       {dashboard?.table && dashboard.table.rows.length > 0 ? (
-        <div className="rounded-xl border border-border bg-card p-6 shadow-card">
+        <div className="rounded-xl border border-border bg-card p-6 shadow-card sm:p-8">
           <ChartHeader
             title={onEntityReportsClick ? "By entity" : "Detail"}
             subtitle={
@@ -398,7 +398,7 @@ export function ReportsView({ tenantCode }: { tenantCode: TenantCode }) {
       <ReportsDashboardBody
         tenantCode={tenantCode}
         dashboard={query.data}
-        isLoading={query.isLoading}
+        isLoading={query.isLoading || query.isFetching}
         error={query.error}
         dateRange={dateRange}
         setDateRange={setDateRange}

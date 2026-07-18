@@ -3,6 +3,7 @@ import type {
   MovementStatus,
   MovementType,
   StockMovement,
+  StockMovementFilters as StockMovementApiFilters,
   StockMovementListRow,
 } from "@vonos/types";
 import { apiFetch, withTenantQuery } from "@/lib/api/client";
@@ -17,13 +18,7 @@ import {
 
 export type { StockMovementListRow };
 
-export interface StockMovementFilters {
-  type?: MovementType;
-  status?: MovementStatus;
-  source?: MovementSource;
-  cursor?: string;
-  limit?: number;
-}
+export type StockMovementFilters = StockMovementApiFilters;
 
 function buildStockMovementsPath(
   tenantId: string,
@@ -35,6 +30,15 @@ function buildStockMovementsPath(
   if (filters?.type) params.set("type", filters.type);
   if (filters?.status) params.set("status", filters.status);
   if (filters?.source) params.set("source", filters.source);
+  if (filters?.locationCode) params.set("locationCode", filters.locationCode);
+  if (filters?.supplierId) params.set("supplierId", filters.supplierId);
+  if (filters?.paymentStatus) params.set("paymentStatus", filters.paymentStatus);
+  if (filters?.paymentMethod) params.set("paymentMethod", filters.paymentMethod);
+  if (filters?.from) params.set("from", filters.from);
+  if (filters?.to) params.set("to", filters.to);
+  if (filters?.search) params.set("search", filters.search);
+  if (filters?.sortBy) params.set("sortBy", filters.sortBy);
+  if (filters?.sortDir) params.set("sortDir", filters.sortDir);
   if (cursor) params.set("cursor", cursor);
   if (limit) params.set("limit", String(limit));
   const query = params.toString();
@@ -115,6 +119,8 @@ export interface CreateStockMovementRequest {
   supplierId?: string;
   source?: MovementSource;
   locationCode?: string;
+  paymentStatus?: string;
+  paymentMethod?: string;
   date?: string;
 }
 

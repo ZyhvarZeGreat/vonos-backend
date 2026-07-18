@@ -6,6 +6,7 @@ import { Printer, X } from "lucide-react";
 export interface DocumentPreviewModalProps {
   open: boolean;
   title: string;
+  titleClassName?: string;
   onClose: () => void;
   children: ReactNode;
 }
@@ -13,6 +14,7 @@ export interface DocumentPreviewModalProps {
 export function DocumentPreviewModal({
   open,
   title,
+  titleClassName,
   onClose,
   children,
 }: DocumentPreviewModalProps) {
@@ -22,7 +24,13 @@ export function DocumentPreviewModal({
     <div className="invoice-print-overlay fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-4">
       <div className="invoice-print-dialog my-4 w-full max-w-4xl rounded-lg border border-border bg-card shadow-xl">
         <div className="no-print flex items-center justify-between gap-2 border-b border-border px-4 py-3">
-          <p className="text-sm font-medium text-foreground">{title}</p>
+          <p
+            className={
+              titleClassName ?? "text-sm font-medium text-foreground"
+            }
+          >
+            {title}
+          </p>
           <div className="flex items-center gap-2">
             <button
               type="button"

@@ -1,7 +1,15 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import type { ReportsDashboard } from "@vonos/types";
-import { formatCurrency } from "@/lib/utils/formatCurrency";
+import { formatCurrency, formatNumber } from "@/lib/utils/formatCurrency";
+import {
+  reportColumnTotalKind,
+  resolveReportColumnTotals,
+} from "@/lib/utils/reportTableTotals";
+import { cn } from "@/lib/utils/cn";
+import { CursorPaginationBar } from "@/components/molecules/CursorPaginationBar";
+import { TABLE_REPORT_PAGE_SIZE } from "@/lib/registries/reportTableUi";
 
 function kpiValue(
   report: ReportsDashboard,
@@ -25,6 +33,24 @@ export function RegisterReportPanel({
   const transactions = kpiValue(report, "transactionCount");
   const avgDaily = kpiValue(report, "avgDaily");
   const table = report.table;
+  const totals = table
+    ? resolveReportColumnTotals(table.columns, table.rows, table.columnTotals)
+    : {};
+  const hasTotals = Object.keys(totals).length > 0;
+  const totalLabelColIndex = table
+    ? table.columns.findIndex((col) => !(col.key in totals))
+    : -1;
+
+  const [pageIndex, setPageIndex] = useState(0);
+  const [pageSize, setPageSize] = useState(TABLE_REPORT_PAGE_SIZE);
+
+  useEffect(() => {
+    setPageIndex(0);
+  }, [table?.rows, pageSize]);
+
+  const pageRows =
+    table?.rows.slice(pageIndex * pageSize, pageIndex * pageSize + pageSize) ??
+    [];
 
   return (
     <div className="space-y-6" data-print-root>
@@ -41,7 +67,7 @@ export function RegisterReportPanel({
       ) : null}
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <div className="rounded-xl border border-border bg-card px-4 py-3 shadow-card">
+        <div className="rounded-xl border border-border bg-card px-5 py-4 shadow-card sm:px-6 sm:py-5">
           <p className="text-xs font-semibold uppercase tracking-wide text-muted">
             Register Revenue
           </p>
@@ -49,7 +75,7 @@ export function RegisterReportPanel({
             {formatCurrency(revenue?.value ?? 0, currency)}
           </p>
         </div>
-        <div className="rounded-xl border border-border bg-card px-4 py-3 shadow-card">
+        <div className="rounded-xl border border-border bg-card px-5 py-4 shadow-card sm:px-6 sm:py-5">
           <p className="text-xs font-semibold uppercase tracking-wide text-muted">
             Trading Days
           </p>
@@ -57,7 +83,7 @@ export function RegisterReportPanel({
             {tradingDays?.value ?? 0}
           </p>
         </div>
-        <div className="rounded-xl border border-border bg-card px-4 py-3 shadow-card">
+        <div className="rounded-xl border border-border bg-card px-5 py-4 shadow-card sm:px-6 sm:py-5">
           <p className="text-xs font-semibold uppercase tracking-wide text-muted">
             Transactions
           </p>
@@ -65,7 +91,7 @@ export function RegisterReportPanel({
             {transactions?.value ?? 0}
           </p>
         </div>
-        <div className="rounded-xl border border-border bg-card px-4 py-3 shadow-card">
+        <div className="rounded-xl border border-border bg-card px-5 py-4 shadow-card sm:px-6 sm:py-5">
           <p className="text-xs font-semibold uppercase tracking-wide text-muted">
             Avg Daily Revenue
           </p>
@@ -76,37 +102,102 @@ export function RegisterReportPanel({
       </div>
 
       {table?.rows.length ? (
-        <div className="overflow-x-auto rounded-xl border border-border bg-card">
-          <table className="w-full min-w-[24rem] text-sm">
-            <thead>
-              <tr className="border-b border-border bg-[var(--color-surface-muted)]/50 text-left text-xs text-muted">
-                {table.columns.map((col) => (
-                  <th key={col.key} className="px-4 py-2.5 font-medium">
-                    {col.header}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {table.rows.map((row, index) => (
-                <tr key={String(row.id ?? index)} className="border-b border-border/60">
-                  {table.columns.map((col) => {
-                    const raw = row[col.key];
-                    const display =
-                      (col.key === "revenue" || col.key === "avgTicket") &&
-                      typeof raw === "number"
-                        ? formatCurrency(raw, currency)
-                        : String(raw ?? "—");
-                    return (
-                      <td key={col.key} className="px-4 py-2 text-foreground">
-                        {display}
-                      </td>
-                    );
-                  })}
+        <div className="overflow-hidden rounded-xl border border-border bg-card">
+          <CursorPaginationBar
+            pageIndex={pageIndex}
+            pageSize={pageSize}
+            itemCount={pageRows.length}
+            hasMore={(pageIndex + 1) * pageSize < table.rows.length}
+            canGoPrev={pageIndex > 0}
+            onPrev={() => setPageIndex((page) => Math.max(0, page - 1))}
+            onNext={() => setPageIndex((page) => page + 1)}
+            onPageSizeChange={(size) => {
+              setPageSize(size);
+              setPageIndex(0);
+            }}
+            className="border-b border-t-0 border-[var(--color-border-subtle)]"
+          />
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[24rem] text-sm">
+              <thead>
+                <tr className="border-b border-border bg-[var(--color-surface-muted)]/50 text-left text-xs text-muted">
+                  {table.columns.map((col) => (
+                    <th key={col.key} className="px-4 py-2.5 font-medium">
+                      {col.header}
+                    </th>
+                  ))}
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {pageRows.map((row, index) => (
+                  <tr key={String(row.id ?? index)} className="border-b border-border/60">
+                    {table.columns.map((col) => {
+                      const raw = row[col.key];
+                      const kind = reportColumnTotalKind(col);
+                      const display =
+                        (kind === "currency" ||
+                          col.key === "revenue" ||
+                          col.key === "avgTicket") &&
+                        typeof raw === "number"
+                          ? formatCurrency(raw, currency)
+                          : String(raw ?? "—");
+                      return (
+                        <td
+                          key={col.key}
+                          className={cn(
+                            "px-4 py-2 text-foreground",
+                            kind || col.key === "revenue" || col.key === "avgTicket"
+                              ? "text-right tabular-nums"
+                              : undefined,
+                          )}
+                        >
+                          {display}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+              {hasTotals ? (
+                <tfoot>
+                  <tr className="border-t-2 border-border bg-[var(--color-surface-muted)]/70 text-sm font-semibold">
+                    {table.columns.map((col, index) => {
+                      const total = totals[col.key];
+                      if (total) {
+                        return (
+                          <td key={col.key} className="px-4 py-3 text-right tabular-nums">
+                            {total.kind === "currency"
+                              ? formatCurrency(total.value, currency)
+                              : formatNumber(total.value)}
+                          </td>
+                        );
+                      }
+                      const showLabel =
+                        index === (totalLabelColIndex >= 0 ? totalLabelColIndex : 0);
+                      return (
+                        <td key={col.key} className="px-4 py-3">
+                          {showLabel ? "Total:" : null}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                </tfoot>
+              ) : null}
+            </table>
+          </div>
+          <CursorPaginationBar
+            pageIndex={pageIndex}
+            pageSize={pageSize}
+            itemCount={pageRows.length}
+            hasMore={(pageIndex + 1) * pageSize < table.rows.length}
+            canGoPrev={pageIndex > 0}
+            onPrev={() => setPageIndex((page) => Math.max(0, page - 1))}
+            onNext={() => setPageIndex((page) => page + 1)}
+            onPageSizeChange={(size) => {
+              setPageSize(size);
+              setPageIndex(0);
+            }}
+          />
         </div>
       ) : (
         <p className="text-sm text-muted">No register activity for this period.</p>

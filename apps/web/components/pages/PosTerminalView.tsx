@@ -4,13 +4,14 @@ import { useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { Trash2 } from "lucide-react";
-import type { Item } from "@vonos/types";
 import { Button } from "@/components/atoms/Button";
 import { Input } from "@/components/atoms/Input";
 import { Select } from "@/components/atoms/Select";
-import { ProductItemSearch } from "@/components/molecules/ProductItemSearch";
+import {
+  ProductItemSearch,
+  type CatalogPartPick,
+} from "@/components/molecules/ProductItemSearch";
 import { createSale } from "@/lib/api/sales";
-import { itemSellPrice } from "@/lib/utils/itemPricing";
 import { useAppMutation } from "@/lib/hooks/useAppMutation";
 import {
   assertBusinessLocationSelected,
@@ -51,23 +52,27 @@ export function PosTerminalView() {
     [lines],
   );
 
-  const addLineFromItem = (item: Item) => {
+  const addLineFromItem = (pick: CatalogPartPick) => {
+    if (!pick.itemId) return;
+    const itemId = pick.itemId;
     setLines((prev) => {
-      const existing = prev.find((row) => row.itemId === item.id);
+      const existing = prev.find((row) => row.itemId === itemId);
       if (existing) {
         return prev.map((row) =>
-          row.itemId === item.id ? { ...row, quantity: row.quantity + 1 } : row,
+          row.itemId === itemId
+            ? { ...row, quantity: row.quantity + 1 }
+            : row,
         );
       }
       return [
         ...prev,
         {
-          key: item.id,
-          itemId: item.id,
-          sku: item.sku,
-          name: item.name,
+          key: itemId,
+          itemId,
+          sku: pick.sku,
+          name: pick.name,
           quantity: 1,
-          unitPrice: itemSellPrice(item),
+          unitPrice: pick.sellPrice || pick.costPrice || 0,
         },
       ];
     });
@@ -131,7 +136,10 @@ export function PosTerminalView() {
           <div className="rounded-lg border border-border bg-card p-3">
             <ProductItemSearch
               tenantId={tenantId}
+              tenantCode={config?.code}
               retailOnly
+              includeWarehouse
+              allowCustom={false}
               onSelect={addLineFromItem}
             />
           </div>
@@ -250,10 +258,12 @@ export function PosTerminalView() {
           <div className="flex flex-col gap-2">
             <Button
               size="sm"
-              disabled={mutation.isPending || lines.length === 0}
+              isLoading={mutation.isPending}
+              loadingText="Processing…"
+              disabled={lines.length === 0}
               onClick={() => mutation.mutate()}
             >
-              {mutation.isPending ? "Processing…" : "Complete sale"}
+              Complete sale
             </Button>
             <Button
               variant="secondary"

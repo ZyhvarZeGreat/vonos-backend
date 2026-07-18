@@ -1,22 +1,39 @@
 "use client";
 
-import { useEffect } from "react";
-import { WarehouseInventoryView } from "@/components/pages/WarehouseInventoryView";
-import { CatalogListView } from "@/components/pages/EntityListViews";
-import { useRouteTenant } from "@/lib/hooks/useRouteTenant";
-import { useUiStore } from "@/stores/uiStore";
+import { useQueryClient } from "@tanstack/react-query";
+import { AddProductForm } from "@/components/organisms/AddProductForm";
+import { useRouteTenant, useTenantId } from "@/lib/hooks/useRouteTenant";
 
 export function AddProductView() {
-  const openAddProductModal = useUiStore((state) => state.openAddProductModal);
-  const { tenantCode, config } = useRouteTenant();
-  const retailMode = config?.archetype === "transaction";
+  const tenantId = useTenantId();
+  const { config, tenantCode } = useRouteTenant();
+  const queryClient = useQueryClient();
+  const retailMode = config?.archetype === "transaction" && tenantCode === "VC";
 
-  useEffect(() => {
-    openAddProductModal(retailMode && tenantCode === "VC" ? "menu-item" : "item");
-  }, [tenantCode, openAddProductModal, retailMode]);
-
-  if (retailMode) {
-    return <CatalogListView />;
+  if (!tenantId) {
+    return (
+      <div className="rounded-lg border border-border bg-card p-6 text-sm text-muted">
+        Select a business entity to add a product.
+      </div>
+    );
   }
-  return <WarehouseInventoryView />;
+
+  return (
+    <div className="space-y-4">
+      <h1 className="text-xl font-semibold tracking-tight text-foreground">
+        Add new product
+      </h1>
+      <AddProductForm
+        tenantId={tenantId}
+        tenantConfig={config}
+        retailMode={retailMode}
+        variant="page"
+        onSuccess={async () => {
+          await queryClient.invalidateQueries({ queryKey: ["items"] });
+          await queryClient.invalidateQueries({ queryKey: ["catalog"] });
+          await queryClient.invalidateQueries({ queryKey: ["catalog-meta"] });
+        }}
+      />
+    </div>
+  );
 }

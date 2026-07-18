@@ -24,6 +24,9 @@ export interface UserListOptions {
   allTenants?: boolean;
   cursor?: string;
   limit?: number;
+  search?: string;
+  role?: string;
+  status?: string;
 }
 
 async function fetchUsersRaw(
@@ -34,6 +37,9 @@ async function fetchUsersRaw(
 ): Promise<UserListRow[]> {
   const params = new URLSearchParams();
   if (options?.allTenants) params.set("allTenants", "true");
+  if (options?.search?.trim()) params.set("search", options.search.trim());
+  if (options?.role) params.set("role", options.role);
+  if (options?.status) params.set("status", options.status);
   if (cursor) params.set("cursor", cursor);
   if (limit) params.set("limit", String(limit));
 
@@ -57,10 +63,20 @@ export async function getUsersPage(
   tenantId: string,
   cursor: string | undefined,
   limit = DEFAULT_TABLE_PAGE_SIZE,
+  filters: { search?: string; role?: string; status?: string } = {},
 ): Promise<ListPage<UserListRow>> {
   return fetchListPage(
     (pageCursor, pageLimit) =>
-      fetchUsersRaw(tenantId, undefined, pageCursor, pageLimit),
+      fetchUsersRaw(
+        tenantId,
+        {
+          search: filters.search,
+          role: filters.role,
+          status: filters.status,
+        },
+        pageCursor,
+        pageLimit,
+      ),
     cursor,
     limit,
   );
@@ -69,10 +85,21 @@ export async function getUsersPage(
 export async function getAllTenantUsersPage(
   cursor: string | undefined,
   limit = DEFAULT_TABLE_PAGE_SIZE,
+  filters: { search?: string; role?: string; status?: string } = {},
 ): Promise<ListPage<UserListRow>> {
   return fetchListPage(
     (pageCursor, pageLimit) =>
-      fetchUsersRaw(null, { allTenants: true }, pageCursor, pageLimit),
+      fetchUsersRaw(
+        null,
+        {
+          allTenants: true,
+          search: filters.search,
+          role: filters.role,
+          status: filters.status,
+        },
+        pageCursor,
+        pageLimit,
+      ),
     cursor,
     limit,
   );

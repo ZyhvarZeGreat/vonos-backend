@@ -15,7 +15,6 @@ import { getAllTenantUsersPage, getUsersPage, type UserListRow } from "@/lib/api
 import { useServerListPage } from "@/lib/hooks/useServerListPage";
 import { useRouteTenant } from "@/lib/hooks/useRouteTenant";
 import { useListPageFilters } from "@/lib/hooks/useListPageFilters";
-import { filterBySearch, uniqueFieldOptions } from "@/lib/utils/listFilters";
 import { hasPermission } from "@/lib/utils/permissions";
 import { useAuthStore } from "@/stores/authStore";
 import { formatCurrency } from "@/lib/utils/formatCurrency";
@@ -173,35 +172,43 @@ export function HrView({ allTenants = false, embedded = false }: HrViewProps) {
     queryKey: ["users", allTenants ? "all" : tenantId],
     enabled: activeTab === "app-access" && (allTenants || Boolean(tenantId)),
     search,
+    filters: { role: roleFilter || undefined, status: statusFilter || undefined },
     fetchPage: (cursor, limit) =>
       allTenants
-        ? getAllTenantUsersPage(cursor, limit)
-        : getUsersPage(tenantId!, cursor, limit),
+        ? getAllTenantUsersPage(cursor, limit, {
+            search: search.trim() || undefined,
+            role: roleFilter || undefined,
+            status: statusFilter || undefined,
+          })
+        : getUsersPage(tenantId!, cursor, limit, {
+            search: search.trim() || undefined,
+            role: roleFilter || undefined,
+            status: statusFilter || undefined,
+          }),
   });
 
   const workforce = workforceQuery.data ?? [];
 
-  const filteredUsers = useMemo(() => {
-    let rows = users;
-    if (roleFilter) rows = rows.filter((u) => u.role === roleFilter);
-    if (statusFilter) rows = rows.filter((u) => u.status === statusFilter);
-    return filterBySearch(rows, search, ["name", "email", "tenantCode"]);
-  }, [roleFilter, search, statusFilter, users]);
+  const filteredUsers = users;
 
-  const filteredWorkforce = useMemo(() => {
-    if (!search || activeTab !== "workforce") return workforce;
-    const q = search.toLowerCase();
-    return workforce.filter(
-      (row) =>
-        row.employeeName.toLowerCase().includes(q) ||
-        (row.employeeId ?? "").includes(q) ||
-        (row.locationCode ?? "").toLowerCase().includes(q) ||
-        (row.tenantCode ?? "").toLowerCase().includes(q),
-    );
-  }, [activeTab, search, workforce]);
+  // Workforce API already accepts search — keep result as returned.
+  const filteredWorkforce = workforce;
 
-  const roleOptions = useMemo(() => uniqueFieldOptions(users, "role"), [users]);
-  const statusOptions = useMemo(() => uniqueFieldOptions(users, "status"), [users]);
+  const roleOptions = useMemo(
+    () =>
+      (["viewer", "staff", "manager", "admin", "super_admin"] as const).map(
+        (value) => ({ value, label: value }),
+      ),
+    [],
+  );
+  const statusOptions = useMemo(
+    () =>
+      (["active", "invited", "suspended"] as const).map((value) => ({
+        value,
+        label: value,
+      })),
+    [],
+  );
 
   const activeCount = users.filter((u) => u.status === "active").length;
   const invitedCount = users.filter((u) => u.status === "invited").length;

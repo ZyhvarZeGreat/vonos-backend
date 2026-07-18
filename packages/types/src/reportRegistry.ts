@@ -27,7 +27,10 @@ export interface ReportRegistryEntry {
   groupRollup?: boolean;
 }
 
-/** Legacy Ultimate POS report menu → Vonos report registry (one template, config-driven). */
+/**
+ * Legacy Ultimate POS report menu → Vonos report registry.
+ * Same report list on every tenant (archetype/module filters disabled for nav parity).
+ */
 export const REPORT_REGISTRY: ReportRegistryEntry[] = [
   {
     id: "profit-loss",
@@ -42,7 +45,7 @@ export const REPORT_REGISTRY: ReportRegistryEntry[] = [
     id: "purchase-sale",
     label: "Purchase & Sale",
     slug: "report-purchase-sale",
-    archetypes: ["stock", "transaction"],
+    archetypes: ["*"],
     source: { kind: "sales", handler: "purchase-sale" },
     exportable: true,
     groupRollup: true,
@@ -51,8 +54,7 @@ export const REPORT_REGISTRY: ReportRegistryEntry[] = [
     id: "tax",
     label: "Tax Report",
     slug: "report-tax",
-    archetypes: ["transaction"],
-    requiredModules: ["sales"],
+    archetypes: ["*"],
     source: { kind: "sales", handler: "tax" },
     exportable: true,
     groupRollup: true,
@@ -61,7 +63,7 @@ export const REPORT_REGISTRY: ReportRegistryEntry[] = [
     id: "supplier-customer",
     label: "Supplier & Customer Report",
     slug: "report-supplier-customer",
-    archetypes: ["stock", "transaction", "job"],
+    archetypes: ["*"],
     source: { kind: "contacts", handler: "summary" },
     exportable: true,
     groupRollup: true,
@@ -70,7 +72,7 @@ export const REPORT_REGISTRY: ReportRegistryEntry[] = [
     id: "customer-groups",
     label: "Customer Groups Report",
     slug: "report-customer-groups",
-    archetypes: ["transaction", "job", "appointment"],
+    archetypes: ["*"],
     source: { kind: "contacts", handler: "customer-groups" },
     exportable: true,
     groupRollup: true,
@@ -79,8 +81,7 @@ export const REPORT_REGISTRY: ReportRegistryEntry[] = [
     id: "stock",
     label: "Stock Report",
     slug: "report-stock",
-    archetypes: ["stock"],
-    requiredModules: ["inventory"],
+    archetypes: ["*"],
     source: { kind: "stock", handler: "valuation" },
     exportable: true,
     groupRollup: true,
@@ -89,7 +90,7 @@ export const REPORT_REGISTRY: ReportRegistryEntry[] = [
     id: "low-stock",
     label: "Low Stock Report",
     slug: "report-low-stock",
-    archetypes: ["stock", "transaction"],
+    archetypes: ["*"],
     source: { kind: "stock", handler: "lowstock" },
     exportable: true,
     groupRollup: true,
@@ -98,7 +99,7 @@ export const REPORT_REGISTRY: ReportRegistryEntry[] = [
     id: "expiry",
     label: "Stock Expiry Report",
     slug: "report-expiry",
-    archetypes: ["stock", "transaction"],
+    archetypes: ["*"],
     source: { kind: "stock", handler: "expiry" },
     exportable: true,
     groupRollup: false,
@@ -107,8 +108,7 @@ export const REPORT_REGISTRY: ReportRegistryEntry[] = [
     id: "stock-details",
     label: "Product Stock Details",
     slug: "report-stock-details",
-    archetypes: ["stock"],
-    requiredModules: ["inventory"],
+    archetypes: ["*"],
     source: { kind: "stock", handler: "details" },
     exportable: true,
     groupRollup: false,
@@ -117,7 +117,7 @@ export const REPORT_REGISTRY: ReportRegistryEntry[] = [
     id: "trending",
     label: "Trending Products",
     slug: "report-trending",
-    archetypes: ["transaction", "stock"],
+    archetypes: ["*"],
     source: { kind: "product", handler: "trending" },
     exportable: true,
     groupRollup: true,
@@ -126,7 +126,7 @@ export const REPORT_REGISTRY: ReportRegistryEntry[] = [
     id: "items",
     label: "Items Report",
     slug: "report-items",
-    archetypes: ["stock", "transaction"],
+    archetypes: ["*"],
     source: { kind: "product", handler: "items" },
     exportable: true,
     groupRollup: true,
@@ -135,8 +135,7 @@ export const REPORT_REGISTRY: ReportRegistryEntry[] = [
     id: "product-purchase",
     label: "Product Purchase Report",
     slug: "report-product-purchase",
-    archetypes: ["stock"],
-    requiredModules: ["purchases"],
+    archetypes: ["*"],
     source: { kind: "product", handler: "purchase" },
     exportable: true,
     groupRollup: true,
@@ -145,7 +144,7 @@ export const REPORT_REGISTRY: ReportRegistryEntry[] = [
     id: "product-sell",
     label: "Product Sell Report",
     slug: "report-product-sell",
-    archetypes: ["transaction", "stock"],
+    archetypes: ["*"],
     source: { kind: "product", handler: "sell" },
     exportable: true,
     groupRollup: true,
@@ -154,7 +153,7 @@ export const REPORT_REGISTRY: ReportRegistryEntry[] = [
     id: "purchase-payment",
     label: "Purchase Payment Report",
     slug: "report-purchase-payment",
-    archetypes: ["stock", "transaction"],
+    archetypes: ["*"],
     source: { kind: "payments", handler: "purchase" },
     exportable: true,
     groupRollup: true,
@@ -163,7 +162,7 @@ export const REPORT_REGISTRY: ReportRegistryEntry[] = [
     id: "sell-payment",
     label: "Sell Payment Report",
     slug: "report-sell-payment",
-    archetypes: ["transaction"],
+    archetypes: ["*"],
     source: { kind: "payments", handler: "sell" },
     exportable: true,
     groupRollup: true,
@@ -181,8 +180,7 @@ export const REPORT_REGISTRY: ReportRegistryEntry[] = [
     id: "register",
     label: "Register Report",
     slug: "report-register",
-    archetypes: ["transaction"],
-    requiredModules: ["pos"],
+    archetypes: ["*"],
     source: { kind: "sales", handler: "register" },
     exportable: true,
     groupRollup: true,
@@ -191,7 +189,7 @@ export const REPORT_REGISTRY: ReportRegistryEntry[] = [
     id: "sales-rep",
     label: "Sales Representative Report",
     slug: "report-sales-rep",
-    archetypes: ["transaction", "job", "appointment"],
+    archetypes: ["*"],
     source: { kind: "sales", handler: "sales-rep" },
     exportable: true,
     groupRollup: true,
@@ -200,8 +198,7 @@ export const REPORT_REGISTRY: ReportRegistryEntry[] = [
     id: "service-staff",
     label: "Service Staff Report",
     slug: "report-service-staff",
-    archetypes: ["transaction"],
-    requiredModules: ["orders"],
+    archetypes: ["*"],
     source: { kind: "sales", handler: "service-staff" },
     exportable: true,
     groupRollup: false,
@@ -219,8 +216,7 @@ export const REPORT_REGISTRY: ReportRegistryEntry[] = [
     id: "balance-sheet",
     label: "Balance Sheet",
     slug: "balance-sheet",
-    archetypes: ["stock", "transaction"],
-    requiredModules: ["paymentAccounts"],
+    archetypes: ["*"],
     source: { kind: "payment-accounts", handler: "balance-sheet" },
     exportable: true,
     groupRollup: false,
@@ -229,8 +225,7 @@ export const REPORT_REGISTRY: ReportRegistryEntry[] = [
     id: "trial-balance",
     label: "Trial Balance",
     slug: "trial-balance",
-    archetypes: ["stock", "transaction"],
-    requiredModules: ["paymentAccounts"],
+    archetypes: ["*"],
     source: { kind: "payment-accounts", handler: "trial-balance" },
     exportable: true,
     groupRollup: false,
@@ -239,8 +234,7 @@ export const REPORT_REGISTRY: ReportRegistryEntry[] = [
     id: "cash-flow",
     label: "Cash Flow",
     slug: "cash-flow",
-    archetypes: ["stock", "transaction"],
-    requiredModules: ["paymentAccounts"],
+    archetypes: ["*"],
     source: { kind: "payment-accounts", handler: "cash-flow" },
     exportable: true,
     groupRollup: false,
@@ -249,8 +243,7 @@ export const REPORT_REGISTRY: ReportRegistryEntry[] = [
     id: "payment-account-report",
     label: "Payment Account Report",
     slug: "payment-account-report",
-    archetypes: ["stock", "transaction"],
-    requiredModules: ["paymentAccounts"],
+    archetypes: ["*"],
     source: { kind: "payment-accounts", handler: "account-summary" },
     exportable: true,
     groupRollup: false,
@@ -265,15 +258,10 @@ export function reportEntryBySlug(slug: string): ReportRegistryEntry | undefined
   return REPORT_REGISTRY.find((entry) => entry.slug === slug);
 }
 
+/** Full report list for every tenant — same sidebar / hub everywhere. */
 export function reportsForArchetype(
-  archetype: Archetype,
-  enabledModules: string[],
+  _archetype: Archetype,
+  _enabledModules: string[],
 ): ReportRegistryEntry[] {
-  return REPORT_REGISTRY.filter((entry) => {
-    const archetypeOk =
-      entry.archetypes.includes("*") || entry.archetypes.includes(archetype);
-    if (!archetypeOk) return false;
-    if (!entry.requiredModules?.length) return true;
-    return entry.requiredModules.every((mod) => enabledModules.includes(mod));
-  });
+  return REPORT_REGISTRY;
 }

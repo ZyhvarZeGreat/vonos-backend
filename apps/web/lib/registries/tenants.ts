@@ -81,9 +81,17 @@ export function getTenantCodeFromId(tenantId: string | null): TenantCode | null 
 
 export const ENTITY_LIST = Object.values(TENANT_REGISTRY);
 
+/**
+ * Display order for Vonos Autos Group surfaces (admin overview, switcher, etc.).
+ * VA leads so Automotive is the first card on Group Overview.
+ */
+export const AUTOS_GROUP_ORDER = ["VA", "VW", "VISP", "VSP"] as const satisfies ReadonlyArray<
+  Extract<(typeof TENANT_REGISTRY)[TenantCode]["code"], TenantCode>
+>;
+
 /** Entities that belong to the Vonos Autos Group (VAG) admin roll-up. */
-export const AUTOS_GROUP_ENTITIES = ENTITY_LIST.filter(
-  (entity) => entity.group === "autos",
+export const AUTOS_GROUP_ENTITIES = AUTOS_GROUP_ORDER.map(
+  (code) => TENANT_REGISTRY[code],
 );
 
 export function isAutosGroupEntity(code: string): boolean {

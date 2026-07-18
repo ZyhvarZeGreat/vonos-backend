@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { accentForTenantCode } from "@/lib/registries/tenantAccents";
+import { iconForTenantCode } from "@/lib/registries/tenantIcons";
 import type { TenantCode } from "@/lib/registries/tenants";
 import { cn } from "@/lib/utils/cn";
 
@@ -22,6 +23,7 @@ export function EntityOverviewCard({
   className,
 }: EntityOverviewCardProps) {
   const accent = accentForTenantCode(code);
+  const Icon = iconForTenantCode(code);
 
   return (
     <Link
@@ -39,12 +41,20 @@ export function EntityOverviewCard({
       <div className="flex flex-1 flex-col p-5 pl-6">
         <div className="mb-3 flex items-start justify-between gap-2">
           <div>
-            <span
-              className="inline-block rounded-md px-2 py-0.5 text-xs font-semibold text-white"
-              style={{ backgroundColor: accent }}
-            >
-              {code}
-            </span>
+            <div className="flex items-center gap-2">
+              <span
+                className="inline-flex h-7 w-7 items-center justify-center rounded-md text-white"
+                style={{ backgroundColor: accent }}
+              >
+                <Icon className="h-3.5 w-3.5" />
+              </span>
+              <span
+                className="inline-block rounded-md px-2 py-0.5 text-xs font-semibold text-white"
+                style={{ backgroundColor: accent }}
+              >
+                {code}
+              </span>
+            </div>
             <h4 className="mt-2 font-semibold text-foreground">{name}</h4>
           </div>
         </div>

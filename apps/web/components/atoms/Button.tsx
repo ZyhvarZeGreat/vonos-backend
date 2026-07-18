@@ -9,6 +9,8 @@ export interface ButtonProps
   variant?: ButtonVariant;
   size?: ButtonSize;
   isLoading?: boolean;
+  /** Label shown while loading (defaults to children). */
+  loadingText?: React.ReactNode;
 }
 
 const variantClasses: Record<ButtonVariant, string> = {
@@ -32,6 +34,7 @@ export function Button({
   variant = "primary",
   size = "md",
   isLoading = false,
+  loadingText,
   disabled,
   children,
   ...props
@@ -45,12 +48,13 @@ export function Button({
         className,
       )}
       disabled={disabled || isLoading}
+      aria-busy={isLoading || undefined}
       {...props}
     >
       {isLoading ? (
         <>
           <Spinner size={size === "lg" ? "md" : "sm"} />
-          <span>{children}</span>
+          <span>{loadingText ?? children}</span>
         </>
       ) : (
         children

@@ -114,6 +114,23 @@ h6,
   color: currentColor;
 }
 
+/* HQ6-style colored icon chip (section headers + leaf nav) */
+.sidebar-icon-badge {
+  display: inline-flex;
+  height: var(--sidebar-icon-badge-size);
+  width: var(--sidebar-icon-badge-size);
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+}
+
+.sidebar-icon-badge .sidebar-icon {
+  width: 13px;
+  height: 13px;
+  color: #ffffff;
+}
+
 .type-body {
   font-family: var(--font-body);
   font-size: var(--text-sm);
@@ -173,3 +190,21 @@ h6,
     border: none !important;
   }
 }
+
+@keyframes mutation-progress-slide {
+  0% {
+    transform: translateX(-100%);
+  }
+  50% {
+    transform: translateX(-10%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+.mutation-progress-bar {
+  width: 40%;
+  animation: mutation-progress-slide 1.1s ease-in-out infinite;
+}
+

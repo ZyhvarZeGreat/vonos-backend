@@ -2,6 +2,7 @@ export const MOVEMENT_TYPES = ["inbound", "outbound", "transfer"] as const;
 export type MovementType = (typeof MOVEMENT_TYPES)[number];
 
 export const MOVEMENT_STATUSES = [
+  "Ordered",
   "Pending",
   "Approved",
   "Received",
@@ -10,6 +11,18 @@ export const MOVEMENT_STATUSES = [
 ] as const;
 
 export type MovementStatus = (typeof MOVEMENT_STATUSES)[number];
+
+/** Purchase lifecycle statuses used in the Purchases list UI. */
+export const PURCHASE_STATUSES = ["Ordered", "Pending", "Delivered"] as const;
+export type PurchaseStatus = (typeof PURCHASE_STATUSES)[number];
+
+export const PURCHASE_PAYMENT_STATUSES = [
+  "paid",
+  "due",
+  "partial",
+  "overdue",
+] as const;
+export type PurchasePaymentStatus = (typeof PURCHASE_PAYMENT_STATUSES)[number];
 
 export interface StockMovementLine {
   itemId: string;
@@ -31,8 +44,10 @@ export interface StockMovementListRow {
   locationCode?: string | null;
   locationName?: string | null;
   grandTotal?: number;
-  paymentStatus?: string;
+  paymentStatus?: string | null;
+  paymentMethod?: string | null;
   paymentDue?: number;
+  supplierId?: string | null;
 }
 
 export const MOVEMENT_SOURCES = ["standard", "purchase_return"] as const;
@@ -49,11 +64,30 @@ export interface StockMovement {
   locationCode: string | null;
   supplierId: string | null;
   source: MovementSource | null;
+  paymentStatus: PurchasePaymentStatus | null;
+  paymentMethod: string | null;
   date: string;
   createdByUserId?: string | null;
   createdByName?: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface StockMovementFilters {
+  type?: MovementType;
+  status?: MovementStatus;
+  source?: MovementSource;
+  locationCode?: string;
+  supplierId?: string;
+  paymentStatus?: PurchasePaymentStatus;
+  paymentMethod?: string;
+  from?: string;
+  to?: string;
+  cursor?: string;
+  limit?: number;
+  search?: string;
+  sortBy?: string;
+  sortDir?: "asc" | "desc";
 }
 
 export interface TransferZoneSummary {

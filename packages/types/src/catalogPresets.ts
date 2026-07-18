@@ -20,6 +20,10 @@ export const BUSINESS_LOCATION_PRESETS: Record<string, BusinessLocation[]> = {
     { code: "BL0008", name: "LABOUR/CONSUMABLES" },
   ],
   VS: [{ code: "BL0003", name: "Vonos saloon" }],
+  VA: [
+    { code: "VS001", name: "Vonos Sales 001" },
+    { code: "VS002", name: "Vonos Sales 002" },
+  ],
 };
 
 export const ITEM_CATEGORY_PRESETS: Record<string, string[]> = {

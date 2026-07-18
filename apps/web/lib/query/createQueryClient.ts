@@ -1,10 +1,16 @@
 import { MutationCache, QueryCache, QueryClient } from "@tanstack/react-query";
 import { formatApiError } from "@/lib/utils/formatApiError";
 import { toast } from "@/stores/toastStore";
+import { useMutationBusyStore } from "@/stores/mutationBusyStore";
 
 function queryErrorLabel(meta: Record<string, unknown> | undefined): string {
   const label = meta?.errorLabel;
   return typeof label === "string" && label.trim() ? label : "Could not load data";
+}
+
+function mutationErrorLabel(meta: Record<string, unknown> | undefined): string {
+  const label = meta?.errorLabel;
+  return typeof label === "string" && label.trim() ? label : "Action failed";
 }
 
 export function createQueryClient() {
@@ -18,12 +24,17 @@ export function createQueryClient() {
       },
     }),
     mutationCache: new MutationCache({
+      onMutate: () => {
+        useMutationBusyStore.getState().begin();
+      },
+      onSettled: () => {
+        useMutationBusyStore.getState().end();
+      },
       onError: (error, _variables, _context, mutation) => {
+        // useAppMutation toasts its own message — skip duplicate.
         if (mutation.meta?.suppressErrorToast) return;
-        const label = mutation.meta?.errorLabel;
-        const prefix =
-          typeof label === "string" && label.trim() ? `${label}: ` : "";
-        toast.error(`${prefix}${formatApiError(error)}`);
+        const label = mutationErrorLabel(mutation.meta);
+        toast.error(`${label}: ${formatApiError(error)}`);
       },
     }),
     defaultOptions: {
@@ -37,8 +48,9 @@ export function createQueryClient() {
         },
       },
       mutations: {
+        // Raw useMutation gets a toast via MutationCache; useAppMutation opts out.
         meta: {
-          suppressErrorToast: true,
+          suppressErrorToast: false,
         },
       },
     },

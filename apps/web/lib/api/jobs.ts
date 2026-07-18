@@ -2,6 +2,8 @@ import type {
   CreateJobLabourRequest,
   CreateJobMaterialRequest,
   Job,
+  JobLabour,
+  JobMaterial,
   UpdateJobLabourRequest,
   UpdateJobMaterialRequest,
 } from "@vonos/types";
@@ -21,6 +23,7 @@ export interface JobDetail extends Job {
     name: string;
     email: string | null;
     phone: string | null;
+    totalSellDue?: number | null;
   } | null;
   vehicle?: {
     id: string;
@@ -29,35 +32,17 @@ export interface JobDetail extends Job {
     model: string;
     year: number | null;
   } | null;
-  materials: Array<{
-    id: string;
-    jobId: string;
-    itemId: string | null;
-    name: string;
-    quantity: number;
-    unitCost: number;
-    totalCost: number;
-    source: string | null;
-    sourceType: "shop" | "internal" | "external" | null;
-    sourceDepartment: string | null;
-    supplierId: string | null;
-    supplierName: string | null;
-    purchaseMovementId: string | null;
-  }>;
-  labourEntries: Array<{
-    id: string;
-    jobId: string;
-    staffId: string;
-    staffName?: string | null;
-    hours: number;
-    rate: number;
-    totalCost: number;
-  }>;
+  materials: JobMaterial[];
+  labourEntries: JobLabour[];
 }
 
 export interface JobFilters {
   status?: string;
+  /** Comma-joined multi-status filter (e.g. active jobs). */
+  statuses?: string[];
   search?: string;
+  from?: string;
+  to?: string;
   cursor?: string;
   limit?: number;
 }
@@ -70,7 +55,10 @@ async function fetchJobsRaw(
 ): Promise<Job[]> {
   const params = new URLSearchParams();
   if (filters?.status) params.set("status", filters.status);
+  if (filters?.statuses?.length) params.set("statuses", filters.statuses.join(","));
   if (filters?.search) params.set("search", filters.search);
+  if (filters?.from) params.set("from", filters.from);
+  if (filters?.to) params.set("to", filters.to);
   if (cursor) params.set("cursor", cursor);
   if (limit) params.set("limit", String(limit));
   const query = params.toString();
@@ -119,6 +107,15 @@ export async function getJobs(
 
 export async function getJob(id: string): Promise<JobDetail> {
   const response = await apiFetch(`/jobs/${id}`);
+  if (!response.ok) throw new Error("Failed to fetch job");
+  return response.json();
+}
+
+/** Reference only — for titles / breadcrumbs. */
+export async function getJobMeta(
+  id: string,
+): Promise<{ id: string; reference: string }> {
+  const response = await apiFetch(`/jobs/${id}/meta`);
   if (!response.ok) throw new Error("Failed to fetch job");
   return response.json();
 }

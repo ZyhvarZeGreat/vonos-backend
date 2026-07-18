@@ -18,11 +18,7 @@ import { useRouteTenant, useTenantId } from "@/lib/hooks/useRouteTenant";
 import { useListPageFilters } from "@/lib/hooks/useListPageFilters";
 import { useListExport } from "@/lib/hooks/useListExport";
 import { formatCurrency } from "@/lib/utils/formatCurrency";
-import {
-  filterByDateField,
-  filterBySearch,
-  uniqueFieldOptions,
-} from "@/lib/utils/listFilters";
+import { uniqueFieldOptions } from "@/lib/utils/listFilters";
 
 interface MovementListViewProps {
   type: "inbound" | "outbound";
@@ -45,13 +41,23 @@ export function MovementListView({
   const [activeTab, setActiveTab] = useState(defaultStatus === "Pending" ? "pending" : "all");
   const [statusFilter, setStatusFilter] = useState("");
 
+  const tabStatus = useMemo((): MovementStatus | undefined => {
+    if (defaultStatus) return defaultStatus;
+    if (statusFilter) return statusFilter as MovementStatus;
+    if (activeTab === "pending") return "Pending";
+    return undefined;
+  }, [activeTab, defaultStatus, statusFilter]);
+
   const apiFilters = useMemo(
     () => ({
       type,
-      ...(defaultStatus ? { status: defaultStatus } : {}),
+      ...(tabStatus ? { status: tabStatus } : {}),
       ...(source ? { source } : {}),
+      search: search.trim() || undefined,
+      from: bounds?.from,
+      to: bounds?.to,
     }),
-    [defaultStatus, source, type],
+    [bounds?.from, bounds?.to, search, source, tabStatus, type],
   );
 
   const {
@@ -127,18 +133,13 @@ export function MovementListView({
     [data],
   );
 
+  // Completed tab spans multiple statuses — keep that filter client-side on the page.
   const filtered = useMemo(() => {
-    let rows = filterByDateField(data, bounds, "date");
-    if (activeTab === "pending") {
-      rows = rows.filter((r) => r.status === "Pending");
-    } else if (activeTab === "completed") {
-      rows = rows.filter((r) =>
-        ["Received", "Shipped", "Delivered", "Approved"].includes(r.status),
-      );
-    }
-    if (statusFilter) rows = rows.filter((r) => r.status === statusFilter);
-    return filterBySearch(rows, search, ["reference", "supplierOrDest"]);
-  }, [activeTab, bounds, data, search, statusFilter]);
+    if (activeTab !== "completed" || defaultStatus || statusFilter) return data;
+    return data.filter((r) =>
+      ["Received", "Shipped", "Delivered", "Approved"].includes(r.status),
+    );
+  }, [activeTab, data, defaultStatus, statusFilter]);
 
   return (
     <ListPageShell

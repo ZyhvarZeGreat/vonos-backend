@@ -26,8 +26,9 @@ async function fetchTransfersRaw(
 export async function getTransfersPage(
   cursor: string | undefined,
   limit = DEFAULT_TABLE_PAGE_SIZE,
+  filters: { search?: string; from?: string; to?: string; status?: string } = {},
 ): Promise<ListPage<TransferRow>> {
-  return fetchJsonListPage(LIST_PATH, cursor, limit);
+  return fetchJsonListPage(LIST_PATH, cursor, limit, filters);
 }
 
 /** Full transfer list for export — not for table rendering. */

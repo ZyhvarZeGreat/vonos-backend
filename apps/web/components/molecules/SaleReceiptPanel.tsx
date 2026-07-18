@@ -4,7 +4,6 @@ import { useMemo, useState } from "react";
 import { Eye } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import type { SaleDetail } from "@vonos/types";
-import { getCustomer } from "@/lib/api/customers";
 import { getInvoiceSettings } from "@/lib/api/invoiceSettings";
 import { useRouteTenant } from "@/lib/hooks/useRouteTenant";
 import {
@@ -14,6 +13,7 @@ import {
 } from "@/components/organisms/InvoiceDocument";
 import { DocumentPreviewModal } from "@/components/organisms/DocumentPreviewModal";
 import { formatCurrency } from "@/lib/utils/formatCurrency";
+import { saleToInvoiceContact } from "@/lib/utils/invoiceBuilders";
 
 export interface SaleReceiptPanelProps {
   sale: SaleDetail;
@@ -23,16 +23,11 @@ export function SaleReceiptPanel({ sale }: SaleReceiptPanelProps) {
   const { tenantName, tenantId } = useRouteTenant();
   const [previewOpen, setPreviewOpen] = useState(false);
 
-  const { data: customerProfile } = useQuery({
-    queryKey: ["customer", tenantId, sale.customerId],
-    queryFn: () => getCustomer(sale.customerId!),
-    enabled: Boolean(tenantId && sale.customerId),
-  });
-
   const { data: invoiceSettings } = useQuery({
     queryKey: ["invoice-settings", tenantId],
     queryFn: getInvoiceSettings,
     enabled: Boolean(tenantId),
+    staleTime: 10 * 60_000,
   });
 
   const lineItems = useMemo<InvoiceLineItem[]>(
@@ -52,12 +47,7 @@ export function SaleReceiptPanel({ sale }: SaleReceiptPanelProps) {
     [sale.lines],
   );
 
-  const contact: InvoiceContact = {
-    name: sale.customerName,
-    email: customerProfile?.email,
-    phone: customerProfile?.phone,
-    businessName: customerProfile?.businessName,
-  };
+  const contact: InvoiceContact = saleToInvoiceContact(sale);
 
   const notes = [
     invoiceSettings?.termsText,
@@ -84,7 +74,7 @@ export function SaleReceiptPanel({ sale }: SaleReceiptPanelProps) {
       total={sale.total}
       currency={sale.currency}
       notes={notes || null}
-      balanceDue={customerProfile?.totalSellDue ?? null}
+      balanceDue={sale.customerTotalSellDue ?? null}
       className="invoice-print-root"
     />
   );

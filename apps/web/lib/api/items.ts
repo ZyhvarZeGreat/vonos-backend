@@ -11,11 +11,13 @@ import { apiFetch, withTenantQuery } from "@/lib/api/client";
 import {
   DEFAULT_TABLE_PAGE_SIZE,
   EXPORT_PAGE_SIZE,
+  TYPEAHEAD_PAGE_SIZE,
   fetchAllPages,
   fetchFirstPage,
   fetchListPage,
   type ListPage,
 } from "@/lib/api/fetchAllPages";
+import { itemListCursor } from "@/lib/utils/pagination";
 
 function buildItemsPath(
   tenantId: string,
@@ -28,6 +30,8 @@ function buildItemsPath(
   if (filters?.category) params.set("category", filters.category);
   if (filters?.search) params.set("search", filters.search);
   if (filters?.locationCode) params.set("locationCode", filters.locationCode);
+  if (filters?.sortBy) params.set("sortBy", filters.sortBy);
+  if (filters?.sortDir) params.set("sortDir", filters.sortDir);
   if (cursor) params.set("cursor", cursor);
   if (limit) params.set("limit", String(limit));
   const query = params.toString();
@@ -66,9 +70,11 @@ export async function getAllItems(
   return fetchAllPages(
     (cursor, limit) => fetchItemsRaw(tenantId, filters, cursor, limit),
     EXPORT_PAGE_SIZE,
+    itemListCursor,
   );
 }
 
+/** Typeahead / option lists — capped; pass search for more matches. */
 export async function getItems(
   tenantId: string,
   filters?: ItemFilters,
@@ -79,6 +85,7 @@ export async function getItems(
 
   return fetchFirstPage(
     (cursor, limit) => fetchItemsRaw(tenantId, filters, cursor, limit),
+    TYPEAHEAD_PAGE_SIZE,
   );
 }
 
@@ -129,6 +136,15 @@ export async function getItem(id: string): Promise<Item> {
   return response.json();
 }
 
+/** Name / SKU only — for titles / breadcrumbs. */
+export async function getItemMeta(
+  id: string,
+): Promise<{ id: string; name: string; sku: string }> {
+  const response = await apiFetch(`/items/${id}/meta`);
+  if (!response.ok) throw new Error("Failed to fetch item");
+  return response.json();
+}
+
 export async function getKpiSummary(tenantId: string): Promise<KpiSummary> {
   const response = await apiFetch(
     withTenantQuery("/items/kpi-summary", tenantId),
@@ -141,14 +157,25 @@ export interface CreateItemRequest {
   sku: string;
   name: string;
   category?: string;
+  subCategory?: string;
+  description?: string;
+  barcodeType?: string;
+  unit?: string;
+  weight?: string;
+  carModel?: string;
+  enableImei?: boolean;
+  preparationMinutes?: number;
   quantity?: number;
   binLocation?: string;
   locationCode?: string;
   reorderPoint?: number;
   costPrice: number;
+  sellPrice?: number;
   currency?: string;
   status?: StockStatus;
   availableForRetail?: boolean;
+  brandId?: string;
+  brandName?: string;
   locationStock?: ItemLocationStockInput[];
 }
 

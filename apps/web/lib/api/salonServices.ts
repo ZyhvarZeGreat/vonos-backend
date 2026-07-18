@@ -27,8 +27,9 @@ export async function getSalonServicesPage(
   tenantId: string,
   cursor: string | undefined,
   limit = DEFAULT_TABLE_PAGE_SIZE,
+  filters: { search?: string } = {},
 ): Promise<ListPage<SalonService>> {
-  return fetchTenantListPage(LIST_PATH, tenantId, cursor, limit);
+  return fetchTenantListPage(LIST_PATH, tenantId, cursor, limit, filters);
 }
 
 /** Full service list for export — not for table rendering. */

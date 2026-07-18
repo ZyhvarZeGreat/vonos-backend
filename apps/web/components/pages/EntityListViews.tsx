@@ -30,7 +30,7 @@ import { getAllVehicles, createVehicle, getVehiclesPage } from "@/lib/api/vehicl
 import { getItemsPage } from "@/lib/api/items";
 import { useListExport } from "@/lib/hooks/useListExport";
 import type { Order, MenuItemRow, SaleReturnRow } from "@/lib/types/entityRows";
-import type { Customer, Item, Requisition, Sale, SaleStatus, SalonService, StockStatus, Vehicle } from "@vonos/types";
+import type { Customer, Item, Requisition, Sale, SaleReturnStatus, SaleStatus, SalonService, StockStatus, Vehicle } from "@vonos/types";
 import { ContactLedgerModal, useContactLedgerQuery } from "@/components/organisms/ContactLedgerModal";
 import { CustomerRecordModal } from "@/components/organisms/CustomerRecordModal";
 import { SaleRecordModal } from "@/components/organisms/SaleRecordModal";
@@ -45,8 +45,6 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Input } from "@/components/atoms/Input";
 import { Modal, ModalFooter, ModalHeader } from "@/components/atoms/Modal";
 import {
-  filterByDateField,
-  filterBySearch,
   uniqueFieldOptions,
 } from "@/lib/utils/listFilters";
 import { ItemLocationCell } from "@/components/molecules/ItemLocationCell";
@@ -79,8 +77,11 @@ export function SalesListView({
       search: search.trim() || undefined,
       saleStatus,
       shipmentsOnly,
+      status: (statusFilter || undefined) as SaleReturnStatus | undefined,
+      from: bounds?.from,
+      to: bounds?.to,
     }),
-    [search, saleStatus, shipmentsOnly],
+    [bounds?.from, bounds?.to, search, saleStatus, shipmentsOnly, statusFilter],
   );
 
   const {
@@ -104,19 +105,28 @@ export function SalesListView({
     fetchPage: (cursor, limit) => getSalesPage(tenantId!, apiFilters, cursor, limit),
   });
 
-  const filtered = useMemo(() => {
-    let rows = filterByDateField(sales, bounds, "date");
-    if (statusFilter) rows = rows.filter((s) => s.status === statusFilter);
-    return rows;
-  }, [bounds, sales, statusFilter]);
+  const filtered = sales;
 
   const statusOptions = useMemo(
-    () => uniqueFieldOptions(sales, "status"),
-    [sales],
+    () =>
+      (["Completed", "Refunded", "Restocked", "Written Off"] as const).map(
+        (value) => ({ value, label: value }),
+      ),
+    [],
   );
 
   const columns: ColumnConfig<Sale>[] = [
     { key: "reference", header: "Sale #", render: (r) => <span className="font-medium">{r.reference}</span> },
+    {
+      key: "jobReference",
+      header: "Job",
+      render: (r) =>
+        r.jobReference ? (
+          <span className="font-medium text-[var(--color-brand-primary)]">{r.jobReference}</span>
+        ) : (
+          <span className="text-muted">—</span>
+        ),
+    },
     { key: "customerName", header: "Customer" },
     { key: "itemCount", header: "Items", sortValue: (r) => r.itemCount },
     {
@@ -236,8 +246,10 @@ export function OrdersListView() {
   const apiFilters = useMemo(
     () => ({
       search: search.trim() || undefined,
+      from: bounds?.from,
+      to: bounds?.to,
     }),
-    [search],
+    [bounds?.from, bounds?.to, search],
   );
 
   const {
@@ -262,14 +274,17 @@ export function OrdersListView() {
   });
 
   const filtered = useMemo(() => {
-    let rows = filterByDateField(orders, bounds, "createdAt");
-    if (statusFilter) rows = rows.filter((o) => o.status === statusFilter);
-    return rows;
-  }, [bounds, orders, statusFilter]);
+    if (!statusFilter) return orders;
+    return orders.filter((o) => o.status === statusFilter);
+  }, [orders, statusFilter]);
 
   const statusOptions = useMemo(
-    () => uniqueFieldOptions(orders, "status"),
-    [orders],
+    () =>
+      (["New", "Preparing", "Ready", "Served"] as const).map((value) => ({
+        value,
+        label: value,
+      })),
+    [],
   );
 
   const columns: ColumnConfig<Order>[] = [
@@ -346,8 +361,10 @@ export function CustomersListView() {
   const apiFilters = useMemo(
     () => ({
       search: search.trim() || undefined,
+      from: bounds?.from,
+      to: bounds?.to,
     }),
-    [search],
+    [bounds?.from, bounds?.to, search],
   );
 
   const {
@@ -371,9 +388,7 @@ export function CustomersListView() {
     fetchPage: (cursor, limit) => getCustomersPage(tenantId!, apiFilters, cursor, limit),
   });
 
-  const filtered = useMemo(() => {
-    return filterByDateField(customers, bounds, "createdAt");
-  }, [bounds, customers]);
+  const filtered = customers;
 
   const handleCustomerImport = useCallback(
     async (file: File) => {
@@ -492,8 +507,11 @@ export function ReturnsListView() {
   const apiFilters = useMemo(
     () => ({
       search: search.trim() || undefined,
+      status: (statusFilter || undefined) as SaleReturnStatus | undefined,
+      from: bounds?.from,
+      to: bounds?.to,
     }),
-    [search],
+    [bounds?.from, bounds?.to, search, statusFilter],
   );
 
   const {
@@ -517,15 +535,15 @@ export function ReturnsListView() {
     fetchPage: (cursor, limit) => getReturnsPage(tenantId!, apiFilters, cursor, limit),
   });
 
-  const filtered = useMemo(() => {
-    let rows = filterByDateField(returns, bounds, "date");
-    if (statusFilter) rows = rows.filter((r) => r.status === statusFilter);
-    return rows;
-  }, [bounds, returns, statusFilter]);
+  const filtered = returns;
 
   const statusOptions = useMemo(
-    () => uniqueFieldOptions(returns, "status"),
-    [returns],
+    () =>
+      (["Refunded", "Restocked", "Written Off"] as const).map((value) => ({
+        value,
+        label: value,
+      })),
+    [],
   );
 
   const columns: ColumnConfig<SaleReturnRow>[] = [
@@ -648,13 +666,13 @@ export function VehiclesListView() {
     queryKey: ["vehicles", tenantId],
     enabled: Boolean(tenantId),
     search,
-    fetchPage: (cursor, limit) => getVehiclesPage(tenantId!, cursor, limit),
+    fetchPage: (cursor, limit) =>
+      getVehiclesPage(tenantId!, cursor, limit, {
+        search: search.trim() || undefined,
+      }),
   });
 
-  const filtered = useMemo(
-    () => filterBySearch(vehicles, search, ["plateNumber", "make", "model", "ownerName"]),
-    [search, vehicles],
-  );
+  const filtered = vehicles;
 
   const columns: ColumnConfig<Vehicle>[] = [
     {
@@ -803,13 +821,13 @@ export function RequisitionsListView() {
     queryKey: ["requisitions", tenantId],
     enabled: Boolean(tenantId),
     search,
-    fetchPage: (cursor, limit) => getRequisitionsPage(tenantId!, cursor, limit),
+    fetchPage: (cursor, limit) =>
+      getRequisitionsPage(tenantId!, cursor, limit, {
+        search: search.trim() || undefined,
+      }),
   });
 
-  const filtered = useMemo(
-    () => filterBySearch(requisitions, search, ["reference", "notes"]),
-    [requisitions, search],
-  );
+  const filtered = requisitions;
 
   const columns: ColumnConfig<Requisition>[] = [
     {
@@ -910,13 +928,12 @@ export function IncomingRequisitionsListView() {
     enabled: Boolean(tenantId),
     search,
     fetchPage: (cursor, limit) =>
-      getIncomingRequisitionsPage(tenantId!, cursor, limit),
+      getIncomingRequisitionsPage(tenantId!, cursor, limit, {
+        search: search.trim() || undefined,
+      }),
   });
 
-  const filtered = useMemo(
-    () => filterBySearch(requisitions, search, ["reference", "notes"]),
-    [requisitions, search],
-  );
+  const filtered = requisitions;
 
   const columns: ColumnConfig<Requisition>[] = [
     {
@@ -1002,7 +1019,7 @@ export function IncomingRequisitionsListView() {
 export function MenuItemsListView() {
   const { goToDetail } = useRecordNavigation("menu-items");
   const tenantId = useTenantId();
-  const { dateRange, setDateRange, search, setSearch, bounds } = useListPageFilters();
+  const { search, setSearch } = useListPageFilters();
   const [categoryFilter, setCategoryFilter] = useState("");
 
   const apiFilters = useMemo(
@@ -1049,9 +1066,7 @@ export function MenuItemsListView() {
     },
   });
 
-  const filtered = useMemo(() => {
-    return filterByDateField(items, bounds, "createdAt");
-  }, [bounds, items]);
+  const filtered = items;
 
   const categoryOptions = useMemo(
     () => uniqueFieldOptions(items, "category"),
@@ -1079,8 +1094,7 @@ export function MenuItemsListView() {
         onTabChange={() => {}}
         searchValue={search}
         onSearchChange={setSearch}
-        dateRange={dateRange}
-        onDateRangeChange={setDateRange}
+        showDateRange={false}
         filterDropdowns={[
           {
             id: "category",
@@ -1133,13 +1147,13 @@ export function ServicesListView() {
     queryKey: ["salon-services", tenantId],
     enabled: Boolean(tenantId),
     search,
-    fetchPage: (cursor, limit) => getSalonServicesPage(tenantId!, cursor, limit),
+    fetchPage: (cursor, limit) =>
+      getSalonServicesPage(tenantId!, cursor, limit, {
+        search: search.trim() || undefined,
+      }),
   });
 
-  const filtered = useMemo(
-    () => filterBySearch(services, search, ["name"]),
-    [search, services],
-  );
+  const filtered = services;
 
   const columns: ColumnConfig<SalonService>[] = [
     { key: "name", header: "Service", render: (r) => <span className="font-medium">{r.name}</span> },
@@ -1212,7 +1226,7 @@ export function CatalogListView() {
   const searchParams = useSearchParams();
   const openAddProductModal = useUiStore((state) => state.openAddProductModal);
   const section = sectionFromParams(searchParams.get("section"));
-  const { dateRange, setDateRange, search, setSearch, bounds } = useListPageFilters();
+  const { dateRange, setDateRange, search, setSearch } = useListPageFilters();
   const [categoryFilter, setCategoryFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [locationFilter, setLocationFilter] = useState("");
@@ -1262,9 +1276,7 @@ export function CatalogListView() {
     fetchPage: (cursor, limit) => getCatalogPage(tenantId!, apiFilters, cursor, limit),
   });
 
-  const filtered = useMemo(() => {
-    return filterByDateField(items, bounds, "updatedAt");
-  }, [bounds, items]);
+  const filtered = items;
 
   const categoryOptions = useMemo(() => {
     const fromConfig = config?.itemCategories ?? [];
@@ -1334,7 +1346,7 @@ export function CatalogListView() {
       onSearchChange={setSearch}
       dateRange={dateRange}
       onDateRangeChange={setDateRange}
-      showDateRange={section === "products"}
+      showDateRange={false}
       filterDropdowns={
         section === "products"
           ? [
@@ -1371,7 +1383,9 @@ export function CatalogListView() {
                 tenantId={tenantId}
                 retailOnly
                 businessLocations={config?.businessLocations}
-                onSelect={(item) => goToDetail(item.id)}
+                onSelect={(item) => {
+                  if (item.itemId) goToDetail(item.itemId);
+                }}
                 placeholder="Search by name, SKU, or location / counter"
               />
             </div>

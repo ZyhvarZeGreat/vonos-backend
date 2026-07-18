@@ -10,6 +10,8 @@ export interface Job {
   quoteValidUntil: string | null;
   invoiceAmount: number | null;
   invoiceNotes: string | null;
+  /** Linked commercial sale when jobs and sales are the same (VA). */
+  saleId?: string | null;
   customerName: string | null;
   customerId: string | null;
   vehicleId: string | null;
@@ -32,6 +34,8 @@ export interface JobMaterial {
   quantity: number;
   unitCost: number;
   totalCost: number;
+  /** Catalog SKU when itemId is set — avoids a second item fetch for requisitions. */
+  sku?: string | null;
   source: string | null;
   /** Where the part comes from: own shop stock, an internal department, or an external purchase. */
   sourceType: JobMaterialSourceType | null;

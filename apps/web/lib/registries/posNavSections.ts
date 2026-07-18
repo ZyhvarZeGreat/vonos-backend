@@ -230,34 +230,35 @@ function expensesItems(code: string): NavItem[] {
   ];
 }
 
-function paymentAccountItems(code: string, config: TenantConfig): NavItem[] {
-  return filterNavItems(
-    [
-      { label: "List Accounts", icon: "credit-card", route: r(code, "payment-accounts"), pageType: "list" },
-      { label: "Balance Sheet", icon: "scale", route: r(code, "balance-sheet"), pageType: "dashboard" },
-      { label: "Trial Balance", icon: "list-checks", route: r(code, "trial-balance"), pageType: "dashboard" },
-      { label: "Cash Flow", icon: "trending-up", route: r(code, "cash-flow"), pageType: "dashboard" },
-      { label: "Payment Account Report", icon: "file-bar-chart", route: r(code, "payment-account-report"), pageType: "dashboard" },
-    ],
-    config,
-    [
-      { routeSuffix: "/balance-sheet", moduleId: "accountingReports" },
-      { routeSuffix: "/trial-balance", moduleId: "accountingReports" },
-      { routeSuffix: "/cash-flow", moduleId: "accountingReports" },
-      { routeSuffix: "/payment-account-report", moduleId: "accountingReports" },
-    ],
-  );
+function paymentAccountItems(code: string): NavItem[] {
+  return [
+    { label: "List Accounts", icon: "credit-card", route: r(code, "payment-accounts"), pageType: "list" },
+    { label: "Invoices", icon: "file-text", route: r(code, "invoices"), pageType: "list" },
+    { label: "Balance Sheet", icon: "scale", route: r(code, "balance-sheet"), pageType: "dashboard" },
+    { label: "Trial Balance", icon: "list-checks", route: r(code, "trial-balance"), pageType: "dashboard" },
+    { label: "Cash Flow", icon: "trending-up", route: r(code, "cash-flow"), pageType: "dashboard" },
+    { label: "Payment Account Report", icon: "file-bar-chart", route: r(code, "payment-account-report"), pageType: "dashboard" },
+  ];
 }
 
 /** HQ6 Reports dropdown — one sidebar sublink per report page (filtered like AdminSidebarMenu.php). */
 function reportsItems(code: string, config: TenantConfig): NavItem[] {
   if (!config.archetype) return [];
-  return reportsForArchetype(config.archetype, config.enabledModules).map((entry) => ({
-    label: entry.label,
-    icon: entry.id === "trending" ? "trending-up" : "file-bar-chart",
-    route: r(code, entry.slug),
-    pageType: "dashboard" as const,
-  }));
+  const hub: NavItem = {
+    label: "All Reports",
+    icon: "pie-chart",
+    route: r(code, "reports"),
+    pageType: "dashboard",
+  };
+  const reports = reportsForArchetype(config.archetype, config.enabledModules)
+    .filter((entry) => entry.source.kind !== "payment-accounts")
+    .map((entry) => ({
+      label: entry.label,
+      icon: entry.id === "trending" ? "trending-up" : "file-bar-chart",
+      route: r(code, entry.slug),
+      pageType: "dashboard" as const,
+    }));
+  return [hub, ...reports];
 }
 
 function hrmItems(code: string): NavItem[] {
@@ -288,6 +289,7 @@ export function posNavSectionsForConfig(config: TenantConfig): NavSection[] {
   // 1. Home (+ workshop / appointment primary links by archetype)
   sections.push({
     label: "Home",
+    icon: "layout-dashboard",
     items: homeItems(code, config),
   });
 
@@ -342,7 +344,7 @@ export function posNavSectionsForConfig(config: TenantConfig): NavSection[] {
       label: "Payment Accounts",
       icon: "credit-card",
       collapsible: true,
-      items: paymentAccountItems(code, config),
+      items: paymentAccountItems(code),
     });
   }
 

@@ -5,7 +5,7 @@ import { useParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { DateRangeDropdown } from "@/components/molecules/DateRangeDropdown";
 import { ReportsDashboardBody } from "@/components/pages/ReportsView";
-import { HqReportPageLayout } from "@/components/organisms/HqReportPageLayout";
+import { HqReportPageLayout, HqReportPageSkeleton } from "@/components/organisms/HqReportPageLayout";
 import { runGroupReport } from "@/lib/api/reports";
 import { reportEntryById } from "@/lib/registries/reportRegistry";
 import { useListPageFilters } from "@/lib/hooks/useListPageFilters";
@@ -60,7 +60,9 @@ export function VagGroupReportRunView() {
         <DateRangeDropdown value={dateRange} onChange={setDateRange} />
       </div>
 
-      {entry.id === "profit-loss" && data?.profitLoss ? (
+      {isLoading && !data ? (
+        <HqReportPageSkeleton reportId={entry.id} />
+      ) : entry.id === "profit-loss" && data?.profitLoss ? (
         <HqReportPageLayout
           reportId={entry.id}
           title={entry.label}

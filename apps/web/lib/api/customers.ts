@@ -3,6 +3,7 @@ import type {
   ContactLedgerEntry,
   CreateCustomerInput,
   Customer,
+  CustomerContact,
   CustomerFilters,
   CustomerProfile,
   CsvImportResult,
@@ -11,11 +12,13 @@ import { apiFetch, withTenantQuery } from "@/lib/api/client";
 import {
   DEFAULT_TABLE_PAGE_SIZE,
   EXPORT_PAGE_SIZE,
+  TYPEAHEAD_PAGE_SIZE,
   fetchAllPages,
   fetchFirstPage,
   fetchListPage,
   type ListPage,
 } from "@/lib/api/fetchAllPages";
+import { customerListCursor } from "@/lib/utils/pagination";
 
 async function fetchCustomersRaw(
   tenantId: string,
@@ -25,6 +28,18 @@ async function fetchCustomersRaw(
 ): Promise<Customer[]> {
   const params = new URLSearchParams();
   if (filters?.search) params.set("search", filters.search);
+  if (filters?.sellDue) params.set("sellDue", "true");
+  if (filters?.sellReturn) params.set("sellReturn", "true");
+  if (filters?.advanceBalance) params.set("advanceBalance", "true");
+  if (filters?.openingBalance) params.set("openingBalance", "true");
+  if (filters?.hasNoSellMonths) {
+    params.set("hasNoSellMonths", String(filters.hasNoSellMonths));
+  }
+  if (filters?.customerGroupId) params.set("customerGroupId", filters.customerGroupId);
+  if (filters?.assignedToUserId) params.set("assignedToUserId", filters.assignedToUserId);
+  if (filters?.status) params.set("status", filters.status);
+  if (filters?.from) params.set("from", filters.from);
+  if (filters?.to) params.set("to", filters.to);
   if (cursor) params.set("cursor", cursor);
   if (limit) params.set("limit", String(limit));
   const query = params.toString();
@@ -59,9 +74,11 @@ export async function getAllCustomers(
   return fetchAllPages(
     (cursor, limit) => fetchCustomersRaw(tenantId, filters, cursor, limit),
     EXPORT_PAGE_SIZE,
+    customerListCursor,
   );
 }
 
+/** Typeahead / option lists — capped; pass search for more matches. */
 export async function getCustomers(
   tenantId: string,
   filters?: CustomerFilters,
@@ -72,12 +89,20 @@ export async function getCustomers(
 
   return fetchFirstPage(
     (cursor, limit) => fetchCustomersRaw(tenantId, filters, cursor, limit),
+    TYPEAHEAD_PAGE_SIZE,
   );
 }
 
 export async function getCustomer(id: string): Promise<CustomerProfile> {
   const response = await apiFetch(`/customers/${id}`);
   if (!response.ok) throw new Error("Failed to fetch customer");
+  return response.json();
+}
+
+/** Name / email / phone / due — no transaction history. Prefer for forms and titles. */
+export async function getCustomerContact(id: string): Promise<CustomerContact> {
+  const response = await apiFetch(`/customers/${id}/contact`);
+  if (!response.ok) throw new Error("Failed to fetch customer contact");
   return response.json();
 }
 

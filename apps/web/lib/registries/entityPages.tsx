@@ -62,6 +62,7 @@ import {
 } from "@/components/pages/PaymentAccountViews";
 import { AddPurchaseView } from "@/components/pages/AddPurchaseView";
 import { PayrollView } from "@/components/pages/PayrollView";
+import { InvoicesListView } from "@/components/pages/InvoicesListView";
 import { HrmPageView, HRM_SLUG_TO_TAB, type HrmTab } from "@/components/pages/HrmPageView";
 import { InvoiceSettingsView, BarcodeSettingsView, ReceiptPrintersView, TaxRatesListView } from "@/components/pages/SettingsSubViews";
 import type { TenantCode } from "@/lib/registries/tenants";
@@ -180,6 +181,7 @@ function transactionRetailPages(code: TenantCode): SlugMap {
     ...userManagementPages,
     ...contactPages,
     ...expensePages,
+    ...invoicePages,
     ...hrmPages,
     ...settingsPages,
     ...legacyReportPages,
@@ -241,6 +243,10 @@ const expensePages: SlugMap = {
   "expense-categories": { title: "Expense Categories", View: ExpenseCategoriesListView },
 };
 
+const invoicePages: SlugMap = {
+  invoices: { title: "Invoices", View: InvoicesListView },
+};
+
 function hrmPage(defaultTab: HrmTab): EntityPageConfig {
   return {
     title: "HRM",
@@ -261,13 +267,15 @@ const settingsPages: SlugMap = {
 
 function reportRegistryPages(): SlugMap {
   return Object.fromEntries(
-    REPORT_REGISTRY.map((entry) => [
-      entry.slug,
-      {
-        title: entry.label,
-        View: () => <ReportRunView slug={entry.slug} />,
-      },
-    ]),
+    REPORT_REGISTRY.filter((entry) => entry.source.kind !== "payment-accounts").map(
+      (entry) => [
+        entry.slug,
+        {
+          title: entry.label,
+          View: () => <ReportRunView slug={entry.slug} />,
+        },
+      ],
+    ),
   );
 }
 
@@ -335,6 +343,7 @@ const ENTITY_PAGES: Record<TenantCode, SlugMap> = {
     ...userManagementPages,
     ...contactPages,
     ...expensePages,
+    ...invoicePages,
     ...hrmPages,
     ...settingsPages,
     ...legacyReportPages,
@@ -364,6 +373,7 @@ const ENTITY_PAGES: Record<TenantCode, SlugMap> = {
     ...userManagementPages,
     ...contactPages,
     ...expensePages,
+    ...invoicePages,
     ...hrmPages,
     ...settingsPages,
     ...legacyReportPages,
@@ -404,6 +414,7 @@ const ENTITY_PAGES: Record<TenantCode, SlugMap> = {
     ...userManagementPages,
     ...contactPages,
     ...expensePages,
+    ...invoicePages,
     ...hrmPages,
     ...settingsPages,
     ...legacyReportPages,
@@ -430,7 +441,7 @@ const ENTITY_PAGES: Record<TenantCode, SlugMap> = {
       createFlowKey: "sale",
       createCopy: {
         title: "New Sale",
-        subtitle: "Record a parts or service sale",
+        subtitle: "Record the commercial sale for a repair job",
         submitLabel: "Complete Sale",
       },
       View: SalesListView,
@@ -452,6 +463,7 @@ const ENTITY_PAGES: Record<TenantCode, SlugMap> = {
     ...userManagementPages,
     ...contactPages,
     ...expensePages,
+    ...invoicePages,
     ...hrmPages,
     ...settingsPages,
     ...legacyReportPages,
@@ -482,6 +494,7 @@ const ENTITY_PAGES: Record<TenantCode, SlugMap> = {
     ...userManagementPages,
     ...contactPages,
     ...expensePages,
+    ...invoicePages,
     ...hrmPages,
     ...settingsPages,
     ...legacyReportPages,

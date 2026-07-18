@@ -16,7 +16,7 @@ import { useRouteTenant, useTenantId } from "@/lib/hooks/useRouteTenant";
 import { useRecordNavigation } from "@/lib/hooks/useRecordNavigation";
 import { useListPageFilters } from "@/lib/hooks/useListPageFilters";
 import { formatCurrencyCompact, formatNumberCompact } from "@/lib/utils/formatCurrency";
-import { filterBySearch, uniqueFieldOptions } from "@/lib/utils/listFilters";
+import { uniqueFieldOptions } from "@/lib/utils/listFilters";
 import { formatDate } from "@/lib/utils/formatDate";
 
 const SUPPLIER_TABS = [
@@ -132,13 +132,22 @@ export function WarehouseSuppliersView() {
     queryKey: ["suppliers", tenantId],
     enabled: Boolean(tenantId),
     search,
-    fetchPage: (cursor, limit) => getSuppliersPage(tenantId!, cursor, limit),
+    filters: {
+      category: categoryFilter || undefined,
+      tab: activeTab,
+    },
+    fetchPage: (cursor, limit) =>
+      getSuppliersPage(tenantId!, cursor, limit, {
+        search: search.trim() || undefined,
+        status: activeTab === "active" ? "active" : undefined,
+      }),
   });
 
   const kpisQuery = useQuery({
     queryKey: ["supplierKpis", tenantId],
     queryFn: () => getSupplierKpis(tenantId!),
     enabled: Boolean(tenantId),
+    staleTime: 5 * 60_000,
   });
   const kpis = kpisQuery.data;
 
@@ -164,8 +173,8 @@ export function WarehouseSuppliersView() {
       rows = rows.filter((row) => row.category.toLowerCase() === "automotive");
     }
     if (categoryFilter) rows = rows.filter((row) => row.category === categoryFilter);
-    return filterBySearch(rows, search, ["name", "category", "phone", "location", "contactId", "email"]);
-  }, [activeTab, categoryFilter, search, suppliers]);
+    return rows;
+  }, [activeTab, categoryFilter, suppliers]);
 
   const categoryOptions = useMemo(
     () => uniqueFieldOptions(suppliers, "category"),

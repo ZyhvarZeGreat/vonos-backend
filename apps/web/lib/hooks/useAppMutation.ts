@@ -48,6 +48,10 @@ export function useAppMutation<
 
   return useMutation({
     ...rest,
+    meta: {
+      suppressErrorToast: true,
+      ...rest.meta,
+    },
     onSuccess: async (data, variables, onMutateResult, context) => {
       const message = resolveMessage(successMessage, data, variables);
       if (message) toast.success(message);

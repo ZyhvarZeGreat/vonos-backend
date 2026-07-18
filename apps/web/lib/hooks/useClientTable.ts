@@ -22,7 +22,7 @@ export function useClientTable<T>({
   search = "",
   searchKeys = [],
   sortValue,
-  pageSize: initialPageSize = 25,
+  pageSize: initialPageSize = 10,
 }: UseClientTableOptions<T>) {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(initialPageSize);

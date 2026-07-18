@@ -23,10 +23,6 @@ import { useRecordNavigation } from "@/lib/hooks/useRecordNavigation";
 import { useListPageFilters } from "@/lib/hooks/useListPageFilters";
 import { useListExport } from "@/lib/hooks/useListExport";
 import { formatNumber } from "@/lib/utils/formatCurrency";
-import {
-  filterByDateField,
-  uniqueFieldOptions,
-} from "@/lib/utils/listFilters";
 import type { Item, StockStatus } from "@vonos/types";
 import { useRouteTenant, useTenantId } from "@/lib/hooks/useRouteTenant";
 import { useUiStore } from "@/stores/uiStore";
@@ -49,7 +45,7 @@ export function WarehouseInventoryView() {
   const openAddProductModal = useUiStore((state) => state.openAddProductModal);
   const section = sectionFromParams(searchParams.get("section"));
   const [stockFilter, setStockFilter] = useState("all");
-  const { dateRange, setDateRange, search, setSearch, bounds } = useListPageFilters();
+  const { dateRange, setDateRange, search, setSearch } = useListPageFilters();
   const [categoryFilter, setCategoryFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [locationFilter, setLocationFilter] = useState("");
@@ -104,14 +100,11 @@ export function WarehouseInventoryView() {
   });
 
   const filtered = useMemo(() => {
-    let rows = filterByDateField(items, bounds, "createdAt");
-    if (stockFilter === "recent") {
-      rows = [...rows].sort(
-        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-      );
-    }
-    return rows;
-  }, [bounds, items, stockFilter]);
+    if (stockFilter !== "recent") return items;
+    return [...items].sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+    );
+  }, [items, stockFilter]);
 
   const categoryOptions = useMemo(() => {
     const fromConfig = config?.itemCategories ?? [];
@@ -200,7 +193,7 @@ export function WarehouseInventoryView() {
         onSearchChange={setSearch}
         dateRange={dateRange}
         onDateRangeChange={setDateRange}
-        showDateRange={section === "products"}
+        showDateRange={false}
         filterDropdowns={
           section === "products"
             ? [
@@ -263,7 +256,9 @@ export function WarehouseInventoryView() {
                 <ProductItemSearch
                   tenantId={tenantId}
                   businessLocations={config?.businessLocations}
-                  onSelect={(item) => goToDetail(item.id)}
+                  onSelect={(item) => {
+                    if (item.itemId) goToDetail(item.itemId);
+                  }}
                   placeholder="Search by name, SKU, or location / counter"
                 />
               </div>

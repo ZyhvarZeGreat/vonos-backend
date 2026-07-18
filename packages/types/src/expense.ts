@@ -15,7 +15,9 @@ export interface Expense {
   categoryName: string | null;
   subCategory: string | null;
   locationCode: string | null;
+  expenseForCustomerId: string | null;
   expenseFor: string | null;
+  contactCustomerId: string | null;
   contactName: string | null;
   totalAmount: number;
   taxAmount: number;
@@ -32,12 +34,30 @@ export interface Expense {
   updatedAt: string;
 }
 
+export interface ExpenseFilters {
+  cursor?: string;
+  limit?: number;
+  search?: string;
+  from?: string;
+  to?: string;
+  locationCode?: string;
+  expenseForCustomerId?: string;
+  contactCustomerId?: string;
+  createdById?: string;
+  categoryId?: string;
+  paymentStatus?: string;
+}
+
 export interface CreateExpenseRequest {
   categoryId?: string;
   refNo?: string;
   subCategory?: string;
   locationCode?: string;
+  expenseForCustomerId?: string;
+  contactCustomerId?: string;
+  /** @deprecated use expenseForCustomerId */
   expenseFor?: string;
+  /** @deprecated use contactCustomerId */
   contactName?: string;
   totalAmount: number;
   taxAmount?: number;
@@ -64,6 +84,8 @@ export interface UpdateExpenseRequest {
   refNo?: string | null;
   subCategory?: string | null;
   locationCode?: string | null;
+  expenseForCustomerId?: string | null;
+  contactCustomerId?: string | null;
   expenseFor?: string | null;
   contactName?: string | null;
   totalAmount?: number;

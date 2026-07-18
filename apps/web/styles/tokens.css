@@ -70,7 +70,8 @@
   --text-xs: 0.75rem;
   --text-sm: 0.875rem; /* 14px — sidebar nav text & icons */
   --sidebar-font-size: 14px;
-  --sidebar-icon-size: 14px;
+  --sidebar-icon-size: 15px;
+  --sidebar-icon-badge-size: 22px;
   --text-base: 1rem;
   --text-lg: 1.125rem;
   --text-xl: 1.25rem;
@@ -78,7 +79,7 @@
   --text-3xl: 1.875rem;
 
   /* Layout */
-  --space-sidebar-width: 280px;
+  --space-sidebar-width: 224px;
   --space-topbar-height: 4rem;
   --space-content-max: 1400px;
   --space-card-padding: 1.25rem;

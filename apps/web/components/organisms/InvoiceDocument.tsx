@@ -47,6 +47,10 @@ export interface InvoiceDocumentProps {
   notes?: string | null;
   validUntil?: string | null;
   balanceDue?: number | null;
+  /** Job / vehicle meta shown on automotive quotations. */
+  jobDescription?: string | null;
+  vehicleLabel?: string | null;
+  amountInWords?: string | null;
   /** For customer account statements — transaction rows instead of SKU lines. */
   statementRows?: InvoiceStatementRow[];
   className?: string;
@@ -73,10 +77,14 @@ export function InvoiceDocument({
   notes,
   validUntil,
   balanceDue,
+  jobDescription,
+  vehicleLabel,
+  amountInWords,
   statementRows,
   className,
 }: InvoiceDocumentProps) {
   const isStatement = kind === "statement" && statementRows && statementRows.length > 0;
+  const isQuotation = kind === "quotation";
 
   return (
     <article
@@ -91,6 +99,11 @@ export function InvoiceDocument({
             {KIND_LABELS[kind]}
           </p>
           <h1 className="mt-1 text-2xl font-bold tracking-tight">{tenantName}</h1>
+          {isQuotation ? (
+            <p className="mt-1 text-sm text-muted">
+              Quotation for repair / service work — subject to approval
+            </p>
+          ) : null}
         </div>
         <div className="text-right text-sm">
           <p className="font-semibold">{reference}</p>
@@ -113,16 +126,30 @@ export function InvoiceDocument({
           {contact.email ? <p className="mt-1 text-sm">{contact.email}</p> : null}
           {contact.phone ? <p className="text-sm">{contact.phone}</p> : null}
         </div>
-        {balanceDue != null && balanceDue > 0 ? (
-          <div className="rounded-lg border border-border bg-[var(--color-surface-muted)] p-4 text-sm">
-            <p className="text-xs font-semibold uppercase tracking-wider text-muted">
-              Account balance
-            </p>
-            <p className="mt-1 text-lg font-semibold text-amber-700">
-              {formatCurrency(balanceDue, currency)} due
-            </p>
-          </div>
-        ) : null}
+        <div className="space-y-3 text-sm">
+          {vehicleLabel ? (
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted">Vehicle</p>
+              <p className="mt-1 font-medium">{vehicleLabel}</p>
+            </div>
+          ) : null}
+          {jobDescription ? (
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted">Job</p>
+              <p className="mt-1 whitespace-pre-wrap text-muted">{jobDescription}</p>
+            </div>
+          ) : null}
+          {balanceDue != null && balanceDue > 0 ? (
+            <div className="rounded-lg border border-border bg-[var(--color-surface-muted)] p-4">
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted">
+                Account balance
+              </p>
+              <p className="mt-1 text-lg font-semibold text-amber-700">
+                {formatCurrency(balanceDue, currency)} due
+              </p>
+            </div>
+          ) : null}
+        </div>
       </section>
 
       <table className="mb-6 w-full text-sm">
@@ -211,6 +238,13 @@ export function InvoiceDocument({
               {formatCurrency(total, currency)}
             </td>
           </tr>
+          {amountInWords ? (
+            <tr>
+              <td colSpan={5} className="pt-3 text-sm italic text-muted">
+                Amount in words: {amountInWords}
+              </td>
+            </tr>
+          ) : null}
         </tfoot>
         ) : (
         <tfoot>
@@ -230,6 +264,17 @@ export function InvoiceDocument({
         <section className="border-t border-border pt-4 text-sm">
           <p className="text-xs font-semibold uppercase tracking-wider text-muted">Notes</p>
           <p className="mt-2 whitespace-pre-wrap">{notes}</p>
+        </section>
+      ) : null}
+
+      {isQuotation ? (
+        <section className="mt-6 border-t border-border pt-4 text-xs text-muted">
+          <p className="font-semibold uppercase tracking-wider">Terms</p>
+          <ul className="mt-2 list-disc space-y-1 pl-4">
+            <li>This quotation is an estimate and may change after inspection or parts sourcing.</li>
+            <li>Work proceeds after customer approval of this quote (or signed acceptance).</li>
+            <li>Warranty terms, if any, are noted above or provided on the final invoice.</li>
+          </ul>
         </section>
       ) : null}
     </article>

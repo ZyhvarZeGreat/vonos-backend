@@ -14,6 +14,7 @@ import { createSale } from "@/lib/api/sales";
 import { createStockMovement } from "@/lib/api/stockMovements";
 import { createSupplier } from "@/lib/api/suppliers";
 import { createCustomer } from "@/lib/api/customers";
+import { getCustomerGroups } from "@/lib/api/customerGroups";
 import { createAppointment } from "@/lib/api/appointments";
 import { getItems } from "@/lib/api/items";
 import { useTenantId, useRouteTenant } from "@/lib/hooks/useRouteTenant";
@@ -51,6 +52,7 @@ function resetOnClose() {
     email: "",
     phone: "",
     address: "",
+    customerGroupId: "",
     stylistName: "",
     serviceName: "",
     servicePrice: "",
@@ -101,27 +103,37 @@ export function CreateRecordModal() {
     createFlow !== null ? movementTypeForFlow(createFlow) : null;
 
   const { data: items = [] } = useQuery({
-    queryKey: ["items", tenantId],
-    queryFn: () => getItems(tenantId!, { limit: 100 }),
+    queryKey: ["items", tenantId, "create-modal"],
+    queryFn: () => getItems(tenantId!, { limit: 40 }),
     enabled:
       Boolean(tenantId) &&
       open &&
       (movementType !== null || createFlow === "sale"),
+    staleTime: 5 * 60_000,
+  });
+
+  const { data: customerGroups = [] } = useQuery({
+    queryKey: ["customer-groups", tenantId, "create-modal"],
+    queryFn: () => getCustomerGroups(tenantId!),
+    enabled: Boolean(tenantId) && open && createFlow === "customer",
+    staleTime: 5 * 60_000,
   });
 
   const categoryOptions = useMemo(() => {
     const fromConfig = tenantConfig?.itemCategories ?? [];
-    const fromItems = [...new Set(items.map((item) => item.category).filter(Boolean))] as string[];
-    const merged = [...new Set([...fromConfig, ...fromItems])].sort();
-    return [{ value: "", label: "Select category…" }, ...merged.map((c) => ({ value: c, label: c }))];
-  }, [items, tenantConfig?.itemCategories]);
+    return [
+      { value: "", label: "Select category…" },
+      ...fromConfig.map((c) => ({ value: c, label: c })),
+    ];
+  }, [tenantConfig?.itemCategories]);
 
   const storageOptions = useMemo(() => {
     const fromConfig = tenantConfig?.storageLocations ?? [];
-    const fromItems = [...new Set(items.map((item) => item.binLocation).filter(Boolean))] as string[];
-    const merged = [...new Set([...fromConfig, ...fromItems])].sort();
-    return [{ value: "", label: "Select bin…" }, ...merged.map((loc) => ({ value: loc, label: loc }))];
-  }, [items, tenantConfig?.storageLocations]);
+    return [
+      { value: "", label: "Select bin…" },
+      ...fromConfig.map((loc) => ({ value: loc, label: loc })),
+    ];
+  }, [tenantConfig?.storageLocations]);
 
   const saleCatalogItems = useMemo(() => {
     return items.filter((item) => {
@@ -269,6 +281,7 @@ export function CreateRecordModal() {
           name: form.name.trim(),
           email: form.email.trim() || undefined,
           phone: form.phone.trim() || undefined,
+          customerGroupId: form.customerGroupId.trim() || undefined,
         });
       }
 
@@ -597,6 +610,18 @@ export function CreateRecordModal() {
             <Input label="Name" value={form.name} onChange={(e) => setField("name", e.target.value)} />
             <Input label="Email" value={form.email} onChange={(e) => setField("email", e.target.value)} />
             <Input label="Phone" value={form.phone} onChange={(e) => setField("phone", e.target.value)} />
+            <Select
+              label="Customer group (optional)"
+              value={form.customerGroupId}
+              onChange={(e) => setField("customerGroupId", e.target.value)}
+              options={[
+                { value: "", label: "No group" },
+                ...customerGroups.map((group) => ({
+                  value: group.id,
+                  label: group.name,
+                })),
+              ]}
+            />
           </>
         ) : null}
 
@@ -648,10 +673,11 @@ export function CreateRecordModal() {
         </Button>
         <Button
           size="sm"
-          disabled={mutation.isPending}
+          isLoading={mutation.isPending}
+          loadingText="Saving…"
           onClick={() => mutation.mutate(createFlow)}
         >
-          {mutation.isPending ? "Saving…" : createCopy.submitLabel}
+          {createCopy.submitLabel}
         </Button>
       </ModalFooter>
     </Modal>

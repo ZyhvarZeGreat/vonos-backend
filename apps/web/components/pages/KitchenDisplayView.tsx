@@ -10,11 +10,7 @@ import { getOrdersPage } from "@/lib/api/orders";
 import { useServerListPage } from "@/lib/hooks/useServerListPage";
 import { formatCurrency } from "@/lib/utils/formatCurrency";
 import { useListPageFilters } from "@/lib/hooks/useListPageFilters";
-import {
-  filterByDateField,
-  filterBySearch,
-  uniqueFieldOptions,
-} from "@/lib/utils/listFilters";
+import { uniqueFieldOptions } from "@/lib/utils/listFilters";
 import { useTenantId } from "@/lib/hooks/useRouteTenant";
 import type { Order } from "@/lib/types/entityRows";
 import { cn } from "@/lib/utils/cn";
@@ -54,16 +50,30 @@ export function KitchenDisplayView() {
     queryKey: ["kitchen-orders", tenantId],
     enabled: Boolean(tenantId),
     search,
-    defaultPageSize: 50,
+    filters: {
+      from: bounds?.from,
+      to: bounds?.to,
+      status: statusFilter || undefined,
+    },
+    defaultPageSize: 10,
     refetchInterval: 30_000,
-    fetchPage: (cursor, limit) => getOrdersPage(tenantId!, undefined, cursor, limit),
+    fetchPage: (cursor, limit) =>
+      getOrdersPage(
+        tenantId!,
+        {
+          search: search.trim() || undefined,
+          from: bounds?.from,
+          to: bounds?.to,
+        },
+        cursor,
+        limit,
+      ),
   });
 
   const filtered = useMemo(() => {
-    let rows = filterByDateField(orders, bounds, "createdAt");
-    if (statusFilter) rows = rows.filter((o) => o.status === statusFilter);
-    return filterBySearch(rows, search, ["reference", "tableNumber"]);
-  }, [bounds, orders, search, statusFilter]);
+    if (!statusFilter) return orders;
+    return orders.filter((o) => o.status === statusFilter);
+  }, [orders, statusFilter]);
 
   const statusOptions = useMemo(
     () => uniqueFieldOptions(orders, "status"),

@@ -397,6 +397,84 @@ export function DashboardBodySkeleton({
   );
 }
 
+/** Loading placeholder matching HqReportPageLayout variants. */
+export function ReportPageSkeleton({
+  variant = "default",
+}: {
+  variant?: "default" | "chartHero" | "kpiSummary" | "tableFocus" | "profitLoss";
+}) {
+  const titleBlock = (
+    <div className="space-y-2 px-1">
+      <Skeleton className="h-6 w-48" />
+      <Skeleton className="h-4 w-36" />
+    </div>
+  );
+
+  if (variant === "profitLoss") {
+    return (
+      <div className="space-y-6" aria-busy aria-label="Loading report">
+        {titleBlock}
+        <div className="grid gap-4 lg:grid-cols-2">
+          <Skeleton className="h-48 w-full rounded-xl" />
+          <Skeleton className="h-48 w-full rounded-xl" />
+        </div>
+        <div className="grid gap-3 sm:grid-cols-3">
+          <Skeleton className="h-20 w-full rounded-xl" />
+          <Skeleton className="h-20 w-full rounded-xl" />
+          <Skeleton className="h-20 w-full rounded-xl" />
+        </div>
+        <div className="flex gap-2 overflow-hidden">
+          {Array.from({ length: 6 }).map((_, index) => (
+            <Skeleton key={index} className="h-9 w-28 shrink-0 rounded-t-md" />
+          ))}
+        </div>
+        <DataTableSkeleton rows={8} columns={4} withPagination={false} />
+      </div>
+    );
+  }
+
+  if (variant === "chartHero") {
+    return (
+      <div className="space-y-6" aria-busy aria-label="Loading report">
+        {titleBlock}
+        <ChartPanelSkeleton />
+        <DataTableSkeleton rows={8} columns={5} withPagination={false} />
+      </div>
+    );
+  }
+
+  if (variant === "kpiSummary") {
+    return (
+      <div className="space-y-6" aria-busy aria-label="Loading report">
+        {titleBlock}
+        <KpiRowSkeleton count={4} />
+        <DataTableSkeleton rows={8} columns={5} withPagination={false} />
+      </div>
+    );
+  }
+
+  if (variant === "tableFocus") {
+    return (
+      <div className="space-y-6" aria-busy aria-label="Loading report">
+        {titleBlock}
+        <DataTableSkeleton rows={10} columns={6} withPagination={false} />
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6" aria-busy aria-label="Loading report">
+      {titleBlock}
+      <KpiRowSkeleton count={4} />
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <ChartPanelSkeleton />
+        <ChartPanelSkeleton />
+      </div>
+      <DataTableSkeleton rows={8} columns={5} withPagination={false} />
+    </div>
+  );
+}
+
 export function DetailPageSkeleton() {
   return (
     <div className="space-y-6" aria-busy aria-label="Loading record">

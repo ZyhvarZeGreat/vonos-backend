@@ -21,7 +21,7 @@ import {
 } from "@/lib/utils/ledgerReportSheet";
 import { recordDetailPath } from "@/lib/utils/recordDetailPath";
 import { useUiStore } from "@/stores/uiStore";
-import { dateRangePresetToBounds } from "@/lib/utils/dateRange";
+import { dateRangePresetToApiBounds } from "@/lib/utils/dateRange";
 import { formatCurrency, formatCurrencyCompact } from "@/lib/utils/formatCurrency";
 import type { ColumnConfig } from "@/components/organisms/DataTable";
 
@@ -91,7 +91,7 @@ export function AdminEntityFinanceSheet({ tenantCode }: AdminEntityFinanceSheetP
   const setDateRange = useUiStore((state) => state.setDateRange);
   const openExportModal = useUiStore((state) => state.openExportModal);
 
-  const bounds = useMemo(() => dateRangePresetToBounds(dateRange), [dateRange]);
+  const bounds = useMemo(() => dateRangePresetToApiBounds(dateRange), [dateRange]);
   const periodLabel = ledgerChartSubtitle(dateRange);
 
   const summaryQuery = useQuery({

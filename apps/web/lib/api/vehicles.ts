@@ -27,8 +27,9 @@ export async function getVehiclesPage(
   tenantId: string,
   cursor: string | undefined,
   limit = DEFAULT_TABLE_PAGE_SIZE,
+  filters: { search?: string; make?: string } = {},
 ): Promise<ListPage<Vehicle>> {
-  return fetchTenantListPage(LIST_PATH, tenantId, cursor, limit);
+  return fetchTenantListPage(LIST_PATH, tenantId, cursor, limit, filters);
 }
 
 /** Full vehicle list for export — not for table rendering. */

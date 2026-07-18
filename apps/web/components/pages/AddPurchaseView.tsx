@@ -4,11 +4,11 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/atoms/Button";
-import { ProductItemSearch } from "@/components/molecules/ProductItemSearch";
+import { MenuSelect } from "@/components/molecules/MenuSelect";
+import { ProductItemSearch, type CatalogPartPick } from "@/components/molecules/ProductItemSearch";
 import { createStockMovement } from "@/lib/api/stockMovements";
 import { getSuppliers } from "@/lib/api/suppliers";
 import { useRouteTenant, useTenantId } from "@/lib/hooks/useRouteTenant";
-import type { Item } from "@vonos/types";
 
 interface PurchaseLine {
   itemId: string;
@@ -23,19 +23,12 @@ export function AddPurchaseView() {
   const { tenantCode } = useRouteTenant();
   const router = useRouter();
   const qc = useQueryClient();
-  const [supplierSearch, setSupplierSearch] = useState("");
 
   const { data: suppliers = [] } = useQuery({
-    queryKey: ["suppliers", tenantId, supplierSearch],
+    queryKey: ["suppliers", tenantId],
     queryFn: () => getSuppliers(tenantId!),
     enabled: Boolean(tenantId),
   });
-
-  const filteredSuppliers = supplierSearch.trim()
-    ? suppliers.filter((s) =>
-        s.name.toLowerCase().includes(supplierSearch.trim().toLowerCase()),
-      )
-    : suppliers;
 
   const [form, setForm] = useState({
     reference: "",
@@ -70,22 +63,24 @@ export function AddPurchaseView() {
     },
   });
 
-  const addItem = (item: Item) => {
+  const addItem = (pick: CatalogPartPick) => {
+    if (!pick.itemId) return;
+    const itemId = pick.itemId;
     setLines((prev) => {
-      const existing = prev.find((l) => l.itemId === item.id);
+      const existing = prev.find((l) => l.itemId === itemId);
       if (existing) {
         return prev.map((l) =>
-          l.itemId === item.id ? { ...l, quantity: l.quantity + 1 } : l,
+          l.itemId === itemId ? { ...l, quantity: l.quantity + 1 } : l,
         );
       }
       return [
         ...prev,
         {
-          itemId: item.id,
-          sku: item.sku,
-          name: item.name,
+          itemId,
+          sku: pick.sku,
+          name: pick.name,
           quantity: 1,
-          unitCost: item.costPrice,
+          unitCost: pick.costPrice,
         },
       ];
     });
@@ -116,23 +111,15 @@ export function AddPurchaseView() {
           </div>
           <div>
             <label className="mb-1 block text-sm font-medium">Supplier *</label>
-            <input
-              type="search"
-              className="mb-2 w-full rounded-md border border-border bg-surface px-3 py-2 text-sm"
-              placeholder="Search suppliers…"
-              value={supplierSearch}
-              onChange={(e) => setSupplierSearch(e.target.value)}
-            />
-            <select
-              className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm"
+            <MenuSelect
               value={form.supplierId}
-              onChange={(e) => setForm({ ...form, supplierId: e.target.value })}
-            >
-              <option value="">Select supplier…</option>
-              {filteredSuppliers.map((s) => (
-                <option key={s.id} value={s.id}>{s.name}</option>
-              ))}
-            </select>
+              placeholder="Select supplier…"
+              onChange={(supplierId) => setForm({ ...form, supplierId })}
+              options={[
+                { value: "", label: "Select supplier…" },
+                ...suppliers.map((s) => ({ value: s.id, label: s.name })),
+              ]}
+            />
           </div>
           <div>
             <label className="mb-1 block text-sm font-medium">Location</label>
@@ -221,10 +208,12 @@ export function AddPurchaseView() {
         <div className="flex justify-end gap-2">
           <Button variant="secondary" onClick={() => router.back()}>Cancel</Button>
           <Button
+            isLoading={mutation.isPending}
+            loadingText="Saving…"
             onClick={() => mutation.mutate()}
-            disabled={mutation.isPending || lines.length === 0 || !form.supplierId}
+            disabled={lines.length === 0 || !form.supplierId}
           >
-            {mutation.isPending ? "Saving…" : "Save Purchase"}
+            Save Purchase
           </Button>
         </div>
       </div>

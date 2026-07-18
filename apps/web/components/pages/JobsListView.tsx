@@ -9,10 +9,6 @@ import { useRecordNavigation } from "@/lib/hooks/useRecordNavigation";
 import { useListPageFilters } from "@/lib/hooks/useListPageFilters";
 import { useServerListPage } from "@/lib/hooks/useServerListPage";
 import { formatCurrency } from "@/lib/utils/formatCurrency";
-import {
-  filterByDateField,
-  uniqueFieldOptions,
-} from "@/lib/utils/listFilters";
 import type { Job } from "@vonos/types";
 import type { ColumnConfig } from "@/components/organisms/DataTable";
 import { useTenantId } from "@/lib/hooks/useRouteTenant";
@@ -24,7 +20,16 @@ const JOB_TABS = [
   { id: "completed", label: "Completed" },
 ];
 
-const ACTIVE_STATUSES = new Set(["Received", "Quoted", "Approved", "In Progress"]);
+const ACTIVE_STATUSES = ["Received", "Quoted", "Approved", "In Progress"];
+
+const JOB_STATUS_OPTIONS = [
+  "Received",
+  "Quoted",
+  "Approved",
+  "In Progress",
+  "QC",
+  "Delivered",
+].map((value) => ({ value, label: value }));
 
 function tabStatusFilter(tab: string): string | undefined {
   if (tab === "qc") return "QC";
@@ -39,13 +44,27 @@ export function JobsListView() {
   const [activeTab, setActiveTab] = useState("all");
   const [statusFilter, setStatusFilter] = useState("");
 
-  const apiFilters = useMemo(
-    () => ({
-      status: statusFilter || tabStatusFilter(activeTab),
+  const apiFilters = useMemo(() => {
+    const next: {
+      status?: string;
+      statuses?: string[];
+      search?: string;
+      from?: string;
+      to?: string;
+    } = {
       search: search.trim() || undefined,
-    }),
-    [activeTab, search, statusFilter],
-  );
+      from: bounds?.from,
+      to: bounds?.to,
+    };
+    if (statusFilter) {
+      next.status = statusFilter;
+    } else if (activeTab === "active") {
+      next.statuses = ACTIVE_STATUSES;
+    } else {
+      next.status = tabStatusFilter(activeTab);
+    }
+    return next;
+  }, [activeTab, bounds?.from, bounds?.to, search, statusFilter]);
 
   const {
     items: jobs,
@@ -90,19 +109,6 @@ export function JobsListView() {
     },
   ];
 
-  const filtered = useMemo(() => {
-    let rows = filterByDateField(jobs, bounds, "dueDate");
-    if (activeTab === "active") {
-      rows = rows.filter((j) => ACTIVE_STATUSES.has(j.status));
-    }
-    return rows;
-  }, [activeTab, bounds, jobs]);
-
-  const statusOptions = useMemo(
-    () => uniqueFieldOptions(jobs, "status"),
-    [jobs],
-  );
-
   return (
     <ListPageShell
       tabs={JOB_TABS}
@@ -119,25 +125,27 @@ export function JobsListView() {
           label: "Status",
           value: statusFilter,
           onChange: setStatusFilter,
-          options: statusOptions,
+          options: JOB_STATUS_OPTIONS,
         },
       ]}
     >
-      <ServerPaginatedTable
-        items={filtered}
-        columns={columns}
-        pageIndex={pageIndex}
-        pageSize={pageSize}
-        hasMore={hasMore}
-        canGoPrev={canGoPrev}
-        onNext={goNext}
-        onPrev={goPrev}
-        onPageSizeChange={setPageSize}
-        isLoading={isLoading}
-        isFetching={isFetching}
-        error={error ? "Failed to load jobs" : null}
-        onRowClick={(row) => goToDetail(row.id)}
-      />
+      <div className="p-4 pt-0">
+        <ServerPaginatedTable
+          items={jobs}
+          columns={columns}
+          pageIndex={pageIndex}
+          pageSize={pageSize}
+          hasMore={hasMore}
+          canGoPrev={canGoPrev}
+          onNext={goNext}
+          onPrev={goPrev}
+          onPageSizeChange={setPageSize}
+          isLoading={isLoading}
+          isFetching={isFetching}
+          error={error ? "Failed to load jobs" : null}
+          onRowClick={(row) => goToDetail(row.id)}
+        />
+      </div>
     </ListPageShell>
   );
 }

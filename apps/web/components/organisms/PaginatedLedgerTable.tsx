@@ -12,7 +12,9 @@ import {
   LEDGER_TABLE_PAGE_SIZE,
   type LedgerQueryFilters,
 } from "@/lib/api/ledger";
+import { useDebouncedValue } from "@/lib/hooks/useDebouncedValue";
 import { useCursorPage } from "@/lib/hooks/useCursorPage";
+import { ledgerListCursor } from "@/lib/utils/pagination";
 
 export interface PaginatedLedgerTableProps<T extends { id: string }> {
   groupMode?: boolean;
@@ -41,6 +43,7 @@ export function PaginatedLedgerTable<T extends LedgerEntry | LedgerListRow>({
   emptyState,
   defaultPageSize = LEDGER_TABLE_PAGE_SIZE,
 }: PaginatedLedgerTableProps<T>) {
+  const debouncedSearch = useDebouncedValue(search?.trim() ?? "", 400);
   const { cursor, pageIndex, canGoPrev, goNext, goPrev, reset } = useCursorPage();
   const [pageSize, setPageSize] = useState(defaultPageSize);
 
@@ -50,9 +53,9 @@ export function PaginatedLedgerTable<T extends LedgerEntry | LedgerListRow>({
     if (category) next.category = category;
     if (from) next.from = from;
     if (to) next.to = to;
-    if (search?.trim()) next.search = search.trim();
+    if (search?.trim()) next.search = debouncedSearch;
     return next;
-  }, [category, from, pageSize, search, to, type]);
+  }, [category, debouncedSearch, from, pageSize, search, to, type]);
 
   const filterKey = useMemo(
     () => JSON.stringify({ groupMode, tenantId, ...filters }),
@@ -90,7 +93,7 @@ export function PaginatedLedgerTable<T extends LedgerEntry | LedgerListRow>({
 
   const handleNext = () => {
     const last = items[items.length - 1];
-    if (last && hasMore) goNext(last.id);
+    if (last && hasMore) goNext(ledgerListCursor(last));
   };
 
   const handlePageSizeChange = (size: number) => {

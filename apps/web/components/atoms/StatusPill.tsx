@@ -22,7 +22,7 @@ const toneClasses = {
 export function StatusPill({ status, vocabulary, className }: StatusPillProps) {
   const tone = getStatusTone(vocabulary, status);
   const label =
-    vocabulary === "stockStatus"
+    vocabulary === "stockStatus" || vocabulary === "payrollStatus"
       ? status.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
       : status;
 

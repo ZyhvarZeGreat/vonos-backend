@@ -10,7 +10,6 @@ import { StatusPill } from "@/components/atoms/StatusPill";
 import { RecordViewModal } from "@/components/organisms/RecordViewModal";
 import { InvoiceDocument } from "@/components/organisms/InvoiceDocument";
 import { DocumentPreviewModal } from "@/components/organisms/DocumentPreviewModal";
-import { getCustomer } from "@/lib/api/customers";
 import { getInvoiceSettings } from "@/lib/api/invoiceSettings";
 import { createSaleReturn, finalizeSale, getSale } from "@/lib/api/sales";
 import { useAppMutation } from "@/lib/hooks/useAppMutation";
@@ -45,18 +44,14 @@ export function SaleRecordModal({
     queryKey: ["sale-modal", tenantId, saleId],
     queryFn: () => getSale(saleId!, tenantId!),
     enabled: Boolean(tenantId && saleId),
-  });
-
-  const { data: customerProfile } = useQuery({
-    queryKey: ["customer", tenantId, sale?.customerId],
-    queryFn: () => getCustomer(sale!.customerId!),
-    enabled: Boolean(tenantId && sale?.customerId),
+    staleTime: 60_000,
   });
 
   const { data: invoiceSettings } = useQuery({
     queryKey: ["invoice-settings", tenantId],
     queryFn: getInvoiceSettings,
     enabled: Boolean(tenantId),
+    staleTime: 10 * 60_000,
   });
 
   const documentKind = useMemo(
@@ -80,13 +75,13 @@ export function SaleRecordModal({
       tenantName={tenantName}
       reference={sale.reference}
       date={sale.date}
-      contact={saleToInvoiceContact(sale, customerProfile)}
+      contact={saleToInvoiceContact(sale)}
       lineItems={lineItems}
       subtotal={subtotal}
       total={sale.total}
       currency={sale.currency}
       notes={invoiceSettings?.termsText ?? null}
-      balanceDue={customerProfile?.totalSellDue ?? null}
+      balanceDue={sale.customerTotalSellDue ?? null}
       className="invoice-print-root"
     />
   ) : null;

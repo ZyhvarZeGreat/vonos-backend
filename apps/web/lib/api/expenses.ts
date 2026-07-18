@@ -1,6 +1,7 @@
 import type {
   Expense,
   ExpenseCategory,
+  ExpenseFilters,
   CreateExpenseRequest,
   CreateExpenseCategoryRequest,
   UpdateExpenseCategoryRequest,
@@ -19,11 +20,24 @@ import { appendListQuery, fetchTenantListPage } from "@/lib/api/listPageHelpers"
 const EXPENSES_PATH = "/expenses";
 const CATEGORIES_PATH = "/expenses/categories";
 
+export type ExpenseListFilters = Pick<
+  ExpenseFilters,
+  | "from"
+  | "to"
+  | "search"
+  | "locationCode"
+  | "expenseForCustomerId"
+  | "contactCustomerId"
+  | "createdById"
+  | "categoryId"
+  | "paymentStatus"
+>;
+
 async function fetchExpensesRaw(
   tenantId: string,
   cursor?: string,
   limit?: number,
-  extra?: { from?: string; to?: string; search?: string },
+  extra?: ExpenseListFilters,
 ): Promise<Expense[]> {
   const tenantPath = withTenantQuery(EXPENSES_PATH, tenantId);
   const url = appendListQuery(tenantPath, { cursor, limit, ...extra });
@@ -48,7 +62,7 @@ export async function getExpensesPage(
   tenantId: string,
   cursor: string | undefined,
   limit = DEFAULT_TABLE_PAGE_SIZE,
-  extra?: { from?: string; to?: string; search?: string },
+  extra?: ExpenseListFilters,
 ): Promise<ListPage<Expense>> {
   return fetchTenantListPage(EXPENSES_PATH, tenantId, cursor, limit, extra);
 }
@@ -93,7 +107,7 @@ export async function getExpenseCategoriesPage(
 /** Full expense list for export — not for table rendering. */
 export async function getAllExpenses(
   tenantId: string,
-  extra?: { from?: string; to?: string; search?: string },
+  extra?: ExpenseListFilters,
 ): Promise<Expense[]> {
   return fetchAllPages(
     (cursor, limit) => fetchExpensesRaw(tenantId, cursor, limit, extra),

@@ -4,6 +4,11 @@ export interface Customer {
   name: string;
   email: string | null;
   phone: string | null;
+  customerGroupId?: string | null;
+  customerGroupName?: string | null;
+  assignedToUserId?: string | null;
+  assignedToName?: string | null;
+  openingBalance?: number;
   /** Aggregated from sales — not stored on Customer row */
   totalSpend: number;
   /** Aggregated from sales — not stored on Customer row */
@@ -16,10 +21,11 @@ export interface Customer {
   contactId?: string | null;
   businessName?: string | null;
   taxNumber?: string | null;
-  openingBalance?: number;
   totalSell?: number;
   totalSellDue?: number;
   totalSellPaid?: number;
+  totalSellReturn?: number;
+  totalAdvance?: number;
   status?: "active" | "inactive";
 }
 
@@ -27,12 +33,28 @@ export interface CustomerFilters {
   cursor?: string;
   limit?: number;
   search?: string;
+  sellDue?: boolean;
+  sellReturn?: boolean;
+  advanceBalance?: boolean;
+  openingBalance?: boolean;
+  hasNoSellMonths?: 1 | 3 | 6;
+  customerGroupId?: string;
+  assignedToUserId?: string;
+  status?: "active" | "inactive";
+  /** ISO date — filter by customer createdAt >= from */
+  from?: string;
+  /** ISO date — filter by customer createdAt <= to */
+  to?: string;
 }
 
 export interface CreateCustomerInput {
   name: string;
   email?: string;
   phone?: string;
+  customerGroupId?: string;
+  assignedToUserId?: string;
+  openingBalance?: number;
+  status?: "active" | "inactive";
 }
 
 export type CustomerTransactionKind = "sale" | "job" | "appointment";
@@ -59,6 +81,18 @@ export interface ContactDueSummary {
   totalPaid: number;
   totalDue: number;
   currency: string;
+}
+
+/** Lightweight customer row for titles, forms, and invoice contact — no history. */
+export interface CustomerContact {
+  id: string;
+  name: string;
+  email: string | null;
+  phone: string | null;
+  totalSellDue: number;
+  visitCount: number;
+  createdAt: string;
+  status: "active" | "inactive";
 }
 
 export interface ContactLedgerEntry {

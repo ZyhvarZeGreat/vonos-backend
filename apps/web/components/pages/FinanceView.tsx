@@ -31,7 +31,7 @@ import { formatCurrency, formatCurrencyCompact } from "@/lib/utils/formatCurrenc
 import {
   ledgerChartSubtitle,
 } from "@/lib/utils/ledgerCharts";
-import { dateRangePresetToBounds } from "@/lib/utils/dateRange";
+import { dateRangePresetToApiBounds } from "@/lib/utils/dateRange";
 import { DateRangeDropdown } from "@/components/molecules/DateRangeDropdown";
 import { recordDetailPath } from "@/lib/utils/recordDetailPath";
 import { useUiStore, type DateRangePreset } from "@/stores/uiStore";
@@ -176,14 +176,14 @@ export function FinanceView({ groupMode = false }: FinanceViewProps) {
   const [typeFilter, setTypeFilter] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("");
 
-  const bounds = useMemo(() => dateRangePresetToBounds(dateRange), [dateRange]);
+  const bounds = useMemo(() => dateRangePresetToApiBounds(dateRange), [dateRange]);
 
   const summaryQuery = useQuery({
-    queryKey: ["ledgerSummary", groupMode ? "group" : tenantId, bounds?.from, bounds?.to],
+    queryKey: ["ledgerSummary", groupMode ? "group" : tenantId, bounds.from, bounds.to],
     queryFn: () =>
       groupMode
-        ? getGroupLedgerSummary(bounds?.from, bounds?.to)
-        : getLedgerSummary(tenantId!, bounds?.from, bounds?.to),
+        ? getGroupLedgerSummary(bounds.from, bounds.to)
+        : getLedgerSummary(tenantId!, bounds.from, bounds.to),
     enabled: (groupMode || Boolean(tenantId)) && activeTab === "overview",
     staleTime: FINANCE_STALE_MS,
   });

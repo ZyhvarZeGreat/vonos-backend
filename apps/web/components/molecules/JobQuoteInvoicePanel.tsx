@@ -1,13 +1,13 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Eye, FileText, Receipt, Printer } from "lucide-react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Eye, FileText, Receipt, Printer, ShoppingBag } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
+import { useRouter } from "next/navigation";
 import { useAppMutation } from "@/lib/hooks/useAppMutation";
 import { useRouteTenant } from "@/lib/hooks/useRouteTenant";
 import type { JobDetail } from "@/lib/api/jobs";
 import { updateJobBilling } from "@/lib/api/jobs";
-import { getCustomer } from "@/lib/api/customers";
 import {
   InvoiceDocument,
   type InvoiceContact,
@@ -16,6 +16,8 @@ import {
 import { DocumentPreviewModal } from "@/components/organisms/DocumentPreviewModal";
 import { formatCurrency } from "@/lib/utils/formatCurrency";
 import { cn } from "@/lib/utils/cn";
+import { amountToWords } from "@/lib/utils/amountToWords";
+import { useUiStore } from "@/stores/uiStore";
 
 type BillingTab = "quotation" | "invoice";
 
@@ -58,17 +60,11 @@ function toInvoiceLines(
 
 export function JobQuoteInvoicePanel({ job, onJobChange }: JobQuoteInvoicePanelProps) {
   const queryClient = useQueryClient();
-  const { tenantName, tenantId } = useRouteTenant();
+  const router = useRouter();
+  const { tenantName, tenantId, tenantCode } = useRouteTenant();
+  const openAddSaleModal = useUiStore((state) => state.openAddSaleModal);
   const [tab, setTab] = useState<BillingTab>("quotation");
   const [previewOpen, setPreviewOpen] = useState(false);
-
-  const customerId = job.customer?.id ?? job.customerId ?? null;
-
-  const { data: customerProfile } = useQuery({
-    queryKey: ["customer", tenantId, customerId],
-    queryFn: () => getCustomer(customerId!),
-    enabled: Boolean(tenantId && customerId),
-  });
 
   const suggestedTotal = useMemo(() => {
     const materials = job.materials.reduce((sum, row) => sum + row.totalCost, 0);
@@ -125,18 +121,36 @@ export function JobQuoteInvoicePanel({ job, onJobChange }: JobQuoteInvoicePanelP
 
   const contact: InvoiceContact = {
     name: job.customer?.name ?? job.customerName ?? "Customer",
-    email: job.customer?.email ?? customerProfile?.email,
-    phone: job.customer?.phone ?? customerProfile?.phone,
-    businessName: customerProfile?.businessName,
+    email: job.customer?.email ?? undefined,
+    phone: job.customer?.phone ?? undefined,
   };
 
-  const balanceDue = customerProfile?.totalSellDue ?? null;
+  const balanceDue = job.customer?.totalSellDue ?? null;
+
+  const vehicleLabel = job.vehicle
+    ? [
+        job.vehicle.plateNumber,
+        [job.vehicle.make, job.vehicle.model].filter(Boolean).join(" "),
+        job.vehicle.year ? `(${job.vehicle.year})` : null,
+      ]
+        .filter(Boolean)
+        .join(" — ")
+    : null;
+
+  const openPreview = (andPrint: boolean) => {
+    setPreviewOpen(true);
+    if (andPrint) {
+      window.setTimeout(() => window.print(), 250);
+    }
+  };
 
   const previewDocument = (
     <InvoiceDocument
       kind={tab}
       tenantName={tenantName}
-      reference={job.reference}
+      reference={
+        tab === "quotation" ? `QT-${job.reference}` : `INV-${job.reference}`
+      }
       date={new Date().toISOString()}
       contact={contact}
       lineItems={invoiceLines}
@@ -146,6 +160,9 @@ export function JobQuoteInvoicePanel({ job, onJobChange }: JobQuoteInvoicePanelP
       notes={tab === "quotation" ? quoteNotes : invoiceNotes}
       validUntil={tab === "quotation" ? quoteValidUntil || null : null}
       balanceDue={balanceDue}
+      jobDescription={job.description}
+      vehicleLabel={vehicleLabel}
+      amountInWords={amountToWords(documentTotal)}
       className="invoice-print-root"
     />
   );
@@ -314,7 +331,7 @@ export function JobQuoteInvoicePanel({ job, onJobChange }: JobQuoteInvoicePanelP
           </button>
           <button
             type="button"
-            onClick={() => setPreviewOpen(true)}
+            onClick={() => openPreview(false)}
             className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-[var(--color-surface-nav-hover)]"
           >
             <Eye className="h-4 w-4" />
@@ -322,7 +339,7 @@ export function JobQuoteInvoicePanel({ job, onJobChange }: JobQuoteInvoicePanelP
           </button>
           <button
             type="button"
-            onClick={() => setPreviewOpen(true)}
+            onClick={() => openPreview(true)}
             className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-[var(--color-surface-nav-hover)]"
           >
             <Printer className="h-4 w-4" />
@@ -340,6 +357,34 @@ export function JobQuoteInvoicePanel({ job, onJobChange }: JobQuoteInvoicePanelP
                 ? "Save quotation draft"
                 : "Save invoice draft"}
           </button>
+          {job.saleId ? (
+            <button
+              type="button"
+              onClick={() => {
+                if (!tenantCode) return;
+                router.push(`/${tenantCode}/sales?record=${job.saleId}`);
+              }}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-[var(--color-surface-nav-hover)]"
+            >
+              <ShoppingBag className="h-4 w-4" />
+              Open linked sale
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() =>
+                openAddSaleModal(
+                  tenantId ?? undefined,
+                  tab === "quotation" ? "quotation" : "final",
+                  job.id,
+                )
+              }
+              className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-[var(--color-surface-nav-hover)]"
+            >
+              <ShoppingBag className="h-4 w-4" />
+              {tab === "quotation" ? "Record as sale quote" : "Record as sale"}
+            </button>
+          )}
         </div>
       </section>
 

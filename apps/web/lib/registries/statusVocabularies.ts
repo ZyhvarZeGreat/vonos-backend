@@ -8,7 +8,8 @@ export const statusVocabularies = {
     out_of_stock: "error",
   },
   movementStatus: {
-    Pending: "neutral",
+    Ordered: "neutral",
+    Pending: "warning",
     Approved: "info",
     Received: "success",
     Shipped: "info",
@@ -53,6 +54,19 @@ export const statusVocabularies = {
     Active: "success",
     Invited: "info",
     Suspended: "error",
+  },
+  /** Payroll run status + payment status (draft/final/paid, due/partial/paid). */
+  payrollStatus: {
+    draft: "neutral",
+    final: "info",
+    paid: "success",
+    due: "warning",
+    partial: "info",
+    Draft: "neutral",
+    Final: "info",
+    Paid: "success",
+    Due: "warning",
+    Partial: "info",
   },
 } as const;
 

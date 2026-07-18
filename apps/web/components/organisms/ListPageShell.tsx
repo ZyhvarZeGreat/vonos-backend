@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { ChevronDown, Download, Search, Upload } from "lucide-react";
 import { DateRangeDropdown } from "@/components/molecules/DateRangeDropdown";
 import { DropdownMenu } from "@/components/molecules/DropdownMenu";
-import type { DateRangePreset } from "@/stores/uiStore";
+import type { DateRangePreset, CustomDateRange } from "@/stores/uiStore";
 import { useUiStore } from "@/stores/uiStore";
 import { cn } from "@/lib/utils/cn";
 
@@ -19,6 +19,13 @@ export interface ListFilterDropdown {
   options: { value: string; label: string }[];
   value: string;
   onChange: (value: string) => void;
+}
+
+export interface ListFilterCheckbox {
+  id: string;
+  label: string;
+  checked: boolean;
+  onChange: (checked: boolean) => void;
 }
 
 export interface ListPageShellProps {
@@ -37,7 +44,12 @@ export interface ListPageShellProps {
   showSearch?: boolean;
   dateRange?: DateRangePreset;
   onDateRangeChange?: (preset: DateRangePreset) => void;
+  customDateRange?: CustomDateRange | null;
+  onCustomDateRangeChange?: (range: CustomDateRange | null) => void;
   filterDropdowns?: ListFilterDropdown[];
+  filterCheckboxes?: ListFilterCheckbox[];
+  /** Extra classes for the content area below the toolbar (e.g. report body padding). */
+  contentClassName?: string;
   onExport?: () => void;
   /** Primary action rendered in the table toolbar (e.g. "Add Customer"). */
   primaryAction?: React.ReactNode;
@@ -61,11 +73,15 @@ export function ListPageShell({
   showSearch = true,
   dateRange,
   onDateRangeChange,
+  customDateRange,
+  onCustomDateRangeChange,
   filterDropdowns = [],
+  filterCheckboxes = [],
   onExport,
   primaryAction,
   children,
   className,
+  contentClassName,
   searchDebounceMs = 300,
 }: ListPageShellProps) {
   const openExportModal = useUiStore((state) => state.openExportModal);
@@ -166,7 +182,12 @@ export function ListPageShell({
       <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[var(--color-border-subtle)] p-4">
         <div className="flex flex-wrap items-center gap-3">
           {showDateRange ? (
-            <DateRangeDropdown value={dateRange} onChange={onDateRangeChange} />
+            <DateRangeDropdown
+              value={dateRange}
+              onChange={onDateRangeChange}
+              customValue={customDateRange}
+              onCustomChange={onCustomDateRangeChange}
+            />
           ) : null}
           {filterDropdowns.map((filter) => (
             <DropdownMenu
@@ -188,6 +209,24 @@ export function ListPageShell({
               }
             />
           ))}
+          {filterCheckboxes.length > 0 ? (
+            <div className="flex flex-wrap items-center gap-3">
+              {filterCheckboxes.map((box) => (
+                <label
+                  key={box.id}
+                  className="inline-flex items-center gap-1.5 text-sm text-[var(--color-text-secondary)]"
+                >
+                  <input
+                    type="checkbox"
+                    checked={box.checked}
+                    onChange={(e) => box.onChange(e.target.checked)}
+                    className="rounded border-border"
+                  />
+                  {box.label}
+                </label>
+              ))}
+            </div>
+          ) : null}
         </div>
         <div className="flex flex-wrap items-center gap-3">
           {showSearch ? (
@@ -205,7 +244,11 @@ export function ListPageShell({
         </div>
       </div>
 
-      {children}
+      {contentClassName ? (
+        <div className={contentClassName}>{children}</div>
+      ) : (
+        children
+      )}
     </div>
   );
 }

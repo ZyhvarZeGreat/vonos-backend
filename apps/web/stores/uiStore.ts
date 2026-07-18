@@ -40,7 +40,13 @@ export type DateRangePreset =
   | "last_7_days"
   | "last_30_days"
   | "last_90_days"
-  | "this_month";
+  | "this_month"
+  | "custom";
+
+export interface CustomDateRange {
+  from: string;
+  to: string;
+}
 
 interface UiState {
   sidebarCollapsed: boolean;
@@ -56,7 +62,10 @@ interface UiState {
   /** When set, expense/sale modals post to this tenant (VAG admin group finance). */
   financeActionTenantId: string | null;
   salePresetStatus: SaleFormPresetStatus | null;
+  /** When set, Add Sale form pre-selects this job (VA). */
+  saleJobId: string | null;
   dateRange: DateRangePreset;
+  customDateRange: CustomDateRange | null;
   toggleSidebar: () => void;
   setActiveNav: (route: string) => void;
   setNotifications: (notifications: Notification[]) => void;
@@ -67,7 +76,11 @@ interface UiState {
     copy?: Partial<CreateModalCopy>,
   ) => void;
   openAddExpenseModal: (tenantId?: string) => void;
-  openAddSaleModal: (tenantId?: string, presetStatus?: SaleFormPresetStatus) => void;
+  openAddSaleModal: (
+    tenantId?: string,
+    presetStatus?: SaleFormPresetStatus,
+    jobId?: string | null,
+  ) => void;
   openAddProductModal: (flow?: ProductFlowKey) => void;
   openExportModal: (
     copy?: Partial<ExportModalCopy>,
@@ -75,6 +88,7 @@ interface UiState {
   ) => void;
   closeModal: () => void;
   setDateRange: (range: DateRangePreset) => void;
+  setCustomDateRange: (range: CustomDateRange | null) => void;
 }
 
 export const useUiStore = create<UiState>((set) => ({
@@ -90,7 +104,9 @@ export const useUiStore = create<UiState>((set) => ({
   exportPayload: null,
   financeActionTenantId: null,
   salePresetStatus: null,
+  saleJobId: null,
   dateRange: "last_7_days",
+  customDateRange: null,
   toggleSidebar: () =>
     set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),
   setActiveNav: (route) => set({ activeNav: route }),
@@ -110,12 +126,13 @@ export const useUiStore = create<UiState>((set) => ({
       createFlow: null,
       financeActionTenantId: tenantId ?? null,
     }),
-  openAddSaleModal: (tenantId, presetStatus = "final") =>
+  openAddSaleModal: (tenantId, presetStatus = "final", jobId = null) =>
     set({
       activeModal: "addSale",
       createFlow: null,
       financeActionTenantId: tenantId ?? null,
       salePresetStatus: presetStatus,
+      saleJobId: jobId ?? null,
     }),
   openAddProductModal: (flow = "item") =>
     set({
@@ -137,6 +154,16 @@ export const useUiStore = create<UiState>((set) => ({
       exportPayload: null,
       financeActionTenantId: null,
       salePresetStatus: null,
+      saleJobId: null,
     }),
-  setDateRange: (dateRange) => set({ dateRange }),
+  setDateRange: (dateRange) =>
+    set((state) => ({
+      dateRange,
+      customDateRange: dateRange === "custom" ? state.customDateRange : null,
+    })),
+  setCustomDateRange: (customDateRange) =>
+    set({
+      dateRange: customDateRange ? "custom" : "all_time",
+      customDateRange,
+    }),
 }));

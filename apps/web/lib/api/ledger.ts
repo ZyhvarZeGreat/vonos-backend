@@ -9,7 +9,7 @@ import type {
 import { apiFetch, withTenantQuery } from "./client";
 import { fetchAllPages, fetchFirstPage } from "./fetchAllPages";
 
-export const LEDGER_TABLE_PAGE_SIZE = 50;
+export const LEDGER_TABLE_PAGE_SIZE = 10;
 
 export interface LedgerQueryFilters {
   type?: LedgerEntryType;

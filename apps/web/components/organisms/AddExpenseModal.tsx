@@ -113,10 +113,11 @@ export function AddExpenseModal() {
         </Button>
         <Button
           size="sm"
+          isLoading={mutation.isPending}
+          loadingText="Saving…"
           onClick={() => mutation.mutate()}
-          disabled={mutation.isPending}
         >
-          {mutation.isPending ? "Saving…" : "Add Expense"}
+          Add Expense
         </Button>
       </ModalFooter>
     </Modal>

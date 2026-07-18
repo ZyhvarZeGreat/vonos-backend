@@ -19,6 +19,7 @@ async function fetchCatalogRaw(
   if (filters?.status) params.set("status", filters.status);
   if (filters?.category) params.set("category", filters.category);
   if (filters?.search) params.set("search", filters.search);
+  if (filters?.locationCode) params.set("locationCode", filters.locationCode);
   if (cursor) params.set("cursor", cursor);
   if (limit) params.set("limit", String(limit));
   const query = params.toString();

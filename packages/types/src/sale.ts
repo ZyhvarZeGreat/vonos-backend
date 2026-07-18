@@ -20,9 +20,19 @@ export const SALE_STATUSES = [
 
 export type SaleStatus = (typeof SALE_STATUSES)[number];
 
-export const PAYMENT_STATUSES = ["paid", "partial", "due"] as const;
+export const PAYMENT_STATUSES = ["paid", "partial", "due", "overdue"] as const;
 
 export type PaymentStatus = (typeof PAYMENT_STATUSES)[number];
+
+export const PAYMENT_METHODS = [
+  "cash",
+  "card",
+  "transfer",
+  "cheque",
+  "other",
+] as const;
+
+export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
 
 export interface SaleLine {
   id: string;
@@ -53,13 +63,21 @@ export interface Sale {
   reference: string;
   customerId: string | null;
   customerName: string;
+  /** Present when this sale is the commercial record for a job (VA). */
+  jobId?: string | null;
+  jobReference?: string | null;
   total: number;
   currency: string;
   status: SaleReturnStatus;
   /** Stored DB status (draft, quotation, completed, …) for documents and filters. */
   recordStatus?: SaleStatus;
   paymentStatus: PaymentStatus | null;
+  paymentMethod?: string | null;
   locationCode: string | null;
+  cleanerUserId?: string | null;
+  cleanerName?: string | null;
+  serviceStaffEmployeeId?: string | null;
+  serviceStaffEmployeeName?: string | null;
   shippingStatus?: ShippingStatus | null;
   shippingAddress?: string | null;
   trackingNumber?: string | null;
@@ -79,6 +97,11 @@ export interface Sale {
 /** Detail view includes line items */
 export interface SaleDetail extends Sale {
   lines: SaleLine[];
+  /** Contact fields from linked customer — enough for invoice preview without a second fetch. */
+  customerEmail?: string | null;
+  customerPhone?: string | null;
+  customerBusinessName?: string | null;
+  customerTotalSellDue?: number | null;
 }
 
 export interface SaleFilters {
@@ -89,10 +112,23 @@ export interface SaleFilters {
   returnsOnly?: boolean;
   /** When true, only sales with a shipping status set. */
   shipmentsOnly?: boolean;
+  /** Filter by business / branch location code. */
+  locationCode?: string;
   customerId?: string;
+  /** When set, only the sale linked to this job (VA). */
+  jobId?: string;
+  paymentStatus?: PaymentStatus;
+  paymentMethod?: string;
+  cleanerUserId?: string;
+  serviceStaffEmployeeId?: string;
+  createdByUserId?: string;
+  from?: string;
+  to?: string;
   cursor?: string;
   limit?: number;
   search?: string;
+  sortBy?: string;
+  sortDir?: "asc" | "desc";
 }
 
 export interface CreateSaleLineRequest {
@@ -102,6 +138,13 @@ export interface CreateSaleLineRequest {
   quantity: number;
   unitPrice: number;
   discountAmount?: number;
+  /**
+   * When true (or when itemId is omitted), create an inbound purchase for this
+   * line so Purchases stays in sync with ad-hoc / missing parts.
+   */
+  createPurchase?: boolean;
+  /** Autos-group source when the part was picked from another entity (e.g. VW). */
+  sourceTenantCode?: string;
 }
 
 export interface CreateSalePaymentRequest {
@@ -114,7 +157,14 @@ export interface CreateSalePaymentRequest {
 export interface CreateSaleRequest {
   reference: string;
   customerName?: string;
+  customerId?: string;
+  /** Required for job-centric tenants (VA) — sale is the job's commercial record. */
+  jobId?: string;
   locationCode?: string;
+  paymentMethod?: string;
+  cleanerUserId?: string;
+  cleanerName?: string;
+  serviceStaffEmployeeId?: string;
   lines: CreateSaleLineRequest[];
   currency?: string;
   date?: string;

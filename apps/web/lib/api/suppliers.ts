@@ -1,13 +1,21 @@
 import { apiFetch, withTenantQuery } from "@/lib/api/client";
-import type { SupplierListRow, ContactDueSummary, ContactLedgerEntry, CsvImportResult } from "@vonos/types";
+import type {
+  SupplierListRow,
+  SupplierFilters,
+  ContactDueSummary,
+  ContactLedgerEntry,
+  CsvImportResult,
+} from "@vonos/types";
 import {
   DEFAULT_TABLE_PAGE_SIZE,
   EXPORT_PAGE_SIZE,
+  TYPEAHEAD_PAGE_SIZE,
   fetchAllPages,
   fetchFirstPage,
   type ListPage,
 } from "@/lib/api/fetchAllPages";
 import { appendListQuery, fetchTenantListPage } from "@/lib/api/listPageHelpers";
+import { nameListCursor } from "@/lib/utils/pagination";
 
 export type { SupplierListRow };
 
@@ -21,13 +29,31 @@ export interface SupplierKpiSummary {
   currency: string;
 }
 
+function supplierExtraParams(filters?: SupplierFilters): Record<string, string | undefined> {
+  if (!filters) return {};
+  return {
+    search: filters.search,
+    purchaseDue: filters.purchaseDue ? "true" : undefined,
+    purchaseReturn: filters.purchaseReturn ? "true" : undefined,
+    advanceBalance: filters.advanceBalance ? "true" : undefined,
+    openingBalance: filters.openingBalance ? "true" : undefined,
+    assignedToUserId: filters.assignedToUserId,
+    status: filters.status,
+  };
+}
+
 async function fetchSuppliersRaw(
   tenantId: string,
   cursor?: string,
   limit?: number,
+  filters?: SupplierFilters,
 ): Promise<SupplierListRow[]> {
   const tenantPath = withTenantQuery(LIST_PATH, tenantId);
-  const url = appendListQuery(tenantPath, { cursor, limit });
+  const url = appendListQuery(tenantPath, {
+    cursor,
+    limit,
+    ...supplierExtraParams(filters),
+  });
   const response = await apiFetch(url);
   if (!response.ok) throw new Error("Failed to fetch suppliers");
   return response.json();
@@ -37,21 +63,31 @@ export async function getSuppliersPage(
   tenantId: string,
   cursor: string | undefined,
   limit = DEFAULT_TABLE_PAGE_SIZE,
+  filters?: SupplierFilters,
 ): Promise<ListPage<SupplierListRow>> {
-  return fetchTenantListPage(LIST_PATH, tenantId, cursor, limit);
+  return fetchTenantListPage(LIST_PATH, tenantId, cursor, limit, supplierExtraParams(filters));
 }
 
 /** Full supplier list for export — not for table rendering. */
-export async function getAllSuppliers(tenantId: string): Promise<SupplierListRow[]> {
+export async function getAllSuppliers(
+  tenantId: string,
+  filters?: SupplierFilters,
+): Promise<SupplierListRow[]> {
   return fetchAllPages(
-    (cursor, limit) => fetchSuppliersRaw(tenantId, cursor, limit),
+    (cursor, limit) => fetchSuppliersRaw(tenantId, cursor, limit, filters),
     EXPORT_PAGE_SIZE,
+    nameListCursor,
   );
 }
 
-export async function getSuppliers(tenantId: string): Promise<SupplierListRow[]> {
-  return fetchFirstPage((cursor, limit) =>
-    fetchSuppliersRaw(tenantId, cursor, limit),
+/** Typeahead / option lists — capped; pass search for more matches. */
+export async function getSuppliers(
+  tenantId: string,
+  filters?: SupplierFilters,
+): Promise<SupplierListRow[]> {
+  return fetchFirstPage(
+    (cursor, limit) => fetchSuppliersRaw(tenantId, cursor, limit, filters),
+    filters?.limit ?? TYPEAHEAD_PAGE_SIZE,
   );
 }
 
@@ -65,6 +101,15 @@ export async function getSupplierKpis(tenantId: string): Promise<SupplierKpiSumm
 
 export async function getSupplier(id: string): Promise<SupplierListRow> {
   const response = await apiFetch(`/suppliers/${id}`);
+  if (!response.ok) throw new Error("Failed to fetch supplier");
+  return response.json();
+}
+
+/** Name only — for titles / breadcrumbs. */
+export async function getSupplierMeta(
+  id: string,
+): Promise<{ id: string; name: string }> {
+  const response = await apiFetch(`/suppliers/${id}/meta`);
   if (!response.ok) throw new Error("Failed to fetch supplier");
   return response.json();
 }

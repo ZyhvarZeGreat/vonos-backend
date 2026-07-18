@@ -69,7 +69,7 @@ export function RolesListView() {
         items={filtered}
         columns={roleColumns}
         pageIndex={0}
-        pageSize={filtered.length || 25}
+        pageSize={10}
         hasMore={false}
         canGoPrev={false}
         onNext={() => {}}

@@ -58,14 +58,13 @@ export function formatLocationStockSummary(
     .join(" · ");
 }
 
+/** Branch / counter options for list filters. ListPageShell prepends "All Location". */
 export function locationFilterOptions(
   config: TenantConfig | null | undefined,
 ): { value: string; label: string }[] {
   const branches = config?.businessLocations ?? [];
   const storage = config?.storageLocations ?? [];
-  const options: { value: string; label: string }[] = [
-    { value: "", label: branches.length === 0 ? "All locations" : "All locations" },
-  ];
+  const options: { value: string; label: string }[] = [];
   for (const branch of branches) {
     options.push({ value: branch.code, label: branch.name });
   }

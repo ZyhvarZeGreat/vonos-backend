@@ -3,12 +3,15 @@
 import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, Trash2 } from "lucide-react";
-import type { Item, JobLabour, JobMaterial } from "@vonos/types";
+import type { JobLabour, JobMaterial } from "@vonos/types";
 import { Button } from "@/components/atoms/Button";
 import { Input } from "@/components/atoms/Input";
 import { Select } from "@/components/atoms/Select";
 import { EmptyState } from "@/components/atoms/EmptyState";
-import { ProductItemSearch } from "@/components/molecules/ProductItemSearch";
+import {
+  ProductItemSearch,
+  type CatalogPartPick,
+} from "@/components/molecules/ProductItemSearch";
 import type { JobDetail } from "@/lib/api/jobs";
 import {
   addJobLabour,
@@ -34,7 +37,7 @@ const INTERNAL_DEPARTMENTS: { code: string; label: string }[] = [
 ];
 
 const SOURCE_MODES: { id: PartSourceMode; label: string }[] = [
-  { id: "shop", label: "Own stock" },
+  { id: "shop", label: "Own stock (VA → VW → purchase)" },
   { id: "internal", label: "Internal dept" },
   { id: "external", label: "External purchase" },
 ];
@@ -142,12 +145,16 @@ export function JobMaterialsPanel({ job, tenantId, onJobChange }: JobCostPanelPr
     },
   });
 
-  const addFromItem = (item: Item) => {
+  const addFromItem = (pick: CatalogPartPick) => {
+    if (pick.isCustom) {
+      setManualName(pick.name);
+      return;
+    }
     addMutation.mutate({
-      itemId: item.id,
-      name: item.name,
+      itemId: pick.itemId,
+      name: pick.name,
       quantity: 1,
-      unitCost: item.costPrice,
+      unitCost: pick.costPrice || pick.sellPrice || 0,
       ...sourcingFields(),
     });
   };
@@ -222,7 +229,9 @@ export function JobMaterialsPanel({ job, tenantId, onJobChange }: JobCostPanelPr
         {sourceMode !== "external" ? (
           <ProductItemSearch
             tenantId={tenantId}
-            placeholder="Search parts by name or SKU…"
+            includeWarehouse
+            allowCustom
+            placeholder="Search own stock or warehouse parts…"
             onSelect={addFromItem}
           />
         ) : null}

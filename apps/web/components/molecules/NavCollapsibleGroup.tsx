@@ -50,7 +50,7 @@ export function NavCollapsibleGroup({
             <NavItem
               key={item.route}
               label={item.label}
-              icon={Icon}
+              icon={Icon ?? (() => null)}
               href={item.route}
               active={
                 isNavActive && activeRoute
@@ -80,7 +80,7 @@ export function NavCollapsibleGroup({
           typographyRoles.navItem,
         )}
       >
-        {GroupIcon ? <GroupIcon className="sidebar-icon shrink-0" /> : null}
+        {GroupIcon ? <GroupIcon className="sidebar-icon" /> : null}
         <span className="flex-1">{label}</span>
         <ChevronDown
           className={cn(
@@ -97,7 +97,7 @@ export function NavCollapsibleGroup({
               <NavItem
                 key={item.route}
                 label={item.label}
-                icon={Icon}
+                icon={Icon ?? (() => null)}
                 href={item.route}
                 active={
                   isNavActive && activeRoute

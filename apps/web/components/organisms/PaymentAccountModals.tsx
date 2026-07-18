@@ -9,6 +9,7 @@ import type {
   UpdatePaymentAccountRequest,
 } from "@vonos/types";
 import { Button } from "@/components/atoms/Button";
+import { MenuSelect } from "@/components/molecules/MenuSelect";
 
 export function PaymentAccountFormModal({
   open,
@@ -324,19 +325,20 @@ export function PaymentAccountTransferModal({
         <form onSubmit={handleSubmit} className="mt-4 space-y-4">
           <label className="block text-sm">
             <span className="text-muted">To account</span>
-            <select
-              required
-              value={toAccountId}
-              onChange={(e) => setToAccountId(e.target.value)}
-              className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
-            >
-              <option value="">Select account…</option>
-              {targets.map((account) => (
-                <option key={account.id} value={account.id}>
-                  {account.name}
-                </option>
-              ))}
-            </select>
+            <div className="mt-1">
+              <MenuSelect
+                value={toAccountId}
+                placeholder="Select account…"
+                onChange={setToAccountId}
+                options={[
+                  { value: "", label: "Select account…" },
+                  ...targets.map((account) => ({
+                    value: account.id,
+                    label: account.name,
+                  })),
+                ]}
+              />
+            </div>
           </label>
           <label className="block text-sm">
             <span className="text-muted">Amount</span>

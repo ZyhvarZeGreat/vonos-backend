@@ -26,6 +26,15 @@ export interface Item {
   sku: string;
   name: string;
   category: string | null;
+  subCategory?: string | null;
+  description?: string | null;
+  barcodeType?: string | null;
+  unit?: string | null;
+  weight?: string | null;
+  /** Free-text car model fitment for part suggestions. */
+  carModel?: string | null;
+  enableImei?: boolean;
+  preparationMinutes?: number | null;
   quantity: number;
   /**
    * Available for sale/transfer after Approved requisition holds.
@@ -41,6 +50,8 @@ export interface Item {
   currency: string;
   status: StockStatus;
   availableForRetail: boolean;
+  brandId?: string | null;
+  brandName?: string | null;
   /** Per-location breakdown; `quantity` above is the sum across these. */
   locationStock: ItemLocationStock[];
   createdByUserId?: string | null;
@@ -56,6 +67,8 @@ export interface ItemFilters {
   locationCode?: string;
   cursor?: string;
   limit?: number;
+  sortBy?: string;
+  sortDir?: "asc" | "desc";
 }
 
 export interface KpiSummary {

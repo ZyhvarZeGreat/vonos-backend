@@ -37,6 +37,7 @@ export function granularityForPreset(preset: DateRangePreset): LedgerBucketGranu
     case "last_7_days":
     case "last_30_days":
     case "this_month":
+    case "custom":
       return "day";
     case "last_90_days":
       return "week";

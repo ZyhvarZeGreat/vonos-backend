@@ -2,9 +2,9 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import type { ListPage } from "@/lib/api/fetchAllPages";
+import type { ListPage, ListSortState } from "@/lib/api/fetchAllPages";
 import { DEFAULT_TABLE_PAGE_SIZE } from "@/lib/api/fetchAllPages";
-import { useCursorPage } from "@/lib/hooks/useCursorPage";
+import { useUrlCursorPage } from "@/lib/hooks/useUrlCursorPage";
 
 function useDebouncedValue<T>(value: T, delayMs = 300): T {
   const [debounced, setDebounced] = useState(value);
@@ -20,6 +20,7 @@ export interface UseServerListPageOptions<T extends { id: string }> {
   fetchPage: (
     cursor: string | undefined,
     limit: number,
+    sort: ListSortState | null,
   ) => Promise<ListPage<T>>;
   enabled?: boolean;
   /** Serialized into the query key; changing values resets to page 1. */
@@ -29,6 +30,10 @@ export interface UseServerListPageOptions<T extends { id: string }> {
   debounceSearchMs?: number;
   /** Poll interval in ms for live views (e.g. kitchen display). */
   refetchInterval?: number;
+  /** Encode composite cursor from the last row (defaults to row.id). */
+  getCursor?: (row: T, sort: ListSortState | null) => string;
+  /** Initial server sort — when set, DataTable should use serverSort. */
+  defaultSort?: ListSortState | null;
 }
 
 export function useServerListPage<T extends { id: string }>({
@@ -40,14 +45,33 @@ export function useServerListPage<T extends { id: string }>({
   defaultPageSize = DEFAULT_TABLE_PAGE_SIZE,
   debounceSearchMs = 300,
   refetchInterval,
+  getCursor,
+  defaultSort = null,
 }: UseServerListPageOptions<T>) {
   const debouncedSearch = useDebouncedValue(search.trim(), debounceSearchMs);
-  const { cursor, pageIndex, canGoPrev, goNext, goPrev, reset } = useCursorPage();
-  const [pageSize, setPageSize] = useState(defaultPageSize);
+  const {
+    pageIndex,
+    cursor,
+    canGoPrev,
+    goNext,
+    goPrev,
+    goToPage,
+    reset,
+    setPageSize,
+    canSelectPage,
+    pageSize,
+  } = useUrlCursorPage(defaultPageSize);
+  const [sort, setSort] = useState<ListSortState | null>(defaultSort);
 
   const filterKey = useMemo(
-    () => JSON.stringify({ ...filters, search: debouncedSearch }),
-    [filters, debouncedSearch],
+    () =>
+      JSON.stringify({
+        ...filters,
+        search: debouncedSearch,
+        sortBy: sort?.sortBy ?? null,
+        sortDir: sort?.sortDir ?? null,
+      }),
+    [filters, debouncedSearch, sort],
   );
 
   useEffect(() => {
@@ -56,7 +80,7 @@ export function useServerListPage<T extends { id: string }>({
 
   const pageQuery = useQuery({
     queryKey: [...queryKey, filterKey, cursor, pageSize],
-    queryFn: () => fetchPage(cursor, pageSize),
+    queryFn: () => fetchPage(cursor, pageSize, sort),
     enabled,
     refetchInterval,
     placeholderData: (prev) => prev,
@@ -67,11 +91,13 @@ export function useServerListPage<T extends { id: string }>({
 
   const handleNext = () => {
     const last = items[items.length - 1];
-    if (last && hasMore) goNext(last.id);
+    if (last && hasMore) {
+      goNext(getCursor ? getCursor(last, sort) : last.id);
+    }
   };
 
-  const handlePageSizeChange = (size: number) => {
-    setPageSize(size);
+  const handleSortChange = (sortBy: string, sortDir: ListSortState["sortDir"]) => {
+    setSort({ sortBy, sortDir });
     reset();
   };
 
@@ -83,10 +109,57 @@ export function useServerListPage<T extends { id: string }>({
     canGoPrev,
     goNext: handleNext,
     goPrev,
-    setPageSize: handlePageSizeChange,
+    goToPage,
+    canSelectPage,
+    setPageSize,
+    sort,
+    setSort: handleSortChange,
     isLoading: pageQuery.isLoading && items.length === 0,
     isFetching: pageQuery.isFetching,
     error: pageQuery.error,
     reset,
+  };
+}
+
+export interface ServerListPaginationProps {
+  pageIndex: number;
+  pageSize: number;
+  hasMore: boolean;
+  canGoPrev: boolean;
+  onNext: () => void;
+  onPrev: () => void;
+  onPageSizeChange: (size: number) => void;
+  onPageSelect?: (pageIndex: number) => void;
+  canSelectPage?: (pageIndex: number) => boolean;
+  isFetching?: boolean;
+}
+
+/** Spread onto `ServerPaginatedTable` for URL-synced numbered pagination. */
+export function serverPaginationBarProps(
+  page: Pick<
+    ReturnType<typeof useServerListPage>,
+    | "pageIndex"
+    | "pageSize"
+    | "hasMore"
+    | "canGoPrev"
+    | "goNext"
+    | "goPrev"
+    | "setPageSize"
+    | "goToPage"
+    | "canSelectPage"
+    | "isFetching"
+  >,
+): ServerListPaginationProps {
+  return {
+    pageIndex: page.pageIndex,
+    pageSize: page.pageSize,
+    hasMore: page.hasMore,
+    canGoPrev: page.canGoPrev,
+    onNext: page.goNext,
+    onPrev: page.goPrev,
+    onPageSizeChange: page.setPageSize,
+    onPageSelect: page.goToPage,
+    canSelectPage: page.canSelectPage,
+    isFetching: page.isFetching,
   };
 }

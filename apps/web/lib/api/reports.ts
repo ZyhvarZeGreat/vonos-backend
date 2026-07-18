@@ -1,4 +1,8 @@
-import type { ProfitLossBreakdownTab, ReportsDashboard } from "@vonos/types";
+import type {
+  ProfitLossBreakdownTab,
+  ReportRunOptions,
+  ReportsDashboard,
+} from "@vonos/types";
 import { apiFetch, withTenantQuery } from "@/lib/api/client";
 
 export type ReportRunMode = "shell" | "pl-core" | "pl-summary" | "pl-breakdown" | "full";
@@ -41,12 +45,23 @@ export async function runReport(params: {
   tenantId?: string;
   mode?: ReportRunMode;
   breakdownTab?: ProfitLossBreakdownTab;
-}): Promise<ReportsDashboard> {
+} & ReportRunOptions): Promise<ReportsDashboard> {
   const search = new URLSearchParams({ reportId: params.reportId });
   if (params.from) search.set("from", params.from);
   if (params.to) search.set("to", params.to);
   if (params.mode) search.set("mode", params.mode);
   if (params.breakdownTab) search.set("breakdownTab", params.breakdownTab);
+  if (params.cursor) search.set("cursor", params.cursor);
+  if (params.limit != null) search.set("limit", String(params.limit));
+  if (params.search?.trim()) search.set("search", params.search.trim());
+  if (params.customerId) search.set("customerId", params.customerId);
+  if (params.customerGroupId) search.set("customerGroupId", params.customerGroupId);
+  if (params.locationCode) search.set("locationCode", params.locationCode);
+  if (params.category) search.set("category", params.category);
+  if (params.brandId) search.set("brandId", params.brandId);
+  if (params.paymentMethod) search.set("paymentMethod", params.paymentMethod);
+  if (params.supplierId) search.set("supplierId", params.supplierId);
+  if (params.view) search.set("view", params.view);
   const path = withTenantQuery(`/reports/run?${search.toString()}`, params.tenantId);
   const response = await apiFetch(path);
   if (!response.ok) throw new Error("Failed to run report");

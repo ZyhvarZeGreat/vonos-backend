@@ -9,7 +9,7 @@ export const homeReference = {
   source: "apps/home.jsx",
   layout: {
     shell: "flex h-screen overflow-hidden bg-gray-50",
-    sidebarWidth: "280px",
+    sidebarWidth: "224px",
     topBarHeight: "64px",
     contentMaxWidth: "1400px",
     contentPadding: "p-6 lg:p-10",

@@ -1,10 +1,11 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { getCustomer, getItem, getJob, getSale } from "@/lib/api";
+import { getItemMeta, getJobMeta, getSaleMeta } from "@/lib/api";
 import { getAppointment } from "@/lib/api/appointments";
+import { getCustomerContact } from "@/lib/api/customers";
 import { getStockMovement } from "@/lib/api/stockMovements";
-import { getSupplier } from "@/lib/api/suppliers";
+import { getSupplierMeta } from "@/lib/api/suppliers";
 
 export function useRecordTitle(
   section: string,
@@ -14,44 +15,54 @@ export function useRecordTitle(
   const enabled = Boolean(recordId);
 
   const itemQuery = useQuery({
-    queryKey: ["recordTitle", "item", recordId],
-    queryFn: () => getItem(recordId!),
-    enabled: enabled && section === "inventory",
+    queryKey: ["recordTitle", "item-meta", recordId],
+    queryFn: () => getItemMeta(recordId!),
+    enabled:
+      enabled &&
+      (section === "inventory" || section === "catalog" || section === "menu-items"),
+    staleTime: 60_000,
   });
   const jobQuery = useQuery({
-    queryKey: ["recordTitle", "job", recordId],
-    queryFn: () => getJob(recordId!),
+    queryKey: ["recordTitle", "job-meta", recordId],
+    queryFn: () => getJobMeta(recordId!),
     enabled: enabled && section === "jobs",
+    staleTime: 60_000,
   });
   const saleQuery = useQuery({
-    queryKey: ["recordTitle", "sale", tenantId, recordId],
-    queryFn: () => getSale(recordId!, tenantId!),
+    queryKey: ["recordTitle", "sale-meta", tenantId, recordId],
+    queryFn: () => getSaleMeta(recordId!, tenantId!),
     enabled: enabled && (section === "sales" || section === "orders") && Boolean(tenantId),
+    staleTime: 60_000,
   });
   const customerQuery = useQuery({
-    queryKey: ["recordTitle", "customer", recordId],
-    queryFn: () => getCustomer(recordId!),
+    queryKey: ["recordTitle", "customer-contact", recordId],
+    queryFn: () => getCustomerContact(recordId!),
     enabled: enabled && section === "customers",
+    staleTime: 60_000,
   });
   const supplierQuery = useQuery({
-    queryKey: ["recordTitle", "supplier", recordId],
-    queryFn: () => getSupplier(recordId!),
+    queryKey: ["recordTitle", "supplier-meta", recordId],
+    queryFn: () => getSupplierMeta(recordId!),
     enabled: enabled && section === "suppliers",
+    staleTime: 60_000,
   });
   const inboundQuery = useQuery({
     queryKey: ["recordTitle", "inbound", recordId],
     queryFn: () => getStockMovement(recordId!),
     enabled: enabled && section === "inbound",
+    staleTime: 60_000,
   });
   const outboundQuery = useQuery({
     queryKey: ["recordTitle", "outbound", recordId],
     queryFn: () => getStockMovement(recordId!),
     enabled: enabled && section === "outbound",
+    staleTime: 60_000,
   });
   const appointmentQuery = useQuery({
     queryKey: ["recordTitle", "appointment", recordId],
     queryFn: () => getAppointment(recordId!),
     enabled: enabled && section === "appointments",
+    staleTime: 60_000,
   });
 
   if (!recordId) return null;

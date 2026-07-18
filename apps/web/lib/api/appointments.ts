@@ -29,8 +29,14 @@ export async function getAppointmentsPage(
   tenantId: string,
   cursor: string | undefined,
   limit = DEFAULT_TABLE_PAGE_SIZE,
+  filters: {
+    search?: string;
+    from?: string;
+    to?: string;
+    status?: string;
+  } = {},
 ): Promise<ListPage<AppointmentListRow>> {
-  return fetchTenantListPage(LIST_PATH, tenantId, cursor, limit);
+  return fetchTenantListPage(LIST_PATH, tenantId, cursor, limit, filters);
 }
 
 /** Full appointment list for export — not for table rendering. */

@@ -8,10 +8,25 @@ export interface Supplier {
   address: string | null;
   locationCode: string | null;
   notes: string | null;
+  openingBalance?: number;
+  assignedToUserId?: string | null;
+  assignedToName?: string | null;
   createdByUserId?: string | null;
   createdByName?: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface SupplierFilters {
+  cursor?: string;
+  limit?: number;
+  search?: string;
+  purchaseDue?: boolean;
+  purchaseReturn?: boolean;
+  advanceBalance?: boolean;
+  openingBalance?: boolean;
+  assignedToUserId?: string;
+  status?: "active" | "inactive";
 }
 
 /** List/detail row with display fields returned by the suppliers API. */
@@ -25,9 +40,10 @@ export interface SupplierListRow extends Supplier {
   businessName?: string | null;
   taxNumber?: string | null;
   payTerm?: string | null;
-  openingBalance?: number;
   totalPurchase?: number;
   totalPurchaseDue?: number;
   totalPurchasePaid?: number;
+  totalPurchaseReturn?: number;
+  totalAdvance?: number;
   status?: "active" | "inactive";
 }

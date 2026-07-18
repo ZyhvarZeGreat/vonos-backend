@@ -114,3 +114,14 @@ export function buildAdaptiveJobStages(hasQuote: boolean): string[] {
   if (hasQuote) base.push("Quoted");
   return [...base, "Approved", "In Progress", "QC", "Delivered"];
 }
+
+/** Align orphan statuses with the adaptive stage list for the stepper UI. */
+export function coerceJobStatusForStepper(
+  currentStage: string,
+  hasQuote: boolean,
+): string {
+  if (currentStage === "Quoted" && !hasQuote) return "Received";
+  const stages = buildAdaptiveJobStages(hasQuote);
+  if (stages.includes(currentStage)) return currentStage;
+  return stages[0] ?? "Received";
+}

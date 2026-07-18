@@ -175,8 +175,8 @@ export function SettingsView() {
           )}
           {saveError ? <p className="text-sm text-error">{saveError}</p> : null}
           {activeTab !== "notifications" ? (
-            <Button type="submit" size="sm" disabled={saveMutation.isPending}>
-              {saveMutation.isPending ? "Saving…" : "Save changes"}
+            <Button type="submit" size="sm" isLoading={saveMutation.isPending} loadingText="Saving…">
+              Save changes
             </Button>
           ) : null}
         </form>

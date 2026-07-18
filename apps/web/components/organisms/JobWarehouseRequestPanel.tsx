@@ -8,7 +8,7 @@ import { Button } from "@/components/atoms/Button";
 import { Select } from "@/components/atoms/Select";
 import { Modal, ModalFooter, ModalHeader } from "@/components/atoms/Modal";
 import type { JobDetail } from "@/lib/api/jobs";
-import { getItem, getSourceAvailability } from "@/lib/api/items";
+import { getSourceAvailability } from "@/lib/api/items";
 import { createRequisition } from "@/lib/api/requisitions";
 import { useAppMutation } from "@/lib/hooks/useAppMutation";
 import { formatNumber } from "@/lib/utils/formatCurrency";
@@ -64,19 +64,21 @@ export function JobWarehouseRequestPanel({
 
     void (async () => {
       const next: Record<string, number | null> = {};
-      for (const row of catalogMaterials) {
-        try {
-          const item = await getItem(row.itemId!);
-          const avail = await getSourceAvailability(
-            tenantId,
-            item.sku,
-            department,
-          );
-          next[row.id] = avail.available;
-        } catch {
-          next[row.id] = null;
-        }
-      }
+      await Promise.all(
+        catalogMaterials.map(async (row) => {
+          const sku = row.sku;
+          if (!sku) {
+            next[row.id] = null;
+            return;
+          }
+          try {
+            const avail = await getSourceAvailability(tenantId, sku, department);
+            next[row.id] = avail.available;
+          } catch {
+            next[row.id] = null;
+          }
+        }),
+      );
       if (!cancelled) setAvailableByMaterial(next);
     })();
 
@@ -101,16 +103,17 @@ export function JobWarehouseRequestPanel({
         throw new Error("Select at least one catalog-linked material");
       }
 
-      const lines: RequisitionLine[] = [];
-      for (const material of picked) {
-        const item = await getItem(material.itemId!);
-        lines.push({
-          itemId: item.id,
-          sku: item.sku,
-          name: material.name || item.name,
+      const lines: RequisitionLine[] = picked.map((material) => {
+        if (!material.itemId || !material.sku) {
+          throw new Error(`Missing catalog SKU for ${material.name}`);
+        }
+        return {
+          itemId: material.itemId,
+          sku: material.sku,
+          name: material.name,
           quantity: material.quantity,
-        });
-      }
+        };
+      });
 
       const suffix = Date.now().toString(36).slice(-4).toUpperCase();
       return createRequisition(tenantId, {

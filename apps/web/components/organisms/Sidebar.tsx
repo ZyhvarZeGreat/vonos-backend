@@ -139,6 +139,7 @@ const iconMap: Record<string, IconComponent> = {
 };
 
 const groupIconMap: Record<string, IconComponent> = {
+  Home: LayoutDashboard,
   "User Management": Users,
   Contacts: Users,
   Products: Box,
@@ -243,7 +244,7 @@ export function Sidebar({
       {!collapsed ? (
         <div
           style={sidebarHeaderStyle(tenantCode ?? "")}
-          className="flex h-[var(--space-topbar-height)] shrink-0 items-center px-5"
+          className="flex h-12 shrink-0 items-center px-3"
         >
           <TenantSwitcher
             tenantCode={tenantCode ?? ""}
@@ -278,7 +279,20 @@ export function Sidebar({
             ) : (
               <>
                 {!collapsed ? (
-                  <p className={cn("mb-1 px-2", typographyRoles.navSection, "!text-[var(--color-text-nav)]")}>
+                  <p
+                    className={cn(
+                      "mb-1 flex items-center gap-2 px-2",
+                      typographyRoles.navSection,
+                      "!text-[var(--color-text-nav)]",
+                    )}
+                  >
+                    {(() => {
+                      const SectionIcon =
+                        (section.icon ? iconMap[section.icon] : undefined) ??
+                        groupIconMap[section.label];
+                      if (!SectionIcon) return null;
+                      return <SectionIcon className="sidebar-icon" />;
+                    })()}
                     {section.label}
                   </p>
                 ) : null}

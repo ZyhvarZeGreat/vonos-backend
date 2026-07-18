@@ -11,7 +11,6 @@ import { useRecordNavigation } from "@/lib/hooks/useRecordNavigation";
 import { useListPageFilters } from "@/lib/hooks/useListPageFilters";
 import { formatCurrency, formatNumber } from "@/lib/utils/formatCurrency";
 import {
-  filterByDateField,
   uniqueFieldOptions,
 } from "@/lib/utils/listFilters";
 import type { Item, StockStatus } from "@vonos/types";
@@ -51,7 +50,7 @@ export function KidsWearInventoryView() {
   const { goToDetail } = useRecordNavigation("inventory");
   const tenantId = useTenantId();
   const [activeTab, setActiveTab] = useState("all");
-  const { dateRange, setDateRange, search, setSearch, bounds } = useListPageFilters();
+  const { search, setSearch } = useListPageFilters();
   const [categoryFilter, setCategoryFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
 
@@ -85,15 +84,12 @@ export function KidsWearInventoryView() {
   });
 
   const filtered = useMemo(() => {
-    let rows = filterByDateField(items, bounds, "createdAt");
-    if (activeTab === "summer" || activeTab === "spring") {
-      const tag = activeTab === "summer" ? "summer" : "spring";
-      rows = rows.filter((item) =>
-        (item.category ?? "").toLowerCase().includes(tag),
-      );
-    }
-    return rows;
-  }, [activeTab, bounds, items]);
+    if (activeTab !== "summer" && activeTab !== "spring") return items;
+    const tag = activeTab === "summer" ? "summer" : "spring";
+    return items.filter((item) =>
+      (item.category ?? "").toLowerCase().includes(tag),
+    );
+  }, [activeTab, items]);
 
   const categoryOptions = useMemo(
     () => uniqueFieldOptions(items, "category"),
@@ -116,8 +112,7 @@ export function KidsWearInventoryView() {
         searchValue={search}
         onSearchChange={setSearch}
         searchPlaceholder="Search variants..."
-        dateRange={dateRange}
-        onDateRangeChange={setDateRange}
+        showDateRange={false}
         filterDropdowns={[
           {
             id: "category",

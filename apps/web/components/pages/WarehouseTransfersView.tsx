@@ -11,11 +11,6 @@ import { getTransferZones, getTransfersPage, type TransferRow } from "@/lib/api/
 import { useServerListPage } from "@/lib/hooks/useServerListPage";
 import { useListPageFilters } from "@/lib/hooks/useListPageFilters";
 import { formatNumberCompact } from "@/lib/utils/formatCurrency";
-import {
-  filterByDateField,
-  filterBySearch,
-  uniqueFieldOptions,
-} from "@/lib/utils/listFilters";
 import { ZoneCardsSkeleton } from "@/components/organisms/skeletons";
 
 const TRANSFER_TABS = [
@@ -108,6 +103,7 @@ export function WarehouseTransfersView() {
   const zonesQuery = useQuery({
     queryKey: ["transferZones"],
     queryFn: getTransferZones,
+    staleTime: 5 * 60_000,
   });
 
   const {
@@ -125,28 +121,30 @@ export function WarehouseTransfersView() {
     error,
   } = useServerListPage<TransferRow>({
     queryKey: ["transfers"],
-    fetchPage: (cursor, limit) => getTransfersPage(cursor, limit),
+    search,
+    filters: {
+      status: statusFilter || (activeTab !== "all" ? activeTab : undefined),
+      from: bounds?.from,
+      to: bounds?.to,
+      tab: activeTab,
+    },
+    fetchPage: (cursor, limit) =>
+      getTransfersPage(cursor, limit, {
+        search: search.trim() || undefined,
+        from: bounds?.from,
+        to: bounds?.to,
+        status: statusFilter || (activeTab !== "all" ? activeTab : undefined),
+      }),
   });
 
-  const filtered = useMemo(() => {
-    let rows = filterByDateField(transfers, bounds, "createdAt");
-    if (activeTab !== "all") {
-      const statusMap: Record<string, TransferRow["displayStatus"]> = {
-        pending: "Pending",
-        in_transit: "In Transit",
-        completed: "Completed",
-        rejected: "Rejected",
-      };
-      const status = statusMap[activeTab];
-      if (status) rows = rows.filter((row) => row.displayStatus === status);
-    }
-    if (statusFilter) rows = rows.filter((row) => row.displayStatus === statusFilter);
-    return filterBySearch(rows, search, ["reference", "requestedBy", "itemsSummary"]);
-  }, [activeTab, bounds, search, statusFilter, transfers]);
+  const filtered = transfers;
 
   const statusOptions = useMemo(
-    () => uniqueFieldOptions(transfers, "displayStatus"),
-    [transfers],
+    () =>
+      (["Pending", "In Transit", "Completed", "Rejected"] as const).map(
+        (value) => ({ value, label: value }),
+      ),
+    [],
   );
 
   return (

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type {
   ProfitLossBreakdownTab,
   ProfitLossReport,
@@ -8,8 +8,13 @@ import type {
 } from "@vonos/types";
 import { useQuery } from "@tanstack/react-query";
 import { runReport, type ReportRunMode } from "@/lib/api/reports";
+import { useOffsetPage } from "@/lib/hooks/useOffsetPage";
 import { formatCurrency } from "@/lib/utils/formatCurrency";
 import { cn } from "@/lib/utils/cn";
+import { Skeleton } from "@/components/atoms/Skeleton";
+import { DataTableSkeleton } from "@/components/organisms/skeletons";
+import { CursorPaginationBar } from "@/components/molecules/CursorPaginationBar";
+import { TABLE_REPORT_PAGE_SIZE } from "@/lib/registries/reportTableUi";
 
 const BREAKDOWN_TABS: Array<{ id: ProfitLossBreakdownTab; label: string }> = [
   { id: "product", label: "Profit by products" },
@@ -51,51 +56,86 @@ function BreakdownTable({
   table: ReportsTable;
   currency: string;
 }) {
+  const pagination = useOffsetPage(table.rows, { resetKey: `${table.rows.length}` });
+  const pageRows = pagination.pageRows;
+
   return (
-    <div className="overflow-x-auto rounded-xl border border-border bg-card">
-      <table className="w-full min-w-[24rem] text-sm">
-        <thead>
-          <tr className="border-b border-border bg-[var(--color-surface-muted)]/50 text-left text-xs text-muted">
-            {table.columns.map((col) => (
-              <th key={col.key} className="px-4 py-2.5 font-medium">
-                {col.header}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {table.rows.length === 0 ? (
-            <tr>
-              <td
-                colSpan={table.columns.length}
-                className="px-4 py-8 text-center text-muted"
-              >
-                No data for this period.
-              </td>
+    <div className="overflow-hidden rounded-xl border border-border bg-card">
+      <CursorPaginationBar
+        pageIndex={pagination.pageIndex}
+        pageSize={pagination.pageSize}
+        itemCount={pageRows.length}
+        hasMore={pagination.hasMore}
+        canGoPrev={pagination.canGoPrev}
+        onPrev={pagination.goPrev}
+        onNext={pagination.goNext}
+        onPageSizeChange={pagination.setPageSize}
+        onPageSelect={pagination.setPageIndex}
+        totalPages={pagination.totalPages}
+        totalItems={pagination.totalItems}
+        className="border-b border-t-0 border-[var(--color-border-subtle)]"
+      />
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[24rem] text-sm">
+          <thead>
+            <tr className="border-b border-border bg-[var(--color-surface-muted)]/50 text-left text-xs text-muted">
+              {table.columns.map((col) => (
+                <th key={col.key} className="px-4 py-2.5 font-medium">
+                  {col.header}
+                </th>
+              ))}
             </tr>
-          ) : (
-            table.rows.map((row, index) => (
-              <tr key={String(row.id ?? index)} className="border-b border-border/60 last:border-b-0">
-                {table.columns.map((col) => {
-                  const raw = row[col.key];
-                  const display =
-                    (col.key === "grossProfit" ||
-                      col.key === "revenue" ||
-                      col.key === "amount") &&
-                    typeof raw === "number"
-                      ? formatCurrency(raw, currency)
-                      : String(raw ?? "—");
-                  return (
-                    <td key={col.key} className="px-4 py-2 text-foreground">
-                      {display}
-                    </td>
-                  );
-                })}
+          </thead>
+          <tbody>
+            {pageRows.length === 0 ? (
+              <tr>
+                <td
+                  colSpan={table.columns.length}
+                  className="px-4 py-8 text-center text-muted"
+                >
+                  No data for this period.
+                </td>
               </tr>
-            ))
-          )}
-        </tbody>
-      </table>
+            ) : (
+              pageRows.map((row, index) => (
+                <tr
+                  key={String(row.id ?? index)}
+                  className="border-b border-border/60 last:border-b-0"
+                >
+                  {table.columns.map((col) => {
+                    const raw = row[col.key];
+                    const display =
+                      (col.key === "grossProfit" ||
+                        col.key === "revenue" ||
+                        col.key === "amount") &&
+                      typeof raw === "number"
+                        ? formatCurrency(raw, currency)
+                        : String(raw ?? "—");
+                    return (
+                      <td key={col.key} className="px-4 py-2 text-foreground">
+                        {display}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+      <CursorPaginationBar
+        pageIndex={pagination.pageIndex}
+        pageSize={pagination.pageSize}
+        itemCount={pageRows.length}
+        hasMore={pagination.hasMore}
+        canGoPrev={pagination.canGoPrev}
+        onPrev={pagination.goPrev}
+        onNext={pagination.goNext}
+        onPageSizeChange={pagination.setPageSize}
+        onPageSelect={pagination.setPageIndex}
+        totalPages={pagination.totalPages}
+        totalItems={pagination.totalItems}
+      />
     </div>
   );
 }
@@ -157,15 +197,15 @@ export function ProfitLossReportPanel({
       <div className="grid gap-4 lg:grid-cols-2">
         {summaryLoading ? (
           <>
-            <div className="h-48 animate-pulse rounded-xl border border-border bg-card" />
-            <div className="h-48 animate-pulse rounded-xl border border-border bg-card" />
+            <Skeleton className="h-48 w-full rounded-xl" />
+            <Skeleton className="h-48 w-full rounded-xl" />
           </>
         ) : (
           <>
-            <div className="rounded-xl border border-border bg-card p-4 shadow-card">
+            <div className="rounded-xl border border-border bg-card p-5 shadow-card sm:p-6">
               <LineList lines={summary.debits} currency={currency} />
             </div>
-            <div className="rounded-xl border border-border bg-card p-4 shadow-card">
+            <div className="rounded-xl border border-border bg-card p-5 shadow-card sm:p-6">
               <LineList lines={summary.credits} currency={currency} />
             </div>
           </>
@@ -175,25 +215,25 @@ export function ProfitLossReportPanel({
       <div className="grid gap-3 sm:grid-cols-3">
         {summaryLoading ? (
           <>
-            <div className="h-20 animate-pulse rounded-xl border border-border bg-card" />
-            <div className="h-20 animate-pulse rounded-xl border border-border bg-card" />
-            <div className="h-20 animate-pulse rounded-xl border border-border bg-card" />
+            <Skeleton className="h-20 w-full rounded-xl" />
+            <Skeleton className="h-20 w-full rounded-xl" />
+            <Skeleton className="h-20 w-full rounded-xl" />
           </>
         ) : (
           <>
-        <div className="rounded-xl border border-border bg-card px-4 py-3 shadow-card">
+        <div className="rounded-xl border border-border bg-card px-5 py-4 shadow-card sm:px-6 sm:py-5">
           <p className="text-xs font-semibold uppercase tracking-wide text-muted">COGS</p>
           <p className="mt-1 text-lg font-semibold tabular-nums text-foreground">
             {formatCurrency(summary.cogs, currency)}
           </p>
         </div>
-        <div className="rounded-xl border border-border bg-card px-4 py-3 shadow-card">
+        <div className="rounded-xl border border-border bg-card px-5 py-4 shadow-card sm:px-6 sm:py-5">
           <p className="text-xs font-semibold uppercase tracking-wide text-muted">Gross Profit</p>
           <p className="mt-1 text-lg font-semibold tabular-nums text-foreground">
             {formatCurrency(summary.grossProfit, currency)}
           </p>
         </div>
-        <div className="rounded-xl border border-border bg-card px-4 py-3 shadow-card">
+        <div className="rounded-xl border border-border bg-card px-5 py-4 shadow-card sm:px-6 sm:py-5">
           <p className="text-xs font-semibold uppercase tracking-wide text-muted">Net Profit</p>
           <p
             className={cn(
@@ -229,7 +269,7 @@ export function ProfitLossReportPanel({
       </div>
 
       {breakdownLoading ? (
-        <div className="h-64 animate-pulse rounded-xl border border-border bg-card" />
+        <DataTableSkeleton rows={8} columns={4} withPagination={false} />
       ) : activeTab && activeTable ? (
         <BreakdownTable table={activeTable} currency={currency} />
       ) : (

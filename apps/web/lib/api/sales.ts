@@ -21,6 +21,19 @@ async function fetchSalesRaw(
   if (filters?.saleStatus) params.set("saleStatus", filters.saleStatus);
   if (filters?.returnsOnly) params.set("returnsOnly", "true");
   if (filters?.shipmentsOnly) params.set("shipmentsOnly", "true");
+  if (filters?.locationCode) params.set("locationCode", filters.locationCode);
+  if (filters?.customerId) params.set("customerId", filters.customerId);
+  if (filters?.paymentStatus) params.set("paymentStatus", filters.paymentStatus);
+  if (filters?.paymentMethod) params.set("paymentMethod", filters.paymentMethod);
+  if (filters?.cleanerUserId) params.set("cleanerUserId", filters.cleanerUserId);
+  if (filters?.serviceStaffEmployeeId) {
+    params.set("serviceStaffEmployeeId", filters.serviceStaffEmployeeId);
+  }
+  if (filters?.createdByUserId) params.set("createdByUserId", filters.createdByUserId);
+  if (filters?.from) params.set("from", filters.from);
+  if (filters?.to) params.set("to", filters.to);
+  if (filters?.sortBy) params.set("sortBy", filters.sortBy);
+  if (filters?.sortDir) params.set("sortDir", filters.sortDir);
   if (cursor) params.set("cursor", cursor);
   if (limit) params.set("limit", String(limit));
   const query = params.toString();
@@ -68,6 +81,17 @@ export async function getSales(
 
 export async function getSale(id: string, tenantId: string): Promise<SaleDetail> {
   const path = withTenantQuery(`/sales/${id}`, tenantId);
+  const response = await apiFetch(path);
+  if (!response.ok) throw new Error("Failed to fetch sale");
+  return response.json();
+}
+
+/** Reference only — for titles / breadcrumbs. */
+export async function getSaleMeta(
+  id: string,
+  tenantId: string,
+): Promise<{ id: string; reference: string }> {
+  const path = withTenantQuery(`/sales/${id}/meta`, tenantId);
   const response = await apiFetch(path);
   if (!response.ok) throw new Error("Failed to fetch sale");
   return response.json();

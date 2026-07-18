@@ -160,10 +160,11 @@ export function LocationsView() {
             <Button
               type="button"
               size="sm"
-              disabled={saveMutation.isPending}
+              isLoading={saveMutation.isPending}
+              loadingText="Saving…"
               onClick={() => saveMutation.mutate()}
             >
-              {saveMutation.isPending ? "Saving…" : "Save locations"}
+              Save locations
             </Button>
           </div>
         ) : (
