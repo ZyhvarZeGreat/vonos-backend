@@ -64,6 +64,7 @@ enum MovementType {
 }
 
 enum MovementStatus {
+  Ordered
   Pending
   Approved
   Received
@@ -75,6 +76,14 @@ enum PaymentStatus {
   paid
   partial
   due
+  overdue
+}
+
+enum PurchasePaymentStatus {
+  paid
+  due
+  partial
+  overdue
 }
 
 enum SaleStatus {
@@ -84,6 +93,16 @@ enum SaleStatus {
   written_off
   draft
   quotation
+}
+
+enum InvoiceKind {
+  sale
+  purchase
+  expense
+  payroll
+  payroll_group
+  job_invoice
+  job_quote
 }
 
 model Tenant {
@@ -101,6 +120,7 @@ model Tenant {
   itemLocationStock  ItemLocationStock[]
   jobs               Job[]
   ledgerEntries      LedgerEntry[]
+  tenantDailyFinance TenantDailyFinance[]
   suppliers          Supplier[]
   stockMovements     StockMovement[]
   customers          Customer[]
@@ -126,9 +146,12 @@ model Tenant {
   payrolls            Payroll[]
   payrollGroups       PayrollGroup[]
   payComponents       PayComponent[]
+  designations        Designation[]
+  employees           Employee[]
   invoiceLayouts      InvoiceLayout[]
   invoiceSchemes      InvoiceScheme[]
   receiptPrinters     ReceiptPrinter[]
+  invoices            Invoice[]
   discounts           Discount[]
   variationTemplates  VariationTemplate[]
 }
@@ -154,6 +177,7 @@ model Appointment {
 
   @@index([tenantId, startTime])
   @@index([tenantId, status])
+  @@index([tenantId, status, startTime])
 }
 
 model User {
@@ -176,12 +200,19 @@ model User {
   itemsCreated         Item[]          @relation("ItemCreatedBy")
   stockMovementsCreated StockMovement[] @relation("StockMovementCreatedBy")
   suppliersCreated     Supplier[]      @relation("SupplierCreatedBy")
+  suppliersAssigned    Supplier[]      @relation("SupplierAssignedTo")
   jobsCreated          Job[]           @relation("JobCreatedBy")
   customersCreated     Customer[]      @relation("CustomerCreatedBy")
+  customersAssigned    Customer[]      @relation("CustomerAssignedTo")
   salesCreated         Sale[]          @relation("SaleCreatedBy")
+  salesAsCleaner       Sale[]          @relation("SaleCleaner")
+  employeesLinked      Employee[]      @relation("EmployeeUser")
   auditLogsActed       AuditLog[]      @relation("AuditLogActor")
 
   @@index([tenantId])
+  @@index([tenantId, role])
+  @@index([tenantId, status])
+  @@index([tenantId, name])
 }
 
 model AuthToken {
@@ -206,6 +237,15 @@ model Item {
   sku                String
   name               String
   category           String?
+  subCategory        String?
+  description        String?
+  barcodeType        String?
+  unit               String?
+  weight             String?
+  /// Free-text car model fitment (e.g. "Camry 2018") — used for part suggestions.
+  carModel           String?
+  enableImei         Boolean     @default(false)
+  preparationMinutes Int?
   quantity           Int         @default(0)
   binLocation        String?
   locationCode       String?
@@ -230,6 +270,9 @@ model Item {
   @@index([tenantId, status])
   @@index([tenantId, availableForRetail])
   @@index([tenantId, brandId])
+  @@index([tenantId, carModel])
+  @@index([tenantId, category])
+  @@index([tenantId, deletedAt])
 }
 
 /// Per-location quantity for an item (mirrors Ultimate POS variation_location_details).
@@ -258,13 +301,15 @@ model StockMovement {
   tenant    Tenant         @relation(fields: [tenantId], references: [id])
   type      MovementType
   reference String
-  status    MovementStatus @default(Pending)
+  status    MovementStatus @default(Ordered)
   lines          Json
   notes          String?
   locationCode   String?
   supplierId     String?
   supplier       Supplier?      @relation(fields: [supplierId], references: [id])
   source         MovementSource @default(standard)
+  paymentStatus  PurchasePaymentStatus?
+  paymentMethod  String?
   date            DateTime
   createdByUserId String?
   createdByUser   User?          @relation("StockMovementCreatedBy", fields: [createdByUserId], references: [id])
@@ -273,11 +318,15 @@ model StockMovement {
   updatedAt DateTime       @updatedAt
   deletedAt DateTime?
 
+  invoice Invoice?
+
   @@index([tenantId])
   @@index([tenantId, type])
   @@index([tenantId, date])
   @@index([tenantId, type, date])
+  @@index([tenantId, type, status])
   @@index([tenantId, source])
+  @@index([tenantId, paymentStatus])
   @@index([supplierId])
 }
 
@@ -292,6 +341,15 @@ model Supplier {
   address     String?
   locationCode String?
   notes           String?
+  openingBalance  Decimal  @default(0)
+  totalPurchase       Decimal  @default(0)
+  totalPurchaseDue    Decimal  @default(0)
+  totalPurchasePaid   Decimal  @default(0)
+  totalPurchaseReturn Decimal  @default(0)
+  totalAdvance        Decimal  @default(0)
+  lastPurchaseAt      DateTime?
+  assignedToUserId String?
+  assignedToUser   User?    @relation("SupplierAssignedTo", fields: [assignedToUserId], references: [id])
   createdByUserId String?
   createdByUser   User?    @relation("SupplierCreatedBy", fields: [createdByUserId], references: [id])
   createdByName   String?
@@ -300,8 +358,12 @@ model Supplier {
   deletedAt   DateTime?
 
   stockMovements StockMovement[]
+  invoices       Invoice[]
 
   @@index([tenantId])
+  @@index([assignedToUserId])
+  @@index([tenantId, totalPurchaseDue])
+  @@index([tenantId, lastPurchaseAt])
 }
 
 model Job {
@@ -335,6 +397,8 @@ model Job {
 
   materials    JobMaterial[]
   labourEntries JobLabour[]
+  invoices     Invoice[]
+  sales        Sale[]
 
   @@unique([tenantId, reference])
   @@index([tenantId])
@@ -391,6 +455,8 @@ model LedgerEntry {
   /** True when this row is an inter-entity transfer (excluded from VAG group P&L). */
   isInternalTransfer Boolean @default(false)
   counterpartyTenantId String?
+  invoiceId        String?
+  invoice          Invoice?        @relation(fields: [invoiceId], references: [id])
   date             DateTime
   createdAt        DateTime        @default(now())
   deletedAt        DateTime?
@@ -400,6 +466,7 @@ model LedgerEntry {
   @@index([tenantId, type])
   @@index([tenantId, type, date])
   @@index([tenantId, isInternalTransfer])
+  @@index([invoiceId])
 }
 
 model Customer {
@@ -409,6 +476,18 @@ model Customer {
   name      String
   email     String?
   phone           String?
+  customerGroupId String?
+  customerGroup   CustomerGroup? @relation(fields: [customerGroupId], references: [id])
+  assignedToUserId String?
+  assignedToUser   User?    @relation("CustomerAssignedTo", fields: [assignedToUserId], references: [id])
+  openingBalance  Decimal  @default(0)
+  totalSell       Decimal  @default(0)
+  totalSellDue    Decimal  @default(0)
+  totalSellPaid   Decimal  @default(0)
+  totalSellReturn Decimal  @default(0)
+  totalAdvance    Decimal  @default(0)
+  visitCount      Int      @default(0)
+  status          String   @default("active")
   createdByUserId String?
   createdByUser   User?    @relation("CustomerCreatedBy", fields: [createdByUserId], references: [id])
   createdByName   String?
@@ -419,8 +498,32 @@ model Customer {
   sales        Sale[]
   appointments Appointment[]
   jobs         Job[]
+  expensesFor  Expense[] @relation("ExpenseForCustomer")
+  expensesContact Expense[] @relation("ExpenseContactCustomer")
+  invoices     Invoice[]
 
   @@index([tenantId])
+  @@index([customerGroupId])
+  @@index([assignedToUserId])
+  @@index([tenantId, status])
+  @@index([tenantId, totalSellDue])
+  @@index([tenantId, createdAt])
+}
+
+model TenantDailyFinance {
+  id        String   @id @default(cuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id])
+  date      DateTime @db.Date
+  revenue   Decimal  @default(0)
+  costs     Decimal  @default(0)
+  expenses  Decimal  @default(0)
+  net       Decimal  @default(0)
+  currency  String   @default("NGN")
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, date])
+  @@index([tenantId, date])
 }
 
 model Sale {
@@ -430,6 +533,9 @@ model Sale {
   reference     String
   customerId    String?
   customer      Customer?      @relation(fields: [customerId], references: [id])
+  /** For job-centric tenants (VA), every sale is the commercial record for a job. */
+  jobId         String?
+  job           Job?           @relation(fields: [jobId], references: [id])
   total         Decimal
   discountAmount Decimal?
   taxAmount      Decimal?
@@ -438,6 +544,12 @@ model Sale {
   status        SaleStatus     @default(completed)
   paymentStatus PaymentStatus?
   locationCode  String?
+  paymentMethod   String?
+  cleanerUserId   String?
+  cleanerUser     User?          @relation("SaleCleaner", fields: [cleanerUserId], references: [id])
+  cleanerName     String?
+  serviceStaffEmployeeId String?
+  serviceStaffEmployee   Employee? @relation("SaleServiceStaff", fields: [serviceStaffEmployeeId], references: [id])
   shippingStatus  String?
   shippingAddress String?
   trackingNumber  String?
@@ -455,13 +567,19 @@ model Sale {
 
   lines SaleLine[]
   payments Payment[]
+  invoice Invoice?
 
   @@unique([tenantId, reference])
+  @@unique([tenantId, jobId])
   @@index([tenantId])
   @@index([tenantId, date])
   @@index([tenantId, status, date])
   @@index([customerId])
+  @@index([jobId])
   @@index([tenantId, shippingStatus])
+  @@index([tenantId, paymentMethod])
+  @@index([cleanerUserId])
+  @@index([tenantId, serviceStaffEmployeeId])
   @@index([originalSaleId])
 }
 
@@ -676,12 +794,15 @@ model AccountTransaction {
   paymentDetails String?
   saleId        String?
   paymentId     String?
+  invoiceId     String?
+  invoice       Invoice?        @relation(fields: [invoiceId], references: [id])
   createdByName   String?
   createdAt     DateTime        @default(now())
   deletedAt     DateTime?
 
   @@index([tenantId])
   @@index([accountId, operationDate])
+  @@index([invoiceId])
 }
 
 model Payment {
@@ -698,6 +819,8 @@ model Payment {
   account       PaymentAccount? @relation(fields: [accountId], references: [id])
   saleId        String?
   sale          Sale?           @relation(fields: [saleId], references: [id])
+  invoiceId     String?
+  invoice       Invoice?        @relation(fields: [invoiceId], references: [id])
   isReturn      Boolean         @default(false)
   note          String?
   createdByName String?
@@ -707,7 +830,9 @@ model Payment {
   @@index([tenantId])
   @@index([accountId])
   @@index([saleId])
+  @@index([invoiceId])
   @@index([tenantId, paidOn])
+  @@index([tenantId, createdAt])
 }
 
 model ProductCategory {
@@ -786,6 +911,69 @@ model SellingPriceGroup {
   @@index([tenantId])
 }
 
+model Invoice {
+  id             String      @id @default(cuid())
+  tenantId       String
+  tenant         Tenant      @relation(fields: [tenantId], references: [id])
+  reference      String
+  kind           InvoiceKind
+  status         String      @default("final")
+  paymentStatus  String?
+  currency       String      @default("NGN")
+  subtotal       Decimal?
+  taxAmount      Decimal?
+  discountAmount Decimal?
+  total          Decimal     @default(0)
+  documentDate   DateTime
+  dueDate        DateTime?
+  notes          String?
+  legacyId       Int?
+
+  customerId       String?
+  customer         Customer? @relation(fields: [customerId], references: [id])
+  supplierId       String?
+  supplier         Supplier? @relation(fields: [supplierId], references: [id])
+  employeeRecordId String?
+  employeeRecord   Employee? @relation(fields: [employeeRecordId], references: [id])
+  contactName      String?
+
+  layoutId String?
+  layout   InvoiceLayout? @relation(fields: [layoutId], references: [id])
+  schemeId String?
+  scheme   InvoiceScheme? @relation(fields: [schemeId], references: [id])
+
+  saleId          String?        @unique
+  sale            Sale?          @relation(fields: [saleId], references: [id])
+  stockMovementId String?        @unique
+  stockMovement   StockMovement? @relation(fields: [stockMovementId], references: [id])
+  expenseId       String?        @unique
+  expense         Expense?       @relation(fields: [expenseId], references: [id])
+  payrollId       String?        @unique
+  payroll         Payroll?       @relation(fields: [payrollId], references: [id])
+  payrollGroupId  String?        @unique
+  payrollGroup    PayrollGroup?  @relation(fields: [payrollGroupId], references: [id])
+  jobId           String?
+  job             Job?           @relation(fields: [jobId], references: [id])
+
+  payments            Payment[]
+  ledgerEntries       LedgerEntry[]
+  accountTransactions AccountTransaction[]
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@unique([tenantId, reference, kind])
+  @@unique([tenantId, jobId, kind])
+  @@index([tenantId])
+  @@index([tenantId, kind, documentDate])
+  @@index([tenantId, paymentStatus])
+  @@index([customerId])
+  @@index([supplierId])
+  @@index([employeeRecordId])
+  @@index([jobId])
+}
+
 model InvoiceLayout {
   id         String    @id @default(cuid())
   tenantId   String
@@ -800,6 +988,8 @@ model InvoiceLayout {
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
   deletedAt  DateTime?
+
+  invoices Invoice[]
 
   @@unique([tenantId, legacyId])
   @@index([tenantId])
@@ -819,6 +1009,8 @@ model InvoiceScheme {
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
   deletedAt    DateTime?
+
+  invoices Invoice[]
 
   @@unique([tenantId, legacyId])
   @@index([tenantId])
@@ -865,6 +1057,11 @@ model Expense {
   category          ExpenseCategory? @relation(fields: [categoryId], references: [id])
   subCategory       String?
   locationCode      String?
+  expenseForCustomerId String?
+  expenseForCustomer   Customer? @relation("ExpenseForCustomer", fields: [expenseForCustomerId], references: [id])
+  contactCustomerId String?
+  contactCustomer   Customer? @relation("ExpenseContactCustomer", fields: [contactCustomerId], references: [id])
+  /// Legacy free-text fields retained for migration display until fully backfilled.
   expenseFor        String?
   contactName       String?
   totalAmount       Decimal          @default(0)
@@ -881,8 +1078,12 @@ model Expense {
   updatedAt         DateTime         @updatedAt
   deletedAt         DateTime?
 
+  invoice Invoice?
+
   @@index([tenantId])
   @@index([categoryId])
+  @@index([expenseForCustomerId])
+  @@index([contactCustomerId])
 }
 
 model CustomerGroup {
@@ -894,6 +1095,8 @@ model CustomerGroup {
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
   deletedAt       DateTime?
+
+  customers Customer[]
 
   @@index([tenantId])
 }
@@ -907,9 +1110,55 @@ model PayrollGroup {
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
-  payrolls Payroll[]
+  payrolls  Payroll[]
+  employees Employee[]
+  invoice   Invoice?
 
   @@index([tenantId])
+}
+
+model Designation {
+  id        String    @id @default(cuid())
+  tenantId  String
+  tenant    Tenant    @relation(fields: [tenantId], references: [id])
+  name      String
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  employees Employee[]
+  payrolls  Payroll[]
+
+  @@index([tenantId])
+}
+
+model Employee {
+  id              String        @id @default(cuid())
+  tenantId        String
+  tenant          Tenant        @relation(fields: [tenantId], references: [id])
+  name            String
+  employeeCode    String?
+  locationCode    String?
+  payrollGroupId  String?
+  payrollGroup    PayrollGroup? @relation(fields: [payrollGroupId], references: [id])
+  designationId   String
+  designation     Designation   @relation(fields: [designationId], references: [id])
+  userId          String?
+  user            User?         @relation("EmployeeUser", fields: [userId], references: [id])
+  isServiceStaff  Boolean       @default(false)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  deletedAt       DateTime?
+
+  payrolls Payroll[]
+  invoices Invoice[]
+  salesAsServiceStaff Sale[] @relation("SaleServiceStaff")
+
+  @@index([tenantId])
+  @@index([tenantId, isServiceStaff])
+  @@index([designationId])
+  @@index([payrollGroupId])
+  @@index([userId])
 }
 
 model PayComponent {
@@ -932,6 +1181,10 @@ model Payroll {
   tenant         Tenant        @relation(fields: [tenantId], references: [id])
   payrollGroupId String?
   payrollGroup   PayrollGroup? @relation(fields: [payrollGroupId], references: [id])
+  employeeRecordId String?
+  employeeRecord   Employee?   @relation(fields: [employeeRecordId], references: [id])
+  designationId  String?
+  designation    Designation?  @relation(fields: [designationId], references: [id])
   employeeName   String
   employeeId     String?
   locationCode   String?
@@ -947,7 +1200,11 @@ model Payroll {
   updatedAt      DateTime      @updatedAt
   deletedAt      DateTime?
 
+  invoice Invoice?
+
   @@index([tenantId])
   @@index([payrollGroupId])
+  @@index([employeeRecordId])
+  @@index([designationId])
   @@index([tenantId, payrollMonth])
 }
