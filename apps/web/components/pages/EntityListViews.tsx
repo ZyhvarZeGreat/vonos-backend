@@ -97,6 +97,8 @@ export function SalesListView({
 
     isFetching,
     error,
+    goToPage,
+    canSelectPage,
   } = useServerListPage({
     queryKey: ["sales", tenantId, saleStatus ?? "all"],
     enabled: Boolean(tenantId),
@@ -214,6 +216,8 @@ export function SalesListView({
           onNext={goNext}
           onPrev={goPrev}
           onPageSizeChange={setPageSize}
+          onPageSelect={goToPage}
+          canSelectPage={canSelectPage}
           isLoading={isLoading}
           isFetching={isFetching}
           error={error ? "Failed to load sales" : null}
@@ -265,6 +269,8 @@ export function OrdersListView() {
 
     isFetching,
     error,
+    goToPage,
+    canSelectPage,
   } = useServerListPage<Order>({
     queryKey: ["orders", tenantId],
     enabled: Boolean(tenantId),
@@ -329,6 +335,8 @@ export function OrdersListView() {
         onNext={goNext}
         onPrev={goPrev}
         onPageSizeChange={setPageSize}
+        onPageSelect={goToPage}
+        canSelectPage={canSelectPage}
         isLoading={isLoading}
         isFetching={isFetching}
         error={error ? "Failed to load orders" : null}
@@ -380,6 +388,8 @@ export function CustomersListView() {
 
     isFetching,
     error,
+    goToPage,
+    canSelectPage,
   } = useServerListPage<Customer>({
     queryKey: ["customers", tenantId],
     enabled: Boolean(tenantId),
@@ -480,6 +490,8 @@ export function CustomersListView() {
         onNext={goNext}
         onPrev={goPrev}
         onPageSizeChange={setPageSize}
+        onPageSelect={goToPage}
+        canSelectPage={canSelectPage}
         isLoading={isLoading}
         isFetching={isFetching}
         error={error ? "Failed to load customers" : null}
@@ -527,6 +539,8 @@ export function ReturnsListView() {
 
     isFetching,
     error,
+    goToPage,
+    canSelectPage,
   } = useServerListPage<SaleReturnRow>({
     queryKey: ["returns", tenantId],
     enabled: Boolean(tenantId),
@@ -588,6 +602,8 @@ export function ReturnsListView() {
         onNext={goNext}
         onPrev={goPrev}
         onPageSizeChange={setPageSize}
+        onPageSelect={goToPage}
+        canSelectPage={canSelectPage}
         isLoading={isLoading}
         isFetching={isFetching}
         error={error ? "Failed to load returns" : null}
@@ -662,6 +678,8 @@ export function VehiclesListView() {
 
     isFetching,
     error,
+    goToPage,
+    canSelectPage,
   } = useServerListPage<Vehicle>({
     queryKey: ["vehicles", tenantId],
     enabled: Boolean(tenantId),
@@ -734,6 +752,8 @@ export function VehiclesListView() {
         onNext={goNext}
         onPrev={goPrev}
         onPageSizeChange={setPageSize}
+        onPageSelect={goToPage}
+        canSelectPage={canSelectPage}
         isLoading={isLoading}
         isFetching={isFetching}
         error={error ? "Failed to load vehicles" : null}
@@ -817,6 +837,8 @@ export function RequisitionsListView() {
 
     isFetching,
     error,
+    goToPage,
+    canSelectPage,
   } = useServerListPage<Requisition>({
     queryKey: ["requisitions", tenantId],
     enabled: Boolean(tenantId),
@@ -885,6 +907,8 @@ export function RequisitionsListView() {
           onNext={goNext}
           onPrev={goPrev}
           onPageSizeChange={setPageSize}
+          onPageSelect={goToPage}
+          canSelectPage={canSelectPage}
           isLoading={isLoading}
           isFetching={isFetching}
           error={error ? "Failed to load requisitions" : null}
@@ -923,6 +947,8 @@ export function IncomingRequisitionsListView() {
     isLoading,
     isFetching,
     error,
+    goToPage,
+    canSelectPage,
   } = useServerListPage<Requisition>({
     queryKey: ["incoming-requisitions", tenantId],
     enabled: Boolean(tenantId),
@@ -991,6 +1017,8 @@ export function IncomingRequisitionsListView() {
           onNext={goNext}
           onPrev={goPrev}
           onPageSizeChange={setPageSize}
+          onPageSelect={goToPage}
+          canSelectPage={canSelectPage}
           isLoading={isLoading}
           isFetching={isFetching}
           error={error ? "Failed to load incoming requisitions" : null}
@@ -1043,6 +1071,8 @@ export function MenuItemsListView() {
 
     isFetching,
     error,
+    goToPage,
+    canSelectPage,
   } = useServerListPage<MenuItemRow>({
     queryKey: ["menu-items", tenantId],
     enabled: Boolean(tenantId),
@@ -1115,6 +1145,8 @@ export function MenuItemsListView() {
           onNext={goNext}
           onPrev={goPrev}
           onPageSizeChange={setPageSize}
+          onPageSelect={goToPage}
+          canSelectPage={canSelectPage}
           isLoading={isLoading}
           isFetching={isFetching}
           error={error ? "Failed to load menu items" : null}
@@ -1143,6 +1175,8 @@ export function ServicesListView() {
 
     isFetching,
     error,
+    goToPage,
+    canSelectPage,
   } = useServerListPage<SalonService>({
     queryKey: ["salon-services", tenantId],
     enabled: Boolean(tenantId),
@@ -1207,6 +1241,8 @@ export function ServicesListView() {
         onNext={goNext}
         onPrev={goPrev}
         onPageSizeChange={setPageSize}
+        onPageSelect={goToPage}
+        canSelectPage={canSelectPage}
         isLoading={isLoading}
         isFetching={isFetching}
         error={error ? "Failed to load services" : null}
@@ -1269,6 +1305,8 @@ export function CatalogListView() {
 
     isFetching,
     error,
+    goToPage,
+    canSelectPage,
   } = useServerListPage({
     queryKey: ["catalog", tenantId],
     enabled: Boolean(tenantId) && section === "products",
@@ -1404,6 +1442,8 @@ export function CatalogListView() {
             onNext={goNext}
             onPrev={goPrev}
             onPageSizeChange={setPageSize}
+            onPageSelect={goToPage}
+            canSelectPage={canSelectPage}
             isLoading={isLoading}
             isFetching={isFetching}
             error={error ? "Could not load catalog items." : null}

@@ -16,6 +16,10 @@ import {
   updateInvoiceSettings,
 } from "@/lib/api/invoiceSettings";
 import type { ReceiptPrinter } from "@vonos/types";
+import {
+  DataTableSkeleton,
+  InvoiceSettingsSkeleton,
+} from "@/components/organisms/skeletons";
 
 export function InvoiceSettingsView() {
   const tenantId = useTenantId();
@@ -51,7 +55,7 @@ export function InvoiceSettingsView() {
   });
 
   if (isLoading || !settings) {
-    return <p className="py-8 text-sm text-muted">Loading invoice settings…</p>;
+    return <InvoiceSettingsSkeleton />;
   }
 
   return (
@@ -267,7 +271,11 @@ export function ReceiptPrintersView() {
         </div>
 
         {isLoading ? (
-          <p className="text-sm text-muted">Loading printers…</p>
+          <DataTableSkeleton
+            rows={5}
+            columnHeaders={["Name", "Type", "Connection", ""]}
+            withPagination={false}
+          />
         ) : printers.length === 0 ? (
           <EmptyState
             title="Receipt Printers"

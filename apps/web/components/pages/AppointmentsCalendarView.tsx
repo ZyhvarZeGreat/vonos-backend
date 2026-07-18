@@ -33,6 +33,8 @@ export function AppointmentsCalendarView() {
     isLoading,
     isFetching,
     error,
+    goToPage,
+    canSelectPage,
   } = useServerListPage({
     queryKey: ["appointments", tenantId],
     enabled: Boolean(tenantId),
@@ -188,6 +190,8 @@ export function AppointmentsCalendarView() {
               onPrev={goPrev}
               onNext={goNext}
               onPageSizeChange={setPageSize}
+              onPageSelect={goToPage}
+              canSelectPage={canSelectPage}
               isBusy={isFetching}
             />
           ) : null}

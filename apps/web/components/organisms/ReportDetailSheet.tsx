@@ -17,6 +17,7 @@ import {
   resolveReportColumnTotals,
 } from "@/lib/utils/reportTableTotals";
 import { TABLE_REPORT_PAGE_SIZE } from "@/lib/registries/reportTableUi";
+import { DataTableSkeleton } from "@/components/organisms/skeletons";
 import { cn } from "@/lib/utils/cn";
 
 export interface ReportTablePagination {
@@ -224,114 +225,123 @@ function ReportTable({
           </div>
         </div>
       ) : null}
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[32rem] text-sm">
-          <thead>
-            <tr className="border-b border-border bg-[var(--color-surface-muted)]/50 text-left text-xs text-muted">
-              {table.columns.map((col) => (
-                <th key={col.key} className="px-4 py-2.5 font-medium">
-                  {col.header}
-                </th>
-              ))}
-              {showActions ? (
-                <th className="px-4 py-2.5 text-right font-medium">Actions</th>
-              ) : null}
-            </tr>
-          </thead>
-          <tbody>
-            {rows.length === 0 ? (
-              <tr>
-                <td
-                  colSpan={table.columns.length + (showActions ? 1 : 0)}
-                  className="px-4 py-8 text-center text-muted"
-                >
-                  {tableSearch.trim()
-                    ? "No rows match your search."
-                    : "No rows for this period."}
-                </td>
+      {activePagination.isBusy ? (
+        <DataTableSkeleton
+          rows={8}
+          columnHeaders={table.columns.map((col) => col.header)}
+          withPagination={false}
+          embedded
+        />
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[32rem] text-sm">
+            <thead>
+              <tr className="border-b border-border bg-[var(--color-surface-muted)]/50 text-left text-xs text-muted">
+                {table.columns.map((col) => (
+                  <th key={col.key} className="px-4 py-2.5 font-medium">
+                    {col.header}
+                  </th>
+                ))}
+                {showActions ? (
+                  <th className="px-4 py-2.5 text-right font-medium">Actions</th>
+                ) : null}
               </tr>
-            ) : (
-              rows.map((row) => (
-                <tr
-                  key={row.id}
-                  className={cn(
-                    "border-b border-border/60 last:border-b-0",
-                    rowNeedsStockAlert(row) && "bg-red-50 dark:bg-red-950/30",
-                    onRowClick && "cursor-pointer hover:bg-[var(--color-surface-muted)]",
-                    onRowClick &&
-                      rowNeedsStockAlert(row) &&
-                      "hover:bg-red-100/80 dark:hover:bg-red-950/50",
-                  )}
-                  onClick={() => onRowClick?.(row)}
-                >
-                  {table.columns.map((col) => {
-                    const raw = row[col.key as keyof typeof row];
-                    const kind = reportColumnTotalKind(col);
-                    const display = formatReportCell(
-                      col.key,
-                      raw as string | number | ReportRowAction[] | undefined,
-                      currency,
-                    );
-                    return (
+            </thead>
+            <tbody>
+              {rows.length === 0 ? (
+                <tr>
+                  <td
+                    colSpan={table.columns.length + (showActions ? 1 : 0)}
+                    className="px-4 py-8 text-center text-muted"
+                  >
+                    {tableSearch.trim()
+                      ? "No rows match your search."
+                      : "No rows for this period."}
+                  </td>
+                </tr>
+              ) : (
+                rows.map((row) => (
+                  <tr
+                    key={row.id}
+                    className={cn(
+                      "border-b border-border/60 last:border-b-0",
+                      rowNeedsStockAlert(row) && "bg-red-50 dark:bg-red-950/30",
+                      onRowClick && "cursor-pointer hover:bg-[var(--color-surface-muted)]",
+                      onRowClick &&
+                        rowNeedsStockAlert(row) &&
+                        "hover:bg-red-100/80 dark:hover:bg-red-950/50",
+                    )}
+                    onClick={() => onRowClick?.(row)}
+                  >
+                    {table.columns.map((col) => {
+                      const raw = row[col.key as keyof typeof row];
+                      const kind = reportColumnTotalKind(col);
+                      const display = formatReportCell(
+                        col.key,
+                        raw as string | number | ReportRowAction[] | undefined,
+                        currency,
+                      );
+                      return (
+                        <td
+                          key={col.key}
+                          className={cn(
+                            "px-4 py-2 text-foreground",
+                            kind ? "text-right tabular-nums" : undefined,
+                          )}
+                        >
+                          {display}
+                        </td>
+                      );
+                    })}
+                    {showActions ? (
                       <td
-                        key={col.key}
-                        className={cn(
-                          "px-4 py-2 text-foreground",
-                          kind ? "text-right tabular-nums" : undefined,
-                        )}
+                        className="px-4 py-2 text-right"
+                        onClick={(e) => e.stopPropagation()}
                       >
-                        {display}
+                        <ReportTableActions
+                          actions={row.actions}
+                          onAction={(action) => onRowAction?.(action)}
+                        />
+                      </td>
+                    ) : null}
+                  </tr>
+                ))
+              )}
+            </tbody>
+            {hasTotals && filteredRows.length > 0 ? (
+              <tfoot>
+                <tr className="border-t-2 border-border bg-[var(--color-surface-muted)]/70 text-sm font-semibold text-foreground">
+                  {table.columns.map((col, index) => {
+                    const total = totals[col.key];
+                    if (total) {
+                      const display =
+                        total.kind === "currency"
+                          ? formatCurrency(total.value, currency ?? "NGN")
+                          : formatNumber(total.value);
+                      return (
+                        <td
+                          key={col.key}
+                          className="px-4 py-3 text-right tabular-nums"
+                        >
+                          {display}
+                        </td>
+                      );
+                    }
+                    const showLabel =
+                      index === (totalLabelColIndex >= 0 ? totalLabelColIndex : 0);
+                    return (
+                      <td key={col.key} className="px-4 py-3">
+                        {showLabel ? "Total:" : null}
                       </td>
                     );
                   })}
-                  {showActions ? (
-                    <td
-                      className="px-4 py-2 text-right"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <ReportTableActions
-                        actions={row.actions}
-                        onAction={(action) => onRowAction?.(action)}
-                      />
-                    </td>
-                  ) : null}
+                  {showActions ? <td className="px-4 py-3" /> : null}
                 </tr>
-              ))
-            )}
-          </tbody>
-          {hasTotals && filteredRows.length > 0 ? (
-            <tfoot>
-              <tr className="border-t-2 border-border bg-[var(--color-surface-muted)]/70 text-sm font-semibold text-foreground">
-                {table.columns.map((col, index) => {
-                  const total = totals[col.key];
-                  if (total) {
-                    const display =
-                      total.kind === "currency"
-                        ? formatCurrency(total.value, currency ?? "NGN")
-                        : formatNumber(total.value);
-                    return (
-                      <td
-                        key={col.key}
-                        className="px-4 py-3 text-right tabular-nums"
-                      >
-                        {display}
-                      </td>
-                    );
-                  }
-                  const showLabel =
-                    index === (totalLabelColIndex >= 0 ? totalLabelColIndex : 0);
-                  return (
-                    <td key={col.key} className="px-4 py-3">
-                      {showLabel ? "Total:" : null}
-                    </td>
-                  );
-                })}
-                {showActions ? <td className="px-4 py-3" /> : null}
-              </tr>
-            </tfoot>
-          ) : null}
-        </table>
-      </div>
+              </tfoot>
+            ) : null}
+          </table>
+        </div>
+      )}
       {paginationBar("bottom")}
     </div>
   );

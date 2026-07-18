@@ -168,6 +168,8 @@ export function HrView({ allTenants = false, embedded = false }: HrViewProps) {
     isLoading: usersLoading,
     isFetching: usersFetching,
     error: usersError,
+    goToPage,
+    canSelectPage,
   } = useServerListPage<UserListRow>({
     queryKey: ["users", allTenants ? "all" : tenantId],
     enabled: activeTab === "app-access" && (allTenants || Boolean(tenantId)),
@@ -313,6 +315,7 @@ export function HrView({ allTenants = false, embedded = false }: HrViewProps) {
             onNext={() => {}}
             onPrev={() => {}}
             onPageSizeChange={() => {}}
+            onPageSelect={() => {}}
             isLoading={workforceQuery.isLoading}
             isFetching={workforceQuery.isFetching}
             error={
@@ -338,6 +341,8 @@ export function HrView({ allTenants = false, embedded = false }: HrViewProps) {
             onNext={goNext}
             onPrev={goPrev}
             onPageSizeChange={setPageSize}
+            onPageSelect={goToPage}
+            canSelectPage={canSelectPage}
             isLoading={usersLoading}
             isFetching={usersFetching}
             error={usersError ? "Could not load app users." : null}

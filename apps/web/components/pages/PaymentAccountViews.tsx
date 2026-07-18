@@ -372,7 +372,7 @@ export function PaymentAccountReportView({ slug }: { slug: PaymentAccountPageSlu
   const entry = reportEntryBySlug(slug);
   const isSnapshotReport = slug === "balance-sheet";
 
-  const { data, isLoading, error } = useQuery({
+  const { data, isLoading, isFetching, error } = useQuery({
     queryKey: [
       "payment-account-report",
       tenantId,
@@ -435,7 +435,7 @@ export function PaymentAccountReportView({ slug }: { slug: PaymentAccountPageSlu
           : undefined
       }
     >
-      {isLoading ? (
+      {isLoading || (isFetching && !data) ? (
         <HqReportPageSkeleton reportId={entry.id} />
       ) : error ? (
         <p className="text-sm text-red-600">Failed to load report.</p>

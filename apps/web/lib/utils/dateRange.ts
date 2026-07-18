@@ -74,14 +74,25 @@ export function dateRangePresetToBounds(
   return { from: start.toISOString(), to };
 }
 
+/** Floor ISO bounds to 5-minute buckets for stable React Query / API cache keys. */
+export function stabilizeApiBounds(bounds: DateRangeBounds): DateRangeBounds {
+  const bucketMs = 5 * 60 * 1000;
+  const floorIso = (iso: string): string => {
+    const t = new Date(iso).getTime();
+    if (Number.isNaN(t)) return iso;
+    return new Date(Math.floor(t / bucketMs) * bucketMs).toISOString();
+  };
+  return { from: floorIso(bounds.from), to: floorIso(bounds.to) };
+}
+
 /** Bounds for API calls — never returns null; caps wide custom/all-time ranges. */
 export function dateRangePresetToApiBounds(
   preset: DateRangePreset,
   now = new Date(),
   custom?: CustomDateRange | null,
 ): DateRangeBounds {
-  return (
-    dateRangePresetToBounds(preset, now, custom) ?? cappedAllTimeBounds(now)
+  return stabilizeApiBounds(
+    dateRangePresetToBounds(preset, now, custom) ?? cappedAllTimeBounds(now),
   );
 }
 

@@ -46,6 +46,8 @@ export function KitchenDisplayView() {
     isLoading,
     isFetching,
     error,
+    goToPage,
+    canSelectPage,
   } = useServerListPage<Order>({
     queryKey: ["kitchen-orders", tenantId],
     enabled: Boolean(tenantId),
@@ -179,6 +181,8 @@ export function KitchenDisplayView() {
                 onPrev={goPrev}
                 onNext={goNext}
                 onPageSizeChange={setPageSize}
+                onPageSelect={goToPage}
+                canSelectPage={canSelectPage}
                 isBusy={isFetching}
               />
             ) : null}

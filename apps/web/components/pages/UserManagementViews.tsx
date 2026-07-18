@@ -75,6 +75,7 @@ export function RolesListView() {
         onNext={() => {}}
         onPrev={() => {}}
         onPageSizeChange={() => {}}
+        onPageSelect={() => {}}
         isLoading={false}
         error={null}
         emptyState={{ message: "No roles defined yet." }}

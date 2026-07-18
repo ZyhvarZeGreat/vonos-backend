@@ -1,4 +1,15 @@
-import type { Brand, ProductCategory, ProductUnit, SellingPriceGroup, Warranty } from "@vonos/types";
+import type {
+  Brand,
+  CreateBrandInput,
+  CreateProductCategoryInput,
+  CreateProductUnitInput,
+  CreateSellingPriceGroupInput,
+  CreateWarrantyInput,
+  ProductCategory,
+  ProductUnit,
+  SellingPriceGroup,
+  Warranty,
+} from "@vonos/types";
 import { apiFetch, withTenantQuery } from "@/lib/api/client";
 import {
   DEFAULT_TABLE_PAGE_SIZE,
@@ -108,4 +119,30 @@ export async function getCatalogMeta(
   ) as Promise<
     ProductCategory[] | Brand[] | ProductUnit[] | Warranty[] | SellingPriceGroup[]
   >;
+}
+
+export type CreateCatalogMetaInput =
+  | CreateProductCategoryInput
+  | CreateBrandInput
+  | CreateProductUnitInput
+  | CreateWarrantyInput
+  | CreateSellingPriceGroupInput;
+
+export async function createCatalogMeta(
+  tenantId: string,
+  kind: CatalogMetaKind,
+  body: CreateCatalogMetaInput,
+): Promise<CatalogMetaRow> {
+  const response = await apiFetch(withTenantQuery(ENDPOINTS[kind], tenantId), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    const err = (await response.json().catch(() => null)) as
+      | { message?: string }
+      | null;
+    throw new Error(err?.message ?? `Failed to create ${kind}`);
+  }
+  return response.json();
 }

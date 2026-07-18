@@ -5,6 +5,7 @@ import type { Brand, ProductCategory, ProductUnit, SellingPriceGroup, Warranty }
 import { type ColumnConfig } from "@/components/organisms/DataTable";
 import { ServerPaginatedTable } from "@/components/organisms/ServerPaginatedTable";
 import { ListPageShell } from "@/components/organisms/ListPageShell";
+import { CatalogMetaCreateBar } from "@/components/molecules/CatalogMetaCreateBar";
 import { getCatalogMetaPage, type CatalogMetaKind } from "@/lib/api/catalogMeta";
 import { useServerListPage } from "@/lib/hooks/useServerListPage";
 import { useTenantId } from "@/lib/hooks/useRouteTenant";
@@ -82,6 +83,8 @@ export function CatalogMetaListView({ kind }: { kind: CatalogMetaKind }) {
 
     isFetching,
     error,
+    goToPage,
+    canSelectPage,
   } = useServerListPage({
     queryKey: ["catalog-meta", tenantId, kind],
     enabled: Boolean(tenantId),
@@ -115,6 +118,7 @@ export function CatalogMetaListView({ kind }: { kind: CatalogMetaKind }) {
         })
       }
     >
+      <CatalogMetaCreateBar kind={kind} />
       <ServerPaginatedTable
         items={rows}
         columns={columns}
@@ -125,10 +129,12 @@ export function CatalogMetaListView({ kind }: { kind: CatalogMetaKind }) {
         onNext={goNext}
         onPrev={goPrev}
         onPageSizeChange={setPageSize}
+        onPageSelect={goToPage}
+        canSelectPage={canSelectPage}
         isLoading={isLoading}
         isFetching={isFetching}
         error={error ? `Failed to load ${label.toLowerCase()}` : null}
-        emptyState={{ message: `No ${label.toLowerCase()} imported yet.` }}
+        emptyState={{ message: `No ${label.toLowerCase()} yet. Add one above.` }}
       />
     </ListPageShell>
   );

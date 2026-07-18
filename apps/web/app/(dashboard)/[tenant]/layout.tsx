@@ -40,12 +40,18 @@ function TenantLayoutInner({ children }: { children: React.ReactNode }) {
     tenantId,
   );
 
-  if (section === "overview") {
-    return children;
-  }
-
   const pageConfig = getEntityPage(params.tenant, section);
   const isFinance = section === "finance";
+  const isOverview = section === "overview";
+
+  const pageTitle =
+    detailTitle ??
+    pageConfig?.title ??
+    (isOverview
+      ? "Overview"
+      : isFinance
+        ? "Finance"
+        : section.charAt(0).toUpperCase() + section.slice(1).replace(/-/g, " "));
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
@@ -67,32 +73,30 @@ function TenantLayoutInner({ children }: { children: React.ReactNode }) {
           />
         ) : null}
         <TopBar
-          title={
-            detailTitle ??
-            pageConfig?.title ??
-            (isFinance ? "Finance" : section.charAt(0).toUpperCase() + section.slice(1).replace(/-/g, " "))
-          }
+          title={pageTitle}
           tenantCode={params.tenant}
           tenantName={tenantName ?? params.tenant}
           primaryActionLabel={
-            recordId ? undefined : isFinance ? undefined : pageConfig?.primaryActionLabel
+            recordId || isOverview || isFinance
+              ? undefined
+              : pageConfig?.primaryActionLabel
           }
           onPrimaryAction={
-            recordId
+            recordId || isOverview
               ? undefined
               : pageConfig?.openCreateOnPrimary && pageConfig.createFlowKey
-              ? () =>
-                  openCreateModal(
-                    pageConfig.createFlowKey!,
-                    pageConfig.createCopy ?? pageConfig.newOrderCopy,
-                  )
-              : isFinance
                 ? () =>
-                    openExportModal({
-                      title: "Export Finance",
-                      subtitle: "Export current tab as CSV",
-                    })
-                : undefined
+                    openCreateModal(
+                      pageConfig.createFlowKey!,
+                      pageConfig.createCopy ?? pageConfig.newOrderCopy,
+                    )
+                : isFinance
+                  ? () =>
+                      openExportModal({
+                        title: "Export Finance",
+                        subtitle: "Export current tab as CSV",
+                      })
+                  : undefined
           }
         />
         <main className="flex-1 overflow-y-auto p-6 lg:p-10">

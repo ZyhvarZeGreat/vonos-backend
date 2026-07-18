@@ -73,6 +73,8 @@ export function MovementListView({
 
     isFetching,
     error,
+    goToPage,
+    canSelectPage,
   } = useServerListPage<StockMovementListRow>({
     queryKey: ["stock-movements", tenantId, type, source, defaultStatus],
     enabled: Boolean(tenantId),
@@ -206,6 +208,8 @@ export function MovementListView({
         onNext={goNext}
         onPrev={goPrev}
         onPageSizeChange={setPageSize}
+        onPageSelect={goToPage}
+        canSelectPage={canSelectPage}
         isLoading={isLoading}
         isFetching={isFetching}
         error={error ? "Failed to load movements" : null}

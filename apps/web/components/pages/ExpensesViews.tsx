@@ -99,6 +99,8 @@ export function ExpensesListView() {
 
     isFetching,
     error,
+    goToPage,
+    canSelectPage,
   } = useServerListPage<Expense>({
     queryKey: ["expenses", tenantId],
     enabled: Boolean(tenantId),
@@ -287,6 +289,8 @@ export function ExpensesListView() {
           onNext={goNext}
           onPrev={goPrev}
           onPageSizeChange={setPageSize}
+          onPageSelect={goToPage}
+          canSelectPage={canSelectPage}
           isLoading={isLoading || exporting}
           isFetching={isFetching}
           error={error ? "Failed to load expenses" : null}
@@ -729,6 +733,8 @@ export function ExpenseCategoriesListView() {
 
     isFetching,
     error,
+    goToPage,
+    canSelectPage,
   } = useServerListPage<ExpenseCategory>({
     queryKey: ["expense-categories", tenantId],
     enabled: Boolean(tenantId),
@@ -890,6 +896,8 @@ export function ExpenseCategoriesListView() {
         onNext={goNext}
         onPrev={goPrev}
         onPageSizeChange={setPageSize}
+        onPageSelect={goToPage}
+        canSelectPage={canSelectPage}
         isLoading={isLoading}
         isFetching={isFetching}
         error={error ? "Failed to load expense categories" : null}

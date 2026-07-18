@@ -79,6 +79,8 @@ export function JobsListView() {
 
     isFetching,
     error,
+    goToPage,
+    canSelectPage,
   } = useServerListPage({
     queryKey: ["jobs", tenantId],
     enabled: Boolean(tenantId),
@@ -140,6 +142,8 @@ export function JobsListView() {
           onNext={goNext}
           onPrev={goPrev}
           onPageSizeChange={setPageSize}
+          onPageSelect={goToPage}
+          canSelectPage={canSelectPage}
           isLoading={isLoading}
           isFetching={isFetching}
           error={error ? "Failed to load jobs" : null}

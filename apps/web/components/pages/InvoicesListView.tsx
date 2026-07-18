@@ -23,6 +23,7 @@ import {
   invoiceDetailToLines,
   invoiceKindLabel,
 } from "@/lib/utils/invoiceBuilders";
+import { InvoiceDocumentSkeleton } from "@/components/organisms/skeletons";
 
 const KIND_OPTIONS = [
   { value: "sale", label: "Sales" },
@@ -68,7 +69,7 @@ export function InvoicesListView() {
   });
 
   const { items, isLoading, error } = listPage;
-  const { data: previewDetail, isFetching: previewLoading } = useQuery({
+  const { data: previewDetail, isPending: previewLoading } = useQuery({
     queryKey: ["invoice-detail", tenantId, previewId],
     queryFn: () => getInvoice(tenantId!, previewId!),
     enabled: Boolean(tenantId && previewId),
@@ -206,9 +207,11 @@ export function InvoicesListView() {
         onClose={() => setPreviewId(null)}
       >
         {previewDocument ?? (
-          <p className="py-12 text-center text-sm text-muted">
-            {previewLoading ? "Loading invoice…" : "Invoice not found"}
-          </p>
+          previewLoading ? (
+            <InvoiceDocumentSkeleton />
+          ) : (
+            <p className="py-12 text-center text-sm text-muted">Invoice not found</p>
+          )
         )}
       </DocumentPreviewModal>
     </>

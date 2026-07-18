@@ -522,6 +522,95 @@ export function DetailPageSkeleton() {
   );
 }
 
+/** Mimics InvoiceDocument layout in preview modals. */
+export function InvoiceDocumentSkeleton() {
+  return (
+    <div
+      className="mx-auto max-w-3xl space-y-8 bg-white p-8 shadow-card"
+      aria-busy
+      aria-label="Loading invoice"
+    >
+      <div className="flex flex-wrap items-start justify-between gap-4 border-b border-border pb-6">
+        <div className="space-y-2">
+          <Skeleton className="h-3 w-20" />
+          <Skeleton className="h-8 w-48" />
+        </div>
+        <div className="space-y-2">
+          <Skeleton className="ml-auto h-4 w-32" />
+          <Skeleton className="ml-auto h-3 w-24" />
+        </div>
+      </div>
+      <div className="grid gap-6 sm:grid-cols-2">
+        <div className="space-y-2">
+          <Skeleton className="h-3 w-16" />
+          <Skeleton className="h-5 w-40" />
+          <Skeleton className="h-4 w-36" />
+          <Skeleton className="h-4 w-28" />
+        </div>
+        <div className="space-y-2">
+          <Skeleton className="h-3 w-20" />
+          <Skeleton className="h-4 w-full" />
+          <Skeleton className="h-4 w-40" />
+        </div>
+      </div>
+      <div className="space-y-3">
+        <div className="flex gap-4 border-b border-border pb-2">
+          <Skeleton className="h-3 flex-1" />
+          <Skeleton className="h-3 w-16" />
+          <Skeleton className="h-3 w-20" />
+          <Skeleton className="h-3 w-20" />
+        </div>
+        {Array.from({ length: 5 }).map((_, index) => (
+          <div key={index} className="flex gap-4 py-1">
+            <Skeleton className="h-4 flex-1" />
+            <Skeleton className="h-4 w-16" />
+            <Skeleton className="h-4 w-20" />
+            <Skeleton className="h-4 w-20" />
+          </div>
+        ))}
+      </div>
+      <div className="ml-auto w-48 space-y-2">
+        <Skeleton className="h-4 w-full" />
+        <Skeleton className="h-4 w-full" />
+        <Skeleton className="h-6 w-full" />
+      </div>
+    </div>
+  );
+}
+
+/** Mimics Invoice Settings form layout. */
+export function InvoiceSettingsSkeleton() {
+  return (
+    <div
+      className="mx-auto max-w-3xl space-y-6 py-8"
+      aria-busy
+      aria-label="Loading invoice settings"
+    >
+      <div className="space-y-2">
+        <Skeleton className="h-6 w-48" />
+        <Skeleton className="h-4 w-full max-w-lg" />
+      </div>
+      <div className="space-y-4 rounded-xl border border-border bg-card p-6 shadow-card">
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="space-y-2">
+            <Skeleton className="h-4 w-28" />
+            <Skeleton className="h-10 w-full rounded-md" />
+          </div>
+          <div className="space-y-2">
+            <Skeleton className="h-4 w-32" />
+            <Skeleton className="h-10 w-full rounded-md" />
+          </div>
+        </div>
+        <div className="space-y-2">
+          <Skeleton className="h-4 w-24" />
+          <Skeleton className="h-28 w-full rounded-md" />
+        </div>
+        <Skeleton className="h-9 w-28 rounded-lg" />
+      </div>
+    </div>
+  );
+}
+
 export function PageShellSkeleton() {
   return (
     <div className="flex h-screen overflow-hidden bg-background" aria-busy aria-label="Loading">

@@ -64,6 +64,8 @@ export function AdminEntityReportSheet({
     canGoPrev,
     goNext,
     goPrev,
+    goToPage,
+    maxReachablePageIndex,
     reset: resetTablePage,
   } = useCursorPage();
   const [pageSize, setPageSize] = useState(TABLE_REPORT_PAGE_SIZE);
@@ -138,6 +140,8 @@ export function AdminEntityReportSheet({
           setPageSize(size);
           resetTablePage();
         },
+        onPageSelect: goToPage,
+        canSelectPage: (index: number) => index <= maxReachablePageIndex,
       }
     : undefined;
 
@@ -245,7 +249,7 @@ export function AdminEntityReportSheet({
           </div>
         ) : null}
 
-        {isLoading && !data ? (
+        {isLoading || (isFetching && !data) ? (
           <HqReportPageSkeleton reportId={entry.id} />
         ) : error ? (
           <p className="text-sm text-error">Failed to load report.</p>

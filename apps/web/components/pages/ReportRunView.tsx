@@ -72,6 +72,8 @@ export function ReportRunView({ slug }: ReportRunViewProps) {
     canGoPrev,
     goNext,
     goPrev,
+    goToPage,
+    maxReachablePageIndex,
     reset: resetTablePage,
   } = useCursorPage();
   const [pageSize, setPageSize] = useState(TABLE_REPORT_PAGE_SIZE);
@@ -164,6 +166,8 @@ export function ReportRunView({ slug }: ReportRunViewProps) {
           setPageSize(size);
           resetTablePage();
         },
+        onPageSelect: goToPage,
+        canSelectPage: (index: number) => index <= maxReachablePageIndex,
       }
     : undefined;
 
@@ -338,7 +342,7 @@ export function ReportRunView({ slug }: ReportRunViewProps) {
             </div>
           ) : null}
 
-          {isLoading ? (
+          {isLoading || (isFetching && !data) ? (
             <HqReportPageSkeleton reportId={entry.id} />
           ) : error ? (
             <p className="text-sm text-red-600">Failed to load report.</p>

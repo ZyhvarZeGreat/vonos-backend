@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 import type { Brand, ProductCategory, ProductUnit, SellingPriceGroup, Warranty } from "@vonos/types";
 import { DataTable, type ColumnConfig } from "@/components/organisms/DataTable";
+import { CatalogMetaCreateBar } from "@/components/molecules/CatalogMetaCreateBar";
 import { getCatalogMeta, type CatalogMetaKind } from "@/lib/api/catalogMeta";
 import { useTenantId } from "@/lib/hooks/useRouteTenant";
 
@@ -91,8 +92,10 @@ export function ProductMetaPanel({ kind }: { kind: CatalogMetaKind }) {
   return (
     <div className="space-y-2">
       <p className="px-1 text-sm text-muted">
-        {KIND_LABELS[kind]} from your migrated catalog — manage on this page instead of a separate route.
+        Manage {KIND_LABELS[kind].toLowerCase()} for this entity — used on products
+        and reports.
       </p>
+      <CatalogMetaCreateBar kind={kind} />
       <DataTable
         embedded
         data={rows}
@@ -101,7 +104,7 @@ export function ProductMetaPanel({ kind }: { kind: CatalogMetaKind }) {
         isLoading={isLoading && rows.length === 0}
         isFetching={isFetching}
         error={error ? `Failed to load ${KIND_LABELS[kind].toLowerCase()}` : null}
-        emptyState={{ message: `No ${KIND_LABELS[kind].toLowerCase()} yet.` }}
+        emptyState={{ message: `No ${KIND_LABELS[kind].toLowerCase()} yet. Add one above.` }}
       />
     </div>
   );

@@ -1,23 +1,20 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { useParams, usePathname, useRouter } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { getTenantConfig } from "@/lib/api";
 import { canAccessTenant } from "@/lib/utils/authRedirect";
 import { isAuthSkipped } from "@/lib/utils/devAccess";
 import { getTenantByCode, isTenantCode } from "@/lib/registries/tenants";
 import { tenantAccentStyle } from "@/lib/registries/tenantAccents";
-import {
-  getTenantConfigByCode,
-} from "@/lib/registries/tenantConfigs";
+import { getTenantConfigByCode } from "@/lib/registries/tenantConfigs";
 import { useAuthStore } from "@/stores/authStore";
 import { useTenantStore } from "@/stores/tenantStore";
 import { PageShellSkeleton } from "@/components/organisms/skeletons";
 
 export function TenantShell({ children }: { children: React.ReactNode }) {
   const params = useParams<{ tenant: string }>();
-  const pathname = usePathname();
   const router = useRouter();
   const queryClient = useQueryClient();
   const previousTenantCode = useRef<string | null>(null);
@@ -29,24 +26,34 @@ export function TenantShell({ children }: { children: React.ReactNode }) {
 
   const skipAuth = isAuthSkipped();
   const tenantCode = params.tenant;
-  const registryEntry = isTenantCode(tenantCode) ? getTenantByCode(tenantCode) : null;
+  const registryEntry = isTenantCode(tenantCode)
+    ? getTenantByCode(tenantCode)
+    : null;
 
+  // Keep a real sidebar during entity switches: apply static nav config immediately
+  // instead of clearing to null (which used to flash PageShellSkeleton).
   useEffect(() => {
-    const stored = useTenantStore.getState().tenantConfig;
-    if (stored && stored.code !== tenantCode) {
-      clearTenant();
+    const fallback = getTenantConfigByCode(tenantCode);
+    if (fallback) {
+      setTenantConfig(fallback);
+    } else {
+      const stored = useTenantStore.getState().tenantConfig;
+      if (stored && stored.code !== tenantCode) clearTenant();
     }
     if (registryEntry?.tenantId) {
       useTenantStore.getState().setActiveTenant(registryEntry.tenantId);
     }
-  }, [tenantCode, clearTenant, registryEntry?.tenantId]);
+  }, [tenantCode, clearTenant, setTenantConfig, registryEntry?.tenantId]);
 
   useEffect(() => {
     if (
       previousTenantCode.current &&
       previousTenantCode.current !== tenantCode
     ) {
-      queryClient.invalidateQueries();
+      // Refresh entity data, but keep tenantConfig cache so the shell stays mounted.
+      queryClient.invalidateQueries({
+        predicate: (query) => query.queryKey[0] !== "tenantConfig",
+      });
     }
     previousTenantCode.current = tenantCode;
   }, [tenantCode, queryClient]);
@@ -55,6 +62,7 @@ export function TenantShell({ children }: { children: React.ReactNode }) {
     queryKey: ["tenantConfig", registryEntry?.tenantId],
     queryFn: () => getTenantConfig(registryEntry!.tenantId),
     enabled: Boolean(registryEntry?.tenantId),
+    staleTime: 5 * 60_000,
   });
 
   useEffect(() => {
@@ -87,20 +95,20 @@ export function TenantShell({ children }: { children: React.ReactNode }) {
     }
   }, [configQuery.data, skipAuth, registryEntry, tenantCode, setTenantConfig]);
 
+  // Unknown route tenant — full shell placeholder is fine.
   if (!registryEntry) {
     return <PageShellSkeleton />;
   }
 
+  // First paint before auth hydrate — keep full shell (no entity chrome yet).
   if (!skipAuth && !hydrated) {
     return <PageShellSkeleton />;
   }
 
-  if (!skipAuth && configQuery.isLoading) {
-    return <PageShellSkeleton />;
-  }
-
+  // While tenant config fetches, keep the real sidebar/top bar; page content
+  // uses its own skeletons. Static registry config already drives nav.
   return (
-    <div data-tenant={tenantCode} data-path={pathname} style={tenantAccentStyle(tenantCode)}>
+    <div data-tenant={tenantCode} style={tenantAccentStyle(tenantCode)}>
       {children}
     </div>
   );

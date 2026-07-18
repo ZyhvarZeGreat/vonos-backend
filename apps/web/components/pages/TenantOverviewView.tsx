@@ -5,18 +5,12 @@ import { PendingOrdersPanel } from "@/components/organisms/PendingOrdersPanel";
 import { FloatingActionButton } from "@/components/atoms/FloatingActionButton";
 import { ActivityFeedPanel } from "@/components/organisms/ActivityFeedPanel";
 import { DateRangeDropdown } from "@/components/molecules/DateRangeDropdown";
-import { Sidebar } from "@/components/organisms/Sidebar";
 import { DashboardTemplate } from "@/components/templates/DashboardTemplate";
-import { getTenantConfig } from "@/lib/api";
 import { getOverviewDashboard } from "@/lib/api/overview";
 import { getTenantConfigByCode } from "@/lib/registries/tenantConfigs";
 import { useRecentActivityFeed } from "@/lib/hooks/useRecentActivityFeed";
 import { useListPageFilters } from "@/lib/hooks/useListPageFilters";
-import { navSectionsForTenant } from "@/lib/utils/navRoutes";
 import { useRouteTenant } from "@/lib/hooks/useRouteTenant";
-import { useAuthStore } from "@/stores/authStore";
-import { useUiStore } from "@/stores/uiStore";
-import { AdminViewingBanner } from "@/components/molecules/AdminViewingBanner";
 import { OverviewLiveBody } from "@/components/pages/OverviewLiveBody";
 import type { TenantCode } from "@/lib/registries/tenants";
 
@@ -24,62 +18,10 @@ interface OverviewProps {
   tenantCode: TenantCode;
 }
 
-function useOverviewShell(tenantCode: TenantCode) {
-  const sidebarCollapsed = useUiStore((state) => state.sidebarCollapsed);
-  const authName = useAuthStore((state) => state.name);
-  const authEmail = useAuthStore((state) => state.email);
-  const { tenantId, config } = useRouteTenant();
-  const fallback = getTenantConfigByCode(tenantCode)!;
-
-  const configQuery = useQuery({
-    queryKey: ["tenantConfig", tenantId],
-    queryFn: () => getTenantConfig(tenantId!),
-    enabled: Boolean(tenantId),
-  });
-
-  const authRole = useAuthStore((state) => state.role);
-  const finalConfig = configQuery.data ?? config ?? fallback;
-  const tenantName = finalConfig.name ?? tenantCode;
-
-  const { items: activityItems, isLoading: activityLoading } = useRecentActivityFeed(tenantId);
-
-  const topSlot =
-    authRole === "super_admin" ? (
-      <AdminViewingBanner tenantCode={tenantCode} tenantName={tenantName} />
-    ) : undefined;
-
-  const sidebar = (
-    <Sidebar
-      sections={navSectionsForTenant(tenantCode, finalConfig)}
-      tenantName={tenantName}
-      tenantCode={tenantCode}
-      userName={authName ?? undefined}
-      userEmail={authEmail ?? undefined}
-      activeRoute={`/${tenantCode}/overview`}
-      collapsed={sidebarCollapsed}
-    />
-  );
-
-  return {
-    tenantId,
-    finalConfig,
-    sidebar,
-    topSlot,
-    activityItems,
-    activityLoading,
-    tenantName,
-  };
-}
-
 function EntityOverviewView({ tenantCode }: OverviewProps) {
-  const {
-    tenantId,
-    sidebar,
-    topSlot,
-    activityItems,
-    activityLoading,
-    tenantName,
-  } = useOverviewShell(tenantCode);
+  const { tenantId } = useRouteTenant();
+  const { items: activityItems, isLoading: activityLoading } =
+    useRecentActivityFeed(tenantId);
   const { dateRange, setDateRange, bounds } = useListPageFilters();
   const entry = getTenantConfigByCode(tenantCode);
   const archetype = entry?.archetype ?? "stock";
@@ -111,12 +53,11 @@ function EntityOverviewView({ tenantCode }: OverviewProps) {
 
   return (
     <DashboardTemplate
-      sidebar={sidebar}
-      topSlot={topSlot}
-      title="Overview"
-      tenantCode={tenantCode}
-      tenantName={tenantName}
-      primaryAction={<DateRangeDropdown value={dateRange} onChange={setDateRange} />}
+      beforeContent={
+        <div className="flex flex-wrap items-center justify-end gap-3">
+          <DateRangeDropdown value={dateRange} onChange={setDateRange} />
+        </div>
+      }
       kpiRow={
         <OverviewLiveBody
           tenantCode={tenantCode}

@@ -245,6 +245,8 @@ export function PayrollView({
               onNext={payrollsPage.goNext}
               onPrev={payrollsPage.goPrev}
               onPageSizeChange={payrollsPage.setPageSize}
+              onPageSelect={payrollsPage.goToPage}
+              canSelectPage={payrollsPage.canSelectPage}
               isLoading={payrollsPage.isLoading}
               isFetching={payrollsPage.isFetching}
               error={listLoadError(payrollsPage.error, "Failed to load payrolls.")}
@@ -281,6 +283,8 @@ export function PayrollView({
               onNext={groupsPage.goNext}
               onPrev={groupsPage.goPrev}
               onPageSizeChange={groupsPage.setPageSize}
+              onPageSelect={groupsPage.goToPage}
+              canSelectPage={groupsPage.canSelectPage}
               isLoading={groupsPage.isLoading}
               isFetching={groupsPage.isFetching}
               error={listLoadError(groupsPage.error, "Failed to load payroll groups.")}
@@ -346,6 +350,8 @@ export function PayrollView({
               onNext={componentsPage.goNext}
               onPrev={componentsPage.goPrev}
               onPageSizeChange={componentsPage.setPageSize}
+              onPageSelect={componentsPage.goToPage}
+              canSelectPage={componentsPage.canSelectPage}
               isLoading={componentsPage.isLoading}
               isFetching={componentsPage.isFetching}
               error={listLoadError(componentsPage.error, "Failed to load pay components.")}

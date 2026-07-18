@@ -128,6 +128,8 @@ export function WarehouseSuppliersView() {
 
     isFetching,
     error,
+    goToPage,
+    canSelectPage,
   } = useServerListPage<SupplierListRow>({
     queryKey: ["suppliers", tenantId],
     enabled: Boolean(tenantId),
@@ -224,6 +226,8 @@ export function WarehouseSuppliersView() {
           onNext={goNext}
           onPrev={goPrev}
           onPageSizeChange={setPageSize}
+          onPageSelect={goToPage}
+          canSelectPage={canSelectPage}
           isLoading={isLoading}
           isFetching={isFetching}
           error={error ? "Failed to load suppliers" : null}

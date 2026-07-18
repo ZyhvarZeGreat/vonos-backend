@@ -53,6 +53,8 @@ export function CustomerGroupsListView() {
 
     isFetching,
     error,
+    goToPage,
+    canSelectPage,
   } = useServerListPage<CustomerGroup>({
     queryKey: ["customer-groups", tenantId],
     enabled: Boolean(tenantId),
@@ -77,6 +79,8 @@ export function CustomerGroupsListView() {
         onNext={goNext}
         onPrev={goPrev}
         onPageSizeChange={setPageSize}
+        onPageSelect={goToPage}
+        canSelectPage={canSelectPage}
         isLoading={isLoading}
         isFetching={isFetching}
         error={error ? "Failed to load customer groups" : null}

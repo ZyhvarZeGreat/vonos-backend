@@ -116,6 +116,9 @@ export function ServiceStaffReportPanel({
               setPageSize(size);
               setPageIndex(0);
             }}
+            onPageSelect={setPageIndex}
+            totalPages={Math.max(1, Math.ceil(table.rows.length / pageSize))}
+            totalItems={table.rows.length}
             className="border-b border-t-0 border-[var(--color-border-subtle)]"
           />
           <div className="overflow-x-auto">
@@ -198,6 +201,9 @@ export function ServiceStaffReportPanel({
               setPageSize(size);
               setPageIndex(0);
             }}
+            onPageSelect={setPageIndex}
+            totalPages={Math.max(1, Math.ceil(table.rows.length / pageSize))}
+            totalItems={table.rows.length}
           />
         </div>
       ) : null}

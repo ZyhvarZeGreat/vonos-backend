@@ -92,6 +92,8 @@ export function WarehouseInventoryView() {
 
     isFetching,
     error,
+    goToPage,
+    canSelectPage,
   } = useServerListPage({
     queryKey: ["items", tenantId],
     enabled: Boolean(tenantId) && section === "products",
@@ -293,6 +295,8 @@ export function WarehouseInventoryView() {
               onNext={goNext}
               onPrev={goPrev}
               onPageSizeChange={setPageSize}
+              onPageSelect={goToPage}
+              canSelectPage={canSelectPage}
               onRowClick={(row) => goToDetail(row.id)}
               isLoading={isLoading}
               isFetching={isFetching}

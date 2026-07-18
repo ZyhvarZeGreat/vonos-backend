@@ -76,6 +76,8 @@ export function KidsWearInventoryView() {
 
     isFetching,
     error,
+    goToPage,
+    canSelectPage,
   } = useServerListPage({
     queryKey: ["items", tenantId],
     enabled: Boolean(tenantId),
@@ -140,6 +142,8 @@ export function KidsWearInventoryView() {
           onNext={goNext}
           onPrev={goPrev}
           onPageSizeChange={setPageSize}
+          onPageSelect={goToPage}
+          canSelectPage={canSelectPage}
           isLoading={isLoading}
           isFetching={isFetching}
           error={error ? "Failed to load inventory" : null}

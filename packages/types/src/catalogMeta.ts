@@ -50,3 +50,34 @@ export interface SellingPriceGroup {
   createdAt: string;
   updatedAt: string;
 }
+
+export interface CreateProductCategoryInput {
+  name: string;
+  shortCode?: string;
+  description?: string;
+  categoryType?: string;
+}
+
+export interface CreateBrandInput {
+  name: string;
+  description?: string;
+}
+
+export interface CreateProductUnitInput {
+  name: string;
+  shortName: string;
+  allowDecimal?: boolean;
+}
+
+export interface CreateWarrantyInput {
+  name: string;
+  duration: number;
+  durationType: "days" | "months" | "years";
+  description?: string;
+}
+
+export interface CreateSellingPriceGroupInput {
+  name: string;
+  description?: string;
+  isActive?: boolean;
+}

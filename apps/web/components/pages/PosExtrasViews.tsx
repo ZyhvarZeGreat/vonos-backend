@@ -148,6 +148,8 @@ export function DiscountsListView() {
     isLoading,
     isFetching,
     error,
+    goToPage,
+    canSelectPage,
   } = useServerListPage<Discount>({
     queryKey: ["discounts", tenantId],
     enabled: Boolean(tenantId),
@@ -272,6 +274,8 @@ export function DiscountsListView() {
         onNext={goNext}
         onPrev={goPrev}
         onPageSizeChange={setPageSize}
+        onPageSelect={goToPage}
+        canSelectPage={canSelectPage}
         isLoading={isLoading}
         isFetching={isFetching}
         error={error ? "Failed to load discounts" : null}
@@ -300,6 +304,8 @@ export function VariationsListView() {
     isLoading,
     isFetching,
     error,
+    goToPage,
+    canSelectPage,
   } = useServerListPage<VariationTemplate>({
     queryKey: ["variations", tenantId],
     enabled: Boolean(tenantId),
@@ -405,6 +411,8 @@ export function VariationsListView() {
         onNext={goNext}
         onPrev={goPrev}
         onPageSizeChange={setPageSize}
+        onPageSelect={goToPage}
+        canSelectPage={canSelectPage}
         isLoading={isLoading}
         isFetching={isFetching}
         error={error ? "Failed to load variations" : null}

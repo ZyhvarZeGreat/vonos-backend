@@ -44,7 +44,8 @@ export function PaginatedLedgerTable<T extends LedgerEntry | LedgerListRow>({
   defaultPageSize = LEDGER_TABLE_PAGE_SIZE,
 }: PaginatedLedgerTableProps<T>) {
   const debouncedSearch = useDebouncedValue(search?.trim() ?? "", 400);
-  const { cursor, pageIndex, canGoPrev, goNext, goPrev, reset } = useCursorPage();
+  const { cursor, pageIndex, canGoPrev, goNext, goPrev, goToPage, maxReachablePageIndex, reset } =
+    useCursorPage();
   const [pageSize, setPageSize] = useState(defaultPageSize);
 
   const filters = useMemo((): LedgerQueryFilters => {
@@ -140,6 +141,8 @@ export function PaginatedLedgerTable<T extends LedgerEntry | LedgerListRow>({
           onPrev={goPrev}
           onNext={handleNext}
           onPageSizeChange={handlePageSizeChange}
+          onPageSelect={goToPage}
+          canSelectPage={(index) => index <= maxReachablePageIndex}
           isBusy={isFetching}
         />
       ) : null}
