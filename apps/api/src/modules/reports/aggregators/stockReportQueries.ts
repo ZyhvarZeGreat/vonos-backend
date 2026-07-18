@@ -1,10 +1,7 @@
 import { Prisma } from '@prisma/client';
-import type { StockStatus } from '@vonos/types';
 import type { TenantScopedPrisma } from '../../../common/prisma/prisma.service';
 import { toNumber } from '../../../common/utils/serializers';
 import { bucketLabel, type DateWindow } from './date-utils';
-
-const lowStockStatuses: StockStatus[] = ['low_stock', 'out_of_stock'];
 
 export interface StockItemRow {
   id: string;
@@ -44,6 +41,9 @@ export interface MovementTrendRow {
   outbound: number;
 }
 
+/**
+ * Stock KPIs via 2 SQL round-trips (was 10 parallel Prisma calls — P2024 pool stampede).
+ */
 export async function stockMetrics(
   db: TenantScopedPrisma,
   tenantId: string,
@@ -52,189 +52,217 @@ export async function stockMetrics(
   todayStart: Date,
   todayEnd: Date,
 ): Promise<StockMetrics> {
-  const itemWhere = { tenantId, deletedAt: null };
-
-  const [
-    stockValueRow,
-    totalSku,
-    quantitySum,
-    lowStockCount,
-    outOfStockCount,
-    currencyRow,
-    todayInbound,
-    todayOutbound,
-    movementCount,
-    priorMovementCount,
-  ] = await Promise.all([
-    db.$queryRaw<[{ stock_value: Prisma.Decimal | null }]>`
-      SELECT COALESCE(SUM(quantity * "costPrice"), 0) AS stock_value
+  const [itemRows, movementRows] = await Promise.all([
+    db.$queryRaw<
+      [
+        {
+          total_sku: bigint;
+          total_units: bigint | null;
+          stock_value: Prisma.Decimal | null;
+          low_stock_count: bigint;
+          out_of_stock_count: bigint;
+          currency: string | null;
+        },
+      ]
+    >`
+      SELECT
+        COUNT(*)::bigint AS total_sku,
+        COALESCE(SUM(quantity), 0)::bigint AS total_units,
+        COALESCE(SUM(quantity * "costPrice"), 0) AS stock_value,
+        COUNT(*) FILTER (
+          WHERE status IN ('low_stock', 'out_of_stock')
+        )::bigint AS low_stock_count,
+        COUNT(*) FILTER (WHERE status = 'out_of_stock')::bigint AS out_of_stock_count,
+        (SELECT currency FROM "Item"
+          WHERE "tenantId" = ${tenantId} AND "deletedAt" IS NULL
+          ORDER BY id ASC LIMIT 1) AS currency
       FROM "Item"
       WHERE "tenantId" = ${tenantId} AND "deletedAt" IS NULL
     `,
-    db.item.count({ where: itemWhere }),
-    db.item.aggregate({ where: itemWhere, _sum: { quantity: true } }),
-    db.item.count({
-      where: { ...itemWhere, status: { in: lowStockStatuses } },
-    }),
-    db.item.count({ where: { ...itemWhere, status: 'out_of_stock' } }),
-    db.item.findFirst({
-      where: itemWhere,
-      select: { currency: true },
-      orderBy: { id: 'asc' },
-    }),
-    db.stockMovement.count({
-      where: {
-        tenantId,
-        deletedAt: null,
-        type: 'inbound',
-        date: { gte: todayStart, lte: todayEnd },
-      },
-    }),
-    db.stockMovement.count({
-      where: {
-        tenantId,
-        deletedAt: null,
-        type: 'outbound',
-        date: { gte: todayStart, lte: todayEnd },
-      },
-    }),
-    db.stockMovement.count({
-      where: {
-        tenantId,
-        deletedAt: null,
-        date: { gte: window.from, lte: window.to },
-      },
-    }),
-    db.stockMovement.count({
-      where: {
-        tenantId,
-        deletedAt: null,
-        date: { gte: prior.from, lte: prior.to },
-      },
-    }),
+    db.$queryRaw<
+      [
+        {
+          today_inbound: bigint;
+          today_outbound: bigint;
+          movement_count: bigint;
+          prior_movement_count: bigint;
+        },
+      ]
+    >`
+      SELECT
+        COUNT(*) FILTER (
+          WHERE type = 'inbound'
+            AND date >= ${todayStart} AND date <= ${todayEnd}
+        )::bigint AS today_inbound,
+        COUNT(*) FILTER (
+          WHERE type = 'outbound'
+            AND date >= ${todayStart} AND date <= ${todayEnd}
+        )::bigint AS today_outbound,
+        COUNT(*) FILTER (
+          WHERE date >= ${window.from} AND date <= ${window.to}
+        )::bigint AS movement_count,
+        COUNT(*) FILTER (
+          WHERE date >= ${prior.from} AND date <= ${prior.to}
+        )::bigint AS prior_movement_count
+      FROM "StockMovement"
+      WHERE "tenantId" = ${tenantId} AND "deletedAt" IS NULL
+    `,
   ]);
 
-  const totalUnits = quantitySum._sum.quantity ?? 0;
+  const item = itemRows[0];
+  const movement = movementRows[0];
+  const totalSku = Number(item?.total_sku ?? 0);
+  const totalUnits = Number(item?.total_units ?? 0);
+  const movementCount = Number(movement?.movement_count ?? 0);
+  const priorMovementCount = Number(movement?.prior_movement_count ?? 0);
   const velocity =
     totalSku > 0 ? Number((movementCount / totalSku).toFixed(2)) : 0;
   const priorVelocity =
     totalSku > 0 ? Number((priorMovementCount / totalSku).toFixed(2)) : 0;
 
   return {
-    stockValue: toNumber(stockValueRow[0]?.stock_value ?? 0),
+    stockValue: toNumber(item?.stock_value ?? 0),
     totalSku,
     totalUnits,
-    lowStockCount,
-    outOfStockCount,
-    todayInbound,
-    todayOutbound,
+    lowStockCount: Number(item?.low_stock_count ?? 0),
+    outOfStockCount: Number(item?.out_of_stock_count ?? 0),
+    todayInbound: Number(movement?.today_inbound ?? 0),
+    todayOutbound: Number(movement?.today_outbound ?? 0),
     movementCount,
     priorMovementCount,
     velocity,
     priorVelocity,
-    currency: currencyRow?.currency ?? 'NGN',
+    currency: item?.currency ?? 'NGN',
   };
 }
 
-export async function stockValueByCategory(
+export async function itemsByCategoryValue(
   db: TenantScopedPrisma,
   tenantId: string,
   limit = 12,
 ): Promise<CategoryValueRow[]> {
   const rows = await db.$queryRaw<
-    Array<{ label: string; value: Prisma.Decimal | null }>
+    Array<{ label: string; value: Prisma.Decimal }>
   >`
-    SELECT COALESCE(category, 'Uncategorized') AS label,
+    SELECT
+      COALESCE(NULLIF(TRIM(category), ''), 'Uncategorized') AS label,
       COALESCE(SUM(quantity * "costPrice"), 0) AS value
     FROM "Item"
     WHERE "tenantId" = ${tenantId} AND "deletedAt" IS NULL
-    GROUP BY COALESCE(category, 'Uncategorized')
+    GROUP BY 1
     ORDER BY value DESC
     LIMIT ${limit}
   `;
-
   return rows.map((row) => ({
     label: row.label,
-    value: Math.round(toNumber(row.value ?? 0)),
+    value: toNumber(row.value),
   }));
 }
 
-export async function stockMovementTrend(
+export async function movementTrend(
   db: TenantScopedPrisma,
   tenantId: string,
   window: DateWindow,
 ): Promise<MovementTrendRow[]> {
   const spanDays =
     (window.to.getTime() - window.from.getTime()) / (24 * 60 * 60 * 1000);
-  const unit = spanDays <= 2 ? 'hour' : spanDays <= 60 ? 'day' : 'month';
-
   const rows = await db.$queryRaw<
-    Array<{ bucket: Date; type: string; count: bigint }>
+    Array<{ day: Date; inbound: bigint; outbound: bigint }>
   >`
-    SELECT date_trunc(${unit}, date) AS bucket, type, COUNT(*)::bigint AS count
+    SELECT
+      date_trunc('day', date) AS day,
+      COUNT(*) FILTER (WHERE type = 'inbound')::bigint AS inbound,
+      COUNT(*) FILTER (WHERE type = 'outbound')::bigint AS outbound
     FROM "StockMovement"
     WHERE "tenantId" = ${tenantId}
       AND "deletedAt" IS NULL
       AND date >= ${window.from}
       AND date <= ${window.to}
-      AND type IN ('inbound', 'outbound')
-    GROUP BY bucket, type
-    ORDER BY bucket ASC
+    GROUP BY 1
+    ORDER BY 1 ASC
   `;
 
-  const inboundMap = new Map<string, number>();
-  const outboundMap = new Map<string, number>();
-  const labels = new Set<string>();
-
-  for (const row of rows) {
-    const label = bucketLabel(row.bucket, spanDays);
-    labels.add(label);
-    const count = Number(row.count);
-    if (row.type === 'inbound') {
-      inboundMap.set(label, (inboundMap.get(label) ?? 0) + count);
-    } else {
-      outboundMap.set(label, (outboundMap.get(label) ?? 0) + count);
-    }
-  }
-
-  return Array.from(labels)
-    .sort()
-    .map((label) => ({
-      label,
-      inbound: inboundMap.get(label) ?? 0,
-      outbound: outboundMap.get(label) ?? 0,
-    }));
+  return rows.map((row) => ({
+    label: bucketLabel(row.day, spanDays),
+    inbound: Number(row.inbound),
+    outbound: Number(row.outbound),
+  }));
 }
 
 export async function lowStockByCategory(
   db: TenantScopedPrisma,
   tenantId: string,
+  limit = 12,
 ): Promise<CategoryValueRow[]> {
-  const rows = await db.$queryRaw<Array<{ label: string; value: bigint }>>`
-    SELECT COALESCE(category, 'Uncategorized') AS label, COUNT(*)::bigint AS value
+  const rows = await db.$queryRaw<
+    Array<{ label: string; value: bigint }>
+  >`
+    SELECT
+      COALESCE(NULLIF(TRIM(category), ''), 'Uncategorized') AS label,
+      COUNT(*)::bigint AS value
     FROM "Item"
     WHERE "tenantId" = ${tenantId}
       AND "deletedAt" IS NULL
-      AND (
-        status IN ('low_stock', 'out_of_stock')
-        OR ("reorderPoint" IS NOT NULL AND quantity <= "reorderPoint")
-      )
-    GROUP BY COALESCE(category, 'Uncategorized')
+      AND status IN ('low_stock', 'out_of_stock')
+    GROUP BY 1
     ORDER BY value DESC
+    LIMIT ${limit}
   `;
-
   return rows.map((row) => ({
     label: row.label,
     value: Number(row.value),
   }));
 }
 
+/** Aliases used by stockReports consumers. */
+export const stockValueByCategory = itemsByCategoryValue;
+export const stockMovementTrend = movementTrend;
+
 export async function lowStockItems(
   db: TenantScopedPrisma,
   tenantId: string,
   limit = 50,
 ): Promise<StockItemRow[]> {
-  const sqlRows = await db.$queryRaw<
+  const rows = await db.item.findMany({
+    where: {
+      tenantId,
+      deletedAt: null,
+      status: { in: ['low_stock', 'out_of_stock'] },
+    },
+    select: {
+      id: true,
+      sku: true,
+      name: true,
+      category: true,
+      quantity: true,
+      reorderPoint: true,
+      costPrice: true,
+      status: true,
+      currency: true,
+    },
+    orderBy: [{ quantity: 'asc' }, { name: 'asc' }],
+    take: limit,
+  });
+  return rows.map((row) => ({
+    id: row.id,
+    sku: row.sku,
+    name: row.name,
+    category: row.category,
+    quantity: row.quantity,
+    reorderPoint: row.reorderPoint,
+    costPrice: toNumber(row.costPrice),
+    status: row.status,
+    currency: row.currency,
+  }));
+}
+
+/** Highest-value SKUs for Stock Report valuation table. */
+export async function topStockValueItems(
+  db: TenantScopedPrisma,
+  tenantId: string,
+  limit = 50,
+): Promise<StockItemRow[]> {
+  const rows = await db.$queryRaw<
     Array<{
       id: string;
       sku: string;
@@ -247,27 +275,31 @@ export async function lowStockItems(
       currency: string;
     }>
   >`
-    SELECT id, sku, name, category, quantity, "reorderPoint", "costPrice", status::text, currency
+    SELECT
+      id,
+      sku,
+      name,
+      category,
+      quantity,
+      "reorderPoint",
+      "costPrice",
+      status::text AS status,
+      currency
     FROM "Item"
     WHERE "tenantId" = ${tenantId}
       AND "deletedAt" IS NULL
-      AND (
-        status IN ('low_stock', 'out_of_stock')
-        OR ("reorderPoint" IS NOT NULL AND quantity <= "reorderPoint")
-      )
-    ORDER BY quantity ASC
+    ORDER BY (quantity * "costPrice") DESC, name ASC
     LIMIT ${limit}
   `;
-
-  return sqlRows.map((item) => ({
-    id: item.id,
-    sku: item.sku,
-    name: item.name,
-    category: item.category,
-    quantity: item.quantity,
-    reorderPoint: item.reorderPoint,
-    costPrice: toNumber(item.costPrice),
-    status: item.status,
-    currency: item.currency,
+  return rows.map((row) => ({
+    id: row.id,
+    sku: row.sku,
+    name: row.name,
+    category: row.category,
+    quantity: row.quantity,
+    reorderPoint: row.reorderPoint,
+    costPrice: toNumber(row.costPrice),
+    status: row.status,
+    currency: row.currency,
   }));
 }

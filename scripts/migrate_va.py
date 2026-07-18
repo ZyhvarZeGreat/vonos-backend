@@ -63,7 +63,13 @@ def main() -> int:
         "--since",
         default=None,
         metavar="YYYY-MM-DD",
-        help="Incremental: only records on/after this date",
+        help="Incremental: only records on/after this date (e.g. 2025-01-01)",
+    )
+    parser.add_argument(
+        "--until",
+        default=None,
+        metavar="YYYY-MM-DD",
+        help="Only records on/before this date (e.g. 2026-12-31)",
     )
     parser.add_argument(
         "--output-json",
@@ -105,17 +111,23 @@ def main() -> int:
     progress.message(f"  OPS:       {ops_dump}")
 
     existing_legacy = None
-    if args.since and not args.dry_run:
+    if (args.since or args.until) and not args.dry_run:
         from migration.audit_transforms import load_legacy_maps_from_postgres
         from migration.tenant_db import load_database_url
 
         existing_legacy = load_legacy_maps_from_postgres(VA_TENANT_ID, load_database_url())
+
+    if args.since or args.until:
+        progress.message(
+            f"  Date filter: since={args.since or '—'} until={args.until or '—'}"
+        )
 
     loaded, result = run_va_migration(
         quotation_dump,
         ops_dump,
         progress=progress,
         since=args.since,
+        until=args.until,
         existing_legacy=existing_legacy,
         hrm_only=args.hrm_only,
     )

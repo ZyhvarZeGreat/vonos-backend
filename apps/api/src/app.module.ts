@@ -1,4 +1,6 @@
 import { Module } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { PrismaModule } from './common/prisma/prisma.module';
@@ -33,9 +35,17 @@ import { HrmModule } from './modules/hrm/hrm.module';
 import { InvoiceSettingsModule } from './modules/invoice-settings/invoice-settings.module';
 import { DiscountsModule } from './modules/discounts/discounts.module';
 import { VariationsModule } from './modules/variations/variations.module';
+import { InvoicesModule } from './modules/invoices/invoices.module';
 
 @Module({
   imports: [
+    ThrottlerModule.forRoot([
+      {
+        name: 'default',
+        ttl: 60_000,
+        limit: 120,
+      },
+    ]),
     PrismaModule,
     CacheModule,
     AuthModule,
@@ -67,8 +77,15 @@ import { VariationsModule } from './modules/variations/variations.module';
     InvoiceSettingsModule,
     DiscountsModule,
     VariationsModule,
+    InvoicesModule,
   ],
   controllers: [AppController, HealthController],
-  providers: [AppService],
+  providers: [
+    AppService,
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard,
+    },
+  ],
 })
 export class AppModule {}

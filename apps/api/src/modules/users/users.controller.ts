@@ -32,11 +32,15 @@ export class UsersController {
     @Query('cursor') cursor?: string,
     @Query('limit') limit?: string,
     @Query('search') search?: string,
+    @Query('role') role?: string,
+    @Query('status') status?: string,
   ) {
     const filters = {
       cursor,
       limit: limit ? Number(limit) : undefined,
       search,
+      role,
+      status,
     };
     if (allTenants === 'true') {
       return this.usersService.listAllTenants(request.user.role, filters);

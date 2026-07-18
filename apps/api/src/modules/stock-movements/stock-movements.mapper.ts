@@ -22,6 +22,8 @@ export function serializeMovement(row: PrismaMovement): StockMovement {
     locationCode: row.locationCode,
     supplierId: row.supplierId,
     source: row.source,
+    paymentStatus: row.paymentStatus ?? null,
+    paymentMethod: row.paymentMethod ?? null,
     date: toIso(row.date),
     createdByUserId: row.createdByUserId,
     createdByName: row.createdByName,
@@ -42,8 +44,10 @@ export function toMovementListRow(
       sum + line.quantity * toNumber((line as StockMovementLine).unitCost ?? 0),
     0,
   );
-  const isPaid =
+  const derivedPaid =
     row.status === 'Received' || row.status === 'Delivered';
+  const paymentStatus =
+    row.paymentStatus ?? (derivedPaid ? 'paid' : 'due');
   return {
     id: row.id,
     reference: row.reference,
@@ -54,8 +58,10 @@ export function toMovementListRow(
     locationCode: row.locationCode,
     locationName: row.locationCode ?? '—',
     grandTotal,
-    paymentStatus: isPaid ? 'paid' : 'due',
-    paymentDue: isPaid ? 0 : grandTotal,
+    paymentStatus,
+    paymentMethod: row.paymentMethod ?? null,
+    paymentDue: paymentStatus === 'paid' ? 0 : grandTotal,
+    supplierId: row.supplierId,
   };
 }
 

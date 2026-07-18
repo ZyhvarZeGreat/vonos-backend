@@ -12,7 +12,7 @@ import type {
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { TenantDbService } from '../../common/prisma/tenant-db.service';
 import { AuditService } from '../audit/audit.service';
-import { buildCursorQuery } from '../../common/utils/pagination';
+import { buildCompositeCursorQuery } from '../../common/utils/pagination';
 import { toIso } from '../../common/utils/serializers';
 import { computeStockStatus } from '../../common/utils/stockQuantity';
 import { adjustItemLocationStock } from '../../common/utils/itemLocationStock';
@@ -86,6 +86,13 @@ export class RequisitionsService {
     search?: string;
   } = {}): Promise<Requisition[]> {
     const sourceTenantId = this.tenantDb.requireTenantId();
+    const pagination = buildCompositeCursorQuery({
+      sortField: 'createdAt',
+      sortDir: 'desc',
+      cursor: filters.cursor,
+      limit: filters.limit ?? 10,
+      sortValueType: 'date',
+    });
     const rows = await this.prisma.requisition.findMany({
       where: {
         sourceTenantId,
@@ -105,9 +112,10 @@ export class RequisitionsService {
               ],
             }
           : {}),
+        ...(pagination.where ?? {}),
       },
-      orderBy: { createdAt: 'desc' },
-      ...buildCursorQuery(filters.cursor, filters.limit ?? 25),
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: pagination.take,
     });
     return rows.map(serialize);
   }
@@ -118,6 +126,13 @@ export class RequisitionsService {
     search?: string;
   } = {}): Promise<Requisition[]> {
     const tenantId = this.tenantDb.requireTenantId();
+    const pagination = buildCompositeCursorQuery({
+      sortField: 'createdAt',
+      sortDir: 'desc',
+      cursor: filters.cursor,
+      limit: filters.limit ?? 10,
+      sortValueType: 'date',
+    });
     const rows = await this.tenantDb.db.requisition.findMany({
       where: {
         tenantId,
@@ -137,9 +152,10 @@ export class RequisitionsService {
               ],
             }
           : {}),
+        ...(pagination.where ?? {}),
       },
-      orderBy: { createdAt: 'desc' },
-      ...buildCursorQuery(filters.cursor, filters.limit ?? 25),
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: pagination.take,
     });
     return rows.map(serialize);
   }

@@ -5,7 +5,7 @@ import type {
   ProfitLossSummary,
   ReportsTable,
 } from '@vonos/types';
-import type { Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import type { TenantScopedPrisma } from '../../../common/prisma/prisma.service';
 import { ledgerDateFilter } from '../../../common/utils/ledgerAggregates';
 import { computeSalesRevenueTotal } from '../../../common/utils/salesRevenue';
@@ -21,6 +21,7 @@ import {
   type NormalizedSale,
   type SalesReportContext,
 } from './salesData';
+import { queryProfitLossBreakdownTab } from './profitLossBreakdownSql';
 
 function lineAmount(label: string, key: string, amount: number): ProfitLossLine {
   return { key, label, amount: Math.round(amount * 100) / 100 };
@@ -30,43 +31,40 @@ async function stockValuation(
   db: TenantScopedPrisma,
   tenantId: string,
 ): Promise<{ byPurchase: number; bySale: number; currency: string }> {
-  const [purchaseRow, saleRow, currencyRow] = await Promise.all([
-    db.$queryRaw<[{ val: Prisma.Decimal | null }]>`
-      SELECT COALESCE(SUM(quantity * "costPrice"), 0) AS val
-      FROM "Item"
-      WHERE "deletedAt" IS NULL AND "tenantId" = ${tenantId}
-    `,
-    db.$queryRaw<[{ val: Prisma.Decimal | null }]>`
-      SELECT COALESCE(SUM(
-        quantity * COALESCE("sellPrice", "costPrice")
-      ), 0) AS val
-      FROM "Item"
-      WHERE "deletedAt" IS NULL AND "tenantId" = ${tenantId}
-    `,
-    db.item.findFirst({
-      where: { deletedAt: null },
-      select: { currency: true },
-      orderBy: { id: 'asc' },
-    }),
-  ]);
+  const rows = await db.$queryRaw<
+    [{ by_purchase: Prisma.Decimal | null; by_sale: Prisma.Decimal | null; currency: string | null }]
+  >`
+    SELECT
+      COALESCE(SUM(quantity * "costPrice"), 0) AS by_purchase,
+      COALESCE(SUM(quantity * COALESCE("sellPrice", "costPrice")), 0) AS by_sale,
+      (SELECT currency FROM "Item"
+       WHERE "deletedAt" IS NULL AND "tenantId" = ${tenantId}
+       ORDER BY id ASC LIMIT 1) AS currency
+    FROM "Item"
+    WHERE "deletedAt" IS NULL AND "tenantId" = ${tenantId}
+  `;
 
   return {
-    byPurchase: toNumber(purchaseRow[0]?.val ?? 0),
-    bySale: toNumber(saleRow[0]?.val ?? 0),
-    currency: currencyRow?.currency ?? 'NGN',
+    byPurchase: toNumber(rows[0]?.by_purchase ?? 0),
+    bySale: toNumber(rows[0]?.by_sale ?? 0),
+    currency: rows[0]?.currency ?? 'NGN',
   };
 }
 
-/** Sum StockMovement JSON line values in SQL for one movement type. */
-async function sumMovementValueSql(
+/** Expand StockMovement JSON lines for a subset of movement types. */
+async function sumMovementJsonByTypes(
   db: TenantScopedPrisma,
   tenantId: string,
-  type: 'inbound' | 'transfer' | 'outbound',
   from: Date,
   to: Date,
-): Promise<number> {
-  const rows = await db.$queryRaw<[{ val: Prisma.Decimal | null }]>`
-    SELECT COALESCE(SUM(
+  types: Array<'inbound' | 'transfer' | 'outbound'>,
+): Promise<Map<string, number>> {
+  if (types.length === 0) return new Map();
+  const typeList = Prisma.join(types.map((t) => Prisma.sql`${t}`));
+  const rows = await db.$queryRaw<
+    Array<{ type: string; val: Prisma.Decimal | null }>
+  >`
+    SELECT sm.type::text AS type, COALESCE(SUM(
       CASE
         WHEN elem->>'lineTotal' IS NOT NULL AND elem->>'lineTotal' <> ''
           THEN (elem->>'lineTotal')::numeric
@@ -84,11 +82,55 @@ async function sumMovementValueSql(
     ) AS elem
     WHERE sm."deletedAt" IS NULL
       AND sm."tenantId" = ${tenantId}
-      AND sm.type = ${type}
       AND sm.date >= ${from}
       AND sm.date <= ${to}
+      AND sm.type::text IN (${typeList})
+    GROUP BY sm.type
   `;
-  return toNumber(rows[0]?.val ?? 0);
+
+  const totals = new Map<string, number>();
+  for (const row of rows) {
+    totals.set(row.type, toNumber(row.val ?? 0));
+  }
+  return totals;
+}
+
+/**
+ * Purchase totals from Invoice (indexed); transfer/outbound still need JSON.
+ * Falls back to inbound JSON when no purchase invoices exist for the window.
+ */
+async function sumMovementValuesByType(
+  db: TenantScopedPrisma,
+  tenantId: string,
+  from: Date,
+  to: Date,
+): Promise<{ inbound: number; transfer: number; outbound: number }> {
+  const [purchaseAgg, transferOutbound] = await Promise.all([
+    db.invoice.aggregate({
+      where: {
+        deletedAt: null,
+        kind: 'purchase',
+        documentDate: { gte: from, lte: to },
+      },
+      _sum: { total: true },
+    }),
+    sumMovementJsonByTypes(db, tenantId, from, to, ['transfer', 'outbound']),
+  ]);
+  const invoicePurchase = toNumber(purchaseAgg._sum.total ?? 0);
+
+  let inbound = invoicePurchase;
+  if (invoicePurchase <= 0) {
+    const inboundOnly = await sumMovementJsonByTypes(db, tenantId, from, to, [
+      'inbound',
+    ]);
+    inbound = inboundOnly.get('inbound') ?? 0;
+  }
+
+  return {
+    inbound,
+    transfer: transferOutbound.get('transfer') ?? 0,
+    outbound: transferOutbound.get('outbound') ?? 0,
+  };
 }
 
 async function totalPayroll(
@@ -96,7 +138,6 @@ async function totalPayroll(
   from?: string,
   to?: string,
 ): Promise<number> {
-  const dateFilter = ledgerDateFilter(from, to);
   const payrollMonthFilter =
     from || to
       ? {
@@ -107,25 +148,24 @@ async function totalPayroll(
         }
       : {};
 
-  const [payrollRows, ledgerPayroll] = await Promise.all([
-    db.payroll.aggregate({
-      where: { deletedAt: null, ...payrollMonthFilter },
-      _sum: { netPay: true },
-    }),
-    db.ledgerEntry.aggregate({
-      where: {
-        deletedAt: null,
-        type: 'expense',
-        category: { contains: 'payroll', mode: 'insensitive' },
-        ...dateFilter,
-      },
-      _sum: { amount: true },
-    }),
-  ]);
-
+  const payrollRows = await db.payroll.aggregate({
+    where: { deletedAt: null, ...payrollMonthFilter },
+    _sum: { netPay: true },
+  });
   const fromPayroll = toNumber(payrollRows._sum.netPay ?? 0);
-  const fromLedger = toNumber(ledgerPayroll._sum.amount ?? 0);
-  return fromPayroll > 0 ? fromPayroll : fromLedger;
+  if (fromPayroll > 0) return fromPayroll;
+
+  const dateFilter = ledgerDateFilter(from, to);
+  const ledgerPayroll = await db.ledgerEntry.aggregate({
+    where: {
+      deletedAt: null,
+      type: 'expense',
+      category: { contains: 'payroll', mode: 'insensitive' },
+      ...dateFilter,
+    },
+    _sum: { amount: true },
+  });
+  return toNumber(ledgerPayroll._sum.amount ?? 0);
 }
 
 type ItemMeta = { cost: number; category: string | null; brandName: string | null };
@@ -502,6 +542,282 @@ function buildBreakdowns(
   };
 }
 
+function buildBreakdownForTab(
+  tab: ProfitLossBreakdownTab,
+  ctx: SalesReportContext,
+  jobCtx: Awaited<ReturnType<typeof loadJobReportContext>>,
+  itemMeta: Map<string, ItemMeta>,
+): ReportsTable {
+  const byDate = new Map<string, { revenue: number; cost: number }>();
+  const byProduct = new Map<
+    string,
+    { label: string; revenue: number; cost: number; units: number }
+  >();
+  const byCustomer = new Map<string, { revenue: number; cost: number }>();
+  const byLocation = new Map<string, { revenue: number; cost: number }>();
+  const byStaff = new Map<string, { revenue: number; cost: number }>();
+  const byCategory = new Map<string, { revenue: number; cost: number }>();
+  const byBrand = new Map<string, { revenue: number; cost: number }>();
+  const byInvoice: Array<{
+    reference: string;
+    revenue: number;
+    cost: number;
+    date: Date;
+  }> = [];
+
+  const needsDate = tab === 'date' || tab === 'day';
+  const needsProduct = tab === 'product';
+  const needsCategory = tab === 'category';
+  const needsInvoice = tab === 'invoice';
+  const needsCustomer = tab === 'customer';
+  const needsBrand = tab === 'brand';
+  const needsLocation = tab === 'location';
+  const needsStaff = tab === 'service-staff';
+
+  for (const sale of ctx.periodSales) {
+    const dateKey = sale.date.toISOString().slice(0, 10);
+    const customerKey = sale.customerName.trim() || 'Walk-in';
+    const locationKey = sale.locationCode?.trim() || 'Default';
+    const staffKey = sale.staffName?.trim() || 'Unassigned';
+
+    const dayBucket = needsDate ? byDate.get(dateKey) ?? { revenue: 0, cost: 0 } : null;
+    const customerBucket = needsCustomer
+      ? byCustomer.get(customerKey) ?? { revenue: 0, cost: 0 }
+      : null;
+    const locationBucket = needsLocation
+      ? byLocation.get(locationKey) ?? { revenue: 0, cost: 0 }
+      : null;
+    const staffBucket = needsStaff
+      ? byStaff.get(staffKey) ?? { revenue: 0, cost: 0 }
+      : null;
+
+    if (dayBucket) dayBucket.revenue += sale.total;
+    if (customerBucket) customerBucket.revenue += sale.total;
+    if (locationBucket) locationBucket.revenue += sale.total;
+    if (staffBucket) staffBucket.revenue += sale.total;
+
+    let invoiceCost = 0;
+
+    for (const line of sale.lines) {
+      const qty = toNumber(line.quantity);
+      const revenue = toNumber(line.lineTotal);
+      const unitCost = lineUnitCost(line.itemId, itemMeta);
+      const cost = qty * unitCost;
+
+      if (dayBucket) dayBucket.cost += cost;
+      if (customerBucket) customerBucket.cost += cost;
+      if (locationBucket) locationBucket.cost += cost;
+      if (staffBucket) staffBucket.cost += cost;
+      if (needsInvoice) invoiceCost += cost;
+
+      if (needsCategory) {
+        addBucket(byCategory, lineCategory(line.itemId, itemMeta), revenue, cost);
+      }
+      if (needsBrand) {
+        addBucket(byBrand, lineBrand(line.itemId, itemMeta), revenue, cost);
+      }
+      if (needsProduct) {
+        const sku = line.sku?.trim() || line.name;
+        const product = byProduct.get(sku) ?? {
+          label: line.name,
+          revenue: 0,
+          cost: 0,
+          units: 0,
+        };
+        product.revenue += revenue;
+        product.cost += cost;
+        product.units += qty;
+        byProduct.set(sku, product);
+      }
+    }
+
+    if (dayBucket) byDate.set(dateKey, dayBucket);
+    if (customerBucket) byCustomer.set(customerKey, customerBucket);
+    if (locationBucket) byLocation.set(locationKey, locationBucket);
+    if (staffBucket) byStaff.set(staffKey, staffBucket);
+    if (needsInvoice) {
+      byInvoice.push({
+        reference: sale.reference,
+        revenue: sale.total,
+        cost: invoiceCost,
+        date: sale.date,
+      });
+    }
+  }
+
+  // Jobs may contribute to all dimensions; merge once to keep parity with full report logic.
+  const jobMaps = {
+    byDate,
+    byCustomer,
+    byLocation,
+    byStaff,
+    byCategory,
+    byProduct,
+    byBrand,
+    byInvoice,
+  };
+  for (const job of jobCtx.periodJobs) {
+    mergeJobIntoBreakdowns(job, jobMaps, itemMeta);
+  }
+
+  const grossRow = (revenue: number, cost: number) =>
+    Math.round((revenue - cost) * 100) / 100;
+
+  const sortByGrossProfit = <T extends { grossProfit: number }>(rows: T[]) =>
+    rows.sort((a, b) => b.grossProfit - a.grossProfit);
+
+  switch (tab) {
+    case 'date': {
+      const rows = Array.from(byDate.entries())
+        .sort(([a], [b]) => b.localeCompare(a))
+        .map(([date, row]) => ({
+          date,
+          grossProfit: grossRow(row.revenue, row.cost),
+          revenue: Math.round(row.revenue * 100) / 100,
+        }));
+      return {
+        columns: [
+          { key: 'date', header: 'Date' },
+          { key: 'grossProfit', header: 'Gross Profit' },
+        ],
+        rows,
+      };
+    }
+    case 'product':
+      return {
+        columns: [
+          { key: 'product', header: 'Product' },
+          { key: 'unitsSold', header: 'Units Sold' },
+          { key: 'grossProfit', header: 'Gross Profit' },
+          { key: 'revenue', header: 'Revenue' },
+        ],
+        rows: sortByGrossProfit(
+          Array.from(byProduct.values()).map((row) => ({
+            product: row.label,
+            unitsSold: row.units,
+            grossProfit: grossRow(row.revenue, row.cost),
+            revenue: Math.round(row.revenue * 100) / 100,
+          })),
+        ),
+      };
+    case 'category':
+      return {
+        columns: [
+          { key: 'category', header: 'Category' },
+          { key: 'grossProfit', header: 'Gross Profit' },
+          { key: 'revenue', header: 'Revenue' },
+        ],
+        rows: sortByGrossProfit(
+          Array.from(byCategory.entries()).map(([category, row]) => ({
+            category,
+            grossProfit: grossRow(row.revenue, row.cost),
+            revenue: Math.round(row.revenue * 100) / 100,
+          })),
+        ),
+      };
+    case 'invoice':
+      return {
+        columns: [
+          { key: 'reference', header: 'Invoice' },
+          { key: 'grossProfit', header: 'Gross Profit' },
+          { key: 'revenue', header: 'Revenue' },
+        ],
+        rows: sortByGrossProfit(
+          byInvoice
+            .sort((a, b) => b.date.getTime() - a.date.getTime())
+            .slice(0, 200)
+            .map((row) => ({
+              reference: row.reference,
+              grossProfit: grossRow(row.revenue, row.cost),
+              revenue: Math.round(row.revenue * 100) / 100,
+            })),
+        ),
+      };
+    case 'customer':
+      return {
+        columns: [
+          { key: 'customer', header: 'Customer' },
+          { key: 'grossProfit', header: 'Gross Profit' },
+          { key: 'revenue', header: 'Revenue' },
+        ],
+        rows: sortByGrossProfit(
+          Array.from(byCustomer.entries()).map(([customer, row]) => ({
+            customer,
+            grossProfit: grossRow(row.revenue, row.cost),
+            revenue: Math.round(row.revenue * 100) / 100,
+          })),
+        ),
+      };
+    case 'brand':
+      return {
+        columns: [
+          { key: 'brand', header: 'Brand' },
+          { key: 'grossProfit', header: 'Gross Profit' },
+          { key: 'revenue', header: 'Revenue' },
+        ],
+        rows: sortByGrossProfit(
+          Array.from(byBrand.entries()).map(([brand, row]) => ({
+            brand,
+            grossProfit: grossRow(row.revenue, row.cost),
+            revenue: Math.round(row.revenue * 100) / 100,
+          })),
+        ),
+      };
+    case 'location':
+      return {
+        columns: [
+          { key: 'location', header: 'Location' },
+          { key: 'grossProfit', header: 'Gross Profit' },
+          { key: 'revenue', header: 'Revenue' },
+        ],
+        rows: sortByGrossProfit(
+          Array.from(byLocation.entries()).map(([location, row]) => ({
+            location,
+            grossProfit: grossRow(row.revenue, row.cost),
+            revenue: Math.round(row.revenue * 100) / 100,
+          })),
+        ),
+      };
+    case 'day': {
+      const rows = Array.from(byDate.entries())
+        .sort(([a], [b]) => b.localeCompare(a))
+        .map(([day, row]) => ({
+          day,
+          grossProfit: grossRow(row.revenue, row.cost),
+        }));
+      return {
+        columns: [
+          { key: 'day', header: 'Day' },
+          { key: 'grossProfit', header: 'Gross Profit' },
+        ],
+        rows,
+      };
+    }
+    case 'service-staff':
+      return {
+        columns: [
+          { key: 'staff', header: 'Service Staff' },
+          { key: 'grossProfit', header: 'Gross Profit' },
+          { key: 'revenue', header: 'Revenue' },
+        ],
+        rows: sortByGrossProfit(
+          Array.from(byStaff.entries()).map(([staff, row]) => ({
+            staff,
+            grossProfit: grossRow(row.revenue, row.cost),
+            revenue: Math.round(row.revenue * 100) / 100,
+          })),
+        ),
+      };
+    default: {
+      const _never: never = tab;
+      return {
+        columns: [{ key: 'label', header: '—' }],
+        rows: [{ label: _never }],
+      };
+    }
+  }
+}
+
 export interface ProfitLossLoadContext {
   stock: { byPurchase: number; bySale: number; currency: string };
   ledgerGroups: Array<{
@@ -619,7 +935,7 @@ async function loadBreakdownGraphs(
   return { ctx, jobCtx, itemMeta, jobTotals };
 }
 
-/** Load P&L inputs. Summary fields are parallelized; sale/job graphs only when includeBreakdown. */
+/** Load P&L inputs. Stock valuation is SQL-only and safe to parallelize with aggregates. */
 export async function loadProfitLossContext(
   db: TenantScopedPrisma,
   tenantId: string,
@@ -636,9 +952,7 @@ export async function loadProfitLossContext(
     ledgerGroups,
     salesRevenue,
     payrollTotal,
-    inboundTotal,
-    transferTotal,
-    outboundTotal,
+    movementTotals,
     saleDiscountAgg,
     returnSales,
     jobTotalsAgg,
@@ -651,12 +965,11 @@ export async function loadProfitLossContext(
     }),
     computeSalesRevenueTotal(db, from, to),
     totalPayroll(db, from, to),
-    sumMovementValueSql(db, tenantId, 'inbound', window.from, window.to),
-    sumMovementValueSql(db, tenantId, 'transfer', window.from, window.to),
-    sumMovementValueSql(db, tenantId, 'outbound', window.from, window.to),
-    db.saleLine.aggregate({
+    sumMovementValuesByType(db, tenantId, window.from, window.to),
+    db.sale.aggregate({
       where: {
-        sale: { deletedAt: null, date: { gte: window.from, lte: window.to } },
+        deletedAt: null,
+        date: { gte: window.from, lte: window.to },
       },
       _sum: { discountAmount: true },
     }),
@@ -672,6 +985,10 @@ export async function loadProfitLossContext(
       ? Promise.resolve({ revenue: 0, directCost: 0 })
       : computeJobRevenueTotal(db, tenantId, from, to),
   ]);
+
+  const inboundTotal = movementTotals.inbound;
+  const transferTotal = movementTotals.transfer;
+  const outboundTotal = movementTotals.outbound;
 
   let ctx = emptySalesContext(window, salesRevenue.currency);
   let jobCtx = emptyJobContext(window);
@@ -858,22 +1175,9 @@ export async function buildHqProfitLossBreakdownTab(
   from: string | undefined,
   to: string | undefined,
   tab: ProfitLossBreakdownTab,
-  loaded?: ProfitLossLoadContext,
+  _loaded?: ProfitLossLoadContext,
 ): Promise<ReportsTable> {
-  const base =
-    loaded ??
-    (await loadProfitLossContext(db, tenantId, from, to, {
-      includeBreakdown: true,
-    }));
-  const context = await ensureProfitLossBreakdownData(db, base, from, to);
-  const breakdowns = buildBreakdowns(context.ctx, context.jobCtx, context.itemMeta);
-  const table = breakdowns[tab];
-  return (
-    table ?? {
-      columns: [{ key: 'label', header: '—' }],
-      rows: [],
-    }
-  );
+  return queryProfitLossBreakdownTab(db, tenantId, tab, from, to);
 }
 
 export function buildHqProfitLossFromContext(

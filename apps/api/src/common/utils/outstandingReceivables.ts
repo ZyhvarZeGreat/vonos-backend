@@ -1,3 +1,4 @@
+import type { Prisma } from '@prisma/client';
 import type { TenantScopedPrisma } from '../prisma/prisma.service';
 import { toNumber } from './serializers';
 import { resolveDateWindow } from '../../modules/reports/aggregators/date-utils';
@@ -10,43 +11,46 @@ export async function computeOutstandingReceivables(
 ): Promise<number> {
   const window = resolveDateWindow(from, to);
 
-  const sales = await db.sale.findMany({
-    where: {
-      deletedAt: null,
-      status: { not: 'draft' },
-      paymentStatus: { in: ['due', 'partial'] },
-      date: { gte: window.from, lte: window.to },
-    },
-    select: { id: true, total: true, paymentStatus: true },
-  });
+  const rows = await db.$queryRaw<[{ outstanding: Prisma.Decimal | null }]>`
+    SELECT COALESCE(SUM(
+      s.total - COALESCE(p.paid, 0)
+    ), 0) AS outstanding
+    FROM "Sale" s
+    LEFT JOIN (
+      SELECT "saleId", SUM(amount) AS paid
+      FROM "Payment"
+      WHERE "deletedAt" IS NULL
+      GROUP BY "saleId"
+    ) p ON p."saleId" = s.id
+    WHERE s."deletedAt" IS NULL
+      AND s.status <> 'draft'
+      AND s."paymentStatus" IN ('due', 'partial')
+      AND s.date >= ${window.from}
+      AND s.date <= ${window.to}
+  `;
 
-  if (sales.length === 0) return 0;
+  return Math.max(0, toNumber(rows[0]?.outstanding ?? 0));
+}
 
-  const saleIds = sales.map((sale) => sale.id);
-  const paymentGroups = await db.payment.groupBy({
-    by: ['saleId'],
-    where: {
-      deletedAt: null,
-      saleId: { in: saleIds },
-    },
-    _sum: { amount: true },
-  });
+/** All-time customer due — balance sheet snapshot (not period-scoped). */
+export async function computeAllTimeOutstandingReceivables(
+  db: TenantScopedPrisma,
+): Promise<number> {
+  const rows = await db.$queryRaw<[{ outstanding: Prisma.Decimal | null }]>`
+    SELECT COALESCE(SUM(
+      s.total - COALESCE(p.paid, 0)
+    ), 0) AS outstanding
+    FROM "Sale" s
+    LEFT JOIN (
+      SELECT "saleId", SUM(amount) AS paid
+      FROM "Payment"
+      WHERE "deletedAt" IS NULL
+      GROUP BY "saleId"
+    ) p ON p."saleId" = s.id
+    WHERE s."deletedAt" IS NULL
+      AND s.status <> 'draft'
+      AND s."paymentStatus" IN ('due', 'partial')
+  `;
 
-  const paidBySale = new Map(
-    paymentGroups
-      .filter((row) => row.saleId)
-      .map((row) => [row.saleId!, toNumber(row._sum.amount ?? 0)]),
-  );
-
-  let outstanding = 0;
-  for (const sale of sales) {
-    const total = toNumber(sale.total);
-    if (sale.paymentStatus === 'due') {
-      outstanding += total;
-      continue;
-    }
-    outstanding += Math.max(0, total - (paidBySale.get(sale.id) ?? 0));
-  }
-
-  return outstanding;
+  return Math.max(0, toNumber(rows[0]?.outstanding ?? 0));
 }

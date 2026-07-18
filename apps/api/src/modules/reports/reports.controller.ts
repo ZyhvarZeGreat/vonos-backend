@@ -1,4 +1,5 @@
 import { Controller, Get, Patch, Body, Query, UseGuards } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import type { ProfitLossBreakdownTab } from '@vonos/types';
 import {
   JwtAuthGuard,
@@ -23,6 +24,7 @@ export class ReportsController {
   }
 
   @Get('dashboard')
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
   dashboard(
     @Query('tab') tab?: string,
     @Query('from') from?: string,
@@ -38,14 +40,41 @@ export class ReportsController {
   }
 
   @Get('run')
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
   run(
     @Query('reportId') reportId: string,
     @Query('from') from?: string,
     @Query('to') to?: string,
     @Query('mode') mode?: 'shell' | 'pl-core' | 'pl-summary' | 'pl-breakdown' | 'full',
     @Query('breakdownTab') breakdownTab?: ProfitLossBreakdownTab,
+    @Query('cursor') cursor?: string,
+    @Query('limit') limit?: string,
+    @Query('search') search?: string,
+    @Query('customerId') customerId?: string,
+    @Query('customerGroupId') customerGroupId?: string,
+    @Query('locationCode') locationCode?: string,
+    @Query('category') category?: string,
+    @Query('brandId') brandId?: string,
+    @Query('paymentMethod') paymentMethod?: string,
+    @Query('supplierId') supplierId?: string,
+    @Query('view') view?: string,
   ) {
-    return this.reportsService.run(reportId, from, to, mode, breakdownTab);
+    return this.reportsService.run(reportId, from, to, mode, breakdownTab, {
+      cursor,
+      limit: limit ? Number(limit) : undefined,
+      search,
+      customerId,
+      customerGroupId,
+      locationCode,
+      category,
+      brandId,
+      paymentMethod,
+      supplierId,
+      view:
+        view === 'by-category' || view === 'by-brand' || view === 'detailed'
+          ? view
+          : undefined,
+    });
   }
 
   @Get('group/run')

@@ -1,16 +1,38 @@
-import type { ReportRowAction, ReportsDashboard, ReportsTableRow } from '@vonos/types';
+import type {
+  ReportRowAction,
+  ReportRunOptions,
+  ReportsDashboard,
+  ReportsTableRow,
+  TaxReportSummary,
+} from '@vonos/types';
+import { Prisma } from '@prisma/client';
 import type { TenantScopedPrisma } from '../../../common/prisma/prisma.service';
 import { ledgerDateFilter } from '../../../common/utils/ledgerAggregates';
 import { parseMovementLines } from '../../../common/utils/stockQuantity';
-import { toNumber, toStringField } from '../../../common/utils/serializers';
+import { toNumber } from '../../../common/utils/serializers';
 import {
-  bucketKey,
-  bucketLabel,
   computeDelta,
   resolveDateWindow,
 } from './date-utils';
-import { aggregateTopProducts } from './productSales';
-import { loadSalesReportContext } from './salesData';
+import {
+  ledgerCostByBucket,
+  priorWindow,
+  recentSaleRefs,
+  salesByCreatedBy,
+  salesByDay,
+  salesByServiceStaff,
+  salesRevenueByBucket,
+  sumSalesWindow,
+  taxReportSummaryAggregates,
+  topProductsSold,
+} from './salesReportQueries';
+
+export {
+  buildItemsReport,
+  buildProductPurchaseReport,
+  buildProductSellReport,
+  buildSellPaymentReport,
+} from './tableReportHandlers';
 
 function currencyKpi(
   label: string,
@@ -58,19 +80,26 @@ function countKpi(
   return { label, icon, metricKey, color, value, ...delta };
 }
 
-/** Purchase & Sale — sales revenue vs ledger cost (purchase proxy for retail). */
+/** Purchase & Sale — sales revenue vs ledger cost (SQL aggregates). */
 export async function buildPurchaseSaleReport(
   db: TenantScopedPrisma,
+  tenantId: string,
   from?: string,
   to?: string,
 ): Promise<ReportsDashboard> {
-  const ctx = await loadSalesReportContext(db, from, to);
-  const { window, periodSales, priorSales, currency } = ctx;
+  const window = resolveDateWindow(from, to);
+  const prior = priorWindow(window);
 
-  const salesTotal = periodSales.reduce((sum, s) => sum + s.total, 0);
-  const priorSalesTotal = priorSales.reduce((sum, s) => sum + s.total, 0);
-
-  const [purchaseAgg, priorPurchaseAgg] = await Promise.all([
+  const [
+    period,
+    priorPeriod,
+    purchaseAgg,
+    priorPurchaseAgg,
+    salesBuckets,
+    costBuckets,
+  ] = await Promise.all([
+    sumSalesWindow(db, tenantId, window),
+    sumSalesWindow(db, tenantId, prior),
     db.ledgerEntry.aggregate({
       where: {
         deletedAt: null,
@@ -83,54 +112,37 @@ export async function buildPurchaseSaleReport(
       where: {
         deletedAt: null,
         type: 'cost',
-        date: { gte: ctx.prior.from, lte: ctx.prior.to },
+        date: { gte: prior.from, lte: prior.to },
       },
       _sum: { amount: true },
     }),
+    salesRevenueByBucket(db, tenantId, window),
+    ledgerCostByBucket(db, tenantId, window),
   ]);
 
   const purchases = toNumber(purchaseAgg._sum.amount ?? 0);
   const priorPurchases = toNumber(priorPurchaseAgg._sum.amount ?? 0);
+  const salesTotal = period.revenue;
   const grossProfit = salesTotal - purchases;
+  const currency = period.currency;
 
-  const spanDays =
-    (window.to.getTime() - window.from.getTime()) / (24 * 60 * 60 * 1000);
-  const monthBuckets = new Map<
-    string,
-    { label: string; sales: number; purchases: number }
-  >();
-
-  for (const sale of periodSales) {
-    const key = bucketKey(sale.date, spanDays);
-    const label = bucketLabel(sale.date, spanDays);
-    const row = monthBuckets.get(key) ?? { label, sales: 0, purchases: 0 };
-    row.sales += sale.total;
-    monthBuckets.set(key, row);
+  const purchaseByKey = new Map(
+    costBuckets.map((row) => [row.key, row.purchases]),
+  );
+  const chartData = salesBuckets.map((row) => ({
+    label: row.label,
+    sales: Math.round(row.sales),
+    purchases: Math.round(purchaseByKey.get(row.key) ?? 0),
+  }));
+  for (const cost of costBuckets) {
+    if (salesBuckets.some((s) => s.key === cost.key)) continue;
+    chartData.push({
+      label: cost.key,
+      sales: 0,
+      purchases: Math.round(cost.purchases),
+    });
   }
-
-  const costRows = await db.ledgerEntry.findMany({
-    where: {
-      deletedAt: null,
-      type: 'cost',
-      date: { gte: window.from, lte: window.to },
-    },
-    select: { date: true, amount: true },
-  });
-  for (const row of costRows) {
-    const key = bucketKey(row.date, spanDays);
-    const label = bucketLabel(row.date, spanDays);
-    const existing = monthBuckets.get(key) ?? { label, sales: 0, purchases: 0 };
-    existing.purchases += toNumber(row.amount);
-    monthBuckets.set(key, existing);
-  }
-
-  const chartData = Array.from(monthBuckets.values())
-    .sort((a, b) => a.label.localeCompare(b.label))
-    .map((row) => ({
-      label: row.label,
-      sales: Math.round(row.sales),
-      purchases: Math.round(row.purchases),
-    }));
+  chartData.sort((a, b) => a.label.localeCompare(b.label));
 
   return {
     kpis: [
@@ -141,7 +153,7 @@ export async function buildPurchaseSaleReport(
         currency,
         '#059669',
         'wallet',
-        computeDelta(salesTotal, priorSalesTotal),
+        computeDelta(salesTotal, priorPeriod.revenue),
       ),
       currencyKpi(
         'Total Purchases',
@@ -163,10 +175,10 @@ export async function buildPurchaseSaleReport(
       countKpi(
         'Transactions',
         'transactionCount',
-        periodSales.length,
+        period.count,
         '#e11d48',
         'receipt',
-        computeDelta(periodSales.length, priorSales.length),
+        computeDelta(period.count, priorPeriod.count),
       ),
     ],
     charts: [
@@ -203,179 +215,128 @@ export async function buildPurchaseSaleReport(
   };
 }
 
-/** Tax — prices are tax-inclusive in migrated VISP/VSP data; surfaces discounts and payment status. */
+/** Tax — Ultimate POS Purchases / Sales / Overall cards + recent invoices. */
 export async function buildTaxReport(
   db: TenantScopedPrisma,
+  tenantId: string,
   from?: string,
   to?: string,
 ): Promise<ReportsDashboard> {
-  const ctx = await loadSalesReportContext(db, from, to);
-  const { periodSales, currency } = ctx;
-
-  const saleIds = periodSales.map((s) => s.id);
-  const [lines, saleRefs] = await Promise.all([
-    saleIds.length > 0
-      ? db.saleLine.findMany({
-          where: { saleId: { in: saleIds } },
-          select: {
-            saleId: true,
-            quantity: true,
-            unitPrice: true,
-            lineTotal: true,
-            discountAmount: true,
-          },
-        })
-      : Promise.resolve([]),
-    saleIds.length > 0
-      ? db.sale.findMany({
-          where: { id: { in: saleIds } },
-          select: {
-            id: true,
-            reference: true,
-            date: true,
-            total: true,
-            paymentStatus: true,
-          },
-        })
-      : Promise.resolve([]),
+  const window = resolveDateWindow(from, to);
+  const [summary, saleRefs] = await Promise.all([
+    taxReportSummaryAggregates(db, tenantId, window),
+    recentSaleRefs(db, tenantId, window, 50),
   ]);
 
-  let grossBeforeDiscount = 0;
-  let discounts = 0;
-  for (const line of lines) {
-    const qty = toNumber(line.quantity);
-    const unit = toNumber(line.unitPrice);
-    const lineTotal = toNumber(line.lineTotal);
-    grossBeforeDiscount += unit * qty;
-    discounts += toNumber(line.discountAmount ?? 0);
-    if (lineTotal < unit * qty) {
-      discounts += unit * qty - lineTotal;
-    }
-  }
+  const saleMinusPurchase =
+    summary.saleIncludingTax -
+    summary.sellReturnIncludingTax -
+    (summary.purchaseIncludingTax - summary.purchaseReturnIncludingTax);
+  const dueAmount = summary.saleDue - summary.purchaseDue;
 
-  const netSales = periodSales.reduce((sum, s) => sum + s.total, 0);
-
-  const statusCounts = new Map<string, number>();
-  for (const sale of periodSales) {
-    const key = sale.paymentStatus ?? 'unknown';
-    statusCounts.set(key, (statusCounts.get(key) ?? 0) + 1);
-  }
+  const taxReport: TaxReportSummary = {
+    currency: summary.currency,
+    purchases: {
+      total: summary.totalPurchase,
+      includingTax: summary.purchaseIncludingTax,
+      returnIncludingTax: summary.purchaseReturnIncludingTax,
+      due: summary.purchaseDue,
+    },
+    sales: {
+      total: summary.totalSale,
+      includingTax: summary.saleIncludingTax,
+      returnIncludingTax: summary.sellReturnIncludingTax,
+      due: summary.saleDue,
+    },
+    overall: {
+      saleMinusPurchase,
+      dueAmount,
+    },
+  };
 
   return {
     kpis: [
       currencyKpi(
-        'Net Sales (tax incl.)',
-        'netSales',
-        netSales,
-        currency,
-        '#059669',
+        'Sale - Purchase',
+        'saleMinusPurchase',
+        saleMinusPurchase,
+        summary.currency,
+        '#0d9488',
+        'trending-up',
+      ),
+      currencyKpi(
+        'Due amount',
+        'dueAmount',
+        dueAmount,
+        summary.currency,
+        '#0d9488',
         'wallet',
       ),
       currencyKpi(
-        'Discounts',
-        'discounts',
-        Math.round(discounts),
-        currency,
-        '#9333ea',
-        'percent',
-      ),
-      currencyKpi(
-        'Line Subtotal',
-        'gross',
-        Math.round(grossBeforeDiscount),
-        currency,
-        '#2563eb',
+        'Total Sale',
+        'totalSale',
+        summary.totalSale,
+        summary.currency,
+        '#059669',
         'receipt',
       ),
-      countKpi(
-        'Transactions',
-        'transactionCount',
-        periodSales.length,
-        '#e11d48',
-        'file-text',
+      currencyKpi(
+        'Total Purchase',
+        'totalPurchase',
+        summary.totalPurchase,
+        summary.currency,
+        '#2563eb',
+        'truck',
       ),
     ],
-    charts: [
-      {
-        id: 'payment-status-mix',
-        title: 'Sales by Payment Status',
-        subtitle: 'Completed transactions in period',
-        type: 'pie',
-        series: [{ name: 'Count', dataKey: 'value', color: '#3b82f6' }],
-        data:
-          statusCounts.size > 0
-            ? Array.from(statusCounts.entries()).map(([label, value]) => ({
-                label,
-                value,
-              }))
-            : [{ label: 'paid', value: 0 }],
-      },
-    ],
+    charts: [],
+    taxReport,
     table: {
       columns: [
         { key: 'reference', header: 'Invoice' },
         { key: 'date', header: 'Date' },
-        { key: 'total', header: 'Total (incl.)' },
+        { key: 'total', header: 'Total (incl.)', totalAs: 'currency' },
         { key: 'paymentStatus', header: 'Payment' },
       ],
-      rows: saleRefs.slice(0, 200).map((sale) => ({
+      rows: saleRefs.map((sale) => ({
         id: sale.id,
         recordType: 'sale',
         reference: sale.reference,
         date: sale.date.toISOString().slice(0, 10),
-        total: Math.round(toNumber(sale.total)),
+        total: sale.total,
         paymentStatus: sale.paymentStatus ?? '—',
-        currency,
+        currency: summary.currency,
       })),
     },
   };
 }
 
-/** Register — daily till summary from sales. */
+/** Register — daily till summary from SQL. */
 export async function buildRegisterReport(
   db: TenantScopedPrisma,
+  tenantId: string,
   from?: string,
   to?: string,
 ): Promise<ReportsDashboard> {
-  const ctx = await loadSalesReportContext(db, from, to);
-  const { periodSales, currency } = ctx;
+  const window = resolveDateWindow(from, to);
+  const [days, period] = await Promise.all([
+    salesByDay(db, tenantId, window),
+    sumSalesWindow(db, tenantId, window),
+  ]);
 
-  const byDay = new Map<
-    string,
-    { label: string; count: number; revenue: number }
-  >();
-
-  for (const sale of periodSales) {
-    const label = sale.date.toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-    });
-    const key = sale.date.toISOString().slice(0, 10);
-    const row = byDay.get(key) ?? { label, count: 0, revenue: 0 };
-    row.count += 1;
-    row.revenue += sale.total;
-    byDay.set(key, row);
-  }
-
-  const days = Array.from(byDay.entries()).sort(([a], [b]) =>
-    a.localeCompare(b),
-  );
-  const chartData = days.map(([, row]) => ({
+  const chartData = days.map((row) => ({
     label: row.label,
     revenue: Math.round(row.revenue),
     transactions: row.count,
   }));
-
-  const totalRevenue = periodSales.reduce((sum, s) => sum + s.total, 0);
 
   return {
     kpis: [
       currencyKpi(
         'Register Revenue',
         'revenue',
-        totalRevenue,
-        currency,
+        period.revenue,
+        period.currency,
         '#059669',
         'wallet',
       ),
@@ -383,15 +344,15 @@ export async function buildRegisterReport(
       countKpi(
         'Transactions',
         'transactionCount',
-        periodSales.length,
+        period.count,
         '#9333ea',
         'receipt',
       ),
       currencyKpi(
         'Avg Daily Revenue',
         'avgDaily',
-        days.length > 0 ? Math.round(totalRevenue / days.length) : 0,
-        currency,
+        days.length > 0 ? Math.round(period.revenue / days.length) : 0,
+        period.currency,
         '#e11d48',
         'calculator',
       ),
@@ -416,58 +377,35 @@ export async function buildRegisterReport(
         { key: 'revenue', header: 'Revenue' },
         { key: 'avgTicket', header: 'Avg Ticket' },
       ],
-      rows: days.map(([, row]) => ({
+      rows: days.slice(-90).map((row) => ({
         date: row.label,
         transactions: row.count,
         revenue: Math.round(row.revenue),
         avgTicket: row.count > 0 ? Math.round(row.revenue / row.count) : 0,
-        currency,
+        currency: period.currency,
       })),
     },
   };
 }
 
-/** Sales representative — grouped by `createdByName` on sales. */
+/** Sales representative — SQL group by createdByName. */
 export async function buildSalesRepReport(
   db: TenantScopedPrisma,
+  tenantId: string,
   from?: string,
   to?: string,
 ): Promise<ReportsDashboard> {
   const window = resolveDateWindow(from, to);
-  const sales = await db.sale.findMany({
-    where: {
-      deletedAt: null,
-      status: { not: 'draft' },
-      date: { gte: window.from, lte: window.to },
-    },
-    select: {
-      id: true,
-      total: true,
-      currency: true,
-      createdByName: true,
-    },
-  });
+  const byRep = await salesByCreatedBy(db, tenantId, window);
+  const currency = byRep[0]?.currency ?? 'NGN';
 
-  const currency = sales[0]?.currency ?? 'NGN';
-  const byRep = new Map<string, { count: number; revenue: number }>();
-
-  for (const sale of sales) {
-    const rep = sale.createdByName?.trim() || 'Unassigned';
-    const row = byRep.get(rep) ?? { count: 0, revenue: 0 };
-    row.count += 1;
-    row.revenue += toNumber(sale.total);
-    byRep.set(rep, row);
-  }
-
-  const rows = Array.from(byRep.entries())
-    .map(([rep, stats]) => ({
-      rep,
-      transactions: stats.count,
-      revenue: Math.round(stats.revenue),
-      avgTicket: stats.count > 0 ? Math.round(stats.revenue / stats.count) : 0,
-      currency,
-    }))
-    .sort((a, b) => b.revenue - a.revenue);
+  const rows = byRep.map((row) => ({
+    rep: row.staff,
+    transactions: row.count,
+    revenue: Math.round(row.revenue),
+    avgTicket: row.count > 0 ? Math.round(row.revenue / row.count) : 0,
+    currency,
+  }));
 
   const chartData = rows.slice(0, 12).map((row) => ({
     label: row.rep,
@@ -475,6 +413,7 @@ export async function buildSalesRepReport(
   }));
 
   const totalRevenue = rows.reduce((sum, r) => sum + r.revenue, 0);
+  const totalTx = rows.reduce((sum, r) => sum + r.transactions, 0);
 
   return {
     kpis: [
@@ -487,13 +426,7 @@ export async function buildSalesRepReport(
         'wallet',
       ),
       countKpi('Sales Staff', 'reps', rows.length, '#2563eb', 'users'),
-      countKpi(
-        'Transactions',
-        'transactionCount',
-        sales.length,
-        '#9333ea',
-        'receipt',
-      ),
+      countKpi('Transactions', 'transactionCount', totalTx, '#9333ea', 'receipt'),
       currencyKpi(
         'Avg per Rep',
         'avgPerRep',
@@ -526,199 +459,19 @@ export async function buildSalesRepReport(
   };
 }
 
-export async function buildSellPaymentReport(
-  db: TenantScopedPrisma,
-  from?: string,
-  to?: string,
-): Promise<ReportsDashboard> {
-  const window = resolveDateWindow(from, to);
-  const paymentRows = await db.payment.findMany({
-    where: {
-      deletedAt: null,
-      OR: [
-        { paidOn: { gte: window.from, lte: window.to } },
-        { paidOn: null, createdAt: { gte: window.from, lte: window.to } },
-      ],
-    },
-    select: {
-      id: true,
-      amount: true,
-      method: true,
-      currency: true,
-      paidOn: true,
-      createdAt: true,
-      paymentRefNo: true,
-      paymentFor: true,
-      saleId: true,
-      account: { select: { name: true } },
-      sale: { select: { id: true, reference: true, date: true } },
-    },
-    orderBy: { paidOn: 'desc' },
-    take: 500,
-  });
-
-  // Sell-side: linked to a sale, or legacy POS payment with no supplier/purchase target
-  const payments = paymentRows.filter(
-    (payment) => payment.saleId != null || !payment.paymentFor,
-  );
-
-  const currency = payments[0]?.currency ?? 'NGN';
-  const total = payments.reduce((sum, p) => sum + toNumber(p.amount), 0);
-
-  const byMethod = new Map<string, number>();
-  for (const payment of payments) {
-    const method = payment.method ?? 'other';
-    byMethod.set(
-      method,
-      (byMethod.get(method) ?? 0) + toNumber(payment.amount),
-    );
-  }
-
-  if (payments.length === 0) {
-    const ctx = await loadSalesReportContext(db, from, to);
-    const paidSales = ctx.periodSales.filter((s) => s.paymentStatus === 'paid');
-    const partialSales = ctx.periodSales.filter(
-      (s) => s.paymentStatus === 'partial',
-    );
-    const dueSales = ctx.periodSales.filter((s) => s.paymentStatus === 'due');
-
-    const collected = paidSales.reduce((sum, s) => sum + s.total, 0);
-    const partialAmount = partialSales.reduce((sum, s) => sum + s.total, 0);
-    const dueAmount = dueSales.reduce((sum, s) => sum + s.total, 0);
-    const salesTotal = ctx.periodSales.reduce((sum, s) => sum + s.total, 0);
-
-    const statusAmounts = [
-      { label: 'paid', value: Math.round(collected) },
-      { label: 'partial', value: Math.round(partialAmount) },
-      { label: 'due', value: Math.round(dueAmount) },
-    ].filter((row) => row.value > 0);
-
-    return {
-      kpis: [
-        currencyKpi(
-          'Collected (paid)',
-          'collected',
-          collected,
-          ctx.currency,
-          '#059669',
-          'wallet',
-        ),
-        currencyKpi(
-          'Sales Value',
-          'salesValue',
-          salesTotal,
-          ctx.currency,
-          '#2563eb',
-          'banknote',
-        ),
-        currencyKpi(
-          'Outstanding',
-          'outstanding',
-          partialAmount + dueAmount,
-          ctx.currency,
-          '#e11d48',
-          'clock',
-        ),
-        countKpi(
-          'Transactions',
-          'transactions',
-          ctx.periodSales.length,
-          '#9333ea',
-          'receipt',
-        ),
-      ],
-      charts: [
-        {
-          id: 'payment-status-amounts',
-          title: 'Collections by Payment Status',
-          subtitle:
-            'Payment rows not migrated — amounts derived from sale payment status',
-          type: 'pie',
-          series: [{ name: 'Amount', dataKey: 'value', color: '#3b82f6' }],
-          data: statusAmounts,
-        },
-      ],
-      table: {
-        columns: [
-          { key: 'date', header: 'Date' },
-          { key: 'reference', header: 'Sale' },
-          { key: 'status', header: 'Status' },
-          { key: 'amount', header: 'Amount' },
-        ],
-        rows: ctx.periodSales.slice(0, 200).map((sale) => ({
-          id: sale.id,
-          recordType: 'sale',
-          date: sale.date.toISOString().slice(0, 10),
-          reference: sale.id.slice(0, 8),
-          status: sale.paymentStatus ?? '—',
-          amount: Math.round(sale.total),
-          currency: sale.currency,
-        })),
-      },
-    };
-  }
-
-  return {
-    kpis: [
-      currencyKpi(
-        'Collected',
-        'collected',
-        total,
-        currency,
-        '#059669',
-        'wallet',
-      ),
-      countKpi(
-        'Payments',
-        'paymentCount',
-        payments.length,
-        '#2563eb',
-        'banknote',
-      ),
-      countKpi('Methods', 'methods', byMethod.size, '#9333ea', 'credit-card'),
-    ],
-    charts: [
-      {
-        id: 'payments-by-method',
-        title: 'Collections by Method',
-        type: 'pie',
-        series: [{ name: 'Amount', dataKey: 'value', color: '#059669' }],
-        data: Array.from(byMethod.entries()).map(([label, value]) => ({
-          label,
-          value: Math.round(value),
-        })),
-      },
-    ],
-    table: {
-      columns: [
-        { key: 'date', header: 'Date' },
-        { key: 'reference', header: 'Sale' },
-        { key: 'method', header: 'Method' },
-        { key: 'account', header: 'Account' },
-        { key: 'amount', header: 'Amount' },
-      ],
-      rows: payments.map((payment) => ({
-        id: payment.id,
-        recordType: 'payment',
-        date: (payment.paidOn ?? payment.createdAt).toISOString().slice(0, 10),
-        reference: payment.sale?.reference ?? payment.paymentRefNo ?? '—',
-        method: payment.method ?? '—',
-        account: payment.account?.name ?? '—',
-        amount: Math.round(toNumber(payment.amount)),
-        currency: payment.currency,
-        actions: paymentRowActions(payment.id),
-      })),
-    },
-  };
-}
 
 export async function buildPurchasePaymentReport(
   db: TenantScopedPrisma,
   from?: string,
   to?: string,
+  options?: ReportRunOptions,
 ): Promise<ReportsDashboard> {
   const window = resolveDateWindow(from, to);
   const dateFilter = ledgerDateFilter(from, to);
+  const pageSize = Math.min(Math.max(options?.limit ?? 25, 1), 100);
+  const search = options?.search?.trim().toLowerCase() ?? '';
+
+  const fetchCap = Math.min(Math.max(pageSize * 5, 50), 150);
 
   const [payments, accountDebits, expenseAgg, expenseRows] = await Promise.all([
     db.payment.findMany({
@@ -726,6 +479,9 @@ export async function buildPurchasePaymentReport(
         deletedAt: null,
         saleId: null,
         paymentFor: { not: null },
+        ...(options?.paymentMethod
+          ? { method: options.paymentMethod }
+          : {}),
         OR: [
           { paidOn: { gte: window.from, lte: window.to } },
           { paidOn: null, createdAt: { gte: window.from, lte: window.to } },
@@ -741,14 +497,17 @@ export async function buildPurchasePaymentReport(
         createdAt: true,
         account: { select: { name: true } },
       },
-      orderBy: { paidOn: 'desc' },
-      take: 200,
+      orderBy: [{ paidOn: 'desc' }, { id: 'desc' }],
+      take: fetchCap,
     }),
     db.accountTransaction.findMany({
       where: {
         deletedAt: null,
         type: 'debit',
         operationDate: { gte: window.from, lte: window.to },
+        ...(options?.paymentMethod
+          ? { paymentMethod: options.paymentMethod }
+          : {}),
       },
       select: {
         id: true,
@@ -758,8 +517,8 @@ export async function buildPurchasePaymentReport(
         paymentMethod: true,
         account: { select: { name: true } },
       },
-      orderBy: { operationDate: 'desc' },
-      take: 200,
+      orderBy: [{ operationDate: 'desc' }, { id: 'desc' }],
+      take: fetchCap,
     }),
     db.ledgerEntry.aggregate({
       where: { deletedAt: null, type: 'expense', ...dateFilter },
@@ -775,8 +534,8 @@ export async function buildPurchasePaymentReport(
         currency: true,
         date: true,
       },
-      orderBy: { date: 'desc' },
-      take: 100,
+      orderBy: [{ date: 'desc' }, { id: 'desc' }],
+      take: fetchCap,
     }),
   ]);
 
@@ -794,7 +553,7 @@ export async function buildPurchasePaymentReport(
         ? debitTotal
         : expenseTotal;
 
-  const tableRows =
+  let tableRows: ReportsTableRow[] =
     payments.length > 0
       ? payments.map((payment) => ({
           id: payment.id,
@@ -802,6 +561,7 @@ export async function buildPurchasePaymentReport(
           date: (payment.paidOn ?? payment.createdAt)
             .toISOString()
             .slice(0, 10),
+          sortAt: (payment.paidOn ?? payment.createdAt).toISOString(),
           source: payment.paymentFor ?? 'Purchase payment',
           method: payment.method ?? '—',
           account: payment.account?.name ?? '—',
@@ -814,6 +574,7 @@ export async function buildPurchasePaymentReport(
             id: row.id,
             recordType: 'accountTransaction',
             date: row.operationDate.toISOString().slice(0, 10),
+            sortAt: row.operationDate.toISOString(),
             source: row.note ?? 'Account debit',
             method: row.paymentMethod ?? '—',
             account: row.account.name,
@@ -824,12 +585,64 @@ export async function buildPurchasePaymentReport(
             id: row.id,
             recordType: 'ledgerEntry',
             date: row.date.toISOString().slice(0, 10),
+            sortAt: row.date.toISOString(),
             source: row.category,
             method: '—',
             account: '—',
             amount: Math.round(toNumber(row.amount)),
             currency: row.currency,
           }));
+
+  if (search) {
+    tableRows = tableRows.filter((row) => {
+      const hay = [
+        row.source,
+        row.account,
+        row.method,
+        row.date,
+        row.amount,
+      ]
+        .map((v) => String(v ?? '').toLowerCase())
+        .join(' ');
+      return hay.includes(search);
+    });
+  }
+
+  const filteredCount = tableRows.length;
+
+  // Cursor over sortAt + id
+  if (options?.cursor) {
+    try {
+      const decoded = JSON.parse(
+        Buffer.from(options.cursor, 'base64url').toString('utf8'),
+      ) as { sortAt?: string; id?: string };
+      if (decoded.sortAt && decoded.id) {
+        tableRows = tableRows.filter((row) => {
+          const sortAt = String(row.sortAt ?? row.date ?? '');
+          if (sortAt < decoded.sortAt!) return true;
+          if (sortAt > decoded.sortAt!) return false;
+          return String(row.id) < decoded.id!;
+        });
+      }
+    } catch {
+      // ignore bad cursor
+    }
+  }
+
+  const hasMore = tableRows.length > pageSize;
+  const page = hasMore ? tableRows.slice(0, pageSize) : tableRows;
+  const last = page[page.length - 1];
+  const nextCursor =
+    hasMore && last
+      ? Buffer.from(
+          JSON.stringify({
+            sortAt: String(last.sortAt ?? last.date ?? ''),
+            id: String(last.id),
+          }),
+        ).toString('base64url')
+      : null;
+
+  const pageRows = page.map(({ sortAt: _sortAt, ...row }) => row);
 
   return {
     kpis: [
@@ -857,13 +670,7 @@ export async function buildPurchasePaymentReport(
         '#9333ea',
         'receipt',
       ),
-      countKpi(
-        'Records',
-        'recordCount',
-        tableRows.length,
-        '#e11d48',
-        'file-text',
-      ),
+      countKpi('Records', 'recordCount', filteredCount, '#e11d48', 'file-text'),
     ],
     charts: [
       {
@@ -887,7 +694,13 @@ export async function buildPurchasePaymentReport(
         { key: 'method', header: 'Method' },
         { key: 'amount', header: 'Amount' },
       ],
-      rows: tableRows,
+      rows: pageRows,
+      hasMore,
+      nextCursor,
+      pageSize,
+      columnTotals: {
+        amount: Math.round(total * 100) / 100,
+      },
     },
   };
 }
@@ -899,60 +712,82 @@ export async function buildContactsSummaryReport(
 ): Promise<ReportsDashboard> {
   const window = resolveDateWindow(from, to);
 
-  const [customers, suppliers, sales] = await Promise.all([
-    db.customer.findMany({
-      where: { deletedAt: null },
-      select: { id: true, name: true, phone: true, email: true },
-      take: 5000,
-    }),
-    db.supplier.findMany({
-      where: { deletedAt: null },
-      select: { id: true, name: true, phone: true },
-      take: 2000,
-    }),
-    db.sale.findMany({
-      where: {
-        deletedAt: null,
-        status: { not: 'draft' },
-        date: { gte: window.from, lte: window.to },
-      },
-      select: { customerId: true, total: true, currency: true },
-    }),
-  ]);
+  const [customerCount, supplierCount, saleStats, suppliers] =
+    await Promise.all([
+      db.customer.count({ where: { deletedAt: null } }),
+      db.supplier.count({ where: { deletedAt: null } }),
+      db.sale.groupBy({
+        by: ['customerId'],
+        where: {
+          deletedAt: null,
+          status: { not: 'draft' },
+          date: { gte: window.from, lte: window.to },
+        },
+        _count: { _all: true },
+        _sum: { total: true },
+      }),
+      db.supplier.findMany({
+        where: { deletedAt: null },
+        select: { name: true, phone: true },
+        orderBy: { name: 'asc' },
+        take: 50,
+      }),
+    ]);
 
-  const currency = sales[0]?.currency ?? 'NGN';
-  const byCustomer = new Map<string, { count: number; revenue: number }>();
   let walkInCount = 0;
   let walkInRevenue = 0;
+  const customerStats: Array<{
+    customerId: string;
+    count: number;
+    revenue: number;
+  }> = [];
 
-  for (const sale of sales) {
-    if (!sale.customerId) {
-      walkInCount += 1;
-      walkInRevenue += toNumber(sale.total);
+  for (const row of saleStats) {
+    const count = row._count._all;
+    const revenue = toNumber(row._sum.total ?? 0);
+    if (!row.customerId) {
+      walkInCount += count;
+      walkInRevenue += revenue;
       continue;
     }
-    const row = byCustomer.get(sale.customerId) ?? { count: 0, revenue: 0 };
-    row.count += 1;
-    row.revenue += toNumber(sale.total);
-    byCustomer.set(sale.customerId, row);
+    customerStats.push({
+      customerId: row.customerId,
+      count,
+      revenue,
+    });
   }
 
-  const customerRows = customers
-    .map((customer) => {
-      const stats = byCustomer.get(customer.id);
+  customerStats.sort((a, b) => b.revenue - a.revenue);
+  const top = customerStats.slice(0, 100);
+  const currency = 'NGN';
+
+  const customers =
+    top.length > 0
+      ? await db.customer.findMany({
+          where: {
+            deletedAt: null,
+            id: { in: top.map((row) => row.customerId) },
+          },
+          select: { id: true, name: true, phone: true },
+        })
+      : [];
+  const customerById = new Map(customers.map((c) => [c.id, c]));
+
+  const customerRows = top
+    .map((stats) => {
+      const customer = customerById.get(stats.customerId);
+      if (!customer) return null;
       return {
         name: customer.name,
         phone: customer.phone ?? '—',
-        transactions: stats?.count ?? 0,
-        revenue: Math.round(stats?.revenue ?? 0),
+        transactions: stats.count,
+        revenue: Math.round(stats.revenue),
         currency,
       };
     })
-    .filter((row) => row.transactions > 0)
-    .sort((a, b) => b.revenue - a.revenue)
-    .slice(0, 100);
+    .filter((row): row is NonNullable<typeof row> => row != null);
 
-  const supplierRows = suppliers.slice(0, 50).map((supplier) => ({
+  const supplierRows = suppliers.map((supplier) => ({
     name: supplier.name,
     phone: supplier.phone ?? '—',
     type: 'Supplier',
@@ -960,8 +795,8 @@ export async function buildContactsSummaryReport(
 
   return {
     kpis: [
-      countKpi('Customers', 'customers', customers.length, '#059669', 'users'),
-      countKpi('Suppliers', 'suppliers', suppliers.length, '#2563eb', 'truck'),
+      countKpi('Customers', 'customers', customerCount, '#059669', 'users'),
+      countKpi('Suppliers', 'suppliers', supplierCount, '#2563eb', 'truck'),
       countKpi('Walk-in Sales', 'walkIn', walkInCount, '#9333ea', 'user'),
       currencyKpi(
         'Walk-in Revenue',
@@ -995,103 +830,151 @@ export async function buildContactsSummaryReport(
 
 export async function buildCustomerGroupsReport(
   db: TenantScopedPrisma,
+  tenantId: string,
   from?: string,
   to?: string,
+  options?: ReportRunOptions,
 ): Promise<ReportsDashboard> {
   const window = resolveDateWindow(from, to);
-  const sales = await db.sale.findMany({
-    where: {
-      deletedAt: null,
-      status: { not: 'draft' },
-      date: { gte: window.from, lte: window.to },
-    },
-    select: {
-      total: true,
-      currency: true,
-      customerId: true,
-      customer: { select: { name: true } },
-    },
-  });
+  const pageSize = Math.min(Math.max(options?.limit ?? 25, 1), 100);
+  const search = options?.search?.trim() ?? '';
 
-  const currency = sales[0]?.currency ?? 'NGN';
-  const groups = new Map<string, { count: number; revenue: number }>();
+  const locationClause = options?.locationCode
+    ? Prisma.sql`AND s."locationCode" = ${options.locationCode}`
+    : Prisma.empty;
+  const groupFilterClause = options?.customerGroupId
+    ? Prisma.sql`AND cg.id = ${options.customerGroupId}`
+    : Prisma.empty;
+  const includeNoGroup = !options?.customerGroupId;
+  const searchClause = search
+    ? Prisma.sql`WHERE "group" ILIKE ${'%' + search + '%'}`
+    : Prisma.empty;
 
-  for (const sale of sales) {
-    const group = sale.customerId
-      ? sale.customer?.name?.trim().charAt(0).toUpperCase() || 'Account'
-      : 'Walk-in';
-    const row = groups.get(group) ?? { count: 0, revenue: 0 };
-    row.count += 1;
-    row.revenue += toNumber(sale.total);
-    groups.set(group, row);
+  type GroupSaleRow = {
+    id: string;
+    group: string;
+    transactions: bigint;
+    total_sale: Prisma.Decimal;
+  };
+
+  const [tableRowsRaw, currencyRow] = await Promise.all([
+    db.$queryRaw<GroupSaleRow[]>`
+      WITH sales_agg AS (
+        SELECT
+          c."customerGroupId" AS group_id,
+          COUNT(*)::bigint AS tx_count,
+          COALESCE(SUM(s.total), 0) AS revenue
+        FROM "Sale" s
+        LEFT JOIN "Customer" c ON c.id = s."customerId" AND c."deletedAt" IS NULL
+        WHERE s."tenantId" = ${tenantId}
+          AND s."deletedAt" IS NULL
+          AND s.status::text <> 'draft'
+          AND s.date >= ${window.from}
+          AND s.date <= ${window.to}
+          ${locationClause}
+        GROUP BY c."customerGroupId"
+      ),
+      group_rows AS (
+        SELECT
+          cg.id::text AS id,
+          cg.name AS "group",
+          COALESCE(sa.tx_count, 0)::bigint AS transactions,
+          COALESCE(sa.revenue, 0) AS total_sale
+        FROM "CustomerGroup" cg
+        LEFT JOIN sales_agg sa ON sa.group_id = cg.id
+        WHERE cg."tenantId" = ${tenantId}
+          AND cg."deletedAt" IS NULL
+          ${groupFilterClause}
+
+        ${
+          includeNoGroup
+            ? Prisma.sql`
+                UNION ALL
+                SELECT
+                  '__none__'::text,
+                  'No Group'::text,
+                  sa.tx_count,
+                  sa.revenue
+                FROM sales_agg sa
+                WHERE sa.group_id IS NULL AND sa.tx_count > 0
+              `
+            : Prisma.empty
+        }
+      )
+      SELECT id, "group", transactions, total_sale
+      FROM group_rows
+      ${searchClause}
+      ORDER BY total_sale DESC, id ASC
+    `,
+    db.sale.findFirst({
+      where: { tenantId, deletedAt: null },
+      select: { currency: true },
+      orderBy: { id: 'asc' },
+    }),
+  ]);
+
+  const currency = currencyRow?.currency ?? 'NGN';
+  const tableRows = tableRowsRaw.map((row) => ({
+    id: row.id,
+    group: row.group,
+    transactions: Number(row.transactions),
+    totalSale: Math.round(toNumber(row.total_sale) * 100) / 100,
+    currency,
+  }));
+
+  const grandTotal = tableRows.reduce((s, r) => s + r.totalSale, 0);
+  const grandTx = tableRows.reduce((s, r) => s + r.transactions, 0);
+
+  let start = 0;
+  if (options?.cursor) {
+    const idx = tableRows.findIndex((r) => r.id === options.cursor);
+    start = idx >= 0 ? idx + 1 : 0;
   }
-
-  const rows = Array.from(groups.entries())
-    .map(([group, stats]) => ({
-      group,
-      transactions: stats.count,
-      revenue: Math.round(stats.revenue),
-      currency,
-    }))
-    .sort((a, b) => b.revenue - a.revenue);
+  const page = tableRows.slice(start, start + pageSize);
+  const last = page[page.length - 1];
+  const pageHasMore = start + pageSize < tableRows.length;
 
   return {
     kpis: [
-      countKpi(
-        'Customer Segments',
-        'segments',
-        rows.length,
-        '#059669',
-        'users',
-      ),
-      countKpi(
-        'Transactions',
-        'transactionCount',
-        sales.length,
-        '#2563eb',
-        'receipt',
-      ),
-      currencyKpi(
-        'Total Revenue',
-        'revenue',
-        rows.reduce((sum, r) => sum + r.revenue, 0),
-        currency,
-        '#9333ea',
-        'wallet',
-      ),
+      countKpi('Customer Groups', 'segments', tableRows.length, '#059669', 'users'),
+      countKpi('Transactions', 'transactionCount', grandTx, '#2563eb', 'receipt'),
+      currencyKpi('Total Sale', 'revenue', grandTotal, currency, '#9333ea', 'wallet'),
     ],
-    charts: [
-      {
-        id: 'revenue-by-segment',
-        title: 'Revenue by Customer Segment',
-        subtitle: 'Walk-in vs account customers (A–Z bucket for accounts)',
-        type: 'bar',
-        horizontal: true,
-        series: [{ name: 'Revenue', dataKey: 'revenue', color: '#059669' }],
-        data: rows
-          .slice(0, 15)
-          .map((row) => ({ label: row.group, revenue: row.revenue })),
-      },
-    ],
+    charts: [],
     table: {
       columns: [
-        { key: 'group', header: 'Segment' },
-        { key: 'transactions', header: 'Transactions' },
-        { key: 'revenue', header: 'Revenue' },
+        { key: 'group', header: 'Customer Group' },
+        { key: 'totalSale', header: 'Total Sale' },
       ],
-      rows,
+      rows: page.map((row) => ({
+        id: row.id,
+        group: row.group,
+        totalSale: row.totalSale,
+        currency: row.currency,
+      })),
+      hasMore: pageHasMore,
+      nextCursor: pageHasMore && last ? last.id : null,
+      pageSize,
+      columnTotals: {
+        totalSale: Math.round(grandTotal * 100) / 100,
+      },
     },
   };
 }
 
 export async function buildTrendingProductsReport(
   db: TenantScopedPrisma,
+  tenantId: string,
   from?: string,
   to?: string,
 ): Promise<ReportsDashboard> {
-  const ctx = await loadSalesReportContext(db, from, to);
-  const topCurrent = aggregateTopProducts(ctx.periodSales, 15);
-  const topPrior = aggregateTopProducts(ctx.priorSales, 15);
+  const window = resolveDateWindow(from, to);
+  const prior = priorWindow(window);
+  const [topCurrent, topPrior, period] = await Promise.all([
+    topProductsSold(db, tenantId, window, 15),
+    topProductsSold(db, tenantId, prior, 15),
+    sumSalesWindow(db, tenantId, window),
+  ]);
   const priorBySku = new Map(
     topPrior.map((row) => [row.sku.toLowerCase(), row.units]),
   );
@@ -1100,11 +983,11 @@ export async function buildTrendingProductsReport(
     const priorUnits = priorBySku.get(row.sku.toLowerCase()) ?? 0;
     return {
       sku: row.sku,
-      name: row.label,
+      name: row.name,
       units: Math.round(row.units * 100) / 100,
       priorUnits,
       revenue: Math.round(row.revenue),
-      currency: ctx.currency,
+      currency: period.currency,
     };
   });
 
@@ -1122,7 +1005,7 @@ export async function buildTrendingProductsReport(
         'Line Revenue',
         'revenue',
         Math.round(rows.reduce((s, r) => s + r.revenue, 0)),
-        ctx.currency,
+        period.currency,
         '#9333ea',
         'wallet',
       ),
@@ -1149,136 +1032,97 @@ export async function buildTrendingProductsReport(
         { key: 'revenue', header: 'Revenue' },
       ],
       rows,
+      columnTotals: {
+        units: Math.round(rows.reduce((s, r) => s + Number(r.units ?? 0), 0) * 100) / 100,
+        priorUnits:
+          Math.round(
+            rows.reduce((s, r) => s + Number(r.priorUnits ?? 0), 0) * 100,
+          ) / 100,
+        revenue: Math.round(
+          rows.reduce((s, r) => s + Number(r.revenue ?? 0), 0),
+        ),
+      },
     },
   };
 }
 
-export async function buildItemsReport(
-  db: TenantScopedPrisma,
-  from?: string,
-  to?: string,
-): Promise<ReportsDashboard> {
-  const ctx = await loadSalesReportContext(db, from, to);
-  const aggregated = aggregateTopProducts(ctx.periodSales, 500);
-  const itemIds = aggregated
-    .map((row) => row.itemId)
-    .filter((id): id is string => Boolean(id));
 
-  const items =
-    itemIds.length > 0
-      ? await db.item.findMany({
-          where: { id: { in: itemIds } },
-          select: { id: true, quantity: true, status: true, costPrice: true },
-        })
-      : [];
-  const itemById = new Map(items.map((item) => [item.id, item]));
 
-  const rows = aggregated.map((row) => {
-    const item = row.itemId ? itemById.get(row.itemId) : undefined;
-    return {
-      sku: row.sku,
-      name: row.label,
-      unitsSold: Math.round(row.units * 100) / 100,
-      revenue: Math.round(row.revenue),
-      onHand: item?.quantity ?? '—',
-      status: item?.status ?? '—',
-      currency: ctx.currency,
-    };
-  });
-
-  return {
-    kpis: [
-      countKpi('SKUs Sold', 'skus', rows.length, '#059669', 'package'),
-      countKpi(
-        'Units Sold',
-        'units',
-        Math.round(rows.reduce((s, r) => s + Number(r.unitsSold), 0)),
-        '#2563eb',
-        'box',
-      ),
-      currencyKpi(
-        'Revenue',
-        'revenue',
-        Math.round(rows.reduce((s, r) => s + Number(r.revenue), 0)),
-        ctx.currency,
-        '#9333ea',
-        'wallet',
-      ),
-    ],
-    charts: [],
-    table: {
-      columns: [
-        { key: 'sku', header: 'SKU' },
-        { key: 'name', header: 'Product' },
-        { key: 'unitsSold', header: 'Units Sold' },
-        { key: 'onHand', header: 'On Hand' },
-        { key: 'revenue', header: 'Revenue' },
-      ],
-      rows,
-    },
-  };
-}
-
-export async function buildProductSellReport(
-  db: TenantScopedPrisma,
-  from?: string,
-  to?: string,
-): Promise<ReportsDashboard> {
-  return buildItemsReport(db, from, to);
-}
-
-export async function buildProductPurchaseReport(
-  db: TenantScopedPrisma,
-  from?: string,
-  to?: string,
-): Promise<ReportsDashboard> {
-  const window = resolveDateWindow(from, to);
-  const inbound = await db.stockMovement.findMany({
-    where: {
-      deletedAt: null,
-      type: 'inbound',
-      date: { gte: window.from, lte: window.to },
-    },
-    select: { reference: true, date: true, lines: true },
-    take: 500,
-  });
-
-  const rows: Array<Record<string, string | number>> = [];
-  for (const movement of inbound) {
-    const lines = Array.isArray(movement.lines) ? movement.lines : [];
-    for (const raw of lines) {
-      if (!raw || typeof raw !== 'object') continue;
-      const line = raw as Record<string, unknown>;
-      rows.push({
-        reference: movement.reference,
-        date: movement.date.toISOString().slice(0, 10),
-        sku: toStringField(line.sku) || toStringField(line.name) || '—',
-        quantity: toNumber(line.quantity as number | string),
-      });
-    }
-  }
-
-  return {
-    kpis: [
-      countKpi('Inbound Docs', 'inbound', inbound.length, '#059669', 'truck'),
-      countKpi('Line Items', 'lines', rows.length, '#2563eb', 'package'),
-    ],
-    charts: [],
-    table: {
-      columns: [
-        { key: 'date', header: 'Date' },
-        { key: 'reference', header: 'Reference' },
-        { key: 'sku', header: 'SKU' },
-        { key: 'quantity', header: 'Qty' },
-      ],
-      rows: rows.slice(0, 200),
-    },
-  };
-}
 
 export async function buildStockExpiryReport(
   db: TenantScopedPrisma,
+  tenantId?: string,
 ): Promise<ReportsDashboard> {
+  // Prefer SQL expand when tenantId is known; otherwise lean Prisma take.
+  if (tenantId) {
+    const rows = await db.$queryRaw<
+      Array<{
+        movement_id: string;
+        sku: string;
+        name: string;
+        reference: string;
+        location_code: string | null;
+        exp_date: string | null;
+      }>
+    >`
+      SELECT
+        sm.id AS movement_id,
+        COALESCE(elem->>'sku', '—') AS sku,
+        COALESCE(elem->>'name', elem->>'sku', '—') AS name,
+        sm.reference,
+        sm."locationCode" AS location_code,
+        NULLIF(elem->>'expDate', '') AS exp_date
+      FROM "StockMovement" sm
+      CROSS JOIN LATERAL jsonb_array_elements(
+        CASE
+          WHEN jsonb_typeof(sm.lines::jsonb) = 'array' THEN sm.lines::jsonb
+          ELSE '[]'::jsonb
+        END
+      ) AS elem
+      WHERE sm."tenantId" = ${tenantId}
+        AND sm."deletedAt" IS NULL
+        AND sm.type::text = 'inbound'
+        AND sm.status::text = 'Received'
+      ORDER BY sm.date DESC
+      LIMIT 200
+    `;
+
+    return {
+      kpis: [
+        countKpi('Inbound lines', 'lines', rows.length, '#2563eb', 'package'),
+      ],
+      charts: [],
+      table: {
+        columns: [
+          { key: 'sku', header: 'SKU' },
+          { key: 'name', header: 'Product' },
+          { key: 'reference', header: 'Purchase Ref' },
+          { key: 'locationCode', header: 'Location' },
+          { key: 'expDate', header: 'Expiry Date' },
+        ],
+        rows: rows.map((row) => ({
+          id: `${row.movement_id}-${row.sku}`,
+          sku: row.sku,
+          name: row.name,
+          reference: row.reference,
+          locationCode: row.location_code ?? '—',
+          expDate: row.exp_date ?? '—',
+          actions: [
+            {
+              kind: 'edit-expiry' as const,
+              label: 'Edit expiry',
+              payload: {
+                movementId: row.movement_id,
+                lineSku: row.sku,
+                expDate: row.exp_date ?? '',
+              },
+            },
+          ],
+        })),
+      },
+    };
+  }
+
   const movements = await db.stockMovement.findMany({
     where: {
       deletedAt: null,
@@ -1293,7 +1137,7 @@ export async function buildStockExpiryReport(
       date: true,
     },
     orderBy: { date: 'desc' },
-    take: 300,
+    take: 100,
   });
 
   const rows: ReportsTableRow[] = [];
@@ -1351,9 +1195,25 @@ export async function buildStockExpiryReport(
 export async function buildStockDetailsReport(
   db: TenantScopedPrisma,
 ): Promise<ReportsDashboard> {
+  // Explicit select avoids requiring newer Item columns (subCategory, carModel, …).
   const items = await db.item.findMany({
     where: { deletedAt: null },
-    include: { locationStock: true },
+    select: {
+      id: true,
+      sku: true,
+      name: true,
+      quantity: true,
+      locationCode: true,
+      binLocation: true,
+      locationStock: {
+        select: {
+          id: true,
+          locationCode: true,
+          binLocation: true,
+          quantity: true,
+        },
+      },
+    },
     orderBy: { sku: 'asc' },
     take: 500,
   });
@@ -1446,79 +1306,56 @@ export async function buildStockDetailsReport(
   };
 }
 
-/** HQ6 service staff report — grouped by sale creator (staff on ticket). */
+/** Service staff report — SQL group by assigned employee / cleaner. */
 export async function buildServiceStaffReport(
   db: TenantScopedPrisma,
+  tenantId: string,
   from?: string,
   to?: string,
 ): Promise<ReportsDashboard> {
   const window = resolveDateWindow(from, to);
-  const sales = await db.sale.findMany({
-    where: {
-      deletedAt: null,
-      status: { not: 'draft' },
-      date: { gte: window.from, lte: window.to },
-    },
-    select: {
-      id: true,
-      reference: true,
-      total: true,
-      currency: true,
-      createdByName: true,
-      date: true,
-    },
-    orderBy: { date: 'desc' },
-    take: 500,
-  });
+  const byStaff = await salesByServiceStaff(db, tenantId, window);
+  const currency = byStaff[0]?.currency ?? 'NGN';
 
-  const currency = sales[0]?.currency ?? 'NGN';
-  const byStaff = new Map<string, { revenue: number; count: number }>();
+  const rows: ReportsTableRow[] = byStaff.map((row) => ({
+    staff: row.staff,
+    transactions: row.count,
+    revenue: Math.round(row.revenue),
+    avgTicket: row.count > 0 ? Math.round(row.revenue / row.count) : 0,
+    currency,
+  }));
 
-  for (const sale of sales) {
-    const staff = sale.createdByName?.trim() || 'Unassigned';
-    const row = byStaff.get(staff) ?? { revenue: 0, count: 0 };
-    row.count += 1;
-    row.revenue += toNumber(sale.total);
-    byStaff.set(staff, row);
-  }
-
-  const rows: ReportsTableRow[] = Array.from(byStaff.entries())
-    .map(([staff, stats]) => ({
-      staff,
-      transactions: stats.count,
-      revenue: Math.round(stats.revenue),
-      avgTicket:
-        stats.count > 0 ? Math.round(stats.revenue / stats.count) : 0,
-      currency,
-    }))
-    .sort((a, b) => b.revenue - a.revenue);
+  const totalRevenue = rows.reduce((sum, r) => sum + Number(r.revenue ?? 0), 0);
+  const totalTx = byStaff.reduce((sum, row) => sum + row.count, 0);
 
   return {
     kpis: [
-      countKpi('Staff', 'staff', rows.length, '#2563eb', 'users'),
-      countKpi(
-        'Transactions',
-        'transactions',
-        sales.length,
-        '#9333ea',
-        'receipt',
-      ),
       currencyKpi(
-        'Top ticket',
-        'topTicket',
-        rows[0]?.revenue != null ? Number(rows[0].revenue) : 0,
+        'Total Revenue',
+        'revenue',
+        totalRevenue,
         currency,
         '#059669',
         'wallet',
+      ),
+      countKpi('Service Staff', 'staff', rows.length, '#2563eb', 'users'),
+      countKpi('Transactions', 'transactions', totalTx, '#9333ea', 'receipt'),
+      currencyKpi(
+        'Top Ticket',
+        'topTicket',
+        rows[0]?.revenue != null ? Number(rows[0].revenue) : 0,
+        currency,
+        '#e11d48',
+        'trending-up',
       ),
     ],
     charts: [],
     table: {
       columns: [
         { key: 'staff', header: 'Service Staff' },
-        { key: 'transactions', header: 'Orders' },
-        { key: 'revenue', header: 'Revenue' },
-        { key: 'avgTicket', header: 'Avg Ticket' },
+        { key: 'transactions', header: 'Orders', totalAs: 'number' },
+        { key: 'revenue', header: 'Revenue', totalAs: 'currency' },
+        { key: 'avgTicket', header: 'Avg Ticket', totalAs: 'currency' },
       ],
       rows,
     },

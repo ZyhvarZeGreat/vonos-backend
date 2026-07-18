@@ -28,6 +28,25 @@ export class CacheService implements OnModuleInit {
     return this.redis !== null;
   }
 
+  private versionKey(tenantId: string): string {
+    return `cacheVer:${tenantId}`;
+  }
+
+  async getTenantCacheVersion(tenantId: string): Promise<number> {
+    const version = await this.get<number>(this.versionKey(tenantId));
+    return version ?? 1;
+  }
+
+  async bumpTenantVersion(tenantId: string): Promise<void> {
+    const current = await this.getTenantCacheVersion(tenantId);
+    await this.set(this.versionKey(tenantId), current + 1, 60 * 60 * 24 * 30);
+  }
+
+  async tenantScopedKey(tenantId: string, key: string): Promise<string> {
+    const version = await this.getTenantCacheVersion(tenantId);
+    return `v${version}:${key}`;
+  }
+
   async get<T>(key: string): Promise<T | null> {
     try {
       if (this.redis) {
@@ -80,10 +99,18 @@ export class CacheService implements OnModuleInit {
   async invalidatePrefix(prefix: string): Promise<void> {
     try {
       if (this.redis) {
-        const keys = await this.redis.keys(`${prefix}*`);
-        if (keys.length > 0) {
-          await this.redis.del(...keys);
-        }
+        // Prefer SCAN over KEYS — KEYS blocks / is discouraged on managed Redis.
+        let cursor = '0';
+        do {
+          const [next, keys] = await this.redis.scan(cursor, {
+            match: `${prefix}*`,
+            count: 100,
+          });
+          cursor = String(next);
+          if (keys.length > 0) {
+            await this.redis.del(...keys);
+          }
+        } while (cursor !== '0');
         return;
       }
       for (const key of this.fallback.keys()) {

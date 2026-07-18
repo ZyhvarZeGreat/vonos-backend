@@ -374,7 +374,7 @@ from the start:
 ### Security
 - Forgot-password: token-based reset email.
 - **2FA (TOTP)** for Admin and Super Admin roles.
-- JWT: short-lived access token (~15min) + refresh token (~7 days, httpOnly
+- JWT: access token (~2h) + refresh token (~7 days, httpOnly
   cookie). Role/tenant changes apply on next token refresh (acceptable at
   this scale; `tokenVersion` field optional for immediate revocation).
 - Deactivation, not deletion, for departing staff (`status: suspended`) —

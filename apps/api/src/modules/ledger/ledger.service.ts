@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import type {
   LedgerEntry,
   LedgerEntryType,
@@ -9,7 +9,10 @@ import { AUTOS_GROUP_CODES } from '@vonos/types';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { TenantDbService } from '../../common/prisma/tenant-db.service';
 import { AuditService } from '../audit/audit.service';
-import { buildCursorQuery } from '../../common/utils/pagination';
+import { buildCompositeCursorQuery } from '../../common/utils/pagination';
+import { resolveDateWindow } from '../reports/aggregators/date-utils';
+import { sumDailyFinanceRollup, applyDailyFinanceDelta } from '../../common/utils/dailyFinanceRollup';
+import { invalidateTenantDashboardCache } from '../../common/cache/cacheInvalidation';
 import {
   buildLedgerSummaryFromGroups,
   ledgerDateFilter,
@@ -33,12 +36,23 @@ const LEDGER_CACHE_TTL_S = 300;
 
 @Injectable()
 export class LedgerService {
+  private readonly logger = new Logger(LedgerService.name);
+
   constructor(
     private readonly tenantDb: TenantDbService,
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
     private readonly cache: CacheService,
   ) {}
+
+  private logLedgerTiming(
+    label: string,
+    startedAt: number,
+    meta: Record<string, unknown>,
+  ): void {
+    const elapsedMs = Date.now() - startedAt;
+    this.logger.log(`ledger:${label} ${elapsedMs}ms ${JSON.stringify(meta)}`);
+  }
 
   async list(filters: {
     type?: LedgerEntryType;
@@ -50,6 +64,13 @@ export class LedgerService {
     limit?: number;
   }): Promise<LedgerEntry[]> {
     const tenantId = this.tenantDb.requireTenantId();
+    const pagination = buildCompositeCursorQuery({
+      sortField: 'date',
+      sortDir: 'desc',
+      cursor: filters.cursor,
+      limit: filters.limit ?? 10,
+      sortValueType: 'date',
+    });
     const rows = await this.tenantDb.db.ledgerEntry.findMany({
       where: {
         tenantId,
@@ -74,17 +95,11 @@ export class LedgerService {
               ],
             }
           : {}),
-        ...(filters.from || filters.to
-          ? {
-              date: {
-                ...(filters.from ? { gte: new Date(filters.from) } : {}),
-                ...(filters.to ? { lte: new Date(filters.to) } : {}),
-              },
-            }
-          : {}),
+        ...ledgerDateFilter(filters.from, filters.to),
+        ...(pagination.where ?? {}),
       },
-      orderBy: { date: 'desc' },
-      ...buildCursorQuery(filters.cursor, filters.limit ?? 50),
+      orderBy: [{ date: 'desc' }, { id: 'desc' }],
+      take: pagination.take,
     });
 
     return rows.map((row) => ({
@@ -103,14 +118,23 @@ export class LedgerService {
   }
 
   async summary(from?: string, to?: string): Promise<LedgerSummary> {
+    const startedAt = Date.now();
     const tenantId = this.tenantDb.requireTenantId();
-    const cacheKey = `ledger-summary:${tenantId}:${from ?? ''}:${to ?? ''}`;
+    const cacheKey = await this.cache.tenantScopedKey(
+      tenantId,
+      `ledger-summary:${tenantId}:${from ?? ''}:${to ?? ''}`,
+    );
     const cached = await this.cache.get<LedgerSummary>(cacheKey);
-    if (cached) return cached;
+    if (cached) {
+      this.logLedgerTiming('summary', startedAt, { from, to, cache: 'hit' });
+      return cached;
+    }
 
+    const window = resolveDateWindow(from, to);
     const dateFilter = ledgerDateFilter(from, to);
 
-    const [groups, currencyRow, outstanding] = await Promise.all([
+    const [rollup, groups, currencyRow, outstanding] = await Promise.all([
+      sumDailyFinanceRollup(this.tenantDb.db, tenantId, window.from, window.to),
       this.tenantDb.db.ledgerEntry.groupBy({
         by: ['type'],
         where: { tenantId, deletedAt: null, ...dateFilter },
@@ -131,6 +155,13 @@ export class LedgerService {
       })),
       currencyRow?.currency ?? 'NGN',
     );
+
+    if (rollup.revenue > 0 || rollup.costs > 0 || rollup.expenses > 0) {
+      summary.revenue = rollup.revenue;
+      summary.costs = rollup.costs + rollup.expenses;
+      summary.net = rollup.net;
+    }
+
     summary.outstanding = outstanding;
 
     if (summary.revenue === 0) {
@@ -149,14 +180,22 @@ export class LedgerService {
     }
 
     await this.cache.set(cacheKey, summary, LEDGER_CACHE_TTL_S);
+    this.logLedgerTiming('summary', startedAt, { from, to, cache: 'miss' });
     return summary;
   }
 
   async charts(from?: string, to?: string) {
+    const startedAt = Date.now();
     const tenantId = this.tenantDb.requireTenantId();
-    const cacheKey = `ledger-charts:${tenantId}:${from ?? ''}:${to ?? ''}`;
+    const cacheKey = await this.cache.tenantScopedKey(
+      tenantId,
+      `ledger-charts:${tenantId}:${from ?? ''}:${to ?? ''}`,
+    );
     const cached = await this.cache.get<Awaited<ReturnType<typeof buildTenantLedgerCharts>>>(cacheKey);
-    if (cached) return cached;
+    if (cached) {
+      this.logLedgerTiming('charts', startedAt, { from, to, cache: 'hit' });
+      return cached;
+    }
 
     const result = await buildTenantLedgerCharts(
       this.tenantDb.db,
@@ -165,6 +204,7 @@ export class LedgerService {
       to,
     );
     await this.cache.set(cacheKey, result, LEDGER_CACHE_TTL_S);
+    this.logLedgerTiming('charts', startedAt, { from, to, cache: 'miss' });
     return result;
   }
 
@@ -200,6 +240,15 @@ export class LedgerService {
       },
     });
 
+    await applyDailyFinanceDelta(
+      this.tenantDb.db,
+      tenantId,
+      row.date,
+      'expense',
+      toNumber(row.amount),
+      row.currency,
+    );
+
     await this.auditService.log({
       action: 'created',
       entityType: 'ledgerEntry',
@@ -207,6 +256,8 @@ export class LedgerService {
       summary: `Manual expense: ${body.description}`,
       metadata: { category: body.category, amount: body.amount },
     });
+
+    void invalidateTenantDashboardCache(this.cache, tenantId);
 
     return {
       id: row.id,

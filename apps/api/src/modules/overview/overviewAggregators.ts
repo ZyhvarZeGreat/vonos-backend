@@ -67,20 +67,20 @@ export async function buildStockOverview(
   from?: string,
   to?: string,
 ): Promise<OverviewDashboard> {
+  // Load stock context first, then parallelize independent slices.
   const stockCtx = await loadStockReportContext(db, tenantId, from, to);
-  const [movement, valuation, table, finance, lowStockItems] =
-    await Promise.all([
-      buildStockReportsFromContext(stockCtx, db, 'movement'),
-      buildStockReportsFromContext(stockCtx, db, 'valuation'),
-      pendingMovementsTable(db),
-      buildLedgerFinanceSlice(db, tenantId, from, to),
-      db.item.count({
-        where: {
-          deletedAt: null,
-          status: { in: ['low_stock', 'out_of_stock'] },
-        },
-      }),
-    ]);
+  const [movement, valuation, table, finance, lowStockItems] = await Promise.all([
+    buildStockReportsFromContext(stockCtx, db, 'movement'),
+    buildStockReportsFromContext(stockCtx, db, 'valuation'),
+    pendingMovementsTable(db),
+    buildLedgerFinanceSlice(db, tenantId, from, to),
+    db.item.count({
+      where: {
+        deletedAt: null,
+        status: { in: ['low_stock', 'out_of_stock'] },
+      },
+    }),
+  ]);
 
   const byKey = (key: string) =>
     [...valuation.kpis, ...movement.kpis].find((k) => k.metricKey === key);
@@ -399,7 +399,19 @@ export async function buildJobOverview(
       _count: { _all: true },
     }),
     db.job.count({ where: { deletedAt: null, status: 'QC' } }),
-    db.job.count({ where: { deletedAt: null, status: 'Approved' } }),
+    // Jobs still open that have an unfulfilled parts requisition.
+    db.$queryRaw<[{ count: bigint }]>`
+      SELECT COUNT(DISTINCT j.id)::bigint AS count
+      FROM "Job" j
+      INNER JOIN "Requisition" r
+        ON r."jobId" = j.id
+       AND r."tenantId" = j."tenantId"
+       AND r."deletedAt" IS NULL
+       AND r.status IN ('Pending', 'Approved')
+      WHERE j."tenantId" = ${tenantId}
+        AND j."deletedAt" IS NULL
+        AND j.status <> 'Delivered'
+    `.then((rows) => Number(rows[0]?.count ?? 0)),
     isMechanics
       ? Promise.resolve([])
       : db.job.findMany({

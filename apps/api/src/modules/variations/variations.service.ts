@@ -5,7 +5,7 @@ import type {
   VariationTemplate,
 } from '@vonos/types';
 import { TenantDbService } from '../../common/prisma/tenant-db.service';
-import { buildCursorQuery } from '../../common/utils/pagination';
+import { buildCompositeCursorQuery } from '../../common/utils/pagination';
 import { toIso } from '../../common/utils/serializers';
 
 @Injectable()
@@ -35,6 +35,13 @@ export class VariationsService {
     limit?: number;
     search?: string;
   } = {}): Promise<VariationTemplate[]> {
+    const pagination = buildCompositeCursorQuery({
+      sortField: 'name',
+      sortDir: 'asc',
+      cursor: filters.cursor,
+      limit: filters.limit ?? 10,
+      sortValueType: 'string',
+    });
     const rows = await this.tenantDb.db.variationTemplate.findMany({
       where: {
         tenantId: this.tenantDb.requireTenantId(),
@@ -42,9 +49,10 @@ export class VariationsService {
         ...(filters.search
           ? { name: { contains: filters.search, mode: 'insensitive' } }
           : {}),
+        ...(pagination.where ?? {}),
       },
-      orderBy: { name: 'asc' },
-      ...buildCursorQuery(filters.cursor, filters.limit ?? 25),
+      orderBy: [{ name: 'asc' }, { id: 'asc' }],
+      take: pagination.take,
     });
     return rows.map((row) => this.mapRow(row));
   }

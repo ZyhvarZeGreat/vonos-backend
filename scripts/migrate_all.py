@@ -71,9 +71,15 @@ def main() -> int:
     )
     parser.add_argument(
         "--since",
-        default=None,
+        default="2025-01-01",
         metavar="YYYY-MM-DD",
-        help="Incremental import: only transactions/expenses on or after this date; skips already-mapped legacy IDs",
+        help="Only transactions/expenses on or after this date (default: 2025-01-01); skips already-mapped legacy IDs",
+    )
+    parser.add_argument(
+        "--until",
+        default="2026-12-31",
+        metavar="YYYY-MM-DD",
+        help="Only records on/before this date (default: 2026-12-31)",
     )
     parser.add_argument(
         "--repair-sale-lines",
@@ -113,8 +119,10 @@ def main() -> int:
     if args.phased:
         progress.message("  Each entity: [1/3] load dump → [2/3] transform → [3/3] write Postgres")
 
-    if args.since:
-        progress.message(f"  Incremental mode: records on/after {args.since}")
+    if args.since or args.until:
+        progress.message(
+            f"  Date filter: since={args.since or '—'} until={args.until or '—'}"
+        )
 
     summaries: list[dict] = []
     exit_code = 0
@@ -165,7 +173,7 @@ def main() -> int:
             continue
 
         existing_legacy = None
-        if args.since and not args.dry_run:
+        if (args.since or args.until) and not args.dry_run:
             from migration.audit_transforms import load_legacy_maps_from_postgres
 
             existing_legacy = load_legacy_maps_from_postgres(entity.tenant_id, load_database_url())
@@ -188,7 +196,7 @@ def main() -> int:
                 progress.overall(index, entity_total)
             continue
 
-        if args.since and args.dry_run:
+        if (args.since or args.until) and args.dry_run:
             from migration.audit_transforms import load_legacy_maps_from_postgres
 
             try:
@@ -203,6 +211,7 @@ def main() -> int:
                 args.dump,
                 progress=progress,
                 since=args.since,
+                until=args.until,
                 existing_legacy=existing_legacy,
             )
             summary = build_va_summary(
@@ -218,6 +227,7 @@ def main() -> int:
                 args.dump,
                 progress=progress,
                 since=args.since,
+                until=args.until,
                 existing_legacy=existing_legacy,
             )
             summary = build_summary(entity, loaded, result, dry_run=args.dry_run)

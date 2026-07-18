@@ -7,10 +7,16 @@ import type {
   MovementSource,
   MovementStatus,
   MovementType,
+  PurchasePaymentStatus,
 } from '@vonos/types';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { TenantDbService } from '../../common/prisma/tenant-db.service';
-import { buildCursorQuery } from '../../common/utils/pagination';
+import { CacheService } from '../../common/cache/cache.service';
+import { invalidateTenantDashboardCache } from '../../common/cache/cacheInvalidation';
+import { applyDailyFinanceDelta } from '../../common/utils/dailyFinanceRollup';
+import { refreshSupplierPurchaseRollups } from '../../common/utils/supplierRollups';
+import { buildCompositeCursorQuery } from '../../common/utils/pagination';
+import { resolveListSort } from '../../common/utils/listSort';
 import {
   computeStockStatus,
   parseMovementLines,
@@ -27,6 +33,43 @@ import {
   type TransferZoneSummary,
 } from './stock-movements.mapper';
 import { AuditService } from '../audit/audit.service';
+import { InvoiceHubService } from '../invoices/invoice-hub.service';
+
+function movementStatusWhere(
+  status?: MovementStatus,
+): { status: MovementStatus } | { status: { in: MovementStatus[] } } | Record<string, never> {
+  if (!status) return {};
+  // Purchase UI maps "Delivered" to Received or Delivered in DB
+  if (status === 'Delivered') {
+    return { status: { in: ['Received', 'Delivered'] } };
+  }
+  // Ordered / Pending and other statuses: exact match
+  return { status };
+}
+
+/** Map transfer list UI status (or tab id) to DB MovementStatus values. */
+function transferDbStatuses(
+  status?: string,
+): MovementStatus[] | undefined {
+  if (!status || status === 'all') return undefined;
+  switch (status) {
+    case 'Pending':
+    case 'pending':
+      return ['Pending'];
+    case 'In Transit':
+    case 'in_transit':
+      return ['Approved', 'Shipped'];
+    case 'Completed':
+    case 'completed':
+      return ['Received', 'Delivered'];
+    case 'Rejected':
+    case 'rejected':
+      // No dedicated Rejected status in MovementStatus — treat Ordered as cancelled/rejected transfers.
+      return ['Ordered'];
+    default:
+      return undefined;
+  }
+}
 
 @Injectable()
 export class StockMovementsService {
@@ -34,27 +77,99 @@ export class StockMovementsService {
     private readonly tenantDb: TenantDbService,
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
+    private readonly cache: CacheService,
+    private readonly invoiceHub: InvoiceHubService,
   ) {}
 
   async list(filters: {
     type?: MovementType;
     status?: MovementStatus;
     source?: MovementSource;
+    locationCode?: string;
+    supplierId?: string;
+    paymentStatus?: PurchasePaymentStatus;
+    paymentMethod?: string;
+    search?: string;
+    from?: string;
+    to?: string;
     cursor?: string;
     limit?: number;
+    sortBy?: string;
+    sortDir?: string;
   }): Promise<StockMovementListRow[]> {
     const tenantId = this.tenantDb.requireTenantId();
+    const dateFilter =
+      filters.from || filters.to
+        ? {
+            date: {
+              ...(filters.from ? { gte: new Date(filters.from) } : {}),
+              ...(filters.to ? { lte: new Date(filters.to) } : {}),
+            },
+          }
+        : {};
+    const sort = resolveListSort(filters.sortBy, filters.sortDir, {
+      date: { field: 'date', type: 'date' },
+      reference: { field: 'reference', type: 'string' },
+      grandTotal: { field: 'grandTotal', type: 'number' },
+      paymentDue: { field: 'paymentDue', type: 'number' },
+      status: { field: 'status', type: 'string' },
+      createdAt: { field: 'createdAt', type: 'date' },
+    }, {
+      sortField: 'date',
+      sortDir: 'desc',
+      sortValueType: 'date',
+    });
+    const pagination = buildCompositeCursorQuery({
+      sortField: sort.sortField,
+      sortDir: sort.sortDir,
+      cursor: filters.cursor,
+      limit: filters.limit ?? 10,
+      sortValueType: sort.sortValueType,
+    });
     const rows = await this.tenantDb.db.stockMovement.findMany({
       where: {
         tenantId,
         deletedAt: null,
         ...(filters.type ? { type: filters.type } : {}),
-        ...(filters.status ? { status: filters.status } : {}),
+        ...movementStatusWhere(filters.status),
         ...(filters.source ? { source: filters.source } : {}),
+        ...(filters.locationCode
+          ? { locationCode: filters.locationCode }
+          : {}),
+        ...(filters.supplierId ? { supplierId: filters.supplierId } : {}),
+        ...(filters.paymentStatus
+          ? { paymentStatus: filters.paymentStatus }
+          : {}),
+        ...(filters.paymentMethod
+          ? { paymentMethod: filters.paymentMethod }
+          : {}),
+        ...(filters.search
+          ? {
+              OR: [
+                {
+                  reference: {
+                    contains: filters.search,
+                    mode: 'insensitive',
+                  },
+                },
+                {
+                  supplier: {
+                    name: {
+                      contains: filters.search,
+                      mode: 'insensitive',
+                    },
+                  },
+                },
+                { notes: { contains: filters.search, mode: 'insensitive' } },
+              ],
+            }
+          : {}),
+        ...dateFilter,
+        ...(pagination.where ?? {}),
       },
       include: { supplier: { select: { name: true } } },
-      orderBy: { date: 'desc' },
-      ...buildCursorQuery(filters.cursor, filters.limit ?? 50),
+      orderBy: [{ [sort.sortField]: sort.sortDir }, { id: sort.sortDir }],
+      take: pagination.take,
     });
     return rows.map(toMovementListRow);
   }
@@ -82,6 +197,14 @@ export class StockMovementsService {
     const applyOutbound =
       existing.type === 'outbound' &&
       shouldApplyOutboundQty(existing.status, status);
+
+    const inboundCost =
+      applyInbound && status === 'Received'
+        ? lines.reduce((sum, line) => {
+            const unitCost = (line as { unitCost?: number }).unitCost ?? 0;
+            return sum + unitCost * line.quantity;
+          }, 0)
+        : 0;
 
     if (applyInbound || applyOutbound) {
       const db = this.prisma.forTenant(tenantId);
@@ -127,10 +250,18 @@ export class StockMovementsService {
         });
 
         if (applyInbound && status === 'Received') {
-          const totalCost = lines.reduce((sum, line) => {
-            const unitCost = (line as { unitCost?: number }).unitCost ?? 0;
-            return sum + unitCost * line.quantity;
-          }, 0);
+          const movementWithSupplier = await tx.stockMovement.findFirst({
+            where: { id, tenantId },
+            include: { supplier: { select: { name: true } } },
+          });
+          const invoice = movementWithSupplier
+            ? await this.invoiceHub.ensurePurchaseInvoice(tx, {
+                ...movementWithSupplier,
+                status,
+              })
+            : null;
+
+          const totalCost = inboundCost;
           if (totalCost > 0) {
             await tx.ledgerEntry.create({
               data: {
@@ -143,11 +274,21 @@ export class StockMovementsService {
                 linkedRecordType: 'stock_movement',
                 linkedRecordId: id,
                 date: existing.date,
+                invoiceId: invoice?.id ?? null,
               },
             });
           }
         }
       });
+      if (inboundCost > 0) {
+        void applyDailyFinanceDelta(
+          this.prisma,
+          tenantId,
+          existing.date,
+          'cost',
+          inboundCost,
+        );
+      }
     } else {
       await this.tenantDb.db.stockMovement.update({
         where: { id },
@@ -166,6 +307,10 @@ export class StockMovementsService {
       summary: `Status → ${status}`,
       metadata: { previousStatus: existing.status, status },
     });
+    void invalidateTenantDashboardCache(this.cache, tenantId);
+    if (existing.supplierId) {
+      void refreshSupplierPurchaseRollups(this.tenantDb.db, existing.supplierId);
+    }
     return serializeMovement(row);
   }
 
@@ -173,6 +318,8 @@ export class StockMovementsService {
     type: MovementType;
     reference: string;
     status?: MovementStatus;
+    paymentStatus?: PurchasePaymentStatus;
+    paymentMethod?: string;
     lines: Array<{
       itemId: string;
       sku: string;
@@ -196,7 +343,9 @@ export class StockMovementsService {
         tenantId,
         type: body.type,
         reference: body.reference,
-        status: body.status ?? 'Pending',
+        status: body.status ?? 'Ordered',
+        paymentStatus: body.paymentStatus ?? null,
+        paymentMethod: body.paymentMethod?.trim() || null,
         lines: body.lines,
         notes: body.notes ?? null,
         supplierId: body.supplierId ?? null,
@@ -205,68 +354,109 @@ export class StockMovementsService {
         date: body.date ? new Date(body.date) : new Date(),
         ...createdBy,
       },
+      include: { supplier: { select: { name: true } } },
     });
+
+    if (body.type === 'inbound') {
+      await this.invoiceHub.ensurePurchaseInvoice(this.tenantDb.db, row);
+    }
     await this.auditService.log({
       action: 'created',
       entityType: 'stockMovement',
       entityId: row.id,
       summary: `Created ${body.type} movement ${row.reference}`,
     });
+    void invalidateTenantDashboardCache(this.cache, tenantId);
+    if (row.supplierId) {
+      void refreshSupplierPurchaseRollups(this.tenantDb.db, row.supplierId);
+    }
     return serializeMovement(row);
   }
 
   async listTransfers(filters: {
     cursor?: string;
     limit?: number;
+    search?: string;
+    from?: string;
+    to?: string;
+    status?: string;
   }): Promise<TransferRow[]> {
     const tenantId = this.tenantDb.requireTenantId();
+    const pagination = buildCompositeCursorQuery({
+      sortField: 'date',
+      sortDir: 'desc',
+      cursor: filters.cursor,
+      limit: filters.limit ?? 10,
+      sortValueType: 'date',
+    });
+    const statusIn = transferDbStatuses(filters.status);
     const rows = await this.tenantDb.db.stockMovement.findMany({
-      where: { tenantId, deletedAt: null, type: 'transfer' },
-      orderBy: { date: 'desc' },
-      ...buildCursorQuery(filters.cursor, filters.limit ?? 50),
+      where: {
+        tenantId,
+        deletedAt: null,
+        type: 'transfer',
+        ...(statusIn ? { status: { in: statusIn } } : {}),
+        ...(filters.from || filters.to
+          ? {
+              date: {
+                ...(filters.from ? { gte: new Date(filters.from) } : {}),
+                ...(filters.to ? { lte: new Date(filters.to) } : {}),
+              },
+            }
+          : {}),
+        ...(filters.search
+          ? {
+              OR: [
+                {
+                  reference: {
+                    contains: filters.search,
+                    mode: 'insensitive',
+                  },
+                },
+                { notes: { contains: filters.search, mode: 'insensitive' } },
+              ],
+            }
+          : {}),
+        ...(pagination.where ?? {}),
+      },
+      orderBy: [{ date: 'desc' }, { id: 'desc' }],
+      take: pagination.take,
     });
     return rows.map(toTransferRow);
   }
 
   async transferZones(): Promise<TransferZoneSummary[]> {
     const tenantId = this.tenantDb.requireTenantId();
-    const items = await this.tenantDb.db.item.findMany({
-      where: { tenantId, deletedAt: null },
-      select: { binLocation: true, quantity: true },
-    });
+    type ZoneAgg = {
+      zone: string;
+      total_skus: bigint;
+      total_units: bigint;
+    };
+    const zoneRows = await this.tenantDb.db.$queryRaw<ZoneAgg[]>`
+      SELECT
+        COALESCE(
+          NULLIF(TRIM(SPLIT_PART("binLocation", '-', 1)), ''),
+          'Main Warehouse'
+        ) AS zone,
+        COUNT(*)::bigint AS total_skus,
+        COALESCE(SUM(quantity), 0)::bigint AS total_units
+      FROM "Item"
+      WHERE "tenantId" = ${tenantId}
+        AND "deletedAt" IS NULL
+      GROUP BY 1
+      ORDER BY 1 ASC
+    `;
 
-    const zoneMap = new Map<
-      string,
-      { totalSkus: number; totalUnits: number }
-    >();
-
-    for (const item of items) {
-      const zoneName =
-        item.binLocation?.split('-')[0]?.trim() || 'Main Warehouse';
-      const current = zoneMap.get(zoneName) ?? { totalSkus: 0, totalUnits: 0 };
-      current.totalSkus += 1;
-      current.totalUnits += item.quantity;
-      zoneMap.set(zoneName, current);
-    }
-
-    const pendingByZone = await this.tenantDb.db.stockMovement.groupBy({
-      by: ['notes'],
+    const pendingTotal = await this.tenantDb.db.stockMovement.count({
       where: {
         tenantId,
         deletedAt: null,
         type: 'transfer',
         status: 'Pending',
       },
-      _count: { _all: true },
     });
 
-    const pendingTotal = pendingByZone.reduce(
-      (sum, row) => sum + row._count._all,
-      0,
-    );
-    const zones = Array.from(zoneMap.entries());
-
-    if (zones.length === 0) {
+    if (zoneRows.length === 0) {
       return [
         {
           id: 'main',
@@ -279,15 +469,24 @@ export class StockMovementsService {
       ];
     }
 
-    const maxUnits = Math.max(...zones.map(([, v]) => v.totalUnits), 1);
+    const maxUnits = Math.max(
+      ...zoneRows.map((row: ZoneAgg) => Number(row.total_units)),
+      1,
+    );
 
-    return zones.map(([name, stats], index) => ({
-      id: `zone_${index}`,
-      name,
-      totalSkus: stats.totalSkus,
-      totalUnits: stats.totalUnits,
-      pendingTransfers: Math.ceil(pendingTotal / zones.length),
-      utilizationPercent: Math.round((stats.totalUnits / maxUnits) * 100),
-    }));
+    return zoneRows.map((row: ZoneAgg) => {
+      const totalUnits = Number(row.total_units);
+      return {
+        id: row.zone.toLowerCase().replace(/\s+/g, '-'),
+        name: row.zone,
+        totalSkus: Number(row.total_skus),
+        totalUnits,
+        pendingTransfers: pendingTotal,
+        utilizationPercent: Math.min(
+          100,
+          Math.round((totalUnits / maxUnits) * 100),
+        ),
+      };
+    });
   }
 }

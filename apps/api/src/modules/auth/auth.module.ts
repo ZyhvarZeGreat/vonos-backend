@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
+import type { StringValue } from 'ms';
 import {
   JwtAuthGuard,
   RolesGuard,
@@ -15,7 +16,8 @@ import { AuthService } from './auth.service';
     JwtModule.register({
       secret: process.env.JWT_SECRET ?? 'dev-secret-change-me',
       signOptions: {
-        expiresIn: ACCESS_TOKEN_TTL,
+        expiresIn: (process.env.JWT_ACCESS_EXPIRES ??
+          ACCESS_TOKEN_TTL) as StringValue,
       },
     }),
   ],

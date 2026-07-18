@@ -1,8 +1,32 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
 
 const CONNECT_MAX_ATTEMPTS = 5;
 const CONNECT_RETRY_DELAY_MS = 2_000;
+const DEFAULT_CONNECTION_LIMIT = 10;
+const DEFAULT_POOL_TIMEOUT_S = 30;
+
+function resolveDatabaseUrl(url?: string): string | undefined {
+  if (!url) return url;
+  try {
+    const parsed = new URL(url);
+    if (!parsed.searchParams.has('connection_limit')) {
+      parsed.searchParams.set(
+        'connection_limit',
+        process.env.PRISMA_CONNECTION_LIMIT ?? String(DEFAULT_CONNECTION_LIMIT),
+      );
+    }
+    if (!parsed.searchParams.has('pool_timeout')) {
+      parsed.searchParams.set(
+        'pool_timeout',
+        process.env.PRISMA_POOL_TIMEOUT ?? String(DEFAULT_POOL_TIMEOUT_S),
+      );
+    }
+    return parsed.toString();
+  } catch {
+    return url;
+  }
+}
 
 const tenantScopedModels = new Set([
   'Item',
@@ -22,6 +46,14 @@ const tenantScopedModels = new Set([
   'Requisition',
   'SalonService',
   'CafeTable',
+  'Expense',
+  'ExpenseCategory',
+  'Payroll',
+  'PayrollGroup',
+  'PayComponent',
+  'Designation',
+  'Employee',
+  'CustomerGroup',
 ]);
 
 const modelsWithoutSoftDelete = new Set([
@@ -33,6 +65,7 @@ const modelsWithoutSoftDelete = new Set([
   'SaleLine',
   'JobMaterial',
   'JobLabour',
+  'TenantDailyFinance',
 ]);
 
 function applySoftDeleteFilter(args: { where?: Record<string, unknown> }) {
@@ -47,16 +80,25 @@ function prismaLogQueriesEnabled(): boolean {
 }
 
 @Injectable()
-export class PrismaService extends PrismaClient implements OnModuleInit {
+export class PrismaService
+  extends PrismaClient
+  implements OnModuleInit, OnModuleDestroy
+{
   private readonly logger = new Logger(PrismaService.name);
   private databaseConnected = false;
+  private readonly tenantClients = new Map<string, TenantScopedPrisma>();
 
   constructor() {
-    super(
-      prismaLogQueriesEnabled()
+    super({
+      datasources: {
+        db: {
+          url: resolveDatabaseUrl(process.env.DATABASE_URL),
+        },
+      },
+      ...(prismaLogQueriesEnabled()
         ? { log: [{ emit: 'event', level: 'query' }] }
-        : undefined,
-    );
+        : {}),
+    });
 
     if (prismaLogQueriesEnabled()) {
       // Prisma event typing is narrow; cast keeps query logging opt-in only.
@@ -73,6 +115,18 @@ export class PrismaService extends PrismaClient implements OnModuleInit {
 
   async onModuleInit() {
     void this.connectInBackground();
+  }
+
+  async onModuleDestroy() {
+    this.tenantClients.clear();
+    try {
+      await this.$disconnect();
+      this.databaseConnected = false;
+      this.logger.log('Database disconnected');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.warn(`Database disconnect failed (${message})`);
+    }
   }
 
   isDatabaseConnected(): boolean {
@@ -105,8 +159,13 @@ export class PrismaService extends PrismaClient implements OnModuleInit {
     }
   }
 
+  /** Returns a PrismaClient-shaped client; cast keeps query result types intact. */
   forTenant(tenantId: string | null): PrismaClient {
-    return this.$extends({
+    const cacheKey = tenantId ?? '__global__';
+    const cached = this.tenantClients.get(cacheKey);
+    if (cached) return cached;
+
+    const client = this.$extends({
       query: {
         $allModels: {
           async findMany({ model, args, query }) {
@@ -170,6 +229,9 @@ export class PrismaService extends PrismaClient implements OnModuleInit {
         },
       },
     }) as unknown as PrismaClient;
+
+    this.tenantClients.set(cacheKey, client);
+    return client;
   }
 }
 

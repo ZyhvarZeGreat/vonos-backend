@@ -27,11 +27,13 @@ export class CustomerGroupsController {
     @Query('cursor') cursor?: string,
     @Query('limit') limit?: string,
     @Query('search') search?: string,
+    @Query('discount') discount?: 'has' | 'none',
   ) {
     return this.service.list({
       cursor,
       limit: limit ? Number(limit) : undefined,
       search,
+      discount,
     });
   }
 

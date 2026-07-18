@@ -1,8 +1,14 @@
-import type { ReportsDashboard } from '@vonos/types';
+import type {
+  BalanceSheetReport,
+  CashFlowReport,
+  ReportsDashboard,
+} from '@vonos/types';
+import { Prisma } from '@prisma/client';
 import type { TenantScopedPrisma } from '../../../common/prisma/prisma.service';
-import { computeOutstandingReceivables } from '../../../common/utils/outstandingReceivables';
+import {
+  computeAllTimeOutstandingReceivables,
+} from '../../../common/utils/outstandingReceivables';
 import { toNumber } from '../../../common/utils/serializers';
-import { ledgerDateFilter } from '../../../common/utils/ledgerAggregates';
 import { resolveDateWindow } from './date-utils';
 
 type AccountBalance = {
@@ -17,12 +23,25 @@ type PeriodActivity = {
   credit: number;
 };
 
+function formatReportDateTime(date: Date): string {
+  const day = String(date.getDate()).padStart(2, '0');
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const year = date.getFullYear();
+  const hours = String(date.getHours()).padStart(2, '0');
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+  return `${day}-${month}-${year} ${hours}:${minutes}`;
+}
+
+function txnDescription(parts: Array<string | null | undefined>): string {
+  return parts.filter(Boolean).join('\n');
+}
+
 /** One grouped query for all account balances — avoids per-account N+1. */
 async function accountBalances(
   db: TenantScopedPrisma,
 ): Promise<AccountBalance[]> {
   const accounts = await db.paymentAccount.findMany({
-    where: { deletedAt: null, isClosed: false },
+    where: { deletedAt: null },
     select: { id: true, name: true, currency: true },
     orderBy: { name: 'asc' },
   });
@@ -84,41 +103,91 @@ async function accountPeriodActivity(
   return result;
 }
 
-/** Balance sheet — cash accounts + receivables vs ledger costs/expenses. */
+async function computeSupplierDue(db: TenantScopedPrisma): Promise<number> {
+  const rows = await db.$queryRaw<[{ supplier_due: Prisma.Decimal | null }]>`
+    SELECT COALESCE(SUM("totalPurchaseDue"), 0) AS supplier_due
+    FROM "Supplier"
+    WHERE "deletedAt" IS NULL
+  `;
+  return Math.max(0, toNumber(rows[0]?.supplier_due ?? 0));
+}
+
+async function computeClosingStock(db: TenantScopedPrisma): Promise<number> {
+  const rows = await db.$queryRaw<[{ stock_value: Prisma.Decimal | null }]>`
+    SELECT COALESCE(SUM(quantity * "costPrice"), 0) AS stock_value
+    FROM "Item"
+    WHERE "deletedAt" IS NULL
+  `;
+  return Math.max(0, toNumber(rows[0]?.stock_value ?? 0));
+}
+
+async function openingBalancesBefore(
+  db: TenantScopedPrisma,
+  accountIds: string[],
+  before: Date,
+): Promise<Map<string, number>> {
+  const result = new Map<string, number>();
+  if (accountIds.length === 0) return result;
+
+  const rows = await db.$queryRaw<
+    Array<{ accountId: string; balance: Prisma.Decimal | null }>
+  >`
+    SELECT
+      "accountId",
+      COALESCE(SUM(
+        CASE WHEN type = 'credit' THEN amount ELSE -amount END
+      ), 0) AS balance
+    FROM "AccountTransaction"
+    WHERE "deletedAt" IS NULL
+      AND "accountId" IN (${Prisma.join(accountIds)})
+      AND "operationDate" < ${before}
+    GROUP BY "accountId"
+  `;
+
+  for (const row of rows) {
+    result.set(row.accountId, toNumber(row.balance ?? 0));
+  }
+  return result;
+}
+
+/** Balance sheet — liabilities vs assets snapshot. */
 export async function buildBalanceSheetReport(
   db: TenantScopedPrisma,
-  from?: string,
-  to?: string,
+  _from?: string,
+  _to?: string,
 ): Promise<ReportsDashboard> {
-  const dateFilter = ledgerDateFilter(from, to);
-  const [accounts, outstanding, ledgerGroups] = await Promise.all([
+  const [accounts, customerDue, supplierDue, closingStock] = await Promise.all([
     accountBalances(db),
-    computeOutstandingReceivables(db, from, to),
-    db.ledgerEntry.groupBy({
-      by: ['type'],
-      where: { deletedAt: null, ...dateFilter },
-      _sum: { amount: true },
-    }),
+    computeAllTimeOutstandingReceivables(db),
+    computeSupplierDue(db),
+    computeClosingStock(db),
   ]);
 
   const currency = accounts[0]?.currency ?? 'NGN';
-  const cashAssets = accounts.reduce(
-    (sum, a) => sum + Math.max(0, a.balance),
+  const accountBalanceTotal = accounts.reduce(
+    (sum, account) => sum + account.balance,
     0,
   );
-  const receivables = outstanding;
-  const totalAssets = cashAssets + receivables;
+  const totalAssets = customerDue + closingStock + accountBalanceTotal;
+  const totalLiability = supplierDue;
 
-  const costs = ledgerGroups
-    .filter((g) => g.type === 'cost')
-    .reduce((sum, g) => sum + toNumber(g._sum.amount ?? 0), 0);
-  const expenses = ledgerGroups
-    .filter((g) => g.type === 'expense')
-    .reduce((sum, g) => sum + toNumber(g._sum.amount ?? 0), 0);
-  const revenue = ledgerGroups
-    .filter((g) => g.type === 'revenue')
-    .reduce((sum, g) => sum + toNumber(g._sum.amount ?? 0), 0);
-  const equity = revenue - costs - expenses;
+  const balanceSheet: BalanceSheetReport = {
+    currency,
+    liabilities: [
+      { key: 'supplier-due', label: 'Supplier Due', amount: supplierDue },
+    ],
+    assets: [
+      { key: 'customer-due', label: 'Customer Due', amount: customerDue },
+      { key: 'closing-stock', label: 'Closing stock', amount: closingStock },
+    ],
+    accountBalances: accounts.map((account) => ({
+      id: account.id,
+      name: account.name,
+      balance: account.balance,
+    })),
+    totalLiability,
+    totalAssets,
+  };
 
   return {
     kpis: [
@@ -127,73 +196,37 @@ export async function buildBalanceSheetReport(
         icon: 'wallet',
         metricKey: 'assets',
         color: '#059669',
-        value: totalAssets,
+        value: Math.round(totalAssets),
         currency,
       },
       {
-        label: 'Cash & Accounts',
-        icon: 'banknote',
-        metricKey: 'cash',
-        color: '#2563eb',
-        value: cashAssets,
+        label: 'Total Liability',
+        icon: 'receipt',
+        metricKey: 'liability',
+        color: '#e11d48',
+        value: Math.round(totalLiability),
         currency,
       },
       {
-        label: 'Receivables',
+        label: 'Customer Due',
         icon: 'clock',
         metricKey: 'receivables',
         color: '#9333ea',
-        value: receivables,
+        value: Math.round(customerDue),
         currency,
       },
       {
-        label: 'Equity (P&L)',
-        icon: 'trending-up',
-        metricKey: 'equity',
-        color: '#e11d48',
-        value: equity,
+        label: 'Closing Stock',
+        icon: 'package',
+        metricKey: 'stock',
+        color: '#2563eb',
+        value: Math.round(closingStock),
         currency,
       },
     ],
-    charts: [
-      {
-        id: 'asset-mix',
-        title: 'Asset Mix',
-        type: 'pie',
-        series: [{ name: 'Amount', dataKey: 'value', color: '#059669' }],
-        data: [
-          { label: 'Cash accounts', value: Math.round(cashAssets) },
-          { label: 'Receivables', value: Math.round(receivables) },
-        ].filter((row) => row.value > 0),
-      },
-    ],
-    table: {
-      columns: [
-        { key: 'section', header: 'Section' },
-        { key: 'name', header: 'Account' },
-        { key: 'amount', header: 'Amount' },
-      ],
-      rows: [
-        ...accounts.map((a) => ({
-          section: 'Asset',
-          name: a.name,
-          amount: Math.round(a.balance),
-          currency: a.currency,
-        })),
-        {
-          section: 'Asset',
-          name: 'Outstanding receivables',
-          amount: Math.round(receivables),
-          currency,
-        },
-        {
-          section: 'Equity',
-          name: 'Retained (revenue − costs − expenses)',
-          amount: Math.round(equity),
-          currency,
-        },
-      ],
-    },
+    charts: [],
+    table: null,
+    balanceSheet,
   };
 }
 
@@ -267,95 +300,108 @@ export async function buildTrialBalanceReport(
     table: {
       columns: [
         { key: 'account', header: 'Account' },
-        { key: 'debit', header: 'Debit' },
-        { key: 'credit', header: 'Credit' },
+        { key: 'debit', header: 'Debit', totalAs: 'currency' },
+        { key: 'credit', header: 'Credit', totalAs: 'currency' },
       ],
       rows,
+      columnTotals: {
+        debit: Math.round(totalDebit),
+        credit: Math.round(totalCredit),
+      },
     },
   };
 }
 
-/** Payment account summary — balance per account with period activity. */
+/** Payment account report — transaction-level ledger for the period. */
 export async function buildPaymentAccountReport(
   db: TenantScopedPrisma,
   from?: string,
   to?: string,
 ): Promise<ReportsDashboard> {
   const window = resolveDateWindow(from, to);
-  const accounts = await accountBalances(db);
-  const currency = accounts[0]?.currency ?? 'NGN';
-  const activity = await accountPeriodActivity(
-    db,
-    accounts.map((a) => a.id),
-    window.from,
-    window.to,
-  );
 
-  const rows: Array<Record<string, string | number>> = [];
-  let totalIn = 0;
-  let totalOut = 0;
+  const transactions = await db.accountTransaction.findMany({
+    where: {
+      deletedAt: null,
+      operationDate: { gte: window.from, lte: window.to },
+    },
+    include: {
+      account: { select: { name: true } },
+      invoice: { select: { reference: true } },
+    },
+    orderBy: [{ operationDate: 'desc' }, { id: 'desc' }],
+    take: 500,
+  });
 
-  for (const account of accounts) {
-    const period = activity.get(account.id) ?? { debit: 0, credit: 0 };
-    totalIn += period.credit;
-    totalOut += period.debit;
+  const saleIds = transactions
+    .map((row) => row.saleId)
+    .filter((id): id is string => Boolean(id));
+  const sales =
+    saleIds.length > 0
+      ? await db.sale.findMany({
+          where: { id: { in: saleIds }, deletedAt: null },
+          select: { id: true, reference: true },
+        })
+      : [];
+  const saleRefById = new Map(sales.map((sale) => [sale.id, sale.reference]));
 
-    rows.push({
-      account: account.name,
-      moneyIn: Math.round(period.credit),
-      moneyOut: Math.round(period.debit),
-      balance: Math.round(account.balance),
-      currency: account.currency,
-    });
-  }
+  const currency = 'NGN';
+  let totalAmount = 0;
+
+  const rows = transactions.map((row) => {
+    const amount = toNumber(row.amount);
+    totalAmount += amount;
+    const invoiceRef =
+      row.invoice?.reference ??
+      (row.saleId ? (saleRefById.get(row.saleId) ?? '—') : '—');
+
+    return {
+      id: row.id,
+      date: formatReportDateTime(row.operationDate),
+      paymentRef: row.refNo ?? '—',
+      invoiceRef,
+      amount: Math.round(amount),
+      paymentType: row.subType ?? (row.type === 'credit' ? 'Credit' : 'Debit'),
+      account: row.account.name,
+      description: txnDescription([
+        row.note,
+        row.paymentDetails ? `Details: ${row.paymentDetails}` : null,
+      ]),
+      currency,
+    };
+  });
 
   return {
     kpis: [
       {
-        label: 'Money In',
-        icon: 'arrow-down',
-        metricKey: 'moneyIn',
-        color: '#059669',
-        value: Math.round(totalIn),
-        currency,
-      },
-      {
-        label: 'Money Out',
-        icon: 'arrow-up',
-        metricKey: 'moneyOut',
-        color: '#e11d48',
-        value: Math.round(totalOut),
-        currency,
-      },
-      {
-        label: 'Accounts',
-        icon: 'credit-card',
-        metricKey: 'accounts',
+        label: 'Transactions',
+        icon: 'receipt',
+        metricKey: 'transactions',
         color: '#2563eb',
-        value: accounts.length,
+        value: rows.length,
       },
-    ],
-    charts: [
       {
-        id: 'account-balances',
-        title: 'Account Balances',
-        type: 'bar',
-        horizontal: true,
-        series: [{ name: 'Balance', dataKey: 'balance', color: '#2563eb' }],
-        data: accounts.slice(0, 12).map((a) => ({
-          label: a.name,
-          balance: Math.round(a.balance),
-        })),
+        label: 'Total Amount',
+        icon: 'wallet',
+        metricKey: 'totalAmount',
+        color: '#059669',
+        value: Math.round(totalAmount),
+        currency,
       },
     ],
+    charts: [],
     table: {
       columns: [
+        { key: 'date', header: 'Date' },
+        { key: 'paymentRef', header: 'Payment Ref No.' },
+        { key: 'invoiceRef', header: 'Invoice No./Ref. No.' },
+        { key: 'amount', header: 'Amount', totalAs: 'currency' },
+        { key: 'paymentType', header: 'Payment Type' },
         { key: 'account', header: 'Account' },
-        { key: 'moneyIn', header: 'Money In' },
-        { key: 'moneyOut', header: 'Money Out' },
-        { key: 'balance', header: 'Balance' },
+        { key: 'description', header: 'Description' },
       ],
       rows,
+      columnTotals: { amount: Math.round(totalAmount) },
     },
   };
 }
@@ -367,41 +413,86 @@ export async function buildCashFlowReport(
 ): Promise<ReportsDashboard> {
   const window = resolveDateWindow(from, to);
 
-  const [sellPayments, purchaseDebits, revenueAgg] = await Promise.all([
-    db.payment.aggregate({
+  const accounts = await db.paymentAccount.findMany({
+    where: { deletedAt: null },
+    select: { id: true, name: true, currency: true },
+    orderBy: { name: 'asc' },
+  });
+  const accountIds = accounts.map((account) => account.id);
+  const accountNameById = new Map(
+    accounts.map((account) => [account.id, account.name]),
+  );
+  const currency = accounts[0]?.currency ?? 'NGN';
+
+  const [openingByAccount, transactions] = await Promise.all([
+    openingBalancesBefore(db, accountIds, window.from),
+    db.accountTransaction.findMany({
       where: {
         deletedAt: null,
-        saleId: { not: null },
-        OR: [
-          { paidOn: { gte: window.from, lte: window.to } },
-          { paidOn: null, createdAt: { gte: window.from, lte: window.to } },
-        ],
-      },
-      _sum: { amount: true },
-    }),
-    db.accountTransaction.aggregate({
-      where: {
-        deletedAt: null,
-        type: 'debit',
         operationDate: { gte: window.from, lte: window.to },
       },
-      _sum: { amount: true },
-    }),
-    db.ledgerEntry.aggregate({
-      where: {
-        deletedAt: null,
-        type: 'revenue',
-        ...ledgerDateFilter(from, to),
+      select: {
+        id: true,
+        accountId: true,
+        type: true,
+        amount: true,
+        operationDate: true,
+        note: true,
+        subType: true,
+        paymentMethod: true,
+        paymentDetails: true,
+        refNo: true,
       },
-      _sum: { amount: true },
+      orderBy: [{ operationDate: 'asc' }, { id: 'asc' }],
+      take: 500,
     }),
   ]);
 
-  const currency = 'NGN';
-  const cashIn = toNumber(sellPayments._sum.amount ?? 0);
-  const cashOut = toNumber(purchaseDebits._sum.amount ?? 0);
-  const salesRevenue = toNumber(revenueAgg._sum.amount ?? 0);
-  const effectiveCashIn = cashIn > 0 ? cashIn : salesRevenue;
+  const runningByAccount = new Map<string, number>();
+  for (const accountId of accountIds) {
+    runningByAccount.set(accountId, openingByAccount.get(accountId) ?? 0);
+  }
+
+  let totalDebit = 0;
+  let totalCredit = 0;
+
+  const rows = transactions.map((row) => {
+    const amount = toNumber(row.amount);
+    const previousBalance = runningByAccount.get(row.accountId) ?? 0;
+    const delta = row.type === 'credit' ? amount : -amount;
+    const totalBalance = previousBalance + delta;
+    runningByAccount.set(row.accountId, totalBalance);
+
+    if (row.type === 'debit') totalDebit += amount;
+    else totalCredit += amount;
+
+    return {
+      id: row.id,
+      date: formatReportDateTime(row.operationDate),
+      account: accountNameById.get(row.accountId) ?? '—',
+      description: txnDescription([
+        row.subType,
+        row.note,
+        row.paymentDetails,
+      ]),
+      paymentMethod: row.paymentMethod ?? '—',
+      receiptVoucher: row.refNo ?? '—',
+      debit: row.type === 'debit' ? Math.round(amount) : null,
+      credit: row.type === 'credit' ? Math.round(amount) : null,
+      previousBalance: Math.round(previousBalance),
+      totalBalance: Math.round(totalBalance),
+    };
+  });
+
+  const cashFlow: CashFlowReport = {
+    currency,
+    rows,
+    totals: {
+      debit: Math.round(totalDebit),
+      credit: Math.round(totalCredit),
+      balance: Math.round(totalCredit - totalDebit),
+    },
+  };
 
   return {
     kpis: [
@@ -410,7 +501,7 @@ export async function buildCashFlowReport(
         icon: 'arrow-down',
         metricKey: 'cashIn',
         color: '#059669',
-        value: Math.round(effectiveCashIn),
+        value: Math.round(totalCredit),
         currency,
       },
       {
@@ -418,7 +509,7 @@ export async function buildCashFlowReport(
         icon: 'arrow-up',
         metricKey: 'cashOut',
         color: '#e11d48',
-        value: Math.round(cashOut),
+        value: Math.round(totalDebit),
         currency,
       },
       {
@@ -426,28 +517,12 @@ export async function buildCashFlowReport(
         icon: 'wallet',
         metricKey: 'netCash',
         color: '#9333ea',
-        value: Math.round(effectiveCashIn - cashOut),
+        value: Math.round(totalCredit - totalDebit),
         currency,
       },
     ],
-    charts: [
-      {
-        id: 'cash-flow',
-        title: 'Cash Movement',
-        type: 'bar',
-        series: [
-          { name: 'In', dataKey: 'in', color: '#059669' },
-          { name: 'Out', dataKey: 'out', color: '#e11d48' },
-        ],
-        data: [
-          {
-            label: 'Period',
-            in: Math.round(effectiveCashIn),
-            out: Math.round(cashOut),
-          },
-        ],
-      },
-    ],
+    charts: [],
     table: null,
+    cashFlow,
   };
 }

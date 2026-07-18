@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import type { CustomerGroup, CreateCustomerGroupRequest } from '@vonos/types';
 import { TenantDbService } from '../../common/prisma/tenant-db.service';
-import { buildCursorQuery } from '../../common/utils/pagination';
+import { buildCompositeCursorQuery } from '../../common/utils/pagination';
 import { toIso, toNumber } from '../../common/utils/serializers';
 
 @Injectable()
@@ -12,7 +12,15 @@ export class CustomerGroupsService {
     cursor?: string;
     limit?: number;
     search?: string;
+    discount?: 'has' | 'none';
   } = {}): Promise<CustomerGroup[]> {
+    const pagination = buildCompositeCursorQuery({
+      sortField: 'name',
+      sortDir: 'asc',
+      cursor: filters.cursor,
+      limit: filters.limit ?? 10,
+      sortValueType: 'string',
+    });
     const rows = await this.tenantDb.db.customerGroup.findMany({
       where: {
         tenantId: this.tenantDb.requireTenantId(),
@@ -20,9 +28,15 @@ export class CustomerGroupsService {
         ...(filters.search
           ? { name: { contains: filters.search, mode: 'insensitive' } }
           : {}),
+        ...(filters.discount === 'has'
+          ? { discountPercent: { gt: 0 } }
+          : filters.discount === 'none'
+            ? { discountPercent: { lte: 0 } }
+            : {}),
+        ...(pagination.where ?? {}),
       },
-      orderBy: { name: 'asc' },
-      ...buildCursorQuery(filters.cursor, filters.limit ?? 25),
+      orderBy: [{ name: 'asc' }, { id: 'asc' }],
+      take: pagination.take,
     });
     return rows.map((row) => ({
       id: row.id,

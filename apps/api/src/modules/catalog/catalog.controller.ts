@@ -17,6 +17,7 @@ export class CatalogController {
     @Query('status') status?: StockStatus,
     @Query('category') category?: string,
     @Query('search') search?: string,
+    @Query('locationCode') locationCode?: string,
     @Query('cursor') cursor?: string,
     @Query('limit') limit?: string,
   ) {
@@ -24,6 +25,7 @@ export class CatalogController {
       status,
       category,
       search,
+      locationCode,
       cursor,
       limit: limit ? Number(limit) : undefined,
     };

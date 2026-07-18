@@ -1,5 +1,10 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
-import type { ProfitLossBreakdownTab, ReportsDashboard } from '@vonos/types';
+import type {
+  ProfitLossBreakdownTab,
+  ReportRunOptions,
+  ReportsDashboard,
+} from '@vonos/types';
+import { isPaginatedTableReport } from '@vonos/types';
 import { TenantDbService } from '../../common/prisma/tenant-db.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { CacheService } from '../../common/cache/cache.service';
@@ -37,7 +42,8 @@ export interface ReportsSummary {
 }
 
 const REPORT_CACHE_TTL_S = 300;
-const PROFIT_LOSS_CACHE_TTL_S = 300;
+/** P&L context is expensive to rebuild — keep longer than generic reports. */
+const PROFIT_LOSS_CACHE_TTL_S = 600;
 
 const PROFIT_LOSS_BREAKDOWN_TABS = new Set<ProfitLossBreakdownTab>([
   'product',
@@ -80,7 +86,7 @@ export class ReportsService {
   private logReportTiming(
     label: string,
     startedAt: number,
-    meta: Record<string, string | undefined> & { cache: 'hit' | 'miss' },
+    meta: Record<string, string | undefined> & { cache: 'hit' | 'miss' | 'hit-upgrade' },
   ): void {
     const ms = Date.now() - startedAt;
     const parts = Object.entries(meta)
@@ -97,15 +103,13 @@ export class ReportsService {
     includeBreakdown = false,
   ): Promise<ProfitLossLoadContext> {
     const startedAt = Date.now();
-    const key = `${this.profitLossContextKey(tenantId, from, to)}:bd=${includeBreakdown ? 1 : 0}`;
+    // One shared key for core + breakdown so pl-core warms cache for tabs.
+    const key = await this.cache.tenantScopedKey(
+      tenantId,
+      this.profitLossContextKey(tenantId, from, to),
+    );
     const cached = await this.cache.get<ProfitLossLoadContextCached>(key);
     if (cached) {
-      this.logReportTiming('pl-ctx', startedAt, {
-        tenant: tenantId,
-        from,
-        to,
-        cache: 'hit',
-      });
       let loaded = deserializeProfitLossContext(cached);
       if (includeBreakdown && !loaded.hasBreakdownData) {
         loaded = await ensureProfitLossBreakdownData(
@@ -119,6 +123,19 @@ export class ReportsService {
           serializeProfitLossContext(loaded),
           PROFIT_LOSS_CACHE_TTL_S,
         );
+        this.logReportTiming('pl-ctx', startedAt, {
+          tenant: tenantId,
+          from,
+          to,
+          cache: 'hit-upgrade',
+        });
+      } else {
+        this.logReportTiming('pl-ctx', startedAt, {
+          tenant: tenantId,
+          from,
+          to,
+          cache: 'hit',
+        });
       }
       return loaded;
     }
@@ -170,7 +187,10 @@ export class ReportsService {
   ): Promise<ReportsDashboard> {
     const startedAt = Date.now();
     const tenantId = this.tenantDb.requireTenantId();
-    const cacheKey = `report-dash:${tenantId}:${tab}:${from ?? ''}:${to ?? ''}`;
+    const cacheKey = await this.cache.tenantScopedKey(
+      tenantId,
+      `report-dash:${tenantId}:${tab}:${from ?? ''}:${to ?? ''}`,
+    );
     const cached = await this.cache.get<ReportsDashboard>(cacheKey);
     if (cached) {
       this.logReportTiming('dashboard', startedAt, {
@@ -270,23 +290,56 @@ export class ReportsService {
     to?: string,
     mode?: ReportRunMode,
     breakdownTab?: ProfitLossBreakdownTab,
+    options?: ReportRunOptions,
   ): Promise<ReportsDashboard> {
     const startedAt = Date.now();
     const tenantId = this.tenantDb.requireTenantId();
     const resolvedMode =
       mode ?? (reportId === 'profit-loss' ? 'pl-core' : 'full');
-    const cacheKey = `report-run:${tenantId}:${reportId}:${resolvedMode}:${breakdownTab ?? ''}:${from ?? ''}:${to ?? ''}`;
-    const cached = await this.cache.get<ReportsDashboard>(cacheKey);
-    if (cached) {
-      this.logReportTiming('run', startedAt, {
-        tenant: tenantId,
-        report: reportId,
-        mode: resolvedMode,
-        from,
-        to,
-        cache: 'hit',
-      });
-      return cached;
+    const filterKey = isPaginatedTableReport(reportId)
+      ? JSON.stringify({
+          cursor: options?.cursor ?? '',
+          limit: options?.limit ?? '',
+          search: options?.search ?? '',
+          customerId: options?.customerId ?? '',
+          customerGroupId: options?.customerGroupId ?? '',
+          locationCode: options?.locationCode ?? '',
+          category: options?.category ?? '',
+          brandId: options?.brandId ?? '',
+          paymentMethod: options?.paymentMethod ?? '',
+          supplierId: options?.supplierId ?? '',
+          view: options?.view ?? '',
+        })
+      : '';
+    const hasReportFilters = Boolean(
+      options?.search?.trim() ||
+        options?.customerId ||
+        options?.customerGroupId ||
+        options?.locationCode ||
+        options?.category ||
+        options?.brandId ||
+        options?.paymentMethod ||
+        options?.supplierId ||
+        (options?.view && options.view !== 'detailed'),
+    );
+    const skipCache = Boolean(options?.cursor || hasReportFilters);
+    const cacheKey = await this.cache.tenantScopedKey(
+      tenantId,
+      `report-run:${tenantId}:${reportId}:${resolvedMode}:${breakdownTab ?? ''}:${from ?? ''}:${to ?? ''}:${filterKey}`,
+    );
+    if (!skipCache) {
+      const cached = await this.cache.get<ReportsDashboard>(cacheKey);
+      if (cached) {
+        this.logReportTiming('run', startedAt, {
+          tenant: tenantId,
+          report: reportId,
+          mode: resolvedMode,
+          from,
+          to,
+          cache: 'hit',
+        });
+        return cached;
+      }
     }
 
     if (reportId === 'profit-loss' && resolvedMode !== 'full') {
@@ -328,20 +381,21 @@ export class ReportsService {
               'breakdownTab is required for pl-breakdown mode',
             );
           }
-          const loaded = await this.getProfitLossContext(
-            tenantId,
-            from,
-            to,
-            true,
-          );
+          const sectionStarted = Date.now();
           const section = await buildProfitLossBreakdownSection(
-            db,
+            this.tenantDb.db,
             tenantId,
             breakdownTab,
             from,
             to,
-            loaded,
           );
+          this.logReportTiming('pl-breakdown-sql', sectionStarted, {
+            tenant: tenantId,
+            tab: breakdownTab,
+            from,
+            to,
+            cache: 'miss',
+          });
           result = {
             kpis: [],
             charts: [],
@@ -364,7 +418,9 @@ export class ReportsService {
           throw new BadRequestException(`Unknown report mode: ${_exhaustive}`);
         }
       }
-      await this.cache.set(cacheKey, result, PROFIT_LOSS_CACHE_TTL_S);
+      if (!skipCache) {
+        await this.cache.set(cacheKey, result, PROFIT_LOSS_CACHE_TTL_S);
+      }
       this.logReportTiming('run', startedAt, {
         tenant: tenantId,
         report: reportId,
@@ -393,8 +449,11 @@ export class ReportsService {
       },
       from,
       to,
+      isPaginatedTableReport(reportId) ? options : undefined,
     );
-    await this.cache.set(cacheKey, result, REPORT_CACHE_TTL_S);
+    if (!skipCache) {
+      await this.cache.set(cacheKey, result, REPORT_CACHE_TTL_S);
+    }
     this.logReportTiming('run', startedAt, {
       tenant: tenantId,
       report: reportId,

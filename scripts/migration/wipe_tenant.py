@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
-from pathlib import Path
+import os
 import sys
 
-_migration_dir = str(Path(__file__).resolve().parent)
-if sys.path and sys.path[0] == _migration_dir:
-    sys.path.pop(0)
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+# Fix sys.path BEFORE importing anything that transitively imports stdlib `types`.
+# Running this file as a script puts scripts/migration first, which shadows
+# stdlib via scripts/migration/types.py.
+_HERE = os.path.dirname(os.path.abspath(__file__))
+_SCRIPTS = os.path.dirname(_HERE)
+sys.path = [p for p in sys.path if os.path.abspath(p) != _HERE]
+if _SCRIPTS not in sys.path:
+    sys.path.insert(0, _SCRIPTS)
 
 import argparse
 
@@ -22,14 +26,26 @@ WIPE_SQL = [
     'DELETE FROM "SaleLine" WHERE "saleId" IN (SELECT id FROM "Sale" WHERE "tenantId" = %s)',
     'DELETE FROM "AccountTransaction" WHERE "tenantId" = %s',
     'DELETE FROM "Payment" WHERE "tenantId" = %s',
+    'DELETE FROM "Invoice" WHERE "tenantId" = %s',
     'DELETE FROM "Sale" WHERE "tenantId" = %s',
     'DELETE FROM "StockMovement" WHERE "tenantId" = %s',
     'DELETE FROM "LedgerEntry" WHERE "tenantId" = %s',
     'DELETE FROM "Requisition" WHERE "tenantId" = %s',
     'DELETE FROM "Job" WHERE "tenantId" = %s',
     'DELETE FROM "Vehicle" WHERE "tenantId" = %s',
+    'DELETE FROM "ItemLocationStock" WHERE "tenantId" = %s',
+    'DELETE FROM "Expense" WHERE "tenantId" = %s',
+    'DELETE FROM "ExpenseCategory" WHERE "tenantId" = %s',
+    'DELETE FROM "Payroll" WHERE "tenantId" = %s',
+    'DELETE FROM "PayComponent" WHERE "tenantId" = %s',
+    'DELETE FROM "Employee" WHERE "tenantId" = %s',
+    'DELETE FROM "Designation" WHERE "tenantId" = %s',
+    'DELETE FROM "PayrollGroup" WHERE "tenantId" = %s',
+    'DELETE FROM "Discount" WHERE "tenantId" = %s',
+    'DELETE FROM "VariationTemplate" WHERE "tenantId" = %s',
     'DELETE FROM "Item" WHERE "tenantId" = %s',
     'DELETE FROM "Customer" WHERE "tenantId" = %s',
+    'DELETE FROM "CustomerGroup" WHERE "tenantId" = %s',
     'DELETE FROM "Supplier" WHERE "tenantId" = %s',
     'DELETE FROM "PaymentAccount" WHERE "tenantId" = %s',
     'DELETE FROM "MigrationLegacyId" WHERE "tenantId" = %s',
@@ -71,7 +87,7 @@ def wipe_tenant(tenant_id: str, *, dry_run: bool = False) -> dict[str, int]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Hard-delete migrated business data for one tenant")
-    parser.add_argument("code", help="Entity code (e.g. VM, VMS, VW)")
+    parser.add_argument("code", help="Entity code (e.g. VA, VW)")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 

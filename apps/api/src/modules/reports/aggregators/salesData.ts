@@ -9,29 +9,7 @@ import {
 import type { SaleLineRow } from './productSales';
 
 /** Safety cap for row-level sale graphs (all-time detail is truncated). */
-export const SALE_REPORT_ROW_CAP = 5_000;
-
-const SALE_SELECT = {
-  id: true,
-  reference: true,
-  total: true,
-  currency: true,
-  status: true,
-  paymentStatus: true,
-  date: true,
-  locationCode: true,
-  createdByName: true,
-  customer: { select: { name: true } },
-  lines: {
-    select: {
-      name: true,
-      sku: true,
-      lineTotal: true,
-      quantity: true,
-      itemId: true,
-    },
-  },
-} as const;
+export const SALE_REPORT_ROW_CAP = 2_000;
 
 export interface NormalizedSale {
   id: string;
@@ -64,7 +42,8 @@ function normalizeSale(sale: {
   paymentStatus: string | null;
   currency: string;
   locationCode: string | null;
-  createdByName: string | null;
+  cleanerName: string | null;
+  serviceStaffEmployee?: { name: string } | null;
   customer: { name: string } | null;
   lines: SaleLineRow[];
 }): NormalizedSale {
@@ -78,7 +57,10 @@ function normalizeSale(sale: {
     currency: sale.currency,
     customerName: sale.customer?.name ?? 'Walk-in',
     locationCode: sale.locationCode,
-    staffName: sale.createdByName,
+    staffName:
+      sale.cleanerName?.trim() ||
+      sale.serviceStaffEmployee?.name?.trim() ||
+      null,
     lines: sale.lines,
   };
 }
@@ -97,12 +79,59 @@ export async function loadSalesReportContext(
       status: { not: 'draft' },
       date: { gte: prior.from, lte: window.to },
     },
-    select: SALE_SELECT,
+    select: {
+      id: true,
+      reference: true,
+      total: true,
+      currency: true,
+      status: true,
+      paymentStatus: true,
+      date: true,
+      locationCode: true,
+      cleanerName: true,
+      serviceStaffEmployee: { select: { name: true } },
+      customer: { select: { name: true } },
+    },
     orderBy: { date: 'desc' },
     take: SALE_REPORT_ROW_CAP,
   });
 
-  const normalized: NormalizedSale[] = sales.map(normalizeSale);
+  if (sales.length === 0) {
+    return {
+      window,
+      prior,
+      periodSales: [],
+      priorSales: [],
+      currency: 'NGN',
+    };
+  }
+
+  const saleIds = sales.map((sale) => sale.id);
+  const lines = await db.saleLine.findMany({
+    where: { saleId: { in: saleIds } },
+    select: {
+      saleId: true,
+      name: true,
+      sku: true,
+      lineTotal: true,
+      quantity: true,
+      itemId: true,
+    },
+  });
+
+  const linesBySale = new Map<string, SaleLineRow[]>();
+  for (const line of lines) {
+    const bucket = linesBySale.get(line.saleId) ?? [];
+    bucket.push(line);
+    linesBySale.set(line.saleId, bucket);
+  }
+
+  const normalized: NormalizedSale[] = sales.map((sale) =>
+    normalizeSale({
+      ...sale,
+      lines: linesBySale.get(sale.id) ?? [],
+    }),
+  );
   const periodSales = normalized.filter((sale) => inWindow(sale.date, window));
   const priorSales = normalized.filter((sale) => inWindow(sale.date, prior));
 
@@ -115,7 +144,7 @@ export async function loadSalesReportContext(
   };
 }
 
-/** Period window only — skips prior-period sales fetch (used by P&L). */
+/** Period window only — skips prior-period sales fetch (used by P&L legacy path). */
 export async function loadPeriodSalesOnly(
   db: TenantScopedPrisma,
   from?: string,
@@ -123,18 +152,60 @@ export async function loadPeriodSalesOnly(
 ): Promise<Pick<SalesReportContext, 'window' | 'periodSales' | 'currency'>> {
   const window = resolveDateWindow(from, to);
 
+  // Header rows first (no nested lines) — much cheaper over Neon.
   const sales = await db.sale.findMany({
     where: {
       deletedAt: null,
       status: { not: 'draft' },
       date: { gte: window.from, lte: window.to },
     },
-    select: SALE_SELECT,
+    select: {
+      id: true,
+      reference: true,
+      total: true,
+      currency: true,
+      status: true,
+      paymentStatus: true,
+      date: true,
+      locationCode: true,
+      cleanerName: true,
+      serviceStaffEmployee: { select: { name: true } },
+      customer: { select: { name: true } },
+    },
     orderBy: { date: 'desc' },
     take: SALE_REPORT_ROW_CAP,
   });
 
-  const periodSales: NormalizedSale[] = sales.map(normalizeSale);
+  if (sales.length === 0) {
+    return { window, periodSales: [], currency: 'NGN' };
+  }
+
+  const saleIds = sales.map((sale) => sale.id);
+  const lines = await db.saleLine.findMany({
+    where: { saleId: { in: saleIds } },
+    select: {
+      saleId: true,
+      name: true,
+      sku: true,
+      lineTotal: true,
+      quantity: true,
+      itemId: true,
+    },
+  });
+
+  const linesBySale = new Map<string, SaleLineRow[]>();
+  for (const line of lines) {
+    const bucket = linesBySale.get(line.saleId) ?? [];
+    bucket.push(line);
+    linesBySale.set(line.saleId, bucket);
+  }
+
+  const periodSales: NormalizedSale[] = sales.map((sale) =>
+    normalizeSale({
+      ...sale,
+      lines: linesBySale.get(sale.id) ?? [],
+    }),
+  );
 
   return {
     window,

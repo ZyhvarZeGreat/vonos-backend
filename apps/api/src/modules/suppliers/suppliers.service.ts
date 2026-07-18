@@ -1,11 +1,18 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import type { Supplier, SupplierListRow } from '@vonos/types';
-import type { ContactDueSummary, ContactLedgerEntry, CsvImportResult } from '@vonos/types';
+import type {
+  ContactDueSummary,
+  ContactLedgerEntry,
+  CsvImportResult,
+  Supplier,
+  SupplierFilters,
+  SupplierListRow,
+} from '@vonos/types';
 import { TenantDbService } from '../../common/prisma/tenant-db.service';
 import { AuditService } from '../audit/audit.service';
-import { buildCursorQuery } from '../../common/utils/pagination';
+import { buildCompositeCursorQuery } from '../../common/utils/pagination';
 import { parseCsv, pickCsvField } from '../../common/utils/csvImport';
-import { parseMovementLines, toIso, toNumber } from '../../common/utils/serializers';
+import { toIso, toNumber } from '../../common/utils/serializers';
+import { supplierActivityStatus } from '../../common/utils/supplierRollups';
 
 export interface SupplierKpiSummary {
   totalSuppliers: number;
@@ -25,6 +32,9 @@ function serializeSupplier(row: {
   address: string | null;
   locationCode: string | null;
   notes: string | null;
+  openingBalance?: { toString(): string } | number | null;
+  assignedToUserId?: string | null;
+  assignedToUser?: { name: string } | null;
   createdByUserId: string | null;
   createdByName: string | null;
   createdAt: Date;
@@ -40,6 +50,9 @@ function serializeSupplier(row: {
     address: row.address,
     locationCode: row.locationCode,
     notes: row.notes,
+    openingBalance: toNumber(row.openingBalance ?? 0),
+    assignedToUserId: row.assignedToUserId ?? null,
+    assignedToName: row.assignedToUser?.name ?? null,
     createdByUserId: row.createdByUserId,
     createdByName: row.createdByName,
     createdAt: toIso(row.createdAt),
@@ -48,12 +61,16 @@ function serializeSupplier(row: {
 }
 
 function toListRow(
-  row: Parameters<typeof serializeSupplier>[0],
+  row: Parameters<typeof serializeSupplier>[0] & {
+    totalPurchase?: { toString(): string } | number;
+    totalPurchaseDue?: { toString(): string } | number;
+    totalPurchasePaid?: { toString(): string } | number;
+    totalPurchaseReturn?: { toString(): string } | number;
+    totalAdvance?: { toString(): string } | number;
+    lastPurchaseAt?: Date | null;
+  },
   extras?: {
     contactId?: string | null;
-    totalPurchase?: number;
-    totalPurchaseDue?: number;
-    totalPurchasePaid?: number;
   },
 ): SupplierListRow {
   return {
@@ -66,20 +83,13 @@ function toListRow(
     businessName: row.name,
     taxNumber: null,
     payTerm: null,
-    openingBalance: 0,
-    totalPurchase: extras?.totalPurchase ?? 0,
-    totalPurchaseDue: extras?.totalPurchaseDue ?? 0,
-    totalPurchasePaid: extras?.totalPurchasePaid ?? 0,
-    status: 'active',
+    totalPurchase: toNumber(row.totalPurchase ?? 0),
+    totalPurchaseDue: toNumber(row.totalPurchaseDue ?? 0),
+    totalPurchasePaid: toNumber(row.totalPurchasePaid ?? 0),
+    totalPurchaseReturn: toNumber(row.totalPurchaseReturn ?? 0),
+    totalAdvance: toNumber(row.totalAdvance ?? 0),
+    status: supplierActivityStatus(row.lastPurchaseAt),
   };
-}
-
-function movementLineTotal(lines: ReturnType<typeof parseMovementLines>): number {
-  return lines.reduce(
-    (sum, line) =>
-      sum + line.quantity * toNumber((line as { unitCost?: number }).unitCost ?? 0),
-    0,
-  );
 }
 
 @Injectable()
@@ -89,16 +99,39 @@ export class SuppliersService {
     private readonly auditService: AuditService,
   ) {}
 
-  async list(filters: {
-    cursor?: string;
-    limit?: number;
-    search?: string;
-  } = {}): Promise<SupplierListRow[]> {
+  async list(filters: SupplierFilters = {}): Promise<SupplierListRow[]> {
     const tenantId = this.tenantDb.requireTenantId();
+    const activeSince = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
+    const pagination = buildCompositeCursorQuery({
+      sortField: 'name',
+      sortDir: 'asc',
+      cursor: filters.cursor,
+      limit: filters.limit ?? 10,
+      sortValueType: 'string',
+    });
+
     const rows = await this.tenantDb.db.supplier.findMany({
       where: {
         tenantId,
         deletedAt: null,
+        ...(filters.assignedToUserId
+          ? { assignedToUserId: filters.assignedToUserId }
+          : {}),
+        ...(filters.openingBalance ? { openingBalance: { gt: 0 } } : {}),
+        ...(filters.purchaseDue ? { totalPurchaseDue: { gt: 0 } } : {}),
+        ...(filters.purchaseReturn ? { totalPurchaseReturn: { gt: 0 } } : {}),
+        ...(filters.advanceBalance ? { totalAdvance: { gt: 0 } } : {}),
+        ...(filters.status === 'active'
+          ? { lastPurchaseAt: { gte: activeSince } }
+          : {}),
+        ...(filters.status === 'inactive'
+          ? {
+              OR: [
+                { lastPurchaseAt: null },
+                { lastPurchaseAt: { lt: activeSince } },
+              ],
+            }
+          : {}),
         ...(filters.search
           ? {
               OR: [
@@ -113,64 +146,30 @@ export class SuppliersService {
               ],
             }
           : {}),
+        ...(pagination.where ?? {}),
       },
-      orderBy: { name: 'asc' },
-      ...buildCursorQuery(filters.cursor, filters.limit ?? 25),
+      include: { assignedToUser: { select: { name: true } } },
+      orderBy: [{ name: 'asc' }, { id: 'asc' }],
+      take: pagination.take,
     });
 
     if (rows.length === 0) return [];
 
-    const supplierIds = rows.map((row) => row.id);
-    const [movements, legacyIds] = await Promise.all([
-      this.tenantDb.db.stockMovement.findMany({
-        where: {
-          tenantId,
-          deletedAt: null,
-          type: 'inbound',
-          supplierId: { in: supplierIds },
-        },
-        select: { supplierId: true, lines: true, status: true },
-      }),
-      this.tenantDb.db.migrationLegacyId.findMany({
-        where: { tenantId, entityType: 'supplier', newId: { in: supplierIds } },
-        select: { newId: true, legacyId: true },
-      }),
-    ]);
-
+    const legacyIds = await this.tenantDb.db.migrationLegacyId.findMany({
+      where: {
+        tenantId,
+        entityType: 'supplier',
+        newId: { in: rows.map((row) => row.id) },
+      },
+      select: { newId: true, legacyId: true },
+    });
     const legacyById = new Map(
       legacyIds.map((l) => [l.newId, `CO${String(l.legacyId).padStart(4, '0')}`]),
     );
-    const purchaseBySupplier = new Map<
-      string,
-      { total: number; due: number; paid: number }
-    >();
 
-    for (const movement of movements) {
-      if (!movement.supplierId) continue;
-      const amount = movementLineTotal(parseMovementLines(movement.lines));
-      const bucket = purchaseBySupplier.get(movement.supplierId) ?? {
-        total: 0,
-        due: 0,
-        paid: 0,
-      };
-      bucket.total += amount;
-      if (movement.status === 'Received' || movement.status === 'Delivered') {
-        bucket.paid += amount;
-      } else {
-        bucket.due += amount;
-      }
-      purchaseBySupplier.set(movement.supplierId, bucket);
-    }
-
-    return rows.map((row) => {
-      const agg = purchaseBySupplier.get(row.id);
-      return toListRow(row, {
-        contactId: legacyById.get(row.id) ?? null,
-        totalPurchase: agg?.total ?? 0,
-        totalPurchaseDue: agg?.due ?? 0,
-        totalPurchasePaid: agg?.paid ?? 0,
-      });
-    });
+    return rows.map((row) =>
+      toListRow(row, { contactId: legacyById.get(row.id) ?? null }),
+    );
   }
 
   async kpiSummary(): Promise<SupplierKpiSummary> {
@@ -191,9 +190,20 @@ export class SuppliersService {
     const tenantId = this.tenantDb.requireTenantId();
     const row = await this.tenantDb.db.supplier.findFirst({
       where: { id, tenantId, deletedAt: null },
+      include: { assignedToUser: { select: { name: true } } },
     });
     if (!row) throw new NotFoundException('Supplier not found');
     return toListRow(row);
+  }
+
+  async getMeta(id: string): Promise<{ id: string; name: string }> {
+    const tenantId = this.tenantDb.requireTenantId();
+    const row = await this.tenantDb.db.supplier.findFirst({
+      where: { id, tenantId, deletedAt: null },
+      select: { id: true, name: true },
+    });
+    if (!row) throw new NotFoundException('Supplier not found');
+    return row;
   }
 
   async create(body: {
@@ -204,6 +214,8 @@ export class SuppliersService {
     address?: string;
     locationCode?: string;
     notes?: string;
+    openingBalance?: number;
+    assignedToUserId?: string;
   }): Promise<SupplierListRow> {
     const tenantId = this.tenantDb.requireTenantId();
     const createdBy = await this.auditService.createdByFields();
@@ -220,8 +232,11 @@ export class SuppliersService {
         address: body.address ?? null,
         locationCode,
         notes: body.notes ?? null,
+        openingBalance: body.openingBalance ?? 0,
+        assignedToUserId: body.assignedToUserId ?? null,
         ...createdBy,
       },
+      include: { assignedToUser: { select: { name: true } } },
     });
     await this.auditService.log({
       action: 'created',
@@ -241,6 +256,8 @@ export class SuppliersService {
       phone: string;
       address: string;
       notes: string;
+      openingBalance: number;
+      assignedToUserId: string;
     }>,
   ): Promise<SupplierListRow> {
     const tenantId = this.tenantDb.requireTenantId();
@@ -252,6 +269,7 @@ export class SuppliersService {
     const row = await this.tenantDb.db.supplier.update({
       where: { id },
       data: body,
+      include: { assignedToUser: { select: { name: true } } },
     });
     await this.auditService.log({
       action: 'updated',
@@ -263,12 +281,22 @@ export class SuppliersService {
   }
 
   async getSummary(id: string): Promise<ContactDueSummary> {
-    const row = await this.getById(id);
+    const tenantId = this.tenantDb.requireTenantId();
+    const row = await this.tenantDb.db.supplier.findFirst({
+      where: { id, tenantId, deletedAt: null },
+      select: {
+        id: true,
+        totalPurchase: true,
+        totalPurchasePaid: true,
+        totalPurchaseDue: true,
+      },
+    });
+    if (!row) throw new NotFoundException('Supplier not found');
     return {
       contactId: row.id,
-      totalAmount: row.totalPurchase ?? 0,
-      totalPaid: row.totalPurchasePaid ?? 0,
-      totalDue: row.totalPurchaseDue ?? 0,
+      totalAmount: toNumber(row.totalPurchase),
+      totalPaid: toNumber(row.totalPurchasePaid),
+      totalDue: toNumber(row.totalPurchaseDue),
       currency: 'NGN',
     };
   }
@@ -290,17 +318,27 @@ export class SuppliersService {
       select: { id: true, reference: true },
     });
     const movementIds = movements.map((movement) => movement.id);
-    const refById = new Map(movements.map((movement) => [movement.id, movement.reference]));
+    const refById = new Map(
+      movements.map((movement) => [movement.id, movement.reference]),
+    );
 
+    const pagination = buildCompositeCursorQuery({
+      sortField: 'date',
+      sortDir: 'desc',
+      cursor,
+      limit,
+      sortValueType: 'date',
+    });
     const ledgerRows = await this.tenantDb.db.ledgerEntry.findMany({
       where: {
         tenantId,
         deletedAt: null,
         linkedRecordType: 'stock_movement',
         linkedRecordId: { in: movementIds },
+        ...(pagination.where ?? {}),
       },
-      orderBy: { date: 'desc' },
-      ...buildCursorQuery(cursor, limit),
+      orderBy: [{ date: 'desc' }, { id: 'desc' }],
+      take: pagination.take,
     });
 
     return ledgerRows.map((entry) => ({

@@ -1,4 +1,19 @@
-import { Controller, Get, Query, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Post,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
+import type {
+  CreateBrandInput,
+  CreateProductCategoryInput,
+  CreateProductUnitInput,
+  CreateSellingPriceGroupInput,
+  CreateWarrantyInput,
+} from '@vonos/types';
+import { Roles } from '../../common/decorators/roles.decorator';
 import {
   JwtAuthGuard,
   RolesGuard,
@@ -32,6 +47,12 @@ export class CatalogMetaController {
     return this.service.listCategories(listFilters(cursor, limit, search));
   }
 
+  @Post('categories')
+  @Roles('staff', 'manager', 'admin', 'super_admin')
+  createCategory(@Body() body: CreateProductCategoryInput) {
+    return this.service.createCategory(body);
+  }
+
   @Get('brands')
   brands(
     @Query('cursor') cursor?: string,
@@ -39,6 +60,12 @@ export class CatalogMetaController {
     @Query('search') search?: string,
   ) {
     return this.service.listBrands(listFilters(cursor, limit, search));
+  }
+
+  @Post('brands')
+  @Roles('staff', 'manager', 'admin', 'super_admin')
+  createBrand(@Body() body: CreateBrandInput) {
+    return this.service.createBrand(body);
   }
 
   @Get('units')
@@ -50,6 +77,12 @@ export class CatalogMetaController {
     return this.service.listUnits(listFilters(cursor, limit, search));
   }
 
+  @Post('units')
+  @Roles('staff', 'manager', 'admin', 'super_admin')
+  createUnit(@Body() body: CreateProductUnitInput) {
+    return this.service.createUnit(body);
+  }
+
   @Get('warranties')
   warranties(
     @Query('cursor') cursor?: string,
@@ -59,6 +92,12 @@ export class CatalogMetaController {
     return this.service.listWarranties(listFilters(cursor, limit, search));
   }
 
+  @Post('warranties')
+  @Roles('staff', 'manager', 'admin', 'super_admin')
+  createWarranty(@Body() body: CreateWarrantyInput) {
+    return this.service.createWarranty(body);
+  }
+
   @Get('price-groups')
   priceGroups(
     @Query('cursor') cursor?: string,
@@ -66,5 +105,11 @@ export class CatalogMetaController {
     @Query('search') search?: string,
   ) {
     return this.service.listPriceGroups(listFilters(cursor, limit, search));
+  }
+
+  @Post('price-groups')
+  @Roles('staff', 'manager', 'admin', 'super_admin')
+  createPriceGroup(@Body() body: CreateSellingPriceGroupInput) {
+    return this.service.createPriceGroup(body);
   }
 }

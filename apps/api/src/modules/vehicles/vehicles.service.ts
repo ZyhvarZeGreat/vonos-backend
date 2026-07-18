@@ -2,7 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import type { Vehicle, VehicleJobHistoryEntry } from '@vonos/types';
 import { TenantDbService } from '../../common/prisma/tenant-db.service';
 import { AuditService } from '../audit/audit.service';
-import { buildCursorQuery } from '../../common/utils/pagination';
+import { buildCompositeCursorQuery } from '../../common/utils/pagination';
 import { toIso } from '../../common/utils/serializers';
 
 function serialize(row: {
@@ -44,8 +44,16 @@ export class VehiclesService {
     cursor?: string;
     limit?: number;
     search?: string;
+    make?: string;
   } = {}): Promise<Vehicle[]> {
     const tenantId = this.tenantDb.requireTenantId();
+    const pagination = buildCompositeCursorQuery({
+      sortField: 'plateNumber',
+      sortDir: 'asc',
+      cursor: filters.cursor,
+      limit: filters.limit ?? 10,
+      sortValueType: 'string',
+    });
     const rows = await this.tenantDb.db.vehicle.findMany({
       where: {
         tenantId,
@@ -67,9 +75,11 @@ export class VehiclesService {
               ],
             }
           : {}),
+        ...(filters.make ? { make: filters.make } : {}),
+        ...(pagination.where ?? {}),
       },
-      orderBy: { plateNumber: 'asc' },
-      ...buildCursorQuery(filters.cursor, filters.limit ?? 25),
+      orderBy: [{ plateNumber: 'asc' }, { id: 'asc' }],
+      take: pagination.take,
     });
     return rows.map(serialize);
   }
@@ -93,7 +103,8 @@ export class VehiclesService {
 
     const jobs = await this.tenantDb.db.job.findMany({
       where: { tenantId, vehicleId: id, deletedAt: null },
-      orderBy: { createdAt: 'desc' },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: 50,
       select: {
         id: true,
         reference: true,

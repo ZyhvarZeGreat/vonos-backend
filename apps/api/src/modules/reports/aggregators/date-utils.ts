@@ -5,16 +5,33 @@ export interface DateWindow {
   to: Date;
 }
 
+/** Max span for report/finance queries — prevents full-history scans. */
+export const MAX_QUERY_WINDOW_MS = 365 * 24 * 60 * 60 * 1000;
+
+function capWindow(from: Date, to: Date): DateWindow {
+  const spanMs = to.getTime() - from.getTime();
+  if (spanMs <= MAX_QUERY_WINDOW_MS) {
+    return { from, to };
+  }
+  return {
+    from: new Date(to.getTime() - MAX_QUERY_WINDOW_MS),
+    to,
+  };
+}
+
 export function resolveDateWindow(from?: string, to?: string): DateWindow {
   const toDate = to ? new Date(to) : new Date();
-  // No query params = all-time (matches UI "All time" preset on overview/reports).
+  // No query params = capped recent window (UI "All time" maps to same cap client-side).
   if (!from && !to) {
-    return { from: new Date(0), to: toDate };
+    return capWindow(
+      new Date(toDate.getTime() - MAX_QUERY_WINDOW_MS),
+      toDate,
+    );
   }
   const fromDate = from
     ? new Date(from)
     : new Date(toDate.getTime() - 30 * 24 * 60 * 60 * 1000);
-  return { from: fromDate, to: toDate };
+  return capWindow(fromDate, toDate);
 }
 
 export function priorWindow(window: DateWindow): DateWindow {

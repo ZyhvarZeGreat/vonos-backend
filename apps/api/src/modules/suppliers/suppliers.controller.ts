@@ -8,6 +8,7 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
+import type { SupplierFilters } from '@vonos/types';
 import { Roles } from '../../common/decorators/roles.decorator';
 import {
   JwtAuthGuard,
@@ -31,12 +32,25 @@ export class SuppliersController {
     @Query('cursor') cursor?: string,
     @Query('limit') limit?: string,
     @Query('search') search?: string,
+    @Query('purchaseDue') purchaseDue?: string,
+    @Query('purchaseReturn') purchaseReturn?: string,
+    @Query('advanceBalance') advanceBalance?: string,
+    @Query('openingBalance') openingBalance?: string,
+    @Query('assignedToUserId') assignedToUserId?: string,
+    @Query('status') status?: 'active' | 'inactive',
   ) {
-    return this.suppliersService.list({
+    const filters: SupplierFilters = {
       cursor,
       limit: limit ? Number(limit) : undefined,
       search,
-    });
+      purchaseDue: purchaseDue === 'true',
+      purchaseReturn: purchaseReturn === 'true',
+      advanceBalance: advanceBalance === 'true',
+      openingBalance: openingBalance === 'true',
+      assignedToUserId,
+      status,
+    };
+    return this.suppliersService.list(filters);
   }
 
   @Post('import')
@@ -63,6 +77,11 @@ export class SuppliersController {
     );
   }
 
+  @Get(':id/meta')
+  getMeta(@Param('id') id: string) {
+    return this.suppliersService.getMeta(id);
+  }
+
   @Get(':id')
   getById(@Param('id') id: string) {
     return this.suppliersService.getById(id);
@@ -79,6 +98,8 @@ export class SuppliersController {
       phone?: string;
       address?: string;
       notes?: string;
+      openingBalance?: number;
+      assignedToUserId?: string;
     },
   ) {
     return this.suppliersService.create(body);
@@ -96,6 +117,8 @@ export class SuppliersController {
       phone: string;
       address: string;
       notes: string;
+      openingBalance: number;
+      assignedToUserId: string;
     }>,
   ) {
     return this.suppliersService.update(id, body);

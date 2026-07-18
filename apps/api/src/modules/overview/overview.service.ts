@@ -3,7 +3,7 @@ import type { GroupOverviewDashboard, OverviewDashboard, OverviewPanel } from '@
 import { TenantDbService } from '../../common/prisma/tenant-db.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { CacheService } from '../../common/cache/cache.service';
-import { buildGroupOverview } from './groupOverview';
+import { buildGroupOverview, groupOverviewCacheWindowKey } from './groupOverview';
 import {
   buildAppointmentOverview,
   buildJobOverview,
@@ -29,7 +29,10 @@ export class OverviewService {
   async dashboard(from?: string, to?: string): Promise<OverviewDashboard> {
     const tenantId = this.tenantDb.requireTenantId();
 
-    const cacheKey = `entity-overview:${tenantId}:${from ?? ''}:${to ?? ''}`;
+    const cacheKey = await this.cache.tenantScopedKey(
+      tenantId,
+      `entity-overview:${tenantId}:${groupOverviewCacheWindowKey(from, to)}`,
+    );
     const cached = await this.cache.get<OverviewDashboard>(cacheKey);
     if (cached) return cached;
 

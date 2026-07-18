@@ -57,7 +57,7 @@ Do **not** deploy the API to Vercel serverless for production (reports and Prism
    |----------|--------|
    | `DATABASE_URL` | Neon pooled URL from step 1 |
    | `JWT_SECRET` | `openssl rand -base64 32` |
-   | `JWT_ACCESS_EXPIRES` | `15m` |
+   | `JWT_ACCESS_EXPIRES` | `2h` |
    | `JWT_REFRESH_EXPIRES` | `7d` |
    | `WEB_ORIGIN` | Your Vercel URL (step 3), e.g. `https://vonos-web.vercel.app` |
    | `NODE_ENV` | `production` |
@@ -68,6 +68,50 @@ Do **not** deploy the API to Vercel serverless for production (reports and Prism
 
 6. Note the public URL, e.g. `https://vonos-backend-production.up.railway.app`
 7. Verify: `curl https://YOUR-API.up.railway.app/health` → `{"status":"ok"}` (or similar)
+
+### Redis cache (required for warm performance)
+
+Add these Railway environment variables in both staging and production:
+
+- `UPSTASH_REDIS_REST_URL`
+- `UPSTASH_REDIS_REST_TOKEN`
+
+Without these values, the API falls back to in-memory cache and every restart
+causes a full cold cache.
+
+Verification (as a super admin token):
+
+```bash
+curl -H "Authorization: Bearer <JWT>" \
+  "https://YOUR-API.up.railway.app/overview/cache/stats"
+```
+
+Expected response should include:
+
+```json
+{ "backend": "redis", "keyCount": 123 }
+```
+
+---
+
+## Performance smoke checklist (post-deploy)
+
+Run these as a tenant admin with a bounded date range (`last_30_days`):
+
+1. Finance overview — `/ledger/summary` + `/ledger/charts` load without timeout.
+2. Profit & Loss — `/reports/run?reportId=profit-loss&mode=pl-core`, then two `pl-breakdown` tabs.
+3. List pages — sales page 1 and customers page 1 return in under 2s cold.
+4. Suppliers list — facets (purchase due / status) filter in SQL via rollup columns.
+5. After `20260716140000_supplier_rollups_and_search`, run once:
+   `npx ts-node --transpile-only prisma/scripts/backfill-supplier-rollups.ts`
+
+**SLO targets (warm cache):**
+
+| Endpoint | p95 target |
+|----------|------------|
+| `pl-core` | < 3s cold, < 500ms warm |
+| `pl-breakdown` tab | < 1s cold, < 200ms cached |
+| `ledger/summary` | < 1s warm |
 
 ---
 

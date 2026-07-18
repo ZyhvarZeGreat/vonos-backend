@@ -30,7 +30,7 @@ export interface JobReportContext {
 }
 
 /** Safety cap for row-level job graphs (all-time detail is truncated). */
-export const JOB_REPORT_ROW_CAP = 5_000;
+export const JOB_REPORT_ROW_CAP = 2_000;
 
 function jobRevenue(
   invoiceAmount: unknown,
@@ -53,6 +53,8 @@ export async function loadJobReportContext(
       deletedAt: null,
       status: 'Delivered',
       updatedAt: { gte: window.from, lte: window.to },
+      // Job-linked sales own the commercial revenue — avoid double-count in P&L.
+      sales: { none: { deletedAt: null } },
     },
     select: {
       id: true,
@@ -168,6 +170,11 @@ export async function computeJobRevenueTotal(
       AND j.status = 'Delivered'
       AND j."updatedAt" >= ${window.from}
       AND j."updatedAt" <= ${window.to}
+      AND NOT EXISTS (
+        SELECT 1 FROM "Sale" s
+        WHERE s."jobId" = j.id
+          AND s."deletedAt" IS NULL
+      )
   `;
 
   return {

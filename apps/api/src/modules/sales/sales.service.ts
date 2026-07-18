@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import type {
@@ -15,8 +16,13 @@ import type {
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { TenantDbService } from '../../common/prisma/tenant-db.service';
 import { CacheService } from '../../common/cache/cache.service';
+import { invalidateTenantDashboardCache } from '../../common/cache/cacheInvalidation';
+import { refreshCustomerFinancialRollups } from '../../common/utils/customerRollups';
+import { applyDailyFinanceDelta } from '../../common/utils/dailyFinanceRollup';
 import { AuditService } from '../audit/audit.service';
-import { buildCursorQuery } from '../../common/utils/pagination';
+import { InvoiceHubService } from '../invoices/invoice-hub.service';
+import { buildCompositeCursorQuery } from '../../common/utils/pagination';
+import { resolveListSort } from '../../common/utils/listSort';
 import { computeStockStatus } from '../../common/utils/stockQuantity';
 import { adjustItemLocationStock } from '../../common/utils/itemLocationStock';
 import {
@@ -44,6 +50,8 @@ type SaleLineInput = {
   quantity: number;
   unitPrice: number;
   discountAmount?: number;
+  createPurchase?: boolean;
+  sourceTenantCode?: string;
 };
 
 function computeLineTotal(line: {
@@ -84,42 +92,167 @@ function computeSaleTotal(
 
 @Injectable()
 export class SalesService {
+  private readonly logger = new Logger(SalesService.name);
+
   constructor(
     private readonly tenantDb: TenantDbService,
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
     private readonly cache: CacheService,
+    private readonly invoiceHub: InvoiceHubService,
   ) {}
 
-  async list(filters: SaleFilters): Promise<Sale[]> {
+  private refreshSaleSideEffects(options: {
+    customerId?: string | null;
+    ledgerEntry?: {
+      type: 'revenue' | 'expense';
+      amount: number;
+      date: Date;
+      currency?: string;
+    };
+  }): void {
     const tenantId = this.tenantDb.requireTenantId();
+    void invalidateTenantDashboardCache(this.cache, tenantId);
+    if (options.ledgerEntry) {
+      void applyDailyFinanceDelta(
+        this.prisma,
+        tenantId,
+        options.ledgerEntry.date,
+        options.ledgerEntry.type,
+        Math.abs(options.ledgerEntry.amount),
+        options.ledgerEntry.currency ?? 'NGN',
+      );
+    }
+    if (options.customerId) {
+      void refreshCustomerFinancialRollups(this.tenantDb.db, options.customerId);
+    }
+  }
+
+  async list(filters: SaleFilters): Promise<Sale[]> {
+    const startedAt = Date.now();
+    const tenantId = this.tenantDb.requireTenantId();
+    const dateFilter =
+      filters.from || filters.to
+        ? {
+            date: {
+              ...(filters.from ? { gte: new Date(filters.from) } : {}),
+              ...(filters.to ? { lte: new Date(filters.to) } : {}),
+            },
+          }
+        : {};
+    const sort = resolveListSort(filters.sortBy, filters.sortDir, {
+      date: { field: 'date', type: 'date' },
+      reference: { field: 'reference', type: 'string' },
+      total: { field: 'total', type: 'number' },
+      paymentStatus: { field: 'paymentStatus', type: 'string' },
+      status: { field: 'status', type: 'string' },
+      createdAt: { field: 'createdAt', type: 'date' },
+    }, {
+      sortField: 'date',
+      sortDir: 'desc',
+      sortValueType: 'date',
+    });
+    const pagination = buildCompositeCursorQuery({
+      sortField: sort.sortField,
+      sortDir: sort.sortDir,
+      cursor: filters.cursor,
+      limit: filters.limit ?? 10,
+      sortValueType: sort.sortValueType,
+    });
+
+    // Prefer reference-only search when query looks like a sale # (avoids customer join).
+    const search = filters.search?.trim();
+    const searchLooksLikeRef =
+      Boolean(search) && /^[A-Za-z0-9._-]{2,}$/.test(search!);
+
     const rows = await this.tenantDb.db.sale.findMany({
       where: {
         tenantId,
         deletedAt: null,
         ...saleStatusWhereClause(filters),
-        ...(filters.search
-          ? {
-              OR: [
-                {
-                  reference: { contains: filters.search, mode: 'insensitive' },
-                },
-                {
-                  customer: {
-                    name: { contains: filters.search, mode: 'insensitive' },
-                  },
-                },
-              ],
-            }
+        ...dateFilter,
+        ...(filters.locationCode
+          ? { locationCode: filters.locationCode }
           : {}),
+        ...(filters.customerId ? { customerId: filters.customerId } : {}),
+        ...(filters.jobId ? { jobId: filters.jobId } : {}),
+        ...(filters.paymentStatus
+          ? { paymentStatus: filters.paymentStatus }
+          : {}),
+        ...(filters.paymentMethod
+          ? { paymentMethod: filters.paymentMethod }
+          : {}),
+        ...(filters.cleanerUserId
+          ? { cleanerUserId: filters.cleanerUserId }
+          : {}),
+        ...(filters.serviceStaffEmployeeId
+          ? { serviceStaffEmployeeId: filters.serviceStaffEmployeeId }
+          : {}),
+        ...(filters.createdByUserId
+          ? { createdByUserId: filters.createdByUserId }
+          : {}),
+        ...(search
+          ? searchLooksLikeRef
+            ? {
+                reference: { contains: search, mode: 'insensitive' },
+              }
+            : {
+                OR: [
+                  {
+                    reference: { contains: search, mode: 'insensitive' },
+                  },
+                  {
+                    customer: {
+                      name: { contains: search, mode: 'insensitive' },
+                    },
+                  },
+                ],
+              }
+          : {}),
+        ...(pagination.where ?? {}),
       },
-      include: {
-        customer: true,
-        lines: true,
+      select: {
+        id: true,
+        tenantId: true,
+        reference: true,
+        customerId: true,
+        customer: { select: { name: true } },
+        jobId: true,
+        job: { select: { reference: true } },
+        total: true,
+        discountAmount: true,
+        taxAmount: true,
+        notes: true,
+        originalSaleId: true,
+        currency: true,
+        status: true,
+        paymentStatus: true,
+        paymentMethod: true,
+        cleanerUserId: true,
+        cleanerName: true,
+        serviceStaffEmployeeId: true,
+        serviceStaffEmployee: { select: { name: true } },
+        locationCode: true,
+        shippingStatus: true,
+        shippingAddress: true,
+        trackingNumber: true,
+        date: true,
+        createdByUserId: true,
+        createdByName: true,
+        createdAt: true,
+        updatedAt: true,
+        _count: { select: { lines: true } },
       },
-      orderBy: { date: 'desc' },
-      ...buildCursorQuery(filters.cursor, filters.limit ?? 50),
+      orderBy: [{ [sort.sortField]: sort.sortDir }, { id: sort.sortDir }],
+      take: pagination.take,
     });
+
+    const ms = Date.now() - startedAt;
+    if (ms > 500) {
+      this.logger.warn(
+        `list ${ms}ms tenant=${tenantId} rows=${rows.length} search=${search ? '1' : '0'}`,
+      );
+    }
 
     return rows.map((row) => this.toSale(row));
   }
@@ -129,7 +262,15 @@ export class SalesService {
     const row = await this.tenantDb.db.sale.findFirst({
       where: { id, tenantId, deletedAt: null },
       include: {
-        customer: true,
+        customer: {
+          select: {
+            name: true,
+            email: true,
+            phone: true,
+            totalSellDue: true,
+          },
+        },
+        job: { select: { reference: true } },
         lines: true,
         originalSale: { select: { reference: true } },
       },
@@ -138,10 +279,26 @@ export class SalesService {
     return this.toSaleDetail(row);
   }
 
+  async getMeta(id: string): Promise<{ id: string; reference: string }> {
+    const tenantId = this.tenantDb.requireTenantId();
+    const row = await this.tenantDb.db.sale.findFirst({
+      where: { id, tenantId, deletedAt: null },
+      select: { id: true, reference: true },
+    });
+    if (!row) throw new NotFoundException('Sale not found');
+    return row;
+  }
+
   async create(body: {
     reference: string;
     customerName?: string;
+    customerId?: string;
+    jobId?: string;
     locationCode?: string;
+    paymentMethod?: string;
+    cleanerUserId?: string;
+    cleanerName?: string;
+    serviceStaffEmployeeId?: string;
     lines: SaleLineInput[];
     currency?: string;
     date?: string;
@@ -160,8 +317,14 @@ export class SalesService {
     }>;
   }): Promise<SaleDetail> {
     const tenantId = this.tenantDb.requireTenantId();
+    const tenant = await this.prisma.tenant.findFirst({
+      where: { id: tenantId, deletedAt: null },
+      select: { archetype: true, code: true },
+    });
+    const isJobTenant = tenant?.archetype === 'job';
+
     const createdBy = await this.auditService.createdByFields();
-    const locationCode = await this.tenantDb.resolveBusinessLocation(
+    let locationCode = await this.tenantDb.resolveBusinessLocation(
       body.locationCode,
     );
     const currency = body.currency ?? 'NGN';
@@ -169,22 +332,130 @@ export class SalesService {
     const status = normalizeCreateStatus(body.status);
     const isProvisional = status === 'draft' || status === 'quotation';
 
+    let jobId: string | null = body.jobId?.trim() || null;
+    let jobReference: string | null = null;
+    let linkedJob: {
+      id: string;
+      reference: string;
+      customerId: string | null;
+      customerName: string | null;
+      locationCode: string | null;
+      invoiceAmount: { toString(): string } | null;
+      materials: Array<{
+        itemId: string | null;
+        name: string;
+        quantity: { toString(): string };
+        unitCost: { toString(): string };
+      }>;
+      labourEntries: Array<{
+        hours: { toString(): string };
+        rate: { toString(): string };
+        totalCost: { toString(): string };
+        staffId: string;
+      }>;
+    } | null = null;
+
+    if (isJobTenant && !jobId) {
+      throw new BadRequestException(
+        'Select a job — for Automotive, every sale is linked to a job',
+      );
+    }
+
+    if (jobId) {
+      linkedJob = await this.tenantDb.db.job.findFirst({
+        where: { id: jobId, tenantId, deletedAt: null },
+        select: {
+          id: true,
+          reference: true,
+          customerId: true,
+          customerName: true,
+          locationCode: true,
+          invoiceAmount: true,
+          materials: {
+            select: {
+              itemId: true,
+              name: true,
+              quantity: true,
+              unitCost: true,
+            },
+          },
+          labourEntries: {
+            select: {
+              hours: true,
+              rate: true,
+              totalCost: true,
+              staffId: true,
+            },
+          },
+        },
+      });
+      if (!linkedJob) {
+        throw new BadRequestException('Job not found');
+      }
+      jobReference = linkedJob.reference;
+      const existingForJob = await this.tenantDb.db.sale.findFirst({
+        where: { tenantId, jobId, deletedAt: null },
+        select: { id: true, reference: true },
+      });
+      if (existingForJob) {
+        throw new BadRequestException(
+          `Job ${linkedJob.reference} already has sale ${existingForJob.reference}`,
+        );
+      }
+      if (!locationCode && linkedJob.locationCode) {
+        locationCode = linkedJob.locationCode;
+      }
+    }
+
+    let serviceStaffEmployeeId: string | null = null;
+    let cleanerUserId = body.cleanerUserId?.trim() || null;
+    let cleanerName = body.cleanerName?.trim() || null;
+
+    if (body.serviceStaffEmployeeId?.trim()) {
+      const employee = await this.tenantDb.db.employee.findFirst({
+        where: {
+          id: body.serviceStaffEmployeeId.trim(),
+          tenantId,
+          deletedAt: null,
+          isServiceStaff: true,
+        },
+        select: { id: true, name: true, userId: true },
+      });
+      if (!employee) {
+        throw new BadRequestException('Service staff employee not found');
+      }
+      serviceStaffEmployeeId = employee.id;
+      cleanerName = cleanerName || employee.name;
+      cleanerUserId = cleanerUserId || employee.userId;
+    }
+
     let customerId: string | null = null;
-    if (body.customerName?.trim()) {
+    if (body.customerId?.trim()) {
+      const existing = await this.tenantDb.db.customer.findFirst({
+        where: { id: body.customerId.trim(), tenantId, deletedAt: null },
+      });
+      if (!existing) {
+        throw new BadRequestException('Customer not found');
+      }
+      customerId = existing.id;
+    } else if (linkedJob?.customerId) {
+      customerId = linkedJob.customerId;
+    } else if (body.customerName?.trim() || linkedJob?.customerName?.trim()) {
+      const name = (body.customerName ?? linkedJob?.customerName ?? '').trim();
       const existing = await this.tenantDb.db.customer.findFirst({
         where: {
           tenantId,
           deletedAt: null,
-          name: { equals: body.customerName.trim(), mode: 'insensitive' },
+          name: { equals: name, mode: 'insensitive' },
         },
       });
       if (existing) {
         customerId = existing.id;
-      } else {
+      } else if (name) {
         const customer = await this.tenantDb.db.customer.create({
           data: {
             tenantId,
-            name: body.customerName.trim(),
+            name,
             ...createdBy,
           },
         });
@@ -192,31 +463,96 @@ export class SalesService {
       }
     }
 
-    const lineData = buildSaleLineRows(body.lines);
+    let workingLines: SaleLineInput[] = body.lines.map((line) => ({ ...line }));
+    if (workingLines.length === 0 && linkedJob) {
+      workingLines = this.linesFromJob(linkedJob);
+    }
+    if (workingLines.length === 0) {
+      throw new BadRequestException('Add at least one line item');
+    }
+
     const orderDiscount = body.discountAmount ?? 0;
     const taxAmount = body.taxAmount ?? 0;
-    const total = computeSaleTotal(lineData, orderDiscount, taxAmount);
+    /** Job materials already moved stock — do not deduct again on the sale. */
+    const skipStock = Boolean(jobId);
 
     const paymentRows =
       !isProvisional && body.payments && body.payments.length > 0
         ? body.payments
         : isProvisional
           ? []
-          : [{ amount: total, method: 'cash' }];
+          : [{ amount: 0, method: 'cash' }];
 
-    const paidTotal = paymentRows.reduce((sum, row) => sum + row.amount, 0);
-    let paymentStatus: PaymentStatus | null = isProvisional ? 'due' : 'paid';
-    if (!isProvisional) {
-      if (paidTotal <= 0) {
-        paymentStatus = 'due';
-      } else if (paidTotal < total) {
-        paymentStatus = 'partial';
-      }
-    }
+    const saleReference =
+      body.reference?.trim() ||
+      (jobReference ? jobReference : `SALE-${Date.now().toString(36).toUpperCase()}`);
 
     const row = await this.prisma.$transaction(async (tx) => {
-      if (!isProvisional) {
-        for (const line of body.lines) {
+      if (!isProvisional && !skipStock) {
+        for (let index = 0; index < workingLines.length; index++) {
+          const line = workingLines[index]!;
+          const qty = Math.max(1, Math.round(line.quantity));
+          const needsPurchase = Boolean(line.createPurchase) || !line.itemId;
+          if (!needsPurchase) continue;
+
+          const sku =
+            line.sku?.trim() ||
+            `ADHOC-${Date.now().toString(36).toUpperCase()}-${index + 1}`;
+          let item = await tx.item.findFirst({
+            where: { tenantId, sku, deletedAt: null },
+          });
+          if (!item) {
+            item = await tx.item.create({
+              data: {
+                tenantId,
+                sku,
+                name: line.name.trim(),
+                quantity: qty,
+                costPrice: line.unitPrice,
+                sellPrice: line.unitPrice,
+                status: computeStockStatus(qty, null),
+                locationCode: locationCode ?? undefined,
+              },
+            });
+          } else {
+            const nextQty = toNumber(item.quantity) + qty;
+            item = await tx.item.update({
+              where: { id: item.id },
+              data: {
+                quantity: nextQty,
+                status: computeStockStatus(nextQty, item.reorderPoint),
+              },
+            });
+          }
+
+          const purchaseLineTotal = qty * line.unitPrice;
+          await tx.stockMovement.create({
+            data: {
+              tenantId,
+              type: 'inbound',
+              reference: `${body.reference}-P${index + 1}`,
+              status: 'Received',
+              locationCode: locationCode ?? undefined,
+              paymentStatus: 'due',
+              lines: [
+                {
+                  itemId: item.id,
+                  name: line.name,
+                  quantity: qty,
+                  unitCost: line.unitPrice,
+                  total: purchaseLineTotal,
+                },
+              ],
+              notes: `Ad-hoc purchase for sale ${body.reference}`,
+              date: saleDate,
+              ...createdBy,
+            },
+          });
+
+          workingLines[index] = { ...line, itemId: item.id, sku, quantity: qty };
+        }
+
+        for (const line of workingLines) {
           if (!line.itemId) continue;
           const item = await tx.item.findFirst({
             where: { id: line.itemId, deletedAt: null },
@@ -224,8 +560,9 @@ export class SalesService {
           if (!item) {
             throw new BadRequestException(`Item not found: ${line.sku}`);
           }
+          const qty = Math.max(1, Math.round(line.quantity));
           const currentQty = toNumber(item.quantity);
-          const nextQuantity = currentQty - line.quantity;
+          const nextQuantity = currentQty - qty;
           await tx.item.update({
             where: { id: item.id },
             data: {
@@ -234,20 +571,37 @@ export class SalesService {
             },
           });
           await adjustItemLocationStock(tx, {
-            tenantId,
+            tenantId: item.tenantId,
             itemId: item.id,
             locationCode: locationCode ?? item.locationCode,
             binLocation: item.binLocation,
-            delta: -line.quantity,
+            delta: -qty,
           });
         }
+      }
+
+      const lineData = buildSaleLineRows(workingLines);
+      const total = computeSaleTotal(lineData, orderDiscount, taxAmount);
+
+      const resolvedPayments =
+        !isProvisional && body.payments && body.payments.length > 0
+          ? body.payments
+          : isProvisional
+            ? []
+            : [{ amount: total, method: 'cash' as const }];
+      const paidTotal = resolvedPayments.reduce((sum, row) => sum + row.amount, 0);
+      let paymentStatus: PaymentStatus | null = isProvisional ? 'due' : 'paid';
+      if (!isProvisional) {
+        if (paidTotal <= 0) paymentStatus = 'due';
+        else if (paidTotal < total) paymentStatus = 'partial';
       }
 
       const sale = await tx.sale.create({
         data: {
           tenantId,
-          reference: body.reference,
+          reference: saleReference,
           customerId,
+          jobId,
           total,
           discountAmount: orderDiscount > 0 ? orderDiscount : null,
           taxAmount: taxAmount > 0 ? taxAmount : null,
@@ -255,6 +609,10 @@ export class SalesService {
           currency,
           status,
           paymentStatus,
+          paymentMethod: body.paymentMethod?.trim() || null,
+          cleanerUserId,
+          cleanerName,
+          serviceStaffEmployeeId,
           locationCode,
           shippingStatus: body.shippingStatus ?? (isProvisional ? null : 'pending'),
           shippingAddress: body.shippingAddress?.trim() || null,
@@ -263,8 +621,28 @@ export class SalesService {
           lines: { create: lineData },
           ...createdBy,
         },
-        include: { customer: true, lines: true },
+        include: {
+          customer: true,
+          job: { select: { reference: true } },
+          lines: true,
+        },
       });
+
+      const invoice = await this.invoiceHub.ensureSaleInvoice(
+        tx,
+        sale,
+        sale.lines,
+      );
+
+      if (jobId && !isProvisional) {
+        await tx.job.update({
+          where: { id: jobId },
+          data: {
+            invoiceAmount: total,
+            ...(customerId ? { customerId } : {}),
+          },
+        });
+      }
 
       if (!isProvisional) {
         await tx.ledgerEntry.create({
@@ -277,11 +655,12 @@ export class SalesService {
             description: `Sale ${sale.reference}`,
             linkedRecordType: 'sale',
             linkedRecordId: sale.id,
+            invoiceId: invoice.id,
             date: saleDate,
           },
         });
 
-        for (const payment of paymentRows) {
+        for (const payment of resolvedPayments) {
           if (payment.amount <= 0) continue;
           await tx.payment.create({
             data: {
@@ -292,6 +671,7 @@ export class SalesService {
               paidOn: saleDate,
               paymentFor: 'sale',
               saleId: sale.id,
+              invoiceId: invoice.id,
               accountId: payment.accountId ?? null,
               note: payment.note ?? null,
               createdByName: createdBy.createdByName ?? null,
@@ -303,21 +683,26 @@ export class SalesService {
       return sale;
     });
 
+    const saleTotal = toNumber(row.total);
     await this.auditService.log({
       action: 'created',
       entityType: 'sale',
       entityId: row.id,
       summary: `Recorded sale ${row.reference}`,
-      metadata: { total, paymentStatus },
+      metadata: { total: saleTotal, paymentStatus: row.paymentStatus },
     });
 
-    const tenantIdForCache = this.tenantDb.requireTenantId();
-    void Promise.all([
-      this.cache.invalidatePrefix(`entity-overview:${tenantIdForCache}`),
-      this.cache.invalidatePrefix(`report-dash:${tenantIdForCache}`),
-      this.cache.invalidatePrefix('group-overview:'),
-      this.cache.invalidatePrefix('report-group:'),
-    ]);
+    this.refreshSaleSideEffects({
+      customerId: row.customerId,
+      ledgerEntry: !isProvisional
+        ? {
+            type: 'revenue',
+            amount: saleTotal,
+            date: row.date,
+            currency,
+          }
+        : undefined,
+    });
 
     return this.toSaleDetail(row);
   }
@@ -355,31 +740,33 @@ export class SalesService {
     else if (paidTotal < total) paymentStatus = 'partial';
 
     const row = await this.prisma.$transaction(async (tx) => {
-      for (const line of existing.lines) {
-        if (!line.itemId) continue;
-        const item = await tx.item.findFirst({
-          where: { id: line.itemId, deletedAt: null },
-        });
-        if (!item) {
-          throw new BadRequestException(`Item not found: ${line.sku}`);
+      if (!existing.jobId) {
+        for (const line of existing.lines) {
+          if (!line.itemId) continue;
+          const item = await tx.item.findFirst({
+            where: { id: line.itemId, deletedAt: null },
+          });
+          if (!item) {
+            throw new BadRequestException(`Item not found: ${line.sku}`);
+          }
+          const currentQty = toNumber(item.quantity);
+          const qty = toNumber(line.quantity);
+          const nextQuantity = currentQty - qty;
+          await tx.item.update({
+            where: { id: item.id },
+            data: {
+              quantity: nextQuantity,
+              status: computeStockStatus(nextQuantity, item.reorderPoint),
+            },
+          });
+          await adjustItemLocationStock(tx, {
+            tenantId: item.tenantId,
+            itemId: item.id,
+            locationCode: existing.locationCode ?? item.locationCode,
+            binLocation: item.binLocation,
+            delta: -qty,
+          });
         }
-        const currentQty = toNumber(item.quantity);
-        const qty = toNumber(line.quantity);
-        const nextQuantity = currentQty - qty;
-        await tx.item.update({
-          where: { id: item.id },
-          data: {
-            quantity: nextQuantity,
-            status: computeStockStatus(nextQuantity, item.reorderPoint),
-          },
-        });
-        await adjustItemLocationStock(tx, {
-          tenantId,
-          itemId: item.id,
-          locationCode: existing.locationCode ?? item.locationCode,
-          binLocation: item.binLocation,
-          delta: -qty,
-        });
       }
 
       const sale = await tx.sale.update({
@@ -389,8 +776,19 @@ export class SalesService {
           paymentStatus,
           shippingStatus: existing.shippingStatus ?? 'pending',
         },
-        include: { customer: true, lines: true },
+        include: {
+          customer: true,
+          job: { select: { reference: true } },
+          lines: true,
+        },
       });
+
+      if (existing.jobId) {
+        await tx.job.update({
+          where: { id: existing.jobId },
+          data: { invoiceAmount: total },
+        });
+      }
 
       await tx.ledgerEntry.create({
         data: {
@@ -435,13 +833,15 @@ export class SalesService {
       metadata: { paymentStatus },
     });
 
-    const tenantIdForCache = this.tenantDb.requireTenantId();
-    void Promise.all([
-      this.cache.invalidatePrefix(`entity-overview:${tenantIdForCache}`),
-      this.cache.invalidatePrefix(`report-dash:${tenantIdForCache}`),
-      this.cache.invalidatePrefix('group-overview:'),
-      this.cache.invalidatePrefix('report-group:'),
-    ]);
+    this.refreshSaleSideEffects({
+      customerId: row.customerId,
+      ledgerEntry: {
+        type: 'revenue',
+        amount: toNumber(row.total),
+        date: row.date,
+        currency: row.currency,
+      },
+    });
 
     return this.toSaleDetail(row);
   }
@@ -609,6 +1009,12 @@ export class SalesService {
         },
       });
 
+      const invoice = await this.invoiceHub.ensureSaleInvoice(
+        tx,
+        sale,
+        sale.lines,
+      );
+
       await tx.ledgerEntry.create({
         data: {
           tenantId,
@@ -619,6 +1025,7 @@ export class SalesService {
           description: `Return ${sale.reference} for sale ${original.reference}`,
           linkedRecordType: 'sale',
           linkedRecordId: sale.id,
+          invoiceId: invoice.id,
           date: saleDate,
         },
       });
@@ -634,13 +1041,15 @@ export class SalesService {
       metadata: { disposition: body.disposition, total: returnTotal },
     });
 
-    const tenantIdForCache = this.tenantDb.requireTenantId();
-    void Promise.all([
-      this.cache.invalidatePrefix(`entity-overview:${tenantIdForCache}`),
-      this.cache.invalidatePrefix(`report-dash:${tenantIdForCache}`),
-      this.cache.invalidatePrefix('group-overview:'),
-      this.cache.invalidatePrefix('report-group:'),
-    ]);
+    this.refreshSaleSideEffects({
+      customerId: row.customerId,
+      ledgerEntry: {
+        type: 'expense',
+        amount: returnTotal,
+        date: row.date,
+        currency: row.currency,
+      },
+    });
 
     return this.toSaleDetail(row);
   }
@@ -750,12 +1159,56 @@ export class SalesService {
     return result;
   }
 
+  private linesFromJob(job: {
+    reference: string;
+    invoiceAmount: { toString(): string } | null;
+    materials: Array<{
+      itemId: string | null;
+      name: string;
+      quantity: { toString(): string };
+      unitCost: { toString(): string };
+    }>;
+    labourEntries: Array<{
+      hours: { toString(): string };
+      rate: { toString(): string };
+      totalCost: { toString(): string };
+      staffId: string;
+    }>;
+  }): SaleLineInput[] {
+    const materialLines = job.materials.map((row, index) => ({
+      itemId: row.itemId ?? undefined,
+      sku: row.itemId ? `PART-${index + 1}` : `JOB-MAT-${index + 1}`,
+      name: row.name,
+      quantity: Math.max(0.01, toNumber(row.quantity)),
+      unitPrice: toNumber(row.unitCost),
+    }));
+    const labourLines = job.labourEntries.map((row, index) => ({
+      sku: `LABOUR-${index + 1}`,
+      name: `Labour`,
+      quantity: Math.max(0.01, toNumber(row.hours)),
+      unitPrice: toNumber(row.rate),
+    }));
+    const lines = [...materialLines, ...labourLines];
+    if (lines.length > 0) return lines;
+    const amount = job.invoiceAmount != null ? toNumber(job.invoiceAmount) : 0;
+    return [
+      {
+        sku: `JOB-${job.reference}`,
+        name: `Job ${job.reference}`,
+        quantity: 1,
+        unitPrice: Math.max(0, amount),
+      },
+    ];
+  }
+
   private toSale(row: {
     id: string;
     tenantId: string;
     reference: string;
     customerId: string | null;
     customer: { name: string } | null;
+    jobId?: string | null;
+    job?: { reference: string } | null;
     total: { toString(): string };
     discountAmount: { toString(): string } | null;
     taxAmount: { toString(): string } | null;
@@ -765,6 +1218,11 @@ export class SalesService {
     currency: string;
     status: string;
     paymentStatus: string | null;
+    paymentMethod?: string | null;
+    cleanerUserId?: string | null;
+    cleanerName?: string | null;
+    serviceStaffEmployeeId?: string | null;
+    serviceStaffEmployee?: { name: string } | null;
     locationCode: string | null;
     shippingStatus: string | null;
     shippingAddress: string | null;
@@ -774,7 +1232,8 @@ export class SalesService {
     createdByName: string | null;
     createdAt: Date;
     updatedAt: Date;
-    lines: Array<unknown>;
+    lines?: Array<unknown>;
+    _count?: { lines: number };
   }): Sale {
     return {
       id: row.id,
@@ -782,6 +1241,8 @@ export class SalesService {
       reference: row.reference,
       customerId: row.customerId,
       customerName: row.customer?.name ?? 'Walk-in',
+      jobId: row.jobId ?? null,
+      jobReference: row.job?.reference ?? null,
       total: toNumber(row.total),
       discountAmount: row.discountAmount ? toNumber(row.discountAmount) : null,
       taxAmount: row.taxAmount ? toNumber(row.taxAmount) : null,
@@ -792,11 +1253,16 @@ export class SalesService {
       status: mapSaleStatusToUi(row.status),
       recordStatus: row.status as Sale['recordStatus'],
       paymentStatus: row.paymentStatus as PaymentStatus | null,
+      paymentMethod: row.paymentMethod ?? null,
+      cleanerUserId: row.cleanerUserId ?? null,
+      cleanerName: row.cleanerName ?? null,
+      serviceStaffEmployeeId: row.serviceStaffEmployeeId ?? null,
+      serviceStaffEmployeeName: row.serviceStaffEmployee?.name ?? null,
       locationCode: row.locationCode,
       shippingStatus: row.shippingStatus as Sale['shippingStatus'],
       shippingAddress: row.shippingAddress,
       trackingNumber: row.trackingNumber,
-      itemCount: row.lines.length,
+      itemCount: row._count?.lines ?? row.lines?.length ?? 0,
       date: toIso(row.date).slice(0, 10),
       createdByUserId: row.createdByUserId,
       createdByName: row.createdByName,
@@ -810,7 +1276,14 @@ export class SalesService {
     tenantId: string;
     reference: string;
     customerId: string | null;
-    customer: { name: string } | null;
+    customer: {
+      name: string;
+      email?: string | null;
+      phone?: string | null;
+      totalSellDue?: { toString(): string } | number | null;
+    } | null;
+    jobId?: string | null;
+    job?: { reference: string } | null;
     total: { toString(): string };
     discountAmount: { toString(): string } | null;
     taxAmount: { toString(): string } | null;
@@ -820,6 +1293,11 @@ export class SalesService {
     currency: string;
     status: string;
     paymentStatus: string | null;
+    paymentMethod?: string | null;
+    cleanerUserId?: string | null;
+    cleanerName?: string | null;
+    serviceStaffEmployeeId?: string | null;
+    serviceStaffEmployee?: { name: string } | null;
     locationCode: string | null;
     shippingStatus: string | null;
     shippingAddress: string | null;
@@ -855,6 +1333,16 @@ export class SalesService {
         ? toNumber(line.discountAmount)
         : null,
     }));
-    return { ...base, lines };
+    return {
+      ...base,
+      lines,
+      customerEmail: row.customer?.email ?? null,
+      customerPhone: row.customer?.phone ?? null,
+      customerBusinessName: null,
+      customerTotalSellDue:
+        row.customer?.totalSellDue != null
+          ? toNumber(row.customer.totalSellDue)
+          : null,
+    };
   }
 }

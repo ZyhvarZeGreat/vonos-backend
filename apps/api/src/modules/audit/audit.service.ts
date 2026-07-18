@@ -7,7 +7,7 @@ import type {
 } from '@vonos/types';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { TenantDbService } from '../../common/prisma/tenant-db.service';
-import { buildCursorQuery } from '../../common/utils/pagination';
+import { buildCompositeCursorQuery } from '../../common/utils/pagination';
 import { toIso } from '../../common/utils/serializers';
 
 export interface AuditLogInput {
@@ -27,14 +27,22 @@ export class AuditService {
 
   async list(filters: AuditLogFilters): Promise<AuditLogEntry[]> {
     const tenantId = this.tenantDb.requireTenantId();
+    const pagination = buildCompositeCursorQuery({
+      sortField: 'occurredAt',
+      sortDir: 'desc',
+      cursor: filters.cursor,
+      limit: filters.limit ?? 10,
+      sortValueType: 'date',
+    });
     const rows = await this.tenantDb.db.auditLog.findMany({
       where: {
         tenantId,
         ...(filters.entityType ? { entityType: filters.entityType } : {}),
         ...(filters.entityId ? { entityId: filters.entityId } : {}),
+        ...(pagination.where ?? {}),
       },
       orderBy: [{ occurredAt: 'desc' }, { id: 'desc' }],
-      ...buildCursorQuery(filters.cursor, filters.limit ?? 50),
+      take: pagination.take,
     });
     return rows.map((row) => this.serialize(row));
   }
@@ -53,6 +61,12 @@ export class AuditService {
   }
 
   async log(input: AuditLogInput): Promise<void> {
+    void this.persistLog(input).catch((err) => {
+      console.error('Audit log failed', err);
+    });
+  }
+
+  private async persistLog(input: AuditLogInput): Promise<void> {
     const tenantId = this.tenantDb.requireTenantId();
     const actor = await this.resolveActor();
     await this.prisma.auditLog.create({

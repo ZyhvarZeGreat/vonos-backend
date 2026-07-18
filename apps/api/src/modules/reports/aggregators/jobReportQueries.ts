@@ -175,6 +175,48 @@ export async function deliveredTurnaroundDays(
   return rows.map((row) => Math.max(0, Math.round(row.days ?? 0)));
 }
 
+/** Bucket counts in SQL — avoids shipping one row per delivered job to Node. */
+export async function deliveredTurnaroundHistogram(
+  db: TenantScopedPrisma,
+  tenantId: string,
+  from: Date,
+  to: Date,
+): Promise<Array<{ bucket: number; count: number }>> {
+  const rows = await db.$queryRaw<
+    Array<{ bucket: number; count: bigint }>
+  >`
+    WITH days AS (
+      SELECT
+        GREATEST(
+          0,
+          ROUND(
+            EXTRACT(EPOCH FROM (j."updatedAt" - j."createdAt")) / 86400.0
+          )
+        )::int AS d
+      FROM "Job" j
+      WHERE j."tenantId" = ${tenantId}
+        AND j."deletedAt" IS NULL
+        AND j.status = 'Delivered'
+        AND j."createdAt" >= ${from}
+        AND j."createdAt" <= ${to}
+    )
+    SELECT
+      CASE
+        WHEN d <= 7 THEN d
+        ELSE LEAST(30, (CEIL(d / 7.0) * 7)::int)
+      END AS bucket,
+      COUNT(*)::bigint AS count
+    FROM days
+    GROUP BY 1
+    ORDER BY 1
+  `;
+
+  return rows.map((row) => ({
+    bucket: Number(row.bucket),
+    count: Number(row.count),
+  }));
+}
+
 export async function avgDeliveredTurnaroundDays(
   db: TenantScopedPrisma,
   tenantId: string,

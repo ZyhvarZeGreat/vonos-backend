@@ -31,15 +31,38 @@ export class StockMovementsController {
     @Query('type') type?: MovementType,
     @Query('status') status?: MovementStatus,
     @Query('source') source?: MovementSource,
+    @Query('locationCode') locationCode?: string,
+    @Query('supplierId') supplierId?: string,
+    @Query('paymentStatus') paymentStatus?: string,
+    @Query('paymentMethod') paymentMethod?: string,
+    @Query('search') search?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
     @Query('cursor') cursor?: string,
     @Query('limit') limit?: string,
+    @Query('sortBy') sortBy?: string,
+    @Query('sortDir') sortDir?: string,
   ) {
     return this.movementsService.list({
       type,
       status,
       source,
+      locationCode,
+      supplierId,
+      paymentStatus: paymentStatus as
+        | 'paid'
+        | 'due'
+        | 'partial'
+        | 'overdue'
+        | undefined,
+      paymentMethod,
+      search,
+      from,
+      to,
       cursor,
       limit: limit ? Number(limit) : undefined,
+      sortBy,
+      sortDir,
     });
   }
 
@@ -56,6 +79,8 @@ export class StockMovementsController {
       type: MovementType;
       reference: string;
       status?: MovementStatus;
+      paymentStatus?: 'paid' | 'due' | 'partial' | 'overdue';
+      paymentMethod?: string;
       lines: Array<{
         itemId: string;
         sku: string;
@@ -94,10 +119,21 @@ export class TransfersController {
   }
 
   @Get()
-  list(@Query('cursor') cursor?: string, @Query('limit') limit?: string) {
+  list(
+    @Query('cursor') cursor?: string,
+    @Query('limit') limit?: string,
+    @Query('search') search?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('status') status?: string,
+  ) {
     return this.movementsService.listTransfers({
       cursor,
       limit: limit ? Number(limit) : undefined,
+      search,
+      from,
+      to,
+      status,
     });
   }
 }

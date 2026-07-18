@@ -6,7 +6,7 @@ import type {
 import { AUTOS_GROUP_CODES } from '@vonos/types';
 import type { PrismaClient } from '@prisma/client';
 import { Prisma } from '@prisma/client';
-import { buildCursorQuery } from '../../common/utils/pagination';
+import { buildCompositeCursorQuery } from '../../common/utils/pagination';
 import {
   buildLedgerSummaryFromGroups,
   ledgerDateFilter,
@@ -158,6 +158,13 @@ export async function buildGroupLedgerList(
   const tenantById = new Map(tenants.map((t) => [t.id, t]));
   const tenantIds = tenants.map((t) => t.id);
 
+  const pagination = buildCompositeCursorQuery({
+    sortField: 'date',
+    sortDir: 'desc',
+    cursor: filters.cursor,
+    limit: filters.limit ?? 10,
+    sortValueType: 'date',
+  });
   const rows = await prisma.ledgerEntry.findMany({
     where: {
       tenantId: { in: tenantIds },
@@ -190,9 +197,10 @@ export async function buildGroupLedgerList(
             },
           }
         : {}),
+      ...(pagination.where ?? {}),
     },
-    orderBy: { date: 'desc' },
-    ...buildCursorQuery(filters.cursor, filters.limit ?? 50),
+    orderBy: [{ date: 'desc' }, { id: 'desc' }],
+    take: pagination.take,
   });
 
   return rows

@@ -2,7 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import type { Item, ItemFilters } from '@vonos/types';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { TenantDbService } from '../../common/prisma/tenant-db.service';
-import { buildCursorQuery } from '../../common/utils/pagination';
+import { buildCompositeCursorQuery } from '../../common/utils/pagination';
 import {
   breakdownFromOnHand,
   reservedQtyBySku,
@@ -62,26 +62,77 @@ export class CatalogService {
   async list(filters: ItemFilters): Promise<Item[]> {
     const requestTenantId = this.tenantDb.requireTenantId();
     const tenantIds = await this.catalogTenantIds(requestTenantId);
-    const limit = filters.limit ?? 50;
+    const limit = filters.limit ?? 10;
 
+    // Own-tenant items always appear. Cross-tenant (VW → VISP/VSP) stock
+    // requires availableForRetail so warehouse can gate what retail sees.
+    const pagination = buildCompositeCursorQuery({
+      sortField: 'name',
+      sortDir: 'asc',
+      cursor: filters.cursor,
+      limit,
+      sortValueType: 'string',
+    });
     const rows = await this.prisma.item.findMany({
       where: {
         tenantId: { in: tenantIds },
         deletedAt: null,
-        availableForRetail: true,
+        OR: [
+          { tenantId: requestTenantId },
+          { availableForRetail: true },
+        ],
         ...(filters.status ? { status: filters.status } : {}),
         ...(filters.category ? { category: filters.category } : {}),
-        ...(filters.search
+        ...(filters.locationCode || filters.search
           ? {
-              OR: [
-                { name: { contains: filters.search, mode: 'insensitive' } },
-                { sku: { contains: filters.search, mode: 'insensitive' } },
+              AND: [
+                ...(filters.locationCode
+                  ? [
+                      {
+                        OR: [
+                          { locationCode: filters.locationCode },
+                          { binLocation: filters.locationCode },
+                          {
+                            locationStock: {
+                              some: {
+                                OR: [
+                                  { locationCode: filters.locationCode },
+                                  { binLocation: filters.locationCode },
+                                ],
+                              },
+                            },
+                          },
+                        ],
+                      },
+                    ]
+                  : []),
+                ...(filters.search
+                  ? [
+                      {
+                        OR: [
+                          {
+                            name: {
+                              contains: filters.search,
+                              mode: 'insensitive' as const,
+                            },
+                          },
+                          {
+                            sku: {
+                              contains: filters.search,
+                              mode: 'insensitive' as const,
+                            },
+                          },
+                        ],
+                      },
+                    ]
+                  : []),
               ],
             }
           : {}),
+        ...(pagination.where ?? {}),
       },
       orderBy: [{ name: 'asc' }, { id: 'asc' }],
-      ...buildCursorQuery(filters.cursor, limit),
+      take: pagination.take,
     });
 
     return this.withAvailableQuantity(rows.map(serializeItem));
@@ -96,7 +147,10 @@ export class CatalogService {
         id,
         tenantId: { in: tenantIds },
         deletedAt: null,
-        availableForRetail: true,
+        OR: [
+          { tenantId: requestTenantId },
+          { availableForRetail: true },
+        ],
       },
     });
     if (!row) throw new NotFoundException('Catalog item not found');

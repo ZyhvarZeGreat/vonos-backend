@@ -16,11 +16,35 @@ export class CustomersController {
   @Get()
   list(
     @Query('search') search?: string,
+    @Query('sellDue') sellDue?: string,
+    @Query('sellReturn') sellReturn?: string,
+    @Query('advanceBalance') advanceBalance?: string,
+    @Query('openingBalance') openingBalance?: string,
+    @Query('hasNoSellMonths') hasNoSellMonths?: string,
+    @Query('customerGroupId') customerGroupId?: string,
+    @Query('assignedToUserId') assignedToUserId?: string,
+    @Query('status') status?: 'active' | 'inactive',
+    @Query('from') from?: string,
+    @Query('to') to?: string,
     @Query('cursor') cursor?: string,
     @Query('limit') limit?: string,
   ) {
+    const months = Number(hasNoSellMonths);
     const filters: CustomerFilters = {
       search,
+      sellDue: sellDue === 'true',
+      sellReturn: sellReturn === 'true',
+      advanceBalance: advanceBalance === 'true',
+      openingBalance: openingBalance === 'true',
+      hasNoSellMonths:
+        months === 1 || months === 3 || months === 6
+          ? (months as 1 | 3 | 6)
+          : undefined,
+      customerGroupId,
+      assignedToUserId,
+      status,
+      from,
+      to,
       cursor,
       limit: limit ? Number(limit) : undefined,
     };
@@ -42,6 +66,11 @@ export class CustomersController {
   @Get(':id/summary')
   getSummary(@Param('id') id: string) {
     return this.customersService.getSummary(id);
+  }
+
+  @Get(':id/contact')
+  getContact(@Param('id') id: string) {
+    return this.customersService.getContact(id);
   }
 
   @Get(':id/ledger')

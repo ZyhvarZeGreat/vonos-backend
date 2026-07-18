@@ -56,6 +56,7 @@ def run_va_migration(
     progress: ProgressReporter | None = None,
     *,
     since: str | None = None,
+    until: str | None = None,
     existing_legacy: dict[str, dict[int, str]] | None = None,
     hrm_only: bool = False,
 ) -> tuple[dict[str, int], TransformResult]:
@@ -92,6 +93,7 @@ def run_va_migration(
                 VA_TENANT_ID,
                 user_names=user_names,
                 since=since,
+                until=until,
                 existing_group_legacy=cumulative_legacy.get("payroll_group") if cumulative_legacy else None,
                 existing_payroll_legacy=cumulative_legacy.get("payroll") if cumulative_legacy else None,
                 existing_component_legacy=cumulative_legacy.get("pay_component") if cumulative_legacy else None,
@@ -102,6 +104,7 @@ def run_va_migration(
                 dump_path,
                 progress=progress,
                 since=since,
+                until=until,
                 existing_legacy=cumulative_legacy,
                 include_purchases=True,
                 include_sales=True,

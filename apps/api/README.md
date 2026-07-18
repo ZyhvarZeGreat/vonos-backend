@@ -21,7 +21,7 @@ Env vars are **not in git**. Set them in Railway:
 |----------|----------|-----------------|
 | `DATABASE_URL` | **Yes** | `postgresql://user:pass@host:5432/db?sslmode=require` — from Neon or Railway Postgres |
 | `JWT_SECRET` | **Yes** | Long random string (e.g. `openssl rand -base64 32`) |
-| `JWT_ACCESS_EXPIRES` | No | `15m` (default if omitted) |
+| `JWT_ACCESS_EXPIRES` | No | `2h` (default if omitted) |
 | `JWT_REFRESH_EXPIRES` | No | `7d` |
 | `WEB_ORIGIN` | **Yes** | Your frontend URL, e.g. `https://app.vonosautos.com` |
 | `NODE_ENV` | **Yes** | `production` |
@@ -43,7 +43,7 @@ Required env vars:
 |----------|---------|
 | `DATABASE_URL` | Neon Postgres connection string |
 | `JWT_SECRET` | long random secret |
-| `JWT_ACCESS_EXPIRES` | `15m` |
+| `JWT_ACCESS_EXPIRES` | `2h` |
 | `JWT_REFRESH_EXPIRES` | `7d` |
 | `WEB_ORIGIN` | `https://app.vonosautos.com` |
 | `NODE_ENV` | `production` |

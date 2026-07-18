@@ -29,8 +29,20 @@ export class SalesController {
     @Query('saleStatus') saleStatus?: SaleFilters['saleStatus'],
     @Query('returnsOnly') returnsOnly?: string,
     @Query('shipmentsOnly') shipmentsOnly?: string,
+    @Query('locationCode') locationCode?: string,
+    @Query('customerId') customerId?: string,
+    @Query('jobId') jobId?: string,
+    @Query('paymentStatus') paymentStatus?: SaleFilters['paymentStatus'],
+    @Query('paymentMethod') paymentMethod?: string,
+    @Query('cleanerUserId') cleanerUserId?: string,
+    @Query('serviceStaffEmployeeId') serviceStaffEmployeeId?: string,
+    @Query('createdByUserId') createdByUserId?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
     @Query('cursor') cursor?: string,
     @Query('limit') limit?: string,
+    @Query('sortBy') sortBy?: string,
+    @Query('sortDir') sortDir?: string,
   ) {
     const filters: SaleFilters = {
       search,
@@ -38,8 +50,20 @@ export class SalesController {
       saleStatus,
       returnsOnly: returnsOnly === 'true',
       shipmentsOnly: shipmentsOnly === 'true',
+      locationCode,
+      customerId,
+      jobId,
+      paymentStatus,
+      paymentMethod,
+      cleanerUserId,
+      serviceStaffEmployeeId,
+      createdByUserId,
+      from,
+      to,
       cursor,
       limit: limit ? Number(limit) : undefined,
+      sortBy,
+      sortDir: sortDir === 'asc' || sortDir === 'desc' ? sortDir : undefined,
     };
     return this.salesService.list(filters);
   }
@@ -57,6 +81,10 @@ export class SalesController {
       reference: string;
       customerName?: string;
       locationCode?: string;
+      paymentMethod?: string;
+      cleanerUserId?: string;
+      cleanerName?: string;
+      serviceStaffEmployeeId?: string;
       lines: Array<{
         itemId?: string;
         sku: string;
@@ -64,6 +92,8 @@ export class SalesController {
         quantity: number;
         unitPrice: number;
         discountAmount?: number;
+        createPurchase?: boolean;
+        sourceTenantCode?: string;
       }>;
       currency?: string;
       date?: string;
@@ -74,6 +104,8 @@ export class SalesController {
       discountAmount?: number;
       taxAmount?: number;
       notes?: string;
+      customerId?: string;
+      jobId?: string;
       payments?: Array<{
         amount: number;
         method?: string;
@@ -83,6 +115,11 @@ export class SalesController {
     },
   ) {
     return this.salesService.create(body);
+  }
+
+  @Get(':id/meta')
+  getMeta(@Param('id') id: string) {
+    return this.salesService.getMeta(id);
   }
 
   @Get(':id')

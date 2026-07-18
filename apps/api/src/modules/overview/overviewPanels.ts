@@ -105,7 +105,12 @@ export async function buildSalesPaymentDuesPanel(
       deletedAt: null,
       paymentStatus: { in: ['due', 'partial'] },
     },
-    include: {
+    select: {
+      id: true,
+      reference: true,
+      date: true,
+      total: true,
+      paymentStatus: true,
       customer: { select: { name: true } },
       payments: { where: { deletedAt: null }, select: { amount: true } },
     },

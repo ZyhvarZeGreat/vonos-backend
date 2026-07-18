@@ -1,4 +1,5 @@
 import { NestFactory } from '@nestjs/core';
+import compression from 'compression';
 import type { INestApplication } from '@nestjs/common';
 import cookieParser from 'cookie-parser';
 import type { Express } from 'express';
@@ -7,6 +8,8 @@ import { resolveWebOrigins } from './common/utils/webOrigin';
 
 async function createNestApp(): Promise<INestApplication> {
   const app = await NestFactory.create(AppModule);
+  app.enableShutdownHooks();
+  app.use(compression());
   app.use(cookieParser());
   app.enableCors({
     origin: resolveWebOrigins(),

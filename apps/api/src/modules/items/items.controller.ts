@@ -58,6 +58,8 @@ export class ItemsController {
     @Query('cursor') cursor?: string,
     @Query('limit') limit?: string,
     @Query('availableForRetail') availableForRetail?: string,
+    @Query('sortBy') sortBy?: string,
+    @Query('sortDir') sortDir?: string,
   ) {
     const filters: ItemFilters & { availableForRetail?: boolean } = {
       status,
@@ -66,6 +68,8 @@ export class ItemsController {
       locationCode,
       cursor,
       limit: limit ? Number(limit) : undefined,
+      sortBy,
+      sortDir: sortDir === 'asc' || sortDir === 'desc' ? sortDir : undefined,
     };
     if (availableForRetail === 'true') {
       filters.availableForRetail = true;
@@ -93,6 +97,11 @@ export class ItemsController {
     return this.itemsService.bulkUpdatePrice(body);
   }
 
+  @Get(':id/meta')
+  getMeta(@Param('id') id: string) {
+    return this.itemsService.getMeta(id);
+  }
+
   @Get(':id')
   getById(@Param('id') id: string) {
     return this.itemsService.getById(id);
@@ -106,14 +115,25 @@ export class ItemsController {
       sku: string;
       name: string;
       category?: string;
+      subCategory?: string;
+      description?: string;
+      barcodeType?: string;
+      unit?: string;
+      weight?: string;
+      carModel?: string;
+      enableImei?: boolean;
+      preparationMinutes?: number;
       quantity?: number;
       binLocation?: string;
       locationCode?: string;
       reorderPoint?: number;
       costPrice: number;
+      sellPrice?: number;
       currency?: string;
       status?: StockStatus;
       availableForRetail?: boolean;
+      brandId?: string;
+      brandName?: string;
       locationStock?: ItemLocationStockInput[];
     },
   ) {

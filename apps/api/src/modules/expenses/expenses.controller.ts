@@ -35,6 +35,12 @@ export class ExpensesController {
     @Query('search') search?: string,
     @Query('from') from?: string,
     @Query('to') to?: string,
+    @Query('locationCode') locationCode?: string,
+    @Query('expenseForCustomerId') expenseForCustomerId?: string,
+    @Query('contactCustomerId') contactCustomerId?: string,
+    @Query('createdById') createdById?: string,
+    @Query('categoryId') categoryId?: string,
+    @Query('paymentStatus') paymentStatus?: string,
   ) {
     return this.service.listExpenses({
       cursor,
@@ -42,6 +48,12 @@ export class ExpensesController {
       search,
       from,
       to,
+      locationCode,
+      expenseForCustomerId,
+      contactCustomerId,
+      createdById,
+      categoryId,
+      paymentStatus,
     });
   }
 

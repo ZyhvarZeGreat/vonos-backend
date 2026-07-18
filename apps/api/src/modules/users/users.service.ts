@@ -8,7 +8,7 @@ import type { InviteUserResponse, User } from '@vonos/types';
 import { ROLES } from '@vonos/types';
 import type { AuthenticatedUser } from '../../common/decorators/roles.decorator';
 import { generateOpaqueToken } from '../../common/utils/auth-token';
-import { buildCursorQuery } from '../../common/utils/pagination';
+import { buildCompositeCursorQuery } from '../../common/utils/pagination';
 import { devPasswordHash, hashPassword } from '../../common/utils/password';
 import { TenantDbService } from '../../common/prisma/tenant-db.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
@@ -34,6 +34,8 @@ export class UsersService {
     cursor?: string;
     limit?: number;
     search?: string;
+    role?: string;
+    status?: string;
   } = {}): Promise<User[]> {
     const tenantId = this.tenantDb.requireTenantId();
 
@@ -43,9 +45,18 @@ export class UsersService {
     });
     const legacyUserIds = legacyLinks.map((link) => link.newId);
 
+    const pagination = buildCompositeCursorQuery({
+      sortField: 'name',
+      sortDir: 'asc',
+      cursor: filters.cursor,
+      limit: filters.limit ?? 10,
+      sortValueType: 'string',
+    });
     const rows = await this.prisma.user.findMany({
       where: {
         deletedAt: null,
+        ...(filters.role ? { role: filters.role as User['role'] } : {}),
+        ...(filters.status ? { status: filters.status as User['status'] } : {}),
         AND: [
           {
             OR: [
@@ -68,9 +79,10 @@ export class UsersService {
               ]
             : []),
         ],
+        ...(pagination.where ?? {}),
       },
-      orderBy: [{ status: 'asc' }, { name: 'asc' }],
-      ...buildCursorQuery(filters.cursor, filters.limit ?? 25),
+      orderBy: [{ name: 'asc' }, { id: 'asc' }],
+      take: pagination.take,
     });
 
     return rows.map((row) => this.toUser(row));
@@ -82,15 +94,26 @@ export class UsersService {
       cursor?: string;
       limit?: number;
       search?: string;
+      role?: string;
+      status?: string;
     } = {},
   ): Promise<UserListRow[]> {
     if (requestRole !== 'super_admin') {
       throw new ForbiddenException('Super admin access required');
     }
 
+    const pagination = buildCompositeCursorQuery({
+      sortField: 'name',
+      sortDir: 'asc',
+      cursor: filters.cursor,
+      limit: filters.limit ?? 10,
+      sortValueType: 'string',
+    });
     const rows = await this.prisma.user.findMany({
       where: {
         deletedAt: null,
+        ...(filters.role ? { role: filters.role as User['role'] } : {}),
+        ...(filters.status ? { status: filters.status as User['status'] } : {}),
         ...(filters.search
           ? {
               OR: [
@@ -99,10 +122,11 @@ export class UsersService {
               ],
             }
           : {}),
+        ...(pagination.where ?? {}),
       },
       include: { tenant: { select: { code: true, name: true } } },
-      orderBy: [{ tenantId: 'asc' }, { name: 'asc' }],
-      ...buildCursorQuery(filters.cursor, filters.limit ?? 25),
+      orderBy: [{ name: 'asc' }, { id: 'asc' }],
+      take: pagination.take,
     });
 
     const unscopedIds = rows

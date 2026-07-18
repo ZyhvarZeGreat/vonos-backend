@@ -25,13 +25,21 @@ export class JobsController {
   @Get()
   list(
     @Query('status') status?: string,
+    @Query('statuses') statuses?: string,
     @Query('search') search?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
     @Query('cursor') cursor?: string,
     @Query('limit') limit?: string,
   ) {
     return this.jobsService.list({
       status,
+      statuses: statuses
+        ? statuses.split(',').map((s) => s.trim()).filter(Boolean)
+        : undefined,
       search,
+      from,
+      to,
       cursor,
       limit: limit ? Number(limit) : undefined,
     });
@@ -53,6 +61,11 @@ export class JobsController {
     },
   ) {
     return this.jobsService.create(body);
+  }
+
+  @Get(':id/meta')
+  getMeta(@Param('id') id: string) {
+    return this.jobsService.getMeta(id);
   }
 
   @Get(':id')

@@ -2,7 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import type { SalonService } from '@vonos/types';
 import { TenantDbService } from '../../common/prisma/tenant-db.service';
 import { AuditService } from '../audit/audit.service';
-import { buildCursorQuery } from '../../common/utils/pagination';
+import { buildCompositeCursorQuery } from '../../common/utils/pagination';
 import { toIso, toNumber } from '../../common/utils/serializers';
 
 function serialize(row: {
@@ -40,6 +40,13 @@ export class SalonServicesService {
     search?: string;
   } = {}): Promise<SalonService[]> {
     const tenantId = this.tenantDb.requireTenantId();
+    const pagination = buildCompositeCursorQuery({
+      sortField: 'name',
+      sortDir: 'asc',
+      cursor: filters.cursor,
+      limit: filters.limit ?? 10,
+      sortValueType: 'string',
+    });
     const rows = await this.tenantDb.db.salonService.findMany({
       where: {
         tenantId,
@@ -47,9 +54,10 @@ export class SalonServicesService {
         ...(filters.search
           ? { name: { contains: filters.search, mode: 'insensitive' } }
           : {}),
+        ...(pagination.where ?? {}),
       },
-      orderBy: { name: 'asc' },
-      ...buildCursorQuery(filters.cursor, filters.limit ?? 25),
+      orderBy: [{ name: 'asc' }, { id: 'asc' }],
+      take: pagination.take,
     });
     return rows.map(serialize);
   }

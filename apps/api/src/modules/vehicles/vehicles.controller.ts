@@ -16,11 +16,13 @@ export class VehiclesController {
     @Query('cursor') cursor?: string,
     @Query('limit') limit?: string,
     @Query('search') search?: string,
+    @Query('make') make?: string,
   ) {
     return this.vehiclesService.list({
       cursor,
       limit: limit ? Number(limit) : undefined,
       search,
+      make,
     });
   }
 

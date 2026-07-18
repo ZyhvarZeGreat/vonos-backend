@@ -7,12 +7,54 @@ import type {
   UpdateExpenseRequest,
 } from '@vonos/types';
 import { TenantDbService } from '../../common/prisma/tenant-db.service';
-import { buildCursorQuery } from '../../common/utils/pagination';
+import { CacheService } from '../../common/cache/cache.service';
+import { invalidateTenantDashboardCache } from '../../common/cache/cacheInvalidation';
+import { applyDailyFinanceDelta } from '../../common/utils/dailyFinanceRollup';
+import { buildCompositeCursorQuery } from '../../common/utils/pagination';
 import { toIso, toNumber } from '../../common/utils/serializers';
+import { InvoiceHubService } from '../invoices/invoice-hub.service';
+
+type ExpenseRow = {
+  id: string;
+  tenantId: string;
+  refNo: string | null;
+  categoryId: string | null;
+  subCategory: string | null;
+  locationCode: string | null;
+  expenseForCustomerId: string | null;
+  expenseFor: string | null;
+  contactCustomerId: string | null;
+  contactName: string | null;
+  totalAmount: import('@prisma/client').Prisma.Decimal;
+  taxAmount: import('@prisma/client').Prisma.Decimal;
+  paymentStatus: string;
+  paymentDue: import('@prisma/client').Prisma.Decimal;
+  note: string | null;
+  isRecurring: boolean;
+  recurInterval: number | null;
+  recurIntervalType: string | null;
+  expenseDate: Date;
+  createdById: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  category?: { name: string } | null;
+  expenseForCustomer?: { name: string } | null;
+  contactCustomer?: { name: string } | null;
+};
+
+const expenseInclude = {
+  category: true,
+  expenseForCustomer: { select: { name: true } },
+  contactCustomer: { select: { name: true } },
+} as const;
 
 @Injectable()
 export class ExpensesService {
-  constructor(private readonly tenantDb: TenantDbService) {}
+  constructor(
+    private readonly tenantDb: TenantDbService,
+    private readonly invoiceHub: InvoiceHubService,
+    private readonly cache: CacheService,
+  ) {}
 
   async listExpenses(filters: {
     cursor?: string;
@@ -20,6 +62,12 @@ export class ExpensesService {
     search?: string;
     from?: string;
     to?: string;
+    locationCode?: string;
+    expenseForCustomerId?: string;
+    contactCustomerId?: string;
+    createdById?: string;
+    categoryId?: string;
+    paymentStatus?: string;
   } = {}): Promise<Expense[]> {
     const tenantId = this.tenantDb.requireTenantId();
     const dateFilter =
@@ -31,11 +79,32 @@ export class ExpensesService {
             },
           }
         : {};
+    const pagination = buildCompositeCursorQuery({
+      sortField: 'expenseDate',
+      sortDir: 'desc',
+      cursor: filters.cursor,
+      limit: filters.limit ?? 10,
+      sortValueType: 'date',
+    });
     const rows = await this.tenantDb.db.expense.findMany({
       where: {
         tenantId,
         deletedAt: null,
         ...dateFilter,
+        ...(filters.locationCode
+          ? { locationCode: filters.locationCode }
+          : {}),
+        ...(filters.expenseForCustomerId
+          ? { expenseForCustomerId: filters.expenseForCustomerId }
+          : {}),
+        ...(filters.contactCustomerId
+          ? { contactCustomerId: filters.contactCustomerId }
+          : {}),
+        ...(filters.createdById ? { createdById: filters.createdById } : {}),
+        ...(filters.categoryId ? { categoryId: filters.categoryId } : {}),
+        ...(filters.paymentStatus
+          ? { paymentStatus: filters.paymentStatus }
+          : {}),
         ...(filters.search
           ? {
               OR: [
@@ -52,13 +121,24 @@ export class ExpensesService {
                     name: { contains: filters.search, mode: 'insensitive' },
                   },
                 },
+                {
+                  expenseForCustomer: {
+                    name: { contains: filters.search, mode: 'insensitive' },
+                  },
+                },
+                {
+                  contactCustomer: {
+                    name: { contains: filters.search, mode: 'insensitive' },
+                  },
+                },
               ],
             }
           : {}),
+        ...(pagination.where ?? {}),
       },
-      include: { category: true },
-      orderBy: { expenseDate: 'desc' },
-      ...buildCursorQuery(filters.cursor, filters.limit ?? 25),
+      include: expenseInclude,
+      orderBy: [{ expenseDate: 'desc' }, { id: 'desc' }],
+      take: pagination.take,
     });
     const userIds = [
       ...new Set(rows.map((r) => r.createdById).filter((id): id is string => Boolean(id))),
@@ -85,6 +165,8 @@ export class ExpensesService {
         refNo: dto.refNo ?? null,
         subCategory: dto.subCategory ?? null,
         locationCode: dto.locationCode ?? null,
+        expenseForCustomerId: dto.expenseForCustomerId ?? null,
+        contactCustomerId: dto.contactCustomerId ?? null,
         expenseFor: dto.expenseFor ?? null,
         contactName: dto.contactName ?? null,
         totalAmount: dto.totalAmount,
@@ -98,16 +180,32 @@ export class ExpensesService {
         expenseDate: dto.expenseDate ? new Date(dto.expenseDate) : new Date(),
         createdById: this.tenantDb.getAuthUserId(),
       },
-      include: { category: true },
+      include: expenseInclude,
     });
+    await this.invoiceHub.ensureExpenseInvoice(this.tenantDb.db, row);
+    void applyDailyFinanceDelta(
+      this.tenantDb.db,
+      tenantId,
+      row.expenseDate,
+      'expense',
+      toNumber(row.totalAmount),
+    );
+    this.invalidateCaches();
     return this.serializeExpense(row);
+  }
+
+  private invalidateCaches(): void {
+    void invalidateTenantDashboardCache(
+      this.cache,
+      this.tenantDb.requireTenantId(),
+    );
   }
 
   async getExpenseById(id: string): Promise<Expense> {
     const tenantId = this.tenantDb.requireTenantId();
     const row = await this.tenantDb.db.expense.findFirst({
       where: { id, tenantId, deletedAt: null },
-      include: { category: true },
+      include: expenseInclude,
     });
     if (!row) throw new NotFoundException('Expense not found');
 
@@ -129,7 +227,7 @@ export class ExpensesService {
     });
     if (!existing) throw new NotFoundException('Expense not found');
 
-    const nextTotal =
+    const updatedTotal =
       dto.totalAmount !== undefined
         ? dto.totalAmount
         : toNumber(existing.totalAmount);
@@ -138,8 +236,11 @@ export class ExpensesService {
       dto.paymentDue !== undefined
         ? dto.paymentDue
         : paymentStatus === 'due' && dto.totalAmount !== undefined
-          ? nextTotal
+          ? updatedTotal
           : toNumber(existing.paymentDue);
+
+    const prevTotal = toNumber(existing.totalAmount);
+    const prevDate = existing.expenseDate;
 
     const row = await this.tenantDb.db.expense.update({
       where: { id },
@@ -148,6 +249,12 @@ export class ExpensesService {
         ...(dto.refNo !== undefined ? { refNo: dto.refNo } : {}),
         ...(dto.subCategory !== undefined ? { subCategory: dto.subCategory } : {}),
         ...(dto.locationCode !== undefined ? { locationCode: dto.locationCode } : {}),
+        ...(dto.expenseForCustomerId !== undefined
+          ? { expenseForCustomerId: dto.expenseForCustomerId }
+          : {}),
+        ...(dto.contactCustomerId !== undefined
+          ? { contactCustomerId: dto.contactCustomerId }
+          : {}),
         ...(dto.expenseFor !== undefined ? { expenseFor: dto.expenseFor } : {}),
         ...(dto.contactName !== undefined ? { contactName: dto.contactName } : {}),
         ...(dto.totalAmount !== undefined ? { totalAmount: dto.totalAmount } : {}),
@@ -168,7 +275,7 @@ export class ExpensesService {
           ? { expenseDate: new Date(dto.expenseDate) }
           : {}),
       },
-      include: { category: true },
+      include: expenseInclude,
     });
 
     let createdByName: string | null = null;
@@ -179,6 +286,33 @@ export class ExpensesService {
       });
       createdByName = user?.name ?? null;
     }
+    const nextTotal = toNumber(row.totalAmount);
+    const amountDelta = nextTotal - prevTotal;
+    if (amountDelta !== 0) {
+      void applyDailyFinanceDelta(
+        this.tenantDb.db,
+        tenantId,
+        row.expenseDate,
+        'expense',
+        amountDelta,
+      );
+    } else if (row.expenseDate.getTime() !== prevDate.getTime()) {
+      void applyDailyFinanceDelta(
+        this.tenantDb.db,
+        tenantId,
+        prevDate,
+        'expense',
+        -prevTotal,
+      );
+      void applyDailyFinanceDelta(
+        this.tenantDb.db,
+        tenantId,
+        row.expenseDate,
+        'expense',
+        nextTotal,
+      );
+    }
+    this.invalidateCaches();
     return this.serializeExpense(row, createdByName);
   }
 
@@ -192,6 +326,14 @@ export class ExpensesService {
       where: { id },
       data: { deletedAt: new Date() },
     });
+    void applyDailyFinanceDelta(
+      this.tenantDb.db,
+      tenantId,
+      existing.expenseDate,
+      'expense',
+      -toNumber(existing.totalAmount),
+    );
+    this.invalidateCaches();
   }
 
   async listCategories(filters: {
@@ -199,6 +341,13 @@ export class ExpensesService {
     limit?: number;
     search?: string;
   } = {}): Promise<ExpenseCategory[]> {
+    const pagination = buildCompositeCursorQuery({
+      sortField: 'name',
+      sortDir: 'asc',
+      cursor: filters.cursor,
+      limit: filters.limit ?? 10,
+      sortValueType: 'string',
+    });
     const rows = await this.tenantDb.db.expenseCategory.findMany({
       where: {
         tenantId: this.tenantDb.requireTenantId(),
@@ -206,9 +355,10 @@ export class ExpensesService {
         ...(filters.search
           ? { name: { contains: filters.search, mode: 'insensitive' } }
           : {}),
+        ...(pagination.where ?? {}),
       },
-      orderBy: { name: 'asc' },
-      ...buildCursorQuery(filters.cursor, filters.limit ?? 25),
+      orderBy: [{ name: 'asc' }, { id: 'asc' }],
+      take: pagination.take,
     });
     return rows.map((row) => ({
       id: row.id,
@@ -280,29 +430,7 @@ export class ExpensesService {
   }
 
   private serializeExpense(
-    row: {
-      id: string;
-      tenantId: string;
-      refNo: string | null;
-      categoryId: string | null;
-      subCategory: string | null;
-      locationCode: string | null;
-      expenseFor: string | null;
-      contactName: string | null;
-      totalAmount: import('@prisma/client').Prisma.Decimal;
-      taxAmount: import('@prisma/client').Prisma.Decimal;
-      paymentStatus: string;
-      paymentDue: import('@prisma/client').Prisma.Decimal;
-      note: string | null;
-      isRecurring: boolean;
-      recurInterval: number | null;
-      recurIntervalType: string | null;
-      expenseDate: Date;
-      createdById: string | null;
-      createdAt: Date;
-      updatedAt: Date;
-      category?: { name: string } | null;
-    },
+    row: ExpenseRow,
     createdByName: string | null = null,
   ): Expense {
     return {
@@ -313,8 +441,11 @@ export class ExpensesService {
       categoryName: row.category?.name ?? null,
       subCategory: row.subCategory,
       locationCode: row.locationCode,
-      expenseFor: row.expenseFor,
-      contactName: row.contactName,
+      expenseForCustomerId: row.expenseForCustomerId,
+      expenseFor:
+        row.expenseForCustomer?.name ?? row.expenseFor ?? null,
+      contactCustomerId: row.contactCustomerId,
+      contactName: row.contactCustomer?.name ?? row.contactName ?? null,
       totalAmount: toNumber(row.totalAmount),
       taxAmount: toNumber(row.taxAmount),
       paymentStatus: row.paymentStatus,

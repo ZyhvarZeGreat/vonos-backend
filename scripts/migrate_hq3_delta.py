@@ -22,12 +22,13 @@ from migration.va_delta_migration import (
 from migration_registry import VA_TENANT_ID, get_entity
 
 DEFAULT_SINCE = "2026-01-01"
+DEFAULT_UNTIL = "2026-12-31"
 
 
 def main() -> int:
     va_entity = get_entity("VA")
     parser = argparse.ArgumentParser(
-        description="Migrate VA hq3temp delta (Jan 2026+) from localhost.sql",
+        description="Migrate VA hq3temp (HQ6 live DB) into tenant_va_001",
     )
     parser.add_argument(
         "--dump",
@@ -43,6 +44,11 @@ def main() -> int:
         help="Type VA to allow --write",
     )
     parser.add_argument(
+        "--full",
+        action="store_true",
+        help="Import all hq3temp rows (no date filter). Overrides --since/--until.",
+    )
+    parser.add_argument(
         "--since",
         default=DEFAULT_SINCE,
         metavar="YYYY-MM-DD",
@@ -50,9 +56,9 @@ def main() -> int:
     )
     parser.add_argument(
         "--until",
-        default=None,
+        default=DEFAULT_UNTIL,
         metavar="YYYY-MM-DD",
-        help="Only records on/before this date (optional)",
+        help=f"Only records on/before this date (default: {DEFAULT_UNTIL})",
     )
     parser.add_argument(
         "--output-json",
@@ -68,6 +74,9 @@ def main() -> int:
             print("--write requires --confirm-tenant VA", file=sys.stderr)
             return 1
 
+    since = None if args.full else args.since
+    until = None if args.full else args.until
+
     try:
         dump_path = resolve_delta_dump(args.dump, DEFAULT_FALLBACK_DUMP)
     except FileNotFoundError as exc:
@@ -78,11 +87,10 @@ def main() -> int:
         resolve_tenant(va_entity)
 
     progress = ProgressReporter(enabled=not args.quiet)
-    progress.message("\nVA hq3temp delta migration")
+    progress.message("\nVA hq3temp migration" + (" (full)" if args.full else " (delta)"))
     progress.message(f"  Dump:  {dump_path}")
-    progress.message(f"  Since: {args.since}")
-    if args.until:
-        progress.message(f"  Until: {args.until}")
+    progress.message(f"  Since: {since or '—'}")
+    progress.message(f"  Until: {until or '—'}")
 
     existing_legacy = None
     if not args.dry_run:
@@ -95,8 +103,8 @@ def main() -> int:
         "HQ3",
         dump_path,
         progress=progress,
-        since=args.since,
-        until=args.until,
+        since=since,
+        until=until,
         existing_legacy=existing_legacy,
     )
 
@@ -107,8 +115,8 @@ def main() -> int:
         result,
         dry_run=args.dry_run,
         dump_path=dump_path,
-        since=args.since,
-        until=args.until,
+        since=since,
+        until=until,
     )
     print(json.dumps(summary, indent=2))
 

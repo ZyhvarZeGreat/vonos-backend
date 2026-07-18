@@ -6,6 +6,10 @@ import type {
 import type { TenantScopedPrisma } from '../../../common/prisma/prisma.service';
 import { buildLedgerSummaryFromGroups, ledgerDateFilter } from '../../../common/utils/ledgerAggregates';
 import { computeOutstandingReceivables } from '../../../common/utils/outstandingReceivables';
+import {
+  buildCompositeCursorQuery,
+  nextCompositeCursor,
+} from '../../../common/utils/pagination';
 import { computeSalesRevenueTotal } from '../../../common/utils/salesRevenue';
 import { toNumber } from '../../../common/utils/serializers';
 import { computeDelta, resolveDateWindow } from './date-utils';
@@ -57,14 +61,11 @@ async function assembleProfitLossShell(
     loaded?.salesRevenue.currency ??
     (await ledgerCurrency(db, tenantId));
 
-  const outstanding = await computeOutstandingReceivables(db, from, to);
-  const priorLedger = await ledgerSummaryInWindow(
-    db,
-    tenantId,
-    prior.from,
-    prior.to,
-  );
-  const trendRows = await ledgerPlTrend(db, tenantId, window);
+  const [outstanding, priorLedger, trendRows] = await Promise.all([
+    computeOutstandingReceivables(db, from, to),
+    ledgerSummaryInWindow(db, tenantId, prior.from, prior.to),
+    ledgerPlTrend(db, tenantId, window),
+  ]);
 
   const summary = buildLedgerSummaryFromGroups(
     groups.map((g) => ({
@@ -92,8 +93,11 @@ async function assembleProfitLossShell(
   }));
 
   if (summary.revenue === 0) {
-    const salesRevenue = await computeSalesRevenueTotal(db, from, to);
-    const jobRevenue = await computeJobRevenueTotal(db, tenantId, from, to);
+    const salesRevenue =
+      loaded?.salesRevenue ?? (await computeSalesRevenueTotal(db, from, to));
+    const jobRevenue = loaded
+      ? { revenue: loaded.jobTotals.revenue }
+      : await computeJobRevenueTotal(db, tenantId, from, to);
     const combinedRevenue = salesRevenue.revenue + jobRevenue.revenue;
     if (combinedRevenue > 0) {
       summary.revenue = combinedRevenue;
@@ -290,33 +294,62 @@ export async function buildExpenseReport(
   db: TenantScopedPrisma,
   from?: string,
   to?: string,
+  options?: { cursor?: string; limit?: number },
 ): Promise<ReportsDashboard> {
   const dateFilter = ledgerDateFilter(from, to);
+  const pageSize = Math.min(Math.max(options?.limit ?? 25, 1), 100);
+  const pagination = buildCompositeCursorQuery({
+    sortField: 'date',
+    sortDir: 'desc',
+    cursor: options?.cursor,
+    limit: pageSize + 1,
+    sortValueType: 'date',
+  });
 
-  const expenseGroups = await db.ledgerEntry.groupBy({
-    by: ['category'],
-    where: { deletedAt: null, type: 'expense', ...dateFilter },
-    _sum: { amount: true },
-    orderBy: { category: 'asc' },
-  });
-  const currencyRow = await db.ledgerEntry.findFirst({
-    where: { deletedAt: null, type: 'expense', ...dateFilter },
-    select: { currency: true },
-    orderBy: { date: 'desc' },
-  });
-  const expenseRows = await db.ledgerEntry.findMany({
-    where: { deletedAt: null, type: 'expense', ...dateFilter },
-    select: {
-      id: true,
-      category: true,
-      description: true,
-      amount: true,
-      currency: true,
-      date: true,
-    },
-    orderBy: { date: 'desc' },
-    take: 200,
-  });
+  const [expenseGroups, currencyRow, entryCount, expenseRowsRaw] =
+    await Promise.all([
+      db.ledgerEntry.groupBy({
+        by: ['category'],
+        where: { deletedAt: null, type: 'expense', ...dateFilter },
+        _sum: { amount: true },
+        orderBy: { category: 'asc' },
+      }),
+      db.ledgerEntry.findFirst({
+        where: { deletedAt: null, type: 'expense', ...dateFilter },
+        select: { currency: true },
+        orderBy: { date: 'desc' },
+      }),
+      db.ledgerEntry.count({
+        where: { deletedAt: null, type: 'expense', ...dateFilter },
+      }),
+      db.ledgerEntry.findMany({
+        where: {
+          deletedAt: null,
+          type: 'expense',
+          ...dateFilter,
+          ...(pagination.where ?? {}),
+        },
+        select: {
+          id: true,
+          category: true,
+          description: true,
+          amount: true,
+          currency: true,
+          date: true,
+        },
+        orderBy: [{ date: 'desc' }, { id: 'desc' }],
+        take: pagination.take,
+      }),
+    ]);
+
+  const hasMore = expenseRowsRaw.length > pageSize;
+  const expenseRows = hasMore
+    ? expenseRowsRaw.slice(0, pageSize)
+    : expenseRowsRaw;
+  const lastRow = expenseRows[expenseRows.length - 1];
+  const nextCursor = hasMore && lastRow
+    ? nextCompositeCursor(lastRow, 'date', 'date')
+    : null;
 
   const currency = currencyRow?.currency ?? expenseRows[0]?.currency ?? 'NGN';
   const totalExpenses = expenseGroups.reduce(
@@ -351,7 +384,7 @@ export async function buildExpenseReport(
         icon: 'file-text',
         metricKey: 'entries',
         color: '#9333ea',
-        value: expenseRows.length,
+        value: entryCount,
       },
     ],
     charts: [
@@ -380,6 +413,9 @@ export async function buildExpenseReport(
         amount: toNumber(row.amount),
         currency: row.currency,
       })),
+      hasMore,
+      nextCursor,
+      pageSize,
     },
   };
 }

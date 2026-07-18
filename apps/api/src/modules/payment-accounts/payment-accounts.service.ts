@@ -11,22 +11,46 @@ import type {
   UpdatePaymentAccountRequest,
 } from '@vonos/types';
 import { TenantDbService } from '../../common/prisma/tenant-db.service';
-import { buildCursorQuery } from '../../common/utils/pagination';
+import { CacheService } from '../../common/cache/cache.service';
+import { invalidateTenantDashboardCache } from '../../common/cache/cacheInvalidation';
+import { buildCompositeCursorQuery } from '../../common/utils/pagination';
 import { toIso, toNumber } from '../../common/utils/serializers';
 
 @Injectable()
 export class PaymentAccountsService {
-  constructor(private readonly tenantDb: TenantDbService) {}
+  constructor(
+    private readonly tenantDb: TenantDbService,
+    private readonly cache: CacheService,
+  ) {}
+
+  private invalidateCaches(): void {
+    void invalidateTenantDashboardCache(
+      this.cache,
+      this.tenantDb.requireTenantId(),
+    );
+  }
+
+  private async balancesForAccounts(
+    accountIds: string[],
+  ): Promise<Map<string, number>> {
+    if (accountIds.length === 0) return new Map();
+    const rows = await this.tenantDb.db.accountTransaction.groupBy({
+      by: ['accountId', 'type'],
+      where: { accountId: { in: accountIds }, deletedAt: null },
+      _sum: { amount: true },
+    });
+    const balances = new Map<string, number>();
+    for (const row of rows) {
+      const amount = toNumber(row._sum.amount ?? 0);
+      const signed = row.type === 'credit' ? amount : -amount;
+      balances.set(row.accountId, (balances.get(row.accountId) ?? 0) + signed);
+    }
+    return balances;
+  }
 
   private async balanceForAccount(accountId: string): Promise<number> {
-    const rows = await this.tenantDb.db.accountTransaction.findMany({
-      where: { accountId, deletedAt: null },
-      select: { type: true, amount: true },
-    });
-    return rows.reduce((sum, row) => {
-      const amount = toNumber(row.amount);
-      return row.type === 'credit' ? sum + amount : sum - amount;
-    }, 0);
+    const map = await this.balancesForAccounts([accountId]);
+    return map.get(accountId) ?? 0;
   }
 
   private async serializeRow(
@@ -46,6 +70,7 @@ export class PaymentAccountsService {
       createdAt: Date;
       updatedAt: Date;
     },
+    balance?: number,
   ): Promise<PaymentAccount> {
     return {
       id: row.id,
@@ -57,7 +82,7 @@ export class PaymentAccountsService {
       accountDetails: row.accountDetails,
       note: row.note,
       isClosed: row.isClosed,
-      balance: await this.balanceForAccount(row.id),
+      balance: balance ?? (await this.balanceForAccount(row.id)),
       currency: row.currency,
       createdByUserId: row.createdByUserId,
       createdByName: row.createdByName,
@@ -83,6 +108,13 @@ export class PaymentAccountsService {
     search?: string;
   } = {}): Promise<PaymentAccount[]> {
     const tenantId = this.tenantDb.requireTenantId();
+    const pagination = buildCompositeCursorQuery({
+      sortField: 'name',
+      sortDir: 'asc',
+      cursor: filters.cursor,
+      limit: filters.limit ?? 10,
+      sortValueType: 'string',
+    });
     const rows = await this.tenantDb.db.paymentAccount.findMany({
       where: {
         tenantId,
@@ -100,12 +132,16 @@ export class PaymentAccountsService {
               ],
             }
           : {}),
+        ...(pagination.where ?? {}),
       },
-      orderBy: { name: 'asc' },
-      ...buildCursorQuery(filters.cursor, filters.limit ?? 25),
+      orderBy: [{ name: 'asc' }, { id: 'asc' }],
+      take: pagination.take,
     });
 
-    return Promise.all(rows.map((row) => this.serializeRow(row)));
+    const balances = await this.balancesForAccounts(rows.map((row) => row.id));
+    return Promise.all(
+      rows.map((row) => this.serializeRow(row, balances.get(row.id) ?? 0)),
+    );
   }
 
   async getById(id: string): Promise<PaymentAccount> {
@@ -148,6 +184,7 @@ export class PaymentAccountsService {
         createdByName,
       },
     });
+    this.invalidateCaches();
     return this.serializeRow(row);
   }
 
@@ -182,6 +219,7 @@ export class PaymentAccountsService {
         ...(dto.isClosed !== undefined ? { isClosed: dto.isClosed } : {}),
       },
     });
+    this.invalidateCaches();
     return this.serializeRow(row);
   }
 
@@ -227,6 +265,7 @@ export class PaymentAccountsService {
       },
     });
 
+    this.invalidateCaches();
     return this.getById(id);
   }
 
@@ -296,6 +335,7 @@ export class PaymentAccountsService {
       }),
     ]);
 
+    this.invalidateCaches();
     return {
       from: await this.getById(from.id),
       to: await this.getById(to.id),
@@ -312,5 +352,6 @@ export class PaymentAccountsService {
       where: { id },
       data: { deletedAt: new Date(), isClosed: true },
     });
+    this.invalidateCaches();
   }
 }

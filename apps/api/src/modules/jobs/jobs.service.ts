@@ -8,9 +8,14 @@ import type { Job, JobLabour, JobMaterial } from '@vonos/types';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { TenantDbService } from '../../common/prisma/tenant-db.service';
 import { AuditService } from '../audit/audit.service';
-import { getNextStage } from '../../common/utils/jobStages';
-import { buildCursorQuery } from '../../common/utils/pagination';
+import { InvoiceHubService } from '../invoices/invoice-hub.service';
+import {
+  assertCanAdvance,
+  coerceJobStatus,
+} from '../../common/utils/jobStages';
+import { buildCompositeCursorQuery } from '../../common/utils/pagination';
 import { toIso, toNumber } from '../../common/utils/serializers';
+import { computeStockStatus } from '../../common/utils/stockQuantity';
 
 export interface JobDetail extends Job {
   customer?: {
@@ -18,6 +23,7 @@ export interface JobDetail extends Job {
     name: string;
     email: string | null;
     phone: string | null;
+    totalSellDue?: number | null;
   } | null;
   vehicle?: {
     id: string;
@@ -36,20 +42,45 @@ export class JobsService {
     private readonly tenantDb: TenantDbService,
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
+    private readonly invoiceHub: InvoiceHubService,
   ) {}
 
   async list(filters: {
     status?: string;
+    statuses?: string[];
     search?: string;
+    from?: string;
+    to?: string;
     cursor?: string;
     limit?: number;
   }): Promise<Job[]> {
     const tenantId = this.tenantDb.requireTenantId();
+    const pagination = buildCompositeCursorQuery({
+      sortField: 'createdAt',
+      sortDir: 'desc',
+      cursor: filters.cursor,
+      limit: filters.limit ?? 10,
+      sortValueType: 'date',
+    });
+    const statusIn =
+      filters.statuses && filters.statuses.length > 0
+        ? filters.statuses
+        : filters.status
+          ? [filters.status]
+          : undefined;
     const rows = await this.tenantDb.db.job.findMany({
       where: {
         tenantId,
         deletedAt: null,
-        ...(filters.status ? { status: filters.status } : {}),
+        ...(statusIn ? { status: { in: statusIn } } : {}),
+        ...(filters.from || filters.to
+          ? {
+              createdAt: {
+                ...(filters.from ? { gte: new Date(filters.from) } : {}),
+                ...(filters.to ? { lte: new Date(filters.to) } : {}),
+              },
+            }
+          : {}),
         ...(filters.search
           ? {
               OR: [
@@ -71,9 +102,10 @@ export class JobsService {
               ],
             }
           : {}),
+        ...(pagination.where ?? {}),
       },
-      orderBy: { createdAt: 'desc' },
-      ...buildCursorQuery(filters.cursor, filters.limit ?? 50),
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: pagination.take,
     });
     return rows.map((row) => this.serializeJob(row));
   }
@@ -86,31 +118,64 @@ export class JobsService {
         materials: true,
         labourEntries: true,
         customer: {
-          select: { id: true, name: true, email: true, phone: true },
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            phone: true,
+            totalSellDue: true,
+          },
+        },
+        sales: {
+          where: { deletedAt: null },
+          select: { id: true },
+          take: 1,
+          orderBy: { createdAt: 'desc' },
         },
       },
     });
     if (!row) throw new NotFoundException('Job not found');
-    const vehicle = row.vehicleId
-      ? await this.tenantDb.db.vehicle.findFirst({
-          where: { id: row.vehicleId, tenantId, deletedAt: null },
-          select: {
-            id: true,
-            plateNumber: true,
-            make: true,
-            model: true,
-            year: true,
-          },
-        })
-      : null;
+    const itemIds = [
+      ...new Set(
+        row.materials
+          .map((m) => m.itemId)
+          .filter((id): id is string => Boolean(id)),
+      ),
+    ];
+    const [vehicle, catalogItems] = await Promise.all([
+      row.vehicleId
+        ? this.tenantDb.db.vehicle.findFirst({
+            where: { id: row.vehicleId, tenantId, deletedAt: null },
+            select: {
+              id: true,
+              plateNumber: true,
+              make: true,
+              model: true,
+              year: true,
+            },
+          })
+        : Promise.resolve(null),
+      itemIds.length > 0
+        ? this.tenantDb.db.item.findMany({
+            where: { id: { in: itemIds }, deletedAt: null },
+            select: { id: true, sku: true },
+          })
+        : Promise.resolve([] as Array<{ id: string; sku: string }>),
+    ]);
+    const skuByItemId = new Map(catalogItems.map((item) => [item.id, item.sku]));
     return {
       ...this.serializeJob(row),
+      saleId: row.sales[0]?.id ?? null,
       customer: row.customer
         ? {
             id: row.customer.id,
             name: row.customer.name,
             email: row.customer.email,
             phone: row.customer.phone,
+            totalSellDue:
+              row.customer.totalSellDue != null
+                ? toNumber(row.customer.totalSellDue)
+                : null,
           }
         : null,
       vehicle: vehicle
@@ -130,6 +195,7 @@ export class JobsService {
         quantity: toNumber(m.quantity),
         unitCost: toNumber(m.unitCost),
         totalCost: toNumber(m.totalCost),
+        sku: m.itemId ? (skuByItemId.get(m.itemId) ?? null) : null,
         source: m.source,
         sourceType: (m.sourceType as JobMaterial['sourceType']) ?? null,
         sourceDepartment: m.sourceDepartment,
@@ -139,6 +205,16 @@ export class JobsService {
       })),
       labourEntries: await this.resolveLabourWithStaffNames(row.labourEntries),
     };
+  }
+
+  async getMeta(id: string): Promise<{ id: string; reference: string }> {
+    const tenantId = this.tenantDb.requireTenantId();
+    const row = await this.tenantDb.db.job.findFirst({
+      where: { id, tenantId, deletedAt: null },
+      select: { id: true, reference: true },
+    });
+    if (!row) throw new NotFoundException('Job not found');
+    return row;
   }
 
   async create(body: {
@@ -237,11 +313,30 @@ export class JobsService {
     });
     if (!existing) throw new NotFoundException('Job not found');
 
-    const next = getNextStage(existing.status, existing.hasQuote);
-    if (!next) {
-      throw new BadRequestException('Job is already at the final stage');
+    const qcChecklist =
+      existing.qcChecklist &&
+      typeof existing.qcChecklist === 'object' &&
+      !Array.isArray(existing.qcChecklist)
+        ? (existing.qcChecklist as Record<string, boolean>)
+        : null;
+
+    let next;
+    try {
+      next = assertCanAdvance({
+        currentStatus: existing.status,
+        hasQuote: existing.hasQuote,
+        quoteAmount: existing.quoteAmount
+          ? toNumber(existing.quoteAmount)
+          : null,
+        qcChecklist,
+      });
+    } catch (err) {
+      throw new BadRequestException(
+        err instanceof Error ? err.message : 'Cannot advance job status',
+      );
     }
 
+    const coerced = coerceJobStatus(existing.status, existing.hasQuote);
     const row = await this.tenantDb.db.job.update({
       where: { id },
       data: { status: next },
@@ -251,7 +346,11 @@ export class JobsService {
       entityType: 'job',
       entityId: id,
       summary: `Status → ${next}`,
-      metadata: { previousStatus: existing.status, status: next },
+      metadata: {
+        previousStatus: existing.status,
+        coercedFrom: coerced !== existing.status ? coerced : undefined,
+        status: next,
+      },
     });
     return this.serializeJob(row);
   }
@@ -309,6 +408,26 @@ export class JobsService {
       entityId: id,
       summary: `Updated quote/invoice draft for ${existing.reference}`,
     });
+
+    const updated = await this.tenantDb.db.job.findFirst({
+      where: { id, tenantId, deletedAt: null },
+    });
+    if (updated) {
+      if (updated.hasQuote || updated.quoteAmount != null) {
+        await this.invoiceHub.ensureJobDocumentInvoice(
+          this.tenantDb.db,
+          updated,
+          'job_quote',
+        );
+      }
+      if (updated.invoiceAmount != null) {
+        await this.invoiceHub.ensureJobDocumentInvoice(
+          this.tenantDb.db,
+          updated,
+          'job_invoice',
+        );
+      }
+    }
 
     return this.getById(id);
   }
@@ -380,9 +499,12 @@ export class JobsService {
     }
 
     const sourceType = body.sourceType ?? 'shop';
+    let resolvedSourceType: JobMaterial['sourceType'] = sourceType;
     let sourceDepartment: string | null = null;
     let supplierId: string | null = null;
     let supplierName: string | null = null;
+    let purchaseMovementId: string | null = null;
+    let resolvedItemId: string | null = body.itemId ?? null;
 
     if (sourceType === 'internal') {
       const code = body.sourceDepartment?.trim();
@@ -418,11 +540,23 @@ export class JobsService {
 
     const totalCost = quantity * unitCost;
 
-    // External parts are procured from a supplier — log a purchase (inbound
-    // movement) so it shows in Purchases. It does not touch sellable stock:
-    // the part is consumed by the job and billed on the customer invoice.
-    let purchaseMovementId: string | null = null;
-    if (sourceType === 'external' && supplierId) {
+    if (sourceType === 'shop') {
+      const stocked = await this.resolveShopStockForMaterial({
+        tenantId,
+        itemId: body.itemId,
+        name,
+        quantity,
+        unitCost,
+        jobReference: job.reference,
+      });
+      resolvedSourceType = stocked.sourceType;
+      sourceDepartment = stocked.sourceDepartment;
+      supplierId = stocked.supplierId;
+      supplierName = stocked.supplierName;
+      purchaseMovementId = stocked.purchaseMovementId;
+      resolvedItemId = stocked.itemId;
+    } else if (sourceType === 'external' && supplierId) {
+      // Explicit external purchase — inbound movement for Purchases list.
       const suffix = Date.now().toString(36).slice(-4).toUpperCase();
       const purchase = await this.tenantDb.db.stockMovement.create({
         data: {
@@ -450,13 +584,13 @@ export class JobsService {
     await this.tenantDb.db.jobMaterial.create({
       data: {
         jobId: job.id,
-        itemId: body.itemId ?? null,
+        itemId: resolvedItemId,
         name,
         quantity,
         unitCost,
         totalCost,
         source: body.source?.trim() || null,
-        sourceType,
+        sourceType: resolvedSourceType,
         sourceDepartment,
         supplierId,
         supplierName,
@@ -473,7 +607,7 @@ export class JobsService {
         quantity,
         unitCost,
         totalCost,
-        sourceType,
+        sourceType: resolvedSourceType,
         sourceDepartment,
         supplierId,
         purchaseMovementId,
@@ -681,6 +815,163 @@ export class JobsService {
     });
 
     return this.getById(jobId);
+  }
+
+  /**
+   * Own-stock path for VA (and any job tenant):
+   * 1) Deduct from this tenant's catalog if enough on hand
+   * 2) Else deduct from VW Warehouse if that SKU has stock
+   * 3) Else create a normal inbound purchase (no supplier required)
+   */
+  private async resolveShopStockForMaterial(input: {
+    tenantId: string;
+    itemId?: string;
+    name: string;
+    quantity: number;
+    unitCost: number;
+    jobReference: string;
+  }): Promise<{
+    sourceType: JobMaterial['sourceType'];
+    sourceDepartment: string | null;
+    supplierId: string | null;
+    supplierName: string | null;
+    purchaseMovementId: string | null;
+    itemId: string | null;
+  }> {
+    const totalCost = input.quantity * input.unitCost;
+
+    const tryDeduct = async (
+      item: {
+        id: string;
+        quantity: { toString(): string } | number | string | null;
+        reorderPoint: number | null;
+        tenantId: string;
+      },
+      asInternalFrom?: string,
+    ) => {
+      const currentQty = toNumber(item.quantity);
+      if (currentQty < input.quantity) return null;
+      const nextQuantity = currentQty - input.quantity;
+      await this.prisma.item.update({
+        where: { id: item.id },
+        data: {
+          quantity: nextQuantity,
+          status: computeStockStatus(nextQuantity, item.reorderPoint),
+        },
+      });
+      if (asInternalFrom) {
+        return {
+          sourceType: 'internal' as const,
+          sourceDepartment: asInternalFrom,
+          supplierId: null,
+          supplierName: null,
+          purchaseMovementId: null,
+          itemId: item.id,
+        };
+      }
+      return {
+        sourceType: 'shop' as const,
+        sourceDepartment: null,
+        supplierId: null,
+        supplierName: null,
+        purchaseMovementId: null,
+        itemId: item.id,
+      };
+    };
+
+    let localItem =
+      input.itemId != null
+        ? await this.prisma.item.findFirst({
+            where: {
+              id: input.itemId,
+              tenantId: input.tenantId,
+              deletedAt: null,
+            },
+          })
+        : null;
+
+    if (!localItem && input.name) {
+      localItem = await this.prisma.item.findFirst({
+        where: {
+          tenantId: input.tenantId,
+          deletedAt: null,
+          OR: [
+            { name: { equals: input.name, mode: 'insensitive' } },
+            { sku: { equals: input.name, mode: 'insensitive' } },
+          ],
+        },
+      });
+    }
+
+    if (localItem) {
+      const deducted = await tryDeduct(localItem);
+      if (deducted) return deducted;
+    }
+
+    const sku = localItem?.sku ?? null;
+    const vw = await this.prisma.tenant.findFirst({
+      where: { code: 'VW', deletedAt: null },
+      select: { id: true, code: true },
+    });
+    if (vw && (sku || input.name)) {
+      const vwItem = await this.prisma.item.findFirst({
+        where: {
+          tenantId: vw.id,
+          deletedAt: null,
+          OR: [
+            ...(sku
+              ? [{ sku: { equals: sku, mode: 'insensitive' as const } }]
+              : []),
+            { name: { equals: input.name, mode: 'insensitive' } },
+            ...(localItem?.name
+              ? [
+                  {
+                    name: {
+                      equals: localItem.name,
+                      mode: 'insensitive' as const,
+                    },
+                  },
+                ]
+              : []),
+          ],
+        },
+      });
+      if (vwItem) {
+        const deducted = await tryDeduct(vwItem, 'VW');
+        if (deducted) return deducted;
+      }
+    }
+
+    const suffix = Date.now().toString(36).slice(-4).toUpperCase();
+    const purchase = await this.tenantDb.db.stockMovement.create({
+      data: {
+        tenantId: input.tenantId,
+        type: 'inbound',
+        reference: `${input.jobReference}-P${suffix}`,
+        status: 'Received',
+        lines: [
+          {
+            itemId: localItem?.id ?? input.itemId ?? null,
+            sku: sku,
+            name: input.name,
+            quantity: input.quantity,
+            unitCost: input.unitCost,
+            total: totalCost,
+          },
+        ] as unknown as Prisma.InputJsonValue,
+        notes: `Auto-purchase for job ${input.jobReference} — not enough stock in shop or VW`,
+        date: new Date(),
+      },
+    });
+
+    return {
+      sourceType: 'external',
+      sourceDepartment: null,
+      supplierId: null,
+      supplierName: 'Purchase (not in stock)',
+      purchaseMovementId: purchase.id,
+      itemId: localItem?.id ?? input.itemId ?? null,
+    };
   }
 
   private async requireJob(id: string) {

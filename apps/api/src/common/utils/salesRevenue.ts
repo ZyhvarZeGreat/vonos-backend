@@ -9,28 +9,17 @@ export async function computeSalesRevenueTotal(
   to?: string,
 ): Promise<{ revenue: number; currency: string }> {
   const window = resolveDateWindow(from, to);
-  const [agg, sample] = await Promise.all([
-    db.sale.aggregate({
-      where: {
-        deletedAt: null,
-        status: { not: 'draft' },
-        date: { gte: window.from, lte: window.to },
-      },
-      _sum: { total: true },
-    }),
-    db.sale.findFirst({
-      where: {
-        deletedAt: null,
-        status: { not: 'draft' },
-        date: { gte: window.from, lte: window.to },
-      },
-      select: { currency: true },
-      orderBy: { date: 'desc' },
-    }),
-  ]);
+  const agg = await db.sale.aggregate({
+    where: {
+      deletedAt: null,
+      status: { not: 'draft' },
+      date: { gte: window.from, lte: window.to },
+    },
+    _sum: { total: true },
+  });
 
   return {
     revenue: toNumber(agg._sum.total ?? 0),
-    currency: sample?.currency ?? 'NGN',
+    currency: 'NGN',
   };
 }

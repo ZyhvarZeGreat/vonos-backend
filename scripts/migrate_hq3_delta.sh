@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# VA hq3temp delta — Jan 2026+ ops into tenant_va_001
+# VA hq3temp (HQ6 live) → tenant_va_001
+# Full import: ./scripts/migrate_hq3_delta.sh --dump localhost.sql --full --write --confirm-tenant VA
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"

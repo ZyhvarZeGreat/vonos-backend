@@ -2,7 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import type { AppointmentListRow } from '@vonos/types';
 import { TenantDbService } from '../../common/prisma/tenant-db.service';
 import { AuditService } from '../audit/audit.service';
-import { buildCursorQuery } from '../../common/utils/pagination';
+import { buildCompositeCursorQuery } from '../../common/utils/pagination';
 import { toIso, toNumber } from '../../common/utils/serializers';
 
 function serializeAppointment(row: {
@@ -48,12 +48,31 @@ export class AppointmentsService {
     cursor?: string;
     limit?: number;
     search?: string;
+    from?: string;
+    to?: string;
+    status?: string;
   } = {}): Promise<AppointmentListRow[]> {
     const tenantId = this.tenantDb.requireTenantId();
+    const pagination = buildCompositeCursorQuery({
+      sortField: 'startTime',
+      sortDir: 'desc',
+      cursor: filters.cursor,
+      limit: filters.limit ?? 10,
+      sortValueType: 'date',
+    });
     const rows = await this.tenantDb.db.appointment.findMany({
       where: {
         tenantId,
         deletedAt: null,
+        ...(filters.status ? { status: filters.status } : {}),
+        ...(filters.from || filters.to
+          ? {
+              startTime: {
+                ...(filters.from ? { gte: new Date(filters.from) } : {}),
+                ...(filters.to ? { lte: new Date(filters.to) } : {}),
+              },
+            }
+          : {}),
         ...(filters.search
           ? {
               OR: [
@@ -77,10 +96,11 @@ export class AppointmentsService {
               ],
             }
           : {}),
+        ...(pagination.where ?? {}),
       },
       include: { customer: { select: { name: true } } },
-      orderBy: { startTime: 'desc' },
-      ...buildCursorQuery(filters.cursor, filters.limit ?? 25),
+      orderBy: [{ startTime: 'desc' }, { id: 'desc' }],
+      take: pagination.take,
     });
     return rows.map(serializeAppointment);
   }

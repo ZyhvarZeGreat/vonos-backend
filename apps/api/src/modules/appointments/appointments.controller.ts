@@ -16,11 +16,17 @@ export class AppointmentsController {
     @Query('cursor') cursor?: string,
     @Query('limit') limit?: string,
     @Query('search') search?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('status') status?: string,
   ) {
     return this.appointmentsService.list({
       cursor,
       limit: limit ? Number(limit) : undefined,
       search,
+      from,
+      to,
+      status,
     });
   }
 

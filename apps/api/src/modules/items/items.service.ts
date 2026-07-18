@@ -13,8 +13,10 @@ import { Prisma } from '@prisma/client';
 import { TenantDbService } from '../../common/prisma/tenant-db.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { CacheService } from '../../common/cache/cache.service';
+import { invalidateTenantDashboardCache } from '../../common/cache/cacheInvalidation';
 import { AuditService } from '../audit/audit.service';
-import { buildCursorQuery } from '../../common/utils/pagination';
+import { buildCompositeCursorQuery } from '../../common/utils/pagination';
+import { resolveListSort } from '../../common/utils/listSort';
 import { parseCsv, pickCsvField } from '../../common/utils/csvImport';
 import { toNumber } from '../../common/utils/serializers';
 import { serializeItem } from './items.mapper';
@@ -28,14 +30,25 @@ interface CreateItemDto {
   sku: string;
   name: string;
   category?: string;
+  subCategory?: string;
+  description?: string;
+  barcodeType?: string;
+  unit?: string;
+  weight?: string;
+  carModel?: string;
+  enableImei?: boolean;
+  preparationMinutes?: number;
   quantity?: number;
   binLocation?: string;
   locationCode?: string;
   reorderPoint?: number;
   costPrice: number;
+  sellPrice?: number;
   currency?: string;
   status?: StockStatus;
   availableForRetail?: boolean;
+  brandId?: string;
+  brandName?: string;
   locationStock?: ItemLocationStockInput[];
 }
 
@@ -95,12 +108,7 @@ export class ItemsService {
 
   private async invalidateItemCaches(): Promise<void> {
     const tenantId = this.tenantDb.requireTenantId();
-    await Promise.all([
-      this.cache.invalidatePrefix(`entity-overview:${tenantId}`),
-      this.cache.invalidatePrefix(`report-dash:${tenantId}`),
-      this.cache.invalidatePrefix('group-overview:'),
-      this.cache.invalidatePrefix('report-group:'),
-    ]);
+    await invalidateTenantDashboardCache(this.cache, tenantId);
   }
 
   async list(
@@ -108,7 +116,30 @@ export class ItemsService {
   ): Promise<Item[]> {
     const tenantId = this.tenantDb.requireTenantId();
     const db = this.tenantDb.db;
-    const limit = filters.limit ?? 50;
+    const limit = filters.limit ?? 10;
+
+    const sort = resolveListSort(filters.sortBy, filters.sortDir, {
+      name: { field: 'name', type: 'string' },
+      sku: { field: 'sku', type: 'string' },
+      quantity: { field: 'quantity', type: 'number' },
+      costPrice: { field: 'costPrice', type: 'number' },
+      sellingPrice: { field: 'sellingPrice', type: 'number' },
+      createdAt: { field: 'createdAt', type: 'date' },
+      category: { field: 'category', type: 'string' },
+      status: { field: 'status', type: 'string' },
+    }, {
+      sortField: 'name',
+      sortDir: 'asc',
+      sortValueType: 'string',
+    });
+
+    const pagination = buildCompositeCursorQuery({
+      sortField: sort.sortField,
+      sortDir: sort.sortDir,
+      cursor: filters.cursor,
+      limit,
+      sortValueType: sort.sortValueType,
+    });
 
     const rows = await db.item.findMany({
       where: {
@@ -119,39 +150,75 @@ export class ItemsService {
         ...(filters.availableForRetail !== undefined
           ? { availableForRetail: filters.availableForRetail }
           : {}),
-        ...(filters.search
+        ...(filters.search || filters.locationCode
           ? {
-              OR: [
-                { name: { contains: filters.search, mode: 'insensitive' } },
-                { sku: { contains: filters.search, mode: 'insensitive' } },
-                { category: { contains: filters.search, mode: 'insensitive' } },
-                { binLocation: { contains: filters.search, mode: 'insensitive' } },
-                { locationCode: { contains: filters.search, mode: 'insensitive' } },
+              AND: [
+                ...(filters.search
+                  ? [
+                      {
+                        OR: [
+                          {
+                            name: {
+                              contains: filters.search,
+                              mode: 'insensitive' as const,
+                            },
+                          },
+                          {
+                            sku: {
+                              contains: filters.search,
+                              mode: 'insensitive' as const,
+                            },
+                          },
+                          {
+                            category: {
+                              contains: filters.search,
+                              mode: 'insensitive' as const,
+                            },
+                          },
+                          {
+                            binLocation: {
+                              contains: filters.search,
+                              mode: 'insensitive' as const,
+                            },
+                          },
+                          {
+                            locationCode: {
+                              contains: filters.search,
+                              mode: 'insensitive' as const,
+                            },
+                          },
+                        ],
+                      },
+                    ]
+                  : []),
+                ...(filters.locationCode
+                  ? [
+                      {
+                        OR: [
+                          { locationCode: filters.locationCode },
+                          { binLocation: filters.locationCode },
+                          {
+                            locationStock: {
+                              some: {
+                                OR: [
+                                  { locationCode: filters.locationCode },
+                                  { binLocation: filters.locationCode },
+                                ],
+                              },
+                            },
+                          },
+                        ],
+                      },
+                    ]
+                  : []),
               ],
             }
           : {}),
-        ...(filters.locationCode
-          ? {
-              OR: [
-                { locationCode: filters.locationCode },
-                { binLocation: filters.locationCode },
-                {
-                  locationStock: {
-                    some: {
-                      OR: [
-                        { locationCode: filters.locationCode },
-                        { binLocation: filters.locationCode },
-                      ],
-                    },
-                  },
-                },
-              ],
-            }
-          : {}),
+        ...(pagination.where ?? {}),
       },
-      orderBy: { id: 'asc' },
-      include: { locationStock: true },
-      ...buildCursorQuery(filters.cursor, limit),
+      orderBy: [{ [sort.sortField]: sort.sortDir }, { id: sort.sortDir }],
+      include: filters.locationCode ? { locationStock: true } : undefined,
+      take: pagination.take,
     });
 
     return rows.map(serializeItem);
@@ -165,6 +232,18 @@ export class ItemsService {
     });
     if (!row) throw new NotFoundException('Item not found');
     return serializeItem(row);
+  }
+
+  async getMeta(
+    id: string,
+  ): Promise<{ id: string; name: string; sku: string }> {
+    const tenantId = this.tenantDb.requireTenantId();
+    const row = await this.tenantDb.db.item.findFirst({
+      where: { id, tenantId, deletedAt: null },
+      select: { id: true, name: true, sku: true },
+    });
+    if (!row) throw new NotFoundException('Item not found');
+    return row;
   }
 
   async kpiSummary(): Promise<KpiSummary> {
@@ -249,20 +328,54 @@ export class ItemsService {
         : (dto.quantity ?? 0);
     const status = deriveStatus(quantity, dto.reorderPoint, dto.status);
 
+    let brandId = dto.brandId?.trim() || null;
+    if (!brandId && dto.brandName?.trim()) {
+      const existingBrand = await this.tenantDb.db.brand.findFirst({
+        where: {
+          tenantId,
+          deletedAt: null,
+          name: { equals: dto.brandName.trim(), mode: 'insensitive' },
+        },
+        select: { id: true },
+      });
+      if (existingBrand) {
+        brandId = existingBrand.id;
+      } else {
+        const created = await this.tenantDb.db.brand.create({
+          data: { tenantId, name: dto.brandName.trim() },
+          select: { id: true },
+        });
+        brandId = created.id;
+      }
+    }
+
     const row = await this.tenantDb.db.item.create({
       data: {
         tenantId,
         sku: dto.sku,
         name: dto.name,
         category: dto.category ?? null,
+        subCategory: dto.subCategory?.trim() || null,
+        description: dto.description?.trim() || null,
+        barcodeType: dto.barcodeType?.trim() || null,
+        unit: dto.unit?.trim() || null,
+        weight: dto.weight?.trim() || null,
+        carModel: dto.carModel?.trim() || null,
+        enableImei: dto.enableImei ?? false,
+        preparationMinutes:
+          dto.preparationMinutes != null && Number.isFinite(dto.preparationMinutes)
+            ? Math.trunc(dto.preparationMinutes)
+            : null,
         quantity,
         binLocation: primaryBin,
         locationCode: primaryLocation,
         reorderPoint: dto.reorderPoint ?? null,
         costPrice: dto.costPrice,
+        sellPrice: dto.sellPrice ?? null,
         currency: dto.currency ?? 'NGN',
         status,
         availableForRetail: dto.availableForRetail ?? false,
+        brandId,
         ...createdBy,
         ...(locationRows.length > 0
           ? {
@@ -620,7 +733,7 @@ export class ItemsService {
     }
 
     const tenantIdForCache = this.tenantDb.requireTenantId();
-    void this.cache.invalidatePrefix(`entity-overview:${tenantIdForCache}`);
+    void invalidateTenantDashboardCache(this.cache, tenantIdForCache);
 
     return { updated };
   }

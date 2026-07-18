@@ -2,6 +2,8 @@ import {
   Body,
   Controller,
   Get,
+  Param,
+  Patch,
   Post,
   Query,
   Req,
@@ -20,6 +22,9 @@ import type {
   CreatePayrollRequest,
   CreatePayrollGroupRequest,
   CreatePayComponentRequest,
+  CreateDesignationRequest,
+  CreateEmployeeRequest,
+  UpdatePayrollDeductionRequest,
 } from '@vonos/types';
 
 type AuthedRequest = Request & { user: AuthenticatedUser };
@@ -34,11 +39,62 @@ export class HrmController {
     @Req() request: AuthedRequest,
     @Query('allTenants') allTenants?: string,
     @Query('search') search?: string,
+    @Query('cursor') cursor?: string,
+    @Query('limit') limit?: string,
   ) {
+    const filters = {
+      search,
+      cursor,
+      limit: limit ? Number(limit) : undefined,
+    };
     if (allTenants === 'true') {
-      return this.service.listWorkforceAllTenants(request.user.role, { search });
+      return this.service.listWorkforceAllTenants(request.user.role, filters);
     }
-    return this.service.listWorkforce({ search });
+    return this.service.listWorkforce(filters);
+  }
+
+  @Get('designations')
+  listDesignations(
+    @Query('cursor') cursor?: string,
+    @Query('limit') limit?: string,
+    @Query('search') search?: string,
+  ) {
+    return this.service.listDesignations({
+      cursor,
+      limit: limit ? Number(limit) : undefined,
+      search,
+    });
+  }
+
+  @Post('designations')
+  @Roles('admin', 'manager')
+  createDesignation(@Body() dto: CreateDesignationRequest) {
+    return this.service.createDesignation(dto);
+  }
+
+  @Get('employees')
+  listEmployees(
+    @Query('cursor') cursor?: string,
+    @Query('limit') limit?: string,
+    @Query('search') search?: string,
+    @Query('designationId') designationId?: string,
+    @Query('locationCode') locationCode?: string,
+    @Query('serviceStaffOnly') serviceStaffOnly?: string,
+  ) {
+    return this.service.listEmployees({
+      cursor,
+      limit: limit ? Number(limit) : undefined,
+      search,
+      designationId,
+      locationCode,
+      serviceStaffOnly: serviceStaffOnly === 'true',
+    });
+  }
+
+  @Post('employees')
+  @Roles('admin', 'manager')
+  createEmployee(@Body() dto: CreateEmployeeRequest) {
+    return this.service.createEmployee(dto);
   }
 
   @Get('payroll')
@@ -46,11 +102,27 @@ export class HrmController {
     @Query('cursor') cursor?: string,
     @Query('limit') limit?: string,
     @Query('search') search?: string,
+    @Query('payrollGroupId') payrollGroupId?: string,
+    @Query('employeeRecordId') employeeRecordId?: string,
+    @Query('locationCode') locationCode?: string,
+    @Query('designationId') designationId?: string,
+    @Query('month') month?: string,
+    @Query('year') year?: string,
+    @Query('sortBy') sortBy?: string,
+    @Query('sortDir') sortDir?: string,
   ) {
     return this.service.listPayrolls({
       cursor,
       limit: limit ? Number(limit) : undefined,
       search,
+      payrollGroupId,
+      employeeRecordId,
+      locationCode,
+      designationId,
+      month: month ? Number(month) : undefined,
+      year: year ? Number(year) : undefined,
+      sortBy,
+      sortDir: sortDir === 'asc' || sortDir === 'desc' ? sortDir : undefined,
     });
   }
 
@@ -58,6 +130,15 @@ export class HrmController {
   @Roles('admin', 'manager')
   createPayroll(@Body() dto: CreatePayrollRequest) {
     return this.service.createPayroll(dto);
+  }
+
+  @Patch('payroll/:id/deduction')
+  @Roles('admin', 'manager')
+  addPayrollDeduction(
+    @Param('id') id: string,
+    @Body() dto: UpdatePayrollDeductionRequest,
+  ) {
+    return this.service.addPayrollDeduction(id, dto);
   }
 
   @Get('payroll-groups')

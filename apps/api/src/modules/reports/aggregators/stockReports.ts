@@ -8,6 +8,8 @@ import {
   lowStockItems,
   stockMovementTrend,
   stockValueByCategory,
+  topStockValueItems,
+  type StockItemRow,
 } from './stockReportQueries';
 
 type StockTab = 'valuation' | 'movement' | 'lowstock';
@@ -34,7 +36,25 @@ export async function buildStockReportsFromContext(
   } = metrics;
 
   if (tab === 'valuation') {
-    const chartData = await stockValueByCategory(db, tenantId);
+    const [chartData, valueItems] = await Promise.all([
+      stockValueByCategory(db, tenantId),
+      topStockValueItems(db, tenantId),
+    ]);
+
+    const tableRows = valueItems.map((item: StockItemRow) => {
+      const stockValue = Math.round(item.quantity * item.costPrice * 100) / 100;
+      return {
+        id: item.id,
+        recordType: 'item',
+        sku: item.sku,
+        name: item.name,
+        category: item.category ?? '—',
+        quantity: item.quantity,
+        costPrice: Math.round(item.costPrice * 100) / 100,
+        stockValue,
+        currency: item.currency,
+      };
+    });
 
     return {
       kpis: [
@@ -79,7 +99,21 @@ export async function buildStockReportsFromContext(
           data: asChartData(chartData),
         },
       ],
-      table: null,
+      table: {
+        columns: [
+          { key: 'sku', header: 'SKU' },
+          { key: 'name', header: 'Name' },
+          { key: 'category', header: 'Category' },
+          { key: 'quantity', header: 'Qty' },
+          { key: 'costPrice', header: 'Unit Cost' },
+          { key: 'stockValue', header: 'Stock Value' },
+        ],
+        rows: tableRows,
+        columnTotals: {
+          quantity: totalUnits,
+          stockValue: Math.round(stockValue * 100) / 100,
+        },
+      },
     };
   }
 
@@ -191,7 +225,7 @@ export async function buildStockReportsFromContext(
         { key: 'reorderPoint', header: 'Reorder' },
         { key: 'status', header: 'Status' },
       ],
-      rows: lowItems.map((item) => ({
+      rows: lowItems.map((item: StockItemRow) => ({
         id: item.id,
         recordType: 'item',
         sku: item.sku,
@@ -200,6 +234,9 @@ export async function buildStockReportsFromContext(
         reorderPoint: item.reorderPoint ?? '—',
         status: item.status.replace('_', ' '),
       })),
+      columnTotals: {
+        quantity: lowItems.reduce((s, item) => s + item.quantity, 0),
+      },
     },
   };
 }

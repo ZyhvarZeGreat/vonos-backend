@@ -2,7 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import type { CafeTable, CafeTableStatus } from '@vonos/types';
 import { TenantDbService } from '../../common/prisma/tenant-db.service';
 import { AuditService } from '../audit/audit.service';
-import { buildCursorQuery } from '../../common/utils/pagination';
+import { buildCompositeCursorQuery } from '../../common/utils/pagination';
 import { toIso } from '../../common/utils/serializers';
 
 function serialize(row: {
@@ -38,6 +38,13 @@ export class CafeTablesService {
     search?: string;
   } = {}): Promise<CafeTable[]> {
     const tenantId = this.tenantDb.requireTenantId();
+    const pagination = buildCompositeCursorQuery({
+      sortField: 'label',
+      sortDir: 'asc',
+      cursor: filters.cursor,
+      limit: filters.limit ?? 10,
+      sortValueType: 'string',
+    });
     const rows = await this.tenantDb.db.cafeTable.findMany({
       where: {
         tenantId,
@@ -45,9 +52,10 @@ export class CafeTablesService {
         ...(filters.search
           ? { label: { contains: filters.search, mode: 'insensitive' } }
           : {}),
+        ...(pagination.where ?? {}),
       },
-      orderBy: { label: 'asc' },
-      ...buildCursorQuery(filters.cursor, filters.limit ?? 25),
+      orderBy: [{ label: 'asc' }, { id: 'asc' }],
+      take: pagination.take,
     });
     return rows.map(serialize);
   }

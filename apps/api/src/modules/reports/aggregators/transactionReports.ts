@@ -136,6 +136,15 @@ export async function buildTransactionReports(
                 revenue: Math.round(row.revenue),
                 currency,
               })),
+              columnTotals: {
+                units:
+                  Math.round(
+                    topProducts.reduce((s, r) => s + r.units, 0) * 100,
+                  ) / 100,
+                revenue: Math.round(
+                  topProducts.reduce((s, r) => s + r.revenue, 0),
+                ),
+              },
             }
           : null,
     };
