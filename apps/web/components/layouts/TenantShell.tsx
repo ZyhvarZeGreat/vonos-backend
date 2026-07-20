@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { getTenantConfig } from "@/lib/api";
@@ -11,6 +11,8 @@ import { tenantAccentStyle } from "@/lib/registries/tenantAccents";
 import { getTenantConfigByCode } from "@/lib/registries/tenantConfigs";
 import { useAuthStore } from "@/stores/authStore";
 import { useTenantStore } from "@/stores/tenantStore";
+import { useUiStore } from "@/stores/uiStore";
+import { dateRangePresetToApiBounds } from "@/lib/utils/dateRange";
 import { Spinner } from "@/components/atoms/Spinner";
 import { scheduleIdle } from "@/lib/prefetch/scheduleIdle";
 import { prefetchTenantShell } from "@/lib/prefetch/routePrefetchRegistry";
@@ -25,6 +27,12 @@ export function TenantShell({ children }: { children: React.ReactNode }) {
   const userTenantId = useAuthStore((state) => state.tenantId);
   const setTenantConfig = useTenantStore((state) => state.setTenantConfig);
   const clearTenant = useTenantStore((state) => state.clearTenant);
+  const dateRange = useUiStore((state) => state.dateRange);
+  const customDateRange = useUiStore((state) => state.customDateRange);
+  const dateBounds = useMemo(
+    () => dateRangePresetToApiBounds(dateRange, new Date(), customDateRange),
+    [customDateRange, dateRange],
+  );
 
   const skipAuth = isAuthSkipped();
   const tenantCode = params.tenant;
@@ -101,9 +109,9 @@ export function TenantShell({ children }: { children: React.ReactNode }) {
     if (!registryEntry?.tenantId) return;
     if (!isTenantCode(tenantCode)) return;
     scheduleIdle(() =>
-      prefetchTenantShell(queryClient, tenantCode, registryEntry.tenantId),
+      prefetchTenantShell(queryClient, tenantCode, registryEntry.tenantId, dateBounds),
     );
-  }, [tenantCode, registryEntry?.tenantId, queryClient]);
+  }, [tenantCode, registryEntry?.tenantId, queryClient, dateBounds]);
 
   // Unknown route tenant — keep chrome free; show a simple loader.
   if (!registryEntry) {

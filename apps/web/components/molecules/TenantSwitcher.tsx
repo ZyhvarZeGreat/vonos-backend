@@ -40,6 +40,7 @@ export function TenantSwitcher({
   const queryClient = useQueryClient();
   const dateRange = useUiStore((s) => s.dateRange);
   const customDateRange = useUiStore((s) => s.customDateRange);
+  const beginEntitySwitch = useUiStore((s) => s.beginEntitySwitch);
   const canSwitchEntities = role === "super_admin";
   const onAdmin = pathname.startsWith("/admin");
   const [open, setOpen] = useState(false);
@@ -48,6 +49,15 @@ export function TenantSwitcher({
   const tenant = getTenantByCode(tenantCode);
 
   const warmAdminEntity = (code: TenantCode) => {
+    const href = resolveEntitySwitchPath(code, pathname);
+    const tenant = getTenantByCode(code);
+    const bounds = dateRangePresetToApiBounds(dateRange, new Date(), customDateRange);
+    prefetchRoute(queryClient, {
+      pathname: href,
+      tenantCode: code,
+      tenantId: tenant?.tenantId,
+      dateBounds: bounds,
+    });
     if (!onAdmin) return;
     const key = `${pathname}:${code}`;
     if (warmedRef.current.has(key)) return;
@@ -75,6 +85,14 @@ export function TenantSwitcher({
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
+
+  function startSwitch(code: string, name: string, href: string) {
+    beginEntitySwitch({ code, name, href });
+    if (onAdmin) {
+      setAdminViewing(null);
+    }
+    setOpen(false);
+  }
 
   const entityButtonContent = (
     <>
@@ -168,10 +186,8 @@ export function TenantSwitcher({
                   onMouseEnter={() => warmAdminEntity(entity.code as TenantCode)}
                   onFocus={() => warmAdminEntity(entity.code as TenantCode)}
                   onClick={() => {
-                    if (onAdmin) {
-                      setAdminViewing(null);
-                    }
-                    setOpen(false);
+                    if (isActive) return;
+                    startSwitch(entity.code, entity.name, href);
                   }}
                   className={cn(
                     "flex items-center gap-2.5 rounded-md px-2.5 py-2 transition-colors",
@@ -198,8 +214,8 @@ export function TenantSwitcher({
             <Link
               href="/admin/overview"
               onClick={() => {
-                if (onAdmin) setAdminViewing(null);
-                setOpen(false);
+                if (pathname.startsWith("/admin/overview")) return;
+                startSwitch("VAG", "Vonos Autos Group", "/admin/overview");
               }}
               className="mt-1 flex items-center gap-2.5 rounded-md border-t border-border px-2.5 py-2 transition-colors hover:bg-[var(--color-surface-nav-hover)]"
             >

@@ -6,20 +6,27 @@ import {
   getLedgerCharts,
   getLedgerSummary,
 } from "@/lib/api/ledger";
-import { getStockAvailability } from "@/lib/api/items";
+import { getCustomersPage } from "@/lib/api/customers";
+import { getItemsPage, getStockAvailability } from "@/lib/api/items";
 import { getWorkforce } from "@/lib/api/hrm";
 import { getJobsPage } from "@/lib/api/jobs";
 import { getOverviewDashboard } from "@/lib/api/overview";
+import { getRequisitionsPage } from "@/lib/api/requisitions";
 import { getGroupReports, getReportsDashboard } from "@/lib/api/reports";
+import { getSalesPage } from "@/lib/api/sales";
+import { getStockMovementsPage } from "@/lib/api/stockMovements";
+import { getSuppliersPage } from "@/lib/api/suppliers";
+import { getVehiclesPage } from "@/lib/api/vehicles";
 import { DEFAULT_TABLE_PAGE_SIZE } from "@/lib/api/fetchAllPages";
 import { ADMIN_ENTITY_STALE_MS } from "@/lib/admin/prefetchAdminEntity";
 import { ADMIN_DEFAULT_ENTITY } from "@/stores/adminEntityStore";
 import { getTenantByCode, type TenantCode } from "@/lib/registries/tenants";
-import { getTenantConfigByCode } from "@/lib/registries/tenantConfigs";
+import { allNavRoutesForConfig, getTenantConfigByCode } from "@/lib/registries/tenantConfigs";
 import { dateRangePresetToApiBounds } from "@/lib/utils/dateRange";
 import type { DateRangeBounds } from "@/lib/utils/dateRange";
 import { prefetchEntityHrm } from "@/lib/prefetch/prefetchEntityHrm";
 import { prefetchGroupOverview } from "@/lib/prefetch/prefetchGroupOverview";
+import { scheduleIdleBatch } from "@/lib/prefetch/scheduleIdle";
 import { REPORT_TABS } from "@/components/pages/ReportsView";
 
 export const ROUTE_PREFETCH_STALE_MS = ADMIN_ENTITY_STALE_MS;
@@ -167,6 +174,114 @@ function prefetchTenantReports(
   });
 }
 
+function emptyListFilterKey(
+  filters: Record<string, unknown> = {},
+  search = "",
+): string {
+  return JSON.stringify({
+    ...filters,
+    search,
+    sortBy: null,
+    sortDir: null,
+  });
+}
+
+/** Warm first page of common list screens (inventory, customers, movements, …). */
+function prefetchTenantListSection(
+  queryClient: QueryClient,
+  tenantId: string,
+  slug: string,
+  from: string,
+  to: string,
+): void {
+  const bounds = { from, to };
+
+  switch (slug) {
+    case "inventory":
+    case "products": {
+      const filterKey = emptyListFilterKey();
+      prefetchQuery(queryClient, {
+        queryKey: ["items", tenantId, filterKey, undefined, DEFAULT_TABLE_PAGE_SIZE],
+        queryFn: () => getItemsPage(tenantId, {}, undefined, DEFAULT_TABLE_PAGE_SIZE),
+      });
+      break;
+    }
+    case "inbound":
+    case "outbound": {
+      const type = slug as "inbound" | "outbound";
+      const filterKey = emptyListFilterKey(bounds);
+      prefetchQuery(queryClient, {
+        queryKey: [
+          "stock-movements",
+          tenantId,
+          type,
+          undefined,
+          undefined,
+          filterKey,
+          undefined,
+          DEFAULT_TABLE_PAGE_SIZE,
+        ],
+        queryFn: () =>
+          getStockMovementsPage(
+            tenantId,
+            { type, from, to },
+            undefined,
+            DEFAULT_TABLE_PAGE_SIZE,
+          ),
+      });
+      break;
+    }
+    case "customers": {
+      const filterKey = emptyListFilterKey(bounds);
+      prefetchQuery(queryClient, {
+        queryKey: ["customers", tenantId, filterKey, undefined, DEFAULT_TABLE_PAGE_SIZE],
+        queryFn: () => getCustomersPage(tenantId, bounds, undefined, DEFAULT_TABLE_PAGE_SIZE),
+      });
+      break;
+    }
+    case "suppliers": {
+      const filterKey = emptyListFilterKey({ tab: "active" });
+      prefetchQuery(queryClient, {
+        queryKey: ["suppliers", tenantId, filterKey, undefined, DEFAULT_TABLE_PAGE_SIZE],
+        queryFn: () => getSuppliersPage(tenantId, undefined, DEFAULT_TABLE_PAGE_SIZE),
+      });
+      break;
+    }
+    case "vehicles": {
+      const filterKey = emptyListFilterKey();
+      prefetchQuery(queryClient, {
+        queryKey: ["vehicles", tenantId, filterKey, undefined, DEFAULT_TABLE_PAGE_SIZE],
+        queryFn: () => getVehiclesPage(tenantId, undefined, DEFAULT_TABLE_PAGE_SIZE),
+      });
+      break;
+    }
+    case "requisitions": {
+      const filterKey = emptyListFilterKey();
+      prefetchQuery(queryClient, {
+        queryKey: ["requisitions", tenantId, filterKey, undefined, DEFAULT_TABLE_PAGE_SIZE],
+        queryFn: () => getRequisitionsPage(tenantId, undefined, DEFAULT_TABLE_PAGE_SIZE),
+      });
+      break;
+    }
+    case "sales": {
+      const filterKey = emptyListFilterKey(bounds);
+      prefetchQuery(queryClient, {
+        queryKey: ["sales", tenantId, "all", filterKey, undefined, DEFAULT_TABLE_PAGE_SIZE],
+        queryFn: () =>
+          getSalesPage(tenantId, { ...bounds }, undefined, DEFAULT_TABLE_PAGE_SIZE),
+      });
+      break;
+    }
+    case "users":
+    case "hrm":
+    case "hrm-dashboard":
+      prefetchEntityHrm(queryClient, tenantId);
+      break;
+    default:
+      break;
+  }
+}
+
 /** Prefetch React Query (and Redis on miss) for a single nav route. */
 export function prefetchRoute(
   queryClient: QueryClient,
@@ -219,11 +334,41 @@ export function prefetchRoute(
       prefetchTenantReports(queryClient, tenantCode as TenantCode, tenantId, from, to);
       break;
     case "hrm":
+    case "hrm-dashboard":
       prefetchEntityHrm(queryClient, tenantId);
       break;
     default:
+      prefetchTenantListSection(queryClient, tenantId, section, from, to);
       break;
   }
+}
+
+/** Prefetch every sidebar route for the tenant (staggered idle). */
+export function prefetchTenantNavRoutes(
+  queryClient: QueryClient,
+  tenantCode: TenantCode,
+  tenantId: string,
+  dateBounds?: DateRangeBounds | null,
+): void {
+  const config = getTenantConfigByCode(tenantCode);
+  const routes = config
+    ? allNavRoutesForConfig(config).map((item) => item.route)
+    : ["overview", "jobs", "finance", "reports", "hrm"].map(
+        (slug) => `/${tenantCode}/${slug}`,
+      );
+
+  const unique = [...new Set(routes)];
+  scheduleIdleBatch(
+    unique.map(
+      (pathname) => () =>
+        prefetchRoute(queryClient, {
+          pathname,
+          tenantCode,
+          tenantId,
+          dateBounds,
+        }),
+    ),
+  );
 }
 
 const VAG_ADMIN_ROUTES = [
@@ -241,18 +386,12 @@ export function prefetchVagAdminShell(queryClient: QueryClient): void {
   }
 }
 
-/** Warm primary tenant nav routes (overview, jobs, finance, reports, hrm). */
+/** Warm all tenant sidebar routes after login / entity entry. */
 export function prefetchTenantShell(
   queryClient: QueryClient,
   tenantCode: TenantCode,
   tenantId: string,
+  dateBounds?: DateRangeBounds | null,
 ): void {
-  const slugs = ["overview", "jobs", "finance", "reports", "hrm"] as const;
-  for (const slug of slugs) {
-    prefetchRoute(queryClient, {
-      pathname: `/${tenantCode}/${slug}`,
-      tenantCode,
-      tenantId,
-    });
-  }
+  prefetchTenantNavRoutes(queryClient, tenantCode, tenantId, dateBounds);
 }

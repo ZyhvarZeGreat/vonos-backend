@@ -77,8 +77,11 @@ import { cn } from "@/lib/utils/cn";
 import { logout } from "@/lib/api/auth";
 import { useAuthStore } from "@/stores/authStore";
 import { useTenantId } from "@/lib/hooks/useRouteTenant";
-import { prefetchRoute } from "@/lib/prefetch/routePrefetchRegistry";
+import { prefetchRoute, prefetchTenantNavRoutes, prefetchVagAdminShell } from "@/lib/prefetch/routePrefetchRegistry";
+import { scheduleIdle } from "@/lib/prefetch/scheduleIdle";
+import { dateRangePresetToApiBounds } from "@/lib/utils/dateRange";
 import { isTenantCode } from "@/lib/registries/tenants";
+import { useUiStore } from "@/stores/uiStore";
 import type { IconComponent } from "@/lib/utils/icons";
 
 const iconMap: Record<string, IconComponent> = {
@@ -197,6 +200,21 @@ export function Sidebar({
   const storeEmail = useAuthStore((state) => state.email);
   const queryClient = useQueryClient();
   const tenantId = useTenantId();
+  const dateRange = useUiStore((state) => state.dateRange);
+  const customDateRange = useUiStore((state) => state.customDateRange);
+  const dateBounds = useMemo(
+    () => dateRangePresetToApiBounds(dateRange, new Date(), customDateRange),
+    [customDateRange, dateRange],
+  );
+
+  const prefetchNavRoute = (route: string) => {
+    prefetchRoute(queryClient, {
+      pathname: route,
+      tenantCode: tenantCode && isTenantCode(tenantCode) ? tenantCode : undefined,
+      tenantId: tenantId ?? undefined,
+      dateBounds,
+    });
+  };
 
   const displayName = userName ?? storeName ?? storeEmail ?? "Account";
   const displayEmail = userEmail ?? storeEmail;
@@ -236,6 +254,17 @@ export function Sidebar({
     (navItems
       ? [{ label: "Menu", items: navItems }]
       : []);
+
+  useEffect(() => {
+    if (tenantCode === "VAG") {
+      scheduleIdle(() => prefetchVagAdminShell(queryClient));
+      return;
+    }
+    if (!tenantId || !tenantCode || !isTenantCode(tenantCode)) return;
+    scheduleIdle(() =>
+      prefetchTenantNavRoutes(queryClient, tenantCode, tenantId, dateBounds),
+    );
+  }, [tenantCode, tenantId, queryClient, dateBounds]);
 
   return (
     <aside
@@ -283,16 +312,7 @@ export function Sidebar({
                 collapsed={collapsed}
                 onItemPrefetch={
                   tenantId || tenantCode === "VAG"
-                    ? (route) => {
-                        prefetchRoute(queryClient, {
-                          pathname: route,
-                          tenantCode:
-                            tenantCode && isTenantCode(tenantCode)
-                              ? tenantCode
-                              : undefined,
-                          tenantId: tenantId ?? undefined,
-                        });
-                      }
+                    ? (route) => prefetchNavRoute(route)
                     : undefined
                 }
               />
@@ -333,15 +353,7 @@ export function Sidebar({
                         collapsed={collapsed}
                         onPrefetch={
                           tenantId || tenantCode === "VAG"
-                            ? () =>
-                                prefetchRoute(queryClient, {
-                                  pathname: item.route,
-                                  tenantCode:
-                                    tenantCode && isTenantCode(tenantCode)
-                                      ? tenantCode
-                                      : undefined,
-                                  tenantId: tenantId ?? undefined,
-                                })
+                            ? () => prefetchNavRoute(item.route)
                             : undefined
                         }
                       />

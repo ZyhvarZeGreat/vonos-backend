@@ -26,6 +26,7 @@ export function NavItem({
     <Link
       href={href}
       prefetch
+      onPointerDown={onPrefetch}
       onMouseEnter={onPrefetch}
       onFocus={onPrefetch}
       className={cn(
