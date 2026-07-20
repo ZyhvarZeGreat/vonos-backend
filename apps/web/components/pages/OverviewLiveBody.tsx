@@ -23,8 +23,9 @@ import type { DateRangePreset } from "@/stores/uiStore";
 import type { TenantCode } from "@/lib/registries/tenants";
 import { TENANT_ACCENT } from "@/lib/registries/tenantAccents";
 import { recordDetailPath } from "@/lib/utils/recordDetailPath";
-import { DashboardBodySkeleton } from "@/components/organisms/skeletons";
+import { ChartPanelSkeleton } from "@/components/organisms/skeletons";
 import { OverviewPanelsLazy } from "@/components/organisms/OverviewPanelsLazy";
+import { getTenantConfigByCode } from "@/lib/registries/tenantConfigs";
 
 type OverviewTableRow = Record<string, string | number> & { id: string };
 
@@ -170,8 +171,26 @@ export function OverviewLiveBody({
     );
   }
 
+  const tenantKpiCards = getTenantConfigByCode(tenantCode)?.kpiCards ?? [];
+
   if (isLoading && !dashboard) {
-    return <DashboardBodySkeleton kpiCount={6} chartCount={2} financeChartCount={2} />;
+    return (
+      <div className="space-y-6">
+        <KpiRow
+          cards={tenantKpiCards}
+          values={{}}
+          isLoading
+        />
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          <ChartPanelSkeleton withHeader={false} />
+          <ChartPanelSkeleton withHeader={false} />
+        </div>
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          <ChartPanelSkeleton withHeader={false} />
+          <ChartPanelSkeleton withHeader={false} />
+        </div>
+      </div>
+    );
   }
 
   const kpis = dashboard?.kpis ?? [];

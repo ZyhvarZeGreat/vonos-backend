@@ -7,7 +7,7 @@ import { useParams, useRouter } from "next/navigation";
 import { EmptyState } from "@/components/atoms/EmptyState";
 import { DetailPageShell } from "@/components/pages/DetailPageShell";
 import { JobDetailView as JobDetailPage } from "@/components/pages/JobDetailView";
-import { getCustomer, getItem, getJob, getSale, getCatalogItem } from "@/lib/api";
+import { getCustomer, getItem, getJobCosts, getJobShell, getSale, getCatalogItem } from "@/lib/api";
 import { getAppointment } from "@/lib/api/appointments";
 import { getReturn } from "@/lib/api/returns";
 import { saleToOrder } from "@/lib/api/orders";
@@ -143,16 +143,28 @@ function JobRecordDetail({ recordId }: { recordId: string }) {
   const router = useRouter();
   const tenantId = useTenantId();
   const { listPath } = useRecordNavigation("jobs");
-  const { data: job, isLoading } = useQuery({
-    queryKey: ["job", tenantId, recordId],
-    queryFn: () => getJob(recordId),
+  const { data: shell, isLoading: shellLoading } = useQuery({
+    queryKey: ["job", tenantId, recordId, "shell"],
+    queryFn: () => getJobShell(recordId),
     enabled: Boolean(tenantId),
+  });
+  const { data: costs } = useQuery({
+    queryKey: ["job", tenantId, recordId, "costs"],
+    queryFn: () => getJobCosts(recordId),
+    enabled: Boolean(tenantId) && Boolean(shell),
   });
   const [jobState, setJobState] = useState<JobDetail | undefined>();
 
-  const activeJob = jobState ?? job;
+  const merged: JobDetail | undefined = shell
+    ? {
+        ...shell,
+        materials: costs?.materials ?? shell.materials,
+        labourEntries: costs?.labourEntries ?? shell.labourEntries,
+      }
+    : undefined;
+  const activeJob = jobState ?? merged;
 
-  if (!tenantId || (isLoading && !activeJob)) {
+  if (!tenantId || (shellLoading && !activeJob)) {
     return <DetailLoading />;
   }
 
@@ -167,7 +179,15 @@ function JobRecordDetail({ recordId }: { recordId: string }) {
     );
   }
 
-  return <JobDetailPage job={activeJob} listPath={listPath} onJobChange={setJobState} />;
+  return (
+    <JobDetailPage
+      job={activeJob}
+      listPath={listPath}
+      onJobChange={(next) => {
+        setJobState(next);
+      }}
+    />
+  );
 }
 
 function VehicleDetailView({ recordId }: { recordId: string }) {

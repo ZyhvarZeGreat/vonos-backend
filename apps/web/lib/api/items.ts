@@ -90,11 +90,27 @@ export async function getItems(
 }
 
 export async function getStockAvailability(
-  search?: string,
+  searchOrParams?:
+    | string
+    | {
+        search?: string;
+        limit?: number;
+        entityCode?: string;
+        availability?: "all" | "available" | "unavailable";
+      },
 ): Promise<StockAvailabilityResult> {
-  const params = new URLSearchParams();
-  if (search) params.set("search", search);
-  const query = params.toString();
+  const params =
+    typeof searchOrParams === "string"
+      ? { search: searchOrParams }
+      : (searchOrParams ?? {});
+  const searchParams = new URLSearchParams();
+  if (params.search) searchParams.set("search", params.search);
+  if (params.limit) searchParams.set("limit", String(params.limit));
+  if (params.entityCode) searchParams.set("entityCode", params.entityCode);
+  if (params.availability && params.availability !== "all") {
+    searchParams.set("availability", params.availability);
+  }
+  const query = searchParams.toString();
   const path = query
     ? `/items/stock-availability?${query}`
     : "/items/stock-availability";

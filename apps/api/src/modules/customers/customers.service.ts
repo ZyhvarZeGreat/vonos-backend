@@ -11,6 +11,7 @@ import type {
 } from '@vonos/types';
 import { TenantDbService } from '../../common/prisma/tenant-db.service';
 import { buildCompositeCursorQuery } from '../../common/utils/pagination';
+import type { PaginatedList } from '../../common/utils/paginatedList';
 import { parseCsv, pickCsvField } from '../../common/utils/csvImport';
 import { toIso, toNumber } from '../../common/utils/serializers';
 import { AuditService } from '../audit/audit.service';
@@ -154,9 +155,8 @@ export class CustomersService {
     private readonly auditService: AuditService,
   ) {}
 
-  async list(filters: CustomerFilters): Promise<Customer[]> {
+  async list(filters: CustomerFilters): Promise<PaginatedList<Customer>> {
     const tenantId = this.tenantDb.requireTenantId();
-    const needsFacetFilter = filters.hasNoSellMonths != null;
     const sinceCutoff =
       filters.hasNoSellMonths != null
         ? monthsAgo(filters.hasNoSellMonths)
@@ -169,52 +169,56 @@ export class CustomersService {
       sortValueType: 'string',
     });
 
-    const [rows, legacyIds] = await Promise.all([
+    const baseWhere = {
+      tenantId,
+      deletedAt: null,
+      ...(filters.customerGroupId
+        ? { customerGroupId: filters.customerGroupId }
+        : {}),
+      ...(filters.assignedToUserId
+        ? { assignedToUserId: filters.assignedToUserId }
+        : {}),
+      ...(filters.status ? { status: filters.status } : {}),
+      ...(filters.openingBalance ? { openingBalance: { gt: 0 } } : {}),
+      ...(filters.sellDue ? { totalSellDue: { gt: 0 } } : {}),
+      ...(filters.advanceBalance ? { totalAdvance: { gt: 0 } } : {}),
+      ...(filters.sellReturn ? { totalSellReturn: { gt: 0 } } : {}),
+      ...(filters.from || filters.to
+        ? {
+            createdAt: {
+              ...(filters.from ? { gte: new Date(filters.from) } : {}),
+              ...(filters.to ? { lte: new Date(filters.to) } : {}),
+            },
+          }
+        : {}),
+      ...(filters.search
+        ? {
+            OR: [
+              { name: { contains: filters.search, mode: 'insensitive' as const } },
+              { email: { contains: filters.search, mode: 'insensitive' as const } },
+              { phone: { contains: filters.search, mode: 'insensitive' as const } },
+            ],
+          }
+        : {}),
+      ...(sinceCutoff
+        ? {
+            NOT: {
+              sales: {
+                some: {
+                  deletedAt: null,
+                  status: 'completed' as const,
+                  date: { gte: sinceCutoff },
+                },
+              },
+            },
+          }
+        : {}),
+    };
+
+    const [rows, totalCount] = await Promise.all([
       this.tenantDb.db.customer.findMany({
         where: {
-          tenantId,
-          deletedAt: null,
-          ...(filters.customerGroupId
-            ? { customerGroupId: filters.customerGroupId }
-            : {}),
-          ...(filters.assignedToUserId
-            ? { assignedToUserId: filters.assignedToUserId }
-            : {}),
-          ...(filters.status ? { status: filters.status } : {}),
-          ...(filters.openingBalance ? { openingBalance: { gt: 0 } } : {}),
-          ...(filters.sellDue ? { totalSellDue: { gt: 0 } } : {}),
-          ...(filters.advanceBalance ? { totalAdvance: { gt: 0 } } : {}),
-          ...(filters.sellReturn ? { totalSellReturn: { gt: 0 } } : {}),
-          ...(filters.from || filters.to
-            ? {
-                createdAt: {
-                  ...(filters.from ? { gte: new Date(filters.from) } : {}),
-                  ...(filters.to ? { lte: new Date(filters.to) } : {}),
-                },
-              }
-            : {}),
-          ...(filters.search
-            ? {
-                OR: [
-                  { name: { contains: filters.search, mode: 'insensitive' } },
-                  { email: { contains: filters.search, mode: 'insensitive' } },
-                  { phone: { contains: filters.search, mode: 'insensitive' } },
-                ],
-              }
-            : {}),
-          ...(sinceCutoff
-            ? {
-                NOT: {
-                  sales: {
-                    some: {
-                      deletedAt: null,
-                      status: 'completed',
-                      date: { gte: sinceCutoff },
-                    },
-                  },
-                },
-              }
-            : {}),
+          ...baseWhere,
           ...(pagination.where ?? {}),
         },
         include: {
@@ -224,25 +228,29 @@ export class CustomersService {
         orderBy: [{ name: 'asc' }, { id: 'asc' }],
         take: pagination.take,
       }),
-      this.tenantDb.db.migrationLegacyId.findMany({
-        where: { tenantId, entityType: 'customer' },
-        select: { newId: true, legacyId: true },
-      }),
+      this.tenantDb.db.customer.count({ where: baseWhere }),
     ]);
 
+    if (rows.length === 0) return { items: [], totalCount };
+
+    // Only the current page — never the whole tenant's legacy map.
+    const legacyIds = await this.tenantDb.db.migrationLegacyId.findMany({
+      where: {
+        tenantId,
+        entityType: 'customer',
+        newId: { in: rows.map((row) => row.id) },
+      },
+      select: { newId: true, legacyId: true },
+    });
     const legacyById = new Map(
       legacyIds.map((l) => [l.newId, `CU${String(l.legacyId).padStart(4, '0')}`]),
     );
 
-    let results = rows.map((row) =>
+    const items = rows.map((row) =>
       serializeCustomer(row, { contactId: legacyById.get(row.id) ?? null }),
     );
 
-    if (needsFacetFilter && filters.limit) {
-      results = results.slice(0, filters.limit);
-    }
-
-    return results;
+    return { items, totalCount };
   }
 
   async create(dto: CreateCustomerInput): Promise<Customer> {

@@ -47,8 +47,9 @@ export function KpiRow({
   isLoading = false,
   className,
 }: KpiRowProps) {
-  if (isLoading) {
-    return <KpiRowSkeleton count={cards.length || 4} className={className} />;
+  // No known labels yet — fall back to blank card skeletons.
+  if (isLoading && cards.length === 0) {
+    return <KpiRowSkeleton count={4} className={className} />;
   }
 
   return (
@@ -58,6 +59,7 @@ export function KpiRow({
         cards.length > 4 ? "lg:grid-cols-3" : "lg:grid-cols-4",
         className,
       )}
+      aria-busy={isLoading || undefined}
     >
       {cards.map((card) => {
         const Icon = iconMap[card.icon] ?? Package;
@@ -68,10 +70,11 @@ export function KpiRow({
             label={card.label}
             icon={Icon}
             value={values[card.metricKey] ?? "—"}
-            delta={deltas[card.metricKey]}
-            deltaLabel={deltaLabels[card.metricKey]}
-            deltaPercent={deltaPercents[card.metricKey]}
+            delta={isLoading ? undefined : deltas[card.metricKey]}
+            deltaLabel={isLoading ? undefined : deltaLabels[card.metricKey]}
+            deltaPercent={isLoading ? undefined : deltaPercents[card.metricKey]}
             tint={tint}
+            isLoading={isLoading}
           />
         );
       })}

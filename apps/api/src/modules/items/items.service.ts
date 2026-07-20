@@ -561,7 +561,14 @@ export class ItemsService {
    * matching SKUs and the quantity each auto-group entity holds (with per-location
    * breakdown). Read-only and restricted to auto-group staff + super admins.
    */
-  async stockAvailability(search?: string): Promise<StockAvailabilityResult> {
+  async stockAvailability(
+    search?: string,
+    options?: {
+      limit?: number;
+      entityCode?: string;
+      availability?: 'all' | 'available' | 'unavailable';
+    },
+  ): Promise<StockAvailabilityResult> {
     const requesterTenantId = this.tenantDb.resolveTenantId();
     // Super admin (null tenant) is always allowed; entity users must belong to
     // the auto-group.
@@ -577,13 +584,25 @@ export class ItemsService {
       }
     }
 
+    const limit = options?.limit ?? 10;
+    const entityFilter = options?.entityCode?.trim().toUpperCase();
+    const availability = options?.availability ?? 'all';
+    const term = search?.trim();
+    const cacheKey = `stock-availability:${entityFilter ?? 'all'}:${availability}:${term ?? ''}:${limit}`;
+    const cached = await this.cache.get<StockAvailabilityResult>(cacheKey);
+    if (cached) return cached;
+
     const tenants = await this.prisma.tenant.findMany({
-      where: { code: { in: [...AUTOS_GROUP_CODES] }, deletedAt: null },
+      where: {
+        deletedAt: null,
+        ...(entityFilter
+          ? { code: entityFilter }
+          : { code: { in: [...AUTOS_GROUP_CODES] } }),
+      },
       select: { id: true, code: true, name: true },
     });
     const tenantById = new Map(tenants.map((t) => [t.id, t]));
 
-    const term = search?.trim();
     const items = await this.prisma.item.findMany({
       where: {
         deletedAt: null,
@@ -599,7 +618,7 @@ export class ItemsService {
       },
       include: { locationStock: true },
       orderBy: [{ sku: 'asc' }, { tenantId: 'asc' }],
-      take: 200,
+      take: Math.max(limit * 8, 40),
     });
 
     const reservedByTenant = new Map<string, Map<string, number>>();
@@ -641,19 +660,25 @@ export class ItemsService {
         reorderPoint: item.reorderPoint,
         status: item.status,
         availableForRetail: item.availableForRetail,
-        locations: item.locationStock.map((row) => ({
-          locationCode: row.locationCode,
-          binLocation: row.binLocation === '' ? null : row.binLocation,
-          quantity: row.quantity,
+        locations: item.locationStock.map((loc) => ({
+          locationCode: loc.locationCode,
+          binLocation: loc.binLocation === '' ? null : loc.binLocation,
+          quantity: loc.quantity,
         })),
       });
       groups.set(key, group);
     }
 
-    return {
-      query: term ?? '',
-      groups: Array.from(groups.values()),
-    };
+    let result = [...groups.values()];
+    if (availability === 'available') {
+      result = result.filter((g) => g.totalAvailable > 0);
+    } else if (availability === 'unavailable') {
+      result = result.filter((g) => g.totalAvailable <= 0);
+    }
+
+    const payload = { query: term ?? '', groups: result.slice(0, limit) };
+    await this.cache.set(cacheKey, payload, 900);
+    return payload;
   }
 
   async importCsv(csv: string): Promise<CsvImportResult> {

@@ -17,6 +17,7 @@ export interface NavCollapsibleGroupProps {
   isNavActive?: (pathname: string, route: string) => boolean;
   collapsed?: boolean;
   defaultOpen?: boolean;
+  onItemPrefetch?: (route: string) => void;
 }
 
 export function NavCollapsibleGroup({
@@ -28,6 +29,7 @@ export function NavCollapsibleGroup({
   isNavActive,
   collapsed = false,
   defaultOpen = true,
+  onItemPrefetch,
 }: NavCollapsibleGroupProps) {
   const panelId = useId();
   const childActive = items.some((item) =>
@@ -58,6 +60,9 @@ export function NavCollapsibleGroup({
                   : activeRoute === item.route
               }
               collapsed={collapsed}
+              onPrefetch={
+                onItemPrefetch ? () => onItemPrefetch(item.route) : undefined
+              }
             />
           );
         })}
@@ -73,7 +78,7 @@ export function NavCollapsibleGroup({
         aria-controls={panelId}
         onClick={() => setOpen((value) => !value)}
         className={cn(
-          "flex w-full items-center gap-3 rounded-md px-2 py-1.5 text-left transition-colors",
+          "flex w-full items-center gap-3 rounded-md px-2 py-1.5 text-left transition-[background-color,color,transform] duration-150 ease-out active:scale-[0.98]",
           childActive
             ? "font-medium text-[var(--color-text-nav-active)]"
             : "text-[var(--color-text-nav)] hover:bg-[var(--color-surface-nav-hover)] hover:text-[var(--color-text-nav-active)]",
@@ -84,14 +89,16 @@ export function NavCollapsibleGroup({
         <span className="flex-1">{label}</span>
         <ChevronDown
           className={cn(
-            "h-4 w-4 shrink-0 text-[var(--color-text-nav)] transition-transform",
+            "h-4 w-4 shrink-0 text-[var(--color-text-nav)] transition-transform duration-150 ease-out",
             open ? "rotate-0" : "-rotate-90",
           )}
         />
       </button>
       {open ? (
-        <nav id={panelId} className="ml-3 flex flex-col gap-0.5 border-l border-[var(--color-border)] pl-2">
-          {items.map((item) => {
+        <nav
+          id={panelId}
+          className="motion-pop-in ml-3 flex flex-col gap-0.5 border-l border-[var(--color-border)] pl-2"
+        >          {items.map((item) => {
             const Icon = iconMap[item.icon] ?? GroupIcon;
             return (
               <NavItem
@@ -105,6 +112,9 @@ export function NavCollapsibleGroup({
                     : activeRoute === item.route
                 }
                 collapsed={false}
+                onPrefetch={
+                  onItemPrefetch ? () => onItemPrefetch(item.route) : undefined
+                }
               />
             );
           })}

@@ -4,7 +4,6 @@ import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { LedgerEntry, LedgerEntryType, LedgerListRow } from "@vonos/types";
 import { DataTable, type ColumnConfig } from "@/components/organisms/DataTable";
-import { DataTableSkeleton } from "@/components/organisms/skeletons";
 import { CursorPaginationBar } from "@/components/molecules/CursorPaginationBar";
 import {
   getGroupLedgerEntriesPage,
@@ -85,6 +84,7 @@ export function PaginatedLedgerTable<T extends LedgerEntry | LedgerListRow>({
     },
     enabled: groupMode || Boolean(tenantId),
     placeholderData: (prev) => prev,
+    staleTime: 10 * 60_000,
   });
 
   const items = (pageQuery.data?.items ?? []) as T[];
@@ -102,21 +102,6 @@ export function PaginatedLedgerTable<T extends LedgerEntry | LedgerListRow>({
     reset();
   };
 
-  const columnHeaders = columns.map((column) => column.header);
-
-  if (isLoading) {
-    return (
-      <div className="overflow-hidden rounded-xl border border-border bg-card shadow-card">
-        <DataTableSkeleton
-          rows={8}
-          columnHeaders={columnHeaders}
-          withPagination
-          embedded
-        />
-      </div>
-    );
-  }
-
   return (
     <div className="overflow-hidden rounded-xl border border-border bg-card shadow-card">
       <DataTable
@@ -126,12 +111,13 @@ export function PaginatedLedgerTable<T extends LedgerEntry | LedgerListRow>({
         embedded
         virtualized
         disablePagination
+        isLoading={isLoading}
         isFetching={isFetching}
         error={pageQuery.error ? "Failed to load ledger entries" : null}
         onRowClick={onRowClick}
         emptyState={emptyState}
       />
-      {items.length > 0 || canGoPrev ? (
+      {!isLoading && (items.length > 0 || canGoPrev) ? (
         <CursorPaginationBar
           pageIndex={pageIndex}
           pageSize={pageSize}

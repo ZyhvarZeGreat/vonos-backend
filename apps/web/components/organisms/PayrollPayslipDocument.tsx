@@ -300,12 +300,17 @@ export function PayrollPayslipDocument({
             <span className="font-semibold">In words:</span>{" "}
             {amountToWords(payroll.netPay)}
           </p>
-          <p className="font-semibold">
-            Net pay{" "}
-            <span className="ml-4 tabular-nums">
-              {formatCurrency(payroll.netPay, currency)}
-            </span>
-          </p>
+          <div className="text-right">
+            <p className="font-semibold">
+              Net pay / month balance{" "}
+              <span className="ml-4 tabular-nums">
+                {formatCurrency(payroll.netPay, currency)}
+              </span>
+            </p>
+            <p className="mt-0.5 text-xs font-normal text-neutral-600">
+              Take-home after deductions (gross is unchanged)
+            </p>
+          </div>
         </div>
       </section>
 

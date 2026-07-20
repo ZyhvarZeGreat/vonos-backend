@@ -11,7 +11,9 @@ import { tenantAccentStyle } from "@/lib/registries/tenantAccents";
 import { getTenantConfigByCode } from "@/lib/registries/tenantConfigs";
 import { useAuthStore } from "@/stores/authStore";
 import { useTenantStore } from "@/stores/tenantStore";
-import { PageShellSkeleton } from "@/components/organisms/skeletons";
+import { Spinner } from "@/components/atoms/Spinner";
+import { scheduleIdle } from "@/lib/prefetch/scheduleIdle";
+import { prefetchTenantShell } from "@/lib/prefetch/routePrefetchRegistry";
 
 export function TenantShell({ children }: { children: React.ReactNode }) {
   const params = useParams<{ tenant: string }>();
@@ -95,14 +97,30 @@ export function TenantShell({ children }: { children: React.ReactNode }) {
     }
   }, [configQuery.data, skipAuth, registryEntry, tenantCode, setTenantConfig]);
 
-  // Unknown route tenant — full shell placeholder is fine.
+  useEffect(() => {
+    if (!registryEntry?.tenantId) return;
+    if (!isTenantCode(tenantCode)) return;
+    scheduleIdle(() =>
+      prefetchTenantShell(queryClient, tenantCode, registryEntry.tenantId),
+    );
+  }, [tenantCode, registryEntry?.tenantId, queryClient]);
+
+  // Unknown route tenant — keep chrome free; show a simple loader.
   if (!registryEntry) {
-    return <PageShellSkeleton />;
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <Spinner size="lg" />
+      </div>
+    );
   }
 
-  // First paint before auth hydrate — keep full shell (no entity chrome yet).
+  // First paint before auth hydrate — don't fake the whole app shell.
   if (!skipAuth && !hydrated) {
-    return <PageShellSkeleton />;
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <Spinner size="lg" />
+      </div>
+    );
   }
 
   // While tenant config fetches, keep the real sidebar/top bar; page content

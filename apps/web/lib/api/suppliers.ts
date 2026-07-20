@@ -47,7 +47,7 @@ async function fetchSuppliersRaw(
   cursor?: string,
   limit?: number,
   filters?: SupplierFilters,
-): Promise<SupplierListRow[]> {
+): Promise<SupplierListRow[] | { items: SupplierListRow[]; totalCount: number }> {
   const tenantPath = withTenantQuery(LIST_PATH, tenantId);
   const url = appendListQuery(tenantPath, {
     cursor,

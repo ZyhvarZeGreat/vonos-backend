@@ -24,24 +24,35 @@ import { resolveListSort } from '../../common/utils/listSort';
 import { toIso, toNumber } from '../../common/utils/serializers';
 import { isServiceStaffDesignation } from '../../common/utils/serviceStaffDesignations';
 import { InvoiceHubService } from '../invoices/invoice-hub.service';
+import { CacheService } from '../../common/cache/cache.service';
 
 @Injectable()
 export class HrmService {
   constructor(
     private readonly tenantDb: TenantDbService,
     private readonly invoiceHub: InvoiceHubService,
+    private readonly cache: CacheService,
   ) {}
 
   async listWorkforce(
     filters: { search?: string; cursor?: string; limit?: number } = {},
   ): Promise<WorkforceMember[]> {
     const tenantId = this.tenantDb.requireTenantId();
-    return this.queryWorkforce({
+    const cacheKey = await this.cache.tenantScopedKey(
+      tenantId,
+      `workforce:dashboard:${filters.search ?? ''}:${filters.cursor ?? ''}:${filters.limit ?? ''}`,
+    );
+    const cached = await this.cache.get<WorkforceMember[]>(cacheKey);
+    if (cached) return cached;
+
+    const result = await this.queryWorkforce({
       tenantId,
       search: filters.search,
       cursor: filters.cursor,
       limit: filters.limit,
     });
+    await this.cache.set(cacheKey, result, 900);
+    return result;
   }
 
   async listWorkforceAllTenants(

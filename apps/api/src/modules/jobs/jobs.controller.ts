@@ -68,6 +68,16 @@ export class JobsController {
     return this.jobsService.getMeta(id);
   }
 
+  @Get(':id/shell')
+  getShell(@Param('id') id: string) {
+    return this.jobsService.getShell(id);
+  }
+
+  @Get(':id/costs')
+  getCosts(@Param('id') id: string) {
+    return this.jobsService.getCosts(id);
+  }
+
   @Get(':id')
   getById(@Param('id') id: string) {
     return this.jobsService.getById(id);

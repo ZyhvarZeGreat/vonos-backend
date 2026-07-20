@@ -1,6 +1,23 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { Redis } from '@upstash/redis';
 
+/** Short in-process layer so warm overview/report hits stay sub-300ms without a Redis RTT. */
+const L1_TTL_MS = 30_000;
+
+/** VAG group overview keys stay in L1 for the full Redis TTL (avoid Upstash RTT). */
+const L1_LONG_TTL_MS = 900_000;
+const L1_LONG_KEY_PREFIXES = [
+  'group-overview',
+  'ledger-group-',
+  'report-group',
+  'report-group-run',
+  'stock-availability',
+  'entity-overview',
+  'ledger:',
+  'report-dash:',
+  'workforce:',
+];
+
 @Injectable()
 export class CacheService implements OnModuleInit {
   private readonly logger = new Logger(CacheService.name);
@@ -9,6 +26,7 @@ export class CacheService implements OnModuleInit {
     string,
     { data: string; expiresAt: number }
   >();
+  private readonly l1 = new Map<string, { data: string; expiresAt: number }>();
 
   onModuleInit() {
     const url = process.env.UPSTASH_REDIS_REST_URL;
@@ -32,6 +50,42 @@ export class CacheService implements OnModuleInit {
     return `cacheVer:${tenantId}`;
   }
 
+  private readL1<T>(key: string): T | null {
+    const entry = this.l1.get(key);
+    if (!entry) return null;
+    if (entry.expiresAt < Date.now()) {
+      this.l1.delete(key);
+      return null;
+    }
+    try {
+      return JSON.parse(entry.data) as T;
+    } catch {
+      this.l1.delete(key);
+      return null;
+    }
+  }
+
+  private isLongLivedKey(key: string): boolean {
+    return L1_LONG_KEY_PREFIXES.some(
+      (prefix) => key.startsWith(prefix) || key.includes(`:${prefix}`),
+    );
+  }
+
+  private writeL1(key: string, serialized: string, ttlSeconds: number): void {
+    const longLived = this.isLongLivedKey(key);
+    const capMs = longLived ? L1_LONG_TTL_MS : L1_TTL_MS;
+    const ttlMs = Math.min(ttlSeconds * 1000, capMs);
+    this.l1.set(key, { data: serialized, expiresAt: Date.now() + ttlMs });
+  }
+
+  private clearL1Prefix(prefix: string): void {
+    for (const key of this.l1.keys()) {
+      if (key.startsWith(prefix) || key.includes(prefix)) {
+        this.l1.delete(key);
+      }
+    }
+  }
+
   async getTenantCacheVersion(tenantId: string): Promise<number> {
     const version = await this.get<number>(this.versionKey(tenantId));
     return version ?? 1;
@@ -39,6 +93,12 @@ export class CacheService implements OnModuleInit {
 
   async bumpTenantVersion(tenantId: string): Promise<void> {
     const current = await this.getTenantCacheVersion(tenantId);
+    // Drop L1 entries for this tenant so bump takes effect immediately.
+    for (const key of [...this.l1.keys()]) {
+      if (key.includes(tenantId) || key.startsWith(`v${current}:`)) {
+        this.l1.delete(key);
+      }
+    }
     await this.set(this.versionKey(tenantId), current + 1, 60 * 60 * 24 * 30);
   }
 
@@ -49,16 +109,30 @@ export class CacheService implements OnModuleInit {
 
   async get<T>(key: string): Promise<T | null> {
     try {
+      const fromL1 = this.readL1<T>(key);
+      if (fromL1 !== null) return fromL1;
+
       if (this.redis) {
         const raw = await this.redis.get<string>(key);
         if (raw === null || raw === undefined) return null;
-        return (typeof raw === 'string' ? JSON.parse(raw) : raw) as T;
+        const value = (typeof raw === 'string' ? JSON.parse(raw) : raw) as T;
+        this.writeL1(
+          key,
+          typeof raw === 'string' ? raw : JSON.stringify(raw),
+          this.isLongLivedKey(key) ? L1_LONG_TTL_MS / 1000 : L1_TTL_MS / 1000,
+        );
+        return value;
       }
       const entry = this.fallback.get(key);
       if (!entry || entry.expiresAt < Date.now()) {
         if (entry) this.fallback.delete(key);
         return null;
       }
+      this.writeL1(
+        key,
+        entry.data,
+        this.isLongLivedKey(key) ? L1_LONG_TTL_MS / 1000 : L1_TTL_MS / 1000,
+      );
       return JSON.parse(entry.data) as T;
     } catch (err) {
       this.logger.warn(`Cache get error for key "${key}": ${err}`);
@@ -68,12 +142,14 @@ export class CacheService implements OnModuleInit {
 
   async set<T>(key: string, value: T, ttlSeconds: number): Promise<void> {
     try {
+      const serialized = JSON.stringify(value);
+      this.writeL1(key, serialized, ttlSeconds);
       if (this.redis) {
-        await this.redis.set(key, JSON.stringify(value), { ex: ttlSeconds });
+        await this.redis.set(key, serialized, { ex: ttlSeconds });
         return;
       }
       this.fallback.set(key, {
-        data: JSON.stringify(value),
+        data: serialized,
         expiresAt: Date.now() + ttlSeconds * 1000,
       });
     } catch (err) {
@@ -84,6 +160,7 @@ export class CacheService implements OnModuleInit {
   async del(...keys: string[]): Promise<void> {
     if (keys.length === 0) return;
     try {
+      for (const key of keys) this.l1.delete(key);
       if (this.redis) {
         await this.redis.del(...keys);
         return;
@@ -98,6 +175,7 @@ export class CacheService implements OnModuleInit {
 
   async invalidatePrefix(prefix: string): Promise<void> {
     try {
+      this.clearL1Prefix(prefix);
       if (this.redis) {
         // Prefer SCAN over KEYS — KEYS blocks / is discouraged on managed Redis.
         let cursor = '0';

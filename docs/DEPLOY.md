@@ -92,6 +92,29 @@ Expected response should include:
 { "backend": "redis", "keyCount": 123 }
 ```
 
+### VAG group overview cron (snapshots + optional cache warm)
+
+Schedule on Railway (every **5 minutes**). Refreshes entity snapshots **and** warms all three `group-overview:*` Redis keys (aligned with UI `last_7_days`):
+
+```bash
+cd apps/api && npx tsx prisma/scripts/refresh-entity-snapshots.ts
+```
+
+The API also runs the same warm logic **~3s after boot** (`OverviewService.onModuleInit`) so the in-process L1 cache serves **0–1ms** hits without waiting for the first user request.
+
+Optional — keep Redis hot for the default group overview window:
+
+| Variable | Value |
+|----------|--------|
+| `GROUP_WARM_SECRET` | Random secret (e.g. `openssl rand -hex 32`) |
+
+```bash
+curl -X POST "$API/internal/overview/group-warm" \
+  -H "X-Group-Warm-Secret: $GROUP_WARM_SECRET"
+```
+
+See [VAG_SPEED_AUDIT.md](migration-audits/VAG_SPEED_AUDIT.md) for measured before/after timings.
+
 ---
 
 ## Performance smoke checklist (post-deploy)

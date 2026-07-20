@@ -95,7 +95,9 @@ export function FloatingMenuPanel({
       style={style}
       className={cn("flex flex-col overflow-hidden", className)}
     >
-      {children}
+      <div className="motion-pop-in flex min-h-0 flex-1 flex-col overflow-hidden">
+        {children}
+      </div>
     </div>,
     document.body,
   );

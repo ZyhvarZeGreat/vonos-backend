@@ -14,6 +14,12 @@ import { typographyRoles } from "@/lib/registries/typography";
 import { cn } from "@/lib/utils/cn";
 import { resolveEntitySwitchPath } from "@/lib/utils/tenantRoutes";
 import { useAuthStore } from "@/stores/authStore";
+import { useAdminEntityStore } from "@/stores/adminEntityStore";
+import type { TenantCode } from "@/lib/registries/tenants";
+import { useQueryClient } from "@tanstack/react-query";
+import { prefetchAdminEntity } from "@/lib/admin/prefetchAdminEntity";
+import { dateRangePresetToApiBounds } from "@/lib/utils/dateRange";
+import { useUiStore } from "@/stores/uiStore";
 
 export interface TenantSwitcherProps {
   tenantCode: string;
@@ -30,10 +36,31 @@ export function TenantSwitcher({
 }: TenantSwitcherProps) {
   const pathname = usePathname();
   const role = useAuthStore((state) => state.role);
+  const setAdminViewing = useAdminEntityStore((s) => s.setViewingCode);
+  const queryClient = useQueryClient();
+  const dateRange = useUiStore((s) => s.dateRange);
+  const customDateRange = useUiStore((s) => s.customDateRange);
   const canSwitchEntities = role === "super_admin";
+  const onAdmin = pathname.startsWith("/admin");
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
+  const warmedRef = useRef<Set<string>>(new Set());
   const tenant = getTenantByCode(tenantCode);
+
+  const warmAdminEntity = (code: TenantCode) => {
+    if (!onAdmin) return;
+    const key = `${pathname}:${code}`;
+    if (warmedRef.current.has(key)) return;
+    warmedRef.current.add(key);
+    const bounds = dateRangePresetToApiBounds(dateRange, new Date(), customDateRange);
+    void prefetchAdminEntity(queryClient, {
+      code,
+      pathname,
+      dateBounds: bounds,
+    }).catch(() => {
+      warmedRef.current.delete(key);
+    });
+  };
   const displayName = tenantName ?? tenant?.name ?? tenantCode;
   const meta = tenant ? tenant.code : tenantCode;
   const isSidebar = variant === "sidebar";
@@ -137,8 +164,15 @@ export function TenantSwitcher({
               return (
                 <Link
                   key={entity.code}
-                  href={href}
-                  onClick={() => setOpen(false)}
+                  href={onAdmin ? pathname : href}
+                  onMouseEnter={() => warmAdminEntity(entity.code as TenantCode)}
+                  onFocus={() => warmAdminEntity(entity.code as TenantCode)}
+                  onClick={() => {
+                    if (onAdmin) {
+                      setAdminViewing(entity.code as TenantCode);
+                    }
+                    setOpen(false);
+                  }}
                   className={cn(
                     "flex items-center gap-2.5 rounded-md px-2.5 py-2 transition-colors",
                     isActive
@@ -163,7 +197,10 @@ export function TenantSwitcher({
             })}
             <Link
               href="/admin/overview"
-              onClick={() => setOpen(false)}
+              onClick={() => {
+                if (onAdmin) setAdminViewing(null);
+                setOpen(false);
+              }}
               className="mt-1 flex items-center gap-2.5 rounded-md border-t border-border px-2.5 py-2 transition-colors hover:bg-[var(--color-surface-nav-hover)]"
             >
               <span

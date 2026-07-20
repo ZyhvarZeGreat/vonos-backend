@@ -32,7 +32,7 @@ import {
 } from './ledgerCharts';
 import { CacheService } from '../../common/cache/cache.service';
 
-const LEDGER_CACHE_TTL_S = 300;
+const LEDGER_CACHE_TTL_S = 900;
 
 @Injectable()
 export class LedgerService {

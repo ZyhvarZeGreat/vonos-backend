@@ -88,6 +88,7 @@ export function useServerListPage<T extends { id: string }>({
 
   const items = pageQuery.data?.items ?? [];
   const hasMore = pageQuery.data?.hasMore ?? false;
+  const totalCount = pageQuery.data?.totalCount;
 
   const handleNext = () => {
     const last = items[items.length - 1];
@@ -104,6 +105,7 @@ export function useServerListPage<T extends { id: string }>({
   return {
     items,
     hasMore,
+    totalCount,
     pageIndex,
     pageSize,
     canGoPrev,
@@ -132,6 +134,7 @@ export interface ServerListPaginationProps {
   onPageSelect?: (pageIndex: number) => void;
   canSelectPage?: (pageIndex: number) => boolean;
   isFetching?: boolean;
+  totalCount?: number;
 }
 
 /** Spread onto `ServerPaginatedTable` for URL-synced numbered pagination. */
@@ -148,6 +151,7 @@ export function serverPaginationBarProps(
     | "goToPage"
     | "canSelectPage"
     | "isFetching"
+    | "totalCount"
   >,
 ): ServerListPaginationProps {
   return {
@@ -161,5 +165,6 @@ export function serverPaginationBarProps(
     onPageSelect: page.goToPage,
     canSelectPage: page.canSelectPage,
     isFetching: page.isFetching,
+    totalCount: page.totalCount,
   };
 }

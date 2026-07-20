@@ -3,6 +3,11 @@ import type { PrismaClient } from '@prisma/client';
 import type { TenantScopedPrisma } from '../../common/prisma/prisma.service';
 import { EXCLUDE_INTERNAL_TRANSFER_SQL } from '../../common/utils/internalTransfer';
 import { toNumber } from '../../common/utils/serializers';
+import {
+  groupDailyFinanceTrend,
+  resolveGroupFinanceSource,
+  sumDailyFinanceRollupForTenants,
+} from '../../common/utils/dailyFinanceRollup';
 import { resolveDateWindow } from '../reports/aggregators/date-utils';
 import {
   ledgerPlTrend,
@@ -54,6 +59,36 @@ export async function buildGroupLedgerCharts(
   }
 
   const window = resolveDateWindow(from, to);
+  const useRollup = await resolveGroupFinanceSource(
+    prisma,
+    tenantIds,
+    window.from,
+    window.to,
+  );
+
+  if (useRollup) {
+    const [plTrend, totals] = await Promise.all([
+      groupDailyFinanceTrend(prisma, tenantIds, window.from, window.to),
+      sumDailyFinanceRollupForTenants(
+        prisma,
+        tenantIds,
+        window.from,
+        window.to,
+      ),
+    ]);
+    const revenueByCategory = [
+      { label: 'Costs', value: totals.costs },
+      { label: 'Expenses', value: totals.expenses },
+    ].filter((row) => row.value > 0);
+    return {
+      plTrend,
+      revenueByCategory:
+        revenueByCategory.length > 0
+          ? revenueByCategory
+          : [{ label: '—', value: 0 }],
+    };
+  }
+
   const spanDays =
     (window.to.getTime() - window.from.getTime()) / (24 * 60 * 60 * 1000);
   const unit = dateTruncUnit(spanDays);

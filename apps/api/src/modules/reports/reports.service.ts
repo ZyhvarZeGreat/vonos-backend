@@ -41,7 +41,7 @@ export interface ReportsSummary {
   stockValuesLabel: string;
 }
 
-const REPORT_CACHE_TTL_S = 300;
+const REPORT_CACHE_TTL_S = 900;
 /** P&L context is expensive to rebuild — keep longer than generic reports. */
 const PROFIT_LOSS_CACHE_TTL_S = 600;
 

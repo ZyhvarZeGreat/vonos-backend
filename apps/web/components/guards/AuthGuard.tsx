@@ -71,11 +71,16 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     return <>{children}</>;
   }
 
+  // Public auth pages need no API data — never flash the app shell skeleton.
+  if (isPublicPath(pathname)) {
+    return <>{children}</>;
+  }
+
   if (!hydrated) {
     return <PageShellSkeleton />;
   }
 
-  if (!isPublicPath(pathname) && !isAuthenticated) {
+  if (!isAuthenticated) {
     return null;
   }
 

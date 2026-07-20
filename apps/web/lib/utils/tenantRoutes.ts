@@ -74,12 +74,19 @@ function sectionExistsForTenant(tenantCode: string, section: string): boolean {
 
 /**
  * Preserve the current screen when switching entities.
- * Falls back to overview when the target tenant has no equivalent page.
+ * On `/admin/*`, stay in admin and update the viewing entity store instead of
+ * navigating into `/{code}/…` (which leaked tenant scope back into admin).
  */
 export function resolveEntitySwitchPath(
   targetTenantCode: string,
   pathname: string,
 ): string {
+  const parts = pathname.split("/").filter(Boolean);
+  if (parts[0] === "admin") {
+    // Caller should prefer setViewingCode; keep overview as safe href.
+    return `/admin/${parts[1] ?? "overview"}`;
+  }
+
   const { section } = parseTenantPath(pathname);
 
   if (section === "overview") {

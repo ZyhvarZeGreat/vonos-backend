@@ -6,7 +6,6 @@ import {
   appointmentKpiSnapshot,
   todayAppointmentSummary,
 } from '../reports/aggregators/appointmentReportQueries';
-import { buildJobReports } from '../reports/aggregators/jobReports';
 import { buildStockReportsFromContext } from '../reports/aggregators/stockReports';
 import { loadStockReportContext } from '../reports/aggregators/stockReportContext';
 import { buildTransactionReports } from '../reports/aggregators/transactionReports';
@@ -15,7 +14,7 @@ import {
   salesOrderTrend,
   topProductsInWindow,
 } from '../reports/aggregators/salesReportQueries';
-import { computeDelta, resolveDateWindow, asChartData } from '../reports/aggregators/date-utils';
+import { computeDelta, priorWindow, resolveDateWindow, asChartData } from '../reports/aggregators/date-utils';
 import { buildLedgerFinanceSlice } from './overviewFinance';
 const JOB_STATUS_COLORS: Record<string, string> = {
   Received: '#94a3b8',
@@ -381,9 +380,14 @@ export async function buildJobOverview(
   const now = new Date();
   const soon = new Date(now);
   soon.setDate(soon.getDate() + 7);
+  const window = resolveDateWindow(from, to);
+  const prior = priorWindow(window);
 
+  // Light job KPIs only — full costing charts live on Reports, not home.
   const [
-    costing,
+    activeJobs,
+    completedJobs,
+    priorCompleted,
     finance,
     statusGroups,
     pendingQc,
@@ -391,7 +395,30 @@ export async function buildJobOverview(
     dueSoon,
     inShop,
   ] = await Promise.all([
-    buildJobReports(db, tenantId, 'costing', from, to),
+    db.job.count({
+      where: {
+        deletedAt: null,
+        status: { notIn: ['Delivered', 'Cancelled'] },
+      },
+    }),
+    isMechanics
+      ? Promise.resolve(0)
+      : db.job.count({
+          where: {
+            deletedAt: null,
+            status: 'Delivered',
+            createdAt: { gte: window.from, lte: window.to },
+          },
+        }),
+    isMechanics
+      ? Promise.resolve(0)
+      : db.job.count({
+          where: {
+            deletedAt: null,
+            status: 'Delivered',
+            createdAt: { gte: prior.from, lte: prior.to },
+          },
+        }),
     buildLedgerFinanceSlice(db, tenantId, from, to),
     db.job.groupBy({
       by: ['status'],
@@ -488,11 +515,8 @@ export async function buildJobOverview(
         })),
       };
 
-  const activeJobs = costing.kpis.find((k) => k.metricKey === 'activeJobs');
-  const completed = costing.kpis.find((k) => k.metricKey === 'completedJobs');
-  const revenue =
-    finance.financeKpis.find((k) => k.metricKey === 'revenue') ??
-    costing.kpis.find((k) => k.metricKey === 'totalRevenue');
+  const revenue = finance.financeKpis.find((k) => k.metricKey === 'revenue');
+  const completedDelta = computeDelta(completedJobs, priorCompleted);
 
   const kpis = isMechanics
     ? [
@@ -501,7 +525,7 @@ export async function buildJobOverview(
           icon: 'wrench',
           metricKey: 'openJobs',
           color: '#059669',
-          value: activeJobs?.value ?? 0,
+          value: activeJobs,
         },
         {
           label: 'In Shop',
@@ -539,21 +563,15 @@ export async function buildJobOverview(
           icon: 'wrench',
           metricKey: 'activeJobs',
           color: '#059669',
-          value: activeJobs?.value ?? 0,
+          value: activeJobs,
         },
         {
           label: 'Completed',
           icon: 'check-circle',
           metricKey: 'completed',
           color: '#2563eb',
-          value: completed?.value ?? 0,
-          ...(completed?.delta !== undefined
-            ? {
-                delta: completed.delta,
-                deltaLabel: completed.deltaLabel,
-                deltaPercent: completed.deltaPercent,
-              }
-            : {}),
+          value: completedJobs,
+          ...completedDelta,
         },
         {
           label: 'Pending QC',

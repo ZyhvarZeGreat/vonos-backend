@@ -11,6 +11,7 @@ import { PayrollView } from "@/components/pages/PayrollView";
 import { createPosPlaceholderView } from "@/components/pages/PosNavViews";
 import { getWorkforce } from "@/lib/api/hrm";
 import { useRouteTenant } from "@/lib/hooks/useRouteTenant";
+import { ADMIN_ENTITY_STALE_MS } from "@/lib/admin/prefetchAdminEntity";
 import { useTenantStore } from "@/stores/tenantStore";
 import { formatCurrency } from "@/lib/utils/formatCurrency";
 
@@ -63,6 +64,8 @@ function HrmDashboardPanel({ onOpenPayroll }: { onOpenPayroll: () => void }) {
     queryKey: ["workforce", tenantId, "dashboard"],
     enabled: Boolean(tenantId),
     queryFn: () => getWorkforce(tenantId!),
+    staleTime: ADMIN_ENTITY_STALE_MS,
+    placeholderData: (prev) => prev,
   });
 
   const workforce = workforceQuery.data ?? [];

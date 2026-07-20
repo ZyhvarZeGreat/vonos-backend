@@ -49,6 +49,7 @@ import {
 } from "@/lib/utils/listFilters";
 import { ItemLocationCell } from "@/components/molecules/ItemLocationCell";
 import { itemMatchesLocationFilter, locationFilterOptions } from "@/lib/utils/locationLabels";
+import { customerListCursor, saleListCursor } from "@/lib/utils/pagination";
 import { useUiStore } from "@/stores/uiStore";
 import { useTenantStore } from "@/stores/tenantStore";
 
@@ -105,6 +106,7 @@ export function SalesListView({
     filters: apiFilters,
     search,
     fetchPage: (cursor, limit) => getSalesPage(tenantId!, apiFilters, cursor, limit),
+    getCursor: (row) => saleListCursor(row),
   });
 
   const filtered = sales;
@@ -378,6 +380,7 @@ export function CustomersListView() {
   const {
     items: customers,
     hasMore,
+    totalCount,
     pageIndex,
     pageSize,
     canGoPrev,
@@ -396,6 +399,7 @@ export function CustomersListView() {
     filters: apiFilters,
     search,
     fetchPage: (cursor, limit) => getCustomersPage(tenantId!, apiFilters, cursor, limit),
+    getCursor: (row) => customerListCursor(row),
   });
 
   const filtered = customers;
@@ -492,6 +496,7 @@ export function CustomersListView() {
         onPageSizeChange={setPageSize}
         onPageSelect={goToPage}
         canSelectPage={canSelectPage}
+        totalCount={totalCount}
         isLoading={isLoading}
         isFetching={isFetching}
         error={error ? "Failed to load customers" : null}

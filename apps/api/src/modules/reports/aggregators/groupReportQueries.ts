@@ -1,5 +1,10 @@
 import { Prisma } from '@prisma/client';
 import type { PrismaClient } from '@prisma/client';
+import {
+  groupRevenueByTenantFromRollup,
+  groupRevenueTrendByMonthFromRollup,
+  hasDailyFinanceRollupForTenants,
+} from '../../../common/utils/dailyFinanceRollup';
 import { EXCLUDE_INTERNAL_TRANSFER_SQL } from '../../../common/utils/internalTransfer';
 import { toNumber } from '../../../common/utils/serializers';
 
@@ -13,6 +18,11 @@ export interface TenantJobCountRow {
   jobs: number;
 }
 
+export type GroupFinanceQueryOptions = {
+  /** When set, skips the rollup existence probe for this request. */
+  useRollup?: boolean;
+};
+
 export interface GroupRevenueTrendRow {
   label: string;
   [tenantCode: string]: number | string;
@@ -23,8 +33,16 @@ export async function groupRevenueByTenant(
   tenantIds: string[],
   from: Date,
   to: Date,
+  options?: GroupFinanceQueryOptions,
 ): Promise<TenantRevenueRow[]> {
   if (tenantIds.length === 0) return [];
+
+  const useRollup =
+    options?.useRollup ??
+    (await hasDailyFinanceRollupForTenants(prisma, tenantIds, from, to));
+  if (useRollup) {
+    return groupRevenueByTenantFromRollup(prisma, tenantIds, from, to);
+  }
 
   const rows = await prisma.$queryRaw<
     Array<{ tenantId: string; revenue: Prisma.Decimal | null }>
@@ -77,10 +95,18 @@ export async function groupRevenueTrendByMonth(
   tenantIds: string[],
   from: Date,
   to: Date,
+  options?: GroupFinanceQueryOptions,
 ): Promise<
   Array<{ monthKey: string; label: string; tenantId: string; revenue: number }>
 > {
   if (tenantIds.length === 0) return [];
+
+  const useRollup =
+    options?.useRollup ??
+    (await hasDailyFinanceRollupForTenants(prisma, tenantIds, from, to));
+  if (useRollup) {
+    return groupRevenueTrendByMonthFromRollup(prisma, tenantIds, from, to);
+  }
 
   const rows = await prisma.$queryRaw<
     Array<{

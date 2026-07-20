@@ -2,11 +2,22 @@ import type {
   GroupEntityStat,
   GroupOverviewAlert,
   GroupOverviewDashboard,
+  GroupOverviewDetails,
+  GroupOverviewSummary,
 } from '@vonos/types';
 import { AUTOS_GROUP_CODES } from '@vonos/types';
 import { Prisma, type PrismaClient } from '@prisma/client';
-import { toNumber } from '../../common/utils/serializers';
-import { buildGroupReports } from '../reports/aggregators/groupReports';
+import { resolveGroupFinanceSource } from '../../common/utils/dailyFinanceRollup';
+import {
+  buildGroupEntityStatsBundle,
+  type EntityStatsBundle,
+} from '../../common/utils/tenantEntitySnapshot';
+import {
+  buildGroupCharts,
+  buildGroupCoreKpis,
+} from '../reports/aggregators/groupReports';
+import { resolveDateWindow, defaultVagOverviewApiBounds } from '../reports/aggregators/date-utils';
+import type { GroupFinanceQueryOptions } from '../reports/aggregators/groupReportQueries';
 
 type GroupTenant = {
   id: string;
@@ -14,11 +25,11 @@ type GroupTenant = {
   archetype: string;
 };
 
-function compactNgn(amount: number): string {
-  if (amount >= 1_000_000) return `₦ ${(amount / 1_000_000).toFixed(1)}M`;
-  if (amount >= 1_000) return `₦ ${Math.round(amount / 1_000)}K`;
-  return `₦ ${Math.round(amount)}`;
-}
+const TENANT_LIST_TTL_MS = 5 * 60 * 1000;
+let cachedAutosGroupTenants: {
+  at: number;
+  rows: GroupTenant[];
+} | null = null;
 
 /** Bucket cache keys so relative "now" ranges hit Redis within a few minutes. */
 export function groupOverviewCacheWindowKey(
@@ -38,337 +49,68 @@ export function groupOverviewCacheWindowKey(
 async function loadAutosGroupTenants(
   prisma: PrismaClient,
 ): Promise<GroupTenant[]> {
-  return prisma.tenant.findMany({
+  const now = Date.now();
+  if (
+    cachedAutosGroupTenants &&
+    now - cachedAutosGroupTenants.at < TENANT_LIST_TTL_MS
+  ) {
+    return cachedAutosGroupTenants.rows;
+  }
+  const rows = await prisma.tenant.findMany({
     where: { code: { in: [...AUTOS_GROUP_CODES] }, deletedAt: null },
     select: { id: true, code: true, archetype: true },
     orderBy: { code: 'asc' },
   });
+  cachedAutosGroupTenants = { at: now, rows };
+  return rows;
 }
 
-function todayWindow(): { start: Date; end: Date } {
-  const start = new Date();
-  start.setHours(0, 0, 0, 0);
-  const end = new Date();
-  end.setHours(23, 59, 59, 999);
-  return { start, end };
+function toTenantRows(tenants: GroupTenant[]) {
+  return tenants.map((t) => ({
+    id: t.id,
+    code: t.code,
+    name: t.code,
+  }));
 }
 
-export async function buildGroupEntityStats(
+async function resolveGroupFinanceOptions(
   prisma: PrismaClient,
-  tenants?: GroupTenant[],
-): Promise<{
-  entityStats: GroupEntityStat[];
-  lowByTenant: Map<string, number>;
-  jobByTenant: Map<string, { active: number; pendingQc: number }>;
-}> {
-  const groupTenants = tenants ?? (await loadAutosGroupTenants(prisma));
-  if (groupTenants.length === 0) {
-    return {
-      entityStats: [],
-      lowByTenant: new Map(),
-      jobByTenant: new Map(),
-    };
-  }
-
-  const { start: todayStart, end: todayEnd } = todayWindow();
-
-  const stockIds = groupTenants
-    .filter((t) => t.archetype === 'stock')
-    .map((t) => t.id);
-  const transactionIds = groupTenants
-    .filter((t) => t.archetype === 'transaction')
-    .map((t) => t.id);
-  const jobIds = groupTenants
-    .filter((t) => t.archetype === 'job')
-    .map((t) => t.id);
-  const appointmentIds = groupTenants
-    .filter((t) => t.archetype === 'appointment')
-    .map((t) => t.id);
-
-  const itemTenantIds = [
-    ...new Set([...stockIds, ...transactionIds, ...jobIds]),
-  ];
-
-  const [
-    itemStats,
-    inboundToday,
-    salesToday,
-    jobCounts,
-    jobRevenue,
-    appointmentStats,
-  ] = await Promise.all([
-    itemTenantIds.length > 0
-      ? prisma.$queryRaw<
-          Array<{
-            tenantId: string;
-            sku: bigint;
-            stock_value: Prisma.Decimal | null;
-            low_stock: bigint;
-          }>
-        >`
-          SELECT
-            "tenantId",
-            COUNT(*)::bigint AS sku,
-            COALESCE(SUM(quantity * "costPrice"), 0) AS stock_value,
-            COUNT(*) FILTER (
-              WHERE status IN ('low_stock', 'out_of_stock')
-            )::bigint AS low_stock
-          FROM "Item"
-          WHERE "deletedAt" IS NULL
-            AND "tenantId" IN (${Prisma.join(itemTenantIds)})
-          GROUP BY "tenantId"
-        `
-      : Promise.resolve([]),
-    stockIds.length > 0
-      ? prisma.$queryRaw<Array<{ tenantId: string; inbound: bigint }>>`
-          SELECT "tenantId", COUNT(*)::bigint AS inbound
-          FROM "StockMovement"
-          WHERE "deletedAt" IS NULL
-            AND type = 'inbound'
-            AND date >= ${todayStart}
-            AND "tenantId" IN (${Prisma.join(stockIds)})
-          GROUP BY "tenantId"
-        `
-      : Promise.resolve([]),
-    transactionIds.length > 0
-      ? prisma.$queryRaw<
-          Array<{
-            tenantId: string;
-            revenue: Prisma.Decimal | null;
-            returns: bigint;
-          }>
-        >`
-          SELECT
-            "tenantId",
-            COALESCE(SUM(total), 0) AS revenue,
-            COUNT(*) FILTER (
-              WHERE status IN ('refunded', 'partially_refunded', 'written_off')
-            )::bigint AS returns
-          FROM "Sale"
-          WHERE "deletedAt" IS NULL
-            AND status::text <> 'draft'
-            AND date >= ${todayStart}
-            AND date <= ${todayEnd}
-            AND "tenantId" IN (${Prisma.join(transactionIds)})
-          GROUP BY "tenantId"
-        `
-      : Promise.resolve([]),
-    jobIds.length > 0
-      ? prisma.$queryRaw<
-          Array<{ tenantId: string; active: bigint; pending_qc: bigint }>
-        >`
-          SELECT
-            "tenantId",
-            COUNT(*) FILTER (
-              WHERE status NOT IN ('Delivered', 'Cancelled')
-            )::bigint AS active,
-            COUNT(*) FILTER (WHERE status = 'QC')::bigint AS pending_qc
-          FROM "Job"
-          WHERE "deletedAt" IS NULL
-            AND "tenantId" IN (${Prisma.join(jobIds)})
-          GROUP BY "tenantId"
-        `
-      : Promise.resolve([]),
-    jobIds.length > 0
-      ? prisma.$queryRaw<
-          Array<{ tenantId: string; revenue: Prisma.Decimal | null }>
-        >`
-          SELECT "tenantId", COALESCE(SUM(amount), 0) AS revenue
-          FROM "LedgerEntry"
-          WHERE "deletedAt" IS NULL
-            AND type = 'revenue'
-            AND date >= ${todayStart}
-            AND date <= ${todayEnd}
-            AND "tenantId" IN (${Prisma.join(jobIds)})
-          GROUP BY "tenantId"
-        `
-      : Promise.resolve([]),
-    appointmentIds.length > 0
-      ? prisma.$queryRaw<
-          Array<{
-            tenantId: string;
-            count: bigint;
-            revenue: Prisma.Decimal | null;
-          }>
-        >`
-          SELECT
-            "tenantId",
-            COUNT(*)::bigint AS count,
-            COALESCE(SUM("servicePrice"), 0) AS revenue
-          FROM "Appointment"
-          WHERE "deletedAt" IS NULL
-            AND "startTime" >= ${todayStart}
-            AND "startTime" <= ${todayEnd}
-            AND "tenantId" IN (${Prisma.join(appointmentIds)})
-          GROUP BY "tenantId"
-        `
-      : Promise.resolve([]),
-  ]);
-
-  const itemByTenant = new Map(
-    itemStats.map((row) => [
-      row.tenantId,
-      {
-        sku: Number(row.sku),
-        stockValue: toNumber(row.stock_value ?? 0),
-        lowStock: Number(row.low_stock),
-      },
-    ]),
+  tenantIds: string[],
+  from?: string,
+  to?: string,
+): Promise<GroupFinanceQueryOptions> {
+  const window = resolveDateWindow(from, to);
+  const useRollup = await resolveGroupFinanceSource(
+    prisma,
+    tenantIds,
+    window.from,
+    window.to,
   );
-  const inboundByTenant = new Map(
-    inboundToday.map((row) => [row.tenantId, Number(row.inbound)]),
-  );
-  const salesByTenant = new Map(
-    salesToday.map((row) => [
-      row.tenantId,
-      {
-        revenue: toNumber(row.revenue ?? 0),
-        returns: Number(row.returns),
-      },
-    ]),
-  );
-  const revenueByJobTenant = new Map(
-    jobRevenue.map((row) => [row.tenantId, toNumber(row.revenue ?? 0)]),
-  );
-  const jobByTenant = new Map(
-    jobCounts.map((row) => [
-      row.tenantId,
-      {
-        active: Number(row.active),
-        pendingQc: Number(row.pending_qc),
-        revenue: revenueByJobTenant.get(row.tenantId) ?? 0,
-      },
-    ]),
-  );
-  const apptByTenant = new Map(
-    appointmentStats.map((row) => [
-      row.tenantId,
-      {
-        count: Number(row.count),
-        revenue: toNumber(row.revenue ?? 0),
-      },
-    ]),
-  );
-
-  const lowByTenant = new Map(
-    groupTenants.map((t) => [t.id, itemByTenant.get(t.id)?.lowStock ?? 0]),
-  );
-
-  const entityStats: GroupEntityStat[] = groupTenants.map((tenant) => {
-    switch (tenant.archetype) {
-      case 'stock': {
-        const items = itemByTenant.get(tenant.id);
-        return {
-          code: tenant.code,
-          stats: [
-            `${(items?.sku ?? 0).toLocaleString()} SKU`,
-            `${compactNgn(items?.stockValue ?? 0)} stock`,
-            `${inboundByTenant.get(tenant.id) ?? 0} inbound today`,
-          ] as [string, string, string],
-        };
-      }
-      case 'transaction': {
-        const sales = salesByTenant.get(tenant.id);
-        const low = itemByTenant.get(tenant.id)?.lowStock ?? 0;
-        return {
-          code: tenant.code,
-          stats: [
-            `${compactNgn(sales?.revenue ?? 0)} sales`,
-            `${sales?.returns ?? 0} returns`,
-            `${low} low stock`,
-          ] as [string, string, string],
-        };
-      }
-      case 'job': {
-        const jobs = jobByTenant.get(tenant.id);
-        return {
-          code: tenant.code,
-          stats: [
-            `${jobs?.active ?? 0} active jobs`,
-            `${jobs?.pendingQc ?? 0} pending QC`,
-            `${compactNgn(jobs?.revenue ?? 0)} revenue`,
-          ] as [string, string, string],
-        };
-      }
-      case 'appointment': {
-        const appts = apptByTenant.get(tenant.id);
-        return {
-          code: tenant.code,
-          stats: [
-            `${appts?.count ?? 0} appts today`,
-            `${Math.max(0, 8 - (appts?.count ?? 0))} slots open`,
-            `${compactNgn(appts?.revenue ?? 0)} revenue`,
-          ] as [string, string, string],
-        };
-      }
-      default:
-        return {
-          code: tenant.code,
-          stats: ['—', '—', '—'] as [string, string, string],
-        };
-    }
-  });
-
-  return {
-    entityStats,
-    lowByTenant,
-    jobByTenant: new Map(
-      [...jobByTenant.entries()].map(([id, row]) => [
-        id,
-        { active: row.active, pendingQc: row.pendingQc },
-      ]),
-    ),
-  };
+  return { useRollup };
 }
 
-async function buildGroupAlerts(
-  prisma: PrismaClient,
+function buildGroupAlertsFromBundle(
   tenants: GroupTenant[],
-  lowByTenant: Map<string, number>,
-  jobByTenant: Map<string, { active: number; pendingQc: number }>,
-): Promise<GroupOverviewAlert[]> {
+  bundle: EntityStatsBundle,
+): GroupOverviewAlert[] {
   const byCode = new Map(tenants.map((t) => [t.code, t]));
-  const vw = byCode.get('VW');
   const visp = byCode.get('VISP');
   const va = byCode.get('VA');
   const alerts: GroupOverviewAlert[] = [];
 
-  const [retailLow, pendingInbound] = await Promise.all([
-    vw && visp
-      ? prisma.item.count({
-          where: {
-            tenantId: vw.id,
-            deletedAt: null,
-            availableForRetail: true,
-            status: { in: ['low_stock', 'out_of_stock'] },
-          },
-        })
-      : Promise.resolve(0),
-    vw
-      ? prisma.stockMovement.count({
-          where: {
-            tenantId: vw.id,
-            deletedAt: null,
-            type: 'inbound',
-            status: 'Pending',
-          },
-        })
-      : Promise.resolve(0),
-  ]);
-
-  if (retailLow > 0) {
+  if (bundle.retailLowStock > 0 && visp) {
     alerts.push({
       id: 'vw-low-retail-stock',
       severity: 'warning',
       title: 'Warehouse retail stock low',
-      message: `${retailLow} SKU(s) available for retail catalog are low or out of stock.`,
+      message: `${bundle.retailLowStock} SKU(s) available for retail catalog are low or out of stock.`,
       entityCode: 'VW',
       linkedRoute: '/VW/inventory',
     });
   }
 
   if (va) {
-    const jobs = jobByTenant.get(va.id);
+    const jobs = bundle.jobByTenant.get(va.id);
     const openJobs = jobs?.active ?? 0;
     const pendingQc = jobs?.pendingQc ?? 0;
 
@@ -395,19 +137,19 @@ async function buildGroupAlerts(
     }
   }
 
-  if (pendingInbound > 0) {
+  if (bundle.pendingInbound > 0) {
     alerts.push({
       id: 'vw-pending-inbound',
       severity: 'warning',
       title: 'Pending warehouse purchases',
-      message: `${pendingInbound} inbound movement(s) awaiting receipt at Warehouse.`,
+      message: `${bundle.pendingInbound} inbound movement(s) awaiting receipt at Warehouse.`,
       entityCode: 'VW',
       linkedRoute: '/VW/inbound',
     });
   }
 
   for (const tenant of tenants) {
-    const lowStock = lowByTenant.get(tenant.id) ?? 0;
+    const lowStock = bundle.lowByTenant.get(tenant.id) ?? 0;
     if (lowStock > 0) {
       alerts.push({
         id: `low-stock-${tenant.code}`,
@@ -423,7 +165,211 @@ async function buildGroupAlerts(
   return alerts;
 }
 
-const GROUP_CACHE_TTL_S = 300;
+/** Fallback when details path has no entity bundle — light job + low-stock probe. */
+async function loadGroupAlertInputs(
+  prisma: PrismaClient,
+  tenants: GroupTenant[],
+): Promise<EntityStatsBundle> {
+  const itemTenantIds = tenants
+    .filter(
+      (t) =>
+        t.archetype === 'stock' ||
+        t.archetype === 'transaction' ||
+        t.archetype === 'job',
+    )
+    .map((t) => t.id);
+  const jobIds = tenants.filter((t) => t.archetype === 'job').map((t) => t.id);
+  const vw = tenants.find((t) => t.code === 'VW');
+
+  const [lowRows, jobCounts, retailLowStock, pendingInbound] =
+    await Promise.all([
+      itemTenantIds.length > 0
+        ? prisma.$queryRaw<Array<{ tenantId: string; low_stock: bigint }>>`
+            SELECT
+              "tenantId",
+              COUNT(*) FILTER (
+                WHERE status IN ('low_stock', 'out_of_stock')
+              )::bigint AS low_stock
+            FROM "Item"
+            WHERE "deletedAt" IS NULL
+              AND "tenantId" IN (${Prisma.join(itemTenantIds)})
+            GROUP BY "tenantId"
+          `
+        : Promise.resolve([]),
+      jobIds.length > 0
+        ? prisma.$queryRaw<
+            Array<{ tenantId: string; active: bigint; pending_qc: bigint }>
+          >`
+            SELECT
+              "tenantId",
+              COUNT(*) FILTER (
+                WHERE status NOT IN ('Delivered', 'Cancelled')
+              )::bigint AS active,
+              COUNT(*) FILTER (WHERE status = 'QC')::bigint AS pending_qc
+            FROM "Job"
+            WHERE "deletedAt" IS NULL
+              AND "tenantId" IN (${Prisma.join(jobIds)})
+            GROUP BY "tenantId"
+          `
+        : Promise.resolve([]),
+      vw
+        ? prisma.item.count({
+            where: {
+              tenantId: vw.id,
+              deletedAt: null,
+              availableForRetail: true,
+              status: { in: ['low_stock', 'out_of_stock'] },
+            },
+          })
+        : Promise.resolve(0),
+      vw
+        ? prisma.stockMovement.count({
+            where: {
+              tenantId: vw.id,
+              deletedAt: null,
+              type: 'inbound',
+              status: 'Pending',
+            },
+          })
+        : Promise.resolve(0),
+    ]);
+
+  const lowByTenant = new Map(
+    lowRows.map((row) => [row.tenantId, Number(row.low_stock)]),
+  );
+  const jobByTenant = new Map(
+    jobCounts.map((row) => [
+      row.tenantId,
+      {
+        active: Number(row.active),
+        pendingQc: Number(row.pending_qc),
+      },
+    ]),
+  );
+
+  return {
+    entityStats: [] as GroupEntityStat[],
+    lowByTenant,
+    jobByTenant,
+    retailLowStock,
+    pendingInbound,
+  };
+}
+
+const GROUP_CACHE_TTL_S = 900;
+
+export async function buildGroupOverviewSummary(
+  prisma: PrismaClient,
+  from?: string,
+  to?: string,
+  cache?: import('../../common/cache/cache.service').CacheService,
+): Promise<GroupOverviewSummary> {
+  const cacheKey = `group-overview:summary:${groupOverviewCacheWindowKey(from, to)}`;
+
+  if (cache) {
+    const cached = await cache.get<GroupOverviewSummary>(cacheKey);
+    if (cached) return cached;
+  }
+
+  const tenants = await loadAutosGroupTenants(prisma);
+  const tenantRows = toTenantRows(tenants);
+  const tenantIds = tenants.map((t) => t.id);
+  const financeOptions = await resolveGroupFinanceOptions(
+    prisma,
+    tenantIds,
+    from,
+    to,
+  );
+
+  const [core, statsBundle] = await Promise.all([
+    buildGroupCoreKpis(
+      prisma,
+      from,
+      to,
+      tenantRows,
+      financeOptions,
+    ),
+    buildGroupEntityStatsBundle(prisma, tenants),
+  ]);
+
+  const result: GroupOverviewSummary = {
+    kpis: core.kpis,
+    entityStats: statsBundle.entityStats,
+  };
+
+  if (cache) {
+    await cache.set(cacheKey, result, GROUP_CACHE_TTL_S);
+  }
+
+  return result;
+}
+
+export async function buildGroupOverviewDetails(
+  prisma: PrismaClient,
+  from?: string,
+  to?: string,
+  cache?: import('../../common/cache/cache.service').CacheService,
+  revenueByTenant?: Map<string, number>,
+  financeOptions?: GroupFinanceQueryOptions,
+  alertBundle?: EntityStatsBundle,
+): Promise<GroupOverviewDetails> {
+  const cacheKey = `group-overview:details:${groupOverviewCacheWindowKey(from, to)}`;
+
+  if (cache) {
+    const cached = await cache.get<GroupOverviewDetails>(cacheKey);
+    if (cached) return cached;
+  }
+
+  const tenants = await loadAutosGroupTenants(prisma);
+  const tenantRows = toTenantRows(tenants);
+  const tenantIds = tenants.map((t) => t.id);
+  const financeOpts =
+    financeOptions ??
+    (await resolveGroupFinanceOptions(prisma, tenantIds, from, to));
+
+  const chartsPromise = revenueByTenant
+    ? buildGroupCharts(
+        prisma,
+        from,
+        to,
+        tenantRows,
+        revenueByTenant,
+        financeOpts,
+      )
+    : buildGroupCoreKpis(
+        prisma,
+        from,
+        to,
+        tenantRows,
+        financeOpts,
+      ).then((core) =>
+        buildGroupCharts(
+          prisma,
+          from,
+          to,
+          tenantRows,
+          core.revenueByTenant,
+          financeOpts,
+        ),
+      );
+
+  const [charts, bundle] = await Promise.all([
+    chartsPromise,
+    alertBundle
+      ? Promise.resolve(alertBundle)
+      : loadGroupAlertInputs(prisma, tenants),
+  ]);
+
+  const alerts = buildGroupAlertsFromBundle(tenants, bundle);
+
+  const result: GroupOverviewDetails = { charts, alerts };
+
+  if (cache) {
+    await cache.set(cacheKey, result, GROUP_CACHE_TTL_S);
+  }
+
+  return result;
+}
 
 export async function buildGroupOverview(
   prisma: PrismaClient,
@@ -439,21 +385,41 @@ export async function buildGroupOverview(
   }
 
   const tenants = await loadAutosGroupTenants(prisma);
-
-  const [dashboard, statsBundle] = await Promise.all([
-    buildGroupReports(prisma, from, to),
-    buildGroupEntityStats(prisma, tenants),
-  ]);
-
-  const alerts = await buildGroupAlerts(
+  const tenantRows = toTenantRows(tenants);
+  const tenantIds = tenants.map((t) => t.id);
+  const financeOptions = await resolveGroupFinanceOptions(
     prisma,
-    tenants,
-    statsBundle.lowByTenant,
-    statsBundle.jobByTenant,
+    tenantIds,
+    from,
+    to,
   );
 
+  const [core, statsBundle] = await Promise.all([
+    buildGroupCoreKpis(
+      prisma,
+      from,
+      to,
+      tenantRows,
+      financeOptions,
+    ),
+    buildGroupEntityStatsBundle(prisma, tenants),
+  ]);
+
+  const [charts, alerts] = await Promise.all([
+    buildGroupCharts(
+      prisma,
+      from,
+      to,
+      tenantRows,
+      core.revenueByTenant,
+      financeOptions,
+    ),
+    Promise.resolve(buildGroupAlertsFromBundle(tenants, statsBundle)),
+  ]);
+
   const result: GroupOverviewDashboard = {
-    ...dashboard,
+    kpis: core.kpis,
+    charts,
     entityStats: statsBundle.entityStats,
     alerts,
   };
@@ -463,4 +429,22 @@ export async function buildGroupOverview(
   }
 
   return result;
+}
+
+/** Populate Redis + L1 for the default VAG home date range (last 7 days). */
+export async function warmGroupOverviewCache(
+  prisma: PrismaClient,
+  cache: import('../../common/cache/cache.service').CacheService,
+  from?: string,
+  to?: string,
+): Promise<void> {
+  const defaults = defaultVagOverviewApiBounds();
+  const warmFrom = from ?? defaults.from;
+  const warmTo = to ?? defaults.to;
+
+  await Promise.all([
+    buildGroupOverviewSummary(prisma, warmFrom, warmTo, cache),
+    buildGroupOverviewDetails(prisma, warmFrom, warmTo, cache),
+    buildGroupOverview(prisma, warmFrom, warmTo, cache),
+  ]);
 }

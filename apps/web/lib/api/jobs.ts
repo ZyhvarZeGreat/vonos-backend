@@ -111,6 +111,21 @@ export async function getJob(id: string): Promise<JobDetail> {
   return response.json();
 }
 
+/** Header + customer/vehicle without materials/labour. */
+export async function getJobShell(id: string): Promise<JobDetail> {
+  const response = await apiFetch(`/jobs/${id}/shell`);
+  if (!response.ok) throw new Error("Failed to fetch job");
+  return response.json();
+}
+
+export async function getJobCosts(
+  id: string,
+): Promise<{ materials: JobDetail["materials"]; labourEntries: JobDetail["labourEntries"] }> {
+  const response = await apiFetch(`/jobs/${id}/costs`);
+  if (!response.ok) throw new Error("Failed to fetch job costs");
+  return response.json();
+}
+
 /** Reference only — for titles / breadcrumbs. */
 export async function getJobMeta(
   id: string,

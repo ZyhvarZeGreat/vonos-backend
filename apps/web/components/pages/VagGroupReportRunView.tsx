@@ -4,8 +4,9 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { DateRangeDropdown } from "@/components/molecules/DateRangeDropdown";
-import { ReportsDashboardBody } from "@/components/pages/ReportsView";
-import { HqReportPageLayout, HqReportPageSkeleton } from "@/components/organisms/HqReportPageLayout";
+import { ReportDetailSheet } from "@/components/organisms/ReportDetailSheet";
+import { HqReportPageSkeleton } from "@/components/organisms/HqReportPageLayout";
+import { Spinner } from "@/components/atoms/Spinner";
 import { runGroupReport } from "@/lib/api/reports";
 import { reportEntryById } from "@/lib/registries/reportRegistry";
 import { useListPageFilters } from "@/lib/hooks/useListPageFilters";
@@ -18,7 +19,7 @@ export function VagGroupReportRunView() {
   const { dateRange, setDateRange, bounds } = useListPageFilters();
   const periodLabel = ledgerChartSubtitle(dateRange);
 
-  const { data, isLoading, error } = useQuery({
+  const { data, isLoading, error, isFetching } = useQuery({
     queryKey: ["groupReportRun", reportId, bounds?.from ?? "all", bounds?.to ?? "all"],
     queryFn: () =>
       runGroupReport({
@@ -55,29 +56,31 @@ export function VagGroupReportRunView() {
             ← Back to group reports
           </Link>
           <h2 className="mt-2 text-lg font-semibold text-foreground">{entry.label}</h2>
-          <p className="text-sm text-muted">Group roll-up across all entities</p>
+          <p className="text-sm text-muted">
+            Group roll-up · per-entity breakdown for this report only
+          </p>
         </div>
-        <DateRangeDropdown value={dateRange} onChange={setDateRange} />
+        <div className="flex items-center gap-3">
+          {isFetching && data ? <Spinner className="text-muted" /> : null}
+          <DateRangeDropdown value={dateRange} onChange={setDateRange} />
+        </div>
       </div>
 
-      {isLoading && !data ? (
+      {error ? (
+        <div className="rounded-xl border border-border bg-card p-8 text-center text-sm text-muted">
+          Failed to load {entry.label}. Try again or change the date range.
+        </div>
+      ) : isLoading && !data ? (
         <HqReportPageSkeleton reportId={entry.id} />
-      ) : entry.id === "profit-loss" && data?.profitLoss ? (
-        <HqReportPageLayout
-          reportId={entry.id}
+      ) : data ? (
+        <ReportDetailSheet
           title={entry.label}
           subtitle={periodLabel}
           data={data}
+          showCharts
+          tableFirst={Boolean(data.table && data.charts.length === 0)}
         />
-      ) : (
-        <ReportsDashboardBody
-          dashboard={data}
-          isLoading={isLoading}
-          error={error}
-          dateRange={dateRange}
-          setDateRange={setDateRange}
-        />
-      )}
+      ) : null}
     </div>
   );
 }

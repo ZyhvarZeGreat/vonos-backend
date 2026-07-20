@@ -5,14 +5,17 @@ import { ChartPanel } from "@/components/organisms/ChartPanel";
 import { DateRangeDropdown } from "@/components/molecules/DateRangeDropdown";
 import { EntityOverviewCard } from "@/components/organisms/EntityOverviewCard";
 import { KpiRow } from "@/components/organisms/KpiRow";
-import { getGroupOverview } from "@/lib/api/overview";
+import {
+  getGroupOverviewDetails,
+  getGroupOverviewSummary,
+} from "@/lib/api/overview";
 import { AUTOS_GROUP_ENTITIES } from "@/lib/registries/tenants";
 import { tenantOverviewPath } from "@/lib/utils/authRedirect";
 import { TENANT_ACCENT } from "@/lib/registries/tenantAccents";
 import { useListPageFilters } from "@/lib/hooks/useListPageFilters";
 import { ledgerChartSubtitle } from "@/lib/utils/ledgerCharts";
 import { formatCurrencyCompact, formatNumberCompact } from "@/lib/utils/formatCurrency";
-import { DashboardBodySkeleton } from "@/components/organisms/skeletons";
+import { ChartPanelSkeleton } from "@/components/organisms/skeletons";
 import type { ReportsKpi, GroupOverviewAlert } from "@vonos/types";
 
 const GROUP_KPIS = [
@@ -29,29 +32,43 @@ function formatGroupKpi(kpi: ReportsKpi): string {
 
 export function VagGroupOverview() {
   const { dateRange, setDateRange, bounds } = useListPageFilters();
+  const rangeKey = [bounds?.from, bounds?.to] as const;
 
-  const query = useQuery({
-    queryKey: ["groupOverview", bounds?.from, bounds?.to],
+  const summaryQuery = useQuery({
+    queryKey: ["groupOverview", "summary", ...rangeKey],
     queryFn: () =>
-      getGroupOverview({
+      getGroupOverviewSummary({
         from: bounds?.from,
         to: bounds?.to,
       }),
-    staleTime: 5 * 60_000,
+    staleTime: 10 * 60_000,
+    placeholderData: (previousData) => previousData,
   });
 
-  const dashboard = query.data;
+  const detailsQuery = useQuery({
+    queryKey: ["groupOverview", "details", ...rangeKey],
+    queryFn: () =>
+      getGroupOverviewDetails({
+        from: bounds?.from,
+        to: bounds?.to,
+      }),
+    staleTime: 10 * 60_000,
+    placeholderData: (previousData) => previousData,
+  });
+
+  const summary = summaryQuery.data;
+  const details = detailsQuery.data;
   const periodLabel = ledgerChartSubtitle(dateRange);
   const entityStats = new Map(
-    (dashboard?.entityStats ?? []).map((row) => [row.code, row.stats]),
+    (summary?.entityStats ?? []).map((row) => [row.code, row.stats]),
   );
 
   const kpiValues = Object.fromEntries(
-    (dashboard?.kpis ?? []).map((kpi) => [kpi.metricKey, formatGroupKpi(kpi)]),
+    (summary?.kpis ?? []).map((kpi) => [kpi.metricKey, formatGroupKpi(kpi)]),
   );
 
-  const entityComparisonChart = dashboard?.charts.find((c) => c.id === "entity-comparison");
-  const revenueTrendChart = dashboard?.charts.find((c) => c.id === "group-revenue-trend");
+  const entityComparisonChart = details?.charts.find((c) => c.id === "entity-comparison");
+  const revenueTrendChart = details?.charts.find((c) => c.id === "group-revenue-trend");
 
   const entityComparisonData =
     entityComparisonChart?.data.map((row) => ({
@@ -59,6 +76,9 @@ export function VagGroupOverview() {
       value: Number(row.value ?? 0),
       color: TENANT_ACCENT[String(row.label) as keyof typeof TENANT_ACCENT],
     })) ?? [];
+
+  const summaryLoading = summaryQuery.isLoading && !summary;
+  const detailsLoading = detailsQuery.isLoading && !details;
 
   return (
     <div className="space-y-8">
@@ -74,54 +94,67 @@ export function VagGroupOverview() {
         </p>
       </div>
 
-      {query.isLoading && !dashboard ? (
-        <DashboardBodySkeleton kpiCount={4} chartCount={2} />
-      ) : (
-        <>
-          <KpiRow cards={GROUP_KPIS} values={kpiValues} />
+      <KpiRow
+        cards={GROUP_KPIS}
+        values={kpiValues}
+        isLoading={summaryLoading}
+      />
 
-          {(dashboard?.alerts?.length ?? 0) > 0 ? (
-            <section className="space-y-2">
-              <h3 className="text-base font-semibold text-foreground">Group alerts</h3>
-              <div className="grid gap-3">
-                {dashboard!.alerts!.map((alert: GroupOverviewAlert) => (
-                  <div
-                    key={alert.id}
-                    className={`rounded-lg border px-4 py-3 text-sm ${
-                      alert.severity === "error"
-                        ? "border-red-200 bg-red-50 text-red-950 dark:border-red-900/50 dark:bg-red-950/30"
-                        : alert.severity === "warning"
-                          ? "border-amber-200 bg-amber-50 text-amber-950 dark:border-amber-900/50 dark:bg-amber-950/30"
-                          : "border-sky-200 bg-sky-50 text-sky-950 dark:border-sky-900/50 dark:bg-sky-950/30"
-                    }`}
-                  >
-                    <p className="font-medium">
-                      {alert.entityCode ? `${alert.entityCode}: ` : ""}
-                      {alert.title}
-                    </p>
-                    <p className="mt-1 opacity-90">{alert.message}</p>
-                  </div>
-                ))}
+      {(details?.alerts?.length ?? 0) > 0 ? (
+        <section className="space-y-2">
+          <h3 className="text-base font-semibold text-foreground">Group alerts</h3>
+          <div className="grid gap-3">
+            {details!.alerts.map((alert: GroupOverviewAlert) => (
+              <div
+                key={alert.id}
+                className={`rounded-lg border px-4 py-3 text-sm ${
+                  alert.severity === "error"
+                    ? "border-red-200 bg-red-50 text-red-950 dark:border-red-900/50 dark:bg-red-950/30"
+                    : alert.severity === "warning"
+                      ? "border-amber-200 bg-amber-50 text-amber-950 dark:border-amber-900/50 dark:bg-amber-950/30"
+                      : "border-sky-200 bg-sky-50 text-sky-950 dark:border-sky-900/50 dark:bg-sky-950/30"
+                }`}
+              >
+                <p className="font-medium">
+                  {alert.entityCode ? `${alert.entityCode}: ` : ""}
+                  {alert.title}
+                </p>
+                <p className="mt-1 opacity-90">{alert.message}</p>
               </div>
-            </section>
-          ) : null}
+            ))}
+          </div>
+        </section>
+      ) : null}
 
-          <section>
-            <h3 className="mb-4 text-base font-semibold text-foreground">Entities</h3>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-              {AUTOS_GROUP_ENTITIES.map((entity) => (
-                  <EntityOverviewCard
-                    key={entity.code}
-                    code={entity.code}
-                    name={entity.name}
-                    stats={entityStats.get(entity.code) ?? ["—", "—", "—"]}
-                    href={tenantOverviewPath(entity.code)}
-                  />
-              ))}
-            </div>
-          </section>
+      <section>
+        <h3 className="mb-4 text-base font-semibold text-foreground">Entities</h3>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          {AUTOS_GROUP_ENTITIES.map((entity) => (
+            <EntityOverviewCard
+              key={entity.code}
+              code={entity.code}
+              name={entity.name}
+              stats={entityStats.get(entity.code) ?? ["—", "—", "—"]}
+              href={tenantOverviewPath(entity.code)}
+            />
+          ))}
+        </div>
+      </section>
 
-          <div className="grid gap-6 lg:grid-cols-2">
+      <div className="grid gap-6 lg:grid-cols-2">
+        {detailsLoading ? (
+          <>
+            <ChartPanelSkeleton
+              title="Group revenue trend"
+              subtitle={periodLabel}
+            />
+            <ChartPanelSkeleton
+              title="Entity comparison"
+              subtitle={periodLabel}
+            />
+          </>
+        ) : (
+          <>
             {revenueTrendChart ? (
               <ChartPanel
                 title={revenueTrendChart.title}
@@ -143,9 +176,9 @@ export function VagGroupOverview() {
                 periodLabel={periodLabel}
               />
             ) : null}
-          </div>
-        </>
-      )}
+          </>
+        )}
+      </div>
     </div>
   );
 }

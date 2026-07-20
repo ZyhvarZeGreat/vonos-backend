@@ -53,7 +53,9 @@ async function fetchStockMovementsRaw(
   filters: StockMovementFilters | undefined,
   cursor?: string,
   limit?: number,
-): Promise<StockMovementListRow[]> {
+): Promise<
+  StockMovementListRow[] | { items: StockMovementListRow[]; totalCount: number }
+> {
   const response = await apiFetch(
     buildStockMovementsPath(tenantId, filters, cursor, limit),
   );
@@ -91,12 +93,13 @@ export async function getStockMovements(
   filters: StockMovementFilters = {},
 ): Promise<StockMovementListRow[]> {
   if (filters.cursor || filters.limit) {
-    return fetchStockMovementsRaw(
+    const payload = await fetchStockMovementsRaw(
       tenantId,
       filters,
       filters.cursor,
       filters.limit,
     );
+    return Array.isArray(payload) ? payload : payload.items;
   }
 
   return fetchFirstPage((cursor, limit) =>

@@ -17,6 +17,11 @@ import {
 } from '../../common/utils/internalTransfer';
 import { toIso, toNumber } from '../../common/utils/serializers';
 import { resolveDateWindow } from '../reports/aggregators/date-utils';
+import {
+  groupFinanceByTenantFromRollup,
+  resolveGroupFinanceSource,
+  sumDailyFinanceRollupForTenants,
+} from '../../common/utils/dailyFinanceRollup';
 
 async function nonVagTenants(prisma: PrismaClient) {
   return prisma.tenant.findMany({
@@ -46,6 +51,39 @@ export async function buildGroupLedgerByEntity(
   const tenantIds = tenants.map((t) => t.id);
 
   if (tenantIds.length === 0) return [];
+
+  const useRollup = await resolveGroupFinanceSource(
+    prisma,
+    tenantIds,
+    window.from,
+    window.to,
+  );
+
+  if (useRollup) {
+    const rollupRows = await groupFinanceByTenantFromRollup(
+      prisma,
+      tenantIds,
+      window.from,
+      window.to,
+    );
+    const byTenantId = new Map(rollupRows.map((row) => [row.tenantId, row]));
+    return tenants
+      .map((tenant) => {
+        const row = byTenantId.get(tenant.id);
+        const costs = (row?.costs ?? 0) + (row?.expenses ?? 0);
+        return {
+          tenantId: tenant.id,
+          tenantCode: tenant.code,
+          tenantName: tenant.name,
+          revenue: row?.revenue ?? 0,
+          costs,
+          net: row?.net ?? 0,
+          outstanding: 0,
+          currency: 'NGN',
+        };
+      })
+      .sort((a, b) => a.tenantCode.localeCompare(b.tenantCode));
+  }
 
   const aggRows = await prisma.$queryRaw<
     Array<{
@@ -107,6 +145,39 @@ export async function buildGroupLedgerSummary(
 
   if (tenantIds.length === 0) {
     return buildLedgerSummaryFromGroups([], 'NGN');
+  }
+
+  const useRollup = await resolveGroupFinanceSource(
+    prisma,
+    tenantIds,
+    window.from,
+    window.to,
+  );
+
+  if (useRollup) {
+    const totals = await sumDailyFinanceRollupForTenants(
+      prisma,
+      tenantIds,
+      window.from,
+      window.to,
+    );
+    return buildLedgerSummaryFromGroups(
+      [
+        {
+          type: 'revenue' as LedgerEntryType,
+          _sum: { amount: new Prisma.Decimal(totals.revenue) },
+        },
+        {
+          type: 'cost' as LedgerEntryType,
+          _sum: { amount: new Prisma.Decimal(totals.costs) },
+        },
+        {
+          type: 'expense' as LedgerEntryType,
+          _sum: { amount: new Prisma.Decimal(totals.expenses) },
+        },
+      ],
+      'NGN',
+    );
   }
 
   const [aggRows, currencyRow] = await Promise.all([

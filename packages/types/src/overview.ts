@@ -78,3 +78,15 @@ export interface GroupOverviewDashboard extends OverviewDashboard {
   entityStats: GroupEntityStat[];
   alerts?: GroupOverviewAlert[];
 }
+
+/** Fast first paint for VAG home — KPIs + entity cards only. */
+export interface GroupOverviewSummary {
+  kpis: ReportsKpi[];
+  entityStats: GroupEntityStat[];
+}
+
+/** Deferred second request — charts + alerts. */
+export interface GroupOverviewDetails {
+  charts: ReportsChart[];
+  alerts: GroupOverviewAlert[];
+}

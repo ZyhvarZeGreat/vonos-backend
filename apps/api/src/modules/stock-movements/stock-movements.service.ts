@@ -16,6 +16,7 @@ import { invalidateTenantDashboardCache } from '../../common/cache/cacheInvalida
 import { applyDailyFinanceDelta } from '../../common/utils/dailyFinanceRollup';
 import { refreshSupplierPurchaseRollups } from '../../common/utils/supplierRollups';
 import { buildCompositeCursorQuery } from '../../common/utils/pagination';
+import type { PaginatedList } from '../../common/utils/paginatedList';
 import { resolveListSort } from '../../common/utils/listSort';
 import {
   computeStockStatus,
@@ -96,7 +97,7 @@ export class StockMovementsService {
     limit?: number;
     sortBy?: string;
     sortDir?: string;
-  }): Promise<StockMovementListRow[]> {
+  }): Promise<PaginatedList<StockMovementListRow>> {
     const tenantId = this.tenantDb.requireTenantId();
     const dateFilter =
       filters.from || filters.to
@@ -126,52 +127,61 @@ export class StockMovementsService {
       limit: filters.limit ?? 10,
       sortValueType: sort.sortValueType,
     });
-    const rows = await this.tenantDb.db.stockMovement.findMany({
-      where: {
-        tenantId,
-        deletedAt: null,
-        ...(filters.type ? { type: filters.type } : {}),
-        ...movementStatusWhere(filters.status),
-        ...(filters.source ? { source: filters.source } : {}),
-        ...(filters.locationCode
-          ? { locationCode: filters.locationCode }
-          : {}),
-        ...(filters.supplierId ? { supplierId: filters.supplierId } : {}),
-        ...(filters.paymentStatus
-          ? { paymentStatus: filters.paymentStatus }
-          : {}),
-        ...(filters.paymentMethod
-          ? { paymentMethod: filters.paymentMethod }
-          : {}),
-        ...(filters.search
-          ? {
-              OR: [
-                {
-                  reference: {
+    const baseWhere = {
+      tenantId,
+      deletedAt: null as null,
+      ...(filters.type ? { type: filters.type } : {}),
+      ...movementStatusWhere(filters.status),
+      ...(filters.source ? { source: filters.source } : {}),
+      ...(filters.locationCode
+        ? { locationCode: filters.locationCode }
+        : {}),
+      ...(filters.supplierId ? { supplierId: filters.supplierId } : {}),
+      ...(filters.paymentStatus
+        ? { paymentStatus: filters.paymentStatus }
+        : {}),
+      ...(filters.paymentMethod
+        ? { paymentMethod: filters.paymentMethod }
+        : {}),
+      ...(filters.search
+        ? {
+            OR: [
+              {
+                reference: {
+                  contains: filters.search,
+                  mode: 'insensitive' as const,
+                },
+              },
+              {
+                supplier: {
+                  name: {
                     contains: filters.search,
-                    mode: 'insensitive',
+                    mode: 'insensitive' as const,
                   },
                 },
-                {
-                  supplier: {
-                    name: {
-                      contains: filters.search,
-                      mode: 'insensitive',
-                    },
-                  },
-                },
-                { notes: { contains: filters.search, mode: 'insensitive' } },
-              ],
-            }
-          : {}),
-        ...dateFilter,
-        ...(pagination.where ?? {}),
-      },
-      include: { supplier: { select: { name: true } } },
-      orderBy: [{ [sort.sortField]: sort.sortDir }, { id: sort.sortDir }],
-      take: pagination.take,
-    });
-    return rows.map(toMovementListRow);
+              },
+              { notes: { contains: filters.search, mode: 'insensitive' as const } },
+            ],
+          }
+        : {}),
+      ...dateFilter,
+    };
+    const [rows, totalCount] = await Promise.all([
+      this.tenantDb.db.stockMovement.findMany({
+        where: {
+          ...baseWhere,
+          ...(pagination.where ?? {}),
+        },
+        include: { supplier: { select: { name: true } } },
+        orderBy: [{ [sort.sortField]: sort.sortDir }, { id: sort.sortDir }],
+        take: pagination.take,
+      }),
+      this.tenantDb.db.stockMovement.count({ where: baseWhere }),
+    ]);
+    return {
+      items: rows.map(toMovementListRow),
+      totalCount,
+    };
   }
 
   async getById(id: string) {

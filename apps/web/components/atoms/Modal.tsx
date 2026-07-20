@@ -47,14 +47,14 @@ export function Modal({
     >
       <button
         type="button"
-        className="absolute inset-0 bg-black/40"
+        className="motion-backdrop-in absolute inset-0 bg-black/40"
         aria-label="Close dialog"
         onClick={onClose}
       />
       <div
         ref={panelRef}
         className={cn(
-          "relative z-10 w-full max-w-md overflow-hidden rounded-lg bg-card shadow-lg",
+          "motion-dialog-in relative z-10 w-full max-w-md overflow-hidden rounded-lg bg-card shadow-lg",
           panelClassName,
         )}
       >
@@ -80,7 +80,7 @@ export function ModalHeader({ title, subtitle, onClose }: ModalHeaderProps) {
       <button
         type="button"
         onClick={onClose}
-        className="rounded-md p-1 text-muted hover:bg-[var(--color-surface-muted)] hover:text-foreground"
+        className="motion-press rounded-md p-1 text-muted hover:bg-[var(--color-surface-muted)] hover:text-foreground"
         aria-label="Close"
       >
         <X className="h-5 w-5" />

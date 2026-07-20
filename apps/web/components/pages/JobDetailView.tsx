@@ -55,7 +55,7 @@ function QcPanel({
     successMessage: "QC checklist saved",
     onSuccess: (updated) => {
       onJobChange(updated);
-      void queryClient.invalidateQueries({ queryKey: ["job", job.id] });
+      void queryClient.invalidateQueries({ queryKey: ["job"] });
     },
   });
 
@@ -127,7 +127,7 @@ export function JobDetailView({ job, listPath, onJobChange }: JobDetailViewProps
       nextStage ? `Job marked as ${nextStage}` : "Job status updated",
     onSuccess: (updated) => {
       onJobChange({ ...job, status: updated.status });
-      void queryClient.invalidateQueries({ queryKey: ["job", job.id] });
+      void queryClient.invalidateQueries({ queryKey: ["job"] });
       void queryClient.invalidateQueries({ queryKey: ["jobs"] });
     },
   });

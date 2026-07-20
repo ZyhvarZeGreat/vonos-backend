@@ -10,6 +10,7 @@ import type {
 import { TenantDbService } from '../../common/prisma/tenant-db.service';
 import { AuditService } from '../audit/audit.service';
 import { buildCompositeCursorQuery } from '../../common/utils/pagination';
+import type { PaginatedList } from '../../common/utils/paginatedList';
 import { parseCsv, pickCsvField } from '../../common/utils/csvImport';
 import { toIso, toNumber } from '../../common/utils/serializers';
 import { supplierActivityStatus } from '../../common/utils/supplierRollups';
@@ -99,7 +100,7 @@ export class SuppliersService {
     private readonly auditService: AuditService,
   ) {}
 
-  async list(filters: SupplierFilters = {}): Promise<SupplierListRow[]> {
+  async list(filters: SupplierFilters = {}): Promise<PaginatedList<SupplierListRow>> {
     const tenantId = this.tenantDb.requireTenantId();
     const activeSince = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
     const pagination = buildCompositeCursorQuery({
@@ -110,50 +111,57 @@ export class SuppliersService {
       sortValueType: 'string',
     });
 
-    const rows = await this.tenantDb.db.supplier.findMany({
-      where: {
-        tenantId,
-        deletedAt: null,
-        ...(filters.assignedToUserId
-          ? { assignedToUserId: filters.assignedToUserId }
-          : {}),
-        ...(filters.openingBalance ? { openingBalance: { gt: 0 } } : {}),
-        ...(filters.purchaseDue ? { totalPurchaseDue: { gt: 0 } } : {}),
-        ...(filters.purchaseReturn ? { totalPurchaseReturn: { gt: 0 } } : {}),
-        ...(filters.advanceBalance ? { totalAdvance: { gt: 0 } } : {}),
-        ...(filters.status === 'active'
-          ? { lastPurchaseAt: { gte: activeSince } }
-          : {}),
-        ...(filters.status === 'inactive'
-          ? {
-              OR: [
-                { lastPurchaseAt: null },
-                { lastPurchaseAt: { lt: activeSince } },
-              ],
-            }
-          : {}),
-        ...(filters.search
-          ? {
-              OR: [
-                { name: { contains: filters.search, mode: 'insensitive' } },
-                {
-                  contactName: {
-                    contains: filters.search,
-                    mode: 'insensitive',
-                  },
+    const baseWhere = {
+      tenantId,
+      deletedAt: null as null,
+      ...(filters.assignedToUserId
+        ? { assignedToUserId: filters.assignedToUserId }
+        : {}),
+      ...(filters.openingBalance ? { openingBalance: { gt: 0 } } : {}),
+      ...(filters.purchaseDue ? { totalPurchaseDue: { gt: 0 } } : {}),
+      ...(filters.purchaseReturn ? { totalPurchaseReturn: { gt: 0 } } : {}),
+      ...(filters.advanceBalance ? { totalAdvance: { gt: 0 } } : {}),
+      ...(filters.status === 'active'
+        ? { lastPurchaseAt: { gte: activeSince } }
+        : {}),
+      ...(filters.status === 'inactive'
+        ? {
+            OR: [
+              { lastPurchaseAt: null },
+              { lastPurchaseAt: { lt: activeSince } },
+            ],
+          }
+        : {}),
+      ...(filters.search
+        ? {
+            OR: [
+              { name: { contains: filters.search, mode: 'insensitive' as const } },
+              {
+                contactName: {
+                  contains: filters.search,
+                  mode: 'insensitive' as const,
                 },
-                { email: { contains: filters.search, mode: 'insensitive' } },
-              ],
-            }
-          : {}),
-        ...(pagination.where ?? {}),
-      },
-      include: { assignedToUser: { select: { name: true } } },
-      orderBy: [{ name: 'asc' }, { id: 'asc' }],
-      take: pagination.take,
-    });
+              },
+              { email: { contains: filters.search, mode: 'insensitive' as const } },
+            ],
+          }
+        : {}),
+    };
 
-    if (rows.length === 0) return [];
+    const [rows, totalCount] = await Promise.all([
+      this.tenantDb.db.supplier.findMany({
+        where: {
+          ...baseWhere,
+          ...(pagination.where ?? {}),
+        },
+        include: { assignedToUser: { select: { name: true } } },
+        orderBy: [{ name: 'asc' }, { id: 'asc' }],
+        take: pagination.take,
+      }),
+      this.tenantDb.db.supplier.count({ where: baseWhere }),
+    ]);
+
+    if (rows.length === 0) return { items: [], totalCount };
 
     const legacyIds = await this.tenantDb.db.migrationLegacyId.findMany({
       where: {
@@ -167,9 +175,12 @@ export class SuppliersService {
       legacyIds.map((l) => [l.newId, `CO${String(l.legacyId).padStart(4, '0')}`]),
     );
 
-    return rows.map((row) =>
-      toListRow(row, { contactId: legacyById.get(row.id) ?? null }),
-    );
+    return {
+      items: rows.map((row) =>
+        toListRow(row, { contactId: legacyById.get(row.id) ?? null }),
+      ),
+      totalCount,
+    };
   }
 
   async kpiSummary(): Promise<SupplierKpiSummary> {

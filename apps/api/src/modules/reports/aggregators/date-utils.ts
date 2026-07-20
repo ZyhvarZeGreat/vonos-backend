@@ -34,6 +34,19 @@ export function resolveDateWindow(from?: string, to?: string): DateWindow {
   return capWindow(fromDate, toDate);
 }
 
+/** Matches web default (last_7_days) + 5-minute bucket keys for cache alignment. */
+export function defaultVagOverviewApiBounds(now = new Date()): {
+  from: string;
+  to: string;
+} {
+  const bucketMs = 5 * 60 * 1000;
+  const floorIso = (d: Date): string =>
+    new Date(Math.floor(d.getTime() / bucketMs) * bucketMs).toISOString();
+  const start = new Date(now);
+  start.setDate(start.getDate() - 7);
+  return { from: floorIso(start), to: floorIso(now) };
+}
+
 export function priorWindow(window: DateWindow): DateWindow {
   const spanMs = window.to.getTime() - window.from.getTime();
   const priorTo = new Date(window.from.getTime());

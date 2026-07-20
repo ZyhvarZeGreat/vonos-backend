@@ -13,7 +13,9 @@ import { KpiRow } from "@/components/organisms/KpiRow";
 import { PaginatedLedgerTable } from "@/components/organisms/PaginatedLedgerTable";
 import { StatusPill } from "@/components/atoms/StatusPill";
 import { getAllLedgerEntries, getLedgerSummary } from "@/lib/api/ledger";
+import { ADMIN_ENTITY_STALE_MS } from "@/lib/admin/prefetchAdminEntity";
 import { getTenantByCode, type TenantCode } from "@/lib/registries/tenants";
+import { useAdminEntityStore } from "@/stores/adminEntityStore";
 import { ledgerChartSubtitle } from "@/lib/utils/ledgerCharts";
 import {
   buildLedgerReportSections,
@@ -87,6 +89,7 @@ export function AdminEntityFinanceSheet({ tenantCode }: AdminEntityFinanceSheetP
   const router = useRouter();
   const tenant = getTenantByCode(tenantCode);
   const tenantId = tenant?.tenantId;
+  const setViewingCode = useAdminEntityStore((s) => s.setViewingCode);
   const dateRange = useUiStore((state) => state.dateRange);
   const setDateRange = useUiStore((state) => state.setDateRange);
   const openExportModal = useUiStore((state) => state.openExportModal);
@@ -98,7 +101,8 @@ export function AdminEntityFinanceSheet({ tenantCode }: AdminEntityFinanceSheetP
     queryKey: ["adminFinanceSummary", tenantId, bounds?.from, bounds?.to],
     queryFn: () => getLedgerSummary(tenantId!, bounds?.from, bounds?.to),
     enabled: Boolean(tenantId),
-    staleTime: 5 * 60_000,
+    staleTime: ADMIN_ENTITY_STALE_MS,
+    placeholderData: (prev) => prev,
   });
 
   if (!tenant) {
@@ -149,6 +153,7 @@ export function AdminEntityFinanceSheet({ tenantCode }: AdminEntityFinanceSheetP
         tenantName={tenant.name}
         backHref="/admin/finance"
         backLabel="Back to group finance"
+        onBack={() => setViewingCode(null)}
       />
 
       <FinanceActionBar fixedTenantCode={tenantCode} />

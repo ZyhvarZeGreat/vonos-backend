@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
@@ -12,14 +12,17 @@ import { ChartPanel } from "@/components/organisms/ChartPanel";
 import { DataTable } from "@/components/organisms/DataTable";
 import { DateRangeDropdown } from "@/components/molecules/DateRangeDropdown";
 import { KpiRow } from "@/components/organisms/KpiRow";
-import { getGroupReports, getReportsDashboard } from "@/lib/api/reports";
+import { getGroupReports, getReportsDashboard, runGroupReport } from "@/lib/api/reports";
+import { ROUTE_PREFETCH_STALE_MS } from "@/lib/prefetch/routePrefetchRegistry";
 import { useListPageFilters } from "@/lib/hooks/useListPageFilters";
 import type { TenantCode } from "@/lib/registries/tenants";
 import { getTenantByCode } from "@/lib/registries/tenants";
 import { ledgerChartSubtitle } from "@/lib/utils/ledgerCharts";
 import { formatCurrency, formatCurrencyCompact, formatNumberCompact } from "@/lib/utils/formatCurrency";
 import { recordDetailPath } from "@/lib/utils/recordDetailPath";
-import { ChartPanelSkeleton, DashboardBodySkeleton } from "@/components/organisms/skeletons";
+import { ChartPanelSkeleton } from "@/components/organisms/skeletons";
+import { ReportDetailSheet } from "@/components/organisms/ReportDetailSheet";
+import { HqReportPageSkeleton } from "@/components/organisms/HqReportPageLayout";
 import { useUiStore } from "@/stores/uiStore";
 
 export const REPORT_TABS: Record<string, { id: string; label: string }[]> = {
@@ -188,8 +191,26 @@ export function ReportsDashboardBody({
     );
   }
 
+  const loadingCards =
+    kpis.length > 0
+      ? kpiToCards(kpis)
+      : [
+          { label: "Revenue", icon: "wallet", metricKey: "revenue", color: "#059669" },
+          { label: "Orders", icon: "package", metricKey: "orders", color: "#2563eb" },
+          { label: "Customers", icon: "package", metricKey: "customers", color: "#9333ea" },
+          { label: "Net", icon: "calculator", metricKey: "net", color: "#e11d48" },
+        ];
+
   if (isLoading && !dashboard) {
-    return <DashboardBodySkeleton kpiCount={4} chartCount={2} />;
+    return (
+      <div className="space-y-6">
+        <KpiRow cards={loadingCards} values={{}} isLoading />
+        <div className="grid gap-6 lg:grid-cols-2">
+          <ChartPanelSkeleton withHeader={false} />
+          <ChartPanelSkeleton withHeader={false} />
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -205,8 +226,8 @@ export function ReportsDashboardBody({
 
       {isLoading && dashboard ? (
         <div className="grid gap-6 lg:grid-cols-2">
-          <ChartPanelSkeleton />
-          <ChartPanelSkeleton />
+          <ChartPanelSkeleton withHeader={false} />
+          <ChartPanelSkeleton withHeader={false} />
         </div>
       ) : dashboard?.charts.length ? (
         <div className="grid gap-6 lg:grid-cols-2">
@@ -370,7 +391,8 @@ export function ReportsView({ tenantCode }: { tenantCode: TenantCode }) {
         from: bounds?.from,
         to: bounds?.to,
       }),
-    staleTime: 5 * 60_000,
+    staleTime: ROUTE_PREFETCH_STALE_MS,
+    placeholderData: (prev) => prev,
   });
 
   return (
@@ -414,61 +436,117 @@ export function WarehouseReportsView() {
 export function VagGroupReportsView() {
   const router = useRouter();
   const { dateRange, setDateRange, bounds } = useListPageFilters();
+  const groupReports = useMemo(
+    () => REPORT_REGISTRY.filter((entry) => entry.groupRollup),
+    [],
+  );
+  const [activeReportId, setActiveReportId] = useState<string>("overview");
 
-  const query = useQuery({
+  const overviewQuery = useQuery({
     queryKey: ["groupReports", bounds?.from, bounds?.to],
     queryFn: () =>
       getGroupReports({
         from: bounds?.from,
         to: bounds?.to,
       }),
+    enabled: activeReportId === "overview",
     staleTime: 5 * 60_000,
   });
+
+  const drillQuery = useQuery({
+    queryKey: [
+      "groupReportRun",
+      activeReportId,
+      bounds?.from ?? "all",
+      bounds?.to ?? "all",
+    ],
+    queryFn: () =>
+      runGroupReport({
+        reportId: activeReportId,
+        from: bounds?.from,
+        to: bounds?.to,
+      }),
+    enabled: activeReportId !== "overview",
+    staleTime: 5 * 60_000,
+    placeholderData: (prev) => prev,
+  });
+
+  const activeEntry =
+    activeReportId === "overview"
+      ? null
+      : groupReports.find((entry) => entry.id === activeReportId) ?? null;
 
   return (
     <div className="space-y-6">
       <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-100">
         <p className="font-medium">Group roll-up</p>
         <p className="mt-1 text-amber-900/90 dark:text-amber-100/90">
-          Revenue is summed across entity books. Internal transfers tagged on the
-          ledger are excluded; stock requisitions do not post money (no
-          double-count from fulfilment).
+          Switch report types with the tabs below — no page navigation. Charts
+          and tables stay on this screen.
         </p>
       </div>
-      <div className="flex justify-end">
+
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex max-w-full gap-1 overflow-x-auto rounded-lg border border-border bg-[var(--color-surface-muted)] p-1">
+          <button
+            type="button"
+            onClick={() => setActiveReportId("overview")}
+            className={`shrink-0 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+              activeReportId === "overview"
+                ? "bg-card text-foreground shadow-sm"
+                : "text-muted hover:text-foreground"
+            }`}
+          >
+            Overview
+          </button>
+          {groupReports.map((entry) => (
+            <button
+              key={entry.id}
+              type="button"
+              onClick={() => setActiveReportId(entry.id)}
+              className={`shrink-0 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+                activeReportId === entry.id
+                  ? "bg-card text-foreground shadow-sm"
+                  : "text-muted hover:text-foreground"
+              }`}
+            >
+              {entry.label}
+            </button>
+          ))}
+        </div>
         <DateRangeDropdown value={dateRange} onChange={setDateRange} />
       </div>
 
-      <section className="space-y-3">
-        <div>
-          <h3 className="text-base font-semibold text-foreground">Group report drill-down</h3>
-          <p className="text-sm text-muted">
-            Open a consolidated report with per-entity breakdown rows.
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {REPORT_REGISTRY.filter((entry) => entry.groupRollup)
-            .slice(0, 10)
-            .map((entry) => (
-              <Link
-                key={entry.id}
-                href={`/admin/reports/group/${entry.id}`}
-                className="rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium text-foreground hover:bg-[var(--color-surface-muted)]"
-              >
-                {entry.label}
-              </Link>
-            ))}
-        </div>
-      </section>
-
-      <ReportsDashboardBody
-        dashboard={query.data}
-        isLoading={query.isLoading}
-        error={query.error}
-        dateRange={dateRange}
-        setDateRange={setDateRange}
-        onEntityReportsClick={(code) => router.push(`/admin/reports/${code}`)}
-      />
+      {activeReportId === "overview" ? (
+        <ReportsDashboardBody
+          dashboard={overviewQuery.data}
+          isLoading={overviewQuery.isLoading}
+          error={overviewQuery.error}
+          dateRange={dateRange}
+          setDateRange={setDateRange}
+          onEntityReportsClick={(code) => router.push(`/admin/reports/${code}`)}
+        />
+      ) : activeEntry ? (
+        drillQuery.error ? (
+          <div className="rounded-xl border border-border bg-card p-8 text-center text-sm text-muted">
+            Failed to load {activeEntry.label}. Try again or change the date range.
+          </div>
+        ) : drillQuery.isLoading && !drillQuery.data ? (
+          <HqReportPageSkeleton reportId={activeEntry.id} />
+        ) : drillQuery.data ? (
+          <ReportDetailSheet
+            title={activeEntry.label}
+            subtitle={ledgerChartSubtitle(dateRange)}
+            data={drillQuery.data}
+            showCharts
+            tableFirst={Boolean(
+              drillQuery.data.table && drillQuery.data.charts.length === 0,
+            )}
+          />
+        ) : null
+      ) : (
+        <p className="text-sm text-muted">Unknown report.</p>
+      )}
     </div>
   );
 }

@@ -23,7 +23,7 @@ export function IconButton({
       type="button"
       aria-label={label}
       className={cn(
-        "inline-flex items-center justify-center rounded-md text-muted transition-colors hover:bg-[var(--color-surface-muted)] hover:text-foreground",
+        "inline-flex items-center justify-center rounded-md text-muted motion-press hover:bg-[var(--color-surface-muted)] hover:text-foreground",
         sizeClasses[size],
         className,
       )}

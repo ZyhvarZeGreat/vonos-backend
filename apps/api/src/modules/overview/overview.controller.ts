@@ -36,6 +36,20 @@ export class OverviewController {
     return this.overviewService.salesPaymentDuesPanel();
   }
 
+  /** Fast path: KPIs + entity cards (no monthly trend / alerts). */
+  @Get('group/summary')
+  @Roles('super_admin')
+  groupSummary(@Query('from') from?: string, @Query('to') to?: string) {
+    return this.overviewService.groupSummary(from, to);
+  }
+
+  /** Deferred: charts + alerts. */
+  @Get('group/details')
+  @Roles('super_admin')
+  groupDetails(@Query('from') from?: string, @Query('to') to?: string) {
+    return this.overviewService.groupDetails(from, to);
+  }
+
   @Get('group')
   @Roles('super_admin')
   group(@Query('from') from?: string, @Query('to') to?: string) {

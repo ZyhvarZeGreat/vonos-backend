@@ -12,6 +12,7 @@ import { useRecentActivityFeed } from "@/lib/hooks/useRecentActivityFeed";
 import { useListPageFilters } from "@/lib/hooks/useListPageFilters";
 import { useRouteTenant } from "@/lib/hooks/useRouteTenant";
 import { OverviewLiveBody } from "@/components/pages/OverviewLiveBody";
+import { ROUTE_PREFETCH_STALE_MS } from "@/lib/prefetch/routePrefetchRegistry";
 import type { TenantCode } from "@/lib/registries/tenants";
 
 interface OverviewProps {
@@ -35,7 +36,8 @@ function EntityOverviewView({ tenantCode }: OverviewProps) {
         to: bounds?.to,
       }),
     enabled: Boolean(tenantId),
-    staleTime: 5 * 60_000,
+    staleTime: ROUTE_PREFETCH_STALE_MS,
+    placeholderData: (prev) => prev,
   });
 
   const pendingOrders =

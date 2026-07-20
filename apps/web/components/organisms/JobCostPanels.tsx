@@ -52,7 +52,7 @@ function invalidateJobQueries(
   queryClient: ReturnType<typeof useQueryClient>,
   jobId: string,
 ) {
-  void queryClient.invalidateQueries({ queryKey: ["job", jobId] });
+  void queryClient.invalidateQueries({ queryKey: ["job"] });
   void queryClient.invalidateQueries({ queryKey: ["jobs"] });
   void queryClient.invalidateQueries({ queryKey: ["audit", "job", jobId] });
 }

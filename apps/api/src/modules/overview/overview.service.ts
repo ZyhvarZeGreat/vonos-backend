@@ -1,9 +1,22 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
-import type { GroupOverviewDashboard, OverviewDashboard, OverviewPanel } from '@vonos/types';
+import { BadRequestException, Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import type {
+  GroupOverviewDashboard,
+  GroupOverviewDetails,
+  GroupOverviewSummary,
+  OverviewDashboard,
+  OverviewPanel,
+} from '@vonos/types';
 import { TenantDbService } from '../../common/prisma/tenant-db.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { CacheService } from '../../common/cache/cache.service';
-import { buildGroupOverview, groupOverviewCacheWindowKey } from './groupOverview';
+import { refreshTenantEntitySnapshots } from '../../common/utils/tenantEntitySnapshot';
+import {
+  buildGroupOverview,
+  buildGroupOverviewDetails,
+  buildGroupOverviewSummary,
+  groupOverviewCacheWindowKey,
+} from './groupOverview';
+import { warmHotPathsCache } from '../../common/utils/warmHotPathsCache';
 import {
   buildAppointmentOverview,
   buildJobOverview,
@@ -16,17 +29,43 @@ import {
   buildStockAlertPanel,
 } from './overviewPanels';
 
-const ENTITY_CACHE_TTL_S = 300;
+const ENTITY_CACHE_TTL_S = 900;
 
 @Injectable()
-export class OverviewService {
+export class OverviewService implements OnModuleInit {
+  private readonly logger = new Logger(OverviewService.name);
+
   constructor(
     private readonly tenantDb: TenantDbService,
     private readonly prisma: PrismaService,
     private readonly cache: CacheService,
   ) {}
 
+  onModuleInit(): void {
+    // Warm snapshots + group overview in background so first VAG visit hits L1 (~ms).
+    const delayMs = Number(process.env.GROUP_OVERVIEW_BOOTSTRAP_DELAY_MS ?? 3_000);
+    setTimeout(() => {
+      void this.bootstrapGroupOverviewCache();
+    }, delayMs);
+  }
+
+  private async bootstrapGroupOverviewCache(): Promise<void> {
+    const startedAt = Date.now();
+    try {
+      await refreshTenantEntitySnapshots(this.prisma);
+      await warmHotPathsCache(this.prisma, this.cache);
+      this.logger.log(
+        `hot-paths bootstrap ${Date.now() - startedAt}ms (snapshots + cache warm)`,
+      );
+    } catch (err) {
+      this.logger.warn(
+        `group-overview bootstrap failed: ${err instanceof Error ? err.message : err}`,
+      );
+    }
+  }
+
   async dashboard(from?: string, to?: string): Promise<OverviewDashboard> {
+    const startedAt = Date.now();
     const tenantId = this.tenantDb.requireTenantId();
 
     const cacheKey = await this.cache.tenantScopedKey(
@@ -34,7 +73,12 @@ export class OverviewService {
       `entity-overview:${tenantId}:${groupOverviewCacheWindowKey(from, to)}`,
     );
     const cached = await this.cache.get<OverviewDashboard>(cacheKey);
-    if (cached) return cached;
+    if (cached) {
+      this.logger.log(
+        `entity-overview ${Date.now() - startedAt}ms cache=hit tenant=${tenantId}`,
+      );
+      return cached;
+    }
 
     const tenant = await this.prisma.tenant.findUnique({
       where: { id: tenantId },
@@ -74,6 +118,9 @@ export class OverviewService {
     }
 
     await this.cache.set(cacheKey, result, ENTITY_CACHE_TTL_S);
+    this.logger.log(
+      `entity-overview ${Date.now() - startedAt}ms cache=miss tenant=${tenantId} archetype=${archetype}`,
+    );
     return result;
   }
 
@@ -93,6 +140,76 @@ export class OverviewService {
   }
 
   async group(from?: string, to?: string): Promise<GroupOverviewDashboard> {
-    return buildGroupOverview(this.prisma, from, to, this.cache);
+    const startedAt = Date.now();
+    const cacheKey = `group-overview:${groupOverviewCacheWindowKey(from, to)}`;
+    const cached = await this.cache.get<GroupOverviewDashboard>(cacheKey);
+    if (cached) {
+      this.logger.log(
+        `group-overview ${Date.now() - startedAt}ms cache=hit`,
+      );
+      return cached;
+    }
+    const result = await buildGroupOverview(this.prisma, from, to, this.cache);
+    this.logger.log(
+      `group-overview ${Date.now() - startedAt}ms cache=miss`,
+    );
+    return result;
+  }
+
+  async groupSummary(
+    from?: string,
+    to?: string,
+  ): Promise<GroupOverviewSummary> {
+    const startedAt = Date.now();
+    const cacheKey = `group-overview:summary:${groupOverviewCacheWindowKey(from, to)}`;
+    const cached = await this.cache.get<GroupOverviewSummary>(cacheKey);
+    if (cached) {
+      this.logger.log(
+        `group-overview-summary ${Date.now() - startedAt}ms cache=hit`,
+      );
+      return cached;
+    }
+    const result = await buildGroupOverviewSummary(
+      this.prisma,
+      from,
+      to,
+      this.cache,
+    );
+    this.logger.log(
+      `group-overview-summary ${Date.now() - startedAt}ms cache=miss`,
+    );
+    return result;
+  }
+
+  async groupDetails(
+    from?: string,
+    to?: string,
+  ): Promise<GroupOverviewDetails> {
+    const startedAt = Date.now();
+    const cacheKey = `group-overview:details:${groupOverviewCacheWindowKey(from, to)}`;
+    const cached = await this.cache.get<GroupOverviewDetails>(cacheKey);
+    if (cached) {
+      this.logger.log(
+        `group-overview-details ${Date.now() - startedAt}ms cache=hit`,
+      );
+      return cached;
+    }
+    const result = await buildGroupOverviewDetails(
+      this.prisma,
+      from,
+      to,
+      this.cache,
+    );
+    this.logger.log(
+      `group-overview-details ${Date.now() - startedAt}ms cache=miss`,
+    );
+    return result;
+  }
+
+  async warmGroupCache(from?: string, to?: string): Promise<{ warmed: true }> {
+    const startedAt = Date.now();
+    await warmHotPathsCache(this.prisma, this.cache, from, to);
+    this.logger.log(`hot-paths-warm ${Date.now() - startedAt}ms`);
+    return { warmed: true };
   }
 }

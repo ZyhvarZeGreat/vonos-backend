@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { CreditCard, Plus, Receipt, ShoppingCart } from "lucide-react";
 import { Button } from "@/components/atoms/Button";
@@ -11,10 +11,10 @@ import {
   getTenantByCode,
   type TenantCode,
 } from "@/lib/registries/tenants";
-import { useUiStore } from "@/stores/uiStore";
+import { useAdminEntityStore } from "@/stores/adminEntityStore";
 
 export interface FinanceActionBarProps {
-  /** VAG group finance — admin picks entity before acting. */
+  /** VAG group finance — uses admin viewing entity (or local pick). */
   groupMode?: boolean;
   /** Entity drill-down — tenant is fixed from the route. */
   fixedTenantCode?: TenantCode;
@@ -26,29 +26,32 @@ const ENTITY_OPTIONS = AUTOS_GROUP_ENTITIES.map((entity) => ({
   label: `${entity.code} — ${entity.name}`,
 }));
 
+/**
+ * Admin/group finance actions deep-link into the entity workspace.
+ * No global add-sale / add-expense modals — those stay on entity pages.
+ */
 export function FinanceActionBar({
   groupMode = false,
   fixedTenantCode,
   className,
 }: FinanceActionBarProps) {
   const router = useRouter();
-  const { tenantCode: routeTenantCode } = useRouteTenant();
-  const openAddExpenseModal = useUiStore((state) => state.openAddExpenseModal);
-  const openAddSaleModal = useUiStore((state) => state.openAddSaleModal);
-  const [pickedCode, setPickedCode] = useState<TenantCode | "">("");
+  const { tenantCode: routeTenantCode } = useRouteTenant({ adminFallback: null });
+  const viewingCode = useAdminEntityStore((s) => s.viewingCode);
+  const setViewingCode = useAdminEntityStore((s) => s.setViewingCode);
 
   const resolvedCode =
-    fixedTenantCode ?? (groupMode ? pickedCode || null : routeTenantCode);
+    fixedTenantCode ?? (groupMode ? viewingCode : routeTenantCode);
   const activeTenant = resolvedCode ? getTenantByCode(resolvedCode) : null;
   const needsEntity = groupMode && !fixedTenantCode;
   const blocked = !activeTenant;
 
   const helperText = useMemo(() => {
     if (fixedTenantCode && activeTenant) {
-      return `Actions apply to ${activeTenant.name}. Sales and purchases open in that entity workspace.`;
+      return `Actions open in ${activeTenant.name}'s workspace (sales, purchases, expenses, payments).`;
     }
     if (groupMode) {
-      return "Choose an entity, then record payments, expenses, sales, or purchases for that department.";
+      return "Pick an entity above (or here), then open that department's payments, expenses, sales, or purchases page.";
     }
     return null;
   }, [activeTenant, fixedTenantCode, groupMode]);
@@ -69,9 +72,11 @@ export function FinanceActionBar({
         {needsEntity ? (
           <div className="min-w-[220px] flex-1 sm:max-w-xs">
             <Select
-              label="Entity"
-              value={pickedCode}
-              onChange={(e) => setPickedCode(e.target.value as TenantCode | "")}
+              label="Entity for actions"
+              value={viewingCode ?? ""}
+              onChange={(e) =>
+                setViewingCode((e.target.value || null) as TenantCode | null)
+              }
               options={[{ value: "", label: "Select entity…" }, ...ENTITY_OPTIONS]}
             />
           </div>
@@ -91,10 +96,7 @@ export function FinanceActionBar({
             variant="secondary"
             size="sm"
             disabled={blocked}
-            onClick={() => {
-              if (!activeTenant) return;
-              openAddExpenseModal(activeTenant.tenantId);
-            }}
+            onClick={() => goToEntity("expenses")}
           >
             <Receipt className="mr-2 h-4 w-4" />
             Add Expense
@@ -103,10 +105,7 @@ export function FinanceActionBar({
             variant="secondary"
             size="sm"
             disabled={blocked}
-            onClick={() => {
-              if (!activeTenant) return;
-              openAddSaleModal(activeTenant.tenantId);
-            }}
+            onClick={() => goToEntity("sales")}
           >
             <Plus className="mr-2 h-4 w-4" />
             Add Sale

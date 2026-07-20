@@ -4,12 +4,20 @@ import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { PayComponent, Payroll, PayrollGroup } from "@vonos/types";
 import { Button } from "@/components/atoms/Button";
+import { Input } from "@/components/atoms/Input";
+import { Modal, ModalFooter, ModalHeader } from "@/components/atoms/Modal";
 import { StatusPill } from "@/components/atoms/StatusPill";
 import { EntityContextBanner } from "@/components/molecules/EntityContextBanner";
 import { type ColumnConfig } from "@/components/organisms/DataTable";
-import { ServerPaginatedTable } from "@/components/organisms/ServerPaginatedTable";
+import { DocumentPreviewModal } from "@/components/organisms/DocumentPreviewModal";
 import { ListPageShell } from "@/components/organisms/ListPageShell";
 import {
+  PayrollPayslipDocument,
+  payrollPayslipTitle,
+} from "@/components/organisms/PayrollPayslipDocument";
+import { ServerPaginatedTable } from "@/components/organisms/ServerPaginatedTable";
+import {
+  addPayrollDeduction,
   createPayComponent,
   createPayroll,
   createPayrollGroup,
@@ -18,7 +26,7 @@ import {
   getPayrollsPage,
 } from "@/lib/api/hrm";
 import { useServerListPage } from "@/lib/hooks/useServerListPage";
-import { useTenantId } from "@/lib/hooks/useRouteTenant";
+import { useRouteTenant, useTenantId } from "@/lib/hooks/useRouteTenant";
 import { formatCurrency } from "@/lib/utils/formatCurrency";
 import { formatDate } from "@/lib/utils/formatDate";
 
@@ -58,6 +66,12 @@ const payrollColumns: ColumnConfig<Payroll>[] = [
     header: "Gross",
     sortValue: (r) => r.grossPay,
     render: (r) => formatCurrency(r.grossPay, "NGN"),
+  },
+  {
+    key: "totalDeduction",
+    header: "Deductions",
+    sortValue: (r) => r.totalDeduction,
+    render: (r) => formatCurrency(r.totalDeduction, "NGN"),
   },
   {
     key: "netPay",
@@ -107,9 +121,18 @@ export function PayrollView({
   embedded?: boolean;
 }) {
   const tenantId = useTenantId();
+  const { tenantName } = useRouteTenant();
   const qc = useQueryClient();
   const [activeTab, setActiveTab] = useState<PayrollTab>(defaultTab);
   const [search, setSearch] = useState("");
+  const [selectedPayroll, setSelectedPayroll] = useState<Payroll | null>(null);
+  const [deductionTarget, setDeductionTarget] = useState<Payroll | null>(null);
+  const [deductionForm, setDeductionForm] = useState({
+    amount: "",
+    note: "",
+    reason: "",
+  });
+  const [deductionError, setDeductionError] = useState<string | null>(null);
 
   const [newPayroll, setNewPayroll] = useState({
     employeeName: "",
@@ -180,6 +203,42 @@ export function PayrollView({
     },
   });
 
+  const maxDeduction = deductionTarget
+    ? deductionTarget.grossPay +
+      deductionTarget.totalAllowance -
+      deductionTarget.totalDeduction
+    : 0;
+
+  const addDeductionMutation = useMutation({
+    mutationFn: () => {
+      if (!tenantId || !deductionTarget) {
+        throw new Error("No payroll selected");
+      }
+      const addAmount = Number(deductionForm.amount);
+      if (!Number.isFinite(addAmount) || addAmount <= 0) {
+        throw new Error("Enter a deduction amount greater than zero");
+      }
+      if (addAmount > maxDeduction + 1e-9) {
+        throw new Error(
+          `Deduction cannot exceed remaining take-home (${formatCurrency(maxDeduction, "NGN")})`,
+        );
+      }
+      return addPayrollDeduction(tenantId, deductionTarget.id, {
+        addAmount,
+        note: deductionForm.note.trim() || undefined,
+        reason: deductionForm.reason.trim() || undefined,
+      });
+    },
+    onSuccess: (updated) => {
+      qc.invalidateQueries({ queryKey: ["payrolls", tenantId] });
+      setSelectedPayroll(updated);
+      setDeductionTarget(null);
+      setDeductionForm({ amount: "", note: "", reason: "" });
+      setDeductionError(null);
+    },
+    onError: (err: Error) => setDeductionError(err.message),
+  });
+
   const filteredPayrolls = useMemo(() => {
     const rows = payrollsPage.items;
     if (!search) return rows;
@@ -190,6 +249,123 @@ export function PayrollView({
         (r.payrollGroupName ?? "").toLowerCase().includes(q),
     );
   }, [payrollsPage.items, search]);
+
+  function openDeductionModal(payroll: Payroll) {
+    setDeductionTarget(payroll);
+    setDeductionForm({ amount: "", note: "", reason: "" });
+    setDeductionError(null);
+  }
+
+  function closeDeductionModal() {
+    setDeductionTarget(null);
+    setDeductionError(null);
+    addDeductionMutation.reset();
+  }
+
+  const deductionModals = (
+    <>
+      <DocumentPreviewModal
+        open={Boolean(selectedPayroll)}
+        title={selectedPayroll ? payrollPayslipTitle(selectedPayroll) : "Payslip"}
+        onClose={() => setSelectedPayroll(null)}
+      >
+        {selectedPayroll ? (
+          <>
+            <PayrollPayslipDocument
+              payroll={selectedPayroll}
+              tenantName={tenantName ?? "Vonos"}
+              locationLabel={selectedPayroll.locationCode}
+            />
+            <div className="no-print mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4">
+              <p className="text-sm text-muted">
+                Gross stays fixed. Deductions reduce take-home (net) for the month.
+              </p>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={() => openDeductionModal(selectedPayroll)}
+              >
+                Add deduction
+              </Button>
+            </div>
+          </>
+        ) : null}
+      </DocumentPreviewModal>
+
+      <Modal
+        open={Boolean(deductionTarget)}
+        onClose={closeDeductionModal}
+        className="z-[60]"
+      >
+        <ModalHeader
+          title="Add deduction"
+          subtitle={
+            deductionTarget
+              ? `${deductionTarget.employeeName} · remaining take-home ${formatCurrency(maxDeduction, "NGN")}`
+              : undefined
+          }
+          onClose={closeDeductionModal}
+        />
+        <div className="space-y-3.5 px-4 pb-2">
+          {deductionTarget ? (
+            <p className="rounded-md bg-[var(--color-surface-muted)] px-3 py-2 text-xs text-muted">
+              Gross {formatCurrency(deductionTarget.grossPay, "NGN")} is unchanged.
+              Current deductions {formatCurrency(deductionTarget.totalDeduction, "NGN")} ·
+              net {formatCurrency(deductionTarget.netPay, "NGN")}.
+            </p>
+          ) : null}
+          <Input
+            label="Amount"
+            type="number"
+            min={0}
+            step="0.01"
+            value={deductionForm.amount}
+            onChange={(e) =>
+              setDeductionForm((prev) => ({ ...prev, amount: e.target.value }))
+            }
+          />
+          <Input
+            label="Type / label (optional)"
+            placeholder="e.g. WELFARE, PAYE, I.O.U"
+            value={deductionForm.note}
+            onChange={(e) =>
+              setDeductionForm((prev) => ({ ...prev, note: e.target.value }))
+            }
+          />
+          <Input
+            label="Reason (optional)"
+            placeholder="Shown on payslip"
+            value={deductionForm.reason}
+            onChange={(e) =>
+              setDeductionForm((prev) => ({ ...prev, reason: e.target.value }))
+            }
+          />
+          {deductionError ? (
+            <p className="text-sm text-[var(--color-error-text)]">{deductionError}</p>
+          ) : null}
+        </div>
+        <ModalFooter>
+          <Button type="button" variant="secondary" onClick={closeDeductionModal}>
+            Cancel
+          </Button>
+          <Button
+            type="button"
+            isLoading={addDeductionMutation.isPending}
+            disabled={
+              !deductionForm.amount ||
+              Number(deductionForm.amount) <= 0 ||
+              Number(deductionForm.amount) > maxDeduction ||
+              addDeductionMutation.isPending
+            }
+            onClick={() => addDeductionMutation.mutate()}
+          >
+            Apply deduction
+          </Button>
+        </ModalFooter>
+      </Modal>
+    </>
+  );
 
   const panelBody = (
     <>
@@ -251,6 +427,7 @@ export function PayrollView({
               isFetching={payrollsPage.isFetching}
               error={listLoadError(payrollsPage.error, "Failed to load payrolls.")}
               emptyState={{ message: "No payroll records yet." }}
+              onRowClick={(row) => setSelectedPayroll(row)}
             />
           </>
         ) : null}
@@ -359,6 +536,8 @@ export function PayrollView({
             />
           </>
         ) : null}
+
+      {deductionModals}
     </>
   );
 

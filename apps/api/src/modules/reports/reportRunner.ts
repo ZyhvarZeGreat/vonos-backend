@@ -25,7 +25,10 @@ import {
   buildSellPaymentReport,
 } from './aggregators/tableReportHandlers';
 import { buildGroupReports } from './aggregators/groupReports';
-import { buildEntityRollupForReport } from './aggregators/groupReportRollups';
+import {
+  buildEntityRollupForReport,
+  dashboardFromGroupRollup,
+} from './aggregators/groupReportRollups';
 import {
   buildExpenseReport,
   buildProfitLossReport,
@@ -208,10 +211,13 @@ export async function runGroupReport(
     orderBy: { code: 'asc' },
   });
 
-  const byEntity = entry.groupRollup
-    ? await buildEntityRollupForReport(prisma, entry, tenants, from, to)
-    : undefined;
+  const byEntity = await buildEntityRollupForReport(
+    prisma,
+    entry,
+    tenants,
+    from,
+    to,
+  );
 
-  const groupDashboard = await buildGroupReports(prisma, from, to);
-  return { ...groupDashboard, byEntity };
+  return dashboardFromGroupRollup(entry, byEntity);
 }

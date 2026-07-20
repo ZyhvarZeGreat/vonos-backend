@@ -44,11 +44,11 @@ export async function fetchJsonListPage<T extends { id: string }>(
         | { message?: string | string[] }
         | null;
       const message = Array.isArray(body?.message)
-        ? body.message.join(', ')
+        ? body.message.join(", ")
         : body?.message;
       throw new Error(message ?? `Failed to fetch list (${response.status})`);
     }
-    return response.json() as Promise<T[]>;
+    return response.json();
   }, cursor, limit);
 }
 

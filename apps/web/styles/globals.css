@@ -208,3 +208,107 @@ h6,
   animation: mutation-progress-slide 1.1s ease-in-out infinite;
 }
 
+/* ── Snappy micro-interactions (overlays, menus, page enter) ── */
+:root {
+  --motion-ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --motion-ease-spring: cubic-bezier(0.16, 1, 0.3, 1);
+  --motion-fast: 120ms;
+  --motion-base: 160ms;
+  --motion-page: 80ms;
+}
+
+@keyframes motion-backdrop-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes motion-dialog-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes motion-pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes motion-page-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.motion-backdrop-in {
+  animation: motion-backdrop-in var(--motion-fast) var(--motion-ease-out) both;
+}
+
+.motion-dialog-in {
+  animation: motion-dialog-in var(--motion-base) var(--motion-ease-spring) both;
+}
+
+.motion-pop-in {
+  animation: motion-pop-in var(--motion-fast) var(--motion-ease-spring) both;
+  transform-origin: top center;
+}
+
+.motion-page-in {
+  animation: motion-page-in var(--motion-page) var(--motion-ease-out) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .motion-page-in,
+  .motion-page-nav {
+    animation: none;
+  }
+}
+
+.motion-press {
+  transition:
+    transform var(--motion-fast) var(--motion-ease-out),
+    background-color var(--motion-fast) var(--motion-ease-out),
+    color var(--motion-fast) var(--motion-ease-out),
+    border-color var(--motion-fast) var(--motion-ease-out),
+    opacity var(--motion-fast) var(--motion-ease-out),
+    box-shadow var(--motion-fast) var(--motion-ease-out);
+}
+
+.motion-press:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .motion-backdrop-in,
+  .motion-dialog-in,
+  .motion-pop-in,
+  .motion-page-in {
+    animation: none !important;
+  }
+
+  .motion-press,
+  .motion-press:active:not(:disabled) {
+    transition: none !important;
+    transform: none !important;
+  }
+}
+

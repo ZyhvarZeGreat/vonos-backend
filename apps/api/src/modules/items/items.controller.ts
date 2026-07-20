@@ -33,8 +33,24 @@ export class ItemsController {
   }
 
   @Get('stock-availability')
-  stockAvailability(@Query('search') search?: string) {
-    return this.itemsService.stockAvailability(search);
+  stockAvailability(
+    @Query('search') search?: string,
+    @Query('limit') limitRaw?: string,
+    @Query('entityCode') entityCode?: string,
+    @Query('availability') availability?: string,
+  ) {
+    const limit = Math.min(
+      Math.max(Number.parseInt(limitRaw ?? '10', 10) || 10, 1),
+      50,
+    );
+    return this.itemsService.stockAvailability(search, {
+      limit,
+      entityCode,
+      availability:
+        availability === 'available' || availability === 'unavailable'
+          ? availability
+          : 'all',
+    });
   }
 
   /** Available qty at a source tenant for a SKU (requisition planning). */

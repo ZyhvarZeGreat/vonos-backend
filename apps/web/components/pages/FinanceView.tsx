@@ -27,6 +27,7 @@ import {
   getLedgerSummary,
 } from "@/lib/api/ledger";
 import { useRouteTenant } from "@/lib/hooks/useRouteTenant";
+import { isTenantCode, type TenantCode } from "@/lib/registries/tenants";
 import { formatCurrency, formatCurrencyCompact } from "@/lib/utils/formatCurrency";
 import {
   ledgerChartSubtitle,
@@ -35,9 +36,13 @@ import { dateRangePresetToApiBounds } from "@/lib/utils/dateRange";
 import { DateRangeDropdown } from "@/components/molecules/DateRangeDropdown";
 import { recordDetailPath } from "@/lib/utils/recordDetailPath";
 import { useUiStore, type DateRangePreset } from "@/stores/uiStore";
+import { useAdminEntityStore } from "@/stores/adminEntityStore";
 import type { CsvExportPayload } from "@/lib/utils/exportCsv";
+import { AdminEntityFinanceSheet } from "@/components/pages/AdminEntityFinanceSheet";
 
-const FINANCE_STALE_MS = 5 * 60_000;
+import { ROUTE_PREFETCH_STALE_MS } from "@/lib/prefetch/routePrefetchRegistry";
+
+const FINANCE_STALE_MS = ROUTE_PREFETCH_STALE_MS;
 
 const FINANCE_TABS = [
   { id: "overview", label: "Overview" },
@@ -170,7 +175,10 @@ export function FinanceView({ groupMode = false }: FinanceViewProps) {
   const openAddExpenseModal = useUiStore((state) => state.openAddExpenseModal);
   const dateRange = useUiStore((state) => state.dateRange);
   const setDateRange = useUiStore((state) => state.setDateRange);
-  const { tenantId, tenantName, tenantCode } = useRouteTenant();
+  const { tenantId, tenantName, tenantCode } = useRouteTenant({
+    adminFallback: null,
+  });
+  const viewingCode = useAdminEntityStore((s) => s.viewingCode);
   const [activeTab, setActiveTab] = useState("overview");
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState("");
@@ -178,17 +186,24 @@ export function FinanceView({ groupMode = false }: FinanceViewProps) {
 
   const bounds = useMemo(() => dateRangePresetToApiBounds(dateRange), [dateRange]);
 
+  const viewingEntity = Boolean(groupMode && viewingCode && isTenantCode(viewingCode));
+
   const summaryQuery = useQuery({
     queryKey: ["ledgerSummary", groupMode ? "group" : tenantId, bounds.from, bounds.to],
     queryFn: () =>
       groupMode
         ? getGroupLedgerSummary(bounds.from, bounds.to)
         : getLedgerSummary(tenantId!, bounds.from, bounds.to),
-    enabled: (groupMode || Boolean(tenantId)) && activeTab === "overview",
+    enabled:
+      !viewingEntity &&
+      (groupMode || Boolean(tenantId)) &&
+      activeTab === "overview",
     staleTime: FINANCE_STALE_MS,
+    placeholderData: (prev) => prev,
   });
 
   const chartsEnabled =
+    !viewingEntity &&
     (groupMode || Boolean(tenantId)) &&
     (activeTab === "overview" || activeTab === "analysis");
 
@@ -200,9 +215,11 @@ export function FinanceView({ groupMode = false }: FinanceViewProps) {
         : getLedgerCharts(tenantId!, bounds?.from, bounds?.to),
     enabled: chartsEnabled,
     staleTime: FINANCE_STALE_MS,
+    placeholderData: (prev) => prev,
   });
 
   const categoriesEnabled =
+    !viewingEntity &&
     (groupMode || Boolean(tenantId)) &&
     (activeTab === "ledger" || activeTab === "expenses");
 
@@ -214,13 +231,15 @@ export function FinanceView({ groupMode = false }: FinanceViewProps) {
         : getLedgerCategories(tenantId!, bounds?.from, bounds?.to),
     enabled: categoriesEnabled,
     staleTime: FINANCE_STALE_MS,
+    placeholderData: (prev) => prev,
   });
 
   const entitySummaryQuery = useQuery({
     queryKey: ["ledgerByEntity", bounds?.from, bounds?.to],
     queryFn: () => getGroupLedgerByEntity(bounds?.from, bounds?.to),
-    enabled: groupMode && activeTab === "overview",
+    enabled: groupMode && !viewingEntity && activeTab === "overview",
     staleTime: FINANCE_STALE_MS,
+    placeholderData: (prev) => prev,
   });
 
   const entityRows = useMemo(
@@ -353,7 +372,7 @@ export function FinanceView({ groupMode = false }: FinanceViewProps) {
 
   const handleEntityFinanceClick = (row: LedgerEntitySummary & { id: string }) => {
     if (groupMode) {
-      router.push(`/admin/finance/${row.tenantCode}`);
+      useAdminEntityStore.getState().setViewingCode(row.tenantCode as TenantCode);
       return;
     }
     router.push(`/${row.tenantCode}/finance`);
@@ -379,6 +398,10 @@ export function FinanceView({ groupMode = false }: FinanceViewProps) {
       options: categories,
     },
   ];
+
+  if (groupMode && viewingCode && isTenantCode(viewingCode)) {
+    return <AdminEntityFinanceSheet tenantCode={viewingCode} />;
+  }
 
   return (
     <div className="space-y-6">
@@ -459,8 +482,9 @@ export function FinanceView({ groupMode = false }: FinanceViewProps) {
                   By department
                 </h3>
                 <p className="text-sm text-muted">
-                  Revenue, costs, and net for each entity. Click a row to open
-                  that department&apos;s finance page.
+                  Revenue, costs, and net for each entity. Click a row to view
+                  that department&apos;s books here (use the viewing switcher
+                  to return to the group roll-up).
                 </p>
               </div>
               <DataTable

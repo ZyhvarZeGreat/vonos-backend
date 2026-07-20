@@ -19,6 +19,7 @@ import { useListPageFilters } from "@/lib/hooks/useListPageFilters";
 import { useListExport } from "@/lib/hooks/useListExport";
 import { formatCurrency } from "@/lib/utils/formatCurrency";
 import { uniqueFieldOptions } from "@/lib/utils/listFilters";
+import { movementListCursor } from "@/lib/utils/pagination";
 
 interface MovementListViewProps {
   type: "inbound" | "outbound";
@@ -63,6 +64,7 @@ export function MovementListView({
   const {
     items: data,
     hasMore,
+    totalCount,
     pageIndex,
     pageSize,
     canGoPrev,
@@ -82,6 +84,7 @@ export function MovementListView({
     search,
     fetchPage: (cursor, limit) =>
       getStockMovementsPage(tenantId!, apiFilters, cursor, limit),
+    getCursor: (row) => movementListCursor(row),
   });
 
   const columns: ColumnConfig<StockMovementListRow>[] = useMemo(() => {
@@ -210,6 +213,7 @@ export function MovementListView({
         onPageSizeChange={setPageSize}
         onPageSelect={goToPage}
         canSelectPage={canSelectPage}
+        totalCount={totalCount}
         isLoading={isLoading}
         isFetching={isFetching}
         error={error ? "Failed to load movements" : null}

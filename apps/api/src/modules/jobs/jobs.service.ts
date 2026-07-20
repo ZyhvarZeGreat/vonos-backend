@@ -106,8 +106,23 @@ export class JobsService {
       },
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       take: pagination.take,
+      select: {
+        id: true,
+        tenantId: true,
+        reference: true,
+        description: true,
+        status: true,
+        hasQuote: true,
+        quoteAmount: true,
+        customerName: true,
+        customerId: true,
+        vehicleId: true,
+        dueDate: true,
+        createdAt: true,
+        updatedAt: true,
+      },
     });
-    return rows.map((row) => this.serializeJob(row));
+    return rows.map((row) => this.serializeJobList(row));
   }
 
   async getById(id: string): Promise<JobDetail> {
@@ -139,7 +154,7 @@ export class JobsService {
       ...new Set(
         row.materials
           .map((m) => m.itemId)
-          .filter((id): id is string => Boolean(id)),
+          .filter((mid): mid is string => Boolean(mid)),
       ),
     ];
     const [vehicle, catalogItems] = await Promise.all([
@@ -187,6 +202,122 @@ export class JobsService {
             year: vehicle.year,
           }
         : null,
+      materials: row.materials.map((m) => ({
+        id: m.id,
+        jobId: m.jobId,
+        itemId: m.itemId,
+        name: m.name,
+        quantity: toNumber(m.quantity),
+        unitCost: toNumber(m.unitCost),
+        totalCost: toNumber(m.totalCost),
+        sku: m.itemId ? (skuByItemId.get(m.itemId) ?? null) : null,
+        source: m.source,
+        sourceType: (m.sourceType as JobMaterial['sourceType']) ?? null,
+        sourceDepartment: m.sourceDepartment,
+        supplierId: m.supplierId,
+        supplierName: m.supplierName,
+        purchaseMovementId: m.purchaseMovementId,
+      })),
+      labourEntries: await this.resolveLabourWithStaffNames(row.labourEntries),
+    };
+  }
+
+  /** Job header + customer/vehicle — no materials/labour (fast first paint). */
+  async getShell(id: string): Promise<JobDetail> {
+    const tenantId = this.tenantDb.requireTenantId();
+    const row = await this.tenantDb.db.job.findFirst({
+      where: { id, tenantId, deletedAt: null },
+      include: {
+        customer: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            phone: true,
+            totalSellDue: true,
+          },
+        },
+        sales: {
+          where: { deletedAt: null },
+          select: { id: true },
+          take: 1,
+          orderBy: { createdAt: 'desc' },
+        },
+      },
+    });
+    if (!row) throw new NotFoundException('Job not found');
+    const vehicle = row.vehicleId
+      ? await this.tenantDb.db.vehicle.findFirst({
+          where: { id: row.vehicleId, tenantId, deletedAt: null },
+          select: {
+            id: true,
+            plateNumber: true,
+            make: true,
+            model: true,
+            year: true,
+          },
+        })
+      : null;
+    return {
+      ...this.serializeJob(row),
+      saleId: row.sales[0]?.id ?? null,
+      customer: row.customer
+        ? {
+            id: row.customer.id,
+            name: row.customer.name,
+            email: row.customer.email,
+            phone: row.customer.phone,
+            totalSellDue:
+              row.customer.totalSellDue != null
+                ? toNumber(row.customer.totalSellDue)
+                : null,
+          }
+        : null,
+      vehicle: vehicle
+        ? {
+            id: vehicle.id,
+            plateNumber: vehicle.plateNumber,
+            make: vehicle.make,
+            model: vehicle.model,
+            year: vehicle.year,
+          }
+        : null,
+      materials: [],
+      labourEntries: [],
+    };
+  }
+
+  /** Materials + labour for a job (loaded after shell). */
+  async getCosts(id: string): Promise<{
+    materials: JobMaterial[];
+    labourEntries: JobLabour[];
+  }> {
+    const tenantId = this.tenantDb.requireTenantId();
+    const row = await this.tenantDb.db.job.findFirst({
+      where: { id, tenantId, deletedAt: null },
+      select: {
+        id: true,
+        materials: true,
+        labourEntries: true,
+      },
+    });
+    if (!row) throw new NotFoundException('Job not found');
+    const itemIds = [
+      ...new Set(
+        row.materials
+          .map((m) => m.itemId)
+          .filter((mid): mid is string => Boolean(mid)),
+      ),
+    ];
+    const catalogItems =
+      itemIds.length > 0
+        ? await this.tenantDb.db.item.findMany({
+            where: { id: { in: itemIds }, deletedAt: null },
+            select: { id: true, sku: true },
+          })
+        : [];
+    const skuByItemId = new Map(catalogItems.map((item) => [item.id, item.sku]));
+    return {
       materials: row.materials.map((m) => ({
         id: m.id,
         jobId: m.jobId,
@@ -1011,6 +1142,48 @@ export class JobsService {
       rate: toNumber(row.rate),
       totalCost: toNumber(row.totalCost),
     }));
+  }
+
+  private serializeJobList(row: {
+    id: string;
+    tenantId: string;
+    reference: string;
+    description: string;
+    status: string;
+    hasQuote: boolean;
+    quoteAmount: { toString(): string } | null;
+    customerName: string | null;
+    customerId: string | null;
+    vehicleId: string | null;
+    dueDate: Date | null;
+    createdAt: Date;
+    updatedAt: Date;
+  }): Job {
+    return {
+      id: row.id,
+      tenantId: row.tenantId,
+      reference: row.reference,
+      description: row.description,
+      status: row.status,
+      hasQuote: row.hasQuote,
+      quoteAmount: row.quoteAmount ? toNumber(row.quoteAmount) : null,
+      quoteNotes: null,
+      quoteValidUntil: null,
+      invoiceAmount: null,
+      invoiceNotes: null,
+      customerId: row.customerId,
+      customerName: row.customerName,
+      vehicleId: row.vehicleId,
+      locationCode: null,
+      assignedStaffIds: [],
+      dueDate: row.dueDate ? toIso(row.dueDate).slice(0, 10) : null,
+      qcChecklist: null,
+      qcNotes: null,
+      createdByUserId: null,
+      createdByName: null,
+      createdAt: toIso(row.createdAt),
+      updatedAt: toIso(row.updatedAt),
+    };
   }
 
   private serializeJob(row: {

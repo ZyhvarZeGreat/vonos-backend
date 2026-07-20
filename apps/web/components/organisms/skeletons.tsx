@@ -39,11 +39,17 @@ export function KpiRowSkeleton({
 
 export function ChartPanelSkeleton({
   withHeader = true,
+  title,
+  subtitle,
   className,
 }: {
   withHeader?: boolean;
+  /** When set, show real title text instead of a title skeleton. */
+  title?: string;
+  subtitle?: string;
   className?: string;
 }) {
+  const showTextHeader = Boolean(title);
   return (
     <section
       className={cn(
@@ -53,7 +59,14 @@ export function ChartPanelSkeleton({
       aria-busy
       aria-label="Loading chart"
     >
-      {withHeader ? (
+      {showTextHeader ? (
+        <div className="mb-8 flex items-start justify-between">
+          <div className="space-y-1">
+            <h3 className="text-lg font-semibold tracking-tight text-foreground">{title}</h3>
+            {subtitle ? <p className="text-sm text-muted">{subtitle}</p> : null}
+          </div>
+        </div>
+      ) : withHeader ? (
         <div className="mb-8 flex items-start justify-between">
           <div className="space-y-2">
             <Skeleton className="h-5 w-40" />
@@ -400,10 +413,13 @@ export function DashboardBodySkeleton({
 /** Loading placeholder matching HqReportPageLayout variants. */
 export function ReportPageSkeleton({
   variant = "default",
+  /** Parent already shows title — skip fake title skeletons. */
+  hideTitle = true,
 }: {
   variant?: "default" | "chartHero" | "kpiSummary" | "tableFocus" | "profitLoss";
+  hideTitle?: boolean;
 }) {
-  const titleBlock = (
+  const titleBlock = hideTitle ? null : (
     <div className="space-y-2 px-1">
       <Skeleton className="h-6 w-48" />
       <Skeleton className="h-4 w-36" />
@@ -423,11 +439,6 @@ export function ReportPageSkeleton({
           <Skeleton className="h-20 w-full rounded-xl" />
           <Skeleton className="h-20 w-full rounded-xl" />
         </div>
-        <div className="flex gap-2 overflow-hidden">
-          {Array.from({ length: 6 }).map((_, index) => (
-            <Skeleton key={index} className="h-9 w-28 shrink-0 rounded-t-md" />
-          ))}
-        </div>
         <DataTableSkeleton rows={8} columns={4} withPagination={false} />
       </div>
     );
@@ -437,7 +448,7 @@ export function ReportPageSkeleton({
     return (
       <div className="space-y-6" aria-busy aria-label="Loading report">
         {titleBlock}
-        <ChartPanelSkeleton />
+        <ChartPanelSkeleton withHeader={false} />
         <DataTableSkeleton rows={8} columns={5} withPagination={false} />
       </div>
     );
@@ -467,8 +478,8 @@ export function ReportPageSkeleton({
       {titleBlock}
       <KpiRowSkeleton count={4} />
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <ChartPanelSkeleton />
-        <ChartPanelSkeleton />
+        <ChartPanelSkeleton withHeader={false} />
+        <ChartPanelSkeleton withHeader={false} />
       </div>
       <DataTableSkeleton rows={8} columns={5} withPagination={false} />
     </div>

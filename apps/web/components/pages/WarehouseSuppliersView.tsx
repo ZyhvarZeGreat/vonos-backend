@@ -18,6 +18,7 @@ import { useListPageFilters } from "@/lib/hooks/useListPageFilters";
 import { formatCurrencyCompact, formatNumberCompact } from "@/lib/utils/formatCurrency";
 import { uniqueFieldOptions } from "@/lib/utils/listFilters";
 import { formatDate } from "@/lib/utils/formatDate";
+import { nameListCursor } from "@/lib/utils/pagination";
 
 const SUPPLIER_TABS = [
   { id: "all", label: "All Suppliers" },
@@ -118,6 +119,7 @@ export function WarehouseSuppliersView() {
   const {
     items: suppliers,
     hasMore,
+    totalCount,
     pageIndex,
     pageSize,
     canGoPrev,
@@ -143,6 +145,7 @@ export function WarehouseSuppliersView() {
         search: search.trim() || undefined,
         status: activeTab === "active" ? "active" : undefined,
       }),
+    getCursor: (row) => nameListCursor(row),
   });
 
   const kpisQuery = useQuery({
@@ -167,16 +170,9 @@ export function WarehouseSuppliersView() {
     [tenantCode, goToDetail, router],
   );
 
-  const filtered = useMemo(() => {
-    let rows = suppliers;
-    if (activeTab === "packaging") {
-      rows = rows.filter((row) => row.category.toLowerCase() === "packaging");
-    } else if (activeTab === "automotive") {
-      rows = rows.filter((row) => row.category.toLowerCase() === "automotive");
-    }
-    if (categoryFilter) rows = rows.filter((row) => row.category === categoryFilter);
-    return rows;
-  }, [activeTab, categoryFilter, suppliers]);
+  // Category is not a real DB field yet (API returns "General") — don't
+  // client-filter the current page or pagination breaks. Active tab is server-side.
+  const filtered = suppliers;
 
   const categoryOptions = useMemo(
     () => uniqueFieldOptions(suppliers, "category"),
@@ -228,6 +224,7 @@ export function WarehouseSuppliersView() {
           onPageSizeChange={setPageSize}
           onPageSelect={goToPage}
           canSelectPage={canSelectPage}
+          totalCount={totalCount}
           isLoading={isLoading}
           isFetching={isFetching}
           error={error ? "Failed to load suppliers" : null}

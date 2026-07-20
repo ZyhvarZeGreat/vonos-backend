@@ -4,7 +4,7 @@ import { useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
 import { EmptyState } from "@/components/atoms/EmptyState";
-import { DataTableSkeleton, KanbanSkeleton, CalendarGridSkeleton } from "@/components/organisms/skeletons";
+import { KanbanSkeleton, CalendarGridSkeleton } from "@/components/organisms/skeletons";
 import { Input } from "@/components/atoms/Input";
 import { Select } from "@/components/atoms/Select";
 import { PaginationBar } from "@/components/molecules/PaginationBar";
@@ -13,6 +13,7 @@ import { TableRow } from "@/components/molecules/TableRow";
 import { assertDisplayModeImplemented } from "@/lib/registries/displayModes";
 import { formatTableCellValue } from "@/lib/utils/formatDisplay";
 import { cn } from "@/lib/utils/cn";
+import { Skeleton } from "@/components/atoms/Skeleton";
 
 export interface ColumnConfig<T> {
   key: keyof T | string;
@@ -281,7 +282,10 @@ export function DataTable<T extends { id: string }>({
     offsetPagination?.onPageChange(1);
   }
 
-  if (isLoading || (isFetching && data.length === 0)) {
+  if (
+    (isLoading || (isFetching && data.length === 0)) &&
+    displayMode !== "table"
+  ) {
     const shellClass = cn(
       embedded ? "overflow-hidden" : "overflow-hidden rounded-xl border border-border bg-card shadow-card",
       className,
@@ -293,22 +297,9 @@ export function DataTable<T extends { id: string }>({
         </section>
       );
     }
-    if (displayMode === "calendar") {
-      return (
-        <section className={shellClass}>
-          <CalendarGridSkeleton />
-        </section>
-      );
-    }
     return (
       <section className={shellClass}>
-        <DataTableSkeleton
-          rows={8}
-          columnHeaders={columns.map((column) => column.header)}
-          selectable={selectable}
-          withFilters={filters.length > 0}
-          embedded
-        />
+        <CalendarGridSkeleton />
       </section>
     );
   }
@@ -322,6 +313,7 @@ export function DataTable<T extends { id: string }>({
     );
   }
 
+  const showBodyLoading = isLoading || (isFetching && data.length === 0);
   const showPaginationBar =
     offsetPagination ||
     (useInternalPagination && sortedData.length > 0);
@@ -371,9 +363,49 @@ export function DataTable<T extends { id: string }>({
         </div>
       ) : null}
 
-      {error ? (
+      {error && !showBodyLoading ? (
         <div className="p-4">
           <EmptyState title="Something went wrong" message={error} />
+        </div>
+      ) : showBodyLoading ? (
+        <div className="relative overflow-x-auto" aria-busy aria-label="Loading table">
+          <table className="min-w-full">
+            <thead className="bg-[var(--color-surface-muted)]">
+              <tr>
+                {selectable ? (
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted">
+                    Select
+                  </th>
+                ) : null}
+                {columns.map((column) => (
+                  <th
+                    key={String(column.key)}
+                    className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted"
+                  >
+                    {column.header}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {Array.from({ length: 8 }).map((_, rowIndex) => (
+                <tr key={rowIndex} className="border-b border-border last:border-0">
+                  {selectable ? (
+                    <td className="px-4 py-3">
+                      <Skeleton className="h-4 w-4 rounded" />
+                    </td>
+                  ) : null}
+                  {columns.map((column, colIndex) => (
+                    <td key={String(column.key)} className="px-4 py-3">
+                      <Skeleton
+                        className={cn("h-4", colIndex === 0 ? "w-32" : "w-20")}
+                      />
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       ) : visibleData.length === 0 ? (
         <div className="p-4">
@@ -460,7 +492,7 @@ export function DataTable<T extends { id: string }>({
         </div>
       )}
 
-      {showPaginationBar ? (
+      {showPaginationBar && !showBodyLoading ? (
         <PaginationBar
           page={offsetPagination?.page ?? safePage}
           pageSize={activePageSize}

@@ -1,5 +1,6 @@
 import type { IconComponent } from "@/lib/utils/icons";
 import { formatNumberCompact } from "@/lib/utils/formatCurrency";
+import { Skeleton } from "@/components/atoms/Skeleton";
 import { cn } from "@/lib/utils/cn";
 
 export interface KpiCardProps {
@@ -12,6 +13,8 @@ export interface KpiCardProps {
   /** Tint preset from home.jsx: emerald | blue | purple | rose */
   tint?: "emerald" | "blue" | "purple" | "rose";
   color?: string;
+  /** When true, keep label/icon and skeleton only the value. */
+  isLoading?: boolean;
   className?: string;
 }
 
@@ -42,6 +45,7 @@ export function KpiCard({
   deltaLabel,
   deltaPercent,
   tint = "emerald",
+  isLoading = false,
   className,
 }: KpiCardProps) {
   const tintStyle = tintClasses[tint];
@@ -54,6 +58,7 @@ export function KpiCard({
         "flex h-[var(--space-kpi-height)] flex-col justify-between rounded-xl border border-border bg-card p-5 shadow-sm",
         className,
       )}
+      aria-busy={isLoading || undefined}
     >
       <div className="flex items-center gap-3">
         <div
@@ -68,32 +73,41 @@ export function KpiCard({
         <span className="text-base font-semibold text-foreground">{label}</span>
       </div>
       <div className="mt-auto flex items-baseline gap-2">
-        <span className="font-heading text-3xl font-semibold tracking-tight text-foreground">
-          {typeof value === "number" ? formatNumberCompact(value) : value}
-        </span>
-        {delta !== undefined ? (
-          <span
-            className={cn(
-              "text-sm font-medium",
-              deltaTone === "positive" && "text-[var(--color-kpi-emerald-fg)]",
-              deltaTone === "negative" && "text-[var(--color-error-text)]",
-            )}
-          >
-            {delta >= 0 ? "+" : ""}
-            {formatNumberCompact(delta)}
-            {deltaLabel ? (
-              <span className="font-normal text-muted"> {deltaLabel}</span>
+        {isLoading ? (
+          <>
+            <Skeleton className="h-9 w-24" />
+            <Skeleton className="h-4 w-16" />
+          </>
+        ) : (
+          <>
+            <span className="font-heading text-3xl font-semibold tracking-tight text-foreground">
+              {typeof value === "number" ? formatNumberCompact(value) : value}
+            </span>
+            {delta !== undefined ? (
+              <span
+                className={cn(
+                  "text-sm font-medium",
+                  deltaTone === "positive" && "text-[var(--color-kpi-emerald-fg)]",
+                  deltaTone === "negative" && "text-[var(--color-error-text)]",
+                )}
+              >
+                {delta >= 0 ? "+" : ""}
+                {formatNumberCompact(delta)}
+                {deltaLabel ? (
+                  <span className="font-normal text-muted"> {deltaLabel}</span>
+                ) : null}
+              </span>
             ) : null}
-          </span>
-        ) : null}
-        {deltaPercent ? (
-          <span className="text-sm font-medium text-[var(--color-kpi-emerald-fg)]">
-            {deltaPercent}
-            {deltaLabel ? (
-              <span className="font-normal text-muted"> {deltaLabel}</span>
+            {deltaPercent ? (
+              <span className="text-sm font-medium text-[var(--color-kpi-emerald-fg)]">
+                {deltaPercent}
+                {deltaLabel ? (
+                  <span className="font-normal text-muted"> {deltaLabel}</span>
+                ) : null}
+              </span>
             ) : null}
-          </span>
-        ) : null}
+          </>
+        )}
       </div>
     </article>
   );

@@ -121,6 +121,7 @@ model Tenant {
   jobs               Job[]
   ledgerEntries      LedgerEntry[]
   tenantDailyFinance TenantDailyFinance[]
+  tenantEntitySnapshot TenantEntitySnapshot?
   suppliers          Supplier[]
   stockMovements     StockMovement[]
   customers          Customer[]
@@ -524,6 +525,26 @@ model TenantDailyFinance {
 
   @@unique([tenantId, date])
   @@index([tenantId, date])
+}
+
+model TenantEntitySnapshot {
+  tenantId          String   @id
+  tenant            Tenant   @relation(fields: [tenantId], references: [id])
+  archetype         String
+  sku               Int      @default(0)
+  stockValue        Decimal  @default(0)
+  lowStock          Int      @default(0)
+  inboundToday      Int      @default(0)
+  salesTodayRevenue Decimal  @default(0)
+  salesReturns      Int      @default(0)
+  activeJobs        Int      @default(0)
+  pendingQc         Int      @default(0)
+  jobRevenueToday   Decimal  @default(0)
+  apptsToday        Int      @default(0)
+  apptRevenueToday  Decimal  @default(0)
+  retailLowStock    Int      @default(0)
+  pendingInbound    Int      @default(0)
+  refreshedAt       DateTime @updatedAt
 }
 
 model Sale {

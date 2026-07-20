@@ -1,6 +1,11 @@
 import type { ReportsChart, ReportsKpi } from '@vonos/types';
 import type { TenantScopedPrisma } from '../../common/prisma/prisma.service';
 import {
+  dailyFinanceTrend,
+  hasDailyFinanceRollup,
+  sumDailyFinanceRollup,
+} from '../../common/utils/dailyFinanceRollup';
+import {
   computeDelta,
   priorWindow,
   resolveDateWindow,
@@ -28,6 +33,53 @@ export async function buildLedgerFinanceSlice(
   const window = resolveDateWindow(from, to);
   const prior = priorWindow(window);
 
+  const useRollup = await hasDailyFinanceRollup(
+    db,
+    tenantId,
+    window.from,
+    window.to,
+  );
+
+  if (useRollup) {
+    // Rollup-only path: no LedgerEntry scans (expense category pie uses cost vs expense totals).
+    const [summary, priorSummary, plTrend] = await Promise.all([
+      sumDailyFinanceRollup(db, tenantId, window.from, window.to),
+      sumDailyFinanceRollup(db, tenantId, prior.from, prior.to),
+      dailyFinanceTrend(db, tenantId, window.from, window.to),
+    ]);
+
+    const costs = summary.costs + summary.expenses;
+    const priorCosts = priorSummary.costs + priorSummary.expenses;
+    const currency = 'NGN';
+    const expenseBreakdown = [
+      { label: 'Costs', value: summary.costs },
+      { label: 'Expenses', value: summary.expenses },
+    ].filter((row) => row.value > 0);
+
+    return {
+      currency,
+      financeCharts: financeCharts(
+        bucketTrend(plTrend, window),
+        expenseBreakdown.length > 0
+          ? expenseBreakdown
+          : [{ label: '—', value: 0 }],
+      ),
+      financeKpis: financeKpis(
+        {
+          revenue: summary.revenue,
+          costs,
+          net: summary.net,
+        },
+        {
+          revenue: priorSummary.revenue,
+          costs: priorCosts,
+          net: priorSummary.net,
+        },
+        currency,
+      ),
+    };
+  }
+
   const [summary, priorSummary, currency, plTrend, expenseBreakdown] =
     await Promise.all([
       ledgerSummaryInWindow(db, tenantId, window.from, window.to),
@@ -37,7 +89,42 @@ export async function buildLedgerFinanceSlice(
       ledgerExpenseBreakdown(db, tenantId, window.from, window.to),
     ]);
 
-  const financeCharts: ReportsChart[] = [
+  return {
+    currency,
+    financeCharts: financeCharts(plTrend, expenseBreakdown),
+    financeKpis: financeKpis(summary, priorSummary, currency),
+  };
+}
+
+/** Collapse daily rollup points to months when the window is long (keeps payload small). */
+function bucketTrend(
+  rows: Array<{ label: string; revenue: number; costs: number }>,
+  window: { from: Date; to: Date },
+): Array<{ label: string; revenue: number; costs: number }> {
+  const spanDays =
+    (window.to.getTime() - window.from.getTime()) / (24 * 60 * 60 * 1000);
+  if (spanDays <= 60 || rows.length <= 60) return rows;
+
+  const byMonth = new Map<string, { label: string; revenue: number; costs: number }>();
+  for (const row of rows) {
+    const month = row.label.slice(0, 7); // YYYY-MM
+    const existing = byMonth.get(month) ?? {
+      label: month,
+      revenue: 0,
+      costs: 0,
+    };
+    existing.revenue += row.revenue;
+    existing.costs += row.costs;
+    byMonth.set(month, existing);
+  }
+  return Array.from(byMonth.values());
+}
+
+function financeCharts(
+  plTrend: Array<{ label: string; revenue: number; costs: number }>,
+  expenseBreakdown: Array<{ label: string; value: number }>,
+): ReportsChart[] {
+  return [
     {
       id: 'finance-pl-trend',
       title: 'Revenue vs Costs',
@@ -58,8 +145,14 @@ export async function buildLedgerFinanceSlice(
       data: asChartData(expenseBreakdown),
     },
   ];
+}
 
-  const financeKpis: ReportsKpi[] = [
+function financeKpis(
+  summary: { revenue: number; costs: number; net: number },
+  priorSummary: { revenue: number; costs: number; net: number },
+  currency: string,
+): ReportsKpi[] {
+  return [
     {
       label: 'Revenue',
       icon: 'wallet',
@@ -88,6 +181,4 @@ export async function buildLedgerFinanceSlice(
       ...computeDelta(summary.net, priorSummary.net),
     },
   ];
-
-  return { currency, financeCharts, financeKpis };
 }

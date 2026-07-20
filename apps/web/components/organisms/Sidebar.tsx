@@ -65,6 +65,7 @@ import {
   Clock,
 } from "lucide-react";
 import type { NavItem as NavItemConfig } from "@vonos/types";
+import { useQueryClient } from "@tanstack/react-query";
 import { NavItem } from "@/components/molecules/NavItem";
 import { NavCollapsibleGroup } from "@/components/molecules/NavCollapsibleGroup";
 import { TenantSwitcher } from "@/components/molecules/TenantSwitcher";
@@ -75,6 +76,9 @@ import { sidebarAccentStyle, sidebarHeaderStyle } from "@/lib/registries/tenantA
 import { cn } from "@/lib/utils/cn";
 import { logout } from "@/lib/api/auth";
 import { useAuthStore } from "@/stores/authStore";
+import { useTenantId } from "@/lib/hooks/useRouteTenant";
+import { prefetchRoute } from "@/lib/prefetch/routePrefetchRegistry";
+import { isTenantCode } from "@/lib/registries/tenants";
 import type { IconComponent } from "@/lib/utils/icons";
 
 const iconMap: Record<string, IconComponent> = {
@@ -191,6 +195,8 @@ export function Sidebar({
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
   const storeName = useAuthStore((state) => state.name);
   const storeEmail = useAuthStore((state) => state.email);
+  const queryClient = useQueryClient();
+  const tenantId = useTenantId();
 
   const displayName = userName ?? storeName ?? storeEmail ?? "Account";
   const displayEmail = userEmail ?? storeEmail;
@@ -275,6 +281,20 @@ export function Sidebar({
                 activeRoute={activeRoute}
                 isNavActive={isNavActive}
                 collapsed={collapsed}
+                onItemPrefetch={
+                  tenantId || tenantCode === "VAG"
+                    ? (route) => {
+                        prefetchRoute(queryClient, {
+                          pathname: route,
+                          tenantCode:
+                            tenantCode && isTenantCode(tenantCode)
+                              ? tenantCode
+                              : undefined,
+                          tenantId: tenantId ?? undefined,
+                        });
+                      }
+                    : undefined
+                }
               />
             ) : (
               <>
@@ -311,6 +331,19 @@ export function Sidebar({
                             : activeRoute === item.route
                         }
                         collapsed={collapsed}
+                        onPrefetch={
+                          tenantId || tenantCode === "VAG"
+                            ? () =>
+                                prefetchRoute(queryClient, {
+                                  pathname: item.route,
+                                  tenantCode:
+                                    tenantCode && isTenantCode(tenantCode)
+                                      ? tenantCode
+                                      : undefined,
+                                  tenantId: tenantId ?? undefined,
+                                })
+                            : undefined
+                        }
                       />
                     );
                   })}

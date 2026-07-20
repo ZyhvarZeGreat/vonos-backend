@@ -10,6 +10,7 @@ import { useRouteTenant } from "@/lib/hooks/useRouteTenant";
 import { useRecordTitle } from "@/lib/hooks/useRecordTitle";
 import { TenantShell } from "@/components/layouts/TenantShell";
 import { AdminViewingBanner } from "@/components/molecules/AdminViewingBanner";
+import { PageTransition } from "@/components/atoms/PageTransition";
 import { useAuthStore } from "@/stores/authStore";
 import { useUiStore } from "@/stores/uiStore";
 
@@ -100,7 +101,9 @@ function TenantLayoutInner({ children }: { children: React.ReactNode }) {
           }
         />
         <main className="flex-1 overflow-y-auto p-6 lg:p-10">
-          <div className="mx-auto max-w-[var(--space-content-max)]">{children}</div>
+          <PageTransition className="mx-auto max-w-[var(--space-content-max)]">
+            {children}
+          </PageTransition>
         </main>
       </div>
     </div>
