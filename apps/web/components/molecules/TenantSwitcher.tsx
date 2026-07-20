@@ -164,12 +164,12 @@ export function TenantSwitcher({
               return (
                 <Link
                   key={entity.code}
-                  href={onAdmin ? pathname : href}
+                  href={href}
                   onMouseEnter={() => warmAdminEntity(entity.code as TenantCode)}
                   onFocus={() => warmAdminEntity(entity.code as TenantCode)}
                   onClick={() => {
                     if (onAdmin) {
-                      setAdminViewing(entity.code as TenantCode);
+                      setAdminViewing(null);
                     }
                     setOpen(false);
                   }}

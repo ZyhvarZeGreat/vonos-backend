@@ -72,10 +72,18 @@ function sectionExistsForTenant(tenantCode: string, section: string): boolean {
   });
 }
 
+/** Map VAG admin sections to the closest tenant workspace screen. */
+const ADMIN_SECTION_TO_TENANT_SECTION: Record<string, string> = {
+  overview: "overview",
+  finance: "finance",
+  reports: "reports",
+  users: "users",
+  stock: "inventory",
+};
+
 /**
  * Preserve the current screen when switching entities.
- * On `/admin/*`, stay in admin and update the viewing entity store instead of
- * navigating into `/{code}/…` (which leaked tenant scope back into admin).
+ * From `/admin/*`, enter the target entity workspace at the equivalent page.
  */
 export function resolveEntitySwitchPath(
   targetTenantCode: string,
@@ -83,8 +91,22 @@ export function resolveEntitySwitchPath(
 ): string {
   const parts = pathname.split("/").filter(Boolean);
   if (parts[0] === "admin") {
-    // Caller should prefer setViewingCode; keep overview as safe href.
-    return `/admin/${parts[1] ?? "overview"}`;
+    const adminSection = parts[1] ?? "overview";
+    const section = ADMIN_SECTION_TO_TENANT_SECTION[adminSection] ?? "overview";
+
+    if (section === "overview") {
+      return tenantOverviewPath(targetTenantCode as TenantCode);
+    }
+
+    if (section === "finance") {
+      return tenantFinancePath(targetTenantCode);
+    }
+
+    if (sectionExistsForTenant(targetTenantCode, section)) {
+      return tenantListPath(targetTenantCode, section);
+    }
+
+    return tenantOverviewPath(targetTenantCode as TenantCode);
   }
 
   const { section } = parseTenantPath(pathname);
