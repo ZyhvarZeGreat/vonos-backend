@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ChevronDown } from "lucide-react";
@@ -48,16 +48,19 @@ export function TenantSwitcher({
   const rootRef = useRef<HTMLDivElement>(null);
   const warmedRef = useRef<Set<string>>(new Set());
   const tenant = getTenantByCode(tenantCode);
+  const dateBounds = useMemo(
+    () => dateRangePresetToApiBounds(dateRange, new Date(), customDateRange),
+    [customDateRange, dateRange],
+  );
 
-  const warmAdminEntity = (code: TenantCode) => {
+  const warmEntityRoute = (code: TenantCode) => {
     const href = resolveEntitySwitchPath(code, pathname);
     const target = getTenantByCode(code);
-    const bounds = dateRangePresetToApiBounds(dateRange, new Date(), customDateRange);
     prefetchRoute(queryClient, {
       pathname: href,
       tenantCode: code,
       tenantId: target?.tenantId,
-      dateBounds: bounds,
+      dateBounds,
     });
     if (!onAdmin) return;
     const key = `${pathname}:${code}`;
@@ -66,7 +69,7 @@ export function TenantSwitcher({
     void prefetchAdminEntity(queryClient, {
       code,
       pathname,
-      dateBounds: bounds,
+      dateBounds,
     }).catch(() => {
       warmedRef.current.delete(key);
     });
@@ -183,8 +186,8 @@ export function TenantSwitcher({
                 <Link
                   key={entity.code}
                   href={href}
-                  onMouseEnter={() => warmAdminEntity(entity.code as TenantCode)}
-                  onFocus={() => warmAdminEntity(entity.code as TenantCode)}
+                  onMouseEnter={() => warmEntityRoute(entity.code as TenantCode)}
+                  onFocus={() => warmEntityRoute(entity.code as TenantCode)}
                   onClick={() => {
                     if (isActive) return;
                     startSwitch(entity.code, entity.name, href);
