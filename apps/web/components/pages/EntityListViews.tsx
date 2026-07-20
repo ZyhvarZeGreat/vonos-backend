@@ -186,7 +186,7 @@ export function SalesListView({
             { key: "itemCount", header: "Items" },
             { key: "total", header: "Total" },
             { key: "status", header: "Status" },
-            { key: "date", header: "Date", render: (row) => formatDate(row.date) },
+            { key: "date", header: "Date" },
           ],
           filtered.map((row) => ({
             reference: row.reference,
@@ -194,7 +194,7 @@ export function SalesListView({
             itemCount: row.itemCount,
             total: row.total,
             status: row.status,
-            date: row.date,
+            date: formatDate(row.date),
           })),
           `Export ${tabLabel} Spreadsheet`,
         )
@@ -892,12 +892,12 @@ export function RequisitionsListView() {
             [
               { key: "reference", header: "Req #" },
               { key: "status", header: "Status" },
-              { key: "createdAt", header: "Created", render: (row) => formatDate(row.createdAt) },
+              { key: "createdAt", header: "Created" },
             ],
             rows.map((row) => ({
               reference: row.reference,
               status: row.status,
-              createdAt: row.createdAt,
+              createdAt: formatDate(row.createdAt),
             })),
             "Export Requisitions",
           );
@@ -1002,12 +1002,12 @@ export function IncomingRequisitionsListView() {
             [
               { key: "reference", header: "Req #" },
               { key: "status", header: "Status" },
-              { key: "createdAt", header: "Created", render: (row) => formatDate(row.createdAt) },
+              { key: "createdAt", header: "Created" },
             ],
             rows.map((row) => ({
               reference: row.reference,
               status: row.status,
-              createdAt: row.createdAt,
+              createdAt: formatDate(row.createdAt),
             })),
             "Export Incoming Requisitions",
           );
