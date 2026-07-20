@@ -48,6 +48,13 @@ export interface CustomDateRange {
   to: string;
 }
 
+export interface EntitySwitchTarget {
+  code: string;
+  name: string;
+  href: string;
+  startedAt: number;
+}
+
 interface UiState {
   sidebarCollapsed: boolean;
   activeNav: string | null;
@@ -66,6 +73,7 @@ interface UiState {
   saleJobId: string | null;
   dateRange: DateRangePreset;
   customDateRange: CustomDateRange | null;
+  entitySwitch: EntitySwitchTarget | null;
   toggleSidebar: () => void;
   setActiveNav: (route: string) => void;
   setNotifications: (notifications: Notification[]) => void;
@@ -89,6 +97,8 @@ interface UiState {
   closeModal: () => void;
   setDateRange: (range: DateRangePreset) => void;
   setCustomDateRange: (range: CustomDateRange | null) => void;
+  beginEntitySwitch: (target: Omit<EntitySwitchTarget, "startedAt">) => void;
+  clearEntitySwitch: () => void;
 }
 
 export const useUiStore = create<UiState>((set) => ({
@@ -107,6 +117,7 @@ export const useUiStore = create<UiState>((set) => ({
   saleJobId: null,
   dateRange: "last_7_days",
   customDateRange: null,
+  entitySwitch: null,
   toggleSidebar: () =>
     set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),
   setActiveNav: (route) => set({ activeNav: route }),
@@ -166,4 +177,9 @@ export const useUiStore = create<UiState>((set) => ({
       dateRange: customDateRange ? "custom" : "all_time",
       customDateRange,
     }),
+  beginEntitySwitch: (target) =>
+    set({
+      entitySwitch: { ...target, startedAt: Date.now() },
+    }),
+  clearEntitySwitch: () => set({ entitySwitch: null }),
 }));

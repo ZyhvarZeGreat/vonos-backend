@@ -124,7 +124,11 @@ export function useServerListPage<T extends { id: string }>({
       try {
         await extendCursorsTo(targetIndex, async (fetchCursor) => {
           const data = await fetchPage(fetchCursor, pageSize, sort);
-          if (!data.hasMore || data.items.length === 0) return null;
+          // `hasMore` should be reliable, but if the backend returns `hasMore=false`
+          // while still returning a full page, treat it as "likely more" and keep
+          // walking the cursor stack so forward page jumps don't bounce to page 1.
+          if (data.items.length === 0) return null;
+          if (!data.hasMore && data.items.length < pageSize) return null;
           const last = data.items[data.items.length - 1]!;
           return getCursor ? getCursor(last, sort) : last.id;
         });
