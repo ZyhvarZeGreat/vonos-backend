@@ -26,7 +26,69 @@ export function parseAppDate(value: string | Date | null | undefined): Date | nu
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
-/** e.g. 14 Jun 2026 */
+function ordinalDay(day: number): string {
+  const mod100 = day % 100;
+  if (mod100 >= 11 && mod100 <= 13) return `${day}th`;
+  switch (day % 10) {
+    case 1:
+      return `${day}st`;
+    case 2:
+      return `${day}nd`;
+    case 3:
+      return `${day}rd`;
+    default:
+      return `${day}th`;
+  }
+}
+
+function rawValueHasTime(value: string): boolean {
+  if (!value.includes("T")) return false;
+  const date = parseAppDate(value);
+  if (!date) return false;
+
+  const parts = new Intl.DateTimeFormat(APP_LOCALE, {
+    timeZone: APP_TIMEZONE,
+    hour: "numeric",
+    minute: "numeric",
+    second: "numeric",
+    hour12: false,
+  }).formatToParts(date);
+
+  const hour = Number(parts.find((part) => part.type === "hour")?.value ?? 0);
+  const minute = Number(parts.find((part) => part.type === "minute")?.value ?? 0);
+  const second = Number(parts.find((part) => part.type === "second")?.value ?? 0);
+  return hour !== 0 || minute !== 0 || second !== 0;
+}
+
+function formatAppDateParts(date: Date, withTime: boolean): string {
+  const parts = new Intl.DateTimeFormat(APP_LOCALE, {
+    timeZone: APP_TIMEZONE,
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    ...(withTime
+      ? { hour: "numeric", minute: "2-digit", hour12: true }
+      : {}),
+  }).formatToParts(date);
+
+  const dayNum = Number(parts.find((part) => part.type === "day")?.value ?? 0);
+  const month = parts.find((part) => part.type === "month")?.value ?? "";
+  const year = parts.find((part) => part.type === "year")?.value ?? "";
+  let formatted = `${ordinalDay(dayNum)} ${month} ${year}`;
+
+  if (withTime) {
+    const hour = parts.find((part) => part.type === "hour")?.value ?? "";
+    const minute = parts.find((part) => part.type === "minute")?.value ?? "";
+    const dayPeriod = (
+      parts.find((part) => part.type === "dayPeriod")?.value ?? ""
+    ).toLowerCase();
+    formatted += `, ${hour}:${minute} ${dayPeriod}`;
+  }
+
+  return formatted;
+}
+
+/** e.g. 16th July 2026 — includes time when the source value has a time component. */
 export function formatDate(value: string | Date | null | undefined): string {
   if (value == null || value === "") return "—";
   if (typeof value === "string" && !looksLikeMachineDate(value)) {
@@ -36,15 +98,11 @@ export function formatDate(value: string | Date | null | undefined): string {
   const date = parseAppDate(value);
   if (!date) return "—";
 
-  return new Intl.DateTimeFormat(APP_LOCALE, {
-    timeZone: APP_TIMEZONE,
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  }).format(date);
+  const withTime = typeof value === "string" && rawValueHasTime(value);
+  return formatAppDateParts(date, withTime);
 }
 
-/** e.g. 14 Jun 2026, 10:30 am */
+/** e.g. 16th July 2026, 7:28 am */
 export function formatDateTime(value: string | Date | null | undefined): string {
   if (value == null || value === "") return "—";
   if (typeof value === "string" && !looksLikeMachineDate(value)) {
@@ -54,18 +112,10 @@ export function formatDateTime(value: string | Date | null | undefined): string 
   const date = parseAppDate(value);
   if (!date) return "—";
 
-  return new Intl.DateTimeFormat(APP_LOCALE, {
-    timeZone: APP_TIMEZONE,
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-    hour12: true,
-  }).format(date);
+  return formatAppDateParts(date, true);
 }
 
-/** e.g. 10:30 am */
+/** e.g. 7:28 am */
 export function formatTime(value: string | Date | null | undefined): string {
   if (value == null || value === "") return "—";
 
@@ -77,5 +127,7 @@ export function formatTime(value: string | Date | null | undefined): string {
     hour: "numeric",
     minute: "2-digit",
     hour12: true,
-  }).format(date);
+  })
+    .format(date)
+    .toLowerCase();
 }

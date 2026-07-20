@@ -18,6 +18,7 @@ import { useRouteTenant, useTenantId } from "@/lib/hooks/useRouteTenant";
 import { useListPageFilters } from "@/lib/hooks/useListPageFilters";
 import { useListExport } from "@/lib/hooks/useListExport";
 import { formatCurrency } from "@/lib/utils/formatCurrency";
+import { formatDate } from "@/lib/utils/formatDate";
 import { uniqueFieldOptions } from "@/lib/utils/listFilters";
 import { movementListCursor } from "@/lib/utils/pagination";
 
@@ -90,7 +91,7 @@ export function MovementListView({
   const columns: ColumnConfig<StockMovementListRow>[] = useMemo(() => {
     const base: ColumnConfig<StockMovementListRow>[] = [
       { key: "reference", header: "Reference", render: (r) => <span className="font-medium">{r.reference}</span> },
-      { key: "date", header: "Date", sortValue: (r) => new Date(r.date).getTime() },
+      { key: "date", header: "Date", sortValue: (r) => new Date(r.date).getTime(), render: (r) => formatDate(r.date) },
       { key: "supplierOrDest", header: type === "inbound" ? "Supplier" : "Destination" },
     ];
     if (type === "inbound") {

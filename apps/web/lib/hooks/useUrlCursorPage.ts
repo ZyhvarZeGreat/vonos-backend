@@ -21,6 +21,7 @@ export function useUrlCursorPage(defaultPageSize = 10) {
     goToPage,
     reset,
     maxReachablePageIndex,
+    extendCursorsTo,
   } = useCursorPage();
 
   const skipUrlSyncRef = useRef(false);
@@ -73,6 +74,7 @@ export function useUrlCursorPage(defaultPageSize = 10) {
     reset: resetAll,
     setPageSize,
     maxReachablePageIndex,
+    extendCursorsTo,
     canSelectPage: (index: number) => index <= maxReachablePageIndex,
   };
 }

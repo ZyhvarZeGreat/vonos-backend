@@ -12,6 +12,11 @@ export interface CursorPageState {
   reset: () => void;
   /** Highest page index reachable with the current cursor stack. */
   maxReachablePageIndex: number;
+  /** Walk forward through cursors until `targetIndex` is reachable (or data ends). */
+  extendCursorsTo: (
+    targetIndex: number,
+    fetchNext: (cursor: string | undefined) => Promise<string | null>,
+  ) => Promise<number>;
 }
 
 /** Cursor stack for server-paginated lists (composite or id cursors). */
@@ -44,6 +49,30 @@ export function useCursorPage(): CursorPageState {
     setCursors([undefined]);
   }, []);
 
+  const extendCursorsTo = useCallback(
+    async (
+      targetIndex: number,
+      fetchNext: (cursor: string | undefined) => Promise<string | null>,
+    ): Promise<number> => {
+      if (targetIndex < 0) return 0;
+
+      let nextCursors = [...cursors];
+      while (nextCursors.length <= targetIndex) {
+        const fetchCursor = nextCursors[nextCursors.length - 1];
+        const next = await fetchNext(fetchCursor);
+        if (!next) break;
+        nextCursors = [...nextCursors, next];
+      }
+
+      setCursors(nextCursors);
+      const reachable = Math.max(0, nextCursors.length - 1);
+      const landing = Math.min(targetIndex, reachable);
+      setPageIndex(landing);
+      return landing;
+    },
+    [cursors],
+  );
+
   return {
     pageIndex,
     cursor,
@@ -53,5 +82,6 @@ export function useCursorPage(): CursorPageState {
     goToPage,
     reset,
     maxReachablePageIndex: Math.max(0, cursors.length - 1),
+    extendCursorsTo,
   };
 }

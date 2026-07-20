@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { ListPage, ListSortState } from "@/lib/api/fetchAllPages";
 import { DEFAULT_TABLE_PAGE_SIZE } from "@/lib/api/fetchAllPages";
@@ -58,10 +58,12 @@ export function useServerListPage<T extends { id: string }>({
     goToPage,
     reset,
     setPageSize,
-    canSelectPage,
+    maxReachablePageIndex,
+    extendCursorsTo,
     pageSize,
   } = useUrlCursorPage(defaultPageSize);
   const [sort, setSort] = useState<ListSortState | null>(defaultSort);
+  const [isJumping, setIsJumping] = useState(false);
 
   const filterKey = useMemo(
     () =>
@@ -97,6 +99,51 @@ export function useServerListPage<T extends { id: string }>({
     }
   };
 
+  const totalPages =
+    totalCount != null ? Math.max(1, Math.ceil(totalCount / pageSize)) : undefined;
+
+  const canSelectPage = useCallback(
+    (index: number) => {
+      if (index < 0) return false;
+      if (totalPages != null) return index < totalPages;
+      return index <= maxReachablePageIndex;
+    },
+    [maxReachablePageIndex, totalPages],
+  );
+
+  const jumpToPage = useCallback(
+    async (targetIndex: number) => {
+      if (targetIndex < 0) return;
+      if (targetIndex <= maxReachablePageIndex) {
+        goToPage(targetIndex);
+        return;
+      }
+      if (totalPages != null && targetIndex >= totalPages) return;
+
+      setIsJumping(true);
+      try {
+        await extendCursorsTo(targetIndex, async (fetchCursor) => {
+          const data = await fetchPage(fetchCursor, pageSize, sort);
+          if (!data.hasMore || data.items.length === 0) return null;
+          const last = data.items[data.items.length - 1]!;
+          return getCursor ? getCursor(last, sort) : last.id;
+        });
+      } finally {
+        setIsJumping(false);
+      }
+    },
+    [
+      extendCursorsTo,
+      fetchPage,
+      getCursor,
+      goToPage,
+      maxReachablePageIndex,
+      pageSize,
+      sort,
+      totalPages,
+    ],
+  );
+
   const handleSortChange = (sortBy: string, sortDir: ListSortState["sortDir"]) => {
     setSort({ sortBy, sortDir });
     reset();
@@ -111,13 +158,13 @@ export function useServerListPage<T extends { id: string }>({
     canGoPrev,
     goNext: handleNext,
     goPrev,
-    goToPage,
+    goToPage: jumpToPage,
     canSelectPage,
     setPageSize,
     sort,
     setSort: handleSortChange,
     isLoading: pageQuery.isLoading && items.length === 0,
-    isFetching: pageQuery.isFetching,
+    isFetching: pageQuery.isFetching || isJumping,
     error: pageQuery.error,
     reset,
   };

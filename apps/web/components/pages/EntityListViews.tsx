@@ -37,6 +37,7 @@ import { SaleRecordModal } from "@/components/organisms/SaleRecordModal";
 import { RequisitionRecordModal } from "@/components/organisms/RequisitionRecordModal";
 import { useListRecordModal } from "@/lib/hooks/useListRecordModal";
 import { formatCurrency, formatNumber } from "@/lib/utils/formatCurrency";
+import { formatDate } from "@/lib/utils/formatDate";
 import { useRecordNavigation } from "@/lib/hooks/useRecordNavigation";
 import { useRouteTenant, useTenantId } from "@/lib/hooks/useRouteTenant";
 import { useListPageFilters } from "@/lib/hooks/useListPageFilters";
@@ -152,7 +153,7 @@ export function SalesListView({
         return <StatusPill status={label} vocabulary="saleReturnStatus" />;
       },
     },
-    { key: "date", header: "Date", sortValue: (r) => new Date(r.date).getTime() },
+    { key: "date", header: "Date", sortValue: (r) => new Date(r.date).getTime(), render: (r) => formatDate(r.date) },
   ];
   return (
     <ListPageShell
@@ -185,7 +186,7 @@ export function SalesListView({
             { key: "itemCount", header: "Items" },
             { key: "total", header: "Total" },
             { key: "status", header: "Status" },
-            { key: "date", header: "Date" },
+            { key: "date", header: "Date", render: (row) => formatDate(row.date) },
           ],
           filtered.map((row) => ({
             reference: row.reference,
@@ -306,7 +307,7 @@ export function OrdersListView() {
       render: (r) => formatCurrency(r.total, r.currency),
     },
     { key: "status", header: "Status", render: (r) => <StatusPill status={r.status} vocabulary="orderStatus" /> },
-    { key: "createdAt", header: "Created", sortValue: (r) => new Date(r.createdAt).getTime() },
+    { key: "createdAt", header: "Created", sortValue: (r) => new Date(r.createdAt).getTime(), render: (r) => formatDate(r.createdAt) },
   ];
   return (
     <ListPageShell
@@ -463,7 +464,7 @@ export function CustomersListView() {
       render: (r) => formatCurrency(r.totalSellPaid ?? 0, "NGN"),
     },
     { key: "visitCount", header: "Visits", sortValue: (r) => r.visitCount },
-    { key: "createdAt", header: "Added On", sortValue: (r) => new Date(r.createdAt).getTime() },
+    { key: "createdAt", header: "Added On", sortValue: (r) => new Date(r.createdAt).getTime(), render: (r) => formatDate(r.createdAt) },
   ];
   return (
     <ListPageShell
@@ -576,7 +577,7 @@ export function ReturnsListView() {
       render: (r) => formatCurrency(r.amount, "NGN"),
     },
     { key: "status", header: "Status", render: (r) => <StatusPill status={r.status} vocabulary="saleReturnStatus" /> },
-    { key: "date", header: "Date", sortValue: (r) => new Date(r.date).getTime() },
+    { key: "date", header: "Date", sortValue: (r) => new Date(r.date).getTime(), render: (r) => formatDate(r.date) },
   ];
   return (
     <ListPageShell
@@ -872,7 +873,7 @@ export function RequisitionsListView() {
       header: "Lines",
       render: (r) => r.lines.length,
     },
-    { key: "createdAt", header: "Created", sortValue: (r) => new Date(r.createdAt).getTime() },
+    { key: "createdAt", header: "Created", sortValue: (r) => new Date(r.createdAt).getTime(), render: (r) => formatDate(r.createdAt) },
   ];
 
   return (
@@ -891,7 +892,7 @@ export function RequisitionsListView() {
             [
               { key: "reference", header: "Req #" },
               { key: "status", header: "Status" },
-              { key: "createdAt", header: "Created" },
+              { key: "createdAt", header: "Created", render: (row) => formatDate(row.createdAt) },
             ],
             rows.map((row) => ({
               reference: row.reference,
@@ -982,7 +983,7 @@ export function IncomingRequisitionsListView() {
       header: "Lines",
       render: (r) => r.lines.length,
     },
-    { key: "createdAt", header: "Created", sortValue: (r) => new Date(r.createdAt).getTime() },
+    { key: "createdAt", header: "Created", sortValue: (r) => new Date(r.createdAt).getTime(), render: (r) => formatDate(r.createdAt) },
   ];
 
   return (
@@ -1001,7 +1002,7 @@ export function IncomingRequisitionsListView() {
             [
               { key: "reference", header: "Req #" },
               { key: "status", header: "Status" },
-              { key: "createdAt", header: "Created" },
+              { key: "createdAt", header: "Created", render: (row) => formatDate(row.createdAt) },
             ],
             rows.map((row) => ({
               reference: row.reference,
