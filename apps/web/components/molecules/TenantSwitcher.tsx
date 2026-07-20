@@ -18,6 +18,7 @@ import { useAdminEntityStore } from "@/stores/adminEntityStore";
 import type { TenantCode } from "@/lib/registries/tenants";
 import { useQueryClient } from "@tanstack/react-query";
 import { prefetchAdminEntity } from "@/lib/admin/prefetchAdminEntity";
+import { prefetchRoute } from "@/lib/prefetch/routePrefetchRegistry";
 import { dateRangePresetToApiBounds } from "@/lib/utils/dateRange";
 import { useUiStore } from "@/stores/uiStore";
 
@@ -50,19 +51,18 @@ export function TenantSwitcher({
 
   const warmAdminEntity = (code: TenantCode) => {
     const href = resolveEntitySwitchPath(code, pathname);
-    const tenant = getTenantByCode(code);
+    const target = getTenantByCode(code);
     const bounds = dateRangePresetToApiBounds(dateRange, new Date(), customDateRange);
     prefetchRoute(queryClient, {
       pathname: href,
       tenantCode: code,
-      tenantId: tenant?.tenantId,
+      tenantId: target?.tenantId,
       dateBounds: bounds,
     });
     if (!onAdmin) return;
     const key = `${pathname}:${code}`;
     if (warmedRef.current.has(key)) return;
     warmedRef.current.add(key);
-    const bounds = dateRangePresetToApiBounds(dateRange, new Date(), customDateRange);
     void prefetchAdminEntity(queryClient, {
       code,
       pathname,
