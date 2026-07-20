@@ -9,6 +9,7 @@ import type {
   UpdateReceiptPrinterInput,
 } from '@vonos/types';
 import { TenantDbService } from '../../common/prisma/tenant-db.service';
+import type { TenantScopedPrisma } from '../../common/prisma/prisma.service';
 import { toIso } from '../../common/utils/serializers';
 
 const DEFAULT_LAYOUTS = [
@@ -21,12 +22,17 @@ const DEFAULT_LAYOUTS = [
 export class InvoiceSettingsService {
   constructor(private readonly tenantDb: TenantDbService) {}
 
-  private async ensureDefaults(tenantId: string): Promise<void> {
-    const layoutCount = await this.tenantDb.db.invoiceLayout.count({
-      where: { tenantId, deletedAt: null },
-    });
+  private async seedDefaultsIfEmpty(
+    tx: Parameters<Parameters<TenantScopedPrisma['$transaction']>[0]>[0],
+    tenantId: string,
+  ): Promise<void> {
+    const [layoutCount, schemeCount] = await Promise.all([
+      tx.invoiceLayout.count({ where: { tenantId, deletedAt: null } }),
+      tx.invoiceScheme.count({ where: { tenantId, deletedAt: null } }),
+    ]);
+
     if (layoutCount === 0) {
-      await this.tenantDb.db.invoiceLayout.createMany({
+      await tx.invoiceLayout.createMany({
         data: DEFAULT_LAYOUTS.map((layout, index) => ({
           tenantId,
           name: layout.name,
@@ -36,11 +42,8 @@ export class InvoiceSettingsService {
       });
     }
 
-    const schemeCount = await this.tenantDb.db.invoiceScheme.count({
-      where: { tenantId, deletedAt: null },
-    });
     if (schemeCount === 0) {
-      await this.tenantDb.db.invoiceScheme.create({
+      await tx.invoiceScheme.create({
         data: {
           tenantId,
           name: 'Default',
@@ -54,24 +57,30 @@ export class InvoiceSettingsService {
     }
   }
 
+  private async ensureDefaults(tenantId: string): Promise<void> {
+    await this.tenantDb.db.$transaction(async (tx) => {
+      await this.seedDefaultsIfEmpty(tx, tenantId);
+    });
+  }
+
+  private async loadSettingsRows(tenantId: string) {
+    return this.tenantDb.db.$transaction(async (tx) => {
+      await this.seedDefaultsIfEmpty(tx, tenantId);
+
+      const listOrder = [{ isDefault: 'desc' as const }, { name: 'asc' as const }];
+      const where = { tenantId, deletedAt: null };
+
+      const layouts = await tx.invoiceLayout.findMany({ where, orderBy: listOrder });
+      const schemes = await tx.invoiceScheme.findMany({ where, orderBy: listOrder });
+      const printers = await tx.receiptPrinter.findMany({ where, orderBy: listOrder });
+
+      return { layouts, schemes, printers };
+    });
+  }
+
   async getSettings(): Promise<InvoiceSettings> {
     const tenantId = this.tenantDb.requireTenantId();
-    await this.ensureDefaults(tenantId);
-
-    const [layouts, schemes, printers] = await Promise.all([
-      this.tenantDb.db.invoiceLayout.findMany({
-        where: { tenantId, deletedAt: null },
-        orderBy: [{ isDefault: 'desc' }, { name: 'asc' }],
-      }),
-      this.tenantDb.db.invoiceScheme.findMany({
-        where: { tenantId, deletedAt: null },
-        orderBy: [{ isDefault: 'desc' }, { name: 'asc' }],
-      }),
-      this.tenantDb.db.receiptPrinter.findMany({
-        where: { tenantId, deletedAt: null },
-        orderBy: [{ isDefault: 'desc' }, { name: 'asc' }],
-      }),
-    ]);
+    const { layouts, schemes, printers } = await this.loadSettingsRows(tenantId);
 
     const defaultLayout = layouts.find((row) => row.isDefault) ?? layouts[0];
     const defaultScheme = schemes.find((row) => row.isDefault) ?? schemes[0];

@@ -3,7 +3,8 @@ import { PrismaClient } from '@prisma/client';
 
 const CONNECT_MAX_ATTEMPTS = 5;
 const CONNECT_RETRY_DELAY_MS = 2_000;
-const DEFAULT_CONNECTION_LIMIT = 10;
+/** Dev/local default; raise via PRISMA_CONNECTION_LIMIT if P2024 persists under load. */
+const DEFAULT_CONNECTION_LIMIT = 20;
 const DEFAULT_POOL_TIMEOUT_S = 30;
 
 function resolveDatabaseUrl(url?: string): string | undefined {

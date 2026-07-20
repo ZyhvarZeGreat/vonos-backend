@@ -10,6 +10,8 @@ export interface Order {
   status: string;
   itemCount: number;
   createdAt: string;
+  /** Source sale date — used for cursor pagination (orders are backed by sales). */
+  saleDate?: string;
 }
 
 export interface SaleReturnRow {

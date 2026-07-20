@@ -22,6 +22,7 @@ import { applyDailyFinanceDelta } from '../../common/utils/dailyFinanceRollup';
 import { AuditService } from '../audit/audit.service';
 import { InvoiceHubService } from '../invoices/invoice-hub.service';
 import { buildCompositeCursorQuery } from '../../common/utils/pagination';
+import type { PaginatedList } from '../../common/utils/paginatedList';
 import { resolveListSort } from '../../common/utils/listSort';
 import { computeStockStatus } from '../../common/utils/stockQuantity';
 import { adjustItemLocationStock } from '../../common/utils/itemLocationStock';
@@ -128,7 +129,7 @@ export class SalesService {
     }
   }
 
-  async list(filters: SaleFilters): Promise<Sale[]> {
+  async list(filters: SaleFilters): Promise<PaginatedList<Sale>> {
     const startedAt = Date.now();
     const tenantId = this.tenantDb.requireTenantId();
     const dateFilter =
@@ -165,50 +166,53 @@ export class SalesService {
     const searchLooksLikeRef =
       Boolean(search) && /^[A-Za-z0-9._-]{2,}$/.test(search!);
 
-    const rows = await this.tenantDb.db.sale.findMany({
+    const baseWhere = {
+      tenantId,
+      deletedAt: null,
+      ...saleStatusWhereClause(filters),
+      ...dateFilter,
+      ...(filters.locationCode ? { locationCode: filters.locationCode } : {}),
+      ...(filters.customerId ? { customerId: filters.customerId } : {}),
+      ...(filters.jobId ? { jobId: filters.jobId } : {}),
+      ...(filters.paymentStatus
+        ? { paymentStatus: filters.paymentStatus }
+        : {}),
+      ...(filters.paymentMethod
+        ? { paymentMethod: filters.paymentMethod }
+        : {}),
+      ...(filters.cleanerUserId
+        ? { cleanerUserId: filters.cleanerUserId }
+        : {}),
+      ...(filters.serviceStaffEmployeeId
+        ? { serviceStaffEmployeeId: filters.serviceStaffEmployeeId }
+        : {}),
+      ...(filters.createdByUserId
+        ? { createdByUserId: filters.createdByUserId }
+        : {}),
+      ...(search
+        ? searchLooksLikeRef
+          ? {
+              reference: { contains: search, mode: 'insensitive' as const },
+            }
+          : {
+              OR: [
+                {
+                  reference: { contains: search, mode: 'insensitive' as const },
+                },
+                {
+                  customer: {
+                    name: { contains: search, mode: 'insensitive' as const },
+                  },
+                },
+              ],
+            }
+        : {}),
+    };
+
+    const [rows, totalCount] = await Promise.all([
+      this.tenantDb.db.sale.findMany({
       where: {
-        tenantId,
-        deletedAt: null,
-        ...saleStatusWhereClause(filters),
-        ...dateFilter,
-        ...(filters.locationCode
-          ? { locationCode: filters.locationCode }
-          : {}),
-        ...(filters.customerId ? { customerId: filters.customerId } : {}),
-        ...(filters.jobId ? { jobId: filters.jobId } : {}),
-        ...(filters.paymentStatus
-          ? { paymentStatus: filters.paymentStatus }
-          : {}),
-        ...(filters.paymentMethod
-          ? { paymentMethod: filters.paymentMethod }
-          : {}),
-        ...(filters.cleanerUserId
-          ? { cleanerUserId: filters.cleanerUserId }
-          : {}),
-        ...(filters.serviceStaffEmployeeId
-          ? { serviceStaffEmployeeId: filters.serviceStaffEmployeeId }
-          : {}),
-        ...(filters.createdByUserId
-          ? { createdByUserId: filters.createdByUserId }
-          : {}),
-        ...(search
-          ? searchLooksLikeRef
-            ? {
-                reference: { contains: search, mode: 'insensitive' },
-              }
-            : {
-                OR: [
-                  {
-                    reference: { contains: search, mode: 'insensitive' },
-                  },
-                  {
-                    customer: {
-                      name: { contains: search, mode: 'insensitive' },
-                    },
-                  },
-                ],
-              }
-          : {}),
+        ...baseWhere,
         ...(pagination.where ?? {}),
       },
       select: {
@@ -245,7 +249,9 @@ export class SalesService {
       },
       orderBy: [{ [sort.sortField]: sort.sortDir }, { id: sort.sortDir }],
       take: pagination.take,
-    });
+    }),
+      this.tenantDb.db.sale.count({ where: baseWhere }),
+    ]);
 
     const ms = Date.now() - startedAt;
     if (ms > 500) {
@@ -254,7 +260,10 @@ export class SalesService {
       );
     }
 
-    return rows.map((row) => this.toSale(row));
+    return {
+      items: rows.map((row) => this.toSale(row)),
+      totalCount,
+    };
   }
 
   async getById(id: string): Promise<SaleDetail> {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback } from "react";
+import { useCallback, useRef } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 function parsePositiveInt(value: string | null, fallback: number): number {
@@ -21,11 +21,18 @@ export function useUrlPageParams(defaultPageSize = 10) {
     defaultPageSize,
   );
 
+  const pageIndexRef = useRef(pageIndex);
+  pageIndexRef.current = pageIndex;
+  const pageSizeRef = useRef(pageSize);
+  pageSizeRef.current = pageSize;
+  const searchParamsRef = useRef(searchParams);
+  searchParamsRef.current = searchParams;
+
   const commit = useCallback(
     (next: { pageIndex?: number; pageSize?: number }) => {
-      const params = new URLSearchParams(searchParams.toString());
-      const nextPageIndex = next.pageIndex ?? pageIndex;
-      const nextPageSize = next.pageSize ?? pageSize;
+      const params = new URLSearchParams(searchParamsRef.current.toString());
+      const nextPageIndex = next.pageIndex ?? pageIndexRef.current;
+      const nextPageSize = next.pageSize ?? pageSizeRef.current;
 
       if (nextPageIndex <= 0) params.delete("page");
       else params.set("page", String(nextPageIndex + 1));
@@ -36,7 +43,7 @@ export function useUrlPageParams(defaultPageSize = 10) {
       const query = params.toString();
       router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
     },
-    [defaultPageSize, pageIndex, pageSize, pathname, router, searchParams],
+    [defaultPageSize, pathname, router],
   );
 
   const setPageIndex = useCallback(

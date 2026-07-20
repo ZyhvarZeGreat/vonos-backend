@@ -14,7 +14,7 @@ async function fetchSalesRaw(
   filters: SaleFilters | undefined,
   cursor?: string,
   limit?: number,
-): Promise<Sale[]> {
+): Promise<Sale[] | { items: Sale[]; totalCount: number }> {
   const params = new URLSearchParams();
   if (filters?.search) params.set("search", filters.search);
   if (filters?.status) params.set("status", filters.status);
@@ -71,7 +71,13 @@ export async function getSales(
   filters?: SaleFilters,
 ): Promise<Sale[]> {
   if (filters?.cursor || filters?.limit) {
-    return fetchSalesRaw(tenantId, filters, filters.cursor, filters.limit);
+    const payload = await fetchSalesRaw(
+      tenantId,
+      filters,
+      filters.cursor,
+      filters.limit,
+    );
+    return Array.isArray(payload) ? payload : payload.items;
   }
 
   return fetchFirstPage(

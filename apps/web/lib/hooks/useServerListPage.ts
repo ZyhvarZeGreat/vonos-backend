@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { ListPage, ListSortState } from "@/lib/api/fetchAllPages";
 import { DEFAULT_TABLE_PAGE_SIZE } from "@/lib/api/fetchAllPages";
@@ -51,6 +51,7 @@ export function useServerListPage<T extends { id: string }>({
   const debouncedSearch = useDebouncedValue(search.trim(), debounceSearchMs);
   const {
     pageIndex,
+    urlPageIndex,
     cursor,
     canGoPrev,
     goNext,
@@ -58,6 +59,7 @@ export function useServerListPage<T extends { id: string }>({
     goToPage,
     reset,
     setPageSize,
+    setUrlPageIndex,
     maxReachablePageIndex,
     extendCursorsTo,
     pageSize,
@@ -76,12 +78,36 @@ export function useServerListPage<T extends { id: string }>({
     [filters, debouncedSearch, sort],
   );
 
+  const resetRef = useRef(reset);
+  resetRef.current = reset;
+
+  const didMountRef = useRef(false);
+
   useEffect(() => {
-    reset();
-  }, [filterKey, pageSize, reset]);
+    // On first mount we must respect the URL deep-link (e.g. `?page=4`).
+    // Resetting here clears the cursor stack and also forces the URL back to page 1.
+    if (!didMountRef.current) {
+      didMountRef.current = true;
+      return;
+    }
+    resetRef.current();
+  }, [filterKey, pageSize]);
+
+  const walkCursor = useCallback(
+    async (fetchCursor: string | undefined) => {
+      const data = await fetchPage(fetchCursor, pageSize, sort);
+      if (data.items.length === 0) return null;
+      if (!data.hasMore && data.items.length < pageSize) return null;
+      const last = data.items[data.items.length - 1]!;
+      return getCursor ? getCursor(last, sort) : last.id;
+    },
+    [fetchPage, getCursor, pageSize, sort],
+  );
 
   const pageQuery = useQuery({
-    queryKey: [...queryKey, filterKey, cursor, pageSize],
+    // Include `pageIndex` so React Query refetches even if `cursor` lags
+    // during a jump/URL-sync transition.
+    queryKey: [...queryKey, filterKey, pageIndex, cursor, pageSize, sort],
     queryFn: () => fetchPage(cursor, pageSize, sort),
     enabled,
     refetchInterval,
@@ -116,37 +142,54 @@ export function useServerListPage<T extends { id: string }>({
       if (targetIndex < 0) return;
       if (targetIndex <= maxReachablePageIndex) {
         goToPage(targetIndex);
+        if (targetIndex !== urlPageIndex) {
+          setUrlPageIndex(targetIndex);
+        }
         return;
       }
       if (totalPages != null && targetIndex >= totalPages) return;
 
       setIsJumping(true);
       try {
-        await extendCursorsTo(targetIndex, async (fetchCursor) => {
-          const data = await fetchPage(fetchCursor, pageSize, sort);
-          // `hasMore` should be reliable, but if the backend returns `hasMore=false`
-          // while still returning a full page, treat it as "likely more" and keep
-          // walking the cursor stack so forward page jumps don't bounce to page 1.
-          if (data.items.length === 0) return null;
-          if (!data.hasMore && data.items.length < pageSize) return null;
-          const last = data.items[data.items.length - 1]!;
-          return getCursor ? getCursor(last, sort) : last.id;
-        });
+        const landing = await extendCursorsTo(targetIndex, walkCursor);
+        if (landing !== urlPageIndex) {
+          setUrlPageIndex(landing);
+        }
       } finally {
         setIsJumping(false);
       }
     },
     [
       extendCursorsTo,
-      fetchPage,
-      getCursor,
       goToPage,
       maxReachablePageIndex,
-      pageSize,
-      sort,
+      setUrlPageIndex,
       totalPages,
+      urlPageIndex,
+      walkCursor,
     ],
   );
+
+  const jumpToPageRef = useRef(jumpToPage);
+  jumpToPageRef.current = jumpToPage;
+
+  // Deep-link / refresh: URL page exceeds cursor stack — walk forward once data is known.
+  useEffect(() => {
+    if (!enabled || isJumping) return;
+    if (urlPageIndex <= maxReachablePageIndex) return;
+    if (totalPages != null && urlPageIndex >= totalPages) {
+      setUrlPageIndex(Math.max(0, totalPages - 1));
+      return;
+    }
+    void jumpToPageRef.current(urlPageIndex);
+  }, [
+    enabled,
+    isJumping,
+    maxReachablePageIndex,
+    setUrlPageIndex,
+    totalPages,
+    urlPageIndex,
+  ]);
 
   const handleSortChange = (sortBy: string, sortDir: ListSortState["sortDir"]) => {
     setSort({ sortBy, sortDir });

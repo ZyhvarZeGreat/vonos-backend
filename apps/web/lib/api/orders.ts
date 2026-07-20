@@ -21,6 +21,7 @@ export function saleToOrder(sale: Sale): Order {
     status: ORDER_STATUS_MAP[sale.status] ?? "New",
     itemCount: sale.itemCount,
     createdAt: sale.createdAt,
+    saleDate: sale.date,
   };
 }
 

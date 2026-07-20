@@ -14,7 +14,7 @@ import {
 import { createCustomer, getCustomerContact, getCustomers } from "@/lib/api/customers";
 import { getJob, getJobs } from "@/lib/api/jobs";
 import { createSale } from "@/lib/api/sales";
-import { getPaymentAccounts } from "@/lib/api/paymentAccounts";
+import { getPaymentAccountsPage } from "@/lib/api/paymentAccounts";
 import { getServiceStaff } from "@/lib/api/hrm";
 import { TYPEAHEAD_PAGE_SIZE } from "@/lib/api/fetchAllPages";
 import {
@@ -223,14 +223,17 @@ export function AddSaleForm({
 
   const loadPaymentAccountOptions = useCallback(
     async (query: string) => {
-      const rows = await getPaymentAccounts(tenantId);
-      const q = query.trim().toLowerCase();
-      const filtered = q
-        ? rows.filter((row) => row.name.toLowerCase().includes(q))
-        : rows;
+      const q = query.trim();
+      const page = await getPaymentAccountsPage(
+        tenantId,
+        undefined,
+        TYPEAHEAD_PAGE_SIZE,
+        q ? { search: q } : undefined,
+      );
+      const rows = page.items;
       return [
         { value: "", label: "Select payment account" },
-        ...filtered.map((row) => ({
+        ...rows.map((row) => ({
           value: row.id,
           label: row.name,
         })),

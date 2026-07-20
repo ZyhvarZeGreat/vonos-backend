@@ -89,6 +89,7 @@ export function SalesListView({
   const {
     items: sales,
     hasMore,
+    totalCount,
     pageIndex,
     pageSize,
     canGoPrev,
@@ -221,6 +222,7 @@ export function SalesListView({
           onPageSizeChange={setPageSize}
           onPageSelect={goToPage}
           canSelectPage={canSelectPage}
+          totalCount={totalCount}
           isLoading={isLoading}
           isFetching={isFetching}
           error={error ? "Failed to load sales" : null}
@@ -262,6 +264,7 @@ export function OrdersListView() {
   const {
     items: orders,
     hasMore,
+    totalCount,
     pageIndex,
     pageSize,
     canGoPrev,
@@ -280,6 +283,8 @@ export function OrdersListView() {
     filters: apiFilters,
     search,
     fetchPage: (cursor, limit) => getOrdersPage(tenantId!, apiFilters, cursor, limit),
+    getCursor: (row) =>
+      saleListCursor({ id: row.id, date: row.saleDate ?? row.createdAt }),
   });
 
   const filtered = useMemo(() => {
@@ -340,6 +345,7 @@ export function OrdersListView() {
         onPageSizeChange={setPageSize}
         onPageSelect={goToPage}
         canSelectPage={canSelectPage}
+        totalCount={totalCount}
         isLoading={isLoading}
         isFetching={isFetching}
         error={error ? "Failed to load orders" : null}
@@ -833,6 +839,7 @@ export function RequisitionsListView() {
   const {
     items: requisitions,
     hasMore,
+    totalCount,
     pageIndex,
     pageSize,
     canGoPrev,
@@ -915,6 +922,7 @@ export function RequisitionsListView() {
           onPageSizeChange={setPageSize}
           onPageSelect={goToPage}
           canSelectPage={canSelectPage}
+          totalCount={totalCount}
           isLoading={isLoading}
           isFetching={isFetching}
           error={error ? "Failed to load requisitions" : null}
@@ -944,6 +952,7 @@ export function IncomingRequisitionsListView() {
   const {
     items: requisitions,
     hasMore,
+    totalCount,
     pageIndex,
     pageSize,
     canGoPrev,
@@ -1025,6 +1034,7 @@ export function IncomingRequisitionsListView() {
           onPageSizeChange={setPageSize}
           onPageSelect={goToPage}
           canSelectPage={canSelectPage}
+          totalCount={totalCount}
           isLoading={isLoading}
           isFetching={isFetching}
           error={error ? "Failed to load incoming requisitions" : null}
@@ -1067,6 +1077,7 @@ export function MenuItemsListView() {
   const {
     items,
     hasMore,
+    totalCount,
     pageIndex,
     pageSize,
     canGoPrev,
@@ -1153,6 +1164,7 @@ export function MenuItemsListView() {
           onPageSizeChange={setPageSize}
           onPageSelect={goToPage}
           canSelectPage={canSelectPage}
+          totalCount={totalCount}
           isLoading={isLoading}
           isFetching={isFetching}
           error={error ? "Failed to load menu items" : null}

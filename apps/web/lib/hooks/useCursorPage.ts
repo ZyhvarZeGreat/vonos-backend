@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 
 export interface CursorPageState {
   pageIndex: number;
@@ -23,6 +23,8 @@ export interface CursorPageState {
 export function useCursorPage(): CursorPageState {
   const [pageIndex, setPageIndex] = useState(0);
   const [cursors, setCursors] = useState<(string | undefined)[]>([undefined]);
+  const cursorsRef = useRef(cursors);
+  cursorsRef.current = cursors;
 
   const cursor = cursors[pageIndex];
 
@@ -39,10 +41,10 @@ export function useCursorPage(): CursorPageState {
 
   const goToPage = useCallback((index: number) => {
     setPageIndex((current) => {
-      if (index < 0 || index >= cursors.length) return current;
+      if (index < 0 || index >= cursorsRef.current.length) return current;
       return index;
     });
-  }, [cursors.length]);
+  }, []);
 
   const reset = useCallback(() => {
     setPageIndex(0);
@@ -56,7 +58,7 @@ export function useCursorPage(): CursorPageState {
     ): Promise<number> => {
       if (targetIndex < 0) return 0;
 
-      let nextCursors = [...cursors];
+      let nextCursors = [...cursorsRef.current];
       while (nextCursors.length <= targetIndex) {
         const fetchCursor = nextCursors[nextCursors.length - 1];
         const next = await fetchNext(fetchCursor);
@@ -64,13 +66,15 @@ export function useCursorPage(): CursorPageState {
         nextCursors = [...nextCursors, next];
       }
 
-      setCursors(nextCursors);
       const reachable = Math.max(0, nextCursors.length - 1);
       const landing = Math.min(targetIndex, reachable);
+
+      // Batch cursor stack + page index so clamp effects never see a mismatch.
+      setCursors(nextCursors);
       setPageIndex(landing);
       return landing;
     },
-    [cursors],
+    [],
   );
 
   return {
