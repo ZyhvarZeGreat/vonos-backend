@@ -6,7 +6,6 @@ import { ArrowRight, Lock, Mail } from "lucide-react";
 import { Button } from "@/components/atoms/Button";
 import { Input } from "@/components/atoms/Input";
 import { AuthFooterLink, AuthTemplate } from "@/components/templates/AuthTemplate";
-import { Spinner } from "@/components/atoms/Spinner";
 import { isTwoFactorChallenge, login, verifyTwoFactor } from "@/lib/api/auth";
 import { getPostLoginPath } from "@/lib/utils/authRedirect";
 import { useAuthStore } from "@/stores/authStore";
@@ -116,12 +115,7 @@ export function LoginForm() {
           </button>
         }
       >
-        <form onSubmit={handleVerifyTotp} className="relative space-y-5">
-          {loading ? (
-            <div className="absolute inset-0 z-10 flex items-center justify-center rounded-xl bg-card/70 backdrop-blur-[1px]">
-              <Spinner size="lg" className="text-[var(--auth-blue,#0b5ed7)]" />
-            </div>
-          ) : null}
+        <form onSubmit={handleVerifyTotp} className="space-y-5">
           <Input
             label="AUTHENTICATION CODE"
             inputMode="numeric"
@@ -149,12 +143,7 @@ export function LoginForm() {
 
   return (
     <AuthTemplate title="Dashboard Log In" subtitle="Use the email and password from your invitation">
-      <form onSubmit={handleSubmit} className="relative space-y-5">
-        {loading ? (
-          <div className="absolute inset-0 z-10 flex items-center justify-center rounded-xl bg-card/70 backdrop-blur-[1px]">
-            <Spinner size="lg" className="text-[var(--auth-blue,#0b5ed7)]" />
-          </div>
-        ) : null}
+      <form onSubmit={handleSubmit} className="space-y-5">
         <div className="relative">
           <Input
             label="EMAIL ADDRESS"
