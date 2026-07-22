@@ -29,11 +29,10 @@ import { getAllSalonServices, getSalonServicesPage } from "@/lib/api/salonServic
 import { getAllVehicles, createVehicle, getVehiclesPage } from "@/lib/api/vehicles";
 import { getItemsPage } from "@/lib/api/items";
 import { useListExport } from "@/lib/hooks/useListExport";
+import { useIsVaHq6 } from "@/lib/hooks/useIsVaHq6";
 import { Hq6SalesListView } from "@/components/pages/Hq6SalesListView";
 import { Hq6CustomersListView } from "@/components/pages/Hq6CustomersListView";
 import { Hq6ReturnsListView } from "@/components/pages/Hq6ReturnsListView";
-import { useIsVaHq6 } from "@/lib/hooks/useIsVaHq6";
-import { cn } from "@/lib/utils/cn";
 import type { Order, MenuItemRow, SaleReturnRow } from "@/lib/types/entityRows";
 import type { Customer, Item, Requisition, Sale, SaleReturnStatus, SaleStatus, SalonService, StockStatus, Vehicle } from "@vonos/types";
 import { ContactLedgerModal, useContactLedgerQuery } from "@/components/organisms/ContactLedgerModal";
@@ -54,7 +53,7 @@ import {
   uniqueFieldOptions,
 } from "@/lib/utils/listFilters";
 import { ItemLocationCell } from "@/components/molecules/ItemLocationCell";
-import { itemMatchesLocationFilter, locationFilterOptions } from "@/lib/utils/locationLabels";
+import { locationFilterOptions } from "@/lib/utils/locationLabels";
 import { customerListCursor, saleListCursor } from "@/lib/utils/pagination";
 import { useUiStore } from "@/stores/uiStore";
 import { useTenantStore } from "@/stores/tenantStore";
@@ -87,6 +86,24 @@ export function SalesListView({
     );
   }
 
+  return (
+    <SalesListViewBody
+      saleStatus={saleStatus}
+      shipmentsOnly={shipmentsOnly}
+      tabLabel={tabLabel}
+      hidePrimaryAction={hidePrimaryAction}
+      slug={slug}
+    />
+  );
+}
+
+function SalesListViewBody({
+  saleStatus,
+  shipmentsOnly,
+  tabLabel = "All Sales",
+  hidePrimaryAction = false,
+  slug = "sales",
+}: SalesListViewProps) {
   const { recordId, openRecord, closeRecord } = useListRecordModal();
   const tenantId = useTenantId();
   const openAddSaleModal = useUiStore((state) => state.openAddSaleModal);

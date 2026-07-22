@@ -362,7 +362,7 @@ export function JobQuoteInvoicePanel({ job, onJobChange }: JobQuoteInvoicePanelP
             <button
               type="button"
               onClick={() => {
-                if (!tenantCode) return;
+                if (!tenantCode || !job.saleId) return;
                 router.push(saleRecordPath(tenantCode, job.saleId));
               }}
               className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-[var(--color-surface-nav-hover)]"

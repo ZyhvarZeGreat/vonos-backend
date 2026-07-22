@@ -26,7 +26,10 @@ function EntityOverviewView({ tenantCode }: OverviewProps) {
   if (isHq6) {
     return <Hq6OverviewView />;
   }
+  return <EntityOverviewViewBody tenantCode={tenantCode} />;
+}
 
+function EntityOverviewViewBody({ tenantCode }: OverviewProps) {
   const { tenantId } = useRouteTenant();
   const { items: activityItems, isLoading: activityLoading } =
     useRecentActivityFeed(tenantId);
@@ -63,11 +66,9 @@ function EntityOverviewView({ tenantCode }: OverviewProps) {
   return (
     <DashboardTemplate
       beforeContent={
-        isHq6 ? undefined : (
-          <div className="flex flex-wrap items-center justify-end gap-3">
-            <DateRangeDropdown value={dateRange} onChange={setDateRange} />
-          </div>
-        )
+        <div className="flex flex-wrap items-center justify-end gap-3">
+          <DateRangeDropdown value={dateRange} onChange={setDateRange} />
+        </div>
       }
       kpiRow={
         <OverviewLiveBody
