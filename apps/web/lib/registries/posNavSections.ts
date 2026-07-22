@@ -1,6 +1,7 @@
 import type { NavItem, TenantConfig } from "@vonos/types";
 import { reportsForArchetype } from "@vonos/types";
 import type { NavSection } from "@/components/organisms/Sidebar";
+import { isHq6Tenant } from "@/lib/utils/isHq6Tenant";
 
 function r(code: string, slug: string): string {
   return `/${code}/${slug}`;
@@ -10,22 +11,30 @@ function has(config: TenantConfig, moduleId: string): boolean {
   return config.enabledModules.includes(moduleId);
 }
 
-function isVaHq6(config: TenantConfig): boolean {
-  return config.code === "VA";
+function isHq6(config: TenantConfig): boolean {
+  return isHq6Tenant(config.code);
 }
 
-/** Primary sidebar links for job- and appointment-centric tenants. */
+/** Primary sidebar links — HQ6 Home is a single top-level link. */
 function homeItems(code: string, config: TenantConfig): NavItem[] {
-  // VA mirrors HQ6: Home is a single top-level link (no Jobs/Vehicles/Requisitions).
-  if (isVaHq6(config)) {
+  if (isHq6(config)) {
     return [
       { label: "Home", icon: "home", route: r(code, "overview"), pageType: "dashboard" },
     ];
   }
 
-  const items: NavItem[] = [
+  return [
     { label: "Overview", icon: "layout-dashboard", route: r(code, "overview"), pageType: "dashboard" },
+    ...operationsItems(code, config),
   ];
+}
+
+/**
+ * Archetype-only routes kept under Operations so HQ6 Home stays a single link
+ * without deleting Jobs / Appointments / Tables.
+ */
+function operationsItems(code: string, config: TenantConfig): NavItem[] {
+  const items: NavItem[] = [];
 
   if (config.archetype === "job") {
     if (has(config, "jobs")) {
@@ -76,6 +85,15 @@ function homeItems(code: string, config: TenantConfig): NavItem[] {
       icon: "clock",
       route: r(code, "stylist-schedule"),
       pageType: "form",
+    });
+  }
+
+  if (code === "VC" && has(config, "tables")) {
+    items.push({
+      label: config.terminology?.table ?? "Tables",
+      icon: "grid-3x3",
+      route: r(code, "tables"),
+      pageType: "list",
     });
   }
 
@@ -244,7 +262,7 @@ function expensesItems(code: string): NavItem[] {
 
 function paymentAccountItems(code: string, config: TenantConfig): NavItem[] {
   // HQ6 Payment Accounts has no Invoices link.
-  const invoices: NavItem[] = isVaHq6(config)
+  const invoices: NavItem[] = isHq6(config)
     ? []
     : [{ label: "Invoices", icon: "file-text", route: r(code, "invoices"), pageType: "list" }];
   return [
@@ -269,7 +287,7 @@ function reportsItems(code: string, config: TenantConfig): NavItem[] {
       pageType: "dashboard" as const,
     }));
   // HQ6 has no "All Reports" hub — only the individual report links.
-  if (isVaHq6(config)) return reports;
+  if (isHq6(config)) return reports;
   const hub: NavItem = {
     label: "All Reports",
     icon: "pie-chart",
@@ -300,18 +318,33 @@ function settingsItems(code: string): NavItem[] {
  * Home > User Management > Contacts > Products > Purchases > Sell >
  * Expenses > Payment Accounts > Reports > Orders > Notification Templates >
  * Settings > HRM > Essentials
+ *
+ * Plus an Operations section for archetype-only routes when HQ6 is active.
  */
 export function posNavSectionsForConfig(config: TenantConfig): NavSection[] {
   const code = config.code ?? "VW";
-  const va = isVaHq6(config);
+  const hq6 = isHq6(config);
   const sections: NavSection[] = [];
 
-  // 1. Home (+ workshop / appointment primary links by archetype — not on VA)
+  // 1. Home
   sections.push({
     label: "Home",
     icon: "home",
     items: homeItems(code, config),
   });
+
+  // 1b. Operations (archetype extras when HQ6 Home is a single link)
+  if (hq6) {
+    const operations = operationsItems(code, config);
+    if (operations.length > 0) {
+      sections.push({
+        label: "Operations",
+        icon: "wrench",
+        collapsible: true,
+        items: operations,
+      });
+    }
+  }
 
   // 2. User Management
   sections.push({
@@ -378,8 +411,8 @@ export function posNavSectionsForConfig(config: TenantConfig): NavSection[] {
     });
   }
 
-  // 10–11. VA-only flat links that exist on HQ6 but not other tenants' menus
-  if (va) {
+  // 10–11. HQ6 flat links
+  if (hq6) {
     sections.push({
       label: "Orders",
       icon: "list",
@@ -407,8 +440,8 @@ export function posNavSectionsForConfig(config: TenantConfig): NavSection[] {
     sections.push({ label: "HRM", icon: "briefcase", items: hrmItems(code) });
   }
 
-  // 14. Essentials (VA / HQ6)
-  if (va) {
+  // 14. Essentials
+  if (hq6) {
     sections.push({
       label: "Essentials",
       icon: "circle-check",

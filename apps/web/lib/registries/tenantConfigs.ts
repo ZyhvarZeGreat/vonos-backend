@@ -1,5 +1,5 @@
 import type { TenantConfig, NavItem } from "@vonos/types";
-import { catalogPresetsForCode, RETAIL_CATALOG_ENABLED_MODULES } from "@vonos/types";
+import { catalogPresetsForCode, HQ6_POS_ENABLED_MODULES, RETAIL_CATALOG_ENABLED_MODULES } from "@vonos/types";
 import type { NavSection } from "@/components/organisms/Sidebar";
 import { adminNavTail } from "@/lib/registries/adminNavItems";
 import { allPosNavItems, posNavSectionsForConfig } from "@/lib/registries/posNavSections";
@@ -9,7 +9,7 @@ function withCatalog(config: TenantConfig): TenantConfig {
 }
 
 const stockNavItems = (code: string) => [
-  { label: "Overview", icon: "layout-dashboard", route: `/${code}/overview`, pageType: "dashboard" as const },
+  { label: "Home", icon: "home", route: `/${code}/overview`, pageType: "dashboard" as const },
   ...adminNavTail(code),
 ];
 
@@ -26,7 +26,7 @@ export const warehouseTenantConfig: TenantConfig = withCatalog({
     { label: "Stock Values", icon: "calculator", metricKey: "stockValue", color: "#e11d48" },
   ],
   terminology: { item: "SKU", inventory: "Inventory", supplier: "Supplier" },
-  enabledModules: ["inventory", "movements", "suppliers", "purchases", "paymentAccounts", "reports", "finance", "hrm", "incomingRequisitions"],
+  enabledModules: [...HQ6_POS_ENABLED_MODULES, "incomingRequisitions"],
 });
 
 export const kidsWearTenantConfig: TenantConfig = withCatalog({
@@ -42,11 +42,11 @@ export const kidsWearTenantConfig: TenantConfig = withCatalog({
     { label: "Stock Value", icon: "calculator", metricKey: "stockValue", color: "#e11d48" },
   ],
   terminology: { item: "Variant", inventory: "Inventory", supplier: "Supplier", collection: "Collection" },
-  enabledModules: ["inventory", "movements", "suppliers", "purchases", "paymentAccounts", "reports", "finance", "variants", "hrm"],
+  enabledModules: [...HQ6_POS_ENABLED_MODULES, "variants"],
 });
 
 const transactionNavItems = (code: string) => [
-  { label: "Overview", icon: "layout-dashboard", route: `/${code}/overview`, pageType: "dashboard" as const },
+  { label: "Home", icon: "home", route: `/${code}/overview`, pageType: "dashboard" as const },
   { label: "Customers", icon: "users", route: `/${code}/customers`, pageType: "list" as const },
   ...adminNavTail(code),
 ];
@@ -89,7 +89,7 @@ export const cafeTenantConfig: TenantConfig = withCatalog({
   name: "Vonos Cafe",
   archetype: "transaction",
   navItems: [
-    { label: "Overview", icon: "layout-dashboard", route: "/VC/overview", pageType: "dashboard" },
+    { label: "Home", icon: "home", route: "/VC/overview", pageType: "dashboard" },
     { label: "Tables", icon: "grid-3x3", route: "/VC/tables", pageType: "list" },
     { label: "Customers", icon: "users", route: "/VC/customers", pageType: "list" },
     { label: "Suppliers", icon: "truck", route: "/VC/suppliers", pageType: "list" },
@@ -102,21 +102,7 @@ export const cafeTenantConfig: TenantConfig = withCatalog({
     { label: "Revenue", icon: "wallet", metricKey: "revenue", color: "#e11d48" },
   ],
   terminology: { order: "Order", menuItem: "Menu Item", table: "Table", supplier: "Supplier" },
-  enabledModules: [
-    "orders",
-    "tables",
-    "customers",
-    "suppliers",
-    "inventory",
-    "purchases",
-    "movements",
-    "paymentAccounts",
-    "pos",
-    "quotations",
-    "reports",
-    "finance",
-    "hrm",
-  ],
+  enabledModules: [...HQ6_POS_ENABLED_MODULES, "orders", "tables"],
 });
 
 export const automotiveTenantConfig: TenantConfig = withCatalog({
@@ -144,31 +130,7 @@ export const automotiveTenantConfig: TenantConfig = withCatalog({
     requisition: "Parts Requisition",
     sale: "Sale",
   },
-  enabledModules: [
-    "jobs",
-    "vehicles",
-    "requisitions",
-    "customers",
-    "suppliers",
-    "purchases",
-    "movements",
-    "sales",
-    "returns",
-    "inventory",
-    "paymentAccounts",
-    "pos",
-    "quotations",
-    "discounts",
-    "shipments",
-    "bulkImport",
-    "bulkPriceUpdate",
-    "productVariations",
-    "productLabels",
-    "legacyRoles",
-    "reports",
-    "finance",
-    "hrm",
-  ],
+  enabledModules: [...HQ6_POS_ENABLED_MODULES, "jobs", "vehicles", "requisitions"],
 });
 
 /** @deprecated Merged into VA — kept for migration tooling references only. */
@@ -236,7 +198,7 @@ export const saloonTenantConfig: TenantConfig = withCatalog({
   name: "Vonos Saloon",
   archetype: "appointment",
   navItems: [
-    { label: "Overview", icon: "layout-dashboard", route: "/VS/overview", pageType: "dashboard" },
+    { label: "Home", icon: "home", route: "/VS/overview", pageType: "dashboard" },
     { label: "Appointments", icon: "calendar", route: "/VS/appointments", pageType: "list" },
     { label: "Customers", icon: "users", route: "/VS/customers", pageType: "list" },
     { label: "Services", icon: "scissors", route: "/VS/services", pageType: "list" },
@@ -250,7 +212,7 @@ export const saloonTenantConfig: TenantConfig = withCatalog({
     { label: "Revenue", icon: "wallet", metricKey: "revenue", color: "#e11d48" },
   ],
   terminology: { appointment: "Appointment", customer: "Customer", service: "Service", stylist: "Stylist" },
-  enabledModules: ["appointments", "services", "reports", "finance", "hrm"],
+  enabledModules: [...HQ6_POS_ENABLED_MODULES, "appointments", "services"],
 });
 
 export const TENANT_CONFIGS: Record<string, TenantConfig> = {
@@ -281,4 +243,3 @@ export function allNavRoutesForConfig(config: TenantConfig): NavItem[] {
 export function navSectionsForConfig(config: TenantConfig): NavSection[] {
   return posNavSectionsForConfig(config);
 }
-

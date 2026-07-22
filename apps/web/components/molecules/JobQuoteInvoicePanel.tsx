@@ -18,6 +18,7 @@ import { formatCurrency } from "@/lib/utils/formatCurrency";
 import { cn } from "@/lib/utils/cn";
 import { amountToWords } from "@/lib/utils/amountToWords";
 import { saleRecordPath } from "@/lib/utils/recordDetailPath";
+import { isHq6Tenant } from "@/lib/utils/isHq6Tenant";
 import { useUiStore } from "@/stores/uiStore";
 
 type BillingTab = "quotation" | "invoice";
@@ -362,8 +363,9 @@ export function JobQuoteInvoicePanel({ job, onJobChange }: JobQuoteInvoicePanelP
             <button
               type="button"
               onClick={() => {
-                if (!tenantCode || !job.saleId) return;
-                router.push(saleRecordPath(tenantCode, job.saleId));
+                const saleId = job.saleId;
+                if (!tenantCode || !saleId) return;
+                router.push(saleRecordPath(tenantCode, saleId));
               }}
               className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-[var(--color-surface-nav-hover)]"
             >
@@ -377,7 +379,7 @@ export function JobQuoteInvoicePanel({ job, onJobChange }: JobQuoteInvoicePanelP
                 if (!tenantCode) return;
                 const slug =
                   tab === "quotation" ? "add-quotation" : "add-sale";
-                if (tenantCode === "VA") {
+                if (isHq6Tenant(tenantCode)) {
                   router.push(`/${tenantCode}/${slug}?job=${job.id}`);
                   return;
                 }

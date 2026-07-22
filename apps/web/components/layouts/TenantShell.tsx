@@ -13,6 +13,7 @@ import { useAuthStore } from "@/stores/authStore";
 import { useTenantStore } from "@/stores/tenantStore";
 import { useUiStore } from "@/stores/uiStore";
 import { dateRangePresetToApiBounds } from "@/lib/utils/dateRange";
+import { isHq6Tenant } from "@/lib/utils/isHq6Tenant";
 import { Spinner } from "@/components/atoms/Spinner";
 import { scheduleIdle } from "@/lib/prefetch/scheduleIdle";
 import { prefetchTenantShell } from "@/lib/prefetch/routePrefetchRegistry";
@@ -134,7 +135,11 @@ export function TenantShell({ children }: { children: React.ReactNode }) {
   // While tenant config fetches, keep the real sidebar/top bar; page content
   // uses its own skeletons. Static registry config already drives nav.
   return (
-    <div data-tenant={tenantCode} style={tenantAccentStyle(tenantCode)}>
+    <div
+      data-tenant={tenantCode}
+      data-hq6={isHq6Tenant(tenantCode) ? "true" : undefined}
+      style={tenantAccentStyle(tenantCode)}
+    >
       {children}
     </div>
   );

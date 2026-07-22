@@ -1,3 +1,5 @@
+import { isHq6Tenant } from "@/lib/utils/isHq6Tenant";
+
 const LIST_SLUG_BY_RECORD_TYPE: Record<string, string> = {
   item: "inventory",
   sale: "sales",
@@ -42,10 +44,10 @@ export function reportRowRecordId(row: {
 
 /**
  * Path for opening a sale from reports / job panels.
- * VA (HQ6) uses the list + `?record=` modal; other tenants use the detail route.
+ * HQ6 tenants use the list + `?record=` modal; others use the detail route.
  */
 export function saleRecordPath(tenantCode: string, saleId: string): string {
-  if (tenantCode === "VA") {
+  if (isHq6Tenant(tenantCode)) {
     return `/${tenantCode}/sales?record=${encodeURIComponent(saleId)}`;
   }
   return `/${tenantCode}/sales/${saleId}`;

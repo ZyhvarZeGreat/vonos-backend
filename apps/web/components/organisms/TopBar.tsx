@@ -40,6 +40,7 @@ import { formatApiError } from "@/lib/utils/formatApiError";
 import { toast } from "@/stores/toastStore";
 import { topbarAccentStyle } from "@/lib/registries/tenantAccents";
 import { cn } from "@/lib/utils/cn";
+import { isHq6Tenant } from "@/lib/utils/isHq6Tenant";
 
 export interface TopBarProps {
   title?: string;
@@ -73,7 +74,7 @@ export function TopBar({
   const notifications = useUiStore((state) => state.notifications);
   const unreadCount = notifications.filter((n) => !n.read).length;
   const tenantId = useTenantId();
-  const isVa = tenantCode === "VA";
+  const isHq6 = isHq6Tenant(tenantCode);
   const [hq6GlobalModal, setHq6GlobalModal] = useState<Hq6GlobalModalId>(null);
   const userName = useAuthStore((state) => state.name ?? state.email ?? "Admin");
   const userInitial = userName.trim().charAt(0).toUpperCase() || "A";
@@ -154,7 +155,7 @@ export function TopBar({
           <span
             className={cn(
               "hidden text-[var(--color-topbar-text-muted)] md:inline",
-              tenantCode === "VA" && "md:hidden",
+              isHq6 && "md:hidden",
             )}
             aria-hidden
           >
@@ -164,7 +165,7 @@ export function TopBar({
             className={cn(
               typographyRoles.pageTitle,
               "!text-[var(--color-topbar-text)]",
-              tenantCode === "VA" && "sr-only",
+              isHq6 && "sr-only",
             )}
           >
             {title}
@@ -172,14 +173,14 @@ export function TopBar({
         </div>
 
         <div className="flex items-center gap-2 md:gap-3">
-          {isVa ? (
+          {isHq6 ? (
             <div className="hq6-topbar-tools hidden lg:flex">
               <button
                 type="button"
                 className="hq6-topbar-icon hq6-topbar-icon-pos"
                 title="POS"
                 aria-label="POS"
-                onClick={() => router.push("/VA/pos-terminal")}
+                onClick={() => router.push(`/${tenantCode}/pos-terminal`)}
               >
                 <Monitor className="h-4 w-4" />
               </button>
@@ -188,7 +189,7 @@ export function TopBar({
                 className="hq6-topbar-icon hq6-topbar-icon-add"
                 title="Add Product"
                 aria-label="Add Product"
-                onClick={() => router.push("/VA/add-product")}
+                onClick={() => router.push(`/${tenantCode}/add-product`)}
               >
                 <Plus className="h-4 w-4" />
               </button>
@@ -233,7 +234,7 @@ export function TopBar({
                 className="hq6-topbar-icon"
                 title="Modules"
                 aria-label="Modules"
-                onClick={() => router.push("/VA/overview")}
+                onClick={() => router.push(`/${tenantCode}/overview`)}
               >
                 <Grid2X2 className="h-4 w-4" />
               </button>
@@ -242,7 +243,7 @@ export function TopBar({
               </span>
             </div>
           ) : null}
-          {!isVa ? (
+          {!isHq6 ? (
             <IconButton label="Inbox" className="text-white/80 hover:bg-white/10 hover:text-white">
               <Inbox className="h-5 w-5" />
             </IconButton>
@@ -260,7 +261,7 @@ export function TopBar({
               onItemClick={handleNotificationClick}
             />
           </div>
-          {isVa ? (
+          {isHq6 ? (
             <button
               type="button"
               className="hq6-topbar-user hidden md:inline-flex"
@@ -271,7 +272,7 @@ export function TopBar({
               <span>{userName.split("@")[0]}</span>
             </button>
           ) : null}
-          {isAuthenticated && !isVa ? (
+          {isAuthenticated && !isHq6 ? (
             <IconButton
               label="Sign out"
               onClick={handleLogout}
@@ -280,9 +281,9 @@ export function TopBar({
               <LogOut className="h-5 w-5" />
             </IconButton>
           ) : null}
-          {!isVa && primaryAction
+          {!isHq6 && primaryAction
             ? primaryAction
-            : !isVa && primaryActionLabel
+            : !isHq6 && primaryActionLabel
               ? (
                 <Button
                   size="sm"
@@ -307,7 +308,7 @@ export function TopBar({
       <AddProductModal />
       <AddExpenseModal />
       <ExportDocumentModal />
-      {isVa ? (
+      {isHq6 ? (
         <Hq6GlobalChromeModals
           active={hq6GlobalModal}
           onClose={() => setHq6GlobalModal(null)}

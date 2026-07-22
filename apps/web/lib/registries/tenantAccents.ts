@@ -31,15 +31,34 @@ export function accentForTenantCode(code: string): string {
   return TENANT_ACCENT.VW;
 }
 
+/** Darken a #RRGGBB accent for HQ6 header hover / pressed states. */
+export function darkenAccent(hex: string, factor = 0.82): string {
+  const raw = hex.replace("#", "").trim();
+  if (raw.length !== 6) return hex;
+  const channel = (start: number) => {
+    const value = Number.parseInt(raw.slice(start, start + 2), 16);
+    return Math.max(0, Math.min(255, Math.round(value * factor)))
+      .toString(16)
+      .padStart(2, "0");
+  };
+  return `#${channel(0)}${channel(2)}${channel(4)}`;
+}
+
 /** CSS custom properties applied on the tenant shell root. */
 export function tenantAccentStyle(code: string): CSSProperties {
   const accent = accentForTenantCode(code);
+  const header = accent;
+  const headerHover = darkenAccent(accent);
   return {
     ["--color-brand-accent" as string]: accent,
     ["--color-brand-primary" as string]: accent,
+    ["--color-brand-primary-hover" as string]: headerHover,
     ["--color-info" as string]: accent,
     ["--color-info-bg" as string]: `${accent}20`,
     ["--color-chart-bar-primary" as string]: accent,
+    // HQ6 chrome reads these — one accent per operating entity.
+    ["--hq6-header" as string]: header,
+    ["--hq6-header-hover" as string]: headerHover,
   };
 }
 

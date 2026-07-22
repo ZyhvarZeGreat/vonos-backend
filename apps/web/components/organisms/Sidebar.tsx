@@ -78,6 +78,7 @@ import { SearchBar } from "@/components/atoms/SearchBar";
 import { typographyRoles } from "@/lib/registries/typography";
 import { sidebarAccentStyle, sidebarHeaderStyle } from "@/lib/registries/tenantAccents";
 import { cn } from "@/lib/utils/cn";
+import { isHq6Tenant } from "@/lib/utils/isHq6Tenant";
 import { logout } from "@/lib/api/auth";
 import { useAuthStore } from "@/stores/authStore";
 import { useTenantId } from "@/lib/hooks/useRouteTenant";
@@ -216,6 +217,7 @@ export function Sidebar({
     () => dateRangePresetToApiBounds(dateRange, new Date(), customDateRange),
     [customDateRange, dateRange],
   );
+  const isHq6 = isHq6Tenant(tenantCode);
 
   const prefetchNavRoute = (route: string) => {
     prefetchRoute(queryClient, {
@@ -288,18 +290,16 @@ export function Sidebar({
       {/* Accent-colored header — height matches the top bar */}
       {!collapsed ? (
         <div
-          style={tenantCode === "VA" ? undefined : sidebarHeaderStyle(tenantCode ?? "")}
+          style={isHq6 ? undefined : sidebarHeaderStyle(tenantCode ?? "")}
           className={cn(
             "flex h-12 shrink-0 items-center px-3",
-            tenantCode === "VA"
-              ? "border-b border-[var(--hq6-border)] bg-white"
-              : "",
+            isHq6 ? "border-b border-[var(--hq6-border)] bg-white" : "",
           )}
         >
-          {tenantCode === "VA" ? (
+          {isHq6 ? (
             <div className="hq6-sidebar-brand">
               <span className="hq6-sidebar-dot" aria-hidden />
-              {tenantName ?? "Vonos Autos HQ"}
+              {tenantName ?? "Vonos"}
             </div>
           ) : (
             <TenantSwitcher
@@ -312,7 +312,7 @@ export function Sidebar({
       ) : null}
 
       <div className="flex flex-1 flex-col gap-1 overflow-y-auto px-3 pb-6">
-        {!collapsed && tenantCode !== "VA" ? (
+        {!collapsed && !isHq6 ? (
           <div className="px-2 pb-2 pt-3">
             <SearchBar placeholder="Search" showShortcut />
           </div>
