@@ -233,7 +233,9 @@ export async function buildSellPaymentReport(
     const customer = row.sale?.customer;
     const paid = row.paidOn ?? row.createdAt;
     return {
+      // Keep payment id unique for React keys; navigate via saleId when present.
       id: row.id,
+      saleId: row.saleId ?? undefined,
       recordType: row.saleId ? 'sale' : 'payment',
       referenceNo: row.paymentRefNo ?? row.id.slice(0, 8),
       paidOn: paid.toISOString().replace('T', ' ').slice(0, 19),
@@ -296,6 +298,198 @@ export async function buildProductSellReport(
     return buildProductSellAggregated(db, tenantId, from, to, options, view);
   }
   return buildProductSellDetailed(db, tenantId, from, to, options);
+}
+
+async function buildProductSellFromJobs(
+  db: TenantScopedPrisma,
+  tenantId: string,
+  from?: string,
+  to?: string,
+  options?: ReportRunOptions,
+): Promise<ReportsDashboard> {
+  const window = resolveDateWindow(from, to);
+  const pageSize = pageSizeOf(options);
+  const pagination = buildCompositeCursorQuery({
+    sortField: 'createdAt',
+    sortDir: 'desc',
+    cursor: options?.cursor,
+    limit: pageSize + 1,
+    sortValueType: 'date',
+  });
+
+  const jobFilter: Prisma.JobWhereInput = {
+    tenantId,
+    deletedAt: null,
+    status: 'Delivered',
+    updatedAt: { gte: window.from, lte: window.to },
+    sales: { none: { deletedAt: null } },
+    ...(options?.customerId ? { customerId: options.customerId } : {}),
+    ...(options?.locationCode ? { locationCode: options.locationCode } : {}),
+  };
+
+  const filterWhere: Prisma.JobMaterialWhereInput = {
+    job: jobFilter,
+    ...(options?.search
+      ? {
+          OR: [
+            { name: { contains: options.search, mode: 'insensitive' } },
+            { supplierName: { contains: options.search, mode: 'insensitive' } },
+          ],
+        }
+      : {}),
+  };
+
+  const where: Prisma.JobMaterialWhereInput = {
+    ...filterWhere,
+    ...(pagination.where as Prisma.JobMaterialWhereInput | undefined),
+  };
+
+  const [lineCount, totalsAgg, rowsRaw] = await Promise.all([
+    db.jobMaterial.count({ where: filterWhere }),
+    db.jobMaterial.aggregate({
+      where: filterWhere,
+      _sum: { totalCost: true, quantity: true },
+    }),
+    db.jobMaterial.findMany({
+      where,
+      select: {
+        id: true,
+        name: true,
+        quantity: true,
+        unitCost: true,
+        totalCost: true,
+        itemId: true,
+        supplierName: true,
+        createdAt: true,
+        job: {
+          select: {
+            id: true,
+            reference: true,
+            updatedAt: true,
+            locationCode: true,
+            customerName: true,
+            customer: {
+              select: { id: true, name: true, phone: true },
+            },
+          },
+        },
+        // purchaseMovementId / item for stock + purchase ref
+      },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: pagination.take,
+    }),
+  ]);
+
+  const page = paginateRows(rowsRaw, pageSize, 'createdAt', 'date');
+  const itemIds = [
+    ...new Set(
+      page.rows.map((r) => r.itemId).filter((id): id is string => Boolean(id)),
+    ),
+  ];
+  const items =
+    itemIds.length > 0
+      ? await db.item.findMany({
+          where: { id: { in: itemIds } },
+          select: {
+            id: true,
+            sku: true,
+            carModel: true,
+            category: true,
+            quantity: true,
+            brand: { select: { name: true } },
+          },
+        })
+      : [];
+  const itemById = new Map(items.map((i) => [i.id, i]));
+  const currency = 'NGN';
+
+  const tableRows: ReportsTableRow[] = page.rows.map((row) => {
+    const item = row.itemId ? itemById.get(row.itemId) : undefined;
+    const qty = toNumber(row.quantity);
+    const unitPrice = toNumber(row.unitCost);
+    const lineTotal = toNumber(row.totalCost);
+    return {
+      id: row.id,
+      recordType: 'job',
+      product: row.name,
+      sku: item?.sku ?? '—',
+      carModel: item?.carModel?.trim() ? item.carModel : '—',
+      customerName:
+        row.job.customer?.name ?? row.job.customerName ?? 'WALK-IN-CUSTOMER',
+      contactId: row.job.customer?.id?.slice(0, 10) ?? '—',
+      contactNumber: row.job.customer?.phone ?? '—',
+      invoiceNo: row.job.reference,
+      date: row.job.updatedAt.toISOString().replace('T', ' ').slice(0, 19),
+      quantity: Math.round(qty * 100) / 100,
+      unitPrice: Math.round(unitPrice * 100) / 100,
+      discount: 0,
+      tax: 0,
+      priceIncTax: Math.round(unitPrice * 100) / 100,
+      total: Math.round(lineTotal * 100) / 100,
+      currency,
+      paymentMethod: '—',
+      location: row.job.locationCode ?? '—',
+      purchaseRef: '—',
+      supplierName: row.supplierName ?? '—',
+      currentStock: item?.quantity ?? 0,
+      category: item?.category?.trim() ? item.category : '—',
+      brand: item?.brand?.name ?? '—',
+      actions: [
+        {
+          kind: 'view-record' as const,
+          label: 'View',
+          payload: { recordType: 'job', id: row.job.id },
+        },
+      ],
+    };
+  });
+
+  return {
+    kpis: [
+      countKpi('Lines', 'lines', lineCount, '#2563eb', 'list'),
+      currencyKpi(
+        'Revenue',
+        'revenue',
+        Math.round(toNumber(totalsAgg._sum.totalCost ?? 0)),
+        currency,
+        '#059669',
+        'wallet',
+      ),
+    ],
+    charts: [],
+    table: {
+      columns: [
+        { key: 'product', header: 'Product' },
+        { key: 'sku', header: 'SKU' },
+        { key: 'carModel', header: 'Car Model' },
+        { key: 'customerName', header: 'Customer name' },
+        { key: 'contactId', header: 'Contact ID' },
+        { key: 'contactNumber', header: 'Contact Number' },
+        { key: 'invoiceNo', header: 'Invoice No.' },
+        { key: 'date', header: 'Date' },
+        { key: 'quantity', header: 'Quantity' },
+        { key: 'unitPrice', header: 'Unit Price' },
+        { key: 'discount', header: 'Discount' },
+        { key: 'tax', header: 'Tax' },
+        { key: 'priceIncTax', header: 'Price inc. tax' },
+        { key: 'total', header: 'Total' },
+        { key: 'paymentMethod', header: 'Payment Method' },
+        { key: 'location', header: 'Location' },
+        { key: 'purchaseRef', header: 'Purchase ref no.' },
+        { key: 'supplierName', header: 'Supplier Name' },
+        { key: 'currentStock', header: 'Current stock' },
+      ],
+      rows: tableRows,
+      hasMore: page.hasMore,
+      nextCursor: page.nextCursor,
+      pageSize: page.pageSize,
+      columnTotals: {
+        quantity: Math.round(toNumber(totalsAgg._sum.quantity ?? 0) * 100) / 100,
+        discount: 0,
+        total: Math.round(toNumber(totalsAgg._sum.totalCost ?? 0) * 100) / 100,
+      },
+    },
+  };
 }
 
 async function buildProductSellDetailed(
@@ -361,6 +555,12 @@ async function buildProductSellDetailed(
       : {}),
   };
 
+  // VA / job-centric tenants often have materials on jobs without Sale lines.
+  const saleLineCount = await db.saleLine.count({ where: filterWhere });
+  if (saleLineCount === 0) {
+    return buildProductSellFromJobs(db, tenantId, from, to, options);
+  }
+
   const where: Prisma.SaleLineWhereInput = {
     ...filterWhere,
     ...(pagination.where as Prisma.SaleLineWhereInput | undefined),
@@ -417,6 +617,9 @@ async function buildProductSellDetailed(
       page.rows.map((r) => r.itemId).filter((id): id is string => Boolean(id)),
     ),
   ];
+  const skus = [
+    ...new Set(page.rows.map((r) => r.sku).filter((sku) => Boolean(sku))),
+  ];
   const items =
     itemIds.length > 0
       ? await db.item.findMany({
@@ -425,15 +628,46 @@ async function buildProductSellDetailed(
             id: true,
             carModel: true,
             category: true,
+            quantity: true,
             brand: { select: { name: true } },
           },
         })
       : [];
   const itemById = new Map(items.map((i) => [i.id, i]));
+
+  type InboundHit = {
+    sku: string;
+    reference: string;
+    supplier_name: string | null;
+  };
+  const inbound =
+    skus.length > 0
+      ? await db.$queryRaw<InboundHit[]>`
+          SELECT DISTINCT ON (COALESCE(elem->>'sku', ''))
+            COALESCE(elem->>'sku', '') AS sku,
+            sm.reference,
+            sup.name AS supplier_name
+          FROM "StockMovement" sm
+          LEFT JOIN "Supplier" sup ON sup.id = sm."supplierId"
+          CROSS JOIN LATERAL jsonb_array_elements(
+            CASE
+              WHEN jsonb_typeof(sm.lines::jsonb) = 'array' THEN sm.lines::jsonb
+              ELSE '[]'::jsonb
+            END
+          ) AS elem
+          WHERE sm."tenantId" = ${tenantId}
+            AND sm."deletedAt" IS NULL
+            AND sm.type::text = 'inbound'
+            AND COALESCE(elem->>'sku', '') = ANY(${skus})
+          ORDER BY COALESCE(elem->>'sku', ''), sm.date DESC
+        `
+      : [];
+  const inboundBySku = new Map(inbound.map((r) => [r.sku, r]));
   const currency = 'NGN';
 
   const tableRows: ReportsTableRow[] = page.rows.map((row) => {
     const item = row.itemId ? itemById.get(row.itemId) : undefined;
+    const hit = inboundBySku.get(row.sku);
     const qty = toNumber(row.quantity);
     const unitPrice = toNumber(row.unitPrice);
     const discount = toNumber(row.discountAmount ?? 0);
@@ -443,7 +677,9 @@ async function buildProductSellDetailed(
     const taxShare =
       (toNumber(row.sale.taxAmount ?? 0) * lineTotal) / saleTotal;
     return {
+      // Line id stays unique for table keys; saleId is used for navigation.
       id: row.id,
+      saleId: row.sale.id,
       recordType: 'sale',
       product: row.name,
       sku: row.sku,
@@ -462,6 +698,11 @@ async function buildProductSellDetailed(
       currency,
       paymentMethod: row.sale.paymentMethod ?? '—',
       location: row.sale.locationCode ?? '—',
+      purchaseRef: hit?.reference ?? '—',
+      supplierName: hit?.supplier_name ?? '—',
+      currentStock: item?.quantity ?? 0,
+      category: item?.category?.trim() ? item.category : '—',
+      brand: item?.brand?.name ?? '—',
       actions: saleLineActions(row.sale.id),
     };
   });
@@ -496,6 +737,10 @@ async function buildProductSellDetailed(
         { key: 'priceIncTax', header: 'Price inc. tax' },
         { key: 'total', header: 'Total' },
         { key: 'paymentMethod', header: 'Payment Method' },
+        { key: 'location', header: 'Location' },
+        { key: 'purchaseRef', header: 'Purchase ref no.' },
+        { key: 'supplierName', header: 'Supplier Name' },
+        { key: 'currentStock', header: 'Current stock' },
       ],
       rows: tableRows,
       hasMore: page.hasMore,
@@ -692,6 +937,7 @@ export async function buildProductPurchaseReport(
     sku: string;
     name: string;
     quantity: Prisma.Decimal | null;
+    quantity_adjusted: Prisma.Decimal | null;
     unit_cost: Prisma.Decimal | null;
     description: string | null;
     ord: bigint;
@@ -726,6 +972,12 @@ export async function buildProductPurchaseReport(
       COALESCE(elem->>'sku', '—') AS sku,
       COALESCE(elem->>'name', elem->>'sku', '—') AS name,
       COALESCE((elem->>'quantity')::numeric, 0) AS quantity,
+      COALESCE(
+        (elem->>'quantityAdjusted')::numeric,
+        (elem->>'adjustedQuantity')::numeric,
+        (elem->>'quantity')::numeric,
+        0
+      ) AS quantity_adjusted,
       COALESCE(
         (elem->>'unitCost')::numeric,
         (elem->>'costPrice')::numeric,
@@ -843,33 +1095,51 @@ export async function buildProductPurchaseReport(
       columns: [
         { key: 'product', header: 'Product' },
         { key: 'sku', header: 'SKU' },
-        { key: 'description', header: 'Description' },
-        { key: 'purchaseDate', header: 'Purchase Date' },
-        { key: 'purchase', header: 'Purchase' },
         { key: 'supplier', header: 'Supplier' },
-        { key: 'purchasePrice', header: 'Purchase Price' },
+        { key: 'purchase', header: 'Reference No' },
+        { key: 'purchaseDate', header: 'Date' },
+        { key: 'quantity', header: 'Quantity' },
+        { key: 'quantityAdjusted', header: 'Total Unit Adjusted' },
+        { key: 'purchasePrice', header: 'Unit Purchase Price' },
+        { key: 'subtotal', header: 'Subtotal' },
         { key: 'location', header: 'Location' },
-        { key: 'quantity', header: 'Qty' },
+        { key: 'description', header: 'Description' },
       ],
-      rows: page.map((row) => ({
-        id: `${row.movement_id}-${row.ord}`,
-        recordType: 'stockMovement',
-        product: row.name,
-        sku: row.sku,
-        description: row.description ?? '—',
-        purchaseDate: row.date.toISOString().slice(0, 10),
-        purchase: row.reference,
-        supplier: row.supplier_name ?? '—',
-        purchasePrice: Math.round(toNumber(row.unit_cost ?? 0) * 100) / 100,
-        location: row.location_code ?? '—',
-        quantity: Math.round(toNumber(row.quantity ?? 0) * 100) / 100,
-        currency: 'NGN',
-      })),
+      rows: page.map((row) => {
+        const qty = Math.round(toNumber(row.quantity ?? 0) * 100) / 100;
+        const adjusted =
+          Math.round(toNumber(row.quantity_adjusted ?? row.quantity ?? 0) * 100) /
+          100;
+        const unit = Math.round(toNumber(row.unit_cost ?? 0) * 100) / 100;
+        return {
+          id: `${row.movement_id}-${row.ord}`,
+          recordType: 'stockMovement',
+          product: row.name,
+          sku: row.sku,
+          description: row.description ?? '—',
+          purchaseDate: row.date.toISOString().slice(0, 10),
+          purchase: row.reference,
+          supplier: row.supplier_name ?? '—',
+          purchasePrice: unit,
+          quantity: qty,
+          quantityAdjusted: adjusted,
+          subtotal: Math.round(qty * unit * 100) / 100,
+          location: row.location_code ?? '—',
+          currency: 'NGN',
+        };
+      }),
       hasMore,
       nextCursor,
       pageSize,
       columnTotals: {
         quantity: Math.round(toNumber(lineAgg[0]?.qty ?? 0) * 100) / 100,
+        subtotal: Math.round(
+          page.reduce(
+            (sum, row) =>
+              sum + toNumber(row.quantity ?? 0) * toNumber(row.unit_cost ?? 0),
+            0,
+          ) * 100,
+        ) / 100,
       },
     },
   };
@@ -950,6 +1220,7 @@ export async function buildItemsReport(
     const sellPrice = Number(row.unitPrice ?? 0);
     return {
       id: String(row.id),
+      saleId: row.saleId != null ? String(row.saleId) : undefined,
       recordType: 'sale',
       product: row.product ?? '—',
       sku,

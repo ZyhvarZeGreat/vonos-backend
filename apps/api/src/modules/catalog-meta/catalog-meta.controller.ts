@@ -1,7 +1,10 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
+  Param,
+  Patch,
   Post,
   Query,
   UseGuards,
@@ -12,6 +15,7 @@ import type {
   CreateProductUnitInput,
   CreateSellingPriceGroupInput,
   CreateWarrantyInput,
+  Warranty,
 } from '@vonos/types';
 import { Roles } from '../../common/decorators/roles.decorator';
 import {
@@ -53,6 +57,21 @@ export class CatalogMetaController {
     return this.service.createCategory(body);
   }
 
+  @Patch('categories/:id')
+  @Roles('staff', 'manager', 'admin', 'super_admin')
+  updateCategory(
+    @Param('id') id: string,
+    @Body() body: { name?: string; shortCode?: string | null; description?: string | null },
+  ) {
+    return this.service.updateCategory(id, body);
+  }
+
+  @Delete('categories/:id')
+  @Roles('admin', 'super_admin')
+  removeCategory(@Param('id') id: string) {
+    return this.service.removeCategory(id);
+  }
+
   @Get('brands')
   brands(
     @Query('cursor') cursor?: string,
@@ -66,6 +85,21 @@ export class CatalogMetaController {
   @Roles('staff', 'manager', 'admin', 'super_admin')
   createBrand(@Body() body: CreateBrandInput) {
     return this.service.createBrand(body);
+  }
+
+  @Patch('brands/:id')
+  @Roles('staff', 'manager', 'admin', 'super_admin')
+  updateBrand(
+    @Param('id') id: string,
+    @Body() body: { name?: string; description?: string | null },
+  ) {
+    return this.service.updateBrand(id, body);
+  }
+
+  @Delete('brands/:id')
+  @Roles('admin', 'super_admin')
+  removeBrand(@Param('id') id: string) {
+    return this.service.removeBrand(id);
   }
 
   @Get('units')
@@ -83,6 +117,21 @@ export class CatalogMetaController {
     return this.service.createUnit(body);
   }
 
+  @Patch('units/:id')
+  @Roles('staff', 'manager', 'admin', 'super_admin')
+  updateUnit(
+    @Param('id') id: string,
+    @Body() body: { name?: string; shortName?: string; allowDecimal?: boolean },
+  ) {
+    return this.service.updateUnit(id, body);
+  }
+
+  @Delete('units/:id')
+  @Roles('admin', 'super_admin')
+  removeUnit(@Param('id') id: string) {
+    return this.service.removeUnit(id);
+  }
+
   @Get('warranties')
   warranties(
     @Query('cursor') cursor?: string,
@@ -98,6 +147,27 @@ export class CatalogMetaController {
     return this.service.createWarranty(body);
   }
 
+  @Patch('warranties/:id')
+  @Roles('staff', 'manager', 'admin', 'super_admin')
+  updateWarranty(
+    @Param('id') id: string,
+    @Body()
+    body: {
+      name?: string;
+      description?: string | null;
+      duration?: number;
+      durationType?: Warranty['durationType'];
+    },
+  ) {
+    return this.service.updateWarranty(id, body);
+  }
+
+  @Delete('warranties/:id')
+  @Roles('admin', 'super_admin')
+  removeWarranty(@Param('id') id: string) {
+    return this.service.removeWarranty(id);
+  }
+
   @Get('price-groups')
   priceGroups(
     @Query('cursor') cursor?: string,
@@ -111,5 +181,20 @@ export class CatalogMetaController {
   @Roles('staff', 'manager', 'admin', 'super_admin')
   createPriceGroup(@Body() body: CreateSellingPriceGroupInput) {
     return this.service.createPriceGroup(body);
+  }
+
+  @Patch('price-groups/:id')
+  @Roles('staff', 'manager', 'admin', 'super_admin')
+  updatePriceGroup(
+    @Param('id') id: string,
+    @Body() body: { name?: string; description?: string | null; isActive?: boolean },
+  ) {
+    return this.service.updatePriceGroup(id, body);
+  }
+
+  @Delete('price-groups/:id')
+  @Roles('admin', 'super_admin')
+  removePriceGroup(@Param('id') id: string) {
+    return this.service.removePriceGroup(id);
   }
 }

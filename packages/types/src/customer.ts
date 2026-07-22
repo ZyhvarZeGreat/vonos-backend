@@ -37,7 +37,7 @@ export interface CustomerFilters {
   sellReturn?: boolean;
   advanceBalance?: boolean;
   openingBalance?: boolean;
-  hasNoSellMonths?: 1 | 3 | 6;
+  hasNoSellMonths?: 1 | 3 | 6 | 12;
   customerGroupId?: string;
   assignedToUserId?: string;
   status?: "active" | "inactive";
@@ -55,6 +55,34 @@ export interface CreateCustomerInput {
   assignedToUserId?: string;
   openingBalance?: number;
   status?: "active" | "inactive";
+  taxNumber?: string | null;
+}
+
+export interface UpdateCustomerInput {
+  name?: string;
+  email?: string | null;
+  phone?: string | null;
+  customerGroupId?: string | null;
+  assignedToUserId?: string | null;
+  openingBalance?: number;
+  status?: "active" | "inactive";
+  taxNumber?: string | null;
+}
+
+export interface PayContactDueRequest {
+  amount: number;
+  method?: string;
+  accountId?: string;
+  note?: string;
+  paidOn?: string;
+}
+
+export interface PayContactDueResult {
+  contactId: string;
+  amountApplied: number;
+  currency: string;
+  paymentsCreated: number;
+  remainingDue: number;
 }
 
 export type CustomerTransactionKind = "sale" | "job" | "appointment";

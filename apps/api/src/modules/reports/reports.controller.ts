@@ -53,11 +53,13 @@ export class ReportsController {
     @Query('customerId') customerId?: string,
     @Query('customerGroupId') customerGroupId?: string,
     @Query('locationCode') locationCode?: string,
+    @Query('accountId') accountId?: string,
     @Query('category') category?: string,
     @Query('brandId') brandId?: string,
     @Query('paymentMethod') paymentMethod?: string,
     @Query('supplierId') supplierId?: string,
     @Query('view') view?: string,
+    @Query('taxTable') taxTable?: string,
   ) {
     return this.reportsService.run(reportId, from, to, mode, breakdownTab, {
       cursor,
@@ -66,6 +68,7 @@ export class ReportsController {
       customerId,
       customerGroupId,
       locationCode,
+      accountId,
       category,
       brandId,
       paymentMethod,
@@ -74,6 +77,8 @@ export class ReportsController {
         view === 'by-category' || view === 'by-brand' || view === 'detailed'
           ? view
           : undefined,
+      taxTable:
+        taxTable === 'purchases' || taxTable === 'sales' ? taxTable : undefined,
     });
   }
 

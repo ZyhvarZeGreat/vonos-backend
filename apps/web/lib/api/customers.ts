@@ -7,6 +7,9 @@ import type {
   CustomerFilters,
   CustomerProfile,
   CsvImportResult,
+  PayContactDueRequest,
+  PayContactDueResult,
+  UpdateCustomerInput,
 } from "@vonos/types";
 import { apiFetch, withTenantQuery } from "@/lib/api/client";
 import {
@@ -124,6 +127,73 @@ export async function createCustomer(
   if (!response.ok) {
     const body = (await response.json().catch(() => null)) as { message?: string } | null;
     throw new Error(body?.message ?? "Failed to create customer");
+  }
+  return response.json();
+}
+
+export async function updateCustomer(
+  tenantId: string,
+  id: string,
+  input: UpdateCustomerInput,
+): Promise<Customer> {
+  const response = await apiFetch(withTenantQuery(`/customers/${id}`, tenantId), {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  if (!response.ok) {
+    const body = (await response.json().catch(() => null)) as { message?: string } | null;
+    throw new Error(body?.message ?? "Failed to update customer");
+  }
+  return response.json();
+}
+
+export async function setCustomerStatus(
+  tenantId: string,
+  id: string,
+  status: "active" | "inactive",
+): Promise<Customer> {
+  const response = await apiFetch(
+    withTenantQuery(`/customers/${id}/status`, tenantId),
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status }),
+    },
+  );
+  if (!response.ok) {
+    const body = (await response.json().catch(() => null)) as { message?: string } | null;
+    throw new Error(body?.message ?? "Failed to update customer status");
+  }
+  return response.json();
+}
+
+export async function deleteCustomer(tenantId: string, id: string): Promise<void> {
+  const response = await apiFetch(withTenantQuery(`/customers/${id}`, tenantId), {
+    method: "DELETE",
+  });
+  if (!response.ok) {
+    const body = (await response.json().catch(() => null)) as { message?: string } | null;
+    throw new Error(body?.message ?? "Failed to delete customer");
+  }
+}
+
+export async function payCustomerDue(
+  tenantId: string,
+  id: string,
+  input: PayContactDueRequest,
+): Promise<PayContactDueResult> {
+  const response = await apiFetch(
+    withTenantQuery(`/customers/${id}/pay-due`, tenantId),
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    },
+  );
+  if (!response.ok) {
+    const body = (await response.json().catch(() => null)) as { message?: string } | null;
+    throw new Error(body?.message ?? "Failed to record payment");
   }
   return response.json();
 }

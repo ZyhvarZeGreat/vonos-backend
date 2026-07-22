@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReportsDashboard, ReportRowAction, ReportsTableRow } from "@vonos/types";
+import type { ReactNode } from "react";
 import {
   ReportDetailSheet,
   type ReportTablePagination,
@@ -17,6 +18,8 @@ import {
   TrialBalanceReportPanel,
 } from "@/components/organisms/PaymentAccountReportPanels";
 import { ReportPageSkeleton } from "@/components/organisms/skeletons";
+import { Hq6PageFrame } from "@/components/hq6/Hq6Chrome";
+import { useIsVaHq6 } from "@/lib/hooks/useIsVaHq6";
 
 export type HqReportLayoutVariant =
   | "default"
@@ -60,6 +63,9 @@ export interface HqReportPageLayoutProps {
   onRowClick?: (row: ReportsTableRow & { id: string }) => void;
   onRowAction?: (action: ReportRowAction) => void;
   tablePagination?: ReportTablePagination;
+  tableSearch?: string;
+  onTableSearchChange?: (value: string) => void;
+  searchPlaceholder?: string;
 }
 
 export function layoutVariantForReport(reportId: string): HqReportLayoutVariant {
@@ -86,151 +92,130 @@ export function HqReportPageLayout({
   onRowClick,
   onRowAction,
   tablePagination,
+  tableSearch,
+  onTableSearchChange,
+  searchPlaceholder,
 }: HqReportPageLayoutProps) {
   const variant = layoutVariantForReport(reportId);
+  const isHq6 = useIsVaHq6();
 
-  if (reportId === "profit-loss" && data.profitLoss) {
+  const wrap = (panel: ReactNode) => {
+    if (isHq6) {
+      return (
+        <Hq6PageFrame title={title} subtitle={subtitle}>
+          <div className="space-y-[var(--hq6-section-gap)]">{panel}</div>
+        </Hq6PageFrame>
+      );
+    }
     return (
       <div className="space-y-6 p-1 sm:p-2">
         <div className="px-1 sm:px-2">
           <h2 className="text-lg font-semibold text-foreground">{title}</h2>
           <p className="text-sm text-muted">{subtitle}</p>
         </div>
-        <ProfitLossReportPanel
-          report={data.profitLoss}
-          tenantId={tenantId}
-          from={from}
-          to={to}
-          summaryLoading={summaryLoading}
-          onPrint={() => window.print()}
-        />
+        {panel}
       </div>
+    );
+  };
+
+  if (reportId === "profit-loss" && data.profitLoss) {
+    return wrap(
+      <ProfitLossReportPanel
+        report={data.profitLoss}
+        tenantId={tenantId}
+        from={from}
+        to={to}
+        summaryLoading={summaryLoading}
+        onPrint={() => window.print()}
+      />,
     );
   }
 
   if (reportId === "purchase-sale") {
-    return (
-      <div className="space-y-6 p-1 sm:p-2">
-        <div className="px-1 sm:px-2">
-          <h2 className="text-lg font-semibold text-foreground">{title}</h2>
-          <p className="text-sm text-muted">{subtitle}</p>
-        </div>
-        <PurchaseSaleReportPanel report={data} onPrint={() => window.print()} />
-      </div>
+    return wrap(
+      <PurchaseSaleReportPanel
+        report={data}
+        tenantId={tenantId}
+        from={from}
+        to={to}
+        onPrint={() => window.print()}
+      />,
     );
   }
 
   if (reportId === "register") {
-    return (
-      <div className="space-y-6 p-1 sm:p-2">
-        <div className="px-1 sm:px-2">
-          <h2 className="text-lg font-semibold text-foreground">{title}</h2>
-          <p className="text-sm text-muted">{subtitle}</p>
-        </div>
-        <RegisterReportPanel report={data} onPrint={() => window.print()} />
-      </div>
+    return wrap(
+      <RegisterReportPanel report={data} onPrint={() => window.print()} />,
     );
   }
 
   if (reportId === "tax") {
-    return (
-      <div className="space-y-6 p-1 sm:p-2">
-        <div className="px-1 sm:px-2">
-          <h2 className="text-lg font-semibold text-foreground">{title}</h2>
-          <p className="text-sm text-muted">{subtitle}</p>
-        </div>
-        <TaxReportPanel report={data} onPrint={() => window.print()} />
-      </div>
+    return wrap(
+      <TaxReportPanel
+        report={data}
+        reportId="tax"
+        tenantId={tenantId}
+        from={from}
+        to={to}
+        onPrint={() => window.print()}
+      />,
     );
   }
 
   if (reportId === "service-staff") {
-    return (
-      <div className="space-y-6 p-1 sm:p-2">
-        <div className="px-1 sm:px-2">
-          <h2 className="text-lg font-semibold text-foreground">{title}</h2>
-          <p className="text-sm text-muted">{subtitle}</p>
-        </div>
-        <ServiceStaffReportPanel report={data} onPrint={() => window.print()} />
-      </div>
+    return wrap(
+      <ServiceStaffReportPanel report={data} onPrint={() => window.print()} />,
     );
   }
 
   if (reportId === "balance-sheet" && data.balanceSheet) {
-    return (
-      <div className="space-y-6 p-1 sm:p-2">
-        <div className="px-1 sm:px-2">
-          <h2 className="text-lg font-semibold text-foreground">{title}</h2>
-          <p className="text-sm text-muted">{subtitle}</p>
-        </div>
-        <BalanceSheetReportPanel report={data.balanceSheet} />
-      </div>
-    );
+    return wrap(<BalanceSheetReportPanel report={data.balanceSheet} />);
   }
 
   if (reportId === "cash-flow" && data.cashFlow) {
-    return (
-      <div className="space-y-6 p-1 sm:p-2">
-        <div className="px-1 sm:px-2">
-          <h2 className="text-lg font-semibold text-foreground">{title}</h2>
-          <p className="text-sm text-muted">{subtitle}</p>
-        </div>
-        <CashFlowReportPanel report={data.cashFlow} />
-      </div>
-    );
+    return wrap(<CashFlowReportPanel report={data.cashFlow} />);
   }
 
   if (reportId === "trial-balance" && data.table) {
     const currency =
       data.kpis.find((kpi) => kpi.currency)?.currency ?? "NGN";
-    return (
-      <div className="space-y-6 p-1 sm:p-2">
-        <div className="px-1 sm:px-2">
-          <h2 className="text-lg font-semibold text-foreground">{title}</h2>
-          <p className="text-sm text-muted">{subtitle}</p>
-        </div>
-        <TrialBalanceReportPanel table={data.table} currency={currency} />
-      </div>
+    return wrap(
+      <TrialBalanceReportPanel table={data.table} currency={currency} />,
     );
   }
 
   if (reportId === "payment-account-report" && data.table) {
     const currency =
       data.kpis.find((kpi) => kpi.currency)?.currency ?? "NGN";
-    return (
-      <div className="space-y-6 p-1 sm:p-2">
-        <div className="px-1 sm:px-2">
-          <h2 className="text-lg font-semibold text-foreground">{title}</h2>
-          <p className="text-sm text-muted">{subtitle}</p>
-        </div>
-        <PaymentAccountDetailReportPanel
-          table={data.table}
-          currency={currency}
-        />
-      </div>
+    return wrap(
+      <PaymentAccountDetailReportPanel
+        table={data.table}
+        currency={currency}
+      />,
     );
   }
 
-  return (
-    <div className="space-y-6 p-1 sm:p-2">
-      <ReportDetailSheet
-        title={title}
-        subtitle={subtitle}
-        data={data}
-        showCharts
-        onRowClick={onRowClick}
-        onRowAction={onRowAction}
-        tablePagination={tablePagination}
-        chartGridClassName={
-          variant === "chartHero"
-            ? "grid gap-6 lg:grid-cols-1"
-            : variant === "kpiSummary"
-              ? "grid gap-6 lg:grid-cols-2"
-              : "grid gap-6 lg:grid-cols-2"
-        }
-        kpiClassName={variant === "kpiSummary" ? "border-b border-border pb-2" : undefined}
-        tableFirst={variant === "tableFocus" && data.charts.length === 0}
-      />
-    </div>
+  return wrap(
+    <ReportDetailSheet
+      title={title}
+      subtitle={subtitle}
+      data={data}
+      showCharts
+      onRowClick={onRowClick}
+      onRowAction={onRowAction}
+      tablePagination={tablePagination}
+      tableSearch={tableSearch}
+      onTableSearchChange={onTableSearchChange}
+      searchPlaceholder={searchPlaceholder}
+      chartGridClassName={
+        variant === "chartHero"
+          ? "grid gap-6 lg:grid-cols-1"
+          : variant === "kpiSummary"
+            ? "grid gap-6 lg:grid-cols-2"
+            : "grid gap-6 lg:grid-cols-2"
+      }
+      kpiClassName={variant === "kpiSummary" ? "border-b border-border pb-2" : undefined}
+      tableFirst={variant === "tableFocus" && data.charts.length === 0}
+    />,
   );
 }

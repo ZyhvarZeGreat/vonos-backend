@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   Patch,
@@ -122,6 +123,11 @@ export class SalesController {
     return this.salesService.getMeta(id);
   }
 
+  @Get(':id/payments')
+  listPayments(@Param('id') id: string) {
+    return this.salesService.listPayments(id);
+  }
+
   @Get(':id')
   getById(@Param('id') id: string) {
     return this.salesService.getById(id);
@@ -170,5 +176,11 @@ export class SalesController {
     },
   ) {
     return this.salesService.updateShipping(id, body);
+  }
+
+  @Delete(':id')
+  @Roles('admin', 'super_admin')
+  remove(@Param('id') id: string) {
+    return this.salesService.remove(id);
   }
 }

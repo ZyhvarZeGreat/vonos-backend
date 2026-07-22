@@ -1,13 +1,14 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAppMutation } from "@/lib/hooks/useAppMutation";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { EmptyState } from "@/components/atoms/EmptyState";
 import { DetailPageShell } from "@/components/pages/DetailPageShell";
 import { JobDetailView as JobDetailPage } from "@/components/pages/JobDetailView";
 import { getCustomer, getItem, getJobCosts, getJobShell, getSale, getCatalogItem } from "@/lib/api";
+import { getItemStockHistory } from "@/lib/api/items";
 import { getAppointment } from "@/lib/api/appointments";
 import { getReturn } from "@/lib/api/returns";
 import { saleToOrder } from "@/lib/api/orders";
@@ -25,7 +26,7 @@ import type {
   CustomerTransactionHistoryEntry,
   VehicleJobHistoryEntry,
 } from "@vonos/types";
-import { recordDetailPath } from "@/lib/utils/recordDetailPath";
+import { recordDetailPath, saleRecordPath } from "@/lib/utils/recordDetailPath";
 import type { JobDetail } from "@/lib/api/jobs";
 import type { SaleDetail, StockMovement, MovementStatus } from "@vonos/types";
 import { useAuditHistoryFeed, createdByField } from "@/lib/hooks/useAuditHistoryFeed";
@@ -37,6 +38,13 @@ import { getAdvanceLabel } from "@/components/organisms/StatusStepper";
 import { DetailPageSkeleton } from "@/components/organisms/skeletons";
 import { SaleReceiptPanel } from "@/components/molecules/SaleReceiptPanel";
 import { AccountBookView } from "@/components/pages/PosNavViews";
+import { Hq6CustomerDetailView } from "@/components/pages/Hq6CustomerDetailView";
+import { Hq6RoleDetailView } from "@/components/pages/Hq6RoleDetailView";
+import { Hq6TodoDetailView } from "@/components/pages/Hq6TodoDetailView";
+import { Hq6UserDetailView } from "@/components/pages/Hq6UserDetailView";
+import { Hq6PageFrame } from "@/components/hq6/Hq6Chrome";
+import { Hq6SupplierDetailView } from "@/components/pages/Hq6SupplierDetailView";
+import { useIsVaHq6 } from "@/lib/hooks/useIsVaHq6";
 
 function DetailLoading() {
   return <DetailPageSkeleton />;
@@ -69,15 +77,23 @@ function ItemDetailView({
   catalogMode?: boolean;
 }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const tenantId = useTenantId();
   const tenantConfig = useTenantStore((state) => state.tenantConfig);
   const listSlug = catalogMode ? "catalog" : "inventory";
   const { listPath } = useRecordNavigation(listSlug);
+  const showStockHistory = searchParams.get("view") === "stock_history";
+
   const { data: item, isLoading } = useQuery({
     queryKey: ["item", recordId, catalogMode ? "catalog" : "inventory"],
     queryFn: () => (catalogMode ? getCatalogItem(recordId) : getItem(recordId)),
   });
   const { entries: auditEntries } = useAuditHistoryFeed("item", recordId, tenantId);
+  const { data: stockHistory = [], isLoading: historyLoading } = useQuery({
+    queryKey: ["item-stock-history", recordId],
+    queryFn: () => getItemStockHistory(recordId),
+    enabled: showStockHistory,
+  });
 
   if (isLoading) {
     return <DetailPageSkeleton />;
@@ -91,6 +107,62 @@ function ItemDetailView({
         ctaLabel={catalogMode ? "Back to catalog" : "Back to inventory"}
         onCta={() => router.push(listPath)}
       />
+    );
+  }
+
+  if (showStockHistory) {
+    return (
+      <Hq6PageFrame title={item.name} subtitle={`Product stock history · ${item.sku}`}>
+        <div className="mb-4">
+          <button
+            type="button"
+            className="hq6-btn hq6-btn-outline text-xs"
+            onClick={() => router.push(`${listPath}/${recordId}`)}
+          >
+            Back to product
+          </button>
+        </div>
+        <section className="rounded-lg border border-[#e5e7eb] bg-white p-4">
+          {historyLoading ? (
+            <p className="text-sm text-[#6b7280]">Loading stock history…</p>
+          ) : stockHistory.length === 0 ? (
+            <p className="text-sm text-[#6b7280]">No stock movements for this product yet.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-[#e5e7eb] text-left text-[#6b7280]">
+                    <th className="pb-2 pr-3 font-medium">Date</th>
+                    <th className="pb-2 pr-3 font-medium">Reference</th>
+                    <th className="pb-2 pr-3 font-medium">Type</th>
+                    <th className="pb-2 pr-3 font-medium">Status</th>
+                    <th className="pb-2 pr-3 font-medium text-right">Qty</th>
+                    <th className="pb-2 font-medium text-right">Unit cost</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {stockHistory.map((row) => (
+                    <tr key={`${row.id}-${row.quantity}`} className="border-b border-[#f3f4f6]">
+                      <td className="whitespace-nowrap py-2 pr-3">
+                        {formatDateTime(row.date)}
+                      </td>
+                      <td className="py-2 pr-3">{row.reference}</td>
+                      <td className="py-2 pr-3 capitalize">{row.type}</td>
+                      <td className="py-2 pr-3">{row.status}</td>
+                      <td className="py-2 pr-3 text-right tabular-nums">{row.quantity}</td>
+                      <td className="py-2 text-right tabular-nums">
+                        {row.unitCost != null
+                          ? formatCurrency(row.unitCost, item.currency)
+                          : "—"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+      </Hq6PageFrame>
     );
   }
 
@@ -300,6 +372,12 @@ function transactionHistoryFeed(
 }
 
 function CustomerDetailView({ recordId }: { recordId: string }) {
+  const isHq6 = useIsVaHq6();
+  if (isHq6) return <Hq6CustomerDetailView recordId={recordId} />;
+  return <CustomerDetailViewBody recordId={recordId} />;
+}
+
+function CustomerDetailViewBody({ recordId }: { recordId: string }) {
   const router = useRouter();
   const params = useParams<{ tenant: string }>();
   const tenantId = useTenantId();
@@ -569,14 +647,28 @@ function MovementDetailView({
 function SaleDetailView({ recordId }: { recordId: string }) {
   const router = useRouter();
   const tenantId = useTenantId();
+  const isHq6 = useIsVaHq6();
+  const tenantCode = useTenantStore((s) => s.tenantConfig?.code ?? "VA");
   const exportDetail = useDetailExport();
   const { listPath } = useRecordNavigation("sales");
+
+  // HQ6 sales open as a list modal — bounce detail URLs to ?record=
+  useEffect(() => {
+    if (isHq6 && tenantCode) {
+      router.replace(saleRecordPath(tenantCode, recordId));
+    }
+  }, [isHq6, recordId, router, tenantCode]);
+
   const { data: sale, isLoading } = useQuery({
     queryKey: ["sale", tenantId, recordId],
     queryFn: () => getSale(recordId, tenantId!),
-    enabled: Boolean(tenantId),
+    enabled: Boolean(tenantId) && !isHq6,
   });
   const { entries: auditEntries } = useAuditHistoryFeed("sale", recordId, tenantId);
+
+  if (isHq6) {
+    return <DetailLoading />;
+  }
 
   if (!tenantId || isLoading) {
     return <DetailLoading />;
@@ -848,6 +940,12 @@ function AppointmentDetailView({ recordId }: { recordId: string }) {
 }
 
 function SupplierDetailView({ recordId }: { recordId: string }) {
+  const isHq6 = useIsVaHq6();
+  if (isHq6) return <Hq6SupplierDetailView recordId={recordId} />;
+  return <SupplierDetailViewBody recordId={recordId} />;
+}
+
+function SupplierDetailViewBody({ recordId }: { recordId: string }) {
   const router = useRouter();
   const tenantId = useTenantId();
   const { listPath } = useRecordNavigation("suppliers");
@@ -973,7 +1071,15 @@ function UnavailableDetailView({
   );
 }
 
-export function RecordDetailView({ listSlug, recordId }: { listSlug: string; recordId: string }) {
+export function RecordDetailView({
+  listSlug,
+  recordId,
+  mode = "view",
+}: {
+  listSlug: string;
+  recordId: string;
+  mode?: "view" | "edit";
+}) {
   const router = useRouter();
   const params = useParams<{ tenant: string }>();
   const tenantCode = params.tenant;
@@ -1012,6 +1118,12 @@ export function RecordDetailView({ listSlug, recordId }: { listSlug: string; rec
         return <SupplierDetailView recordId={recordId} />;
       case "returns":
         return <ReturnDetailView recordId={recordId} />;
+      case "users":
+        return <Hq6UserDetailView recordId={recordId} mode={mode} />;
+      case "roles":
+        return <Hq6RoleDetailView recordId={recordId} mode={mode} />;
+      case "essentials-todo":
+        return <Hq6TodoDetailView recordId={recordId} />;
       case "requisitions":
         return (
           <UnavailableDetailView
@@ -1029,7 +1141,7 @@ export function RecordDetailView({ listSlug, recordId }: { listSlug: string; rec
       default:
         return null;
     }
-  }, [listSlug, recordId, tenantCode, tenantId]);
+  }, [listSlug, mode, recordId, tenantCode, tenantId]);
 
   if (!tenantId) {
     return <DetailLoading />;

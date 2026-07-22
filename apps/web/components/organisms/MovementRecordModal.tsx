@@ -79,7 +79,15 @@ export function MovementRecordModal({
     <>
       <RecordViewModal
         open={Boolean(movementId)}
-        title={movement?.reference ?? "Movement"}
+        title={
+          movement
+            ? listSlug === "purchases" || listSlug === "inbound"
+              ? `Purchase Details (Reference No: ${movement.reference})`
+              : movement.reference
+            : listSlug === "purchases" || listSlug === "inbound"
+              ? "Purchase Details"
+              : "Movement"
+        }
         subtitle={
           movement
             ? `${formatDate(movement.date)} · ${movement.type} · ${movement.status}`

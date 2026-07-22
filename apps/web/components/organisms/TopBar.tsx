@@ -1,9 +1,21 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Bell, Inbox, LogOut, Menu, Plus } from "lucide-react";
+import {
+  Bell,
+  Calculator,
+  Clock,
+  Grid2X2,
+  Inbox,
+  LogOut,
+  Menu,
+  Plus,
+  TrendingUp,
+  ListTodo,
+  Monitor,
+} from "lucide-react";
 import { Button } from "@/components/atoms/Button";
 import { IconButton } from "@/components/atoms/IconButton";
 import { TenantSwitcher } from "@/components/molecules/TenantSwitcher";
@@ -14,6 +26,10 @@ import { AddSaleModal } from "@/components/organisms/AddSaleModal";
 import { AddProductModal } from "@/components/organisms/AddProductModal";
 import { AddExpenseModal } from "@/components/organisms/AddExpenseModal";
 import { ExportDocumentModal } from "@/components/organisms/ExportDocumentModal";
+import {
+  Hq6GlobalChromeModals,
+  type Hq6GlobalModalId,
+} from "@/components/hq6/Hq6GlobalChromeModals";
 import { getNotifications, markNotificationRead } from "@/lib/api/notifications";
 import { logout } from "@/lib/api/auth";
 import { formatTimeAgo } from "@/lib/utils/formatTimeAgo";
@@ -57,6 +73,15 @@ export function TopBar({
   const notifications = useUiStore((state) => state.notifications);
   const unreadCount = notifications.filter((n) => !n.read).length;
   const tenantId = useTenantId();
+  const isVa = tenantCode === "VA";
+  const [hq6GlobalModal, setHq6GlobalModal] = useState<Hq6GlobalModalId>(null);
+  const userName = useAuthStore((state) => state.name ?? state.email ?? "Admin");
+  const userInitial = userName.trim().charAt(0).toUpperCase() || "A";
+  const todayLabel = (() => {
+    const d = new Date();
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return `${pad(d.getDate())}-${pad(d.getMonth() + 1)}-${d.getFullYear()}`;
+  })();
 
   const notificationsQuery = useQuery({
     queryKey: ["notifications", tenantId],
@@ -126,16 +151,102 @@ export function TopBar({
             variant="topbar"
             className="hidden md:block"
           />
-          <span className="hidden text-[var(--color-topbar-text-muted)] md:inline" aria-hidden>
+          <span
+            className={cn(
+              "hidden text-[var(--color-topbar-text-muted)] md:inline",
+              tenantCode === "VA" && "md:hidden",
+            )}
+            aria-hidden
+          >
             /
           </span>
-          <h1 className={cn(typographyRoles.pageTitle, "!text-[var(--color-topbar-text)]")}>{title}</h1>
+          <h1
+            className={cn(
+              typographyRoles.pageTitle,
+              "!text-[var(--color-topbar-text)]",
+              tenantCode === "VA" && "sr-only",
+            )}
+          >
+            {title}
+          </h1>
         </div>
 
-        <div className="flex items-center gap-4">
-          <IconButton label="Inbox" className="text-white/80 hover:bg-white/10 hover:text-white">
-            <Inbox className="h-5 w-5" />
-          </IconButton>
+        <div className="flex items-center gap-2 md:gap-3">
+          {isVa ? (
+            <div className="hq6-topbar-tools hidden lg:flex">
+              <button
+                type="button"
+                className="hq6-topbar-icon hq6-topbar-icon-pos"
+                title="POS"
+                aria-label="POS"
+                onClick={() => router.push("/VA/pos-terminal")}
+              >
+                <Monitor className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                className="hq6-topbar-icon hq6-topbar-icon-add"
+                title="Add Product"
+                aria-label="Add Product"
+                onClick={() => router.push("/VA/add-product")}
+              >
+                <Plus className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                className="hq6-topbar-icon"
+                title="Calculator"
+                aria-label="Calculator"
+                onClick={() => setHq6GlobalModal("calculator")}
+              >
+                <Calculator className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                className="hq6-topbar-icon"
+                title="Today's profit"
+                aria-label="Today's profit"
+                onClick={() => setHq6GlobalModal("todays-profit")}
+              >
+                <TrendingUp className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                className="hq6-topbar-icon"
+                title="Add To Do"
+                aria-label="Add To Do"
+                onClick={() => setHq6GlobalModal("task")}
+              >
+                <ListTodo className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                className="hq6-topbar-icon"
+                title="Clock In"
+                aria-label="Clock In"
+                onClick={() => setHq6GlobalModal("clock")}
+              >
+                <Clock className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                className="hq6-topbar-icon"
+                title="Modules"
+                aria-label="Modules"
+                onClick={() => router.push("/VA/overview")}
+              >
+                <Grid2X2 className="h-4 w-4" />
+              </button>
+              <span className="hq6-topbar-date" aria-label="Today's date">
+                {todayLabel}
+              </span>
+            </div>
+          ) : null}
+          {!isVa ? (
+            <IconButton label="Inbox" className="text-white/80 hover:bg-white/10 hover:text-white">
+              <Inbox className="h-5 w-5" />
+            </IconButton>
+          ) : null}
           <div className="relative">
             <IconButton label="Notifications" onClick={toggleNotifications} className="text-white/80 hover:bg-white/10 hover:text-white">
               <Bell className="h-5 w-5" />
@@ -149,7 +260,18 @@ export function TopBar({
               onItemClick={handleNotificationClick}
             />
           </div>
-          {isAuthenticated ? (
+          {isVa ? (
+            <button
+              type="button"
+              className="hq6-topbar-user hidden md:inline-flex"
+              title={userName}
+              onClick={handleLogout}
+            >
+              <span className="hq6-topbar-user-avatar">{userInitial}</span>
+              <span>{userName.split("@")[0]}</span>
+            </button>
+          ) : null}
+          {isAuthenticated && !isVa ? (
             <IconButton
               label="Sign out"
               onClick={handleLogout}
@@ -158,9 +280,9 @@ export function TopBar({
               <LogOut className="h-5 w-5" />
             </IconButton>
           ) : null}
-          {primaryAction
+          {!isVa && primaryAction
             ? primaryAction
-            : primaryActionLabel
+            : !isVa && primaryActionLabel
               ? (
                 <Button
                   size="sm"
@@ -185,6 +307,12 @@ export function TopBar({
       <AddProductModal />
       <AddExpenseModal />
       <ExportDocumentModal />
+      {isVa ? (
+        <Hq6GlobalChromeModals
+          active={hq6GlobalModal}
+          onClose={() => setHq6GlobalModal(null)}
+        />
+      ) : null}
     </>
   );
 }

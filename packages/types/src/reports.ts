@@ -174,6 +174,12 @@ export interface CashFlowReport {
   };
 }
 
+/** HQ6 tax / purchase-sale detail — separate purchase vs sale invoice tables. */
+export interface TaxReportTables {
+  purchases: ReportsTable;
+  sales: ReportsTable;
+}
+
 export interface ReportsDashboard {
   kpis: ReportsKpi[];
   charts: ReportsChart[];
@@ -182,6 +188,8 @@ export interface ReportsDashboard {
   profitLoss?: ProfitLossReport;
   /** Present for tax report — Purchases / Sales / Overall cards. */
   taxReport?: TaxReportSummary;
+  /** Present for tax / purchase-sale — Input (purchases) vs Output (sales) tables. */
+  taxTables?: TaxReportTables;
   /** Present for balance sheet report — liability vs assets columns. */
   balanceSheet?: BalanceSheetReport;
   /** Present for cash flow report — ledger with running balances. */
@@ -193,6 +201,8 @@ export interface ReportsDashboard {
 /** Query options for paginated / filtered table reports. */
 export type ProductSellReportView = "detailed" | "by-category" | "by-brand";
 
+export type TaxReportTableSide = "purchases" | "sales";
+
 export interface ReportRunOptions {
   cursor?: string;
   limit?: number;
@@ -200,11 +210,15 @@ export interface ReportRunOptions {
   customerId?: string;
   customerGroupId?: string;
   locationCode?: string;
+  /** Payment account filter (payment-account-report). */
+  accountId?: string;
   category?: string;
   brandId?: string;
   paymentMethod?: string;
   supplierId?: string;
   view?: ProductSellReportView;
+  /** Paginate one side of tax / purchase-sale invoice tables. */
+  taxTable?: TaxReportTableSide;
 }
 
 /** Report ids that support cursor-paginated tables + filter cards. */

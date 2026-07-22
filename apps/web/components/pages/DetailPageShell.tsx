@@ -11,6 +11,7 @@ import {
 } from "@/components/organisms/StatusStepper";
 import { DetailPanelSection } from "@/components/organisms/DetailPanelSection";
 import type { SectionInstance } from "@/lib/registries/sectionTypes";
+import { useIsVaHq6 } from "@/lib/hooks/useIsVaHq6";
 import { cn } from "@/lib/utils/cn";
 
 export type DetailLayout = "default" | "twoColumn" | "narrow";
@@ -64,12 +65,18 @@ export function DetailPageShell({
   actions,
   className,
 }: DetailPageShellProps) {
+  const isHq6 = useIsVaHq6();
   const isNarrow = layout === "narrow";
   const isTwoColumn = layout === "twoColumn";
 
   const headerBlock = (
-    <div className="rounded-xl border border-border bg-card p-6 shadow-card">
-      <div className="flex flex-wrap items-start justify-between gap-4">
+    <div
+      className={cn(
+        isHq6
+          ? "hq6-card p-4 md:p-6"
+          : "rounded-xl border border-border bg-card p-6 shadow-card",
+      )}
+    >      <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="flex min-w-0 flex-1 items-start gap-4">
           {headerLeading ?? (
             <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-[var(--color-surface-muted)] text-[var(--color-brand-accent)]">
@@ -116,13 +123,27 @@ export function DetailPageShell({
     <div
       className={cn(
         "space-y-6",
+        isHq6 && "hq6-page",
         isNarrow && "mx-auto max-w-2xl",
         className,
       )}
     >
+      {isHq6 ? (
+        <section className="hq6-content-header">
+          <h1>
+            {title}
+            {subtitle ? <small>{subtitle}</small> : null}
+          </h1>
+        </section>
+      ) : null}
       <Link
         href={backHref}
-        className="inline-flex items-center gap-2 text-sm font-medium text-muted transition-colors hover:text-foreground"
+        className={cn(
+          "inline-flex items-center gap-2 text-sm font-medium transition-colors",
+          isHq6
+            ? "text-[#3c8dbc] hover:underline"
+            : "text-muted hover:text-foreground",
+        )}
       >
         <ArrowLeft className="h-4 w-4" />
         {backLabel}

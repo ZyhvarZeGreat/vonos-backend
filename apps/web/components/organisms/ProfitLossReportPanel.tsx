@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type {
   ProfitLossBreakdownTab,
   ProfitLossReport,
@@ -14,6 +14,7 @@ import { cn } from "@/lib/utils/cn";
 import { Skeleton } from "@/components/atoms/Skeleton";
 import { DataTableSkeleton } from "@/components/organisms/skeletons";
 import { CursorPaginationBar } from "@/components/molecules/CursorPaginationBar";
+import { ReportTableSearchBar } from "@/components/molecules/ReportTableSearchBar";
 import { TABLE_REPORT_PAGE_SIZE } from "@/lib/registries/reportTableUi";
 
 const BREAKDOWN_TABS: Array<{ id: ProfitLossBreakdownTab; label: string }> = [
@@ -56,7 +57,21 @@ function BreakdownTable({
   table: ReportsTable;
   currency: string;
 }) {
-  const pagination = useOffsetPage(table.rows, { resetKey: `${table.rows.length}` });
+  const [search, setSearch] = useState("");
+  const filteredRows = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return table.rows;
+    return table.rows.filter((row) =>
+      table.columns.some((col) => {
+        const raw = row[col.key];
+        if (raw == null || Array.isArray(raw)) return false;
+        return String(raw).toLowerCase().includes(q);
+      }),
+    );
+  }, [search, table.columns, table.rows]);
+  const pagination = useOffsetPage(filteredRows, {
+    resetKey: `${table.rows.length}:${search}`,
+  });
   const pageRows = pagination.pageRows;
 
   return (
@@ -74,6 +89,11 @@ function BreakdownTable({
         totalPages={pagination.totalPages}
         totalItems={pagination.totalItems}
         className="border-b border-t-0 border-[var(--color-border-subtle)]"
+      />
+      <ReportTableSearchBar
+        value={search}
+        onChange={setSearch}
+        placeholder="Search breakdown…"
       />
       <div className="overflow-x-auto">
         <table className="w-full min-w-[24rem] text-sm">
@@ -93,7 +113,7 @@ function BreakdownTable({
                   colSpan={table.columns.length}
                   className="px-4 py-8 text-center text-muted"
                 >
-                  No data for this period.
+                  {search.trim() ? "No rows match your search." : "No data for this period."}
                 </td>
               </tr>
             ) : (

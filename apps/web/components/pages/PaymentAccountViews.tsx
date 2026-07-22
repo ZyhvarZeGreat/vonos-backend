@@ -365,27 +365,41 @@ export function PaymentAccountsListView() {
 
 export function PaymentAccountReportView({ slug }: { slug: PaymentAccountPageSlug }) {
   const tenantId = useTenantId();
+  const { config } = useRouteTenant();
   const openExportModal = useUiStore((state) => state.openExportModal);
   const { tabs, activeTab, onTabChange } = usePaymentAccountPageTabs(slug);
   const { dateRange, setDateRange, bounds } = useListPageFilters();
   const periodLabel = ledgerChartSubtitle(dateRange);
   const entry = reportEntryBySlug(slug);
-  const isSnapshotReport = slug === "balance-sheet";
+  const [locationCode, setLocationCode] = useState("");
+  const [accountId, setAccountId] = useState("");
+  const isPaymentAccountReport = slug === "payment-account-report";
+  const locations = config?.businessLocations ?? [];
+
+  const { data: accounts = [] } = useQuery({
+    queryKey: ["payment-accounts", tenantId, "filter-options"],
+    queryFn: () => getAllPaymentAccounts(tenantId!),
+    enabled: Boolean(tenantId && isPaymentAccountReport),
+  });
 
   const { data, isLoading, isFetching, error } = useQuery({
     queryKey: [
       "payment-account-report",
       tenantId,
       entry?.id,
-      isSnapshotReport ? "snapshot" : bounds?.from,
-      isSnapshotReport ? "snapshot" : bounds?.to,
+      bounds?.from,
+      bounds?.to,
+      locationCode,
+      accountId,
     ],
     queryFn: () =>
       runReport({
         reportId: entry!.id,
-        from: isSnapshotReport ? undefined : bounds?.from,
-        to: isSnapshotReport ? undefined : bounds?.to,
+        from: bounds?.from,
+        to: bounds?.to,
         tenantId: tenantId ?? undefined,
+        locationCode: locationCode || undefined,
+        accountId: accountId && accountId !== "none" ? accountId : undefined,
       }),
     enabled: Boolean(tenantId && entry),
     staleTime: 5 * 60_000,
@@ -406,7 +420,7 @@ export function PaymentAccountReportView({ slug }: { slug: PaymentAccountPageSlu
       activeTab={activeTab}
       onTabChange={onTabChange}
       showImport={false}
-      showDateRange={!isSnapshotReport}
+      showDateRange
       dateRange={dateRange}
       onDateRangeChange={setDateRange}
       contentClassName="p-6 sm:p-8"
@@ -435,6 +449,45 @@ export function PaymentAccountReportView({ slug }: { slug: PaymentAccountPageSlu
           : undefined
       }
     >
+      <div className="mb-4 rounded-lg border border-border bg-card p-4 print:hidden">
+        <p className="mb-3 text-sm font-semibold text-foreground">Filters</p>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <label className="block text-sm">
+            <span className="mb-1 block text-muted">Business Location</span>
+            <select
+              className="h-9 w-full rounded-md border border-border bg-surface px-3 text-sm"
+              value={locationCode}
+              onChange={(e) => setLocationCode(e.target.value)}
+            >
+              <option value="">All locations</option>
+              {locations.map((loc) => (
+                <option key={loc.code} value={loc.code}>
+                  {loc.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          {isPaymentAccountReport ? (
+            <label className="block text-sm">
+              <span className="mb-1 block text-muted">Account</span>
+              <select
+                className="h-9 w-full rounded-md border border-border bg-surface px-3 text-sm"
+                value={accountId}
+                onChange={(e) => setAccountId(e.target.value)}
+              >
+                <option value="">All</option>
+                <option value="none">None</option>
+                {accounts.map((account) => (
+                  <option key={account.id} value={account.id}>
+                    {account.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
+        </div>
+      </div>
+
       {isLoading || (isFetching && !data) ? (
         <HqReportPageSkeleton reportId={entry.id} />
       ) : error ? (
@@ -443,7 +496,7 @@ export function PaymentAccountReportView({ slug }: { slug: PaymentAccountPageSlu
         <HqReportPageLayout
           reportId={entry.id}
           title={entry.label}
-          subtitle={isSnapshotReport ? "Current snapshot" : periodLabel}
+          subtitle={periodLabel}
           data={data}
         />
       ) : null}

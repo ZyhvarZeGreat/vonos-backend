@@ -17,6 +17,8 @@ import { useRouteTenant } from "@/lib/hooks/useRouteTenant";
 import { useListPageFilters } from "@/lib/hooks/useListPageFilters";
 import { hasPermission } from "@/lib/utils/permissions";
 import { useAuthStore } from "@/stores/authStore";
+import { useIsVaHq6 } from "@/lib/hooks/useIsVaHq6";
+import { Hq6UsersListView } from "@/components/pages/Hq6UsersListView";
 import { formatCurrency } from "@/lib/utils/formatCurrency";
 import { formatDate } from "@/lib/utils/formatDate";
 import type { User, WorkforceMember } from "@vonos/types";
@@ -137,6 +139,19 @@ export interface HrViewProps {
 }
 
 export function HrView({ allTenants = false, embedded = false }: HrViewProps) {
+  return <HrViewBody allTenants={allTenants} embedded={embedded} />;
+}
+
+/** Users management list (HQ6: `/VA/users`). */
+export function UsersView(props: HrViewProps) {
+  const isHq6 = useIsVaHq6();
+  if (isHq6 && !props.allTenants && !props.embedded) {
+    return <Hq6UsersListView />;
+  }
+  return <HrViewBody {...props} />;
+}
+
+function HrViewBody({ allTenants = false, embedded = false }: HrViewProps) {
   const { tenantId, tenantName, tenantCode } = useRouteTenant();
   const authRole = useAuthStore((state) => state.role);
   const { search, setSearch } = useListPageFilters();
@@ -352,9 +367,4 @@ export function HrView({ allTenants = false, embedded = false }: HrViewProps) {
       </ListPageShell>
     </div>
   );
-}
-
-/** @deprecated Use HrView — kept for legacy /users routes. */
-export function UsersView(props: HrViewProps) {
-  return <HrView {...props} />;
 }

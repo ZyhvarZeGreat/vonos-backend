@@ -1,6 +1,5 @@
 "use client";
 
-import { Input } from "@/components/atoms/Input";
 import { Select } from "@/components/atoms/Select";
 import type { ReportFilterField } from "@/lib/registries/reportTableUi";
 import type { ReportRunOptions } from "@vonos/types";
@@ -56,24 +55,15 @@ export function ReportFilterShell({
   onChange: (patch: Partial<ReportRunOptions>) => void;
   optionSets: ReportFilterOptionSets;
 }) {
-  if (fields.length === 0) return null;
+  // Search lives on the report table itself — keep only select filters here.
+  const selectFields = fields.filter((field) => field.kind !== "search");
+  if (selectFields.length === 0) return null;
 
   return (
     <section className="rounded-xl border border-border bg-card p-4 shadow-card">
       <h3 className="mb-3 text-sm font-semibold text-foreground">Filters</h3>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        {fields.map((field) => {
-          if (field.kind === "search") {
-            return (
-              <Input
-                key={field.key}
-                label={field.label}
-                placeholder={field.placeholder}
-                value={values.search ?? ""}
-                onChange={(e) => onChange({ search: e.target.value })}
-              />
-            );
-          }
+        {selectFields.map((field) => {
           const value = String(values[field.key] ?? "");
           return (
             <Select

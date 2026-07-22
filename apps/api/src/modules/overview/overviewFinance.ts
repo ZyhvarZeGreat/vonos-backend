@@ -17,6 +17,7 @@ import {
   ledgerPlTrend,
   ledgerSummaryInWindow,
 } from '../reports/aggregators/ledgerReportQueries';
+import { taxReportSummaryAggregates, purchaseRevenueByBucket, salesRevenueByBucket } from '../reports/aggregators/salesReportQueries';
 
 export interface LedgerFinanceSlice {
   currency: string;
@@ -143,6 +144,133 @@ function financeCharts(
       type: 'pie',
       series: [{ name: 'Amount', dataKey: 'value', color: '#9333ea' }],
       data: asChartData(expenseBreakdown),
+    },
+  ];
+}
+
+/** HQ6 Home stat cards — ui-audit/00_home/screenshot.png (VA only). */
+export async function buildVaHq6HomeFinanceKpis(
+  db: TenantScopedPrisma,
+  tenantId: string,
+  from?: string,
+  to?: string,
+): Promise<ReportsKpi[]> {
+  const window = resolveDateWindow(from, to);
+  const [summary, taxAgg] = await Promise.all([
+    ledgerSummaryInWindow(db, tenantId, window.from, window.to),
+    taxReportSummaryAggregates(db, tenantId, window),
+  ]);
+  const currency = taxAgg.currency;
+  const expenseTotal = summary.costs;
+
+  return [
+    {
+      label: 'Total Sales',
+      icon: 'wallet',
+      metricKey: 'totalSale',
+      color: '#3b82f6',
+      value: taxAgg.totalSale,
+      currency,
+    },
+    {
+      label: 'Net',
+      icon: 'wallet',
+      metricKey: 'net',
+      color: '#9333ea',
+      value: summary.net,
+      currency,
+    },
+    {
+      label: 'Invoice due',
+      icon: 'alert',
+      metricKey: 'invoiceDue',
+      color: '#f39c12',
+      value: taxAgg.saleDue,
+      currency,
+    },
+    {
+      label: 'Total Sell Return',
+      icon: 'rotate',
+      metricKey: 'sellReturn',
+      color: '#dd4b39',
+      value: taxAgg.sellReturnIncludingTax,
+      currency,
+    },
+    {
+      label: 'Total purchase',
+      icon: 'cart',
+      metricKey: 'purchase',
+      color: '#00a65a',
+      value: taxAgg.totalPurchase,
+      currency,
+    },
+    {
+      label: 'Purchase due',
+      icon: 'alert',
+      metricKey: 'purchaseDue',
+      color: '#f39c12',
+      value: taxAgg.purchaseDue,
+      currency,
+    },
+    {
+      label: 'Total Purchase Return',
+      icon: 'package',
+      metricKey: 'purchaseReturn',
+      color: '#605ca8',
+      value: taxAgg.purchaseReturnIncludingTax,
+      currency,
+    },
+    {
+      label: 'Expense',
+      icon: 'receipt',
+      metricKey: 'expense',
+      color: '#2563eb',
+      value: expenseTotal,
+      currency,
+    },
+  ];
+}
+
+function last30DayWindow(): { from: Date; to: Date } {
+  const to = new Date();
+  const from = new Date();
+  from.setDate(from.getDate() - 30);
+  from.setHours(0, 0, 0, 0);
+  to.setHours(23, 59, 59, 999);
+  return { from, to };
+}
+
+/** HQ6 home chart row — ui-audit/00_home (Sales / Purchase last 30 days). */
+export async function buildVaHq6HomeCharts(
+  db: TenantScopedPrisma,
+  tenantId: string,
+): Promise<ReportsChart[]> {
+  const window = last30DayWindow();
+  const [sales, purchases] = await Promise.all([
+    salesRevenueByBucket(db, tenantId, window),
+    purchaseRevenueByBucket(db, tenantId, window),
+  ]);
+
+  return [
+    {
+      id: 'hq6-sales-last-30',
+      title: 'Sales Last 30 Days',
+      subtitle: 'Total sales value',
+      type: 'line',
+      series: [{ name: 'Total Sales', dataKey: 'sales', color: '#3b82f6' }],
+      data: asChartData(
+        sales.map((row) => ({ label: row.label, sales: row.sales })),
+      ),
+    },
+    {
+      id: 'hq6-purchase-last-30',
+      title: 'Purchase Last 30 Days',
+      subtitle: 'Total purchase value',
+      type: 'line',
+      series: [{ name: 'Total Purchase', dataKey: 'purchase', color: '#00a65a' }],
+      data: asChartData(
+        purchases.map((row) => ({ label: row.label, purchase: row.purchase })),
+      ),
     },
   ];
 }

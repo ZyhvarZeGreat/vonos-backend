@@ -1,15 +1,13 @@
 import type {
   ProfitLossBreakdownTab,
+  ReportRunOptions,
   ReportsDashboard,
   ReportsTable,
 } from '@vonos/types';
+import { Prisma } from '@prisma/client';
 import type { TenantScopedPrisma } from '../../../common/prisma/prisma.service';
 import { buildLedgerSummaryFromGroups, ledgerDateFilter } from '../../../common/utils/ledgerAggregates';
 import { computeOutstandingReceivables } from '../../../common/utils/outstandingReceivables';
-import {
-  buildCompositeCursorQuery,
-  nextCompositeCursor,
-} from '../../../common/utils/pagination';
 import { computeSalesRevenueTotal } from '../../../common/utils/salesRevenue';
 import { toNumber } from '../../../common/utils/serializers';
 import { computeDelta, resolveDateWindow } from './date-utils';
@@ -294,51 +292,87 @@ export async function buildExpenseReport(
   db: TenantScopedPrisma,
   from?: string,
   to?: string,
-  options?: { cursor?: string; limit?: number },
+  options?: ReportRunOptions,
 ): Promise<ReportsDashboard> {
   const dateFilter = ledgerDateFilter(from, to);
   const pageSize = Math.min(Math.max(options?.limit ?? 25, 1), 100);
-  const pagination = buildCompositeCursorQuery({
-    sortField: 'date',
-    sortDir: 'desc',
-    cursor: options?.cursor,
-    limit: pageSize + 1,
-    sortValueType: 'date',
-  });
+  const search = options?.search?.trim();
+  const expenseDateFilter =
+    from || to
+      ? {
+          expenseDate: {
+            ...(from ? { gte: new Date(from) } : {}),
+            ...(to ? { lte: new Date(to) } : {}),
+          },
+        }
+      : {};
+
+  const expenseWhere: Prisma.ExpenseWhereInput = {
+    deletedAt: null,
+    ...expenseDateFilter,
+    ...(options?.locationCode
+      ? { locationCode: options.locationCode }
+      : {}),
+    ...(search
+      ? {
+          OR: [
+            { refNo: { contains: search, mode: 'insensitive' } },
+            { note: { contains: search, mode: 'insensitive' } },
+            { expenseFor: { contains: search, mode: 'insensitive' } },
+            { contactName: { contains: search, mode: 'insensitive' } },
+            { category: { name: { contains: search, mode: 'insensitive' } } },
+            {
+              invoice: {
+                reference: { contains: search, mode: 'insensitive' },
+              },
+            },
+          ],
+        }
+      : {}),
+  };
+
+  const ledgerWhere: Prisma.LedgerEntryWhereInput = {
+    deletedAt: null,
+    type: 'expense',
+    ...dateFilter,
+  };
 
   const [expenseGroups, currencyRow, entryCount, expenseRowsRaw] =
     await Promise.all([
       db.ledgerEntry.groupBy({
         by: ['category'],
-        where: { deletedAt: null, type: 'expense', ...dateFilter },
+        where: ledgerWhere,
         _sum: { amount: true },
         orderBy: { category: 'asc' },
       }),
       db.ledgerEntry.findFirst({
-        where: { deletedAt: null, type: 'expense', ...dateFilter },
+        where: ledgerWhere,
         select: { currency: true },
         orderBy: { date: 'desc' },
       }),
-      db.ledgerEntry.count({
-        where: { deletedAt: null, type: 'expense', ...dateFilter },
+      db.expense.count({
+        where: expenseWhere,
       }),
-      db.ledgerEntry.findMany({
-        where: {
-          deletedAt: null,
-          type: 'expense',
-          ...dateFilter,
-          ...(pagination.where ?? {}),
-        },
+      db.expense.findMany({
+        where: expenseWhere,
         select: {
           id: true,
-          category: true,
-          description: true,
-          amount: true,
-          currency: true,
-          date: true,
+          refNo: true,
+          expenseDate: true,
+          totalAmount: true,
+          paymentStatus: true,
+          note: true,
+          locationCode: true,
+          expenseFor: true,
+          contactName: true,
+          category: { select: { name: true } },
+          invoice: { select: { reference: true } },
         },
-        orderBy: [{ date: 'desc' }, { id: 'desc' }],
-        take: pagination.take,
+        orderBy: [{ expenseDate: 'desc' }, { id: 'desc' }],
+        take: pageSize + 1,
+        ...(options?.cursor
+          ? { cursor: { id: options.cursor }, skip: 1 }
+          : {}),
       }),
     ]);
 
@@ -347,11 +381,9 @@ export async function buildExpenseReport(
     ? expenseRowsRaw.slice(0, pageSize)
     : expenseRowsRaw;
   const lastRow = expenseRows[expenseRows.length - 1];
-  const nextCursor = hasMore && lastRow
-    ? nextCompositeCursor(lastRow, 'date', 'date')
-    : null;
+  const nextCursor = hasMore && lastRow ? lastRow.id : null;
 
-  const currency = currencyRow?.currency ?? expenseRows[0]?.currency ?? 'NGN';
+  const currency = currencyRow?.currency ?? 'NGN';
   const totalExpenses = expenseGroups.reduce(
     (sum, g) => sum + toNumber(g._sum.amount ?? 0),
     0,
@@ -400,22 +432,35 @@ export async function buildExpenseReport(
     table: {
       columns: [
         { key: 'date', header: 'Date' },
+        { key: 'reference', header: 'Ref / Invoice' },
         { key: 'category', header: 'Category' },
-        { key: 'description', header: 'Description' },
-        { key: 'amount', header: 'Amount' },
+        { key: 'party', header: 'Expense For / Contact' },
+        { key: 'location', header: 'Location' },
+        { key: 'payment', header: 'Payment' },
+        { key: 'note', header: 'Note' },
+        { key: 'amount', header: 'Amount', totalAs: 'currency' },
       ],
       rows: expenseRows.map((row) => ({
         id: row.id,
-        recordType: 'ledgerEntry',
-        date: row.date.toISOString().slice(0, 10),
-        category: row.category,
-        description: row.description,
-        amount: toNumber(row.amount),
-        currency: row.currency,
+        recordType: 'expense',
+        date: row.expenseDate.toISOString().slice(0, 16).replace('T', ' '),
+        reference: row.invoice?.reference ?? row.refNo ?? '—',
+        category: row.category?.name ?? 'Uncategorized',
+        party: [row.expenseFor, row.contactName].filter(Boolean).join(' · ') || '—',
+        location: row.locationCode ?? '—',
+        payment: row.paymentStatus ?? '—',
+        note: row.note ?? '—',
+        amount: toNumber(row.totalAmount),
+        currency,
       })),
       hasMore,
       nextCursor,
       pageSize,
+      columnTotals: {
+        amount: Math.round(
+          expenseRows.reduce((sum, row) => sum + toNumber(row.totalAmount), 0),
+        ),
+      },
     },
   };
 }

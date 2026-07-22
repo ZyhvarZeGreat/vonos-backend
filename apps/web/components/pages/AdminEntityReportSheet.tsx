@@ -23,7 +23,7 @@ import { useListPageFilters } from "@/lib/hooks/useListPageFilters";
 import { useReportFilterOptions } from "@/lib/hooks/useReportFilterOptions";
 import { useDebouncedValue } from "@/lib/hooks/useDebouncedValue";
 import { ledgerChartSubtitle } from "@/lib/utils/ledgerCharts";
-import { recordDetailPath } from "@/lib/utils/recordDetailPath";
+import { reportRowDetailPath } from "@/lib/utils/recordDetailPath";
 import { cn } from "@/lib/utils/cn";
 import type {
   ProductSellReportView,
@@ -177,15 +177,13 @@ export function AdminEntityReportSheet({
   };
 
   const handleRowClick = (row: ReportsTableRow & { id: string }) => {
-    const path = recordDetailPath(
-      tenantCode,
-      String(row.recordType ?? ""),
-      String(row.id ?? ""),
-    );
+    const path = reportRowDetailPath(tenantCode, row);
     if (path) router.push(path);
   };
 
   const activeView = (filters.view ?? "detailed") as ProductSellReportView;
+  const searchField = tableUi?.filters.find((field) => field.kind === "search");
+  const searchPlaceholder = searchField?.placeholder ?? "Search …";
 
   return (
     <div className="space-y-6">
@@ -260,6 +258,11 @@ export function AdminEntityReportSheet({
             subtitle={periodLabel}
             data={data}
             tablePagination={tablePagination}
+            tableSearch={filters.search ?? ""}
+            onTableSearchChange={(search) =>
+              setFilters((prev) => ({ ...prev, search }))
+            }
+            searchPlaceholder={searchPlaceholder}
             onRowClick={handleRowClick}
           />
         ) : null}

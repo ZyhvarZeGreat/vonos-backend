@@ -246,6 +246,77 @@ export class ItemsService {
     return row;
   }
 
+  /** HQ6 product stock history — movements that include this item. */
+  async stockHistory(id: string): Promise<
+    Array<{
+      id: string;
+      date: string;
+      reference: string;
+      type: string;
+      status: string;
+      quantity: number;
+      unitCost: number | null;
+    }>
+  > {
+    const tenantId = this.tenantDb.requireTenantId();
+    const item = await this.tenantDb.db.item.findFirst({
+      where: { id, tenantId, deletedAt: null },
+      select: { id: true, sku: true },
+    });
+    if (!item) throw new NotFoundException('Item not found');
+
+    const movements = await this.tenantDb.db.stockMovement.findMany({
+      where: { tenantId, deletedAt: null },
+      orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
+      take: 500,
+      select: {
+        id: true,
+        date: true,
+        reference: true,
+        type: true,
+        status: true,
+        lines: true,
+      },
+    });
+
+    const history: Array<{
+      id: string;
+      date: string;
+      reference: string;
+      type: string;
+      status: string;
+      quantity: number;
+      unitCost: number | null;
+    }> = [];
+
+    for (const movement of movements) {
+      const lines = Array.isArray(movement.lines)
+        ? (movement.lines as Array<{
+            itemId?: string;
+            sku?: string;
+            quantity?: number;
+            unitCost?: number;
+          }>)
+        : [];
+      for (const line of lines) {
+        if (line.itemId !== item.id && line.sku !== item.sku) continue;
+        history.push({
+          id: movement.id,
+          date: movement.date.toISOString(),
+          reference: movement.reference,
+          type: movement.type,
+          status: movement.status,
+          quantity: Number(line.quantity ?? 0),
+          unitCost:
+            line.unitCost != null ? toNumber(line.unitCost) : null,
+        });
+      }
+      if (history.length >= 100) break;
+    }
+
+    return history;
+  }
+
   async kpiSummary(): Promise<KpiSummary> {
     const tenantId = this.tenantDb.requireTenantId();
     const cacheKey = `kpi-summary:${tenantId}`;
@@ -507,6 +578,27 @@ export class ItemsService {
     });
     void this.invalidateItemCaches();
     return serializeItem(row);
+  }
+
+  async remove(id: string): Promise<void> {
+    const tenantId = this.tenantDb.requireTenantId();
+    const existing = await this.tenantDb.db.item.findFirst({
+      where: { id, tenantId, deletedAt: null },
+      select: { id: true, sku: true, name: true },
+    });
+    if (!existing) throw new NotFoundException('Item not found');
+
+    await this.tenantDb.db.item.update({
+      where: { id },
+      data: { deletedAt: new Date() },
+    });
+    await this.auditService.log({
+      action: 'deleted',
+      entityType: 'item',
+      entityId: id,
+      summary: `Deleted item ${existing.sku}`,
+    });
+    void this.invalidateItemCaches();
   }
 
   /**

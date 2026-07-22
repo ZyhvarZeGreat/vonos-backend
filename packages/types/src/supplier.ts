@@ -8,6 +8,7 @@ export interface Supplier {
   address: string | null;
   locationCode: string | null;
   notes: string | null;
+  taxNumber?: string | null;
   openingBalance?: number;
   assignedToUserId?: string | null;
   assignedToName?: string | null;

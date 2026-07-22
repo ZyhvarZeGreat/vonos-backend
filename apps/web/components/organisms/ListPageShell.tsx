@@ -1,12 +1,29 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { ChevronDown, Download, Search, Upload } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { usePathname } from "next/navigation";
+import {
+  ChevronDown,
+  CloudDownload,
+  Columns3,
+  Download,
+  FileSpreadsheet,
+  FileText,
+  Printer,
+  Search,
+  Upload,
+} from "lucide-react";
 import { DateRangeDropdown } from "@/components/molecules/DateRangeDropdown";
 import { DropdownMenu } from "@/components/molecules/DropdownMenu";
 import type { DateRangePreset, CustomDateRange } from "@/stores/uiStore";
 import { useUiStore } from "@/stores/uiStore";
 import { cn } from "@/lib/utils/cn";
+import { useIsVaHq6 } from "@/lib/hooks/useIsVaHq6";
+import { hq6CopyForSlug } from "@/lib/registries/hq6PageCopy";
+import { parseTenantPath } from "@/lib/utils/tenantRoutes";
+import { Hq6PageFrame } from "@/components/hq6/Hq6Chrome";
+import { Hq6ColumnVisibilityModal } from "@/components/hq6/Hq6ColumnVisibilityModal";
+import { Hq6PrintModal } from "@/components/hq6/Hq6PrintModal";
 
 export interface ListTab {
   id: string;
@@ -37,7 +54,6 @@ export interface ListPageShellProps {
   onSearchChange?: (value: string) => void;
   showImport?: boolean;
   showExport?: boolean;
-  /** When set, enables the Import CSV toolbar button and invokes this handler with the selected file. */
   onImport?: (file: File) => void | Promise<void>;
   importDisabled?: boolean;
   showDateRange?: boolean;
@@ -48,17 +64,333 @@ export interface ListPageShellProps {
   onCustomDateRangeChange?: (range: CustomDateRange | null) => void;
   filterDropdowns?: ListFilterDropdown[];
   filterCheckboxes?: ListFilterCheckbox[];
-  /** Extra classes for the content area below the toolbar (e.g. report body padding). */
   contentClassName?: string;
   onExport?: () => void;
-  /** Primary action rendered in the table toolbar (e.g. "Add Customer"). */
   primaryAction?: React.ReactNode;
   children: React.ReactNode;
   className?: string;
   searchDebounceMs?: number;
+  /** Override HQ6 page title (VA). Defaults from route slug. */
+  hq6Title?: string;
+  hq6Subtitle?: string;
+  /**
+   * When false on VA, skip outer page header/footer (use inside pages that
+   * already provide their own title, e.g. Finance tabs).
+   */
+  hq6PageChrome?: boolean;
+  /** Column keys for HQ6 Column visibility modal */
+  hq6Columns?: { key: string; label: string }[];
+  hq6VisibleColumns?: string[];
+  onHq6VisibleColumnsChange?: (keys: string[]) => void;
 }
 
-export function ListPageShell({
+export function ListPageShell(props: ListPageShellProps) {
+  const isHq6 = useIsVaHq6();
+  if (isHq6) return <Hq6ListPageShell {...props} />;
+  return <DefaultListPageShell {...props} />;
+}
+
+function useDebouncedSearch(
+  searchValue: string,
+  onSearchChange: ((value: string) => void) | undefined,
+  searchDebounceMs: number,
+) {
+  const [localSearch, setLocalSearch] = useState(searchValue);
+
+  useEffect(() => {
+    setLocalSearch(searchValue);
+  }, [searchValue]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      if (localSearch !== searchValue) onSearchChange?.(localSearch);
+    }, searchDebounceMs);
+    return () => window.clearTimeout(timer);
+  }, [localSearch, onSearchChange, searchDebounceMs, searchValue]);
+
+  return { localSearch, setLocalSearch };
+}
+
+function Hq6ListPageShell({
+  tabs,
+  activeTab,
+  onTabChange,
+  searchPlaceholder = "Search ...",
+  searchValue = "",
+  onSearchChange,
+  showImport = true,
+  showExport = true,
+  onImport,
+  importDisabled = false,
+  showDateRange = true,
+  showSearch = true,
+  dateRange,
+  onDateRangeChange,
+  customDateRange,
+  onCustomDateRangeChange,
+  filterDropdowns = [],
+  filterCheckboxes = [],
+  onExport,
+  primaryAction,
+  children,
+  contentClassName,
+  searchDebounceMs = 300,
+  hq6Title,
+  hq6Subtitle,
+  hq6PageChrome = true,
+  hq6Columns = [],
+  hq6VisibleColumns,
+  onHq6VisibleColumnsChange,
+}: ListPageShellProps) {
+  const openExportModal = useUiStore((state) => state.openExportModal);
+  const pathname = usePathname();
+  const { section } = parseTenantPath(pathname);
+  const copy = useMemo(() => hq6CopyForSlug(section), [section]);
+  const title = hq6Title ?? copy.title;
+  const subtitle = hq6Subtitle ?? copy.subtitle;
+  const { localSearch, setLocalSearch } = useDebouncedSearch(
+    searchValue,
+    onSearchChange,
+    searchDebounceMs,
+  );
+  const [printOpen, setPrintOpen] = useState(false);
+  const [columnsOpen, setColumnsOpen] = useState(false);
+  const defaultColumnKeys = useMemo(
+    () => hq6Columns.map((c) => c.key),
+    [hq6Columns],
+  );
+  const visibleKeys = hq6VisibleColumns ?? defaultColumnKeys;
+
+  const hasFilters =
+    showDateRange || filterDropdowns.length > 0 || filterCheckboxes.length > 0;
+
+  const filters = hasFilters ? (
+    <div className="space-y-4">
+      {filterCheckboxes.length > 0 ? (
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+          {filterCheckboxes.map((box) => (
+            <label
+              key={box.id}
+              className="inline-flex items-center gap-2 text-sm font-medium text-[#374151]"
+            >
+              <input
+                type="checkbox"
+                className="h-4 w-4 rounded border-[#d1d5db]"
+                checked={box.checked}
+                onChange={(e) => box.onChange(e.target.checked)}
+              />
+              {box.label}
+            </label>
+          ))}
+        </div>
+      ) : null}
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        {showDateRange ? (
+          <div className="hq6-field">
+            <span>Date Range:</span>
+            <DateRangeDropdown
+              value={dateRange}
+              onChange={onDateRangeChange}
+              customValue={customDateRange}
+              onCustomChange={onCustomDateRangeChange}
+            />
+          </div>
+        ) : null}
+        {filterDropdowns.map((filter) => (
+          <label key={filter.id} className="hq6-field">
+            <span>{filter.label.replace(/:$/, "")}:</span>
+            <select
+              value={filter.value}
+              onChange={(e) => filter.onChange(e.target.value)}
+            >
+              <option value="">All</option>
+              {filter.options
+                .filter((o) => o.value !== "")
+                .map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+            </select>
+          </label>
+        ))}
+      </div>
+    </div>
+  ) : undefined;
+
+  const box = (
+    <div className="hq6-card hq6-products-box overflow-hidden">
+      <div className="hq6-tab-row">
+        <div className="flex min-w-0 flex-1 overflow-x-auto">
+          {tabs.map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              className={cn(
+                "hq6-tab",
+                activeTab === tab.id && "hq6-tab-active",
+              )}
+              onClick={() => onTabChange(tab.id)}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+        {primaryAction ? (
+          <div className="flex shrink-0 items-center gap-2 px-3 py-2">
+            {primaryAction}
+          </div>
+        ) : null}
+      </div>
+
+      <div className="hq6-dt-toolbar">
+        <label className="hq6-show-entries">
+          Show{" "}
+          <select defaultValue={25}>
+            <option value={10}>10</option>
+            <option value={25}>25</option>
+            <option value={50}>50</option>
+            <option value={100}>100</option>
+          </select>{" "}
+          entries
+        </label>
+        <div className="flex flex-wrap items-center gap-1.5">
+          {showImport ? (
+            onImport ? (
+              <>
+                <input
+                  type="file"
+                  accept=".csv"
+                  className="hidden"
+                  id="hq6-list-import"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    if (file) void onImport(file);
+                    event.target.value = "";
+                  }}
+                />
+                <label
+                  htmlFor="hq6-list-import"
+                  className={cn(
+                    "hq6-btn hq6-btn-outline",
+                    importDisabled && "pointer-events-none opacity-50",
+                  )}
+                >
+                  <Download className="h-3.5 w-3.5" />
+                  Import CSV
+                </label>
+              </>
+            ) : (
+              <button type="button" className="hq6-btn hq6-btn-outline" disabled>
+                <Download className="h-3.5 w-3.5" />
+                Import CSV
+              </button>
+            )
+          ) : null}
+          {showExport ? (
+            <>
+              <button
+                type="button"
+                className="hq6-btn hq6-btn-outline"
+                onClick={onExport ?? (() => openExportModal())}
+              >
+                <FileText className="h-3.5 w-3.5" />
+                Export CSV
+              </button>
+              <button
+                type="button"
+                className="hq6-btn hq6-btn-outline"
+                onClick={onExport ?? (() => openExportModal())}
+              >
+                <FileSpreadsheet className="h-3.5 w-3.5" />
+                Export Excel
+              </button>
+              <button
+                type="button"
+                className="hq6-btn hq6-btn-outline"
+                onClick={() => setPrintOpen(true)}
+              >
+                <Printer className="h-3.5 w-3.5" />
+                Print
+              </button>
+              <button
+                type="button"
+                className="hq6-btn hq6-btn-outline"
+                onClick={() => setColumnsOpen(true)}
+                disabled={hq6Columns.length === 0}
+              >
+                <Columns3 className="h-3.5 w-3.5" />
+                Column visibility
+              </button>
+              <button
+                type="button"
+                className="hq6-btn hq6-btn-blue"
+                onClick={onExport ?? (() => openExportModal())}
+              >
+                <CloudDownload className="h-3.5 w-3.5" />
+                Download Excel
+              </button>
+            </>
+          ) : null}
+        </div>
+        {showSearch ? (
+          <label className="hq6-search ml-auto">
+            <span className="sr-only">Search</span>
+            <input
+              type="text"
+              placeholder={searchPlaceholder}
+              value={localSearch}
+              onChange={(e) => setLocalSearch(e.target.value)}
+            />
+          </label>
+        ) : null}
+      </div>
+
+      <div className={cn("hq6-table-wrap", contentClassName)}>{children}</div>
+    </div>
+  );
+
+  if (!hq6PageChrome) {
+    return (
+      <div className="space-y-4">
+        {filters ? (
+          <div className="hq6-card hq6-filters-card">
+            <div className="hq6-filters-body">{filters}</div>
+          </div>
+        ) : null}
+        {box}
+        <Hq6PrintModal open={printOpen} onClose={() => setPrintOpen(false)} />
+        {hq6Columns.length > 0 ? (
+          <Hq6ColumnVisibilityModal
+            open={columnsOpen}
+            onClose={() => setColumnsOpen(false)}
+            columns={hq6Columns}
+            visibleKeys={visibleKeys}
+            onChange={(keys) => onHq6VisibleColumnsChange?.(keys)}
+          />
+        ) : null}
+      </div>
+    );
+  }
+
+  return (
+    <Hq6PageFrame title={title} subtitle={subtitle} filters={filters}>
+      {box}
+      <Hq6PrintModal open={printOpen} onClose={() => setPrintOpen(false)} />
+      {hq6Columns.length > 0 ? (
+        <Hq6ColumnVisibilityModal
+          open={columnsOpen}
+          onClose={() => setColumnsOpen(false)}
+          columns={hq6Columns}
+          visibleKeys={visibleKeys}
+          onChange={(keys) => onHq6VisibleColumnsChange?.(keys)}
+        />
+      ) : null}
+    </Hq6PageFrame>
+  );
+}
+
+function DefaultListPageShell({
   tabs,
   activeTab,
   onTabChange,
@@ -85,20 +417,11 @@ export function ListPageShell({
   searchDebounceMs = 300,
 }: ListPageShellProps) {
   const openExportModal = useUiStore((state) => state.openExportModal);
-  const [localSearch, setLocalSearch] = useState(searchValue);
-
-  useEffect(() => {
-    setLocalSearch(searchValue);
-  }, [searchValue]);
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => {
-      if (localSearch !== searchValue) {
-        onSearchChange?.(localSearch);
-      }
-    }, searchDebounceMs);
-    return () => window.clearTimeout(timer);
-  }, [localSearch, onSearchChange, searchDebounceMs, searchValue]);
+  const { localSearch, setLocalSearch } = useDebouncedSearch(
+    searchValue,
+    onSearchChange,
+    searchDebounceMs,
+  );
 
   return (
     <div

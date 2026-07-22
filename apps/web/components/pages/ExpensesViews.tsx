@@ -12,6 +12,9 @@ import { ExpenseViewModal } from "@/components/organisms/ExpenseViewModal";
 import { ServerPaginatedTable } from "@/components/organisms/ServerPaginatedTable";
 import { ListPageShell } from "@/components/organisms/ListPageShell";
 import { RowActionsMenu } from "@/components/molecules/RowActionsMenu";
+import { useIsVaHq6 } from "@/lib/hooks/useIsVaHq6";
+import { Hq6ExpenseCategoriesListView } from "@/components/pages/Hq6ExpenseCategoriesListView";
+import { Hq6ExpensesListView } from "@/components/pages/Hq6ExpensesListView";
 import { formatCurrency } from "@/lib/utils/formatCurrency";
 import { useTenantId, useRouteTenant } from "@/lib/hooks/useRouteTenant";
 import { useServerListPage } from "@/lib/hooks/useServerListPage";
@@ -68,6 +71,14 @@ function expenseExportRows(rows: Expense[]) {
 }
 
 export function ExpensesListView() {
+  const isHq6 = useIsVaHq6();
+  if (isHq6) {
+    return <Hq6ExpensesListView />;
+  }
+  return <ExpensesListViewBody />;
+}
+
+function ExpensesListViewBody() {
   const tenantId = useTenantId();
   const { tenantCode } = useRouteTenant();
   const router = useRouter();
@@ -269,6 +280,7 @@ export function ExpensesListView() {
               <Button
                 type="button"
                 size="sm"
+                className="gap-2"
                 onClick={() =>
                   router.push(expensePageRoute(tenantCode, "add-expense"))
                 }
@@ -342,7 +354,7 @@ const emptyForm = (): ExpenseFormState => ({
   totalAmount: "",
   taxAmount: "",
   note: "",
-  expenseDate: new Date().toISOString().slice(0, 10),
+  expenseDate: new Date().toISOString().slice(0, 16),
   locationCode: "",
   expenseFor: "",
   contactName: "",
@@ -360,7 +372,7 @@ function expenseToForm(expense: Expense): ExpenseFormState {
     totalAmount: String(expense.totalAmount),
     taxAmount: String(expense.taxAmount),
     note: expense.note ?? "",
-    expenseDate: expense.expenseDate.slice(0, 10),
+    expenseDate: expense.expenseDate.slice(0, 16),
     locationCode: expense.locationCode ?? "",
     expenseFor: expense.expenseFor ?? "",
     contactName: expense.contactName ?? "",
@@ -372,8 +384,9 @@ function expenseToForm(expense: Expense): ExpenseFormState {
 }
 
 export function AddExpenseView() {
+  const isHq6 = useIsVaHq6();
   const tenantId = useTenantId();
-  const { tenantCode } = useRouteTenant();
+  const { tenantCode, config } = useRouteTenant();
   const router = useRouter();
   const searchParams = useSearchParams();
   const editId = searchParams.get("edit");
@@ -441,6 +454,12 @@ export function AddExpenseView() {
     }
   };
 
+  const locations = config?.businessLocations ?? [];
+  const paymentDue = Math.max(
+    0,
+    (Number(form.totalAmount) || 0) - (Number(form.taxAmount) || 0),
+  );
+
   return (
     <ListPageShell
       tabs={tabs}
@@ -450,267 +469,439 @@ export function AddExpenseView() {
       showDateRange={false}
       showSearch={false}
     >
-      <div className="mx-auto max-w-2xl space-y-6 py-4">
-        <div>
-          <h2 className="text-lg font-semibold text-foreground">
-            {isEdit ? "Edit Expense" : "Add Expense"}
-          </h2>
-          <p className="mt-1 text-sm text-muted">
-            {isEdit
-              ? "Update this business expense."
-              : "Record a new business expense."}
-          </p>
-        </div>
-
-        {isEdit && loadingExpense ? (
-          <p className="text-sm text-muted">Loading expense…</p>
-        ) : (
-          <div className="space-y-4 rounded-xl border border-border bg-card p-6 shadow-card">
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div>
-                <label className="mb-1 block text-sm font-medium text-foreground">
-                  Expense Category
-                </label>
-                <select
-                  className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm"
-                  value={form.categoryId}
-                  onChange={(e) => setForm({ ...form, categoryId: e.target.value })}
-                >
-                  <option value="">Select category…</option>
-                  {categories.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium text-foreground">
-                  Ref No
-                </label>
-                <input
-                  type="text"
-                  className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm"
-                  placeholder="Reference number"
-                  value={form.refNo}
-                  onChange={(e) => setForm({ ...form, refNo: e.target.value })}
-                />
-              </div>
-            </div>
-
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div>
-                <label className="mb-1 block text-sm font-medium text-foreground">
-                  Date
-                </label>
-                <input
-                  type="date"
-                  className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm"
-                  value={form.expenseDate}
-                  onChange={(e) =>
-                    setForm({ ...form, expenseDate: e.target.value })
-                  }
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium text-foreground">
-                  Location
-                </label>
-                <input
-                  type="text"
-                  className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm"
-                  placeholder="Location code"
-                  value={form.locationCode}
-                  onChange={(e) =>
-                    setForm({ ...form, locationCode: e.target.value })
-                  }
-                />
-              </div>
-            </div>
-
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div>
-                <label className="mb-1 block text-sm font-medium text-foreground">
-                  Sub category
-                </label>
-                <input
-                  type="text"
-                  className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm"
-                  value={form.subCategory}
-                  onChange={(e) =>
-                    setForm({ ...form, subCategory: e.target.value })
-                  }
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium text-foreground">
-                  Payment status
-                </label>
-                <select
-                  className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm"
-                  value={form.paymentStatus}
-                  onChange={(e) =>
-                    setForm({ ...form, paymentStatus: e.target.value })
-                  }
-                >
-                  <option value="due">Due</option>
-                  <option value="paid">Paid</option>
-                  <option value="partial">Partial</option>
-                </select>
-              </div>
-            </div>
-
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div>
-                <label className="mb-1 block text-sm font-medium text-foreground">
-                  Expense For
-                </label>
-                <input
-                  type="text"
-                  className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm"
-                  placeholder="User or purpose"
-                  value={form.expenseFor}
-                  onChange={(e) =>
-                    setForm({ ...form, expenseFor: e.target.value })
-                  }
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium text-foreground">
-                  Contact
-                </label>
-                <input
-                  type="text"
-                  className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm"
-                  placeholder="Supplier or contact"
-                  value={form.contactName}
-                  onChange={(e) =>
-                    setForm({ ...form, contactName: e.target.value })
-                  }
-                />
-              </div>
-            </div>
-
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div>
-                <label className="mb-1 block text-sm font-medium text-foreground">
-                  Total Amount
-                </label>
-                <input
-                  type="number"
-                  className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm"
-                  placeholder="0.00"
-                  value={form.totalAmount}
-                  onChange={(e) =>
-                    setForm({ ...form, totalAmount: e.target.value })
-                  }
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium text-foreground">
-                  Tax Amount
-                </label>
-                <input
-                  type="number"
-                  className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm"
-                  placeholder="0.00"
-                  value={form.taxAmount}
-                  onChange={(e) =>
-                    setForm({ ...form, taxAmount: e.target.value })
-                  }
-                />
-              </div>
-            </div>
-
-            <div className="rounded-lg border border-border/60 p-4">
-              <label className="flex items-center gap-2 text-sm font-medium text-foreground">
-                <input
-                  type="checkbox"
-                  checked={form.isRecurring}
-                  onChange={(e) =>
-                    setForm({ ...form, isRecurring: e.target.checked })
-                  }
-                />
-                Recurring expense
-              </label>
-              {form.isRecurring ? (
-                <div className="mt-3 grid gap-4 sm:grid-cols-2">
-                  <div>
-                    <label className="mb-1 block text-xs font-medium text-muted">
-                      Interval
-                    </label>
-                    <input
-                      type="number"
-                      min={1}
-                      className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm"
-                      value={form.recurInterval}
-                      onChange={(e) =>
-                        setForm({ ...form, recurInterval: e.target.value })
-                      }
-                    />
-                  </div>
-                  <div>
-                    <label className="mb-1 block text-xs font-medium text-muted">
-                      Unit
-                    </label>
+      {isHq6 ? (
+        <div className="space-y-4">
+          {isEdit && loadingExpense ? (
+            <div className="hq6-form-card text-sm text-[#555]">Loading expense…</div>
+          ) : (
+            <>
+              <section className="hq6-form-card">
+                <div className="hq6-form-grid hq6-form-grid-3">
+                  <label className="hq6-form-label">
+                    <span>
+                      Business Location <span className="req">*</span>
+                    </span>
                     <select
-                      className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm"
-                      value={form.recurIntervalType}
+                      className="hq6-form-input"
+                      value={form.locationCode}
                       onChange={(e) =>
-                        setForm({ ...form, recurIntervalType: e.target.value })
+                        setForm({ ...form, locationCode: e.target.value })
                       }
                     >
-                      <option value="days">Days</option>
-                      <option value="months">Months</option>
-                      <option value="years">Years</option>
+                      <option value="">Please Select</option>
+                      {locations.map((loc) => (
+                        <option key={loc.code} value={loc.code}>
+                          {loc.name}
+                        </option>
+                      ))}
                     </select>
-                  </div>
+                  </label>
+                  <label className="hq6-form-label">
+                    <span>Expense Category</span>
+                    <select
+                      className="hq6-form-input"
+                      value={form.categoryId}
+                      onChange={(e) =>
+                        setForm({ ...form, categoryId: e.target.value })
+                      }
+                    >
+                      <option value="">Please Select</option>
+                      {categories.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="hq6-form-label">
+                    <span>Sub category</span>
+                    <input
+                      className="hq6-form-input"
+                      value={form.subCategory}
+                      onChange={(e) =>
+                        setForm({ ...form, subCategory: e.target.value })
+                      }
+                    />
+                  </label>
+                  <label className="hq6-form-label">
+                    <span>Reference No</span>
+                    <input
+                      className="hq6-form-input"
+                      value={form.refNo}
+                      onChange={(e) => setForm({ ...form, refNo: e.target.value })}
+                    />
+                    <p className="hq6-form-hint">Leave empty to autogenerate</p>
+                  </label>
+                  <label className="hq6-form-label">
+                    <span>
+                      Date <span className="req">*</span>
+                    </span>
+                    <input
+                      type="datetime-local"
+                      className="hq6-form-input"
+                      value={form.expenseDate}
+                      onChange={(e) =>
+                        setForm({ ...form, expenseDate: e.target.value })
+                      }
+                    />
+                  </label>
+                  <label className="hq6-form-label">
+                    <span>Expense for</span>
+                    <input
+                      className="hq6-form-input"
+                      value={form.expenseFor}
+                      onChange={(e) =>
+                        setForm({ ...form, expenseFor: e.target.value })
+                      }
+                      placeholder="None"
+                    />
+                  </label>
+                  <label className="hq6-form-label">
+                    <span>Expense for contact</span>
+                    <input
+                      className="hq6-form-input"
+                      value={form.contactName}
+                      onChange={(e) =>
+                        setForm({ ...form, contactName: e.target.value })
+                      }
+                    />
+                  </label>
+                  <label className="hq6-form-label">
+                    <span>Attach Document</span>
+                    <div className="hq6-form-file">
+                      <input type="file" accept=".pdf,.csv,.zip,.doc,.docx,.jpeg,.jpg,.png" />
+                    </div>
+                    <p className="hq6-form-hint">
+                      Max File size: 5MB · Allowed: .pdf, .csv, .zip, .doc, .docx, .jpeg, .jpg, .png
+                    </p>
+                  </label>
+                  <label className="hq6-form-label">
+                    <span>Applicable Tax</span>
+                    <select className="hq6-form-input" defaultValue="none">
+                      <option value="none">None</option>
+                    </select>
+                  </label>
+                  <label className="hq6-form-label">
+                    <span>
+                      Total amount <span className="req">*</span>
+                    </span>
+                    <input
+                      type="number"
+                      className="hq6-form-input"
+                      placeholder="Total amount"
+                      value={form.totalAmount}
+                      onChange={(e) =>
+                        setForm({ ...form, totalAmount: e.target.value })
+                      }
+                    />
+                  </label>
+                  <label className="hq6-form-label" style={{ gridColumn: "1 / -1" }}>
+                    <span>Expense note</span>
+                    <textarea
+                      className="hq6-form-input"
+                      rows={3}
+                      value={form.note}
+                      onChange={(e) => setForm({ ...form, note: e.target.value })}
+                    />
+                  </label>
                 </div>
+              </section>
+
+              <section className="hq6-form-card">
+                <label className="mb-3 flex items-center gap-2 text-sm font-semibold text-[#111827]">
+                  <input
+                    type="checkbox"
+                    checked={form.isRecurring}
+                    onChange={(e) =>
+                      setForm({ ...form, isRecurring: e.target.checked })
+                    }
+                  />
+                  Is Recurring?
+                </label>
+                {form.isRecurring ? (
+                  <div className="hq6-form-grid hq6-form-grid-2">
+                    <label className="hq6-form-label">
+                      <span>
+                        Recurring interval <span className="req">*</span>
+                      </span>
+                      <div className="hq6-form-pay-term">
+                        <input
+                          type="number"
+                          className="hq6-form-input"
+                          value={form.recurInterval}
+                          onChange={(e) =>
+                            setForm({ ...form, recurInterval: e.target.value })
+                          }
+                        />
+                        <select
+                          className="hq6-form-input"
+                          value={form.recurIntervalType}
+                          onChange={(e) =>
+                            setForm({
+                              ...form,
+                              recurIntervalType: e.target.value as
+                                | "days"
+                                | "months"
+                                | "years",
+                            })
+                          }
+                        >
+                          <option value="days">Days</option>
+                          <option value="months">Months</option>
+                          <option value="years">Years</option>
+                        </select>
+                      </div>
+                    </label>
+                    <label className="hq6-form-label">
+                      <span>No. of Repetitions</span>
+                      <input className="hq6-form-input" placeholder="" />
+                      <p className="hq6-form-hint">
+                        If blank expense will be generated infinite times
+                      </p>
+                    </label>
+                  </div>
+                ) : null}
+              </section>
+
+              <section className="hq6-form-card">
+                <h2 className="hq6-form-card-title">Add payment</h2>
+                <div className="hq6-form-grid hq6-form-grid-3">
+                  <label className="hq6-form-label">
+                    <span>
+                      Amount <span className="req">*</span>
+                    </span>
+                    <input
+                      type="number"
+                      className="hq6-form-input"
+                      value={form.totalAmount || "0.00"}
+                      onChange={(e) =>
+                        setForm({ ...form, totalAmount: e.target.value })
+                      }
+                    />
+                  </label>
+                  <label className="hq6-form-label">
+                    <span>
+                      Paid on <span className="req">*</span>
+                    </span>
+                    <input
+                      type="datetime-local"
+                      className="hq6-form-input"
+                      value={form.expenseDate}
+                      onChange={(e) =>
+                        setForm({ ...form, expenseDate: e.target.value })
+                      }
+                    />
+                  </label>
+                  <label className="hq6-form-label">
+                    <span>
+                      Payment Method <span className="req">*</span>
+                    </span>
+                    <select
+                      className="hq6-form-input"
+                      value={form.paymentStatus === "paid" ? "cash" : "cash"}
+                      onChange={() => undefined}
+                    >
+                      <option value="cash">Cash</option>
+                      <option value="card">Card</option>
+                      <option value="transfer">Bank Transfer</option>
+                    </select>
+                  </label>
+                  <label className="hq6-form-label">
+                    <span>Payment Account</span>
+                    <select className="hq6-form-input" defaultValue="">
+                      <option value="">None</option>
+                    </select>
+                  </label>
+                  <label className="hq6-form-label" style={{ gridColumn: "1 / -1" }}>
+                    <span>Payment note</span>
+                    <textarea className="hq6-form-input" rows={2} />
+                  </label>
+                </div>
+                <div className="hq6-form-total-row">
+                  Payment due: {paymentDue.toFixed(2)}
+                </div>
+              </section>
+
+              <div className="hq6-form-save-row">
+                <button
+                  type="button"
+                  className="hq6-modal-btn hq6-modal-btn-close"
+                  onClick={handleCancel}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="hq6-btn-purple"
+                  disabled={saveMutation.isPending || !form.totalAmount}
+                  onClick={() => saveMutation.mutate()}
+                >
+                  {saveMutation.isPending ? "Saving…" : "Save"}
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      ) : (
+        <div className="mx-auto max-w-2xl space-y-6 py-4">
+          <div>
+            <h2 className="text-lg font-semibold text-foreground">
+              {isEdit ? "Edit Expense" : "Add Expense"}
+            </h2>
+            <p className="mt-1 text-sm text-muted">
+              {isEdit
+                ? "Update this business expense."
+                : "Record a new business expense."}
+            </p>
+          </div>
+
+          {isEdit && loadingExpense ? (
+            <p className="text-sm text-muted">Loading expense…</p>
+          ) : (
+            <div className="space-y-4 rounded-xl border border-border bg-card p-6 shadow-card">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-foreground">
+                    Expense Category
+                  </label>
+                  <select
+                    className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm"
+                    value={form.categoryId}
+                    onChange={(e) =>
+                      setForm({ ...form, categoryId: e.target.value })
+                    }
+                  >
+                    <option value="">Select category…</option>
+                    {categories.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-foreground">
+                    Ref No
+                  </label>
+                  <input
+                    type="text"
+                    className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm"
+                    placeholder="Reference number"
+                    value={form.refNo}
+                    onChange={(e) => setForm({ ...form, refNo: e.target.value })}
+                  />
+                </div>
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-foreground">
+                    Date
+                  </label>
+                  <input
+                    type="date"
+                    className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm"
+                    value={form.expenseDate}
+                    onChange={(e) =>
+                      setForm({ ...form, expenseDate: e.target.value })
+                    }
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-foreground">
+                    Location
+                  </label>
+                  <input
+                    type="text"
+                    className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm"
+                    placeholder="Location code"
+                    value={form.locationCode}
+                    onChange={(e) =>
+                      setForm({ ...form, locationCode: e.target.value })
+                    }
+                  />
+                </div>
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-foreground">
+                    Total Amount
+                  </label>
+                  <input
+                    type="number"
+                    className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm"
+                    placeholder="0.00"
+                    value={form.totalAmount}
+                    onChange={(e) =>
+                      setForm({ ...form, totalAmount: e.target.value })
+                    }
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-foreground">
+                    Tax Amount
+                  </label>
+                  <input
+                    type="number"
+                    className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm"
+                    placeholder="0.00"
+                    value={form.taxAmount}
+                    onChange={(e) =>
+                      setForm({ ...form, taxAmount: e.target.value })
+                    }
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="mb-1 block text-sm font-medium text-foreground">
+                  Expense Note
+                </label>
+                <textarea
+                  className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm"
+                  rows={3}
+                  value={form.note}
+                  onChange={(e) => setForm({ ...form, note: e.target.value })}
+                />
+              </div>
+
+              <div className="flex justify-end gap-2">
+                <Button type="button" variant="secondary" onClick={handleCancel}>
+                  Cancel
+                </Button>
+                <Button
+                  onClick={() => saveMutation.mutate()}
+                  disabled={saveMutation.isPending || !form.totalAmount}
+                >
+                  {saveMutation.isPending
+                    ? "Saving…"
+                    : isEdit
+                      ? "Update Expense"
+                      : "Save Expense"}
+                </Button>
+              </div>
+
+              {saveMutation.isError ? (
+                <p className="text-sm text-red-600">
+                  Failed to save expense. Please try again.
+                </p>
               ) : null}
             </div>
-
-            <div>
-              <label className="mb-1 block text-sm font-medium text-foreground">
-                Expense Note
-              </label>
-              <textarea
-                className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm"
-                rows={3}
-                placeholder="Notes about this expense…"
-                value={form.note}
-                onChange={(e) => setForm({ ...form, note: e.target.value })}
-              />
-            </div>
-
-            <div className="flex justify-end gap-2">
-              <Button type="button" variant="secondary" onClick={handleCancel}>
-                Cancel
-              </Button>
-              <Button
-                onClick={() => saveMutation.mutate()}
-                disabled={saveMutation.isPending || !form.totalAmount}
-              >
-                {saveMutation.isPending
-                  ? "Saving…"
-                  : isEdit
-                    ? "Update Expense"
-                    : "Save Expense"}
-              </Button>
-            </div>
-
-            {saveMutation.isError ? (
-              <p className="text-sm text-red-600">
-                Failed to save expense. Please try again.
-              </p>
-            ) : null}
-          </div>
-        )}
-      </div>
+          )}
+        </div>
+      )}
     </ListPageShell>
   );
 }
 
 export function ExpenseCategoriesListView() {
+  const isHq6 = useIsVaHq6();
+  if (isHq6) return <Hq6ExpenseCategoriesListView />;
+  return <ExpenseCategoriesListViewBody />;
+}
+
+function ExpenseCategoriesListViewBody() {
   const tenantId = useTenantId();
   const qc = useQueryClient();
   const { tabs, activeTab, onTabChange } = useExpensePageTabs("expense-categories");

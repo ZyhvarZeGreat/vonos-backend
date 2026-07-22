@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAppMutation } from "@/lib/hooks/useAppMutation";
 import { Button } from "@/components/atoms/Button";
@@ -8,7 +9,8 @@ import { Input } from "@/components/atoms/Input";
 import { Modal, ModalFooter, ModalHeader } from "@/components/atoms/Modal";
 import { Select } from "@/components/atoms/Select";
 import { createManualExpense } from "@/lib/api/ledger";
-import { useTenantId } from "@/lib/hooks/useRouteTenant";
+import { useIsVaHq6 } from "@/lib/hooks/useIsVaHq6";
+import { useRouteTenant, useTenantId } from "@/lib/hooks/useRouteTenant";
 import { useUiStore } from "@/stores/uiStore";
 
 const EXPENSE_CATEGORIES = [
@@ -20,19 +22,29 @@ const EXPENSE_CATEGORIES = [
 ];
 
 export function AddExpenseModal() {
+  const router = useRouter();
   const activeModal = useUiStore((state) => state.activeModal);
   const closeModal = useUiStore((state) => state.closeModal);
   const financeActionTenantId = useUiStore((state) => state.financeActionTenantId);
   const routeTenantId = useTenantId();
   const tenantId = financeActionTenantId ?? routeTenantId;
+  const { tenantCode } = useRouteTenant();
   const queryClient = useQueryClient();
   const open = activeModal === "addExpense";
+  const isHq6 = useIsVaHq6();
 
   const [amount, setAmount] = useState("");
   const [category, setCategory] = useState("other");
   const [description, setDescription] = useState("");
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [error, setError] = useState<string | null>(null);
+
+  // HQ6: Add Expense is a full page (`/expenses/create`), not a modal.
+  useEffect(() => {
+    if (!open || !isHq6 || !tenantCode) return;
+    closeModal();
+    router.push(`/${tenantCode}/add-expense`);
+  }, [closeModal, isHq6, open, router, tenantCode]);
 
   const mutation = useAppMutation({
     mutationFn: async () => {
@@ -69,6 +81,8 @@ export function AddExpenseModal() {
     setError(null);
     closeModal();
   };
+
+  if (!open || isHq6) return null;
 
   return (
     <Modal open={open} onClose={handleClose}>

@@ -6,6 +6,7 @@ import { StatusPill } from "@/components/atoms/StatusPill";
 import { type ColumnConfig } from "@/components/organisms/DataTable";
 import { ServerPaginatedTable } from "@/components/organisms/ServerPaginatedTable";
 import { ListPageShell } from "@/components/organisms/ListPageShell";
+import { Hq6ActionsMenu } from "@/components/hq6/Hq6ActionsMenu";
 import {
   getAllStockMovements,
   getStockMovementsPage,
@@ -17,6 +18,8 @@ import { useListRecordModal } from "@/lib/hooks/useListRecordModal";
 import { useRouteTenant, useTenantId } from "@/lib/hooks/useRouteTenant";
 import { useListPageFilters } from "@/lib/hooks/useListPageFilters";
 import { useListExport } from "@/lib/hooks/useListExport";
+import { useIsVaHq6 } from "@/lib/hooks/useIsVaHq6";
+import { Hq6PurchasesListView } from "@/components/pages/Hq6PurchasesListView";
 import { formatCurrency } from "@/lib/utils/formatCurrency";
 import { formatDate } from "@/lib/utils/formatDate";
 import { uniqueFieldOptions } from "@/lib/utils/listFilters";
@@ -29,7 +32,20 @@ interface MovementListViewProps {
   source?: MovementSource;
 }
 
-export function MovementListView({
+export function MovementListView(props: MovementListViewProps) {
+  const isHq6 = useIsVaHq6();
+  if (
+    isHq6 &&
+    props.type === "inbound" &&
+    !props.source &&
+    !props.defaultStatus
+  ) {
+    return <Hq6PurchasesListView />;
+  }
+  return <MovementListViewBody {...props} />;
+}
+
+function MovementListViewBody({
   type,
   title,
   defaultStatus,
@@ -38,11 +54,11 @@ export function MovementListView({
   const { recordId, openRecord, closeRecord } = useListRecordModal();
   const { tenantCode } = useRouteTenant();
   const tenantId = useTenantId();
+  const isHq6 = useIsVaHq6();
   const exportList = useListExport();
   const { dateRange, setDateRange, search, setSearch, bounds } = useListPageFilters();
   const [activeTab, setActiveTab] = useState(defaultStatus === "Pending" ? "pending" : "all");
   const [statusFilter, setStatusFilter] = useState("");
-
   const tabStatus = useMemo((): MovementStatus | undefined => {
     if (defaultStatus) return defaultStatus;
     if (statusFilter) return statusFilter as MovementStatus;
@@ -89,6 +105,33 @@ export function MovementListView({
   });
 
   const columns: ColumnConfig<StockMovementListRow>[] = useMemo(() => {
+    const actionsCol: ColumnConfig<StockMovementListRow> | null = isHq6
+      ? {
+          key: "actions",
+          header: "Action",
+          sortable: false,
+          render: (row) => (
+            <Hq6ActionsMenu
+              items={[
+                { id: "view", label: "View", onClick: () => openRecord(row.id) },
+                ...(type === "inbound"
+                  ? [
+                      {
+                        id: "edit",
+                        label: "Edit",
+                        onClick: () => {
+                          if (!tenantCode) return;
+                          window.location.href = `/${tenantCode}/add-purchase?edit=${row.id}`;
+                        },
+                      },
+                    ]
+                  : []),
+              ]}
+            />
+          ),
+        }
+      : null;
+
     const base: ColumnConfig<StockMovementListRow>[] = [
       { key: "reference", header: "Reference", render: (r) => <span className="font-medium">{r.reference}</span> },
       { key: "date", header: "Date", sortValue: (r) => new Date(r.date).getTime(), render: (r) => formatDate(r.date) },
@@ -96,6 +139,7 @@ export function MovementListView({
     ];
     if (type === "inbound") {
       return [
+        ...(actionsCol ? [actionsCol] : []),
         ...base,
         { key: "locationName", header: "Location", render: (r) => r.locationName ?? "—" },
         {
@@ -124,6 +168,7 @@ export function MovementListView({
       ];
     }
     return [
+      ...(actionsCol ? [actionsCol] : []),
       ...base,
       { key: "itemCount", header: "Items", sortValue: (r) => r.itemCount },
       {
@@ -132,8 +177,7 @@ export function MovementListView({
         render: (r) => <StatusPill status={r.status} vocabulary="movementStatus" />,
       },
     ];
-  }, [type]);
-
+  }, [isHq6, openRecord, tenantCode, type]);
   const statusOptions = useMemo(
     () => uniqueFieldOptions(data, "status"),
     [data],

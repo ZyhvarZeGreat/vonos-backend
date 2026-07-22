@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   Patch,
@@ -118,6 +119,11 @@ export class ItemsController {
     return this.itemsService.getMeta(id);
   }
 
+  @Get(':id/stock-history')
+  stockHistory(@Param('id') id: string) {
+    return this.itemsService.stockHistory(id);
+  }
+
   @Get(':id')
   getById(@Param('id') id: string) {
     return this.itemsService.getById(id);
@@ -177,5 +183,11 @@ export class ItemsController {
     }>,
   ) {
     return this.itemsService.update(id, body);
+  }
+
+  @Delete(':id')
+  @Roles('admin', 'super_admin')
+  remove(@Param('id') id: string) {
+    return this.itemsService.remove(id);
   }
 }

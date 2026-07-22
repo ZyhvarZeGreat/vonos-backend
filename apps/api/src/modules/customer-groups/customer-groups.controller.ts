@@ -4,6 +4,7 @@ import {
   Delete,
   Get,
   Param,
+  Patch,
   Post,
   Query,
   UseGuards,
@@ -15,7 +16,10 @@ import {
 } from '../../common/guards/auth.guards';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CustomerGroupsService } from './customer-groups.service';
-import type { CreateCustomerGroupRequest } from '@vonos/types';
+import type {
+  CreateCustomerGroupRequest,
+  UpdateCustomerGroupRequest,
+} from '@vonos/types';
 
 @Controller('customer-groups')
 @UseGuards(JwtAuthGuard, TenantGuard, RolesGuard)
@@ -41,6 +45,12 @@ export class CustomerGroupsController {
   @Roles('admin', 'manager')
   create(@Body() dto: CreateCustomerGroupRequest) {
     return this.service.create(dto);
+  }
+
+  @Patch(':id')
+  @Roles('admin', 'manager')
+  update(@Param('id') id: string, @Body() dto: UpdateCustomerGroupRequest) {
+    return this.service.update(id, dto);
   }
 
   @Delete(':id')

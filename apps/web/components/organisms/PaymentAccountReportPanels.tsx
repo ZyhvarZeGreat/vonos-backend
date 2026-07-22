@@ -1,13 +1,13 @@
 "use client";
 
 import { useMemo, useState, type ReactNode } from "react";
-import { Search } from "lucide-react";
 import type {
   BalanceSheetReport,
   CashFlowReport,
   ReportsTable,
 } from "@vonos/types";
 import { CursorPaginationBar } from "@/components/molecules/CursorPaginationBar";
+import { ReportTableSearchBar } from "@/components/molecules/ReportTableSearchBar";
 import { useOffsetPage } from "@/lib/hooks/useOffsetPage";
 import { TABLE_REPORT_PAGE_SIZE } from "@/lib/registries/reportTableUi";
 import { formatCurrency } from "@/lib/utils/formatCurrency";
@@ -19,32 +19,6 @@ import {
   signedAmountClass,
 } from "@/lib/utils/ledgerAmountStyles";
 import { cn } from "@/lib/utils/cn";
-
-function ReportSearchBar({
-  value,
-  onChange,
-  placeholder,
-}: {
-  value: string;
-  onChange: (value: string) => void;
-  placeholder: string;
-}) {
-  return (
-    <div className="border-b border-border bg-card px-3 py-2 print:hidden">
-      <div className="relative">
-        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
-        <input
-          type="search"
-          value={value}
-          onChange={(event) => onChange(event.target.value)}
-          placeholder={placeholder}
-          className="h-9 w-full rounded-md border border-border bg-[var(--color-surface-muted)]/40 pl-9 pr-3 text-sm text-foreground placeholder:text-muted focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
-          aria-label={placeholder}
-        />
-      </div>
-    </div>
-  );
-}
 
 function offsetPaginationProps<T>(pagination: ReturnType<typeof useOffsetPage<T>>) {
   return {
@@ -251,7 +225,7 @@ export function CashFlowReportPanel({ report }: { report: CashFlowReport }) {
           {...offsetPaginationProps(pagination)}
           className="border-b border-t-0 border-[var(--color-border-subtle)]"
         />
-        <ReportSearchBar
+        <ReportTableSearchBar
           value={search}
           onChange={setSearch}
           placeholder="Search cash flow…"
@@ -407,7 +381,7 @@ export function TrialBalanceReportPanel({
         {...offsetPaginationProps(pagination)}
         className="border-b border-t-0 border-[var(--color-border-subtle)]"
       />
-      <ReportSearchBar
+      <ReportTableSearchBar
         value={search}
         onChange={setSearch}
         placeholder="Search accounts…"
@@ -496,6 +470,7 @@ export function PaymentAccountDetailReportPanel({
         row.invoiceRef,
         row.paymentType,
         row.account,
+        row.createdBy,
         row.description,
       ].some((value) =>
         String(value ?? "")
@@ -520,7 +495,7 @@ export function PaymentAccountDetailReportPanel({
         {...offsetPaginationProps(pagination)}
         className="border-b border-t-0 border-[var(--color-border-subtle)]"
       />
-      <ReportSearchBar
+      <ReportTableSearchBar
         value={search}
         onChange={setSearch}
         placeholder="Search transactions…"
@@ -535,13 +510,14 @@ export function PaymentAccountDetailReportPanel({
               <th className="px-4 py-2.5 text-right font-medium">Amount</th>
               <th className="px-4 py-2.5 font-medium">Payment Type</th>
               <th className="px-4 py-2.5 font-medium">Account</th>
+              <th className="px-4 py-2.5 font-medium">Added By</th>
               <th className="px-4 py-2.5 font-medium">Description</th>
             </tr>
           </thead>
           <tbody>
             {pagination.pageRows.length === 0 ? (
               <tr>
-                <td colSpan={7} className="px-4 py-8 text-center text-muted">
+                <td colSpan={8} className="px-4 py-8 text-center text-muted">
                   {search.trim()
                     ? "No rows match your search."
                     : "No payment account transactions for this period."}
@@ -560,7 +536,7 @@ export function PaymentAccountDetailReportPanel({
                     {String(row.paymentRef ?? "—")}
                   </td>
                   <td className="px-4 py-2.5">
-                    <span className="font-medium text-sky-600">
+                    <span className="inline-flex rounded border border-sky-300 px-2 py-0.5 text-xs font-semibold text-sky-700">
                       {String(row.invoiceRef ?? "—")}
                     </span>
                   </td>
@@ -574,6 +550,9 @@ export function PaymentAccountDetailReportPanel({
                   </td>
                   <td className="px-4 py-2.5 text-foreground">
                     {String(row.account ?? "—")}
+                  </td>
+                  <td className="px-4 py-2.5 text-foreground">
+                    {String(row.createdBy ?? "—")}
                   </td>
                   <td className="max-w-sm px-4 py-2.5">
                     <span className="whitespace-pre-line text-muted">
@@ -593,7 +572,7 @@ export function PaymentAccountDetailReportPanel({
                 <td className="px-4 py-3 text-right tabular-nums text-foreground">
                   {formatCurrency(totalAmount, currency)}
                 </td>
-                <td colSpan={3} />
+                <td colSpan={4} />
               </tr>
             </tfoot>
           ) : null}

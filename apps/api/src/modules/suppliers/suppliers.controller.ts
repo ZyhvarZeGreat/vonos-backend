@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   Patch,
@@ -8,7 +9,7 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import type { SupplierFilters } from '@vonos/types';
+import type { PayContactDueRequest, SupplierFilters } from '@vonos/types';
 import { Roles } from '../../common/decorators/roles.decorator';
 import {
   JwtAuthGuard,
@@ -77,9 +78,20 @@ export class SuppliersController {
     );
   }
 
+  @Get(':id/stock-report')
+  stockReport(@Param('id') id: string) {
+    return this.suppliersService.stockReport(id);
+  }
+
   @Get(':id/meta')
   getMeta(@Param('id') id: string) {
     return this.suppliersService.getMeta(id);
+  }
+
+  @Post(':id/pay-due')
+  @Roles('staff', 'manager', 'admin', 'super_admin')
+  payDue(@Param('id') id: string, @Body() body: PayContactDueRequest) {
+    return this.suppliersService.payDue(id, body);
   }
 
   @Get(':id')
@@ -119,8 +131,24 @@ export class SuppliersController {
       notes: string;
       openingBalance: number;
       assignedToUserId: string;
+      status: 'active' | 'inactive';
     }>,
   ) {
     return this.suppliersService.update(id, body);
+  }
+
+  @Patch(':id/status')
+  @Roles('manager', 'admin', 'super_admin')
+  setStatus(
+    @Param('id') id: string,
+    @Body() body: { status: 'active' | 'inactive' },
+  ) {
+    return this.suppliersService.setStatus(id, body.status);
+  }
+
+  @Delete(':id')
+  @Roles('admin', 'super_admin')
+  remove(@Param('id') id: string) {
+    return this.suppliersService.remove(id);
   }
 }

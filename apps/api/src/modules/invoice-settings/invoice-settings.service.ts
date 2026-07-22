@@ -1,10 +1,12 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import type {
+  CreateInvoiceSchemeInput,
   CreateReceiptPrinterInput,
   InvoiceLayout,
   InvoiceScheme,
   InvoiceSettings,
   ReceiptPrinter,
+  UpdateInvoiceSchemeInput,
   UpdateInvoiceSettingsInput,
   UpdateReceiptPrinterInput,
 } from '@vonos/types';
@@ -143,6 +145,91 @@ export class InvoiceSettingsService {
     }
 
     return this.getSettings();
+  }
+
+  async createScheme(dto: CreateInvoiceSchemeInput): Promise<InvoiceScheme> {
+    const tenantId = this.tenantDb.requireTenantId();
+    const name = dto.name.trim();
+    if (!name) throw new BadRequestException('Scheme name is required');
+
+    const totalDigits = dto.totalDigits ?? 4;
+    if (totalDigits < 1 || totalDigits > 10) {
+      throw new BadRequestException('totalDigits must be between 1 and 10');
+    }
+
+    if (dto.isDefault) {
+      await this.tenantDb.db.invoiceScheme.updateMany({
+        where: { tenantId, deletedAt: null },
+        data: { isDefault: false },
+      });
+    }
+
+    const row = await this.tenantDb.db.invoiceScheme.create({
+      data: {
+        tenantId,
+        name,
+        prefix: dto.prefix?.trim() || null,
+        startNumber: dto.startNumber ?? 1,
+        totalDigits,
+        isDefault: dto.isDefault ?? false,
+      },
+    });
+    return this.serializeScheme(row);
+  }
+
+  async updateScheme(
+    id: string,
+    dto: UpdateInvoiceSchemeInput,
+  ): Promise<InvoiceScheme> {
+    const tenantId = this.tenantDb.requireTenantId();
+    const existing = await this.tenantDb.db.invoiceScheme.findFirst({
+      where: { id, tenantId, deletedAt: null },
+    });
+    if (!existing) throw new NotFoundException('Invoice scheme not found');
+
+    if (
+      dto.totalDigits !== undefined &&
+      (dto.totalDigits < 1 || dto.totalDigits > 10)
+    ) {
+      throw new BadRequestException('totalDigits must be between 1 and 10');
+    }
+
+    if (dto.isDefault) {
+      await this.tenantDb.db.invoiceScheme.updateMany({
+        where: { tenantId, deletedAt: null },
+        data: { isDefault: false },
+      });
+    }
+
+    const row = await this.tenantDb.db.invoiceScheme.update({
+      where: { id },
+      data: {
+        ...(dto.name !== undefined ? { name: dto.name.trim() } : {}),
+        ...(dto.prefix !== undefined
+          ? { prefix: dto.prefix?.trim() || null }
+          : {}),
+        ...(dto.startNumber !== undefined
+          ? { startNumber: dto.startNumber }
+          : {}),
+        ...(dto.totalDigits !== undefined
+          ? { totalDigits: dto.totalDigits }
+          : {}),
+        ...(dto.isDefault !== undefined ? { isDefault: dto.isDefault } : {}),
+      },
+    });
+    return this.serializeScheme(row);
+  }
+
+  async deleteScheme(id: string): Promise<void> {
+    const tenantId = this.tenantDb.requireTenantId();
+    const existing = await this.tenantDb.db.invoiceScheme.findFirst({
+      where: { id, tenantId, deletedAt: null },
+    });
+    if (!existing) throw new NotFoundException('Invoice scheme not found');
+    await this.tenantDb.db.invoiceScheme.update({
+      where: { id },
+      data: { deletedAt: new Date() },
+    });
   }
 
   async listPrinters(): Promise<ReceiptPrinter[]> {

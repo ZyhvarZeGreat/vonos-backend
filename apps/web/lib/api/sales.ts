@@ -25,6 +25,7 @@ async function fetchSalesRaw(
   if (filters?.customerId) params.set("customerId", filters.customerId);
   if (filters?.paymentStatus) params.set("paymentStatus", filters.paymentStatus);
   if (filters?.paymentMethod) params.set("paymentMethod", filters.paymentMethod);
+  if (filters?.shippingStatus) params.set("shippingStatus", filters.shippingStatus);
   if (filters?.cleanerUserId) params.set("cleanerUserId", filters.cleanerUserId);
   if (filters?.serviceStaffEmployeeId) {
     params.set("serviceStaffEmployeeId", filters.serviceStaffEmployeeId);
@@ -181,5 +182,36 @@ export async function updateSaleShipping(
     body: JSON.stringify(body),
   });
   if (!response.ok) throw new Error("Failed to update shipping");
+  return response.json();
+}
+
+export async function deleteSale(tenantId: string, id: string): Promise<void> {
+  const response = await apiFetch(withTenantQuery(`/sales/${id}`, tenantId), {
+    method: "DELETE",
+  });
+  if (!response.ok) {
+    const body = (await response.json().catch(() => null)) as { message?: string } | null;
+    throw new Error(body?.message ?? "Failed to delete sale");
+  }
+}
+
+export interface SalePaymentRow {
+  id: string;
+  amount: number;
+  currency: string;
+  method: string | null;
+  paidOn: string | null;
+  note: string | null;
+  createdByName: string | null;
+}
+
+export async function getSalePayments(
+  tenantId: string,
+  saleId: string,
+): Promise<SalePaymentRow[]> {
+  const response = await apiFetch(
+    withTenantQuery(`/sales/${saleId}/payments`, tenantId),
+  );
+  if (!response.ok) throw new Error("Failed to fetch sale payments");
   return response.json();
 }

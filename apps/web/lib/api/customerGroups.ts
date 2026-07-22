@@ -1,6 +1,7 @@
 import type {
   CustomerGroup,
   CreateCustomerGroupRequest,
+  UpdateCustomerGroupRequest,
 } from "@vonos/types";
 import { apiFetch, withTenantQuery } from "@/lib/api/client";
 import {
@@ -62,6 +63,22 @@ export async function createCustomerGroup(
     body: JSON.stringify(dto),
   });
   if (!res.ok) throw new Error("Failed to create customer group");
+  return res.json();
+}
+
+export async function updateCustomerGroup(
+  tenantId: string,
+  id: string,
+  dto: UpdateCustomerGroupRequest,
+): Promise<CustomerGroup> {
+  const res = await apiFetch(
+    withTenantQuery(`/customer-groups/${id}`, tenantId),
+    {
+      method: "PATCH",
+      body: JSON.stringify(dto),
+    },
+  );
+  if (!res.ok) throw new Error("Failed to update customer group");
   return res.json();
 }
 

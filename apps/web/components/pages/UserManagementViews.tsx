@@ -1,11 +1,16 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Button } from "@/components/atoms/Button";
 import { type ColumnConfig } from "@/components/organisms/DataTable";
 import { ServerPaginatedTable } from "@/components/organisms/ServerPaginatedTable";
 import { ListPageShell } from "@/components/organisms/ListPageShell";
 import { EmptyState } from "@/components/atoms/EmptyState";
+import { Button } from "@/components/atoms/Button";
+import { useIsVaHq6 } from "@/lib/hooks/useIsVaHq6";
+import {
+  Hq6CommissionAgentsListView,
+  Hq6RolesListView,
+} from "@/components/pages/Hq6UserManagementViews";
 
 interface RoleRow {
   id: string;
@@ -46,6 +51,12 @@ const BUILT_IN_ROLES: RoleRow[] = [
 ];
 
 export function RolesListView() {
+  const isHq6 = useIsVaHq6();
+  if (isHq6) return <Hq6RolesListView />;
+  return <RolesListViewBody />;
+}
+
+function RolesListViewBody() {
   const [search, setSearch] = useState("");
 
   const filtered = useMemo(() => {
@@ -85,6 +96,12 @@ export function RolesListView() {
 }
 
 export function CommissionAgentsListView() {
+  const isHq6 = useIsVaHq6();
+  if (isHq6) return <Hq6CommissionAgentsListView />;
+  return <CommissionAgentsListViewBody />;
+}
+
+function CommissionAgentsListViewBody() {
   return (
     <ListPageShell
       tabs={[{ id: "all", label: "Sales Commission Agents" }]}

@@ -27,6 +27,7 @@ import {
   getLedgerSummary,
 } from "@/lib/api/ledger";
 import { useRouteTenant } from "@/lib/hooks/useRouteTenant";
+import { useIsVaHq6 } from "@/lib/hooks/useIsVaHq6";
 import { isTenantCode, type TenantCode } from "@/lib/registries/tenants";
 import { formatCurrency, formatCurrencyCompact } from "@/lib/utils/formatCurrency";
 import {
@@ -38,6 +39,8 @@ import { recordDetailPath } from "@/lib/utils/recordDetailPath";
 import { useUiStore, type DateRangePreset } from "@/stores/uiStore";
 import { useAdminEntityStore } from "@/stores/adminEntityStore";
 import type { CsvExportPayload } from "@/lib/utils/exportCsv";
+import { Hq6PageFrame } from "@/components/hq6/Hq6Chrome";
+import { hq6CopyForSlug } from "@/lib/registries/hq6PageCopy";
 import { AdminEntityFinanceSheet } from "@/components/pages/AdminEntityFinanceSheet";
 
 import { ROUTE_PREFETCH_STALE_MS } from "@/lib/prefetch/routePrefetchRegistry";
@@ -171,6 +174,8 @@ export interface FinanceViewProps {
 
 export function FinanceView({ groupMode = false }: FinanceViewProps) {
   const router = useRouter();
+  const isHq6 = useIsVaHq6();
+  const financeCopy = hq6CopyForSlug("finance");
   const openExportModal = useUiStore((state) => state.openExportModal);
   const openAddExpenseModal = useUiStore((state) => state.openAddExpenseModal);
   const dateRange = useUiStore((state) => state.dateRange);
@@ -403,7 +408,7 @@ export function FinanceView({ groupMode = false }: FinanceViewProps) {
     return <AdminEntityFinanceSheet tenantCode={viewingCode} />;
   }
 
-  return (
+  const body = (
     <div className="space-y-6">
       {groupMode ? (
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-100">
@@ -419,17 +424,27 @@ export function FinanceView({ groupMode = false }: FinanceViewProps) {
       ) : null}
       <FinanceActionBar groupMode={groupMode} />
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex gap-1 rounded-lg border border-border bg-[var(--color-surface-muted)] p-1">
+        <div
+          className={
+            isHq6
+              ? "hq6-tab-row"
+              : "flex gap-1 rounded-lg border border-border bg-[var(--color-surface-muted)] p-1"
+          }
+        >
           {FINANCE_TABS.map((tab) => (
             <button
               key={tab.id}
               type="button"
               onClick={() => setActiveTab(tab.id)}
-              className={`rounded-md px-4 py-2 text-sm font-medium transition-colors ${
-                activeTab === tab.id
-                  ? "bg-card text-foreground shadow-sm"
-                  : "text-muted hover:text-foreground"
-              }`}
+              className={
+                isHq6
+                  ? `hq6-tab ${activeTab === tab.id ? "hq6-tab-active" : ""}`
+                  : `rounded-md px-4 py-2 text-sm font-medium transition-colors ${
+                      activeTab === tab.id
+                        ? "bg-card text-foreground shadow-sm"
+                        : "text-muted hover:text-foreground"
+                    }`
+              }
             >
               {tab.label}
             </button>
@@ -517,6 +532,7 @@ export function FinanceView({ groupMode = false }: FinanceViewProps) {
           dateRange={dateRange}
           onDateRangeChange={handleDateRangeChange}
           filterDropdowns={ledgerFilters}
+          hq6PageChrome={false}
         >
           {groupMode ? (
             <PaginatedLedgerTable
@@ -589,7 +605,13 @@ export function FinanceView({ groupMode = false }: FinanceViewProps) {
             <div className="flex justify-end">
               <Button
                 size="sm"
-                onClick={() => openAddExpenseModal()}
+                onClick={() => {
+                  if (isHq6 && tenantCode) {
+                    router.push(`/${tenantCode}/add-expense`);
+                    return;
+                  }
+                  openAddExpenseModal();
+                }}
               >
                 <Plus className="mr-2 h-4 w-4" />
                 Add Expense
@@ -607,6 +629,7 @@ export function FinanceView({ groupMode = false }: FinanceViewProps) {
             showExport={false}
             dateRange={dateRange}
             onDateRangeChange={handleDateRangeChange}
+            hq6PageChrome={false}
             filterDropdowns={[
               {
                 id: "category",
@@ -644,7 +667,13 @@ export function FinanceView({ groupMode = false }: FinanceViewProps) {
                 emptyState={{
                   message: "No manual expenses recorded yet.",
                   ctaLabel: "Add Expense",
-                  onCta: openAddExpenseModal,
+                  onCta: () => {
+                    if (isHq6 && tenantCode) {
+                      router.push(`/${tenantCode}/add-expense`);
+                      return;
+                    }
+                    openAddExpenseModal();
+                  },
                 }}
               />
             )}
@@ -653,4 +682,14 @@ export function FinanceView({ groupMode = false }: FinanceViewProps) {
       )}
     </div>
   );
+
+  if (isHq6) {
+    return (
+      <Hq6PageFrame title={financeCopy.title} subtitle={financeCopy.subtitle}>
+        {body}
+      </Hq6PageFrame>
+    );
+  }
+
+  return body;
 }

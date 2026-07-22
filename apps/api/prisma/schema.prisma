@@ -342,6 +342,10 @@ model Supplier {
   address     String?
   locationCode String?
   notes           String?
+  /** HQ6 contact tax / VAT registration number. */
+  taxNumber       String?
+  /** HQ6 contact active/inactive — independent of purchase-activity rollup. */
+  status          String   @default("active")
   openingBalance  Decimal  @default(0)
   totalPurchase       Decimal  @default(0)
   totalPurchaseDue    Decimal  @default(0)
@@ -365,6 +369,7 @@ model Supplier {
   @@index([assignedToUserId])
   @@index([tenantId, totalPurchaseDue])
   @@index([tenantId, lastPurchaseAt])
+  @@index([tenantId, status])
 }
 
 model Job {
@@ -489,6 +494,8 @@ model Customer {
   totalAdvance    Decimal  @default(0)
   visitCount      Int      @default(0)
   status          String   @default("active")
+  /** HQ6 contact tax / VAT registration number. */
+  taxNumber       String?
   createdByUserId String?
   createdByUser   User?    @relation("CustomerCreatedBy", fields: [createdByUserId], references: [id])
   createdByName   String?

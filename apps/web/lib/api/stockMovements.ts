@@ -156,3 +156,70 @@ export async function updateStockMovementStatus(
   if (!response.ok) throw new Error("Failed to update movement status");
   return response.json();
 }
+
+export async function deleteStockMovement(
+  tenantId: string,
+  id: string,
+): Promise<void> {
+  const response = await apiFetch(
+    withTenantQuery(`/stock-movements/${id}`, tenantId),
+    { method: "DELETE" },
+  );
+  if (!response.ok) {
+    const body = (await response.json().catch(() => null)) as { message?: string } | null;
+    throw new Error(body?.message ?? "Failed to delete purchase");
+  }
+}
+
+export async function payStockMovement(
+  tenantId: string,
+  id: string,
+  input: {
+    amount: number;
+    method?: string;
+    accountId?: string;
+    note?: string;
+    paidOn?: string;
+  },
+): Promise<{
+  movementId: string;
+  amountApplied: number;
+  currency: string;
+  remainingDue: number;
+  paymentStatus: string;
+}> {
+  const response = await apiFetch(
+    withTenantQuery(`/stock-movements/${id}/pay`, tenantId),
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    },
+  );
+  if (!response.ok) {
+    const body = (await response.json().catch(() => null)) as { message?: string } | null;
+    throw new Error(body?.message ?? "Failed to record payment");
+  }
+  return response.json();
+}
+
+export async function getStockMovementPayments(
+  tenantId: string,
+  id: string,
+): Promise<
+  Array<{
+    id: string;
+    amount: number;
+    currency: string;
+    method: string | null;
+    paidOn: string | null;
+    note: string | null;
+    createdByName: string | null;
+  }>
+> {
+  const response = await apiFetch(
+    withTenantQuery(`/stock-movements/${id}/payments`, tenantId),
+  );
+  if (!response.ok) throw new Error("Failed to fetch purchase payments");
+  return response.json();
+}

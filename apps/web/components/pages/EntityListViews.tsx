@@ -29,6 +29,11 @@ import { getAllSalonServices, getSalonServicesPage } from "@/lib/api/salonServic
 import { getAllVehicles, createVehicle, getVehiclesPage } from "@/lib/api/vehicles";
 import { getItemsPage } from "@/lib/api/items";
 import { useListExport } from "@/lib/hooks/useListExport";
+import { Hq6SalesListView } from "@/components/pages/Hq6SalesListView";
+import { Hq6CustomersListView } from "@/components/pages/Hq6CustomersListView";
+import { Hq6ReturnsListView } from "@/components/pages/Hq6ReturnsListView";
+import { useIsVaHq6 } from "@/lib/hooks/useIsVaHq6";
+import { cn } from "@/lib/utils/cn";
 import type { Order, MenuItemRow, SaleReturnRow } from "@/lib/types/entityRows";
 import type { Customer, Item, Requisition, Sale, SaleReturnStatus, SaleStatus, SalonService, StockStatus, Vehicle } from "@vonos/types";
 import { ContactLedgerModal, useContactLedgerQuery } from "@/components/organisms/ContactLedgerModal";
@@ -59,6 +64,7 @@ interface SalesListViewProps {
   shipmentsOnly?: boolean;
   tabLabel?: string;
   hidePrimaryAction?: boolean;
+  slug?: string;
 }
 
 export function SalesListView({
@@ -66,7 +72,21 @@ export function SalesListView({
   shipmentsOnly,
   tabLabel = "All Sales",
   hidePrimaryAction = false,
+  slug = "sales",
 }: SalesListViewProps = {}) {
+  const isHq6 = useIsVaHq6();
+  if (isHq6) {
+    return (
+      <Hq6SalesListView
+        saleStatus={saleStatus}
+        shipmentsOnly={shipmentsOnly}
+        tabLabel={tabLabel}
+        hidePrimaryAction={hidePrimaryAction}
+        slug={slug}
+      />
+    );
+  }
+
   const { recordId, openRecord, closeRecord } = useListRecordModal();
   const tenantId = useTenantId();
   const openAddSaleModal = useUiStore((state) => state.openAddSaleModal);
@@ -156,6 +176,7 @@ export function SalesListView({
     },
     { key: "date", header: "Date", sortValue: (r) => new Date(r.date).getTime(), render: (r) => formatDate(r.date) },
   ];
+
   return (
     <ListPageShell
       tabs={[{ id: "all", label: tabLabel }]}
@@ -236,13 +257,23 @@ export function SalesListView({
 
 export function DraftsListView() {
   return (
-    <SalesListView saleStatus="draft" tabLabel="All Drafts" hidePrimaryAction />
+    <SalesListView
+      saleStatus="draft"
+      tabLabel="All Drafts"
+      hidePrimaryAction
+      slug="drafts"
+    />
   );
 }
 
 export function QuotationsListView() {
   return (
-    <SalesListView saleStatus="quotation" tabLabel="All Quotations" hidePrimaryAction />
+    <SalesListView
+      saleStatus="quotation"
+      tabLabel="All Quotations"
+      hidePrimaryAction
+      slug="quotations"
+    />
   );
 }
 
@@ -357,6 +388,12 @@ export function OrdersListView() {
 }
 
 export function CustomersListView() {
+  const isHq6 = useIsVaHq6();
+  if (isHq6) return <Hq6CustomersListView />;
+  return <CustomersListViewBody />;
+}
+
+function CustomersListViewBody() {
   const { recordId, openRecord, closeRecord } = useListRecordModal();
   const { tenantCode } = useRouteTenant();
   const router = useRouter();
@@ -523,6 +560,12 @@ export function CustomersListView() {
 }
 
 export function ReturnsListView() {
+  const isHq6 = useIsVaHq6();
+  if (isHq6) return <Hq6ReturnsListView />;
+  return <ReturnsListViewBody />;
+}
+
+function ReturnsListViewBody() {
   const { recordId, openRecord, closeRecord } = useListRecordModal();
   const tenantId = useTenantId();
   const { dateRange, setDateRange, search, setSearch, bounds } = useListPageFilters();

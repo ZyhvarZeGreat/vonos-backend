@@ -92,6 +92,12 @@ export interface Sale {
   createdByName?: string | null;
   createdAt: string;
   updatedAt: string;
+  /** Populated on list rows when customer is joined. */
+  customerPhone?: string | null;
+  /** Sum of non-return payments on the sale (list/detail). */
+  totalPaid?: number;
+  /** Remaining balance: total − totalPaid (≥ 0). */
+  sellDue?: number;
 }
 
 /** Detail view includes line items */
@@ -119,6 +125,7 @@ export interface SaleFilters {
   jobId?: string;
   paymentStatus?: PaymentStatus;
   paymentMethod?: string;
+  shippingStatus?: ShippingStatus;
   cleanerUserId?: string;
   serviceStaffEmployeeId?: string;
   createdByUserId?: string;

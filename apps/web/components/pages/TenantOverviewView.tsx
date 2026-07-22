@@ -11,7 +11,9 @@ import { getTenantConfigByCode } from "@/lib/registries/tenantConfigs";
 import { useRecentActivityFeed } from "@/lib/hooks/useRecentActivityFeed";
 import { useListPageFilters } from "@/lib/hooks/useListPageFilters";
 import { useRouteTenant } from "@/lib/hooks/useRouteTenant";
+import { useIsVaHq6 } from "@/lib/hooks/useIsVaHq6";
 import { OverviewLiveBody } from "@/components/pages/OverviewLiveBody";
+import { Hq6OverviewView } from "@/components/pages/Hq6OverviewView";
 import { ROUTE_PREFETCH_STALE_MS } from "@/lib/prefetch/routePrefetchRegistry";
 import type { TenantCode } from "@/lib/registries/tenants";
 
@@ -20,6 +22,11 @@ interface OverviewProps {
 }
 
 function EntityOverviewView({ tenantCode }: OverviewProps) {
+  const isHq6 = useIsVaHq6();
+  if (isHq6) {
+    return <Hq6OverviewView />;
+  }
+
   const { tenantId } = useRouteTenant();
   const { items: activityItems, isLoading: activityLoading } =
     useRecentActivityFeed(tenantId);
@@ -56,9 +63,11 @@ function EntityOverviewView({ tenantCode }: OverviewProps) {
   return (
     <DashboardTemplate
       beforeContent={
-        <div className="flex flex-wrap items-center justify-end gap-3">
-          <DateRangeDropdown value={dateRange} onChange={setDateRange} />
-        </div>
+        isHq6 ? undefined : (
+          <div className="flex flex-wrap items-center justify-end gap-3">
+            <DateRangeDropdown value={dateRange} onChange={setDateRange} />
+          </div>
+        )
       }
       kpiRow={
         <OverviewLiveBody

@@ -10,8 +10,19 @@ function has(config: TenantConfig, moduleId: string): boolean {
   return config.enabledModules.includes(moduleId);
 }
 
+function isVaHq6(config: TenantConfig): boolean {
+  return config.code === "VA";
+}
+
 /** Primary sidebar links for job- and appointment-centric tenants. */
 function homeItems(code: string, config: TenantConfig): NavItem[] {
+  // VA mirrors HQ6: Home is a single top-level link (no Jobs/Vehicles/Requisitions).
+  if (isVaHq6(config)) {
+    return [
+      { label: "Home", icon: "home", route: r(code, "overview"), pageType: "dashboard" },
+    ];
+  }
+
   const items: NavItem[] = [
     { label: "Overview", icon: "layout-dashboard", route: r(code, "overview"), pageType: "dashboard" },
   ];
@@ -226,14 +237,19 @@ function expensesItems(code: string): NavItem[] {
   return [
     { label: "List Expenses", icon: "receipt", route: r(code, "expenses"), pageType: "list" },
     { label: "Add Expense", icon: "plus-circle", route: r(code, "add-expense"), pageType: "list" },
+    { label: "Import Expenses", icon: "upload", route: r(code, "import-expense"), pageType: "list" },
     { label: "Expense Categories", icon: "folder-tree", route: r(code, "expense-categories"), pageType: "list" },
   ];
 }
 
-function paymentAccountItems(code: string): NavItem[] {
+function paymentAccountItems(code: string, config: TenantConfig): NavItem[] {
+  // HQ6 Payment Accounts has no Invoices link.
+  const invoices: NavItem[] = isVaHq6(config)
+    ? []
+    : [{ label: "Invoices", icon: "file-text", route: r(code, "invoices"), pageType: "list" }];
   return [
     { label: "List Accounts", icon: "credit-card", route: r(code, "payment-accounts"), pageType: "list" },
-    { label: "Invoices", icon: "file-text", route: r(code, "invoices"), pageType: "list" },
+    ...invoices,
     { label: "Balance Sheet", icon: "scale", route: r(code, "balance-sheet"), pageType: "dashboard" },
     { label: "Trial Balance", icon: "list-checks", route: r(code, "trial-balance"), pageType: "dashboard" },
     { label: "Cash Flow", icon: "trending-up", route: r(code, "cash-flow"), pageType: "dashboard" },
@@ -244,12 +260,6 @@ function paymentAccountItems(code: string): NavItem[] {
 /** HQ6 Reports dropdown — one sidebar sublink per report page (filtered like AdminSidebarMenu.php). */
 function reportsItems(code: string, config: TenantConfig): NavItem[] {
   if (!config.archetype) return [];
-  const hub: NavItem = {
-    label: "All Reports",
-    icon: "pie-chart",
-    route: r(code, "reports"),
-    pageType: "dashboard",
-  };
   const reports = reportsForArchetype(config.archetype, config.enabledModules)
     .filter((entry) => entry.source.kind !== "payment-accounts")
     .map((entry) => ({
@@ -258,6 +268,14 @@ function reportsItems(code: string, config: TenantConfig): NavItem[] {
       route: r(code, entry.slug),
       pageType: "dashboard" as const,
     }));
+  // HQ6 has no "All Reports" hub — only the individual report links.
+  if (isVaHq6(config)) return reports;
+  const hub: NavItem = {
+    label: "All Reports",
+    icon: "pie-chart",
+    route: r(code, "reports"),
+    pageType: "dashboard",
+  };
   return [hub, ...reports];
 }
 
@@ -278,18 +296,20 @@ function settingsItems(code: string): NavItem[] {
 
 /**
  * HQ6 Ultimate POS-style collapsible sidebar groups.
- * Order matches hq6.vonosautomarket.com AdminSidebarMenu.php + Essentials HRM:
+ * Order matches hq6.vonosautomarket.com AdminSidebarMenu.php:
  * Home > User Management > Contacts > Products > Purchases > Sell >
- * Expenses > Payment Accounts > Reports > HRM > Settings
+ * Expenses > Payment Accounts > Reports > Orders > Notification Templates >
+ * Settings > HRM > Essentials
  */
 export function posNavSectionsForConfig(config: TenantConfig): NavSection[] {
   const code = config.code ?? "VW";
+  const va = isVaHq6(config);
   const sections: NavSection[] = [];
 
-  // 1. Home (+ workshop / appointment primary links by archetype)
+  // 1. Home (+ workshop / appointment primary links by archetype — not on VA)
   sections.push({
     label: "Home",
-    icon: "layout-dashboard",
+    icon: "home",
     items: homeItems(code, config),
   });
 
@@ -344,7 +364,7 @@ export function posNavSectionsForConfig(config: TenantConfig): NavSection[] {
       label: "Payment Accounts",
       icon: "credit-card",
       collapsible: true,
-      items: paymentAccountItems(code),
+      items: paymentAccountItems(code, config),
     });
   }
 
@@ -358,13 +378,50 @@ export function posNavSectionsForConfig(config: TenantConfig): NavSection[] {
     });
   }
 
-  // 10. HRM — single sidebar link; sub-sections are tabs on the HRM page
+  // 10–11. VA-only flat links that exist on HQ6 but not other tenants' menus
+  if (va) {
+    sections.push({
+      label: "Orders",
+      icon: "list",
+      items: [{ label: "Orders", icon: "list", route: r(code, "orders"), pageType: "list" }],
+    });
+    sections.push({
+      label: "Notification Templates",
+      icon: "mail",
+      items: [
+        {
+          label: "Notification Templates",
+          icon: "mail",
+          route: r(code, "notification-templates"),
+          pageType: "form",
+        },
+      ],
+    });
+  }
+
+  // 12. Settings (before HRM/Essentials — HQ6 order)
+  sections.push({ label: "Settings", icon: "settings", collapsible: true, items: settingsItems(code) });
+
+  // 13. HRM — single sidebar link; sub-sections are tabs on the HRM page
   if (has(config, "hrm")) {
     sections.push({ label: "HRM", icon: "briefcase", items: hrmItems(code) });
   }
 
-  // 11. Settings
-  sections.push({ label: "Settings", icon: "settings", collapsible: true, items: settingsItems(code) });
+  // 14. Essentials (VA / HQ6)
+  if (va) {
+    sections.push({
+      label: "Essentials",
+      icon: "circle-check",
+      items: [
+        {
+          label: "Essentials",
+          icon: "circle-check",
+          route: r(code, "essentials-todo"),
+          pageType: "list",
+        },
+      ],
+    });
+  }
 
   return sections;
 }

@@ -8,7 +8,9 @@ import { Button } from "@/components/atoms/Button";
 import { Input } from "@/components/atoms/Input";
 import { Modal, ModalFooter, ModalHeader } from "@/components/atoms/Modal";
 import { Select } from "@/components/atoms/Select";
+import { Hq6Modal, Hq6ModalSaveClose } from "@/components/hq6/Hq6Modal";
 import { createUser, inviteUser } from "@/lib/api/users";
+import { useIsVaHq6 } from "@/lib/hooks/useIsVaHq6";
 import { AUTOS_GROUP_ENTITIES } from "@/lib/registries/tenants";
 import { cn } from "@/lib/utils/cn";
 import { useAuthStore } from "@/stores/authStore";
@@ -39,6 +41,7 @@ export function InviteUserModal({
   defaultTenantId,
 }: InviteUserModalProps) {
   const queryClient = useQueryClient();
+  const isHq6 = useIsVaHq6();
   const actorRole = useAuthStore((state) => state.role);
   const isSuperAdmin = actorRole === "super_admin";
 
@@ -168,6 +171,136 @@ export function InviteUserModal({
     }
   };
 
+  const formBody = (
+    <div className={cn("space-y-3.5", !isHq6 && "px-4 pb-2")}>
+      {inviteLink ? (
+        <div className="rounded-lg border border-border bg-[var(--color-surface-muted)] p-3 text-sm">
+          <p className="font-medium text-foreground">Invitation created</p>
+          <p className="mt-1 text-muted">
+            Share this link with the person you invited so they can set their password:
+          </p>
+          <a
+            href={inviteLink}
+            className="mt-2 block break-all text-info underline"
+            target="_blank"
+            rel="noreferrer"
+          >
+            {inviteLink}
+          </a>
+        </div>
+      ) : (
+        <>
+          <div className="flex gap-1 rounded-lg border border-border bg-[var(--color-surface-muted)] p-1">
+            {(
+              [
+                { id: "invite" as const, label: "Send invite" },
+                { id: "direct" as const, label: "Create directly" },
+              ] as const
+            ).map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => {
+                  setMode(tab.id);
+                  setError(null);
+                }}
+                className={cn(
+                  "flex-1 rounded-md px-3 py-2 text-sm font-medium transition-colors",
+                  mode === tab.id
+                    ? "bg-card text-foreground shadow-sm"
+                    : "text-muted hover:text-foreground",
+                )}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+          <Input
+            label="Full name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Jane Doe"
+          />
+          <Input
+            label="Email"
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="jane@example.com"
+          />
+          {mode === "direct" ? (
+            <>
+              <Input
+                label="Password"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="At least 8 characters"
+                autoComplete="new-password"
+              />
+              <Input
+                label="Confirm password"
+                type="password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                placeholder="Re-enter password"
+                error={passwordMismatch ? "Passwords do not match" : undefined}
+                autoComplete="new-password"
+              />
+            </>
+          ) : null}
+          {allTenants ? (
+            <Select
+              label="Entity"
+              value={entityValue}
+              onChange={(e) => {
+                const next = e.target.value;
+                setEntityValue(next);
+                if (next === VAG_ENTITY_VALUE) {
+                  setRole("super_admin");
+                } else if (role === "super_admin") {
+                  setRole("manager");
+                }
+              }}
+              options={entityOptions}
+            />
+          ) : null}
+          {entityValue !== VAG_ENTITY_VALUE ? (
+            <Select
+              label="Role"
+              value={role}
+              onChange={(e) => setRole(e.target.value as Role)}
+              options={roleOptions}
+            />
+          ) : null}
+          {error ? <p className="text-sm text-error">{error}</p> : null}
+        </>
+      )}
+    </div>
+  );
+
+  if (isHq6) {
+    return (
+      <Hq6Modal
+        open={open}
+        onClose={handleClose}
+        title="Add user"
+        footer={
+          <Hq6ModalSaveClose
+            onClose={handleClose}
+            closeLabel={inviteLink ? "Done" : "Close"}
+            onSave={inviteLink ? undefined : handleSubmit}
+            saveLabel={mode === "invite" ? "Send invite" : "Create user"}
+            saving={isPending}
+            saveDisabled={!canSubmit}
+          />
+        }
+      >
+        {formBody}
+      </Hq6Modal>
+    );
+  }
+
   return (
     <Modal open={open} onClose={handleClose} panelClassName="max-w-lg">
       <ModalHeader
@@ -179,111 +312,7 @@ export function InviteUserModal({
         }
         onClose={handleClose}
       />
-      <div className="space-y-3.5 px-4 pb-2">
-        {inviteLink ? (
-          <div className="rounded-lg border border-border bg-[var(--color-surface-muted)] p-3 text-sm">
-            <p className="font-medium text-foreground">Invitation created</p>
-            <p className="mt-1 text-muted">
-              Share this link with the person you invited so they can set their password:
-            </p>
-            <a
-              href={inviteLink}
-              className="mt-2 block break-all text-info underline"
-              target="_blank"
-              rel="noreferrer"
-            >
-              {inviteLink}
-            </a>
-          </div>
-        ) : (
-          <>
-            <div className="flex gap-1 rounded-lg border border-border bg-[var(--color-surface-muted)] p-1">
-              {(
-                [
-                  { id: "invite" as const, label: "Send invite" },
-                  { id: "direct" as const, label: "Create directly" },
-                ] as const
-              ).map((tab) => (
-                <button
-                  key={tab.id}
-                  type="button"
-                  onClick={() => {
-                    setMode(tab.id);
-                    setError(null);
-                  }}
-                  className={cn(
-                    "flex-1 rounded-md px-3 py-2 text-sm font-medium transition-colors",
-                    mode === tab.id
-                      ? "bg-card text-foreground shadow-sm"
-                      : "text-muted hover:text-foreground",
-                  )}
-                >
-                  {tab.label}
-                </button>
-              ))}
-            </div>
-            <Input
-              label="Full name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Jane Doe"
-            />
-            <Input
-              label="Email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="jane@example.com"
-            />
-            {mode === "direct" ? (
-              <>
-                <Input
-                  label="Password"
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="At least 8 characters"
-                  autoComplete="new-password"
-                />
-                <Input
-                  label="Confirm password"
-                  type="password"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  placeholder="Re-enter password"
-                  error={passwordMismatch ? "Passwords do not match" : undefined}
-                  autoComplete="new-password"
-                />
-              </>
-            ) : null}
-            {allTenants ? (
-              <Select
-                label="Entity"
-                value={entityValue}
-                onChange={(e) => {
-                  const next = e.target.value;
-                  setEntityValue(next);
-                  if (next === VAG_ENTITY_VALUE) {
-                    setRole("super_admin");
-                  } else if (role === "super_admin") {
-                    setRole("manager");
-                  }
-                }}
-                options={entityOptions}
-              />
-            ) : null}
-            {entityValue !== VAG_ENTITY_VALUE ? (
-              <Select
-                label="Role"
-                value={role}
-                onChange={(e) => setRole(e.target.value as Role)}
-                options={roleOptions}
-              />
-            ) : null}
-            {error ? <p className="text-sm text-error">{error}</p> : null}
-          </>
-        )}
-      </div>
+      {formBody}
       <ModalFooter>
         <Button variant="secondary" size="sm" onClick={handleClose}>
           {inviteLink ? "Done" : "Cancel"}

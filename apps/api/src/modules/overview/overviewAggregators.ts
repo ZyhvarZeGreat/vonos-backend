@@ -15,7 +15,12 @@ import {
   topProductsInWindow,
 } from '../reports/aggregators/salesReportQueries';
 import { computeDelta, priorWindow, resolveDateWindow, asChartData } from '../reports/aggregators/date-utils';
-import { buildLedgerFinanceSlice } from './overviewFinance';
+import { buildLedgerFinanceSlice, buildVaHq6HomeFinanceKpis, buildVaHq6HomeCharts } from './overviewFinance';
+import {
+  buildPurchasePaymentDuesPanel,
+  buildSalesPaymentDuesPanel,
+  buildStockAlertPanel,
+} from './overviewPanels';
 const JOB_STATUS_COLORS: Record<string, string> = {
   Received: '#94a3b8',
   Quoted: '#64748b',
@@ -590,28 +595,44 @@ export async function buildJobOverview(
         },
       ];
 
+  const vaHomeKpis = isMechanics
+    ? await buildVaHq6HomeFinanceKpis(db, tenantId, from, to)
+    : null;
+  const vaHomeCharts = isMechanics
+    ? await buildVaHq6HomeCharts(db, tenantId)
+    : null;
+  const vaHomePanels = isMechanics
+    ? await Promise.all([
+        buildSalesPaymentDuesPanel(db, tenantId),
+        buildPurchasePaymentDuesPanel(db, tenantId),
+        buildStockAlertPanel(db, tenantId),
+      ])
+    : null;
+
   return {
     kpis,
-    charts: [
-      {
-        id: 'job-status-pie',
-        title: 'Job Status Distribution',
-        subtitle: 'Current pipeline breakdown',
-        type: 'pie',
-        data: jobStatusPie.map((row) => ({
-          label: row.label,
-          value: row.value,
-        })),
-        series: jobStatusPie.map((row) => ({
-          name: row.label,
-          dataKey: 'value',
-          color: row.color,
-        })),
-      },
-    ],
-    financeKpis: finance.financeKpis,
+    charts:
+      vaHomeCharts ??
+      ([
+        {
+          id: 'job-status-pie',
+          title: 'Job Status Distribution',
+          subtitle: 'Current pipeline breakdown',
+          type: 'pie',
+          data: jobStatusPie.map((row) => ({
+            label: row.label,
+            value: row.value,
+          })),
+          series: jobStatusPie.map((row) => ({
+            name: row.label,
+            dataKey: 'value',
+            color: row.color,
+          })),
+        },
+      ] as OverviewDashboard['charts']),
+    financeKpis: vaHomeKpis ?? finance.financeKpis,
     financeCharts: finance.financeCharts,
-    panels: [],
+    panels: vaHomePanels ?? [],
     table,
     rankedList: null,
     jobStatusPie,

@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { Search } from "lucide-react";
+import { useMemo, useState } from "react";
 import type { ReportsDashboard, ReportsKpi, ReportsTable, ReportRowAction, ReportsTableRow } from "@vonos/types";
 import { ReportTableActions } from "@/components/molecules/ReportTableActions";
+import { ReportTableSearchBar } from "@/components/molecules/ReportTableSearchBar";
 import { CursorPaginationBar } from "@/components/molecules/CursorPaginationBar";
 import { KpiRow } from "@/components/organisms/KpiRow";
 import { ChartPanel } from "@/components/organisms/ChartPanel";
@@ -16,7 +16,6 @@ import {
   reportColumnTotalKind,
   resolveReportColumnTotals,
 } from "@/lib/utils/reportTableTotals";
-import { TABLE_REPORT_PAGE_SIZE } from "@/lib/registries/reportTableUi";
 import { DataTableSkeleton } from "@/components/organisms/skeletons";
 import { cn } from "@/lib/utils/cn";
 
@@ -49,6 +48,10 @@ export interface ReportDetailSheetProps {
   /** When true, render table above charts (activity-log style). */
   tableFirst?: boolean;
   tablePagination?: ReportTablePagination;
+  /** Controlled table search (wired from report filters for server-side search). */
+  tableSearch?: string;
+  onTableSearchChange?: (value: string) => void;
+  searchPlaceholder?: string;
 }
 
 function formatKpiValue(kpi: ReportsKpi): string {
@@ -124,12 +127,18 @@ function ReportTable({
   onRowClick,
   onRowAction,
   pagination,
+  searchValue,
+  onSearchChange,
+  searchPlaceholder = "Search …",
 }: {
   table: ReportsTable;
   currency?: string;
   onRowClick?: (row: ReportsTableRow & { id: string }) => void;
   onRowAction?: (action: ReportRowAction) => void;
   pagination?: ReportTablePagination;
+  searchValue?: string;
+  onSearchChange?: (value: string) => void;
+  searchPlaceholder?: string;
 }) {
   const allRows = useMemo(
     () =>
@@ -140,11 +149,21 @@ function ReportTable({
     [table.rows],
   );
 
-  const [tableSearch, setTableSearch] = useState("");
+  const [localSearch, setLocalSearch] = useState("");
+  const controlled = onSearchChange != null;
+  const tableSearch = controlled ? (searchValue ?? "") : localSearch;
+  const setTableSearch = controlled ? onSearchChange : setLocalSearch;
 
+  // Server-paginated + controlled search: API filters. Otherwise filter client-side.
+  const serverHandlesSearch = Boolean(pagination && controlled);
   const filteredRows = useMemo(
-    () => allRows.filter((row) => rowMatchesSearch(row, table.columns, tableSearch)),
-    [allRows, table.columns, tableSearch],
+    () =>
+      serverHandlesSearch
+        ? allRows
+        : allRows.filter((row) =>
+            rowMatchesSearch(row, table.columns, tableSearch),
+          ),
+    [allRows, serverHandlesSearch, table.columns, tableSearch],
   );
 
   const offsetPagination = useOffsetPage(filteredRows, { resetKey: tableSearch });
@@ -163,10 +182,7 @@ function ReportTable({
   };
 
   const activePagination = pagination ?? clientPagination;
-  const serverPaginated = Boolean(pagination);
-  const rows = pagination
-    ? allRows
-    : offsetPagination.pageRows;
+  const rows = pagination ? allRows : offsetPagination.pageRows;
 
   const showActions =
     Boolean(onRowAction) &&
@@ -176,10 +192,21 @@ function ReportTable({
     () =>
       resolveReportColumnTotals(
         table.columns,
-        tableSearch.trim() ? filteredRows : table.rows,
-        tableSearch.trim() ? undefined : table.columnTotals,
+        !serverHandlesSearch && tableSearch.trim()
+          ? filteredRows
+          : table.rows,
+        !serverHandlesSearch && tableSearch.trim()
+          ? undefined
+          : table.columnTotals,
       ),
-    [table.columns, table.rows, table.columnTotals, filteredRows, tableSearch],
+    [
+      table.columns,
+      table.rows,
+      table.columnTotals,
+      filteredRows,
+      tableSearch,
+      serverHandlesSearch,
+    ],
   );
   const hasTotals = Object.keys(totals).length > 0;
   const totalLabelColIndex = table.columns.findIndex((col) => !(col.key in totals));
@@ -210,21 +237,11 @@ function ReportTable({
   return (
     <div className="overflow-hidden rounded-lg border border-border">
       {paginationBar("top")}
-      {!serverPaginated ? (
-        <div className="border-b border-border bg-card px-3 py-2 print:hidden">
-          <div className="relative">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
-            <input
-              type="search"
-              value={tableSearch}
-              onChange={(e) => setTableSearch(e.target.value)}
-              placeholder="Search table…"
-              className="h-9 w-full rounded-md border border-border bg-[var(--color-surface-muted)]/40 pl-9 pr-3 text-sm text-foreground placeholder:text-muted focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
-              aria-label="Search table rows"
-            />
-          </div>
-        </div>
-      ) : null}
+      <ReportTableSearchBar
+        value={tableSearch}
+        onChange={setTableSearch}
+        placeholder={searchPlaceholder}
+      />
       {activePagination.isBusy ? (
         <DataTableSkeleton
           rows={8}
@@ -360,6 +377,9 @@ export function ReportDetailSheet({
   kpiClassName,
   tableFirst = false,
   tablePagination,
+  tableSearch,
+  onTableSearchChange,
+  searchPlaceholder,
 }: ReportDetailSheetProps) {
   const kpiValues = useMemo(
     () =>
@@ -386,6 +406,9 @@ export function ReportDetailSheet({
         onRowClick={onRowClick}
         onRowAction={onRowAction}
         pagination={tablePagination}
+        searchValue={tableSearch}
+        onSearchChange={onTableSearchChange}
+        searchPlaceholder={searchPlaceholder}
       />
     </div>
   ) : (

@@ -11,6 +11,9 @@ import { type ColumnConfig } from "@/components/organisms/DataTable";
 import { ServerPaginatedTable } from "@/components/organisms/ServerPaginatedTable";
 import { ListPageShell } from "@/components/organisms/ListPageShell";
 import { SalesListView } from "@/components/pages/EntityListViews";
+import { useIsVaHq6 } from "@/lib/hooks/useIsVaHq6";
+import { Hq6DiscountsListView } from "@/components/pages/Hq6DiscountsListView";
+import { Hq6SalesListView } from "@/components/pages/Hq6SalesListView";
 import {
   createDiscount,
   deleteDiscount,
@@ -28,14 +31,24 @@ import { useServerListPage } from "@/lib/hooks/useServerListPage";
 import { formatCurrency } from "@/lib/utils/formatCurrency";
 
 export function ListPosView() {
-  return (
-    <SalesListView saleStatus="completed" tabLabel="POS Sales" hidePrimaryAction />
-  );
+  const isHq6 = useIsVaHq6();
+  if (isHq6) {
+    // HQ6 “List POS” is a sales list (invoice columns), not cash registers.
+    return (
+      <Hq6SalesListView
+        saleStatus="completed"
+        tabLabel="List POS"
+        hidePrimaryAction
+        slug="pos"
+      />
+    );
+  }
+  return <SalesListView saleStatus="completed" tabLabel="POS Sales" hidePrimaryAction />;
 }
 
 export function ShipmentsListView() {
   return (
-    <SalesListView shipmentsOnly tabLabel="Shipments" hidePrimaryAction />
+    <SalesListView shipmentsOnly tabLabel="All shipments" hidePrimaryAction slug="shipments" />
   );
 }
 
@@ -129,6 +142,12 @@ export function UpdatePriceView() {
 }
 
 export function DiscountsListView() {
+  const isHq6 = useIsVaHq6();
+  if (isHq6) return <Hq6DiscountsListView />;
+  return <DiscountsListViewBody />;
+}
+
+function DiscountsListViewBody() {
   const tenantId = useTenantId();
   const queryClient = useQueryClient();
   const [formOpen, setFormOpen] = useState(false);

@@ -7,6 +7,7 @@ import type {
   MovementSource,
   MovementStatus,
   MovementType,
+  PayContactDueRequest,
   PurchasePaymentStatus,
 } from '@vonos/types';
 import { PrismaService } from '../../common/prisma/prisma.service';
@@ -24,6 +25,7 @@ import {
   shouldApplyInboundQty,
   shouldApplyOutboundQty,
 } from '../../common/utils/stockQuantity';
+import { toIso, toNumber } from '../../common/utils/serializers';
 import { adjustItemLocationStock } from '../../common/utils/itemLocationStock';
 import {
   serializeMovement,
@@ -322,6 +324,194 @@ export class StockMovementsService {
       void refreshSupplierPurchaseRollups(this.tenantDb.db, existing.supplierId);
     }
     return serializeMovement(row);
+  }
+
+  /** Soft-delete purchase/movement (HQ6 Delete → Are you sure?). */
+  async remove(id: string): Promise<void> {
+    const tenantId = this.tenantDb.requireTenantId();
+    const existing = await this.tenantDb.db.stockMovement.findFirst({
+      where: { id, tenantId, deletedAt: null },
+      select: { id: true, reference: true, supplierId: true },
+    });
+    if (!existing) throw new NotFoundException('Movement not found');
+
+    await this.tenantDb.db.stockMovement.update({
+      where: { id },
+      data: { deletedAt: new Date() },
+    });
+
+    if (existing.supplierId) {
+      await refreshSupplierPurchaseRollups(
+        this.tenantDb.db,
+        existing.supplierId,
+      );
+    }
+
+    await this.auditService.log({
+      action: 'deleted',
+      entityType: 'stockMovement',
+      entityId: id,
+      summary: `Deleted movement ${existing.reference}`,
+    });
+    void invalidateTenantDashboardCache(this.cache, tenantId);
+  }
+
+  /** Pay against a single inbound purchase (HQ6 purchases “Add payment”). */
+  async pay(
+    id: string,
+    dto: PayContactDueRequest,
+  ): Promise<{
+    movementId: string;
+    amountApplied: number;
+    currency: string;
+    remainingDue: number;
+    paymentStatus: string;
+  }> {
+    const tenantId = this.tenantDb.requireTenantId();
+    const amount = Number(dto.amount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      throw new BadRequestException('Payment amount must be greater than zero');
+    }
+
+    const movement = await this.tenantDb.db.stockMovement.findFirst({
+      where: { id, tenantId, deletedAt: null, type: 'inbound' },
+    });
+    if (!movement) throw new NotFoundException('Purchase not found');
+
+    const total = parseMovementLines(movement.lines).reduce(
+      (sum, line) =>
+        sum +
+        line.quantity * toNumber((line as { unitCost?: number }).unitCost ?? 0),
+      0,
+    );
+    if (total <= 0) {
+      throw new BadRequestException('Purchase has no payable amount');
+    }
+    if (movement.paymentStatus === 'paid') {
+      throw new BadRequestException('Purchase is already paid');
+    }
+
+    const priorPaid = await this.tenantDb.db.payment.aggregate({
+      where: {
+        tenantId,
+        deletedAt: null,
+        paymentFor: 'purchase',
+        paymentRefNo: movement.reference,
+      },
+      _sum: { amount: true },
+    });
+    const alreadyPaid = toNumber(priorPaid._sum.amount ?? 0);
+    const due = Math.max(0, total - alreadyPaid);
+    if (due <= 0) {
+      throw new BadRequestException('No outstanding due on this purchase');
+    }
+
+    const apply = Math.min(amount, due);
+    const paidOn = dto.paidOn ? new Date(dto.paidOn) : new Date();
+    const method = dto.method?.trim() || 'cash';
+    const createdBy = await this.auditService.createdByFields();
+
+    await this.tenantDb.db.$transaction(async (tx) => {
+      const payment = await tx.payment.create({
+        data: {
+          tenantId,
+          amount: apply,
+          currency: 'NGN',
+          method,
+          paidOn,
+          paymentFor: 'purchase',
+          paymentRefNo: movement.reference,
+          accountId: dto.accountId?.trim() || null,
+          note:
+            dto.note?.trim() ||
+            `Purchase payment — ${movement.reference}`,
+          createdByName: createdBy.createdByName ?? null,
+        },
+      });
+
+      await tx.ledgerEntry.create({
+        data: {
+          tenantId,
+          type: 'cost',
+          amount: apply,
+          currency: 'NGN',
+          category: 'Supplier Payment',
+          description: `Payment on ${movement.reference}`,
+          linkedRecordType: 'payment',
+          linkedRecordId: payment.id,
+          date: paidOn,
+        },
+      });
+
+      const newPaid = alreadyPaid + apply;
+      const paymentStatus = newPaid >= total - 0.001 ? 'paid' : 'partial';
+      await tx.stockMovement.update({
+        where: { id },
+        data: { paymentStatus, paymentMethod: method },
+      });
+    });
+
+    if (movement.supplierId) {
+      await refreshSupplierPurchaseRollups(
+        this.tenantDb.db,
+        movement.supplierId,
+      );
+    }
+
+    const remainingDue = Math.max(0, due - apply);
+    await this.auditService.log({
+      action: 'updated',
+      entityType: 'stockMovement',
+      entityId: id,
+      summary: `Recorded payment of ${apply} on ${movement.reference}`,
+    });
+
+    return {
+      movementId: id,
+      amountApplied: apply,
+      currency: 'NGN',
+      remainingDue,
+      paymentStatus: remainingDue <= 0 ? 'paid' : 'partial',
+    };
+  }
+
+  async listPayments(id: string): Promise<
+    Array<{
+      id: string;
+      amount: number;
+      currency: string;
+      method: string | null;
+      paidOn: string | null;
+      note: string | null;
+      createdByName: string | null;
+    }>
+  > {
+    const tenantId = this.tenantDb.requireTenantId();
+    const movement = await this.tenantDb.db.stockMovement.findFirst({
+      where: { id, tenantId, deletedAt: null },
+      select: { id: true, reference: true },
+    });
+    if (!movement) throw new NotFoundException('Movement not found');
+
+    const rows = await this.tenantDb.db.payment.findMany({
+      where: {
+        tenantId,
+        deletedAt: null,
+        paymentFor: 'purchase',
+        paymentRefNo: movement.reference,
+      },
+      orderBy: [{ paidOn: 'desc' }, { createdAt: 'desc' }],
+    });
+
+    return rows.map((row) => ({
+      id: row.id,
+      amount: toNumber(row.amount),
+      currency: row.currency,
+      method: row.method,
+      paidOn: row.paidOn ? toIso(row.paidOn) : null,
+      note: row.note,
+      createdByName: row.createdByName,
+    }));
   }
 
   async create(body: {

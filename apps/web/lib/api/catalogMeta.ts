@@ -146,3 +146,43 @@ export async function createCatalogMeta(
   }
   return response.json();
 }
+
+export async function updateCatalogMeta(
+  tenantId: string,
+  kind: CatalogMetaKind,
+  id: string,
+  body: Record<string, unknown>,
+): Promise<CatalogMetaRow> {
+  const response = await apiFetch(
+    withTenantQuery(`${ENDPOINTS[kind]}/${id}`, tenantId),
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    },
+  );
+  if (!response.ok) {
+    const err = (await response.json().catch(() => null)) as
+      | { message?: string }
+      | null;
+    throw new Error(err?.message ?? `Failed to update ${kind}`);
+  }
+  return response.json();
+}
+
+export async function deleteCatalogMeta(
+  tenantId: string,
+  kind: CatalogMetaKind,
+  id: string,
+): Promise<void> {
+  const response = await apiFetch(
+    withTenantQuery(`${ENDPOINTS[kind]}/${id}`, tenantId),
+    { method: "DELETE" },
+  );
+  if (!response.ok) {
+    const err = (await response.json().catch(() => null)) as
+      | { message?: string }
+      | null;
+    throw new Error(err?.message ?? `Failed to delete ${kind}`);
+  }
+}

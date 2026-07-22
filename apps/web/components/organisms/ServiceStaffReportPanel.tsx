@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import type { ReportsDashboard } from "@vonos/types";
+import { useMemo, useState } from "react";
+import type { ReportsDashboard, ReportsTableRow } from "@vonos/types";
 import { formatCurrency, formatNumber } from "@/lib/utils/formatCurrency";
 import {
   reportColumnTotalKind,
@@ -9,7 +9,18 @@ import {
 } from "@/lib/utils/reportTableTotals";
 import { cn } from "@/lib/utils/cn";
 import { CursorPaginationBar } from "@/components/molecules/CursorPaginationBar";
+import { ReportTableSearchBar } from "@/components/molecules/ReportTableSearchBar";
+import { useOffsetPage } from "@/lib/hooks/useOffsetPage";
 import { TABLE_REPORT_PAGE_SIZE } from "@/lib/registries/reportTableUi";
+
+function rowMatchesSearch(row: ReportsTableRow, query: string): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  return Object.entries(row).some(([key, value]) => {
+    if (key === "actions" || value == null || Array.isArray(value)) return false;
+    return String(value).toLowerCase().includes(q);
+  });
+}
 
 function kpiValue(
   report: ReportsDashboard,
@@ -33,20 +44,23 @@ export function ServiceStaffReportPanel({
   const transactions = kpiValue(report, "transactions");
   const topTicket = kpiValue(report, "topTicket");
   const table = report.table;
-
-  const [pageIndex, setPageIndex] = useState(0);
-  const [pageSize, setPageSize] = useState(TABLE_REPORT_PAGE_SIZE);
-
-  useEffect(() => {
-    setPageIndex(0);
-  }, [table?.rows, pageSize]);
-
-  const pageRows =
-    table?.rows.slice(pageIndex * pageSize, pageIndex * pageSize + pageSize) ??
-    [];
+  const [search, setSearch] = useState("");
+  const filteredRows = useMemo(
+    () => (table?.rows ?? []).filter((row) => rowMatchesSearch(row, search)),
+    [table?.rows, search],
+  );
+  const pagination = useOffsetPage(filteredRows, {
+    resetKey: search,
+    defaultPageSize: TABLE_REPORT_PAGE_SIZE,
+  });
+  const pageRows = pagination.pageRows;
 
   const totals = table
-    ? resolveReportColumnTotals(table.columns, table.rows, table.columnTotals)
+    ? resolveReportColumnTotals(
+        table.columns,
+        search.trim() ? filteredRows : table.rows,
+        search.trim() ? undefined : table.columnTotals,
+      )
     : {};
   const hasTotals = Object.keys(totals).length > 0;
   const totalLabelColIndex = table
@@ -105,21 +119,23 @@ export function ServiceStaffReportPanel({
       {table?.rows.length ? (
         <div className="overflow-hidden rounded-xl border border-border bg-card shadow-card">
           <CursorPaginationBar
-            pageIndex={pageIndex}
-            pageSize={pageSize}
+            pageIndex={pagination.pageIndex}
+            pageSize={pagination.pageSize}
             itemCount={pageRows.length}
-            hasMore={(pageIndex + 1) * pageSize < table.rows.length}
-            canGoPrev={pageIndex > 0}
-            onPrev={() => setPageIndex((page) => Math.max(0, page - 1))}
-            onNext={() => setPageIndex((page) => page + 1)}
-            onPageSizeChange={(size) => {
-              setPageSize(size);
-              setPageIndex(0);
-            }}
-            onPageSelect={setPageIndex}
-            totalPages={Math.max(1, Math.ceil(table.rows.length / pageSize))}
-            totalItems={table.rows.length}
+            hasMore={pagination.hasMore}
+            canGoPrev={pagination.canGoPrev}
+            onPrev={pagination.goPrev}
+            onNext={pagination.goNext}
+            onPageSizeChange={pagination.setPageSize}
+            onPageSelect={pagination.setPageIndex}
+            totalPages={pagination.totalPages}
+            totalItems={pagination.totalItems}
             className="border-b border-t-0 border-[var(--color-border-subtle)]"
+          />
+          <ReportTableSearchBar
+            value={search}
+            onChange={setSearch}
+            placeholder="Search staff…"
           />
           <div className="overflow-x-auto">
             <table className="w-full min-w-[24rem] text-sm">
@@ -190,20 +206,17 @@ export function ServiceStaffReportPanel({
             </table>
           </div>
           <CursorPaginationBar
-            pageIndex={pageIndex}
-            pageSize={pageSize}
+            pageIndex={pagination.pageIndex}
+            pageSize={pagination.pageSize}
             itemCount={pageRows.length}
-            hasMore={(pageIndex + 1) * pageSize < table.rows.length}
-            canGoPrev={pageIndex > 0}
-            onPrev={() => setPageIndex((page) => Math.max(0, page - 1))}
-            onNext={() => setPageIndex((page) => page + 1)}
-            onPageSizeChange={(size) => {
-              setPageSize(size);
-              setPageIndex(0);
-            }}
-            onPageSelect={setPageIndex}
-            totalPages={Math.max(1, Math.ceil(table.rows.length / pageSize))}
-            totalItems={table.rows.length}
+            hasMore={pagination.hasMore}
+            canGoPrev={pagination.canGoPrev}
+            onPrev={pagination.goPrev}
+            onNext={pagination.goNext}
+            onPageSizeChange={pagination.setPageSize}
+            onPageSelect={pagination.setPageIndex}
+            totalPages={pagination.totalPages}
+            totalItems={pagination.totalItems}
           />
         </div>
       ) : null}

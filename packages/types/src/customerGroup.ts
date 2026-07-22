@@ -11,3 +11,8 @@ export interface CreateCustomerGroupRequest {
   name: string;
   discountPercent?: number;
 }
+
+export interface UpdateCustomerGroupRequest {
+  name?: string;
+  discountPercent?: number;
+}

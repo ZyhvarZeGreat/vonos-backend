@@ -146,7 +146,11 @@ export function SaleRecordModal({
     <>
       <RecordViewModal
         open={Boolean(saleId)}
-        title={sale?.reference ?? "Sale"}
+        title={
+          sale
+            ? `Sell Details ( Invoice No.  : ${sale.reference})`
+            : "Sell Details"
+        }
         subtitle={
           sale
             ? `${formatDate(sale.date)} · ${sale.customerName} · ${paymentLabel}`

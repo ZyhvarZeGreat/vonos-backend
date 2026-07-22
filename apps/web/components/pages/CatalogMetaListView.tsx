@@ -9,6 +9,8 @@ import { CatalogMetaCreateBar } from "@/components/molecules/CatalogMetaCreateBa
 import { getCatalogMetaPage, type CatalogMetaKind } from "@/lib/api/catalogMeta";
 import { useServerListPage } from "@/lib/hooks/useServerListPage";
 import { useTenantId } from "@/lib/hooks/useRouteTenant";
+import { useIsVaHq6 } from "@/lib/hooks/useIsVaHq6";
+import { Hq6CatalogMetaListView } from "@/components/pages/Hq6CatalogMetaListView";
 import { useUiStore } from "@/stores/uiStore";
 
 interface MetaRow {
@@ -66,6 +68,14 @@ function toMetaRows(
 }
 
 export function CatalogMetaListView({ kind }: { kind: CatalogMetaKind }) {
+  const isHq6 = useIsVaHq6();
+  if (isHq6) {
+    return <Hq6CatalogMetaListView kind={kind} />;
+  }
+  return <CatalogMetaListViewBody kind={kind} />;
+}
+
+function CatalogMetaListViewBody({ kind }: { kind: CatalogMetaKind }) {
   const tenantId = useTenantId();
   const openExportModal = useUiStore((state) => state.openExportModal);
   const label = KIND_LABELS[kind];

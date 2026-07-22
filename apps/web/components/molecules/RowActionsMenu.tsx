@@ -4,6 +4,8 @@ import { useState, useRef, useEffect } from "react";
 import { MoreHorizontal } from "lucide-react";
 import { Button } from "@/components/atoms/Button";
 import { FloatingMenuPanel } from "@/components/molecules/FloatingMenuPanel";
+import { Hq6ActionsMenu } from "@/components/hq6/Hq6ActionsMenu";
+import { useIsVaHq6 } from "@/lib/hooks/useIsVaHq6";
 import { cn } from "@/lib/utils/cn";
 
 export interface RowAction {
@@ -19,6 +21,24 @@ interface RowActionsMenuProps {
 }
 
 export function RowActionsMenu({ actions, className }: RowActionsMenuProps) {
+  const isHq6 = useIsVaHq6();
+  if (isHq6) {
+    return (
+      <Hq6ActionsMenu
+        className={className}
+        items={actions.map((action) => ({
+          id: action.id,
+          label: action.label,
+          onClick: action.onClick,
+          danger: action.destructive,
+        }))}
+      />
+    );
+  }
+  return <DefaultRowActionsMenu actions={actions} className={className} />;
+}
+
+function DefaultRowActionsMenu({ actions, className }: RowActionsMenuProps) {
   const [open, setOpen] = useState(false);
   const anchorRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);

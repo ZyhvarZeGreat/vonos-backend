@@ -2,6 +2,7 @@ import type {
   ReportRowAction,
   ReportRunOptions,
   ReportsDashboard,
+  ReportsTable,
   ReportsTableRow,
   TaxReportSummary,
 } from '@vonos/types';
@@ -17,7 +18,8 @@ import {
 import {
   ledgerCostByBucket,
   priorWindow,
-  recentSaleRefs,
+  periodSaleRefsPage,
+  periodPurchaseRefsPage,
   salesByCreatedBy,
   salesByDay,
   salesByServiceStaff,
@@ -25,6 +27,8 @@ import {
   sumSalesWindow,
   taxReportSummaryAggregates,
   topProductsSold,
+  type PeriodInvoicePage,
+  type PeriodInvoiceRef,
 } from './salesReportQueries';
 
 export {
@@ -33,6 +37,195 @@ export {
   buildProductSellReport,
   buildSellPaymentReport,
 } from './tableReportHandlers';
+
+function periodDocTypeLabel(row: PeriodInvoiceRef): string {
+  if (row.recordType === 'purchase') return 'Purchase';
+  if (row.recordType === 'job') return 'Job Invoice';
+  return 'Sale';
+}
+
+function mapPeriodInvoiceRows(
+  rows: PeriodInvoiceRef[],
+  currency: string,
+): ReportsTableRow[] {
+  return rows.map((row) => ({
+    id: row.recordType === 'job' && row.jobId ? row.jobId : row.id,
+    recordType:
+      row.recordType === 'job'
+        ? ('job' as const)
+        : row.recordType === 'purchase'
+          ? ('purchase' as const)
+          : ('sale' as const),
+    saleId: row.recordType === 'sale' ? row.id : undefined,
+    date: row.date.toISOString().slice(0, 16).replace('T', ' '),
+    type: periodDocTypeLabel(row),
+    reference: row.reference,
+    invoiceNo: row.invoiceNo,
+    party: row.party,
+    createdBy: row.createdByName ?? '—',
+    location: row.locationCode ?? '—',
+    payment: row.paymentStatus ?? row.paymentMethod ?? '—',
+    paymentMethod: row.paymentMethod ?? '—',
+    discount: Math.round(row.discount * 100) / 100,
+    tax: Math.round(row.tax * 100) / 100,
+    vat: Math.round(row.tax * 100) / 100,
+    taxNumber: row.taxNumber?.trim() || '—',
+    total: Math.round(row.total * 100) / 100,
+    currency,
+  }));
+}
+
+function periodInvoiceColumns(detailed = false) {
+  const base = [
+    { key: 'date', header: 'Date' },
+    { key: 'type', header: 'Type' },
+    { key: 'invoiceNo', header: 'Invoice No.' },
+    { key: 'reference', header: 'Reference No' },
+    { key: 'party', header: 'Customer / Supplier' },
+  ];
+  if (detailed) {
+    return [
+      ...base,
+      { key: 'taxNumber', header: 'Tax number' },
+      { key: 'paymentMethod', header: 'Payment Method' },
+      { key: 'discount', header: 'Discount', totalAs: 'currency' as const },
+      { key: 'vat', header: 'VAT', totalAs: 'currency' as const },
+      { key: 'createdBy', header: 'Added By' },
+      { key: 'location', header: 'Location' },
+      { key: 'payment', header: 'Payment' },
+      { key: 'total', header: 'Total amount', totalAs: 'currency' as const },
+    ];
+  }
+  return [
+    ...base,
+    { key: 'createdBy', header: 'Added By' },
+    { key: 'location', header: 'Location' },
+    { key: 'payment', header: 'Payment' },
+    { key: 'total', header: 'Total', totalAs: 'currency' as const },
+  ];
+}
+
+function periodPageToTable(
+  page: PeriodInvoicePage,
+  currency: string,
+  detailed: boolean,
+): ReportsTable {
+  const rows = mapPeriodInvoiceRows(page.rows, currency);
+  return {
+    columns: periodInvoiceColumns(detailed),
+    rows,
+    hasMore: page.hasMore,
+    nextCursor: page.nextCursor,
+    pageSize: page.pageSize,
+    columnTotals: {
+      discount:
+        Math.round(
+          rows.reduce((sum, row) => sum + Number(row.discount ?? 0), 0) * 100,
+        ) / 100,
+      vat:
+        Math.round(
+          rows.reduce((sum, row) => sum + Number(row.vat ?? 0), 0) * 100,
+        ) / 100,
+      total: Math.round(
+        rows.reduce((sum, row) => sum + Number(row.total ?? 0), 0),
+      ),
+    },
+  };
+}
+
+function emptyPeriodTable(detailed: boolean, pageSize: number): ReportsTable {
+  return {
+    columns: periodInvoiceColumns(detailed),
+    rows: [],
+    hasMore: false,
+    nextCursor: null,
+    pageSize,
+    columnTotals: { discount: 0, vat: 0, total: 0 },
+  };
+}
+
+async function loadTaxTables(
+  db: TenantScopedPrisma,
+  tenantId: string,
+  window: ReturnType<typeof resolveDateWindow>,
+  currency: string,
+  detailed: boolean,
+  options?: ReportRunOptions,
+): Promise<{ purchases: ReportsTable; sales: ReportsTable; combined: ReportsTable }> {
+  const pageOpts = {
+    cursor: options?.cursor,
+    limit: options?.limit,
+    search: options?.search,
+  };
+  const side = options?.taxTable;
+
+  if (side === 'purchases') {
+    const purchasesPage = await periodPurchaseRefsPage(
+      db,
+      tenantId,
+      window,
+      pageOpts,
+    );
+    const purchases = periodPageToTable(purchasesPage, currency, detailed);
+    return {
+      purchases,
+      sales: emptyPeriodTable(detailed, purchasesPage.pageSize),
+      combined: purchases,
+    };
+  }
+
+  if (side === 'sales') {
+    const salesPage = await periodSaleRefsPage(db, tenantId, window, pageOpts);
+    const sales = periodPageToTable(salesPage, currency, detailed);
+    return {
+      purchases: emptyPeriodTable(detailed, salesPage.pageSize),
+      sales,
+      combined: sales,
+    };
+  }
+
+  const [salesPage, purchasesPage] = await Promise.all([
+    periodSaleRefsPage(db, tenantId, window, {
+      limit: pageOpts.limit,
+      search: pageOpts.search,
+    }),
+    periodPurchaseRefsPage(db, tenantId, window, {
+      limit: pageOpts.limit,
+      search: pageOpts.search,
+    }),
+  ]);
+  const sales = periodPageToTable(salesPage, currency, detailed);
+  const purchases = periodPageToTable(purchasesPage, currency, detailed);
+  const combinedRows = [...sales.rows, ...purchases.rows].sort((a, b) =>
+    String(b.date).localeCompare(String(a.date)),
+  );
+  return {
+    purchases,
+    sales,
+    combined: {
+      columns: periodInvoiceColumns(detailed),
+      rows: combinedRows,
+      pageSize: salesPage.pageSize,
+      columnTotals: {
+        discount:
+          Math.round(
+            ((sales.columnTotals?.discount ?? 0) +
+              (purchases.columnTotals?.discount ?? 0)) *
+              100,
+          ) / 100,
+        vat:
+          Math.round(
+            ((sales.columnTotals?.vat ?? 0) +
+              (purchases.columnTotals?.vat ?? 0)) *
+              100,
+          ) / 100,
+        total:
+          (sales.columnTotals?.total ?? 0) +
+          (purchases.columnTotals?.total ?? 0),
+      },
+    },
+  };
+}
 
 function currencyKpi(
   label: string,
@@ -86,45 +279,67 @@ export async function buildPurchaseSaleReport(
   tenantId: string,
   from?: string,
   to?: string,
+  options?: ReportRunOptions,
 ): Promise<ReportsDashboard> {
   const window = resolveDateWindow(from, to);
   const prior = priorWindow(window);
+  const pagingOnly = Boolean(options?.taxTable && options?.cursor);
 
-  const [
-    period,
-    priorPeriod,
-    purchaseAgg,
-    priorPurchaseAgg,
-    salesBuckets,
-    costBuckets,
-  ] = await Promise.all([
-    sumSalesWindow(db, tenantId, window),
-    sumSalesWindow(db, tenantId, prior),
-    db.ledgerEntry.aggregate({
-      where: {
-        deletedAt: null,
-        type: 'cost',
-        date: { gte: window.from, lte: window.to },
-      },
-      _sum: { amount: true },
-    }),
-    db.ledgerEntry.aggregate({
-      where: {
-        deletedAt: null,
-        type: 'cost',
-        date: { gte: prior.from, lte: prior.to },
-      },
-      _sum: { amount: true },
-    }),
-    salesRevenueByBucket(db, tenantId, window),
-    ledgerCostByBucket(db, tenantId, window),
-  ]);
+  const [period, priorPeriod, purchaseAgg, priorPurchaseAgg, salesBuckets, costBuckets, summary] =
+    await Promise.all([
+      pagingOnly
+        ? Promise.resolve({ revenue: 0, count: 0, currency: 'NGN' })
+        : sumSalesWindow(db, tenantId, window),
+      pagingOnly
+        ? Promise.resolve({ revenue: 0, count: 0, currency: 'NGN' })
+        : sumSalesWindow(db, tenantId, prior),
+      pagingOnly
+        ? Promise.resolve({ _sum: { amount: null as null } })
+        : db.ledgerEntry.aggregate({
+            where: {
+              deletedAt: null,
+              type: 'cost',
+              date: { gte: window.from, lte: window.to },
+            },
+            _sum: { amount: true },
+          }),
+      pagingOnly
+        ? Promise.resolve({ _sum: { amount: null as null } })
+        : db.ledgerEntry.aggregate({
+            where: {
+              deletedAt: null,
+              type: 'cost',
+              date: { gte: prior.from, lte: prior.to },
+            },
+            _sum: { amount: true },
+          }),
+      pagingOnly
+        ? Promise.resolve(
+            [] as Awaited<ReturnType<typeof salesRevenueByBucket>>,
+          )
+        : salesRevenueByBucket(db, tenantId, window),
+      pagingOnly
+        ? Promise.resolve(
+            [] as Awaited<ReturnType<typeof ledgerCostByBucket>>,
+          )
+        : ledgerCostByBucket(db, tenantId, window),
+      taxReportSummaryAggregates(db, tenantId, window),
+    ]);
+
+  const currency = summary.currency || period.currency;
+  const tables = await loadTaxTables(
+    db,
+    tenantId,
+    window,
+    currency,
+    false,
+    options,
+  );
 
   const purchases = toNumber(purchaseAgg._sum.amount ?? 0);
   const priorPurchases = toNumber(priorPurchaseAgg._sum.amount ?? 0);
   const salesTotal = period.revenue;
   const grossProfit = salesTotal - purchases;
-  const currency = period.currency;
 
   const purchaseByKey = new Map(
     costBuckets.map((row) => [row.key, row.purchases]),
@@ -143,6 +358,42 @@ export async function buildPurchaseSaleReport(
     });
   }
   chartData.sort((a, b) => a.label.localeCompare(b.label));
+
+  const saleMinusPurchase =
+    summary.saleIncludingTax -
+    summary.sellReturnIncludingTax -
+    (summary.purchaseIncludingTax - summary.purchaseReturnIncludingTax);
+  const dueAmount = summary.saleDue - summary.purchaseDue;
+
+  const taxReport: TaxReportSummary = {
+    currency: summary.currency,
+    purchases: {
+      total: summary.totalPurchase,
+      includingTax: summary.purchaseIncludingTax,
+      returnIncludingTax: summary.purchaseReturnIncludingTax,
+      due: summary.purchaseDue,
+    },
+    sales: {
+      total: summary.totalSale,
+      includingTax: summary.saleIncludingTax,
+      returnIncludingTax: summary.sellReturnIncludingTax,
+      due: summary.saleDue,
+    },
+    overall: {
+      saleMinusPurchase,
+      dueAmount,
+    },
+  };
+
+  if (pagingOnly) {
+    return {
+      kpis: [],
+      charts: [],
+      taxReport,
+      taxTables: { purchases: tables.purchases, sales: tables.sales },
+      table: tables.combined,
+    };
+  }
 
   return {
     kpis: [
@@ -180,6 +431,22 @@ export async function buildPurchaseSaleReport(
         'receipt',
         computeDelta(period.count, priorPeriod.count),
       ),
+      currencyKpi(
+        'Sale - Purchase',
+        'saleMinusPurchase',
+        saleMinusPurchase,
+        summary.currency,
+        '#0d9488',
+        'trending-up',
+      ),
+      currencyKpi(
+        'Due amount',
+        'dueAmount',
+        dueAmount,
+        summary.currency,
+        '#0d9488',
+        'wallet',
+      ),
     ],
     charts: [
       {
@@ -197,36 +464,32 @@ export async function buildPurchaseSaleReport(
             : [{ label: '—', sales: 0, purchases: 0 }],
       },
     ],
-    table: {
-      columns: [
-        { key: 'period', header: 'Period' },
-        { key: 'sales', header: 'Sales' },
-        { key: 'purchases', header: 'Purchases' },
-        { key: 'margin', header: 'Margin' },
-      ],
-      rows: chartData.map((row) => ({
-        period: row.label,
-        sales: row.sales,
-        purchases: row.purchases,
-        margin: row.sales - row.purchases,
-        currency,
-      })),
-    },
+    taxReport,
+    taxTables: { purchases: tables.purchases, sales: tables.sales },
+    table: tables.combined,
   };
 }
 
-/** Tax — Ultimate POS Purchases / Sales / Overall cards + recent invoices. */
+/** Tax — Ultimate POS Purchases / Sales / Overall cards + period invoices. */
 export async function buildTaxReport(
   db: TenantScopedPrisma,
   tenantId: string,
   from?: string,
   to?: string,
+  options?: ReportRunOptions,
 ): Promise<ReportsDashboard> {
   const window = resolveDateWindow(from, to);
-  const [summary, saleRefs] = await Promise.all([
-    taxReportSummaryAggregates(db, tenantId, window),
-    recentSaleRefs(db, tenantId, window, 50),
-  ]);
+  const pagingOnly = Boolean(options?.taxTable && options?.cursor);
+
+  const summary = await taxReportSummaryAggregates(db, tenantId, window);
+  const tables = await loadTaxTables(
+    db,
+    tenantId,
+    window,
+    summary.currency,
+    true,
+    options,
+  );
 
   const saleMinusPurchase =
     summary.saleIncludingTax -
@@ -253,6 +516,16 @@ export async function buildTaxReport(
       dueAmount,
     },
   };
+
+  if (pagingOnly) {
+    return {
+      kpis: [],
+      charts: [],
+      taxReport,
+      taxTables: { purchases: tables.purchases, sales: tables.sales },
+      table: tables.combined,
+    };
+  }
 
   return {
     kpis: [
@@ -291,23 +564,8 @@ export async function buildTaxReport(
     ],
     charts: [],
     taxReport,
-    table: {
-      columns: [
-        { key: 'reference', header: 'Invoice' },
-        { key: 'date', header: 'Date' },
-        { key: 'total', header: 'Total (incl.)', totalAs: 'currency' },
-        { key: 'paymentStatus', header: 'Payment' },
-      ],
-      rows: saleRefs.map((sale) => ({
-        id: sale.id,
-        recordType: 'sale',
-        reference: sale.reference,
-        date: sale.date.toISOString().slice(0, 10),
-        total: sale.total,
-        paymentStatus: sale.paymentStatus ?? '—',
-        currency: summary.currency,
-      })),
-    },
+    taxTables: { purchases: tables.purchases, sales: tables.sales },
+    table: tables.combined,
   };
 }
 

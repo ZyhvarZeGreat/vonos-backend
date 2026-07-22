@@ -304,22 +304,28 @@ export class ReportsService {
           customerId: options?.customerId ?? '',
           customerGroupId: options?.customerGroupId ?? '',
           locationCode: options?.locationCode ?? '',
+          accountId: options?.accountId ?? '',
           category: options?.category ?? '',
           brandId: options?.brandId ?? '',
           paymentMethod: options?.paymentMethod ?? '',
           supplierId: options?.supplierId ?? '',
           view: options?.view ?? '',
+          taxTable: options?.taxTable ?? '',
         })
-      : '';
+      : options?.accountId
+        ? JSON.stringify({ accountId: options.accountId })
+        : '';
     const hasReportFilters = Boolean(
       options?.search?.trim() ||
         options?.customerId ||
         options?.customerGroupId ||
         options?.locationCode ||
+        options?.accountId ||
         options?.category ||
         options?.brandId ||
         options?.paymentMethod ||
         options?.supplierId ||
+        options?.taxTable ||
         (options?.view && options.view !== 'detailed'),
     );
     const skipCache = Boolean(options?.cursor || hasReportFilters);

@@ -1,7 +1,10 @@
 import type {
+  CreateInvoiceSchemeInput,
   CreateReceiptPrinterInput,
+  InvoiceScheme,
   InvoiceSettings,
   ReceiptPrinter,
+  UpdateInvoiceSchemeInput,
   UpdateInvoiceSettingsInput,
   UpdateReceiptPrinterInput,
 } from "@vonos/types";
@@ -23,6 +26,38 @@ export async function updateInvoiceSettings(
   });
   if (!response.ok) throw new Error("Failed to update invoice settings");
   return response.json();
+}
+
+export async function createInvoiceScheme(
+  input: CreateInvoiceSchemeInput,
+): Promise<InvoiceScheme> {
+  const response = await apiFetch("/invoice-settings/schemes", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  if (!response.ok) throw new Error("Failed to create invoice scheme");
+  return response.json();
+}
+
+export async function updateInvoiceScheme(
+  id: string,
+  input: UpdateInvoiceSchemeInput,
+): Promise<InvoiceScheme> {
+  const response = await apiFetch(`/invoice-settings/schemes/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  if (!response.ok) throw new Error("Failed to update invoice scheme");
+  return response.json();
+}
+
+export async function deleteInvoiceScheme(id: string): Promise<void> {
+  const response = await apiFetch(`/invoice-settings/schemes/${id}`, {
+    method: "DELETE",
+  });
+  if (!response.ok) throw new Error("Failed to delete invoice scheme");
 }
 
 export async function createReceiptPrinter(

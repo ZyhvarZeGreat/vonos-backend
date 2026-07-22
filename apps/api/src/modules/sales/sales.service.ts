@@ -220,7 +220,7 @@ export class SalesService {
         tenantId: true,
         reference: true,
         customerId: true,
-        customer: { select: { name: true } },
+        customer: { select: { name: true, phone: true } },
         jobId: true,
         job: { select: { reference: true } },
         total: true,
@@ -232,6 +232,10 @@ export class SalesService {
         status: true,
         paymentStatus: true,
         paymentMethod: true,
+        payments: {
+          where: { deletedAt: null, isReturn: false },
+          select: { amount: true },
+        },
         cleanerUserId: true,
         cleanerName: true,
         serviceStaffEmployeeId: true,
@@ -1090,6 +1094,74 @@ export class SalesService {
     return this.toSaleDetail(row);
   }
 
+  /** Soft-delete a sale (HQ6 list “Delete” → Are you sure?). */
+  async remove(id: string): Promise<void> {
+    const tenantId = this.tenantDb.requireTenantId();
+    const existing = await this.tenantDb.db.sale.findFirst({
+      where: { id, tenantId, deletedAt: null },
+      select: { id: true, reference: true, customerId: true },
+    });
+    if (!existing) throw new NotFoundException('Sale not found');
+
+    await this.tenantDb.db.sale.update({
+      where: { id },
+      data: { deletedAt: new Date() },
+    });
+    await this.tenantDb.db.payment.updateMany({
+      where: { tenantId, saleId: id, deletedAt: null },
+      data: { deletedAt: new Date() },
+    });
+
+    if (existing.customerId) {
+      await refreshCustomerFinancialRollups(
+        this.tenantDb.db,
+        existing.customerId,
+      );
+    }
+
+    await invalidateTenantDashboardCache(this.cache, tenantId);
+    await this.auditService.log({
+      action: 'deleted',
+      entityType: 'sale',
+      entityId: id,
+      summary: `Deleted sale ${existing.reference}`,
+    });
+  }
+
+  async listPayments(id: string): Promise<
+    Array<{
+      id: string;
+      amount: number;
+      currency: string;
+      method: string | null;
+      paidOn: string | null;
+      note: string | null;
+      createdByName: string | null;
+    }>
+  > {
+    const tenantId = this.tenantDb.requireTenantId();
+    const sale = await this.tenantDb.db.sale.findFirst({
+      where: { id, tenantId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!sale) throw new NotFoundException('Sale not found');
+
+    const rows = await this.tenantDb.db.payment.findMany({
+      where: { tenantId, saleId: id, deletedAt: null, isReturn: false },
+      orderBy: [{ paidOn: 'desc' }, { createdAt: 'desc' }],
+    });
+
+    return rows.map((row) => ({
+      id: row.id,
+      amount: toNumber(row.amount),
+      currency: row.currency,
+      method: row.method,
+      paidOn: row.paidOn ? toIso(row.paidOn) : null,
+      note: row.note,
+      createdByName: row.createdByName,
+    }));
+  }
+
   async importCsv(csv: string): Promise<CsvImportResult> {
     const rows = parseCsv(csv);
     const result: CsvImportResult = { created: 0, updated: 0, errors: [] };
@@ -1215,7 +1287,7 @@ export class SalesService {
     tenantId: string;
     reference: string;
     customerId: string | null;
-    customer: { name: string } | null;
+    customer: { name: string; phone?: string | null } | null;
     jobId?: string | null;
     job?: { reference: string } | null;
     total: { toString(): string };
@@ -1243,16 +1315,30 @@ export class SalesService {
     updatedAt: Date;
     lines?: Array<unknown>;
     _count?: { lines: number };
+    payments?: Array<{ amount: { toString(): string } | number }>;
   }): Sale {
+    const total = toNumber(row.total);
+    const paidFromRows =
+      row.payments?.reduce((sum, payment) => sum + toNumber(payment.amount), 0) ??
+      0;
+    const totalPaid =
+      paidFromRows > 0
+        ? paidFromRows
+        : row.paymentStatus === 'paid'
+          ? total
+          : 0;
+    const sellDue = Math.max(0, total - totalPaid);
+
     return {
       id: row.id,
       tenantId: row.tenantId,
       reference: row.reference,
       customerId: row.customerId,
       customerName: row.customer?.name ?? 'Walk-in',
+      customerPhone: row.customer?.phone ?? null,
       jobId: row.jobId ?? null,
       jobReference: row.job?.reference ?? null,
-      total: toNumber(row.total),
+      total,
       discountAmount: row.discountAmount ? toNumber(row.discountAmount) : null,
       taxAmount: row.taxAmount ? toNumber(row.taxAmount) : null,
       notes: row.notes,
@@ -1263,6 +1349,8 @@ export class SalesService {
       recordStatus: row.status as Sale['recordStatus'],
       paymentStatus: row.paymentStatus as PaymentStatus | null,
       paymentMethod: row.paymentMethod ?? null,
+      totalPaid,
+      sellDue,
       cleanerUserId: row.cleanerUserId ?? null,
       cleanerName: row.cleanerName ?? null,
       serviceStaffEmployeeId: row.serviceStaffEmployeeId ?? null,

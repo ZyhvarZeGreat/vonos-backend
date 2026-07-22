@@ -1,8 +1,14 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import type {
   ContactDueSummary,
   ContactLedgerEntry,
   CsvImportResult,
+  PayContactDueRequest,
+  PayContactDueResult,
   Supplier,
   SupplierFilters,
   SupplierListRow,
@@ -12,8 +18,15 @@ import { AuditService } from '../audit/audit.service';
 import { buildCompositeCursorQuery } from '../../common/utils/pagination';
 import type { PaginatedList } from '../../common/utils/paginatedList';
 import { parseCsv, pickCsvField } from '../../common/utils/csvImport';
-import { toIso, toNumber } from '../../common/utils/serializers';
-import { supplierActivityStatus } from '../../common/utils/supplierRollups';
+import {
+  parseMovementLines,
+  toIso,
+  toNumber,
+} from '../../common/utils/serializers';
+import {
+  refreshSupplierPurchaseRollups,
+  supplierActivityStatus,
+} from '../../common/utils/supplierRollups';
 
 export interface SupplierKpiSummary {
   totalSuppliers: number;
@@ -33,6 +46,8 @@ function serializeSupplier(row: {
   address: string | null;
   locationCode: string | null;
   notes: string | null;
+  taxNumber?: string | null;
+  status?: string | null;
   openingBalance?: { toString(): string } | number | null;
   assignedToUserId?: string | null;
   assignedToUser?: { name: string } | null;
@@ -51,6 +66,7 @@ function serializeSupplier(row: {
     address: row.address,
     locationCode: row.locationCode,
     notes: row.notes,
+    taxNumber: row.taxNumber?.trim() || null,
     openingBalance: toNumber(row.openingBalance ?? 0),
     assignedToUserId: row.assignedToUserId ?? null,
     assignedToName: row.assignedToUser?.name ?? null,
@@ -74,6 +90,8 @@ function toListRow(
     contactId?: string | null;
   },
 ): SupplierListRow {
+  const storedStatus =
+    row.status === 'inactive' ? 'inactive' : row.status === 'active' ? 'active' : null;
   return {
     ...serializeSupplier(row),
     category: 'General',
@@ -82,14 +100,14 @@ function toListRow(
     rating: 4.5,
     contactId: extras?.contactId ?? row.id.slice(0, 8).toUpperCase(),
     businessName: row.name,
-    taxNumber: null,
+    taxNumber: row.taxNumber?.trim() || null,
     payTerm: null,
     totalPurchase: toNumber(row.totalPurchase ?? 0),
     totalPurchaseDue: toNumber(row.totalPurchaseDue ?? 0),
     totalPurchasePaid: toNumber(row.totalPurchasePaid ?? 0),
     totalPurchaseReturn: toNumber(row.totalPurchaseReturn ?? 0),
     totalAdvance: toNumber(row.totalAdvance ?? 0),
-    status: supplierActivityStatus(row.lastPurchaseAt),
+    status: storedStatus ?? supplierActivityStatus(row.lastPurchaseAt),
   };
 }
 
@@ -102,7 +120,6 @@ export class SuppliersService {
 
   async list(filters: SupplierFilters = {}): Promise<PaginatedList<SupplierListRow>> {
     const tenantId = this.tenantDb.requireTenantId();
-    const activeSince = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
     const pagination = buildCompositeCursorQuery({
       sortField: 'name',
       sortDir: 'asc',
@@ -121,16 +138,8 @@ export class SuppliersService {
       ...(filters.purchaseDue ? { totalPurchaseDue: { gt: 0 } } : {}),
       ...(filters.purchaseReturn ? { totalPurchaseReturn: { gt: 0 } } : {}),
       ...(filters.advanceBalance ? { totalAdvance: { gt: 0 } } : {}),
-      ...(filters.status === 'active'
-        ? { lastPurchaseAt: { gte: activeSince } }
-        : {}),
-      ...(filters.status === 'inactive'
-        ? {
-            OR: [
-              { lastPurchaseAt: null },
-              { lastPurchaseAt: { lt: activeSince } },
-            ],
-          }
+      ...(filters.status === 'active' || filters.status === 'inactive'
+        ? { status: filters.status }
         : {}),
       ...(filters.search
         ? {
@@ -225,6 +234,7 @@ export class SuppliersService {
     address?: string;
     locationCode?: string;
     notes?: string;
+    taxNumber?: string | null;
     openingBalance?: number;
     assignedToUserId?: string;
   }): Promise<SupplierListRow> {
@@ -243,6 +253,7 @@ export class SuppliersService {
         address: body.address ?? null,
         locationCode,
         notes: body.notes ?? null,
+        taxNumber: body.taxNumber?.trim() || null,
         openingBalance: body.openingBalance ?? 0,
         assignedToUserId: body.assignedToUserId ?? null,
         ...createdBy,
@@ -267,8 +278,10 @@ export class SuppliersService {
       phone: string;
       address: string;
       notes: string;
+      taxNumber: string | null;
       openingBalance: number;
       assignedToUserId: string;
+      status: 'active' | 'inactive';
     }>,
   ): Promise<SupplierListRow> {
     const tenantId = this.tenantDb.requireTenantId();
@@ -279,7 +292,12 @@ export class SuppliersService {
 
     const row = await this.tenantDb.db.supplier.update({
       where: { id },
-      data: body,
+      data: {
+        ...body,
+        ...(body.taxNumber !== undefined
+          ? { taxNumber: body.taxNumber?.trim() || null }
+          : {}),
+      },
       include: { assignedToUser: { select: { name: true } } },
     });
     await this.auditService.log({
@@ -289,6 +307,13 @@ export class SuppliersService {
       summary: `Updated supplier ${row.name}`,
     });
     return toListRow(row);
+  }
+
+  async setStatus(
+    id: string,
+    status: 'active' | 'inactive',
+  ): Promise<SupplierListRow> {
+    return this.update(id, { status });
   }
 
   async getSummary(id: string): Promise<ContactDueSummary> {
@@ -366,6 +391,207 @@ export class SuppliersService {
           ? (refById.get(entry.linkedRecordId) ?? null)
           : null,
     }));
+  }
+
+  async remove(id: string): Promise<void> {
+    const tenantId = this.tenantDb.requireTenantId();
+    const existing = await this.tenantDb.db.supplier.findFirst({
+      where: { id, tenantId, deletedAt: null },
+      select: { id: true, name: true },
+    });
+    if (!existing) throw new NotFoundException('Supplier not found');
+    await this.tenantDb.db.supplier.update({
+      where: { id },
+      data: { deletedAt: new Date() },
+    });
+    await this.auditService.log({
+      action: 'deleted',
+      entityType: 'supplier',
+      entityId: id,
+      summary: `Deleted supplier ${existing.name}`,
+    });
+  }
+
+  /** Apply contact payment across oldest due/partial inbound purchases (HQ6 pay-contact-due). */
+  async payDue(
+    id: string,
+    dto: PayContactDueRequest,
+  ): Promise<PayContactDueResult> {
+    const tenantId = this.tenantDb.requireTenantId();
+    const amount = Number(dto.amount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      throw new BadRequestException('Payment amount must be greater than zero');
+    }
+
+    const supplier = await this.tenantDb.db.supplier.findFirst({
+      where: { id, tenantId, deletedAt: null },
+      select: { id: true, name: true },
+    });
+    if (!supplier) throw new NotFoundException('Supplier not found');
+
+    const openMovements = await this.tenantDb.db.stockMovement.findMany({
+      where: {
+        tenantId,
+        supplierId: id,
+        deletedAt: null,
+        type: 'inbound',
+        source: { not: 'purchase_return' },
+        OR: [
+          { paymentStatus: { in: ['due', 'partial'] } },
+          { paymentStatus: null },
+        ],
+      },
+      orderBy: [{ date: 'asc' }, { id: 'asc' }],
+    });
+
+    if (openMovements.length === 0) {
+      throw new BadRequestException(
+        'No outstanding purchase due for this supplier',
+      );
+    }
+
+    let remaining = amount;
+    let paymentsCreated = 0;
+    const paidOn = dto.paidOn ? new Date(dto.paidOn) : new Date();
+    const method = dto.method?.trim() || 'cash';
+    const createdBy = await this.auditService.createdByFields();
+
+    await this.tenantDb.db.$transaction(async (tx) => {
+      for (const movement of openMovements) {
+        if (remaining <= 0) break;
+        const total = parseMovementLines(movement.lines).reduce(
+          (sum, line) =>
+            sum +
+            line.quantity *
+              toNumber((line as { unitCost?: number }).unitCost ?? 0),
+          0,
+        );
+        if (total <= 0) continue;
+
+        const apply = Math.min(remaining, total);
+        const payment = await tx.payment.create({
+          data: {
+            tenantId,
+            amount: apply,
+            currency: 'NGN',
+            method,
+            paidOn,
+            paymentFor: 'purchase',
+            paymentRefNo: movement.reference,
+            accountId: dto.accountId?.trim() || null,
+            note:
+              dto.note?.trim() ||
+              `Supplier payment — ${supplier.name} (${movement.reference})`,
+            createdByName: createdBy.createdByName ?? null,
+          },
+        });
+
+        await tx.ledgerEntry.create({
+          data: {
+            tenantId,
+            type: 'cost',
+            amount: apply,
+            currency: 'NGN',
+            category: 'Supplier Payment',
+            description: `Payment on ${movement.reference}`,
+            linkedRecordType: 'payment',
+            linkedRecordId: payment.id,
+            date: paidOn,
+          },
+        });
+
+        const paymentStatus = apply >= total - 0.001 ? 'paid' : 'partial';
+        await tx.stockMovement.update({
+          where: { id: movement.id },
+          data: {
+            paymentStatus,
+            paymentMethod: method,
+          },
+        });
+
+        remaining -= apply;
+        paymentsCreated += 1;
+      }
+    });
+
+    if (paymentsCreated === 0) {
+      throw new BadRequestException('No outstanding balance could be applied');
+    }
+
+    await refreshSupplierPurchaseRollups(this.tenantDb.db, id);
+    const summary = await this.getSummary(id);
+    await this.auditService.log({
+      action: 'updated',
+      entityType: 'supplier',
+      entityId: id,
+      summary: `Recorded payment of ${amount - remaining} for ${supplier.name}`,
+    });
+
+    return {
+      contactId: id,
+      amountApplied: amount - remaining,
+      currency: summary.currency,
+      paymentsCreated,
+      remainingDue: summary.totalDue,
+    };
+  }
+
+  /** Items purchased from this supplier (HQ6 contact stock report). */
+  async stockReport(id: string): Promise<
+    Array<{
+      itemId: string;
+      sku: string;
+      name: string;
+      quantity: number;
+      totalCost: number;
+    }>
+  > {
+    const tenantId = this.tenantDb.requireTenantId();
+    const supplier = await this.tenantDb.db.supplier.findFirst({
+      where: { id, tenantId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!supplier) throw new NotFoundException('Supplier not found');
+
+    const movements = await this.tenantDb.db.stockMovement.findMany({
+      where: {
+        tenantId,
+        supplierId: id,
+        deletedAt: null,
+        type: 'inbound',
+        source: { not: 'purchase_return' },
+      },
+      select: { lines: true },
+    });
+
+    const byItem = new Map<
+      string,
+      { itemId: string; sku: string; name: string; quantity: number; totalCost: number }
+    >();
+
+    for (const movement of movements) {
+      for (const line of parseMovementLines(movement.lines)) {
+        const unitCost = toNumber((line as { unitCost?: number }).unitCost ?? 0);
+        const key = line.itemId || line.sku;
+        const existing = byItem.get(key);
+        if (existing) {
+          existing.quantity += line.quantity;
+          existing.totalCost += line.quantity * unitCost;
+        } else {
+          byItem.set(key, {
+            itemId: line.itemId,
+            sku: line.sku,
+            name: line.name,
+            quantity: line.quantity,
+            totalCost: line.quantity * unitCost,
+          });
+        }
+      }
+    }
+
+    return Array.from(byItem.values()).sort((a, b) =>
+      a.name.localeCompare(b.name),
+    );
   }
 
   async importCsv(csv: string): Promise<CsvImportResult> {

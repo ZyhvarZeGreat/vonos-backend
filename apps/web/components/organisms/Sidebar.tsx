@@ -26,10 +26,14 @@ import {
   Grid3x3,
   Headphones,
   Layers,
+  Home,
   LayoutDashboard,
+  List,
   ListChecks,
+  Mail,
   MapPin,
   Monitor,
+  CircleCheck,
   Package,
   PackageOpen,
   Percent,
@@ -85,8 +89,11 @@ import { useUiStore } from "@/stores/uiStore";
 import type { IconComponent } from "@/lib/utils/icons";
 
 const iconMap: Record<string, IconComponent> = {
-  home: LayoutDashboard,
+  home: Home,
   "layout-dashboard": LayoutDashboard,
+  list: List,
+  mail: Mail,
+  "circle-check": CircleCheck,
   boxes: Package,
   box: Box,
   package: Package,
@@ -146,7 +153,7 @@ const iconMap: Record<string, IconComponent> = {
 };
 
 const groupIconMap: Record<string, IconComponent> = {
-  Home: LayoutDashboard,
+  Home: Home,
   "User Management": Users,
   Contacts: Users,
   Products: Box,
@@ -155,7 +162,10 @@ const groupIconMap: Record<string, IconComponent> = {
   Expenses: Receipt,
   "Payment Accounts": CreditCard,
   Reports: PieChart,
+  Orders: List,
+  "Notification Templates": Mail,
   HRM: Briefcase,
+  Essentials: CircleCheck,
   Settings: Settings,
 };
 
@@ -278,33 +288,50 @@ export function Sidebar({
       {/* Accent-colored header — height matches the top bar */}
       {!collapsed ? (
         <div
-          style={sidebarHeaderStyle(tenantCode ?? "")}
-          className="flex h-12 shrink-0 items-center px-3"
+          style={tenantCode === "VA" ? undefined : sidebarHeaderStyle(tenantCode ?? "")}
+          className={cn(
+            "flex h-12 shrink-0 items-center px-3",
+            tenantCode === "VA"
+              ? "border-b border-[var(--hq6-border)] bg-white"
+              : "",
+          )}
         >
-          <TenantSwitcher
-            tenantCode={tenantCode ?? ""}
-            tenantName={tenantName}
-            variant="sidebar"
-          />
+          {tenantCode === "VA" ? (
+            <div className="hq6-sidebar-brand">
+              <span className="hq6-sidebar-dot" aria-hidden />
+              {tenantName ?? "Vonos Autos HQ"}
+            </div>
+          ) : (
+            <TenantSwitcher
+              tenantCode={tenantCode ?? ""}
+              tenantName={tenantName}
+              variant="sidebar"
+            />
+          )}
         </div>
       ) : null}
 
       <div className="flex flex-1 flex-col gap-1 overflow-y-auto px-3 pb-6">
-        {!collapsed ? (
+        {!collapsed && tenantCode !== "VA" ? (
           <div className="px-2 pb-2 pt-3">
             <SearchBar placeholder="Search" showShortcut />
           </div>
         ) : null}
-        {groupedSections.map((section) => (
+        {groupedSections.map((section) => {
+          const sectionIcon =
+            (section.icon ? iconMap[section.icon] : undefined) ??
+            groupIconMap[section.label];
+          const flatItem =
+            !section.collapsible && section.items.length === 1
+              ? section.items[0]
+              : null;
+
+          return (
           <div key={section.label}>
             {section.collapsible ? (
               <NavCollapsibleGroup
                 label={section.label}
-                icon={
-                  section.icon
-                    ? iconMap[section.icon] ?? groupIconMap[section.label]
-                    : groupIconMap[section.label]
-                }
+                icon={sectionIcon}
                 items={section.items}
                 iconMap={iconMap}
                 activeRoute={activeRoute}
@@ -316,6 +343,25 @@ export function Sidebar({
                     : undefined
                 }
               />
+            ) : flatItem ? (
+              <nav className="flex flex-col gap-0.5">
+                <NavItem
+                  label={section.label}
+                  icon={sectionIcon ?? iconMap[flatItem.icon] ?? Package}
+                  href={flatItem.route}
+                  active={
+                    isNavActive && activeRoute
+                      ? isNavActive(activeRoute, flatItem.route)
+                      : activeRoute === flatItem.route
+                  }
+                  collapsed={collapsed}
+                  onPrefetch={
+                    tenantId || tenantCode === "VAG"
+                      ? () => prefetchNavRoute(flatItem.route)
+                      : undefined
+                  }
+                />
+              </nav>
             ) : (
               <>
                 {!collapsed ? (
@@ -327,9 +373,7 @@ export function Sidebar({
                     )}
                   >
                     {(() => {
-                      const SectionIcon =
-                        (section.icon ? iconMap[section.icon] : undefined) ??
-                        groupIconMap[section.label];
+                      const SectionIcon = sectionIcon;
                       if (!SectionIcon) return null;
                       return <SectionIcon className="sidebar-icon" />;
                     })()}
@@ -363,10 +407,11 @@ export function Sidebar({
               </>
             )}
           </div>
-        ))}
+          );
+        })}
 
-        {/* 2FA promo card */}
-        {showPromo && !collapsed && !promoDismissed ? (
+        {/* 2FA promo card — not on VA HQ6 sidebar */}
+        {showPromo && !collapsed && !promoDismissed && tenantCode !== "VA" ? (
           <div className="relative mx-2 mt-auto rounded-xl border border-border bg-card p-4 shadow-sm">
             <button
               type="button"
@@ -400,8 +445,8 @@ export function Sidebar({
           </div>
         ) : null}
 
-        {/* Bottom links */}
-        {!collapsed ? (
+        {/* Bottom links — not on VA HQ6 sidebar */}
+        {!collapsed && tenantCode !== "VA" ? (
           <div className="mt-2 flex flex-col gap-0.5">
             <Link
               href="#"

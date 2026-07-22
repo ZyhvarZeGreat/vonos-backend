@@ -1,5 +1,20 @@
-import { Body, Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
-import type { CreateCustomerInput, CustomerFilters } from '@vonos/types';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
+import type {
+  CreateCustomerInput,
+  CustomerFilters,
+  PayContactDueRequest,
+  UpdateCustomerInput,
+} from '@vonos/types';
 import { Roles } from '../../common/decorators/roles.decorator';
 import {
   JwtAuthGuard,
@@ -37,8 +52,8 @@ export class CustomersController {
       advanceBalance: advanceBalance === 'true',
       openingBalance: openingBalance === 'true',
       hasNoSellMonths:
-        months === 1 || months === 3 || months === 6
-          ? (months as 1 | 3 | 6)
+        months === 1 || months === 3 || months === 6 || months === 12
+          ? (months as 1 | 3 | 6 | 12)
           : undefined,
       customerGroupId,
       assignedToUserId,
@@ -84,6 +99,33 @@ export class CustomersController {
       cursor,
       limit ? Number(limit) : undefined,
     );
+  }
+
+  @Post(':id/pay-due')
+  @Roles('staff', 'manager', 'admin', 'super_admin')
+  payDue(@Param('id') id: string, @Body() body: PayContactDueRequest) {
+    return this.customersService.payDue(id, body);
+  }
+
+  @Patch(':id/status')
+  @Roles('manager', 'admin', 'super_admin')
+  setStatus(
+    @Param('id') id: string,
+    @Body() body: { status: 'active' | 'inactive' },
+  ) {
+    return this.customersService.setStatus(id, body.status);
+  }
+
+  @Patch(':id')
+  @Roles('staff', 'manager', 'admin', 'super_admin')
+  update(@Param('id') id: string, @Body() body: UpdateCustomerInput) {
+    return this.customersService.update(id, body);
+  }
+
+  @Delete(':id')
+  @Roles('admin', 'super_admin')
+  remove(@Param('id') id: string) {
+    return this.customersService.remove(id);
   }
 
   @Get(':id')

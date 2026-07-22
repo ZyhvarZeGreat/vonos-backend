@@ -1,8 +1,14 @@
 import { Prisma } from '@prisma/client';
 import type { TenantScopedPrisma } from '../../../common/prisma/prisma.service';
+import {
+  buildCompositeCursorWhere,
+  decodeCompositeCursor,
+  nextCompositeCursor,
+} from '../../../common/utils/pagination';
 import { toNumber } from '../../../common/utils/serializers';
 import { bucketLabel, type DateWindow } from './date-utils';
 import type { AggregatedProductSale } from './productSales';
+import { computeJobRevenueTotal } from './jobSalesData';
 
 export interface SalesKpiSnapshot {
   transactionCount: number;
@@ -233,16 +239,45 @@ function money(value: Prisma.Decimal | number | null | undefined): number {
   return Math.round(toNumber(value ?? 0) * 100) / 100;
 }
 
-/** Thin wrapper used by transaction report handlers. */
+/** Thin wrapper used by transaction report handlers. Falls back to job revenue for VA. */
 export async function sumSalesWindow(
   db: TenantScopedPrisma,
   tenantId: string,
   window: DateWindow,
 ): Promise<{ revenue: number; count: number; currency: string }> {
   const snap = await salesKpiSnapshot(db, tenantId, window.from, window.to);
+  if (snap.revenue > 0 || snap.transactionCount > 0) {
+    return {
+      revenue: snap.revenue,
+      count: snap.transactionCount,
+      currency: snap.currency,
+    };
+  }
+
+  const [jobTotals, jobCount] = await Promise.all([
+    computeJobRevenueTotal(db, tenantId, window.from.toISOString(), window.to.toISOString()),
+    db.job.count({
+      where: {
+        tenantId,
+        deletedAt: null,
+        status: 'Delivered',
+        updatedAt: { gte: window.from, lte: window.to },
+        sales: { none: { deletedAt: null } },
+      },
+    }),
+  ]);
+
+  if (jobTotals.revenue <= 0 && jobCount === 0) {
+    return {
+      revenue: snap.revenue,
+      count: snap.transactionCount,
+      currency: snap.currency,
+    };
+  }
+
   return {
-    revenue: snap.revenue,
-    count: snap.transactionCount,
+    revenue: jobTotals.revenue,
+    count: jobCount,
     currency: snap.currency,
   };
 }
@@ -291,6 +326,68 @@ export async function salesRevenueByBucket(
       ? `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`
       : `${d.getFullYear()}-${d.getMonth()}`;
     return { key, label, sales: money(row.sales) };
+  });
+}
+
+/** HQ6 home — purchase value trend by day/month bucket. */
+export async function purchaseRevenueByBucket(
+  db: TenantScopedPrisma,
+  tenantId: string,
+  window: DateWindow,
+): Promise<Array<{ key: string; label: string; purchase: number }>> {
+  const spanDays =
+    (window.to.getTime() - window.from.getTime()) / (24 * 60 * 60 * 1000);
+  const useDay = spanDays <= 60;
+  const lineCost = Prisma.sql`
+    COALESCE((elem->>'quantity')::numeric, 0)
+    * COALESCE((elem->>'unitCost')::numeric, 0)
+  `;
+
+  const rows = useDay
+    ? await db.$queryRaw<Array<{ bucket: Date; purchase: Prisma.Decimal | null }>>`
+        SELECT date_trunc('day', sm.date) AS bucket,
+          COALESCE(SUM(${lineCost}), 0) AS purchase
+        FROM "StockMovement" sm
+        CROSS JOIN LATERAL jsonb_array_elements(
+          CASE
+            WHEN jsonb_typeof(sm.lines::jsonb) = 'array' THEN sm.lines::jsonb
+            ELSE '[]'::jsonb
+          END
+        ) AS elem
+        WHERE sm."tenantId" = ${tenantId}
+          AND sm."deletedAt" IS NULL
+          AND sm.type::text = 'inbound'
+          AND sm.date >= ${window.from}
+          AND sm.date <= ${window.to}
+        GROUP BY 1 ORDER BY 1 ASC
+      `
+    : await db.$queryRaw<Array<{ bucket: Date; purchase: Prisma.Decimal | null }>>`
+        SELECT date_trunc('month', sm.date) AS bucket,
+          COALESCE(SUM(${lineCost}), 0) AS purchase
+        FROM "StockMovement" sm
+        CROSS JOIN LATERAL jsonb_array_elements(
+          CASE
+            WHEN jsonb_typeof(sm.lines::jsonb) = 'array' THEN sm.lines::jsonb
+            ELSE '[]'::jsonb
+          END
+        ) AS elem
+        WHERE sm."tenantId" = ${tenantId}
+          AND sm."deletedAt" IS NULL
+          AND sm.type::text = 'inbound'
+          AND sm.date >= ${window.from}
+          AND sm.date <= ${window.to}
+        GROUP BY 1 ORDER BY 1 ASC
+      `;
+
+  return rows.map((row) => {
+    const d = row.bucket;
+    const label = useDay
+      ? d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+      : d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+    const key = useDay
+      ? `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`
+      : `${d.getFullYear()}-${d.getMonth()}`;
+    return { key, label, purchase: money(row.purchase) };
   });
 }
 
@@ -689,41 +786,410 @@ export async function taxReportSummaryAggregates(
   };
 }
 
+export interface PeriodInvoiceRef {
+  id: string;
+  recordType: 'sale' | 'purchase' | 'job';
+  /** Sell/purchase document reference (POS invoice no / PO ref). */
+  reference: string;
+  /** Formal invoice document reference when linked. */
+  invoiceNo: string;
+  date: Date;
+  total: number;
+  tax: number;
+  discount: number;
+  paymentStatus: string | null;
+  paymentMethod: string | null;
+  party: string;
+  taxNumber: string | null;
+  createdByName: string | null;
+  locationCode: string | null;
+  /** Job id when this row is a job invoice (for navigation). */
+  jobId?: string | null;
+}
+
+export interface PeriodInvoicePage {
+  rows: PeriodInvoiceRef[];
+  hasMore: boolean;
+  nextCursor: string | null;
+  pageSize: number;
+}
+
+const PERIOD_DOC_DEFAULT_PAGE = 25;
+const PERIOD_DOC_MAX_PAGE = 100;
+
+function periodPageSize(limit?: number): number {
+  return Math.min(
+    Math.max(limit ?? PERIOD_DOC_DEFAULT_PAGE, 1),
+    PERIOD_DOC_MAX_PAGE,
+  );
+}
+
+function periodCursorWhere(
+  cursor: string | undefined,
+  dateField: string,
+): Prisma.JsonObject | undefined {
+  return buildCompositeCursorWhere(
+    dateField,
+    'desc',
+    decodeCompositeCursor(cursor),
+    'date',
+  ) as Prisma.JsonObject | undefined;
+}
+
+function matchesPeriodSearch(
+  row: PeriodInvoiceRef,
+  search?: string,
+): boolean {
+  const q = search?.trim().toLowerCase();
+  if (!q) return true;
+  return [
+    row.reference,
+    row.invoiceNo,
+    row.party,
+    row.taxNumber,
+    row.paymentStatus,
+    row.paymentMethod,
+    row.createdByName,
+    row.locationCode,
+  ]
+    .filter(Boolean)
+    .some((value) => String(value).toLowerCase().includes(q));
+}
+
+/** Period sales (+ job invoices) for purchase-sale / tax detail tables. */
+export async function periodSaleRefsPage(
+  db: TenantScopedPrisma,
+  tenantId: string,
+  window: DateWindow,
+  options?: { cursor?: string; limit?: number; search?: string },
+): Promise<PeriodInvoicePage> {
+  const pageSize = periodPageSize(options?.limit);
+  const take = pageSize + 1;
+  const saleCursor = periodCursorWhere(options?.cursor, 'date');
+  const invoiceCursor = periodCursorWhere(options?.cursor, 'documentDate');
+
+  const [sales, jobInvoices] = await Promise.all([
+    db.sale.findMany({
+      where: {
+        ...saleBaseWhere(tenantId, window.from, window.to),
+        ...(saleCursor as object | undefined),
+      },
+      select: {
+        id: true,
+        reference: true,
+        date: true,
+        total: true,
+        taxAmount: true,
+        discountAmount: true,
+        paymentStatus: true,
+        paymentMethod: true,
+        createdByName: true,
+        locationCode: true,
+        jobId: true,
+        customer: { select: { name: true, taxNumber: true } },
+        invoice: {
+          select: { reference: true, taxAmount: true, discountAmount: true },
+        },
+      },
+      orderBy: [{ date: 'desc' }, { id: 'desc' }],
+      take,
+    }),
+    db.invoice.findMany({
+      where: {
+        tenantId,
+        deletedAt: null,
+        kind: 'job_invoice',
+        documentDate: { gte: window.from, lte: window.to },
+        ...(invoiceCursor as object | undefined),
+      },
+      select: {
+        id: true,
+        reference: true,
+        documentDate: true,
+        total: true,
+        taxAmount: true,
+        discountAmount: true,
+        paymentStatus: true,
+        contactName: true,
+        kind: true,
+        jobId: true,
+        customer: { select: { name: true, taxNumber: true } },
+        job: {
+          select: {
+            reference: true,
+            createdByName: true,
+            locationCode: true,
+            customerName: true,
+          },
+        },
+      },
+      orderBy: [{ documentDate: 'desc' }, { id: 'desc' }],
+      take,
+    }),
+  ]);
+
+  const fromSales: PeriodInvoiceRef[] = sales.map((row) => ({
+    id: row.id,
+    recordType: row.jobId ? ('job' as const) : ('sale' as const),
+    reference: row.reference,
+    invoiceNo: row.invoice?.reference ?? row.reference,
+    date: row.date,
+    total: toNumber(row.total),
+    tax: toNumber(row.invoice?.taxAmount ?? row.taxAmount ?? 0),
+    discount: toNumber(row.invoice?.discountAmount ?? row.discountAmount ?? 0),
+    paymentStatus: row.paymentStatus,
+    paymentMethod: row.paymentMethod,
+    party: row.customer?.name ?? 'Walk-in Customer',
+    taxNumber: row.customer?.taxNumber?.trim() || null,
+    createdByName: row.createdByName ?? null,
+    locationCode: row.locationCode ?? null,
+    jobId: row.jobId,
+  }));
+
+  const saleJobIds = new Set(
+    sales.map((row) => row.jobId).filter((id): id is string => Boolean(id)),
+  );
+  const fromJobs: PeriodInvoiceRef[] = jobInvoices
+    .filter((row) => !row.jobId || !saleJobIds.has(row.jobId))
+    .map((row) => ({
+      id: row.jobId ?? row.id,
+      recordType: 'job' as const,
+      reference: row.job?.reference ?? row.reference,
+      invoiceNo: row.reference,
+      date: row.documentDate,
+      total: toNumber(row.total),
+      tax: toNumber(row.taxAmount ?? 0),
+      discount: toNumber(row.discountAmount ?? 0),
+      paymentStatus: row.paymentStatus,
+      paymentMethod: null,
+      party:
+        row.customer?.name ??
+        row.job?.customerName ??
+        row.contactName ??
+        'Walk-in Customer',
+      taxNumber: row.customer?.taxNumber?.trim() || null,
+      createdByName: row.job?.createdByName ?? null,
+      locationCode: row.job?.locationCode ?? null,
+      jobId: row.jobId,
+    }));
+
+  const merged = [...fromSales, ...fromJobs]
+    .filter((row) => matchesPeriodSearch(row, options?.search))
+    .sort((a, b) => {
+      const byDate = b.date.getTime() - a.date.getTime();
+      if (byDate !== 0) return byDate;
+      return b.id.localeCompare(a.id);
+    });
+
+  const hasMore = merged.length > pageSize;
+  const rows = hasMore ? merged.slice(0, pageSize) : merged;
+  const last = rows[rows.length - 1];
+  return {
+    rows,
+    hasMore,
+    nextCursor:
+      hasMore && last ? nextCompositeCursor(last, 'date', 'date') : null,
+    pageSize,
+  };
+}
+
+/** @deprecated Prefer periodSaleRefsPage — kept for callers that want a capped list. */
 export async function recentSaleRefs(
   db: TenantScopedPrisma,
   tenantId: string,
   window: DateWindow,
-  limit = 200,
-): Promise<
-  Array<{
-    id: string;
-    reference: string;
-    date: Date;
-    total: number;
-    paymentStatus: string | null;
-  }>
-> {
-  const rows = await db.sale.findMany({
-    where: saleBaseWhere(tenantId, window.from, window.to),
-    select: {
-      id: true,
-      reference: true,
-      date: true,
-      total: true,
-      paymentStatus: true,
-    },
-    orderBy: { date: 'desc' },
-    take: limit,
+  limit = 500,
+): Promise<PeriodInvoiceRef[]> {
+  const page = await periodSaleRefsPage(db, tenantId, window, {
+    limit: Math.min(limit, PERIOD_DOC_MAX_PAGE),
   });
-
-  return rows.map((row) => ({
-    id: row.id,
-    reference: row.reference,
-    date: row.date,
-    total: toNumber(row.total),
-    paymentStatus: row.paymentStatus,
-  }));
+  if (!page.hasMore || limit <= PERIOD_DOC_MAX_PAGE) {
+    // Walk pages until we hit the requested cap.
+    const rows = [...page.rows];
+    let cursor = page.nextCursor;
+    while (cursor && rows.length < limit) {
+      const next = await periodSaleRefsPage(db, tenantId, window, {
+        cursor,
+        limit: Math.min(PERIOD_DOC_MAX_PAGE, limit - rows.length),
+      });
+      rows.push(...next.rows);
+      cursor = next.nextCursor;
+      if (!next.hasMore) break;
+    }
+    return rows.slice(0, limit);
+  }
+  return page.rows;
 }
+
+/** Period purchase invoices + inbound docs for detailed report tables. */
+export async function periodPurchaseRefsPage(
+  db: TenantScopedPrisma,
+  tenantId: string,
+  window: DateWindow,
+  options?: { cursor?: string; limit?: number; search?: string },
+): Promise<PeriodInvoicePage> {
+  const pageSize = periodPageSize(options?.limit);
+  const take = pageSize + 1;
+  const invoiceCursor = periodCursorWhere(options?.cursor, 'documentDate');
+  const movementCursor = periodCursorWhere(options?.cursor, 'date');
+
+  const [purchaseInvoices, inboundMovements] = await Promise.all([
+    db.invoice.findMany({
+      where: {
+        tenantId,
+        deletedAt: null,
+        kind: 'purchase',
+        documentDate: { gte: window.from, lte: window.to },
+        ...(invoiceCursor as object | undefined),
+      },
+      select: {
+        id: true,
+        reference: true,
+        documentDate: true,
+        total: true,
+        taxAmount: true,
+        discountAmount: true,
+        paymentStatus: true,
+        contactName: true,
+        supplier: { select: { name: true, taxNumber: true } },
+        stockMovement: {
+          select: {
+            reference: true,
+            createdByName: true,
+            locationCode: true,
+            paymentMethod: true,
+            paymentStatus: true,
+          },
+        },
+      },
+      orderBy: [{ documentDate: 'desc' }, { id: 'desc' }],
+      take,
+    }),
+    db.stockMovement.findMany({
+      where: {
+        tenantId,
+        deletedAt: null,
+        type: 'inbound',
+        date: { gte: window.from, lte: window.to },
+        invoice: null,
+        ...(movementCursor as object | undefined),
+      },
+      select: {
+        id: true,
+        reference: true,
+        date: true,
+        paymentStatus: true,
+        paymentMethod: true,
+        createdByName: true,
+        locationCode: true,
+        lines: true,
+        supplier: { select: { name: true, taxNumber: true } },
+        notes: true,
+      },
+      orderBy: [{ date: 'desc' }, { id: 'desc' }],
+      take,
+    }),
+  ]);
+
+  const fromInvoices: PeriodInvoiceRef[] = purchaseInvoices.map((row) => ({
+    id: row.id,
+    recordType: 'purchase' as const,
+    reference: row.stockMovement?.reference ?? row.reference,
+    invoiceNo: row.reference,
+    date: row.documentDate,
+    total: toNumber(row.total),
+    tax: toNumber(row.taxAmount ?? 0),
+    discount: toNumber(row.discountAmount ?? 0),
+    paymentStatus: row.paymentStatus ?? row.stockMovement?.paymentStatus ?? null,
+    paymentMethod: row.stockMovement?.paymentMethod ?? null,
+    party: row.supplier?.name ?? row.contactName ?? '—',
+    taxNumber: row.supplier?.taxNumber?.trim() || null,
+    createdByName: row.stockMovement?.createdByName ?? null,
+    locationCode: row.stockMovement?.locationCode ?? null,
+  }));
+
+  const invoiceMovementRefs = new Set(
+    fromInvoices.map((row) => row.reference).filter(Boolean),
+  );
+
+  const fromMovements: PeriodInvoiceRef[] = inboundMovements
+    .filter((row) => !invoiceMovementRefs.has(row.reference))
+    .map((row) => {
+      const lines = Array.isArray(row.lines) ? row.lines : [];
+      let total = 0;
+      for (const line of lines) {
+        if (!line || typeof line !== 'object') continue;
+        const rec = line as Record<string, unknown>;
+        const qty = Number(rec.quantity ?? rec.qty ?? 0);
+        const unit = Number(
+          rec.unitCost ?? rec.costPrice ?? rec.unitPrice ?? 0,
+        );
+        const lineTotal = Number(rec.lineTotal ?? qty * unit);
+        if (Number.isFinite(lineTotal)) total += lineTotal;
+      }
+      const partyFromNotes =
+        typeof row.notes === 'string'
+          ? row.notes.split('|')[0]?.trim() || null
+          : null;
+      return {
+        id: row.id,
+        recordType: 'purchase' as const,
+        reference: row.reference,
+        invoiceNo: row.reference,
+        date: row.date,
+        total: Math.round(total * 100) / 100,
+        tax: 0,
+        discount: 0,
+        paymentStatus: row.paymentStatus,
+        paymentMethod: row.paymentMethod,
+        party: row.supplier?.name ?? partyFromNotes ?? '—',
+        taxNumber: row.supplier?.taxNumber?.trim() || null,
+        createdByName: row.createdByName ?? null,
+        locationCode: row.locationCode ?? null,
+      };
+    });
+
+  const merged = [...fromInvoices, ...fromMovements]
+    .filter((row) => matchesPeriodSearch(row, options?.search))
+    .sort((a, b) => {
+      const byDate = b.date.getTime() - a.date.getTime();
+      if (byDate !== 0) return byDate;
+      return b.id.localeCompare(a.id);
+    });
+
+  const hasMore = merged.length > pageSize;
+  const rows = hasMore ? merged.slice(0, pageSize) : merged;
+  const last = rows[rows.length - 1];
+  return {
+    rows,
+    hasMore,
+    nextCursor:
+      hasMore && last ? nextCompositeCursor(last, 'date', 'date') : null,
+    pageSize,
+  };
+}
+
+/** @deprecated Prefer periodPurchaseRefsPage. */
+export async function recentPurchaseRefs(
+  db: TenantScopedPrisma,
+  tenantId: string,
+  window: DateWindow,
+  limit = 500,
+): Promise<PeriodInvoiceRef[]> {
+  const rows: PeriodInvoiceRef[] = [];
+  let cursor: string | undefined;
+  while (rows.length < limit) {
+    const page = await periodPurchaseRefsPage(db, tenantId, window, {
+      cursor,
+      limit: Math.min(PERIOD_DOC_MAX_PAGE, limit - rows.length),
+    });
+    rows.push(...page.rows);
+    if (!page.hasMore || !page.nextCursor) break;
+    cursor = page.nextCursor;
+  }
+  return rows.slice(0, limit);
+}
+
 
 export async function topProductsSold(
   db: TenantScopedPrisma,

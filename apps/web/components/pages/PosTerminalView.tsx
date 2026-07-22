@@ -18,6 +18,8 @@ import {
   useBusinessLocationOptions,
 } from "@/lib/hooks/useBusinessLocationOptions";
 import { useRouteTenant } from "@/lib/hooks/useRouteTenant";
+import { useIsVaHq6 } from "@/lib/hooks/useIsVaHq6";
+import { Hq6PosOpenRegisterView } from "@/components/pages/Hq6PosTerminalView";
 import { formatCurrency } from "@/lib/utils/formatCurrency";
 
 interface SaleLineDraft {
@@ -34,6 +36,12 @@ function lineSubtotal(line: SaleLineDraft): number {
 }
 
 export function PosTerminalView() {
+  const isHq6 = useIsVaHq6();
+  if (isHq6) return <Hq6PosOpenRegisterView />;
+  return <PosTerminalViewBody />;
+}
+
+function PosTerminalViewBody() {
   const router = useRouter();
   const { tenantId, tenantCode, config } = useRouteTenant();
   const { options: businessLocationOptions, required: locationRequired } =

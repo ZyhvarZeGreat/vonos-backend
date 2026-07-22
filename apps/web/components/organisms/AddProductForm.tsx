@@ -2,13 +2,16 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Info } from "lucide-react";
 import type { Item, ItemLocationStockInput, ProductUnit, TenantConfig } from "@vonos/types";
 import { Button } from "@/components/atoms/Button";
 import { Input } from "@/components/atoms/Input";
 import { Select } from "@/components/atoms/Select";
-import { createItem } from "@/lib/api/items";
+import { createItem, updateItem } from "@/lib/api/items";
 import { getCatalogMeta } from "@/lib/api/catalogMeta";
 import { useAppMutation } from "@/lib/hooks/useAppMutation";
+import { useIsVaHq6 } from "@/lib/hooks/useIsVaHq6";
+import { cn } from "@/lib/utils/cn";
 
 export type ProductSaveMode = "save" | "saveAnother" | "saveOpeningStock";
 
@@ -63,6 +66,10 @@ export interface AddProductFormProps {
   tenantConfig: TenantConfig | null | undefined;
   retailMode?: boolean;
   variant?: "page" | "modal";
+  /** Prefill from an existing product (HQ6 Duplicate Product). */
+  duplicateFrom?: Item | null;
+  /** Prefill + PATCH existing product (HQ6 Edit product route). */
+  editFrom?: Item | null;
   onSuccess?: (item: Item, mode: ProductSaveMode) => void;
   onCancel?: () => void;
 }
@@ -72,10 +79,13 @@ export function AddProductForm({
   tenantConfig,
   retailMode = false,
   variant = "page",
+  duplicateFrom = null,
+  editFrom = null,
   onSuccess,
   onCancel,
 }: AddProductFormProps) {
   const queryClient = useQueryClient();
+  const isHq6 = useIsVaHq6();
   const locations = tenantConfig?.businessLocations ?? [];
 
   const [form, setForm] = useState(emptyForm);
@@ -85,6 +95,33 @@ export function AddProductForm({
   );
   const [error, setError] = useState<string | null>(null);
   const [saveMode, setSaveMode] = useState<ProductSaveMode>("save");
+
+  useEffect(() => {
+    const source = editFrom ?? duplicateFrom;
+    if (!source) return;
+    const isDuplicate = Boolean(duplicateFrom) && !editFrom;
+    setForm({
+      ...emptyForm(),
+      name: isDuplicate ? `${source.name} (copy)` : source.name,
+      sku: isDuplicate ? `${source.sku}-COPY` : source.sku,
+      brand: source.brandName ?? "",
+      category: source.category ?? "",
+      description: source.description ?? "",
+      unit: source.unit ?? "Single",
+      weight: source.weight ?? "",
+      carModel: source.carModel ?? "",
+      purchaseExcTax: String(source.costPrice ?? ""),
+      sellingExcTax: String(source.sellPrice ?? source.costPrice ?? ""),
+      alertQuantity:
+        source.reorderPoint != null ? String(source.reorderPoint) : "",
+      enableImei: Boolean(source.enableImei),
+      preparationMinutes:
+        source.preparationMinutes != null
+          ? String(source.preparationMinutes)
+          : "",
+      notForSelling: source.availableForRetail === false,
+    });
+  }, [duplicateFrom, editFrom]);
 
   useEffect(() => {
     if (locations.length === 0) return;
@@ -248,7 +285,7 @@ export function AddProductForm({
         form.sku.trim() ||
         `PRD-${Date.now().toString(36).toUpperCase()}`;
 
-      return createItem(tenantId, {
+      const payload = {
         sku,
         name: form.name.trim(),
         category: form.category.trim() || undefined,
@@ -272,15 +309,21 @@ export function AddProductForm({
         locationStock,
         brandName: form.brand.trim() || undefined,
         availableForRetail: retailMode ? true : !form.notForSelling,
-      });
+      };
+
+      if (editFrom) {
+        return updateItem(editFrom.id, payload);
+      }
+
+      return createItem(tenantId, payload);
     },
-    successMessage: "Product created",
+    successMessage: editFrom ? "Product updated" : "Product created",
     onSuccess: async (item) => {
       await queryClient.invalidateQueries({ queryKey: ["items"] });
       await queryClient.invalidateQueries({ queryKey: ["catalog"] });
       await queryClient.invalidateQueries({ queryKey: ["catalog-meta"] });
       const mode = saveMode;
-      if (mode === "saveAnother") {
+      if (mode === "saveAnother" && !editFrom) {
         reset();
       }
       onSuccess?.(item, mode);
@@ -305,7 +348,14 @@ export function AddProductForm({
         </p>
       ) : null}
 
-      <section className="space-y-3 rounded-lg border border-border bg-card p-4">
+      <section
+        className={cn(
+          "space-y-3",
+          isHq6
+            ? "hq6-form-card"
+            : "rounded-lg border border-border bg-card p-4",
+        )}
+      >
         <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
           <Input
             label="Product Name *"
@@ -435,102 +485,239 @@ export function AddProductForm({
         </div>
       </section>
 
-      <section className="space-y-3 rounded-lg border border-border bg-card p-4">
-        <div className="flex flex-wrap gap-4">
-          <label className="flex items-center gap-2 text-sm text-foreground">
+      <section
+        className={cn(
+          "space-y-3",
+          isHq6
+            ? "hq6-form-card"
+            : "rounded-lg border border-border bg-card p-4",
+        )}
+      >
+        <div
+          className={cn(
+            "flex flex-wrap",
+            isHq6 ? "gap-x-10 gap-y-3" : "gap-4",
+          )}
+        >
+          <label
+            className={cn(
+              "flex items-start gap-2 text-sm text-foreground",
+              isHq6 && "hq6-product-check",
+            )}
+          >
             <input
               type="checkbox"
               checked={form.enableImei}
               onChange={(e) => setField("enableImei", e.target.checked)}
+              className="mt-0.5"
             />
-            Enable Product description, IMEI or Serial Number
+            <span>
+              Enable Product description, IMEI or Serial Number
+              {isHq6 ? (
+                <Info className="hq6-product-info-icon mt-0.5" aria-hidden />
+              ) : null}
+            </span>
           </label>
-          <label className="flex items-center gap-2 text-sm text-foreground">
+          <label
+            className={cn(
+              "flex items-center gap-2 text-sm text-foreground",
+              isHq6 && "hq6-product-check",
+            )}
+          >
             <input
               type="checkbox"
               checked={form.notForSelling}
               onChange={(e) => setField("notForSelling", e.target.checked)}
             />
-            Not for selling
+            <span className="inline-flex items-center gap-1.5">
+              Not for selling
+              {isHq6 ? (
+                <Info className="hq6-product-info-icon" aria-hidden />
+              ) : null}
+            </span>
           </label>
         </div>
 
-        {locationDetails
-          .filter((row) => selectedLocationCodes.includes(row.locationCode))
-          .map((row) => (
-            <div
-              key={row.locationCode}
-              className="rounded-lg border border-border p-3"
-            >
-              <p className="mb-2 text-sm font-medium text-foreground">
-                {row.locationName} ({row.locationCode}) — Rack / Row / Position
-              </p>
-              <div className="grid gap-2 sm:grid-cols-4">
-                <Input
-                  label="Rack"
-                  value={row.rack}
-                  onChange={(e) =>
-                    updateLocationDetail(row.locationCode, {
-                      rack: e.target.value,
-                    })
-                  }
+        {isHq6 ? (
+          <>
+            <h3 className="hq6-product-rack-title">
+              Rack/Row/Position Details:
+              <Info className="hq6-product-info-icon" aria-hidden />
+            </h3>
+            <div className="hq6-product-rack-grid">
+              {locationDetails
+                .filter((row) =>
+                  selectedLocationCodes.includes(row.locationCode),
+                )
+                .map((row) => (
+                  <div key={row.locationCode} className="hq6-product-rack-col">
+                    <div className="hq6-product-rack-loc">
+                      {row.locationName} ({row.locationCode}):
+                    </div>
+                    <div className="hq6-product-rack-stack">
+                      <input
+                        className="hq6-form-input"
+                        placeholder="Rack"
+                        value={row.rack}
+                        onChange={(e) =>
+                          updateLocationDetail(row.locationCode, {
+                            rack: e.target.value,
+                          })
+                        }
+                        aria-label={`${row.locationName} rack`}
+                      />
+                      <input
+                        className="hq6-form-input"
+                        placeholder="Row"
+                        value={row.row}
+                        onChange={(e) =>
+                          updateLocationDetail(row.locationCode, {
+                            row: e.target.value,
+                          })
+                        }
+                        aria-label={`${row.locationName} row`}
+                      />
+                      <input
+                        className="hq6-form-input"
+                        placeholder="Position"
+                        value={row.position}
+                        onChange={(e) =>
+                          updateLocationDetail(row.locationCode, {
+                            position: e.target.value,
+                          })
+                        }
+                        aria-label={`${row.locationName} position`}
+                      />
+                    </div>
+                  </div>
+                ))}
+              <label className="hq6-form-label hq6-product-rack-col">
+                <span>Weight:</span>
+                <input
+                  className="hq6-form-input"
+                  placeholder="Weight"
+                  value={form.weight}
+                  onChange={(e) => setField("weight", e.target.value)}
                 />
-                <Input
-                  label="Row"
-                  value={row.row}
-                  onChange={(e) =>
-                    updateLocationDetail(row.locationCode, {
-                      row: e.target.value,
-                    })
-                  }
+              </label>
+              <label className="hq6-form-label hq6-product-rack-col">
+                <span>Car Model:</span>
+                <input
+                  className="hq6-form-input"
+                  placeholder="Car Model"
+                  value={form.carModel}
+                  onChange={(e) => setField("carModel", e.target.value)}
                 />
-                <Input
-                  label="Position"
-                  value={row.position}
-                  onChange={(e) =>
-                    updateLocationDetail(row.locationCode, {
-                      position: e.target.value,
-                    })
-                  }
-                />
-                <Input
-                  label="Opening qty"
+              </label>
+              <label className="hq6-form-label hq6-product-rack-col">
+                <span>
+                  Service staff timer/Preparation time (In minutes):
+                </span>
+                <input
+                  className="hq6-form-input"
                   type="number"
-                  min="0"
-                  value={row.quantity}
+                  min={0}
+                  placeholder="Service staff timer/Preparation time"
+                  value={form.preparationMinutes}
                   onChange={(e) =>
-                    updateLocationDetail(row.locationCode, {
-                      quantity: e.target.value,
-                    })
+                    setField("preparationMinutes", e.target.value)
                   }
                 />
-              </div>
+              </label>
             </div>
-          ))}
+          </>
+        ) : (
+          <>
+            {locationDetails
+              .filter((row) =>
+                selectedLocationCodes.includes(row.locationCode),
+              )
+              .map((row) => (
+                <div
+                  key={row.locationCode}
+                  className="rounded-lg border border-border p-3"
+                >
+                  <p className="mb-2 text-sm font-medium text-foreground">
+                    {row.locationName} ({row.locationCode}) — Rack / Row /
+                    Position
+                  </p>
+                  <div className="grid gap-2 sm:grid-cols-4">
+                    <Input
+                      label="Rack"
+                      value={row.rack}
+                      onChange={(e) =>
+                        updateLocationDetail(row.locationCode, {
+                          rack: e.target.value,
+                        })
+                      }
+                    />
+                    <Input
+                      label="Row"
+                      value={row.row}
+                      onChange={(e) =>
+                        updateLocationDetail(row.locationCode, {
+                          row: e.target.value,
+                        })
+                      }
+                    />
+                    <Input
+                      label="Position"
+                      value={row.position}
+                      onChange={(e) =>
+                        updateLocationDetail(row.locationCode, {
+                          position: e.target.value,
+                        })
+                      }
+                    />
+                    <Input
+                      label="Opening qty"
+                      type="number"
+                      min="0"
+                      value={row.quantity}
+                      onChange={(e) =>
+                        updateLocationDetail(row.locationCode, {
+                          quantity: e.target.value,
+                        })
+                      }
+                    />
+                  </div>
+                </div>
+              ))}
 
-        <div className="grid gap-3 md:grid-cols-3">
-          <Input
-            label="Weight"
-            value={form.weight}
-            onChange={(e) => setField("weight", e.target.value)}
-          />
-          <Input
-            label="Car Model"
-            value={form.carModel}
-            onChange={(e) => setField("carModel", e.target.value)}
-            placeholder="e.g. Toyota Camry 2018"
-          />
-          <Input
-            label="Service staff timer / Preparation time (minutes)"
-            type="number"
-            min="0"
-            value={form.preparationMinutes}
-            onChange={(e) => setField("preparationMinutes", e.target.value)}
-          />
-        </div>
+            <div className="grid gap-3 md:grid-cols-3">
+              <Input
+                label="Weight"
+                value={form.weight}
+                onChange={(e) => setField("weight", e.target.value)}
+              />
+              <Input
+                label="Car Model"
+                value={form.carModel}
+                onChange={(e) => setField("carModel", e.target.value)}
+                placeholder="e.g. Toyota Camry 2018"
+              />
+              <Input
+                label="Service staff timer / Preparation time (minutes)"
+                type="number"
+                min="0"
+                value={form.preparationMinutes}
+                onChange={(e) =>
+                  setField("preparationMinutes", e.target.value)
+                }
+              />
+            </div>
+          </>
+        )}
       </section>
 
-      <section className="space-y-3 rounded-lg border border-border bg-card p-4">
+      <section
+        className={cn(
+          "space-y-3",
+          isHq6
+            ? "hq6-form-card"
+            : "rounded-lg border border-border bg-card p-4",
+        )}
+      >
         <div className="grid gap-3 md:grid-cols-3">
           <Select
             label="Applicable Tax"

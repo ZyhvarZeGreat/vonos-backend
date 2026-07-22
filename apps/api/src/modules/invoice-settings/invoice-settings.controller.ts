@@ -15,7 +15,9 @@ import {
 } from '../../common/guards/auth.guards';
 import { Roles } from '../../common/decorators/roles.decorator';
 import type {
+  CreateInvoiceSchemeInput,
   CreateReceiptPrinterInput,
+  UpdateInvoiceSchemeInput,
   UpdateInvoiceSettingsInput,
   UpdateReceiptPrinterInput,
 } from '@vonos/types';
@@ -35,6 +37,24 @@ export class InvoiceSettingsController {
   @Roles('admin', 'manager')
   updateSettings(@Body() body: UpdateInvoiceSettingsInput) {
     return this.service.updateSettings(body);
+  }
+
+  @Post('schemes')
+  @Roles('admin', 'manager')
+  createScheme(@Body() body: CreateInvoiceSchemeInput) {
+    return this.service.createScheme(body);
+  }
+
+  @Patch('schemes/:id')
+  @Roles('admin', 'manager')
+  updateScheme(@Param('id') id: string, @Body() body: UpdateInvoiceSchemeInput) {
+    return this.service.updateScheme(id, body);
+  }
+
+  @Delete('schemes/:id')
+  @Roles('admin', 'manager')
+  deleteScheme(@Param('id') id: string) {
+    return this.service.deleteScheme(id);
   }
 
   @Get('printers')

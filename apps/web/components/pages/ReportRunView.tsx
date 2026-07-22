@@ -23,7 +23,11 @@ import { useReportFilterOptions } from "@/lib/hooks/useReportFilterOptions";
 import { useDebouncedValue } from "@/lib/hooks/useDebouncedValue";
 import { useRouteTenant } from "@/lib/hooks/useRouteTenant";
 import { ledgerChartSubtitle } from "@/lib/utils/ledgerCharts";
-import { recordDetailPath } from "@/lib/utils/recordDetailPath";
+import {
+  recordDetailPath,
+  reportRowDetailPath,
+  saleRecordPath,
+} from "@/lib/utils/recordDetailPath";
 import { ListPageShell } from "@/components/organisms/ListPageShell";
 import { HqReportPageLayout, HqReportPageSkeleton } from "@/components/organisms/HqReportPageLayout";
 import { ReportFilterShell } from "@/components/organisms/ReportFilterShell";
@@ -223,14 +227,22 @@ export function ReportRunView({ slug }: ReportRunViewProps) {
         const recordType = String(
           action.payload.recordType ?? "payment",
         );
-        const recordId = String(
-          action.payload.paymentId ??
-            action.payload.saleId ??
-            action.payload.id ??
-            "",
-        );
         if (recordType === "payment") {
           router.push(`/${tenantCode}/payments`);
+          return;
+        }
+        // Prefer saleId when viewing a sale — paymentId must not win here.
+        const recordId = String(
+          recordType === "sale"
+            ? (action.payload.saleId ?? action.payload.id ?? "")
+            : (action.payload.paymentId ??
+                action.payload.saleId ??
+                action.payload.id ??
+                ""),
+        );
+        if (!recordId) return;
+        if (recordType === "sale") {
+          router.push(saleRecordPath(tenantCode, recordId));
           return;
         }
         const path = recordDetailPath(tenantCode, recordType, recordId);
@@ -272,6 +284,8 @@ export function ReportRunView({ slug }: ReportRunViewProps) {
   }
 
   const activeView = (filters.view ?? "detailed") as ProductSellReportView;
+  const searchField = tableUi?.filters.find((field) => field.kind === "search");
+  const searchPlaceholder = searchField?.placeholder ?? "Search …";
 
   return (
     <>
@@ -357,14 +371,15 @@ export function ReportRunView({ slug }: ReportRunViewProps) {
               to={bounds?.to}
               summaryLoading={summaryLoading}
               tablePagination={tablePagination}
+              tableSearch={filters.search ?? ""}
+              onTableSearchChange={(search) =>
+                setFilters((prev) => ({ ...prev, search }))
+              }
+              searchPlaceholder={searchPlaceholder}
               onRowClick={
                 tenantCode
                   ? (row) => {
-                      const path = recordDetailPath(
-                        tenantCode,
-                        String(row.recordType ?? ""),
-                        String(row.id ?? ""),
-                      );
+                      const path = reportRowDetailPath(tenantCode, row);
                       if (path) router.push(path);
                     }
                   : undefined

@@ -161,6 +161,34 @@ export async function getItemMeta(
   return response.json();
 }
 
+export interface ItemStockHistoryRow {
+  id: string;
+  date: string;
+  reference: string;
+  type: string;
+  status: string;
+  quantity: number;
+  unitCost: number | null;
+}
+
+export async function getItemStockHistory(
+  id: string,
+): Promise<ItemStockHistoryRow[]> {
+  const response = await apiFetch(`/items/${id}/stock-history`);
+  if (!response.ok) throw new Error("Failed to fetch stock history");
+  return response.json();
+}
+
+export async function deleteItem(tenantId: string, id: string): Promise<void> {
+  const response = await apiFetch(withTenantQuery(`/items/${id}`, tenantId), {
+    method: "DELETE",
+  });
+  if (!response.ok) {
+    const body = (await response.json().catch(() => null)) as { message?: string } | null;
+    throw new Error(body?.message ?? "Failed to delete product");
+  }
+}
+
 export async function getKpiSummary(tenantId: string): Promise<KpiSummary> {
   const response = await apiFetch(
     withTenantQuery("/items/kpi-summary", tenantId),

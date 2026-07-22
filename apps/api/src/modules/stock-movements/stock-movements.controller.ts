@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   Patch,
@@ -12,6 +13,7 @@ import type {
   MovementSource,
   MovementStatus,
   MovementType,
+  PayContactDueRequest,
 } from '@vonos/types';
 import { Roles } from '../../common/decorators/roles.decorator';
 import {
@@ -66,6 +68,11 @@ export class StockMovementsController {
     });
   }
 
+  @Get(':id/payments')
+  listPayments(@Param('id') id: string) {
+    return this.movementsService.listPayments(id);
+  }
+
   @Get(':id')
   getById(@Param('id') id: string) {
     return this.movementsService.getById(id);
@@ -98,6 +105,12 @@ export class StockMovementsController {
     return this.movementsService.create(body);
   }
 
+  @Post(':id/pay')
+  @Roles('staff', 'manager', 'admin', 'super_admin')
+  pay(@Param('id') id: string, @Body() body: PayContactDueRequest) {
+    return this.movementsService.pay(id, body);
+  }
+
   @Patch(':id/status')
   @Roles('manager', 'admin', 'super_admin')
   updateStatus(
@@ -105,6 +118,12 @@ export class StockMovementsController {
     @Body() body: { status: MovementStatus },
   ) {
     return this.movementsService.updateStatus(id, body.status);
+  }
+
+  @Delete(':id')
+  @Roles('admin', 'super_admin')
+  remove(@Param('id') id: string) {
+    return this.movementsService.remove(id);
   }
 }
 

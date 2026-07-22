@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAppMutation } from "@/lib/hooks/useAppMutation";
 import { createFlowSuccessMessage } from "@/lib/utils/createFlowToasts";
@@ -27,6 +28,7 @@ import {
   movementTypeForFlow,
   type CreateFlowKey,
 } from "@/lib/registries/createFlows";
+import { useIsVaHq6 } from "@/lib/hooks/useIsVaHq6";
 import { useUiStore } from "@/stores/uiStore";
 
 function resetOnClose() {
@@ -72,16 +74,32 @@ function defaultMovementLines(): MovementLineDraft[] {
 }
 
 export function CreateRecordModal() {
+  const router = useRouter();
+  const isHq6 = useIsVaHq6();
   const activeModal = useUiStore((state) => state.activeModal);
   const createFlow = useUiStore((state) => state.createFlow);
   const createCopy = useUiStore((state) => state.createCopy);
   const closeModal = useUiStore((state) => state.closeModal);
   const tenantId = useTenantId();
-  const { config: tenantConfig } = useRouteTenant();
+  const { config: tenantConfig, tenantCode } = useRouteTenant();
   const { options: businessLocationOptions, required: locationRequired } =
     useBusinessLocationOptions(tenantConfig);
   const queryClient = useQueryClient();
   const open = activeModal === "create" && createFlow !== null;
+
+  // HQ6: product/sale creates are full pages; contact/job creates stay modals.
+  useEffect(() => {
+    if (!open || !isHq6 || !tenantCode || !createFlow) return;
+    if (isItemFlow(createFlow)) {
+      closeModal();
+      router.push(`/${tenantCode}/add-product`);
+      return;
+    }
+    if (createFlow === "sale") {
+      closeModal();
+      router.push(`/${tenantCode}/add-sale`);
+    }
+  }, [closeModal, createFlow, isHq6, open, router, tenantCode]);
 
   const [form, setForm] = useState(resetOnClose);
   const [movementLines, setMovementLines] = useState(defaultMovementLines);
@@ -344,6 +362,8 @@ export function CreateRecordModal() {
   };
 
   if (!createFlow) return null;
+  // Avoid flashing the create modal while redirecting to HQ6 full pages.
+  if (isHq6 && (isItemFlow(createFlow) || createFlow === "sale")) return null;
 
   return (
     <Modal open={open} onClose={handleClose}>

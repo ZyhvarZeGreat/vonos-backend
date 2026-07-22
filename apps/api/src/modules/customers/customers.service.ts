@@ -8,11 +8,15 @@ import type {
   CustomerProfile,
   CustomerTransactionHistoryEntry,
   CsvImportResult,
+  PayContactDueRequest,
+  PayContactDueResult,
+  UpdateCustomerInput,
 } from '@vonos/types';
 import { TenantDbService } from '../../common/prisma/tenant-db.service';
 import { buildCompositeCursorQuery } from '../../common/utils/pagination';
 import type { PaginatedList } from '../../common/utils/paginatedList';
 import { parseCsv, pickCsvField } from '../../common/utils/csvImport';
+import { refreshCustomerFinancialRollups } from '../../common/utils/customerRollups';
 import { toIso, toNumber } from '../../common/utils/serializers';
 import { AuditService } from '../audit/audit.service';
 
@@ -94,6 +98,7 @@ function serializeCustomer(
     totalAdvance?: { toString(): string } | number | null;
     visitCount?: number | null;
     status?: string | null;
+    taxNumber?: string | null;
     createdByUserId: string | null;
     createdByName: string | null;
     createdAt: Date;
@@ -135,7 +140,7 @@ function serializeCustomer(
     updatedAt: toIso(row.updatedAt),
     contactId: extras?.contactId ?? row.id.slice(0, 8).toUpperCase(),
     businessName: row.name,
-    taxNumber: null,
+    taxNumber: row.taxNumber?.trim() || null,
     totalSell: extras?.totalSell ?? storedTotalSell ?? computed?.totalSell ?? 0,
     totalSellDue: extras?.totalSellDue ?? (row.totalSellDue != null ? toNumber(row.totalSellDue) : computed?.totalSellDue ?? 0),
     totalSellPaid: extras?.totalSellPaid ?? (row.totalSellPaid != null ? toNumber(row.totalSellPaid) : computed?.totalSellPaid ?? 0),
@@ -270,6 +275,7 @@ export class CustomersService {
         assignedToUserId: dto.assignedToUserId?.trim() || null,
         openingBalance: dto.openingBalance ?? 0,
         status: dto.status ?? 'active',
+        taxNumber: dto.taxNumber?.trim() || null,
         ...createdBy,
       },
       include: {
@@ -284,6 +290,194 @@ export class CustomersService {
       summary: `Created customer ${row.name}`,
     });
     return serializeCustomer({ ...row, sales: [] });
+  }
+
+  async update(id: string, dto: UpdateCustomerInput): Promise<Customer> {
+    const tenantId = this.tenantDb.requireTenantId();
+    const existing = await this.tenantDb.db.customer.findFirst({
+      where: { id, tenantId, deletedAt: null },
+    });
+    if (!existing) throw new NotFoundException('Customer not found');
+
+    const name = dto.name?.trim();
+    if (dto.name !== undefined && !name) {
+      throw new BadRequestException('Customer name is required');
+    }
+
+    const row = await this.tenantDb.db.customer.update({
+      where: { id },
+      data: {
+        ...(name !== undefined ? { name } : {}),
+        ...(dto.email !== undefined ? { email: dto.email?.trim() || null } : {}),
+        ...(dto.phone !== undefined ? { phone: dto.phone?.trim() || null } : {}),
+        ...(dto.customerGroupId !== undefined
+          ? { customerGroupId: dto.customerGroupId?.trim() || null }
+          : {}),
+        ...(dto.assignedToUserId !== undefined
+          ? { assignedToUserId: dto.assignedToUserId?.trim() || null }
+          : {}),
+        ...(dto.openingBalance !== undefined
+          ? { openingBalance: dto.openingBalance }
+          : {}),
+        ...(dto.status !== undefined ? { status: dto.status } : {}),
+        ...(dto.taxNumber !== undefined
+          ? { taxNumber: dto.taxNumber?.trim() || null }
+          : {}),
+      },
+      include: {
+        customerGroup: { select: { name: true } },
+        assignedToUser: { select: { name: true } },
+      },
+    });
+    await this.auditService.log({
+      action: 'updated',
+      entityType: 'customer',
+      entityId: id,
+      summary: `Updated customer ${row.name}`,
+    });
+    return serializeCustomer({ ...row, sales: [] });
+  }
+
+  async setStatus(
+    id: string,
+    status: 'active' | 'inactive',
+  ): Promise<Customer> {
+    return this.update(id, { status });
+  }
+
+  async remove(id: string): Promise<void> {
+    const tenantId = this.tenantDb.requireTenantId();
+    const existing = await this.tenantDb.db.customer.findFirst({
+      where: { id, tenantId, deletedAt: null },
+    });
+    if (!existing) throw new NotFoundException('Customer not found');
+    await this.tenantDb.db.customer.update({
+      where: { id },
+      data: { deletedAt: new Date() },
+    });
+    await this.auditService.log({
+      action: 'deleted',
+      entityType: 'customer',
+      entityId: id,
+      summary: `Deleted customer ${existing.name}`,
+    });
+  }
+
+  /** Apply a contact payment across oldest due/partial sales (HQ6 pay-contact-due). */
+  async payDue(
+    id: string,
+    dto: PayContactDueRequest,
+  ): Promise<PayContactDueResult> {
+    const tenantId = this.tenantDb.requireTenantId();
+    const amount = Number(dto.amount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      throw new BadRequestException('Payment amount must be greater than zero');
+    }
+
+    const customer = await this.tenantDb.db.customer.findFirst({
+      where: { id, tenantId, deletedAt: null },
+      select: { id: true, name: true },
+    });
+    if (!customer) throw new NotFoundException('Customer not found');
+
+    const openSales = await this.tenantDb.db.sale.findMany({
+      where: {
+        tenantId,
+        customerId: id,
+        deletedAt: null,
+        paymentStatus: { in: ['due', 'partial'] },
+        status: { notIn: ['draft', 'quotation', 'refunded', 'written_off'] },
+      },
+      include: {
+        payments: { where: { deletedAt: null }, select: { amount: true } },
+      },
+      orderBy: [{ date: 'asc' }, { id: 'asc' }],
+    });
+
+    if (openSales.length === 0) {
+      throw new BadRequestException('No outstanding sales due for this customer');
+    }
+
+    let remaining = amount;
+    let paymentsCreated = 0;
+    const paidOn = dto.paidOn ? new Date(dto.paidOn) : new Date();
+    const method = dto.method?.trim() || 'cash';
+    const createdBy = await this.auditService.createdByFields();
+
+    await this.tenantDb.db.$transaction(async (tx) => {
+      for (const sale of openSales) {
+        if (remaining <= 0) break;
+        const total = toNumber(sale.total);
+        const paid = sale.payments.reduce(
+          (sum, payment) => sum + toNumber(payment.amount),
+          0,
+        );
+        const due = Math.max(0, total - paid);
+        if (due <= 0) continue;
+
+        const apply = Math.min(remaining, due);
+        const payment = await tx.payment.create({
+          data: {
+            tenantId,
+            amount: apply,
+            currency: sale.currency || 'NGN',
+            method,
+            paidOn,
+            paymentFor: 'sale',
+            saleId: sale.id,
+            accountId: dto.accountId?.trim() || null,
+            note: dto.note?.trim() || `Contact payment — ${customer.name}`,
+            createdByName: createdBy.createdByName ?? null,
+          },
+        });
+
+        await tx.ledgerEntry.create({
+          data: {
+            tenantId,
+            type: 'revenue',
+            amount: apply,
+            currency: sale.currency || 'NGN',
+            category: 'Customer Payment',
+            description: `Payment on ${sale.reference}`,
+            linkedRecordType: 'payment',
+            linkedRecordId: payment.id,
+            date: paidOn,
+          },
+        });
+
+        const newPaid = paid + apply;
+        const paymentStatus =
+          newPaid >= total - 0.001 ? 'paid' : newPaid > 0 ? 'partial' : 'due';
+        await tx.sale.update({
+          where: { id: sale.id },
+          data: { paymentStatus },
+        });
+
+        remaining -= apply;
+        paymentsCreated += 1;
+      }
+    });
+
+    if (paymentsCreated === 0) {
+      throw new BadRequestException('No outstanding balance could be applied');
+    }
+
+    await refreshCustomerFinancialRollups(this.tenantDb.db, id);
+    const summary = await this.getSummary(id);
+    await this.auditService.log({
+      action: 'updated',
+      entityType: 'customer',
+      entityId: id,
+      summary: `Recorded payment of ${amount - remaining} for ${customer.name}`,
+    });
+
+    return {
+      contactId: id,
+      amountApplied: amount - remaining,
+      currency: summary.currency,
+      paymentsCreated,
+      remainingDue: summary.totalDue,
+    };
   }
 
   async getById(id: string): Promise<CustomerProfile> {
@@ -520,6 +714,9 @@ export class CustomersService {
           name,
           email: pickCsvField(row, 'email') || undefined,
           phone: pickCsvField(row, 'phone', 'mobile', 'contact number') || undefined,
+          taxNumber:
+            pickCsvField(row, 'tax number', 'tax_number', 'vat', 'tin') ||
+            undefined,
         });
         result.created += 1;
       } catch (error) {

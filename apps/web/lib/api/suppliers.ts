@@ -5,6 +5,8 @@ import type {
   ContactDueSummary,
   ContactLedgerEntry,
   CsvImportResult,
+  PayContactDueRequest,
+  PayContactDueResult,
 } from "@vonos/types";
 import {
   DEFAULT_TABLE_PAGE_SIZE,
@@ -149,6 +151,26 @@ export async function updateSupplier(
   return response.json();
 }
 
+export async function setSupplierStatus(
+  tenantId: string,
+  id: string,
+  status: "active" | "inactive",
+): Promise<SupplierListRow> {
+  const response = await apiFetch(
+    withTenantQuery(`/suppliers/${id}/status`, tenantId),
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status }),
+    },
+  );
+  if (!response.ok) {
+    const body = (await response.json().catch(() => null)) as { message?: string } | null;
+    throw new Error(body?.message ?? "Failed to update supplier status");
+  }
+  return response.json();
+}
+
 export async function getSupplierSummary(
   tenantId: string,
   supplierId: string,
@@ -181,5 +203,54 @@ export async function importSuppliers(
     body: JSON.stringify({ csv }),
   });
   if (!response.ok) throw new Error("Failed to import suppliers");
+  return response.json();
+}
+
+export async function deleteSupplier(tenantId: string, id: string): Promise<void> {
+  const response = await apiFetch(withTenantQuery(`/suppliers/${id}`, tenantId), {
+    method: "DELETE",
+  });
+  if (!response.ok) {
+    const body = (await response.json().catch(() => null)) as { message?: string } | null;
+    throw new Error(body?.message ?? "Failed to delete supplier");
+  }
+}
+
+export async function paySupplierDue(
+  tenantId: string,
+  id: string,
+  input: PayContactDueRequest,
+): Promise<PayContactDueResult> {
+  const response = await apiFetch(
+    withTenantQuery(`/suppliers/${id}/pay-due`, tenantId),
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    },
+  );
+  if (!response.ok) {
+    const body = (await response.json().catch(() => null)) as { message?: string } | null;
+    throw new Error(body?.message ?? "Failed to record payment");
+  }
+  return response.json();
+}
+
+export interface SupplierStockReportRow {
+  itemId: string;
+  sku: string;
+  name: string;
+  quantity: number;
+  totalCost: number;
+}
+
+export async function getSupplierStockReport(
+  tenantId: string,
+  supplierId: string,
+): Promise<SupplierStockReportRow[]> {
+  const response = await apiFetch(
+    withTenantQuery(`/suppliers/${supplierId}/stock-report`, tenantId),
+  );
+  if (!response.ok) throw new Error("Failed to fetch supplier stock report");
   return response.json();
 }

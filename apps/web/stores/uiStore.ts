@@ -71,6 +71,8 @@ interface UiState {
   salePresetStatus: SaleFormPresetStatus | null;
   /** When set, Add Sale form pre-selects this job (VA). */
   saleJobId: string | null;
+  /** When set, Add Product form prefills from this item (duplicate). */
+  productDuplicateFromId: string | null;
   dateRange: DateRangePreset;
   customDateRange: CustomDateRange | null;
   entitySwitch: EntitySwitchTarget | null;
@@ -89,7 +91,7 @@ interface UiState {
     presetStatus?: SaleFormPresetStatus,
     jobId?: string | null,
   ) => void;
-  openAddProductModal: (flow?: ProductFlowKey) => void;
+  openAddProductModal: (flow?: ProductFlowKey, duplicateFromId?: string | null) => void;
   openExportModal: (
     copy?: Partial<ExportModalCopy>,
     payload?: CsvExportPayload | null,
@@ -115,6 +117,7 @@ export const useUiStore = create<UiState>((set) => ({
   financeActionTenantId: null,
   salePresetStatus: null,
   saleJobId: null,
+  productDuplicateFromId: null,
   dateRange: "last_7_days",
   customDateRange: null,
   entitySwitch: null,
@@ -145,11 +148,12 @@ export const useUiStore = create<UiState>((set) => ({
       salePresetStatus: presetStatus,
       saleJobId: jobId ?? null,
     }),
-  openAddProductModal: (flow = "item") =>
+  openAddProductModal: (flow = "item", duplicateFromId = null) =>
     set({
       activeModal: "addProduct",
       createFlow: null,
       productFlow: flow,
+      productDuplicateFromId: duplicateFromId,
     }),
   openExportModal: (copy, payload) =>
     set({
@@ -166,6 +170,7 @@ export const useUiStore = create<UiState>((set) => ({
       financeActionTenantId: null,
       salePresetStatus: null,
       saleJobId: null,
+      productDuplicateFromId: null,
     }),
   setDateRange: (dateRange) =>
     set((state) => ({

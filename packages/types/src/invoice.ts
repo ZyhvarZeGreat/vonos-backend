@@ -50,6 +50,22 @@ export interface UpdateInvoiceSettingsInput {
   termsText?: string | null;
 }
 
+export interface CreateInvoiceSchemeInput {
+  name: string;
+  prefix?: string | null;
+  startNumber?: number;
+  totalDigits?: number;
+  isDefault?: boolean;
+}
+
+export interface UpdateInvoiceSchemeInput {
+  name?: string;
+  prefix?: string | null;
+  startNumber?: number;
+  totalDigits?: number;
+  isDefault?: boolean;
+}
+
 export interface CreateReceiptPrinterInput {
   name: string;
   printerType?: string;

@@ -57,11 +57,13 @@ export async function runReport(params: {
   if (params.customerId) search.set("customerId", params.customerId);
   if (params.customerGroupId) search.set("customerGroupId", params.customerGroupId);
   if (params.locationCode) search.set("locationCode", params.locationCode);
+  if (params.accountId) search.set("accountId", params.accountId);
   if (params.category) search.set("category", params.category);
   if (params.brandId) search.set("brandId", params.brandId);
   if (params.paymentMethod) search.set("paymentMethod", params.paymentMethod);
   if (params.supplierId) search.set("supplierId", params.supplierId);
   if (params.view) search.set("view", params.view);
+  if (params.taxTable) search.set("taxTable", params.taxTable);
   const path = withTenantQuery(`/reports/run?${search.toString()}`, params.tenantId);
   const response = await apiFetch(path);
   if (!response.ok) throw new Error("Failed to run report");

@@ -75,7 +75,7 @@ export async function runReportForTenant(
       if (handler === 'trial-balance')
         return buildTrialBalanceReport(db, from, to);
       if (handler === 'cash-flow') return buildCashFlowReport(db, from, to);
-      return buildPaymentAccountReport(db, from, to);
+      return buildPaymentAccountReport(db, from, to, options);
     }
     case 'reports':
       if (archetype === 'stock') {
@@ -125,8 +125,9 @@ export async function runReportForTenant(
     case 'sales': {
       const handler = source.handler;
       if (handler === 'purchase-sale')
-        return buildPurchaseSaleReport(db, tenantId, from, to);
-      if (handler === 'tax') return buildTaxReport(db, tenantId, from, to);
+        return buildPurchaseSaleReport(db, tenantId, from, to, options);
+      if (handler === 'tax')
+        return buildTaxReport(db, tenantId, from, to, options);
       if (handler === 'register')
         return buildRegisterReport(db, tenantId, from, to);
       if (handler === 'service-staff') {

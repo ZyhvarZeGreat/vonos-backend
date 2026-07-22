@@ -19,7 +19,7 @@ import type { TenantCode } from "@/lib/registries/tenants";
 import { getTenantByCode } from "@/lib/registries/tenants";
 import { ledgerChartSubtitle } from "@/lib/utils/ledgerCharts";
 import { formatCurrency, formatCurrencyCompact, formatNumberCompact } from "@/lib/utils/formatCurrency";
-import { recordDetailPath } from "@/lib/utils/recordDetailPath";
+import { reportRowDetailPath } from "@/lib/utils/recordDetailPath";
 import { ChartPanelSkeleton } from "@/components/organisms/skeletons";
 import { ReportDetailSheet } from "@/components/organisms/ReportDetailSheet";
 import { HqReportPageSkeleton } from "@/components/organisms/HqReportPageLayout";
@@ -362,11 +362,7 @@ export function ReportsDashboardBody({
                 return;
               }
               if (!tenantCode) return;
-              const path = recordDetailPath(
-                tenantCode,
-                String(row.recordType ?? ""),
-                String(row.id ?? ""),
-              );
+              const path = reportRowDetailPath(tenantCode, row);
               if (path) router.push(path);
             }}
           />

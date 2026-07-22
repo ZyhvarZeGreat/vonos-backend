@@ -15,6 +15,8 @@ import { useServerListPage } from "@/lib/hooks/useServerListPage";
 import { useRouteTenant, useTenantId } from "@/lib/hooks/useRouteTenant";
 import { useRecordNavigation } from "@/lib/hooks/useRecordNavigation";
 import { useListPageFilters } from "@/lib/hooks/useListPageFilters";
+import { useIsVaHq6 } from "@/lib/hooks/useIsVaHq6";
+import { Hq6SuppliersListView } from "@/components/pages/Hq6SuppliersListView";
 import { formatCurrencyCompact, formatNumberCompact } from "@/lib/utils/formatCurrency";
 import { uniqueFieldOptions } from "@/lib/utils/listFilters";
 import { formatDate } from "@/lib/utils/formatDate";
@@ -38,6 +40,7 @@ function supplierColumns(
   tenantCode: string,
   onView: (id: string) => void,
   onLedger: (id: string, name: string) => void,
+  onPurchases: (id: string) => void,
   router: ReturnType<typeof useRouter>,
 ): ColumnConfig<SupplierListRow>[] {
   return [
@@ -59,7 +62,11 @@ function supplierColumns(
               label: "Ledger",
               onClick: () => onLedger(row.id, row.businessName ?? row.name),
             },
-            { id: "purchases", label: "Purchases", onClick: () => router.push(`/${tenantCode}/inbound`) },
+            {
+              id: "purchases",
+              label: "Purchases",
+              onClick: () => onPurchases(row.id),
+            },
           ]}
         />
       ),
@@ -99,21 +106,56 @@ function supplierColumns(
 }
 
 export function WarehouseSuppliersView() {
+  const isHq6 = useIsVaHq6();
+  if (isHq6) return <Hq6SuppliersListView />;
+  return <WarehouseSuppliersViewBody />;
+}
+
+function WarehouseSuppliersViewBody() {
   const { tenantCode } = useRouteTenant();
+  const isHq6 = false;
   const router = useRouter();
   const tenantId = useTenantId();
-  const { goToDetail } = useRecordNavigation("suppliers");
+  const { goToDetail, detailPath } = useRecordNavigation("suppliers");
   const [activeTab, setActiveTab] = useState("all");
   const { dateRange, setDateRange, search, setSearch } = useListPageFilters();
   const [categoryFilter, setCategoryFilter] = useState("");
+  const [purchaseDue, setPurchaseDue] = useState(false);
+  const [purchaseReturn, setPurchaseReturn] = useState(false);
+  const [advanceBalance, setAdvanceBalance] = useState(false);
+  const [openingBalance, setOpeningBalance] = useState(false);
+  const [statusFilter, setStatusFilter] = useState("");
   const [ledgerSupplierId, setLedgerSupplierId] = useState<string | null>(null);
   const [ledgerSupplierName, setLedgerSupplierName] = useState("");
 
   const { summary, ledger, isLoading: ledgerLoading } = useContactLedgerQuery(
     () => getSupplierSummary(tenantId!, ledgerSupplierId!),
     () => getSupplierLedger(tenantId!, ledgerSupplierId!),
-    ledgerSupplierId,
+    isHq6 ? null : ledgerSupplierId,
     "supplier-ledger",
+  );
+
+  const hq6ApiFilters = useMemo(
+    () => ({
+      search: search.trim() || undefined,
+      purchaseDue: purchaseDue || undefined,
+      purchaseReturn: purchaseReturn || undefined,
+      advanceBalance: advanceBalance || undefined,
+      openingBalance: openingBalance || undefined,
+      status: (statusFilter || (activeTab === "active" ? "active" : undefined)) as
+        | "active"
+        | "inactive"
+        | undefined,
+    }),
+    [
+      activeTab,
+      advanceBalance,
+      openingBalance,
+      purchaseDue,
+      purchaseReturn,
+      search,
+      statusFilter,
+    ],
   );
 
   const {
@@ -136,15 +178,19 @@ export function WarehouseSuppliersView() {
     queryKey: ["suppliers", tenantId],
     enabled: Boolean(tenantId),
     search,
-    filters: {
-      category: categoryFilter || undefined,
-      tab: activeTab,
-    },
+    filters: isHq6
+      ? hq6ApiFilters
+      : {
+          category: categoryFilter || undefined,
+          tab: activeTab,
+        },
     fetchPage: (cursor, limit) =>
-      getSuppliersPage(tenantId!, cursor, limit, {
-        search: search.trim() || undefined,
-        status: activeTab === "active" ? "active" : undefined,
-      }),
+      getSuppliersPage(tenantId!, cursor, limit, isHq6
+        ? hq6ApiFilters
+        : {
+            search: search.trim() || undefined,
+            status: activeTab === "active" ? "active" : undefined,
+          }),
     getCursor: (row) => nameListCursor(row),
   });
 
@@ -162,12 +208,23 @@ export function WarehouseSuppliersView() {
         tenantCode ?? "VW",
         goToDetail,
         (id, name) => {
+          if (isHq6) {
+            router.push(`${detailPath(id)}?view=ledger`);
+            return;
+          }
           setLedgerSupplierId(id);
           setLedgerSupplierName(name);
         },
+        (id) => {
+          if (isHq6) {
+            router.push(`${detailPath(id)}?view=purchases`);
+            return;
+          }
+          router.push(`/${tenantCode}/inbound`);
+        },
         router,
       ),
-    [tenantCode, goToDetail, router],
+    [detailPath, goToDetail, isHq6, router, tenantCode],
   );
 
   // Category is not a real DB field yet (API returns "General") — don't
@@ -181,6 +238,7 @@ export function WarehouseSuppliersView() {
 
   return (
     <div className="space-y-6">
+      {!isHq6 ? (
       <KpiRow
         cards={supplierKpiCards}
         isLoading={kpisQuery.isLoading && !kpis}
@@ -193,8 +251,9 @@ export function WarehouseSuppliersView() {
             : "—",
         }}
       />
+      ) : null}
       <ListPageShell
-        tabs={SUPPLIER_TABS}
+        tabs={isHq6 ? [{ id: "all", label: "All Suppliers" }] : SUPPLIER_TABS}
         activeTab={activeTab}
         onTabChange={setActiveTab}
         searchValue={search}
@@ -202,15 +261,61 @@ export function WarehouseSuppliersView() {
         searchPlaceholder="Search suppliers…"
         dateRange={dateRange}
         onDateRangeChange={setDateRange}
-        filterDropdowns={[
-          {
-            id: "category",
-            label: "Category",
-            options: [{ value: "", label: "All categories" }, ...categoryOptions],
-            value: categoryFilter,
-            onChange: setCategoryFilter,
-          },
-        ]}
+        showDateRange={!isHq6}
+        filterCheckboxes={
+          isHq6
+            ? [
+                {
+                  id: "purchaseDue",
+                  label: "Purchase Due",
+                  checked: purchaseDue,
+                  onChange: setPurchaseDue,
+                },
+                {
+                  id: "purchaseReturn",
+                  label: "Purchase Return",
+                  checked: purchaseReturn,
+                  onChange: setPurchaseReturn,
+                },
+                {
+                  id: "advanceBalance",
+                  label: "Advance Balance",
+                  checked: advanceBalance,
+                  onChange: setAdvanceBalance,
+                },
+                {
+                  id: "openingBalance",
+                  label: "Opening Balance",
+                  checked: openingBalance,
+                  onChange: setOpeningBalance,
+                },
+              ]
+            : undefined
+        }
+        filterDropdowns={
+          isHq6
+            ? [
+                {
+                  id: "status",
+                  label: "Status",
+                  options: [
+                    { value: "active", label: "Active" },
+                    { value: "inactive", label: "Inactive" },
+                  ],
+                  value: statusFilter,
+                  onChange: setStatusFilter,
+                },
+              ]
+            : [
+                {
+                  id: "category",
+                  label: "Category",
+                  options: [{ value: "", label: "All categories" }, ...categoryOptions],
+                  value: categoryFilter,
+                  onChange: setCategoryFilter,
+                },
+              ]
+        }
       >
         <ServerPaginatedTable
           items={filtered}
@@ -232,14 +337,16 @@ export function WarehouseSuppliersView() {
           emptyState={{ message: "No suppliers yet. Add your first supplier to get started." }}
         />
       </ListPageShell>
-      <ContactLedgerModal
-        open={Boolean(ledgerSupplierId)}
-        onClose={() => setLedgerSupplierId(null)}
-        title={`${ledgerSupplierName} — Ledger`}
-        summary={summary}
-        ledger={ledger}
-        isLoading={ledgerLoading}
-      />
+      {!isHq6 ? (
+        <ContactLedgerModal
+          open={Boolean(ledgerSupplierId)}
+          onClose={() => setLedgerSupplierId(null)}
+          title={`${ledgerSupplierName} — Ledger`}
+          summary={summary}
+          ledger={ledger}
+          isLoading={ledgerLoading}
+        />
+      ) : null}
     </div>
   );
 }

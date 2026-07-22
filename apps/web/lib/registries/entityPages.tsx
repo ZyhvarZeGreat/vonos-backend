@@ -1,6 +1,9 @@
 import type { ComponentType } from "react";
 import { FinanceView } from "@/components/pages/FinanceView";
 import { WarehouseInventoryView } from "@/components/pages/WarehouseInventoryView";
+import { Hq6ProductsListView } from "@/components/pages/Hq6ProductsListView";
+import { Hq6ChecklistView } from "@/components/pages/Hq6ChecklistView";
+import { Hq6EssentialsTodoView } from "@/components/pages/Hq6EssentialsTodoView";
 import { WarehouseTransfersView } from "@/components/pages/WarehouseTransfersView";
 import { WarehouseSuppliersView } from "@/components/pages/WarehouseSuppliersView";
 import { EntityReportsView } from "@/components/pages/EntityReportsView";
@@ -54,7 +57,7 @@ import {
 } from "@/components/pages/PosNavViews";
 import { CatalogMetaListView } from "@/components/pages/CatalogMetaListView";
 import { RolesListView, CommissionAgentsListView } from "@/components/pages/UserManagementViews";
-import { CustomerGroupsListView, ImportContactsView, ImportProductsView, ImportSalesView } from "@/components/pages/ContactsGroupViews";
+import { CustomerGroupsListView, ImportContactsView, ImportExpenseView, ImportProductsView, ImportSalesView } from "@/components/pages/ContactsGroupViews";
 import { AddExpenseView, ExpenseCategoriesListView, ExpensesListView } from "@/components/pages/ExpensesViews";
 import {
   PaymentAccountReportView,
@@ -240,6 +243,7 @@ const contactPages: SlugMap = {
 const expensePages: SlugMap = {
   expenses: { title: "Expenses", View: ExpensesListView },
   "add-expense": { title: "Add Expense", View: AddExpenseView },
+  "import-expense": { title: "Import Expense", View: ImportExpenseView },
   "expense-categories": { title: "Expense Categories", View: ExpenseCategoriesListView },
 };
 
@@ -446,7 +450,18 @@ const ENTITY_PAGES: Record<TenantCode, SlugMap> = {
       },
       View: SalesListView,
     },
-    catalog: sharedCatalog,
+    catalog: {
+      title: "Products",
+      primaryActionLabel: "Add",
+      openCreateOnPrimary: true,
+      createFlowKey: "item",
+      createCopy: {
+        title: "Add Product",
+        subtitle: "Add a product to the catalog",
+        submitLabel: "Add Product",
+      },
+      View: Hq6ProductsListView,
+    },
     returns: { title: "Returns & Warranty", View: ReturnsListView },
     customers: sharedCustomers,
     suppliers: sharedSuppliers,
@@ -467,6 +482,16 @@ const ENTITY_PAGES: Record<TenantCode, SlugMap> = {
     ...hrmPages,
     ...settingsPages,
     ...legacyReportPages,
+    "hq6-checklist": { title: "HQ6 Checklist", View: Hq6ChecklistView },
+    "essentials-todo": { title: "To Do", View: Hq6EssentialsTodoView },
+    orders: {
+      title: "Orders",
+      View: OrdersListView,
+    },
+    "notification-templates": {
+      title: "Notification Templates",
+      View: sharedSettings.View,
+    },
   },
   VS: {
     appointments: {

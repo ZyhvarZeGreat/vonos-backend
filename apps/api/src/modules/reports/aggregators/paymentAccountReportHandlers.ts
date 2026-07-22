@@ -39,6 +39,7 @@ function txnDescription(parts: Array<string | null | undefined>): string {
 /** One grouped query for all account balances — avoids per-account N+1. */
 async function accountBalances(
   db: TenantScopedPrisma,
+  asOf?: Date,
 ): Promise<AccountBalance[]> {
   const accounts = await db.paymentAccount.findMany({
     where: { deletedAt: null },
@@ -53,6 +54,7 @@ async function accountBalances(
     where: {
       deletedAt: null,
       accountId: { in: accounts.map((a) => a.id) },
+      ...(asOf ? { operationDate: { lte: asOf } } : {}),
     },
     _sum: { amount: true },
   });
@@ -153,11 +155,12 @@ async function openingBalancesBefore(
 /** Balance sheet — liabilities vs assets snapshot. */
 export async function buildBalanceSheetReport(
   db: TenantScopedPrisma,
-  _from?: string,
-  _to?: string,
+  from?: string,
+  to?: string,
 ): Promise<ReportsDashboard> {
+  const window = resolveDateWindow(from, to);
   const [accounts, customerDue, supplierDue, closingStock] = await Promise.all([
-    accountBalances(db),
+    accountBalances(db, window.to),
     computeAllTimeOutstandingReceivables(db),
     computeSupplierDue(db),
     computeClosingStock(db),
@@ -317,6 +320,7 @@ export async function buildPaymentAccountReport(
   db: TenantScopedPrisma,
   from?: string,
   to?: string,
+  options?: { accountId?: string },
 ): Promise<ReportsDashboard> {
   const window = resolveDateWindow(from, to);
 
@@ -324,6 +328,7 @@ export async function buildPaymentAccountReport(
     where: {
       deletedAt: null,
       operationDate: { gte: window.from, lte: window.to },
+      ...(options?.accountId ? { accountId: options.accountId } : {}),
     },
     include: {
       account: { select: { name: true } },
@@ -340,10 +345,17 @@ export async function buildPaymentAccountReport(
     saleIds.length > 0
       ? await db.sale.findMany({
           where: { id: { in: saleIds }, deletedAt: null },
-          select: { id: true, reference: true },
+          select: {
+            id: true,
+            reference: true,
+            customer: { select: { name: true } },
+          },
         })
       : [];
   const saleRefById = new Map(sales.map((sale) => [sale.id, sale.reference]));
+  const saleCustomerById = new Map(
+    sales.map((sale) => [sale.id, sale.customer?.name ?? null]),
+  );
 
   const currency = 'NGN';
   let totalAmount = 0;
@@ -354,6 +366,9 @@ export async function buildPaymentAccountReport(
     const invoiceRef =
       row.invoice?.reference ??
       (row.saleId ? (saleRefById.get(row.saleId) ?? '—') : '—');
+    const customerName = row.saleId
+      ? saleCustomerById.get(row.saleId)
+      : null;
 
     return {
       id: row.id,
@@ -363,7 +378,9 @@ export async function buildPaymentAccountReport(
       amount: Math.round(amount),
       paymentType: row.subType ?? (row.type === 'credit' ? 'Credit' : 'Debit'),
       account: row.account.name,
+      createdBy: row.createdByName ?? '—',
       description: txnDescription([
+        customerName ? `Customer: ${customerName}` : null,
         row.note,
         row.paymentDetails ? `Details: ${row.paymentDetails}` : null,
       ]),
@@ -398,6 +415,7 @@ export async function buildPaymentAccountReport(
         { key: 'amount', header: 'Amount', totalAs: 'currency' },
         { key: 'paymentType', header: 'Payment Type' },
         { key: 'account', header: 'Account' },
+        { key: 'createdBy', header: 'Added By' },
         { key: 'description', header: 'Description' },
       ],
       rows,

@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import type {
   Brand,
   CreateBrandInput,
@@ -371,5 +371,248 @@ export class CatalogMetaService {
       createdAt: toIso(row.createdAt),
       updatedAt: toIso(row.updatedAt),
     };
+  }
+
+  async updateCategory(
+    id: string,
+    body: { name?: string; shortCode?: string | null; description?: string | null },
+  ): Promise<ProductCategory> {
+    const tenantId = this.tenantDb.requireTenantId();
+    const existing = await this.tenantDb.db.productCategory.findFirst({
+      where: { id, tenantId, deletedAt: null },
+    });
+    if (!existing) throw new NotFoundException('Category not found');
+    const row = await this.tenantDb.db.productCategory.update({
+      where: { id },
+      data: {
+        ...(body.name !== undefined ? { name: requireName(body.name) } : {}),
+        ...(body.shortCode !== undefined
+          ? { shortCode: body.shortCode?.trim() || null }
+          : {}),
+        ...(body.description !== undefined
+          ? { description: body.description?.trim() || null }
+          : {}),
+      },
+    });
+    await this.invalidateMetaCache('categories');
+    return {
+      id: row.id,
+      tenantId: row.tenantId,
+      name: row.name,
+      shortCode: row.shortCode,
+      parentId: row.parentId,
+      categoryType: row.categoryType,
+      description: row.description,
+      slug: row.slug,
+      createdAt: toIso(row.createdAt),
+      updatedAt: toIso(row.updatedAt),
+    };
+  }
+
+  async removeCategory(id: string): Promise<void> {
+    await this.softDeleteMeta('productCategory', id, 'categories');
+  }
+
+  async updateBrand(
+    id: string,
+    body: { name?: string; description?: string | null },
+  ): Promise<Brand> {
+    const tenantId = this.tenantDb.requireTenantId();
+    const existing = await this.tenantDb.db.brand.findFirst({
+      where: { id, tenantId, deletedAt: null },
+    });
+    if (!existing) throw new NotFoundException('Brand not found');
+    const row = await this.tenantDb.db.brand.update({
+      where: { id },
+      data: {
+        ...(body.name !== undefined ? { name: requireName(body.name) } : {}),
+        ...(body.description !== undefined
+          ? { description: body.description?.trim() || null }
+          : {}),
+      },
+    });
+    await this.invalidateMetaCache('brands');
+    return {
+      id: row.id,
+      tenantId: row.tenantId,
+      name: row.name,
+      description: row.description,
+      createdAt: toIso(row.createdAt),
+      updatedAt: toIso(row.updatedAt),
+    };
+  }
+
+  async removeBrand(id: string): Promise<void> {
+    await this.softDeleteMeta('brand', id, 'brands');
+  }
+
+  async updateUnit(
+    id: string,
+    body: { name?: string; shortName?: string; allowDecimal?: boolean },
+  ): Promise<ProductUnit> {
+    const tenantId = this.tenantDb.requireTenantId();
+    const existing = await this.tenantDb.db.productUnit.findFirst({
+      where: { id, tenantId, deletedAt: null },
+    });
+    if (!existing) throw new NotFoundException('Unit not found');
+    const row = await this.tenantDb.db.productUnit.update({
+      where: { id },
+      data: {
+        ...(body.name !== undefined ? { name: requireName(body.name) } : {}),
+        ...(body.shortName !== undefined
+          ? { shortName: requireName(body.shortName, 'Short name') }
+          : {}),
+        ...(body.allowDecimal !== undefined
+          ? { allowDecimal: Boolean(body.allowDecimal) }
+          : {}),
+      },
+    });
+    await this.invalidateMetaCache('units');
+    return {
+      id: row.id,
+      tenantId: row.tenantId,
+      name: row.name,
+      shortName: row.shortName,
+      allowDecimal: row.allowDecimal,
+      createdAt: toIso(row.createdAt),
+      updatedAt: toIso(row.updatedAt),
+    };
+  }
+
+  async removeUnit(id: string): Promise<void> {
+    await this.softDeleteMeta('productUnit', id, 'units');
+  }
+
+  async updateWarranty(
+    id: string,
+    body: {
+      name?: string;
+      description?: string | null;
+      duration?: number;
+      durationType?: Warranty['durationType'];
+    },
+  ): Promise<Warranty> {
+    const tenantId = this.tenantDb.requireTenantId();
+    const existing = await this.tenantDb.db.warranty.findFirst({
+      where: { id, tenantId, deletedAt: null },
+    });
+    if (!existing) throw new NotFoundException('Warranty not found');
+    if (
+      body.durationType !== undefined &&
+      !WARRANTY_DURATION_TYPES.has(body.durationType)
+    ) {
+      throw new BadRequestException('Duration type must be days, months, or years');
+    }
+    const row = await this.tenantDb.db.warranty.update({
+      where: { id },
+      data: {
+        ...(body.name !== undefined ? { name: requireName(body.name) } : {}),
+        ...(body.description !== undefined
+          ? { description: body.description?.trim() || null }
+          : {}),
+        ...(body.duration !== undefined
+          ? { duration: Math.floor(Number(body.duration)) }
+          : {}),
+        ...(body.durationType !== undefined
+          ? { durationType: body.durationType }
+          : {}),
+      },
+    });
+    await this.invalidateMetaCache('warranties');
+    return {
+      id: row.id,
+      tenantId: row.tenantId,
+      name: row.name,
+      description: row.description,
+      duration: row.duration,
+      durationType: row.durationType as Warranty['durationType'],
+      createdAt: toIso(row.createdAt),
+      updatedAt: toIso(row.updatedAt),
+    };
+  }
+
+  async removeWarranty(id: string): Promise<void> {
+    await this.softDeleteMeta('warranty', id, 'warranties');
+  }
+
+  async updatePriceGroup(
+    id: string,
+    body: { name?: string; description?: string | null; isActive?: boolean },
+  ): Promise<SellingPriceGroup> {
+    const tenantId = this.tenantDb.requireTenantId();
+    const existing = await this.tenantDb.db.sellingPriceGroup.findFirst({
+      where: { id, tenantId, deletedAt: null },
+    });
+    if (!existing) throw new NotFoundException('Price group not found');
+    const row = await this.tenantDb.db.sellingPriceGroup.update({
+      where: { id },
+      data: {
+        ...(body.name !== undefined ? { name: requireName(body.name) } : {}),
+        ...(body.description !== undefined
+          ? { description: body.description?.trim() || null }
+          : {}),
+        ...(body.isActive !== undefined ? { isActive: Boolean(body.isActive) } : {}),
+      },
+    });
+    await this.invalidateMetaCache('price-groups');
+    return {
+      id: row.id,
+      tenantId: row.tenantId,
+      name: row.name,
+      description: row.description,
+      isActive: row.isActive,
+      createdAt: toIso(row.createdAt),
+      updatedAt: toIso(row.updatedAt),
+    };
+  }
+
+  async removePriceGroup(id: string): Promise<void> {
+    await this.softDeleteMeta('sellingPriceGroup', id, 'price-groups');
+  }
+
+  private async softDeleteMeta(
+    model: 'productCategory' | 'brand' | 'productUnit' | 'warranty' | 'sellingPriceGroup',
+    id: string,
+    cacheKind: string,
+  ): Promise<void> {
+    const tenantId = this.tenantDb.requireTenantId();
+    const db = this.tenantDb.db;
+    const where = { id, tenantId, deletedAt: null };
+    let existing: { id: string } | null = null;
+    switch (model) {
+      case 'productCategory':
+        existing = await db.productCategory.findFirst({ where, select: { id: true } });
+        if (!existing) throw new NotFoundException('Record not found');
+        await db.productCategory.update({ where: { id }, data: { deletedAt: new Date() } });
+        break;
+      case 'brand':
+        existing = await db.brand.findFirst({ where, select: { id: true } });
+        if (!existing) throw new NotFoundException('Record not found');
+        await db.brand.update({ where: { id }, data: { deletedAt: new Date() } });
+        break;
+      case 'productUnit':
+        existing = await db.productUnit.findFirst({ where, select: { id: true } });
+        if (!existing) throw new NotFoundException('Record not found');
+        await db.productUnit.update({ where: { id }, data: { deletedAt: new Date() } });
+        break;
+      case 'warranty':
+        existing = await db.warranty.findFirst({ where, select: { id: true } });
+        if (!existing) throw new NotFoundException('Record not found');
+        await db.warranty.update({ where: { id }, data: { deletedAt: new Date() } });
+        break;
+      case 'sellingPriceGroup':
+        existing = await db.sellingPriceGroup.findFirst({ where, select: { id: true } });
+        if (!existing) throw new NotFoundException('Record not found');
+        await db.sellingPriceGroup.update({
+          where: { id },
+          data: { deletedAt: new Date() },
+        });
+        break;
+      default: {
+        const _exhaustive: never = model;
+        return _exhaustive;
+      }
+    }
+    await this.invalidateMetaCache(cacheKind);
   }
 }
