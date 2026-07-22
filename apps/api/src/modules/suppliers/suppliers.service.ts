@@ -24,6 +24,7 @@ import {
   toNumber,
 } from '../../common/utils/serializers';
 import {
+  computeSupplierPurchaseRollupsForIds,
   refreshSupplierPurchaseRollups,
   supplierActivityStatus,
 } from '../../common/utils/supplierRollups';
@@ -170,7 +171,18 @@ export class SuppliersService {
       this.tenantDb.db.supplier.count({ where: baseWhere }),
     ]);
 
-    if (rows.length === 0) return { items: [], totalCount };
+    if (rows.length === 0) {
+      return {
+        items: [],
+        totalCount,
+        amountSummary: {
+          totalAmount: 0,
+          totalPaid: 0,
+          totalDue: 0,
+          currency: 'NGN',
+        },
+      };
+    }
 
     const legacyIds = await this.tenantDb.db.migrationLegacyId.findMany({
       where: {
@@ -184,11 +196,90 @@ export class SuppliersService {
       legacyIds.map((l) => [l.newId, `CO${String(l.legacyId).padStart(4, '0')}`]),
     );
 
+    // Overlay live purchase totals — denormalized columns are often still 0 after migration.
+    const liveRollups = await computeSupplierPurchaseRollupsForIds(
+      this.tenantDb.db,
+      rows.map((row) => row.id),
+    );
+
+    // Persist corrected rollups in the background so filters stay accurate.
+    void Promise.all(
+      rows.map(async (row) => {
+        const live = liveRollups.get(row.id);
+        if (!live) return;
+        if (
+          toNumber(row.totalPurchase) === live.totalPurchase &&
+          toNumber(row.totalPurchaseDue) === live.totalPurchaseDue &&
+          toNumber(row.totalPurchasePaid) === live.totalPurchasePaid
+        ) {
+          return;
+        }
+        await this.tenantDb.db.supplier.update({
+          where: { id: row.id },
+          data: {
+            totalPurchase: live.totalPurchase,
+            totalPurchaseDue: live.totalPurchaseDue,
+            totalPurchasePaid: live.totalPurchasePaid,
+            totalPurchaseReturn: live.totalPurchaseReturn,
+            totalAdvance: live.totalAdvance,
+            lastPurchaseAt: live.lastPurchaseAt,
+          },
+        });
+      }),
+    ).catch(() => undefined);
+
+    // Filtered totals across all matching suppliers (not just this page).
+    const matchingIds =
+      totalCount <= 2500
+        ? (
+            await this.tenantDb.db.supplier.findMany({
+              where: baseWhere,
+              select: { id: true },
+            })
+          ).map((row) => row.id)
+        : rows.map((row) => row.id);
+    const summaryRollups =
+      matchingIds.length === rows.length
+        ? liveRollups
+        : await computeSupplierPurchaseRollupsForIds(
+            this.tenantDb.db,
+            matchingIds,
+          );
+    let totalAmount = 0;
+    let totalDue = 0;
+    let totalPaid = 0;
+    for (const id of matchingIds) {
+      const live = summaryRollups.get(id);
+      if (!live) continue;
+      totalAmount += live.totalPurchase;
+      totalDue += live.totalPurchaseDue;
+      totalPaid += live.totalPurchasePaid;
+    }
+
     return {
-      items: rows.map((row) =>
-        toListRow(row, { contactId: legacyById.get(row.id) ?? null }),
-      ),
+      items: rows.map((row) => {
+        const live = liveRollups.get(row.id);
+        return toListRow(
+          live
+            ? {
+                ...row,
+                totalPurchase: live.totalPurchase,
+                totalPurchaseDue: live.totalPurchaseDue,
+                totalPurchasePaid: live.totalPurchasePaid,
+                totalPurchaseReturn: live.totalPurchaseReturn,
+                totalAdvance: live.totalAdvance,
+              }
+            : row,
+          { contactId: legacyById.get(row.id) ?? null },
+        );
+      }),
       totalCount,
+      amountSummary: {
+        totalAmount,
+        totalDue,
+        totalPaid,
+        currency: 'NGN',
+      },
     };
   }
 
@@ -208,6 +299,12 @@ export class SuppliersService {
 
   async getById(id: string): Promise<SupplierListRow> {
     const tenantId = this.tenantDb.requireTenantId();
+    const existing = await this.tenantDb.db.supplier.findFirst({
+      where: { id, tenantId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!existing) throw new NotFoundException('Supplier not found');
+    await refreshSupplierPurchaseRollups(this.tenantDb.db, id);
     const row = await this.tenantDb.db.supplier.findFirst({
       where: { id, tenantId, deletedAt: null },
       include: { assignedToUser: { select: { name: true } } },
@@ -318,6 +415,12 @@ export class SuppliersService {
 
   async getSummary(id: string): Promise<ContactDueSummary> {
     const tenantId = this.tenantDb.requireTenantId();
+    const existing = await this.tenantDb.db.supplier.findFirst({
+      where: { id, tenantId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!existing) throw new NotFoundException('Supplier not found');
+    await refreshSupplierPurchaseRollups(this.tenantDb.db, id);
     const row = await this.tenantDb.db.supplier.findFirst({
       where: { id, tenantId, deletedAt: null },
       select: {

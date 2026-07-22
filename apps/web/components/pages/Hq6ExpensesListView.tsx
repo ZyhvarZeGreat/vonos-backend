@@ -17,6 +17,7 @@ import {
   Hq6FilterSelect,
 } from "@/components/hq6/Hq6FilterFields";
 import { Hq6ListToolbar } from "@/components/hq6/Hq6ListToolbar";
+import { Hq6ListAmountFooter } from "@/components/hq6/Hq6ListAmountFooter";
 import { Hq6Modal, Hq6ModalSaveClose } from "@/components/hq6/Hq6Modal";
 import { Hq6PrintModal } from "@/components/hq6/Hq6PrintModal";
 import {
@@ -114,6 +115,7 @@ export function Hq6ExpensesListView() {
     items,
     hasMore,
     totalCount,
+    amountSummary,
     pageIndex,
     pageSize,
     canGoPrev,
@@ -441,14 +443,39 @@ export function Hq6ExpensesListView() {
               emptyState={{ message: "No expenses found." }}
             />
             {items.length > 0 ? (
-              <div className="flex border-t border-[var(--hq6-border)] bg-[#f9fafb] text-xs font-bold text-[#374151]">
-                <div className="min-w-0 flex-1 px-3 py-2">Total:</div>
-                <div className="w-[7.5rem] shrink-0 px-2 py-2 text-right tabular-nums">
-                  {formatHq6Currency(totals.totalAmount, "NGN")}
-                </div>
-                <div className="w-[7.5rem] shrink-0 px-2 py-2 text-right tabular-nums">
-                  {formatHq6Currency(totals.paymentDue, "NGN")}
-                </div>
+              <div className="space-y-0">
+                {amountSummary ? (
+                  <Hq6ListAmountFooter
+                    title="All matching"
+                    cells={[
+                      {
+                        label: "Total",
+                        amount: amountSummary.totalAmount ?? 0,
+                        currency: "NGN",
+                      },
+                      {
+                        label: "Due",
+                        amount: amountSummary.totalDue ?? 0,
+                        currency: "NGN",
+                      },
+                    ]}
+                  />
+                ) : null}
+                <Hq6ListAmountFooter
+                  title="Page total"
+                  cells={[
+                    {
+                      label: "Total",
+                      amount: totals.totalAmount,
+                      currency: "NGN",
+                    },
+                    {
+                      label: "Due",
+                      amount: totals.paymentDue,
+                      currency: "NGN",
+                    },
+                  ]}
+                />
               </div>
             ) : null}
           </div>

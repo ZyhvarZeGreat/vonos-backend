@@ -38,6 +38,7 @@ import {
 } from "@/lib/registries/hq6TableRows";
 import { useUiStore } from "@/stores/uiStore";
 import { toast } from "@/stores/toastStore";
+import { Hq6ListAmountFooter } from "@/components/hq6/Hq6ListAmountFooter";
 import { formatHq6Currency, formatHq6Date, hq6Cell } from "@/lib/utils/hq6Format";
 import { nameListCursor } from "@/lib/utils/pagination";
 
@@ -102,6 +103,7 @@ export function Hq6SuppliersListView() {
     items: suppliers,
     hasMore,
     totalCount,
+    amountSummary,
     pageIndex,
     pageSize,
     canGoPrev,
@@ -272,6 +274,24 @@ export function Hq6SuppliersListView() {
         render: (r) => formatHq6Currency(r.openingBalance ?? 0),
       },
       {
+        key: "totalPurchase",
+        header: "Total Purchase",
+        sortValue: (r) => r.totalPurchase ?? 0,
+        render: (r) => formatHq6Currency(r.totalPurchase ?? 0),
+      },
+      {
+        key: "totalPurchaseDue",
+        header: "Total Purchase Due",
+        sortValue: (r) => r.totalPurchaseDue ?? 0,
+        render: (r) => formatHq6Currency(r.totalPurchaseDue ?? 0),
+      },
+      {
+        key: "totalPurchasePaid",
+        header: "Purchase Paid",
+        sortValue: (r) => r.totalPurchasePaid ?? 0,
+        render: (r) => formatHq6Currency(r.totalPurchasePaid ?? 0),
+      },
+      {
         key: "advanceBalance",
         header: "Advance Balance",
         sortValue: (r) => r.totalAdvance ?? 0,
@@ -288,12 +308,6 @@ export function Hq6SuppliersListView() {
         key: "address",
         header: "Address",
         render: (r) => hq6Cell(r.address),
-      },
-      {
-        key: "totalPurchaseDue",
-        header: "Total Purchase Due",
-        sortValue: (r) => r.totalPurchaseDue ?? 0,
-        render: (r) => formatHq6Currency(r.totalPurchaseDue ?? 0),
       },
       {
         key: "totalPurchaseReturn",
@@ -361,6 +375,18 @@ export function Hq6SuppliersListView() {
     </Hq6FilterStack>
   );
 
+  const pageTotals = useMemo(() => {
+    let totalPurchase = 0;
+    let totalDue = 0;
+    let totalPaid = 0;
+    for (const row of suppliers) {
+      totalPurchase += row.totalPurchase ?? 0;
+      totalDue += row.totalPurchaseDue ?? 0;
+      totalPaid += row.totalPurchasePaid ?? 0;
+    }
+    return { totalPurchase, totalDue, totalPaid };
+  }, [suppliers]);
+
   return (
     <>
       <Hq6StandardListShell
@@ -376,6 +402,33 @@ export function Hq6SuppliersListView() {
         searchValue={localSearch}
         onSearchChange={setLocalSearch}
         onSearchCommit={commitSearch}
+        tableFooter={
+          suppliers.length > 0 ? (
+            <div className="space-y-0">
+              {amountSummary ? (
+                <Hq6ListAmountFooter
+                  title="All matching"
+                  cells={[
+                    {
+                      label: "Purchase",
+                      amount: amountSummary.totalAmount ?? 0,
+                    },
+                    { label: "Due", amount: amountSummary.totalDue ?? 0 },
+                    { label: "Paid", amount: amountSummary.totalPaid ?? 0 },
+                  ]}
+                />
+              ) : null}
+              <Hq6ListAmountFooter
+                title="Page total"
+                cells={[
+                  { label: "Purchase", amount: pageTotals.totalPurchase },
+                  { label: "Due", amount: pageTotals.totalDue },
+                  { label: "Paid", amount: pageTotals.totalPaid },
+                ]}
+              />
+            </div>
+          ) : null
+        }
         pagination={{
           pageIndex,
           pageSize,

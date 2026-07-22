@@ -117,6 +117,7 @@ export function useServerListPage<T extends { id: string }>({
   const items = pageQuery.data?.items ?? [];
   const hasMore = pageQuery.data?.hasMore ?? false;
   const totalCount = pageQuery.data?.totalCount;
+  const amountSummary = pageQuery.data?.amountSummary;
 
   const handleNext = () => {
     const last = items[items.length - 1];
@@ -200,6 +201,7 @@ export function useServerListPage<T extends { id: string }>({
     items,
     hasMore,
     totalCount,
+    amountSummary,
     pageIndex,
     pageSize,
     canGoPrev,

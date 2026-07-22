@@ -11,6 +11,7 @@ import { CacheService } from '../../common/cache/cache.service';
 import { invalidateTenantDashboardCache } from '../../common/cache/cacheInvalidation';
 import { applyDailyFinanceDelta } from '../../common/utils/dailyFinanceRollup';
 import { buildCompositeCursorQuery } from '../../common/utils/pagination';
+import type { PaginatedList } from '../../common/utils/paginatedList';
 import { toIso, toNumber } from '../../common/utils/serializers';
 import { InvoiceHubService } from '../invoices/invoice-hub.service';
 
@@ -68,7 +69,7 @@ export class ExpensesService {
     createdById?: string;
     categoryId?: string;
     paymentStatus?: string;
-  } = {}): Promise<Expense[]> {
+  } = {}): Promise<PaginatedList<Expense>> {
     const tenantId = this.tenantDb.requireTenantId();
     const dateFilter =
       filters.from || filters.to
@@ -86,60 +87,79 @@ export class ExpensesService {
       limit: filters.limit ?? 10,
       sortValueType: 'date',
     });
-    const rows = await this.tenantDb.db.expense.findMany({
-      where: {
-        tenantId,
-        deletedAt: null,
-        ...dateFilter,
-        ...(filters.locationCode
-          ? { locationCode: filters.locationCode }
-          : {}),
-        ...(filters.expenseForCustomerId
-          ? { expenseForCustomerId: filters.expenseForCustomerId }
-          : {}),
-        ...(filters.contactCustomerId
-          ? { contactCustomerId: filters.contactCustomerId }
-          : {}),
-        ...(filters.createdById ? { createdById: filters.createdById } : {}),
-        ...(filters.categoryId ? { categoryId: filters.categoryId } : {}),
-        ...(filters.paymentStatus
-          ? { paymentStatus: filters.paymentStatus }
-          : {}),
-        ...(filters.search
-          ? {
-              OR: [
-                { refNo: { contains: filters.search, mode: 'insensitive' } },
-                {
-                  contactName: {
+    const baseWhere = {
+      tenantId,
+      deletedAt: null as null,
+      ...dateFilter,
+      ...(filters.locationCode
+        ? { locationCode: filters.locationCode }
+        : {}),
+      ...(filters.expenseForCustomerId
+        ? { expenseForCustomerId: filters.expenseForCustomerId }
+        : {}),
+      ...(filters.contactCustomerId
+        ? { contactCustomerId: filters.contactCustomerId }
+        : {}),
+      ...(filters.createdById ? { createdById: filters.createdById } : {}),
+      ...(filters.categoryId ? { categoryId: filters.categoryId } : {}),
+      ...(filters.paymentStatus
+        ? { paymentStatus: filters.paymentStatus }
+        : {}),
+      ...(filters.search
+        ? {
+            OR: [
+              { refNo: { contains: filters.search, mode: 'insensitive' as const } },
+              {
+                contactName: {
+                  contains: filters.search,
+                  mode: 'insensitive' as const,
+                },
+              },
+              { note: { contains: filters.search, mode: 'insensitive' as const } },
+              {
+                category: {
+                  name: {
                     contains: filters.search,
-                    mode: 'insensitive',
+                    mode: 'insensitive' as const,
                   },
                 },
-                { note: { contains: filters.search, mode: 'insensitive' } },
-                {
-                  category: {
-                    name: { contains: filters.search, mode: 'insensitive' },
+              },
+              {
+                expenseForCustomer: {
+                  name: {
+                    contains: filters.search,
+                    mode: 'insensitive' as const,
                   },
                 },
-                {
-                  expenseForCustomer: {
-                    name: { contains: filters.search, mode: 'insensitive' },
+              },
+              {
+                contactCustomer: {
+                  name: {
+                    contains: filters.search,
+                    mode: 'insensitive' as const,
                   },
                 },
-                {
-                  contactCustomer: {
-                    name: { contains: filters.search, mode: 'insensitive' },
-                  },
-                },
-              ],
-            }
-          : {}),
-        ...(pagination.where ?? {}),
-      },
-      include: expenseInclude,
-      orderBy: [{ expenseDate: 'desc' }, { id: 'desc' }],
-      take: pagination.take,
-    });
+              },
+            ],
+          }
+        : {}),
+    };
+    const [rows, totalCount, amountAgg] = await Promise.all([
+      this.tenantDb.db.expense.findMany({
+        where: {
+          ...baseWhere,
+          ...(pagination.where ?? {}),
+        },
+        include: expenseInclude,
+        orderBy: [{ expenseDate: 'desc' }, { id: 'desc' }],
+        take: pagination.take,
+      }),
+      this.tenantDb.db.expense.count({ where: baseWhere }),
+      this.tenantDb.db.expense.aggregate({
+        where: baseWhere,
+        _sum: { totalAmount: true, paymentDue: true },
+      }),
+    ]);
     const userIds = [
       ...new Set(rows.map((r) => r.createdById).filter((id): id is string => Boolean(id))),
     ];
@@ -151,9 +171,17 @@ export class ExpensesService {
           })
         : [];
     const userNames = new Map(users.map((u) => [u.id, u.name]));
-    return rows.map((row) =>
-      this.serializeExpense(row, userNames.get(row.createdById ?? '') ?? null),
-    );
+    return {
+      items: rows.map((row) =>
+        this.serializeExpense(row, userNames.get(row.createdById ?? '') ?? null),
+      ),
+      totalCount,
+      amountSummary: {
+        totalAmount: toNumber(amountAgg._sum.totalAmount),
+        totalDue: toNumber(amountAgg._sum.paymentDue),
+        currency: 'NGN',
+      },
+    };
   }
 
   async createExpense(dto: CreateExpenseRequest): Promise<Expense> {

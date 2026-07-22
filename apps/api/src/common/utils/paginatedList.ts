@@ -1,9 +1,17 @@
 import type { Prisma } from '@prisma/client';
 
 /** Shared list envelope for cursor-paginated endpoints. */
+export interface ListAmountSummary {
+  totalAmount?: number;
+  totalPaid?: number;
+  totalDue?: number;
+  currency?: string;
+}
+
 export interface PaginatedList<T> {
   items: T[];
   totalCount: number;
+  amountSummary?: ListAmountSummary;
 }
 
 export function isPaginatedList<T>(

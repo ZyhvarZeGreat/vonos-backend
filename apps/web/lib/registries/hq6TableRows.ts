@@ -68,11 +68,13 @@ export const HQ6_CUSTOMER_COLUMNS: Hq6ColumnSpec[] = [
   { key: "creditLimit", header: "Credit Limit", defaultVisible: true },
   { key: "payTerm", header: "Pay term", defaultVisible: true },
   { key: "openingBalance", header: "Opening Balance", defaultVisible: true },
+  { key: "totalSell", header: "Total Sale", defaultVisible: true },
+  { key: "totalSellDue", header: "Total Sale Due", defaultVisible: true },
+  { key: "totalSellPaid", header: "Sale Paid", defaultVisible: true },
   { key: "advanceBalance", header: "Advance Balance", defaultVisible: true },
   { key: "createdAt", header: "Added On", defaultVisible: true },
   { key: "customerGroup", header: "Customer Group", defaultVisible: true },
   { key: "phone", header: "Mobile", defaultVisible: false },
-  { key: "totalSellDue", header: "Total Sale Due", defaultVisible: false },
   { key: "totalSellReturn", header: "Total Sell Return Due", defaultVisible: false },
 ];
 
@@ -96,11 +98,13 @@ export const HQ6_SUPPLIER_COLUMNS: Hq6ColumnSpec[] = [
   { key: "taxNumber", header: "Tax number", defaultVisible: true },
   { key: "payTerm", header: "Pay term", defaultVisible: true },
   { key: "openingBalance", header: "Opening Balance", defaultVisible: true },
+  { key: "totalPurchase", header: "Total Purchase", defaultVisible: true },
+  { key: "totalPurchaseDue", header: "Total Purchase Due", defaultVisible: true },
+  { key: "totalPurchasePaid", header: "Purchase Paid", defaultVisible: true },
   { key: "advanceBalance", header: "Advance Balance", defaultVisible: true },
   { key: "createdAt", header: "Added On", defaultVisible: true },
   { key: "phone", header: "Mobile", defaultVisible: false },
   { key: "address", header: "Address", defaultVisible: false },
-  { key: "totalPurchaseDue", header: "Total Purchase Due", defaultVisible: false },
   { key: "totalPurchaseReturn", header: "Total Purchase Return Due", defaultVisible: false },
 ];
 

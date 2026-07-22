@@ -337,7 +337,10 @@ def write_postgres(
         stats["suppliers"] = _insert_rows(
             cur,
             "Supplier",
-            ["id", "tenantId", "name", "contactName", "email", "phone", "address", "createdByUserId", "createdByName", "createdAt", "updatedAt"],
+            [
+                "id", "tenantId", "name", "contactName", "email", "phone", "address",
+                "openingBalance", "createdByUserId", "createdByName", "createdAt", "updatedAt",
+            ],
             result.suppliers,
             progress=progress,
         )

@@ -19,6 +19,13 @@ export interface ListPage<T> {
   pageSize: number;
   /** Filtered row count from the API (cursor lists). */
   totalCount?: number;
+  /** Filtered money totals across the whole matching set (not just the page). */
+  amountSummary?: {
+    totalAmount?: number;
+    totalPaid?: number;
+    totalDue?: number;
+    currency?: string;
+  };
 }
 
 export type ListSortDirection = "asc" | "desc";
@@ -34,6 +41,7 @@ type ListApiPayload<T> =
       items: T[];
       totalCount?: number;
       hasMore?: boolean;
+      amountSummary?: ListPage<T>["amountSummary"];
     };
 
 function normalizeListPayload<T extends { id: string }>(
@@ -53,6 +61,7 @@ function normalizeListPayload<T extends { id: string }>(
     hasMore: payload.hasMore ?? items.length >= limit,
     pageSize: limit,
     totalCount: payload.totalCount,
+    amountSummary: payload.amountSummary,
   };
 }
 

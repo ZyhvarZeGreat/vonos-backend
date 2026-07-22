@@ -209,53 +209,70 @@ export class SalesService {
         : {}),
     };
 
-    const [rows, totalCount] = await Promise.all([
-      this.tenantDb.db.sale.findMany({
-      where: {
-        ...baseWhere,
-        ...(pagination.where ?? {}),
-      },
-      select: {
-        id: true,
-        tenantId: true,
-        reference: true,
-        customerId: true,
-        customer: { select: { name: true, phone: true } },
-        jobId: true,
-        job: { select: { reference: true } },
-        total: true,
-        discountAmount: true,
-        taxAmount: true,
-        notes: true,
-        originalSaleId: true,
-        currency: true,
-        status: true,
-        paymentStatus: true,
-        paymentMethod: true,
-        payments: {
-          where: { deletedAt: null, isReturn: false },
-          select: { amount: true },
-        },
-        cleanerUserId: true,
-        cleanerName: true,
-        serviceStaffEmployeeId: true,
-        serviceStaffEmployee: { select: { name: true } },
-        locationCode: true,
-        shippingStatus: true,
-        shippingAddress: true,
-        trackingNumber: true,
-        date: true,
-        createdByUserId: true,
-        createdByName: true,
-        createdAt: true,
-        updatedAt: true,
-        _count: { select: { lines: true } },
-      },
-      orderBy: [{ [sort.sortField]: sort.sortDir }, { id: sort.sortDir }],
-      take: pagination.take,
-    }),
-      this.tenantDb.db.sale.count({ where: baseWhere }),
-    ]);
+    const [rows, totalCount, saleAmountAgg, paymentAmountAgg] =
+      await Promise.all([
+        this.tenantDb.db.sale.findMany({
+          where: {
+            ...baseWhere,
+            ...(pagination.where ?? {}),
+          },
+          select: {
+            id: true,
+            tenantId: true,
+            reference: true,
+            customerId: true,
+            customer: { select: { name: true, phone: true } },
+            jobId: true,
+            job: { select: { reference: true } },
+            total: true,
+            discountAmount: true,
+            taxAmount: true,
+            notes: true,
+            originalSaleId: true,
+            currency: true,
+            status: true,
+            paymentStatus: true,
+            paymentMethod: true,
+            payments: {
+              where: { deletedAt: null, isReturn: false },
+              select: { amount: true },
+            },
+            cleanerUserId: true,
+            cleanerName: true,
+            serviceStaffEmployeeId: true,
+            serviceStaffEmployee: { select: { name: true } },
+            locationCode: true,
+            shippingStatus: true,
+            shippingAddress: true,
+            trackingNumber: true,
+            date: true,
+            createdByUserId: true,
+            createdByName: true,
+            createdAt: true,
+            updatedAt: true,
+            _count: { select: { lines: true } },
+          },
+          orderBy: [{ [sort.sortField]: sort.sortDir }, { id: sort.sortDir }],
+          take: pagination.take,
+        }),
+        this.tenantDb.db.sale.count({ where: baseWhere }),
+        this.tenantDb.db.sale.aggregate({
+          where: baseWhere,
+          _sum: { total: true },
+        }),
+        this.tenantDb.db.payment.aggregate({
+          where: {
+            deletedAt: null,
+            isReturn: false,
+            sale: baseWhere,
+          },
+          _sum: { amount: true },
+        }),
+      ]);
+
+    const totalAmount = toNumber(saleAmountAgg._sum.total);
+    const totalPaid = toNumber(paymentAmountAgg._sum.amount);
+    const totalDue = Math.max(0, totalAmount - totalPaid);
 
     const ms = Date.now() - startedAt;
     if (ms > 500) {
@@ -267,6 +284,12 @@ export class SalesService {
     return {
       items: rows.map((row) => this.toSale(row)),
       totalCount,
+      amountSummary: {
+        totalAmount,
+        totalPaid,
+        totalDue,
+        currency: 'NGN',
+      },
     };
   }
 

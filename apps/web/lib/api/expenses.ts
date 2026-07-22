@@ -38,7 +38,7 @@ async function fetchExpensesRaw(
   cursor?: string,
   limit?: number,
   extra?: ExpenseListFilters,
-): Promise<Expense[]> {
+): Promise<Expense[] | { items: Expense[]; totalCount?: number }> {
   const tenantPath = withTenantQuery(EXPENSES_PATH, tenantId);
   const url = appendListQuery(tenantPath, { cursor, limit, ...extra });
   const res = await apiFetch(url);

@@ -9,7 +9,16 @@ type SaleRollupRow = {
   payments: { amount: Prisma.Decimal }[];
 };
 
-function saleTotalsFromRows(sales: SaleRollupRow[]) {
+export type CustomerFinancialRollupTotals = {
+  totalSell: number;
+  totalSellDue: number;
+  totalSellPaid: number;
+  totalSellReturn: number;
+  totalAdvance: number;
+  visitCount: number;
+};
+
+function saleTotalsFromRows(sales: SaleRollupRow[]): CustomerFinancialRollupTotals {
   let totalSell = 0;
   let totalSellDue = 0;
   let totalSellPaid = 0;
@@ -32,9 +41,15 @@ function saleTotalsFromRows(sales: SaleRollupRow[]) {
     }
 
     totalSell += total;
-    totalSellPaid += paid;
-    if (sale.paymentStatus === 'due' || sale.paymentStatus === 'partial') {
-      totalSellDue += Math.max(0, total - paid);
+    const effectivePaid =
+      paid > 0 ? paid : sale.paymentStatus === 'paid' ? total : 0;
+    totalSellPaid += effectivePaid;
+    if (
+      sale.paymentStatus === 'due' ||
+      sale.paymentStatus === 'partial' ||
+      sale.paymentStatus == null
+    ) {
+      totalSellDue += Math.max(0, total - effectivePaid);
     }
   }
 
@@ -56,11 +71,57 @@ function saleTotalsFromRows(sales: SaleRollupRow[]) {
   };
 }
 
+/** Live financial rollups for a page of customers. */
+export async function computeCustomerFinancialRollupsForIds(
+  db: TenantScopedPrisma,
+  customerIds: string[],
+): Promise<Map<string, CustomerFinancialRollupTotals>> {
+  const out = new Map<string, CustomerFinancialRollupTotals>();
+  for (const id of customerIds) {
+    out.set(id, {
+      totalSell: 0,
+      totalSellDue: 0,
+      totalSellPaid: 0,
+      totalSellReturn: 0,
+      totalAdvance: 0,
+      visitCount: 0,
+    });
+  }
+  if (customerIds.length === 0) return out;
+
+  const sales = await db.sale.findMany({
+    where: { customerId: { in: customerIds }, deletedAt: null },
+    select: {
+      customerId: true,
+      total: true,
+      status: true,
+      paymentStatus: true,
+      payments: {
+        where: { deletedAt: null },
+        select: { amount: true },
+      },
+    },
+  });
+
+  const byCustomer = new Map<string, SaleRollupRow[]>();
+  for (const sale of sales) {
+    if (!sale.customerId) continue;
+    const list = byCustomer.get(sale.customerId) ?? [];
+    list.push(sale);
+    byCustomer.set(sale.customerId, list);
+  }
+
+  for (const [customerId, rows] of byCustomer) {
+    out.set(customerId, saleTotalsFromRows(rows));
+  }
+  return out;
+}
+
 /** Recompute denormalized customer financial rollups from sales history. */
 export async function refreshCustomerFinancialRollups(
   db: TenantScopedPrisma,
   customerId: string,
-): Promise<void> {
+): Promise<CustomerFinancialRollupTotals> {
   const sales = await db.sale.findMany({
     where: { customerId, deletedAt: null },
     select: {
@@ -79,4 +140,5 @@ export async function refreshCustomerFinancialRollups(
     where: { id: customerId },
     data: totals,
   });
+  return totals;
 }

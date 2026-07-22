@@ -16,6 +16,7 @@ import { DataTable, type ColumnConfig } from "@/components/organisms/DataTable";
 import { SaleRecordModal } from "@/components/organisms/SaleRecordModal";
 import { Hq6ActionsMenu } from "@/components/hq6/Hq6ActionsMenu";
 import { Hq6ConfirmModal } from "@/components/hq6/Hq6ConfirmModal";
+import { Hq6ListAmountFooter } from "@/components/hq6/Hq6ListAmountFooter";
 import { Hq6Modal, Hq6ModalSaveClose } from "@/components/hq6/Hq6Modal";
 import {
   Hq6FilterDateRange,
@@ -134,6 +135,7 @@ export function Hq6SalesListView({
     items: sales,
     hasMore,
     totalCount,
+    amountSummary,
     pageIndex,
     pageSize,
     canGoPrev,
@@ -526,17 +528,49 @@ export function Hq6SalesListView({
         }
         tableFooter={
           sales.length > 0 ? (
-            <div className="flex border-t border-[var(--hq6-border)] bg-[#f9fafb] text-xs font-bold text-[#374151]">
-              <div className="min-w-0 flex-1 px-3 py-2">Total:</div>
-              <div className="w-[7.5rem] shrink-0 px-2 py-2 text-right tabular-nums">
-                {formatHq6Currency(totals.totalAmount, sales[0]?.currency)}
-              </div>
-              <div className="w-[7.5rem] shrink-0 px-2 py-2 text-right tabular-nums">
-                {formatHq6Currency(totals.totalPaid, sales[0]?.currency)}
-              </div>
-              <div className="w-[7.5rem] shrink-0 px-2 py-2 text-right tabular-nums">
-                {formatHq6Currency(totals.totalDue, sales[0]?.currency)}
-              </div>
+            <div className="space-y-0">
+              {amountSummary ? (
+                <Hq6ListAmountFooter
+                  title="All matching"
+                  cells={[
+                    {
+                      label: "Total",
+                      amount: amountSummary.totalAmount ?? 0,
+                      currency: sales[0]?.currency,
+                    },
+                    {
+                      label: "Paid",
+                      amount: amountSummary.totalPaid ?? 0,
+                      currency: sales[0]?.currency,
+                    },
+                    {
+                      label: "Due",
+                      amount: amountSummary.totalDue ?? 0,
+                      currency: sales[0]?.currency,
+                    },
+                  ]}
+                />
+              ) : null}
+              <Hq6ListAmountFooter
+                title="Page total"
+                cells={[
+                  {
+                    label: "Total",
+                    amount: totals.totalAmount,
+                    currency: sales[0]?.currency,
+                  },
+                  {
+                    label: "Paid",
+                    amount: totals.totalPaid,
+                    currency: sales[0]?.currency,
+                  },
+                  {
+                    label: "Due",
+                    amount: totals.totalDue,
+                    currency: sales[0]?.currency,
+                  },
+                ]}
+              />
             </div>
           ) : null
         }

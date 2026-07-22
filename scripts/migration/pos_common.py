@@ -312,6 +312,7 @@ def transform_contacts(
                     "email": (str(row["email"]).strip() or None) if row.get("email") else None,
                     "phone": str(row.get("mobile") or "").strip() or None,
                     "address": address,
+                    "openingBalance": str(parse_decimal(row.get("balance") or row.get("opening_balance") or 0)),
                     "legacyContactId": legacy_id,
                     **created_by_fields(row.get("created_by"), user_names, user_vonos),
                 })
