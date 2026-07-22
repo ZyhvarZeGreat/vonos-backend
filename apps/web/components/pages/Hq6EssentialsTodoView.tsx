@@ -19,7 +19,6 @@ import { useTenantId } from "@/lib/hooks/useRouteTenant";
 import { HQ6_TODO_FILTERS } from "@/lib/registries/hq6Filters";
 import { formatHq6DateTime } from "@/lib/utils/hq6Format";
 import { toast } from "@/stores/toastStore";
-import type { DateRangePreset } from "@/stores/uiStore";
 
 interface TodoRow {
   id: string;
@@ -65,7 +64,8 @@ export function Hq6EssentialsTodoView() {
   const router = useRouter();
   const { detailPath } = useRecordNavigation("essentials-todo");
   const chrome = useHq6ListChrome();
-  const { dateRange, setDateRange } = useListPageFilters();
+  const { dateRange, setDateRange, customDateRange, setCustomDateRange, bounds } =
+    useListPageFilters({ defaultDateRange: "all_time" });
   const [localSearch, setLocalSearch] = useState("");
   const [assignedToFilter, setAssignedToFilter] = useState("");
   const [priorityFilter, setPriorityFilter] = useState("");
@@ -96,6 +96,8 @@ export function Hq6EssentialsTodoView() {
   }, [todos]);
 
   const rows = useMemo(() => {
+    const fromMs = bounds?.from ? new Date(bounds.from).getTime() : null;
+    const toMs = bounds?.to ? new Date(bounds.to).getTime() : null;
     return todos.filter((row) => {
       if (assignedToFilter && row.assignedTo !== assignedToFilter) return false;
       if (priorityFilter && row.priority !== priorityFilter) return false;
@@ -109,9 +111,9 @@ export function Hq6EssentialsTodoView() {
         const allowed = map[statusFilter] ?? [];
         if (!allowed.includes(row.status)) return false;
       }
-      if (dateRange !== "all_time") {
-        // Client-side only: keep rows when addedOn is present (range applied loosely).
-        if (!row.addedOn) return false;
+      if (dateRange !== "all_time" && fromMs != null && toMs != null) {
+        const t = new Date(row.addedOn).getTime();
+        if (Number.isNaN(t) || t < fromMs || t > toMs) return false;
       }
       if (!localSearch.trim()) return true;
       const q = localSearch.toLowerCase();
@@ -123,6 +125,8 @@ export function Hq6EssentialsTodoView() {
     });
   }, [
     assignedToFilter,
+    bounds?.from,
+    bounds?.to,
     dateRange,
     localSearch,
     priorityFilter,
@@ -257,7 +261,9 @@ export function Hq6EssentialsTodoView() {
           />
           <Hq6FilterDateRange
             value={dateRange}
-            onChange={setDateRange as (v: DateRangePreset) => void}
+            onChange={setDateRange}
+            customValue={customDateRange}
+            onCustomChange={setCustomDateRange}
           />
         </Hq6FilterGrid>
       }

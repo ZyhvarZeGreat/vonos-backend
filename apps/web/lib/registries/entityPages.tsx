@@ -309,6 +309,38 @@ const posPaymentPages: SlugMap = {
   },
 };
 
+/** HQ6 nav entries shared across all operating tenants. */
+const hq6SharedShellPages: SlugMap = {
+  "essentials-todo": { title: "To Do", View: Hq6EssentialsTodoView },
+  orders: { title: "Orders", View: OrdersListView },
+  "notification-templates": {
+    title: "Notification Templates",
+    View: sharedSettings.View,
+  },
+};
+
+function salesAndSellPages(
+  code: TenantCode,
+  addSaleView: ComponentType = AddSaleView,
+): SlugMap {
+  return {
+    sales: {
+      title: code === "VSP" ? "Orders" : "Sales",
+      primaryActionLabel: code === "VSP" ? "New Order" : "New Sale",
+      openCreateOnPrimary: true,
+      createFlowKey: "sale",
+      createCopy: {
+        title: code === "VSP" ? "New Order" : "New Sale",
+        subtitle: "Record a transaction",
+        submitLabel: code === "VSP" ? "Complete Order" : "Complete Sale",
+      },
+      View: SalesListView,
+    },
+    returns: { title: "Returns & Warranty", View: ReturnsListView },
+    ...posSellPages(addSaleView),
+  };
+}
+
 const ENTITY_PAGES: Record<TenantCode, SlugMap> = {
   VW: {
     inventory: {
@@ -341,6 +373,7 @@ const ENTITY_PAGES: Record<TenantCode, SlugMap> = {
     users: sharedUsers,
     locations: sharedLocations,
     settings: sharedSettings,
+    ...salesAndSellPages("VW"),
     ...posProductPages,
     ...posPaymentPages,
     ...procurementPages,
@@ -351,6 +384,7 @@ const ENTITY_PAGES: Record<TenantCode, SlugMap> = {
     ...hrmPages,
     ...settingsPages,
     ...legacyReportPages,
+    ...hq6SharedShellPages,
   },
   VKW: {
     inventory: {
@@ -371,6 +405,7 @@ const ENTITY_PAGES: Record<TenantCode, SlugMap> = {
     users: sharedUsers,
     locations: sharedLocations,
     settings: sharedSettings,
+    ...salesAndSellPages("VKW"),
     ...posProductPages,
     ...posPaymentPages,
     ...procurementPages,
@@ -381,18 +416,17 @@ const ENTITY_PAGES: Record<TenantCode, SlugMap> = {
     ...hrmPages,
     ...settingsPages,
     ...legacyReportPages,
+    ...hq6SharedShellPages,
   },
-  VISP: transactionRetailPages("VISP"),
-  VSP: transactionRetailPages("VSP"),
+  VISP: {
+    ...transactionRetailPages("VISP"),
+    ...hq6SharedShellPages,
+  },
+  VSP: {
+    ...transactionRetailPages("VSP"),
+    ...hq6SharedShellPages,
+  },
   VC: {
-    orders: {
-      title: "Orders",
-      primaryActionLabel: "New Order",
-      openCreateOnPrimary: true,
-      createFlowKey: "sale",
-      createCopy: { title: "New Order", subtitle: "Create cafe order", submitLabel: "Create Order" },
-      View: OrdersListView,
-    },
     "menu-items": {
       title: "Menu Items",
       primaryActionLabel: "Add Menu Item",
@@ -411,6 +445,7 @@ const ENTITY_PAGES: Record<TenantCode, SlugMap> = {
     users: sharedUsers,
     locations: sharedLocations,
     settings: sharedSettings,
+    returns: { title: "Returns & Warranty", View: ReturnsListView },
     ...posSellPages(AddOrderView),
     ...posProductPages,
     ...posPaymentPages,
@@ -422,6 +457,16 @@ const ENTITY_PAGES: Record<TenantCode, SlugMap> = {
     ...hrmPages,
     ...settingsPages,
     ...legacyReportPages,
+    ...hq6SharedShellPages,
+    // Cafe primary list stays Orders (overrides shared shell Orders stub).
+    orders: {
+      title: "Orders",
+      primaryActionLabel: "New Order",
+      openCreateOnPrimary: true,
+      createFlowKey: "sale",
+      createCopy: { title: "New Order", subtitle: "Create cafe order", submitLabel: "Create Order" },
+      View: OrdersListView,
+    },
   },
   VA: {
     jobs: {
@@ -482,16 +527,8 @@ const ENTITY_PAGES: Record<TenantCode, SlugMap> = {
     ...hrmPages,
     ...settingsPages,
     ...legacyReportPages,
+    ...hq6SharedShellPages,
     "hq6-checklist": { title: "HQ6 Checklist", View: Hq6ChecklistView },
-    "essentials-todo": { title: "To Do", View: Hq6EssentialsTodoView },
-    orders: {
-      title: "Orders",
-      View: OrdersListView,
-    },
-    "notification-templates": {
-      title: "Notification Templates",
-      View: sharedSettings.View,
-    },
   },
   VS: {
     appointments: {
@@ -515,6 +552,11 @@ const ENTITY_PAGES: Record<TenantCode, SlugMap> = {
     users: sharedUsers,
     locations: sharedLocations,
     settings: sharedSettings,
+    suppliers: sharedSuppliers,
+    catalog: sharedCatalog,
+    ...salesAndSellPages("VS"),
+    ...posProductPages,
+    ...procurementPages,
     ...posPaymentPages,
     ...userManagementPages,
     ...contactPages,
@@ -523,6 +565,7 @@ const ENTITY_PAGES: Record<TenantCode, SlugMap> = {
     ...hrmPages,
     ...settingsPages,
     ...legacyReportPages,
+    ...hq6SharedShellPages,
   },
 };
 

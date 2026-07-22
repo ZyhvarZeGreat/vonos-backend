@@ -56,7 +56,9 @@ function MovementListViewBody({
   const tenantId = useTenantId();
   const isHq6 = useIsVaHq6();
   const exportList = useListExport();
-  const { dateRange, setDateRange, search, setSearch, bounds } = useListPageFilters();
+  const { dateRange, setDateRange, search, setSearch, bounds } = useListPageFilters({
+    defaultDateRange: "all_time",
+  });
   const [activeTab, setActiveTab] = useState(defaultStatus === "Pending" ? "pending" : "all");
   const [statusFilter, setStatusFilter] = useState("");
   const tabStatus = useMemo((): MovementStatus | undefined => {

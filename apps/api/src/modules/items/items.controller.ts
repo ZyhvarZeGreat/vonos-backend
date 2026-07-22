@@ -72,6 +72,8 @@ export class ItemsController {
     @Query('category') category?: string,
     @Query('search') search?: string,
     @Query('locationCode') locationCode?: string,
+    @Query('unit') unit?: string,
+    @Query('brandName') brandName?: string,
     @Query('cursor') cursor?: string,
     @Query('limit') limit?: string,
     @Query('availableForRetail') availableForRetail?: string,
@@ -83,6 +85,8 @@ export class ItemsController {
       category,
       search,
       locationCode,
+      unit,
+      brandName,
       cursor,
       limit: limit ? Number(limit) : undefined,
       sortBy,
@@ -90,6 +94,8 @@ export class ItemsController {
     };
     if (availableForRetail === 'true') {
       filters.availableForRetail = true;
+    } else if (availableForRetail === 'false') {
+      filters.availableForRetail = false;
     }
     return this.itemsService.list(filters);
   }

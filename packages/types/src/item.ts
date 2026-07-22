@@ -65,6 +65,12 @@ export interface ItemFilters {
   category?: string;
   search?: string;
   locationCode?: string;
+  /** Exact unit label match (e.g. "Single (sng)"). */
+  unit?: string;
+  /** Filter by brand display name (case-insensitive). */
+  brandName?: string;
+  /** When set, filter items by retail flag (HQ6 "Not for selling" → false). */
+  availableForRetail?: boolean;
   cursor?: string;
   limit?: number;
   sortBy?: string;

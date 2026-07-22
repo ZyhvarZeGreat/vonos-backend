@@ -1,12 +1,14 @@
 import type {
   Item as PrismaItem,
   ItemLocationStock as PrismaItemLocationStock,
+  Brand as PrismaBrand,
 } from '@prisma/client';
 import type { Item, KpiSummary } from '@vonos/types';
 import { toIso, toNumber } from '../../common/utils/serializers';
 
 type ItemWithStock = PrismaItem & {
   locationStock?: PrismaItemLocationStock[];
+  brand?: Pick<PrismaBrand, 'name'> | null;
 };
 
 export function serializeItem(row: ItemWithStock): Item {
@@ -40,6 +42,7 @@ export function serializeItem(row: ItemWithStock): Item {
     status: row.status,
     availableForRetail: row.availableForRetail,
     brandId: row.brandId ?? null,
+    brandName: row.brand?.name ?? null,
     locationStock,
     createdByUserId: row.createdByUserId,
     createdByName: row.createdByName,

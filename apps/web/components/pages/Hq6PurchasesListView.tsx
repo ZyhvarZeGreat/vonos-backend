@@ -72,7 +72,15 @@ export function Hq6PurchasesListView() {
   const { tenantCode, config } = useRouteTenant();
   const { recordId, openRecord, closeRecord } = useListRecordModal();
   const exportList = useListExport();
-  const { dateRange, setDateRange, search, setSearch, bounds } = useListPageFilters();
+  const {
+    dateRange,
+    setDateRange,
+    customDateRange,
+    setCustomDateRange,
+    search,
+    setSearch,
+    bounds,
+  } = useListPageFilters({ defaultDateRange: "all_time" });
   const [filtersOpen, setFiltersOpen] = useState(true);
   const [statusFilter, setStatusFilter] = useState("");
   const [paymentStatusFilter, setPaymentStatusFilter] = useState("");
@@ -416,6 +424,8 @@ export function Hq6PurchasesListView() {
               <Hq6FilterDateRange
                 value={dateRange}
                 onChange={setDateRange}
+                customValue={customDateRange}
+                onCustomChange={setCustomDateRange}
               />
             </Hq6FilterGrid>
           </div>

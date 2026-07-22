@@ -1,15 +1,16 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { Boxes, Hourglass, ImageIcon } from "lucide-react";
 import { DataTable, type ColumnConfig } from "@/components/organisms/DataTable";
 import { useServerListPage } from "@/lib/hooks/useServerListPage";
 import { getCatalogPage } from "@/lib/api/catalog";
 import { deleteItem as deleteItemApi, getAllItems } from "@/lib/api/items";
+import { getCatalogMeta } from "@/lib/api/catalogMeta";
 import { useListExport } from "@/lib/hooks/useListExport";
-import type { Item, StockStatus } from "@vonos/types";
+import type { Brand, Item, ProductUnit, StockStatus } from "@vonos/types";
 import { formatCurrency } from "@/lib/utils/formatCurrency";
 import { useRecordNavigation } from "@/lib/hooks/useRecordNavigation";
 import { useRouteTenant, useTenantId } from "@/lib/hooks/useRouteTenant";
@@ -52,7 +53,6 @@ export function Hq6ProductsListView() {
   const [locationFilter, setLocationFilter] = useState("");
   const [typeFilter, setTypeFilter] = useState("");
   const [unitFilter, setUnitFilter] = useState("");
-  const [taxFilter, setTaxFilter] = useState("");
   const [brandFilter, setBrandFilter] = useState("");
   const [notForSelling, setNotForSelling] = useState(false);
   const [localSearch, setLocalSearch] = useState(search);
@@ -68,14 +68,29 @@ export function Hq6ProductsListView() {
       category?: string;
       locationCode?: string;
       search?: string;
+      unit?: string;
+      brandName?: string;
+      availableForRetail?: boolean;
     } = {};
     if (categoryFilter) next.category = categoryFilter;
     if (statusFilter) next.status = statusFilter as StockStatus;
     if (locationFilter) next.locationCode = locationFilter;
+    if (unitFilter) next.unit = unitFilter;
+    if (brandFilter) next.brandName = brandFilter;
+    if (notForSelling) next.availableForRetail = false;
     const q = (localSearch || search).trim();
     if (q) next.search = q;
     return next;
-  }, [categoryFilter, locationFilter, localSearch, search, statusFilter]);
+  }, [
+    brandFilter,
+    categoryFilter,
+    locationFilter,
+    localSearch,
+    notForSelling,
+    search,
+    statusFilter,
+    unitFilter,
+  ]);
 
   const {
     items,
@@ -105,32 +120,48 @@ export function Hq6ProductsListView() {
     [config?.itemCategories],
   );
   const locationOptions = useMemo(() => locationFilterOptions(config), [config]);
-  const brandOptions = useMemo(() => {
-    const brands = new Set<string>();
-    for (const row of items) {
-      if (row.brandName?.trim()) brands.add(row.brandName.trim());
-    }
-    return [...brands].sort().map((b) => ({ value: b, label: b }));
-  }, [items]);
-  const unitOptions = useMemo(() => {
-    const units = new Set<string>();
-    for (const row of items) {
-      if (row.unit?.trim()) units.add(row.unit.trim());
-    }
-    return [...units].sort().map((u) => ({ value: u, label: u }));
-  }, [items]);
 
+  const brandsQuery = useQuery({
+    queryKey: ["catalog-meta", "brands", tenantId, "product-filter"],
+    queryFn: () => getCatalogMeta(tenantId!, "brands") as Promise<Brand[]>,
+    enabled: Boolean(tenantId),
+    staleTime: 5 * 60_000,
+  });
+  const unitsQuery = useQuery({
+    queryKey: ["catalog-meta", "units", tenantId, "product-filter"],
+    queryFn: () => getCatalogMeta(tenantId!, "units") as Promise<ProductUnit[]>,
+    enabled: Boolean(tenantId),
+    staleTime: 5 * 60_000,
+  });
+
+  const brandOptions = useMemo(
+    () =>
+      (brandsQuery.data ?? []).map((b) => ({
+        value: b.name,
+        label: b.name,
+      })),
+    [brandsQuery.data],
+  );
+  const unitOptions = useMemo(
+    () =>
+      (unitsQuery.data ?? []).map((u) => ({
+        value: u.shortName || u.name,
+        label: u.shortName ? `${u.name} (${u.shortName})` : u.name,
+      })),
+    [unitsQuery.data],
+  );
+
+  // Product type has no server field yet — best-effort filter on the current page only.
   const visibleItems = useMemo(() => {
+    if (!typeFilter) return items;
     return items.filter((row) => {
-      if (typeFilter === "single" && row.unit && /variable/i.test(row.unit)) {
-        return false;
-      }
-      if (brandFilter && row.brandName !== brandFilter) return false;
-      if (unitFilter && row.unit !== unitFilter) return false;
-      if (notForSelling && row.availableForRetail) return false;
+      const hay = `${row.unit ?? ""} ${row.name}`.toLowerCase();
+      if (typeFilter === "variable") return /variable|variation/.test(hay);
+      if (typeFilter === "combo") return /combo/.test(hay);
+      if (typeFilter === "single") return !/variable|variation|combo/.test(hay);
       return true;
     });
-  }, [brandFilter, items, notForSelling, taxFilter, typeFilter, unitFilter]);
+  }, [items, typeFilter]);
 
   const commitSearch = useCallback(() => {
     setSearch(localSearch);
@@ -368,16 +399,6 @@ export function Hq6ProductsListView() {
           value={unitFilter}
           onChange={setUnitFilter}
           options={unitOptions}
-        />
-        <Hq6FilterSelect
-          label="Tax"
-          value={taxFilter}
-          onChange={setTaxFilter}
-          options={[
-            { value: "", label: "All" },
-            { value: "VAT", label: "VAT" },
-            { value: "WHT/VAT", label: "WHT/VAT" },
-          ]}
         />
         <Hq6FilterSelect
           label="Brand"

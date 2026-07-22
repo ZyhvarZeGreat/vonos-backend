@@ -147,6 +147,19 @@ export class ItemsService {
         deletedAt: null,
         ...(filters.status ? { status: filters.status } : {}),
         ...(filters.category ? { category: filters.category } : {}),
+        ...(filters.unit
+          ? { unit: { equals: filters.unit, mode: 'insensitive' as const } }
+          : {}),
+        ...(filters.brandName
+          ? {
+              brand: {
+                name: {
+                  equals: filters.brandName,
+                  mode: 'insensitive' as const,
+                },
+              },
+            }
+          : {}),
         ...(filters.availableForRetail !== undefined
           ? { availableForRetail: filters.availableForRetail }
           : {}),
@@ -217,7 +230,10 @@ export class ItemsService {
         ...(pagination.where ?? {}),
       },
       orderBy: [{ [sort.sortField]: sort.sortDir }, { id: sort.sortDir }],
-      include: filters.locationCode ? { locationStock: true } : undefined,
+      include: {
+        brand: { select: { name: true } },
+        ...(filters.locationCode ? { locationStock: true } : {}),
+      },
       take: pagination.take,
     });
 

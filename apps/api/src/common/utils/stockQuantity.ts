@@ -6,6 +6,7 @@ export interface MovementLine {
   sku: string;
   name: string;
   quantity: number;
+  unitCost?: number;
   expDate?: string;
 }
 
@@ -52,12 +53,20 @@ export function parseMovementLines(lines: unknown): MovementLine[] {
     const itemId = String(record.itemId);
     const quantity = Number(record.quantity);
     if (!itemId || Number.isNaN(quantity) || quantity <= 0) return [];
+    const unitCostRaw = record.unitCost;
+    const unitCost =
+      unitCostRaw === null || unitCostRaw === undefined
+        ? undefined
+        : Number(unitCostRaw);
     return [
       {
         itemId,
         sku: toStringField(record.sku),
         name: toStringField(record.name),
         quantity,
+        ...(unitCost !== undefined && !Number.isNaN(unitCost)
+          ? { unitCost }
+          : {}),
         ...(typeof record.expDate === 'string' && record.expDate
           ? { expDate: record.expDate }
           : {}),

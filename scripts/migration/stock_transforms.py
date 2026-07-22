@@ -11,6 +11,7 @@ from migration.pos_common import (
     build_legacy_user_name_map,
     created_by_fields,
     legacy_map,
+    map_payment_status,
     new_cuid,
     parse_decimal,
     parse_int,
@@ -86,7 +87,14 @@ def _build_line(
     sku = str(variation.get("sub_sku") or product.get("sku") or f"SKU-{vid}")
     name = str(product.get("name") or "Line item")
     qty = parse_decimal(sl.get("quantity"), Decimal("1"))
-    unit_cost = parse_decimal(sl.get("unit_price_inc_tax") or sl.get("unit_price") or sl.get("purchase_price"))
+    # purchase_lines use purchase_price*; sell lines use unit_price*
+    unit_cost = parse_decimal(
+        sl.get("purchase_price_inc_tax")
+        or sl.get("pp_without_discount")
+        or sl.get("purchase_price")
+        or sl.get("unit_price_inc_tax")
+        or sl.get("unit_price")
+    )
     return {
         "itemId": item_id,
         "sku": sku,
@@ -166,6 +174,11 @@ def transform_stock_movements(
                 "notes": contact_note or None,
                 "supplierId": supplier_id,
                 "source": "standard",
+                "paymentStatus": (
+                    map_payment_status(txn.get("payment_status"))
+                    if txn.get("payment_status") not in (None, "")
+                    else "due"
+                ),
                 "date": tx_date,
                 **created_by_fields(txn.get("created_by"), user_names, user_vonos),
             })

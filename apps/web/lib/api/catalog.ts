@@ -20,6 +20,10 @@ async function fetchCatalogRaw(
   if (filters?.category) params.set("category", filters.category);
   if (filters?.search) params.set("search", filters.search);
   if (filters?.locationCode) params.set("locationCode", filters.locationCode);
+  if (filters?.unit) params.set("unit", filters.unit);
+  if (filters?.brandName) params.set("brandName", filters.brandName);
+  if (filters?.availableForRetail === true) params.set("availableForRetail", "true");
+  if (filters?.availableForRetail === false) params.set("availableForRetail", "false");
   if (cursor) params.set("cursor", cursor);
   if (limit) params.set("limit", String(limit));
   const query = params.toString();

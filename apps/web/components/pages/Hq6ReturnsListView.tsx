@@ -28,7 +28,15 @@ export function Hq6ReturnsListView() {
   const { recordId, openRecord, closeRecord } = useListRecordModal();
   const tenantId = useTenantId();
   const { config } = useRouteTenant();
-  const { dateRange, setDateRange, search, setSearch, bounds } = useListPageFilters();
+  const {
+    dateRange,
+    setDateRange,
+    customDateRange,
+    setCustomDateRange,
+    search,
+    setSearch,
+    bounds,
+  } = useListPageFilters({ defaultDateRange: "all_time" });
   const [statusFilter, setStatusFilter] = useState("");
   const [locationFilter, setLocationFilter] = useState("");
   const [customerFilter, setCustomerFilter] = useState("");
@@ -143,7 +151,12 @@ export function Hq6ReturnsListView() {
 
   const filters = (
     <Hq6FilterGrid>
-      <Hq6FilterDateRange value={dateRange} onChange={setDateRange} />
+      <Hq6FilterDateRange
+        value={dateRange}
+        onChange={setDateRange}
+        customValue={customDateRange}
+        onCustomChange={setCustomDateRange}
+      />
       <Hq6FilterSelect
         label="Status"
         value={statusFilter}

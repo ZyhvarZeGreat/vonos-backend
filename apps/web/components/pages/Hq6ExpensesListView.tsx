@@ -53,7 +53,15 @@ export function Hq6ExpensesListView() {
   const router = useRouter();
   const qc = useQueryClient();
   const exportList = useListExport();
-  const { dateRange, setDateRange, search, setSearch, bounds } = useListPageFilters();
+  const {
+    dateRange,
+    setDateRange,
+    customDateRange,
+    setCustomDateRange,
+    search,
+    setSearch,
+    bounds,
+  } = useListPageFilters({ defaultDateRange: "all_time" });
   const [filtersOpen, setFiltersOpen] = useState(true);
   const [localSearch, setLocalSearch] = useState(search);
   const [locationFilter, setLocationFilter] = useState("");
@@ -325,7 +333,12 @@ export function Hq6ExpensesListView() {
           {filtersOpen ? (
             <div className="hq6-filters-body">
               <Hq6FilterGrid>
-                <Hq6FilterDateRange value={dateRange} onChange={setDateRange} />
+                <Hq6FilterDateRange
+                  value={dateRange}
+                  onChange={setDateRange}
+                  customValue={customDateRange}
+                  onCustomChange={setCustomDateRange}
+                />
                 <Hq6FilterSelect
                   label="Business Location"
                   value={locationFilter}

@@ -44,10 +44,9 @@ export function toMovementListRow(
       sum + line.quantity * toNumber((line as StockMovementLine).unitCost ?? 0),
     0,
   );
-  const derivedPaid =
-    row.status === 'Received' || row.status === 'Delivered';
-  const paymentStatus =
-    row.paymentStatus ?? (derivedPaid ? 'paid' : 'due');
+  // Never infer "paid" from receipt status — Received ≠ paid.
+  // Null paymentStatus (common on migrated rows) means still due.
+  const paymentStatus = row.paymentStatus ?? 'due';
   return {
     id: row.id,
     reference: row.reference,

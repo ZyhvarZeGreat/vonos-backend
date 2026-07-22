@@ -5,13 +5,18 @@ import { dateRangePresetToApiBounds } from "@/lib/utils/dateRange";
 import { useUiStore, type CustomDateRange, type DateRangePreset } from "@/stores/uiStore";
 
 /** Shared search + date-range state for ListPageShell pages. */
-export function useListPageFilters() {
+export function useListPageFilters(options?: {
+  /** When set, overrides the global store preset until the user changes it. */
+  defaultDateRange?: DateRangePreset;
+}) {
   const storeDateRange = useUiStore((state) => state.dateRange);
   const storeCustom = useUiStore((state) => state.customDateRange);
   const setStoreDateRange = useUiStore((state) => state.setDateRange);
   const setStoreCustom = useUiStore((state) => state.setCustomDateRange);
   const [search, setSearch] = useState("");
-  const [localDateRange, setLocalDateRange] = useState<DateRangePreset | null>(null);
+  const [localDateRange, setLocalDateRange] = useState<DateRangePreset | null>(
+    options?.defaultDateRange ?? null,
+  );
   const [localCustom, setLocalCustom] = useState<CustomDateRange | null | undefined>(
     undefined,
   );

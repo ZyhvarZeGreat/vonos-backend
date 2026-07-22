@@ -74,7 +74,15 @@ export function Hq6SalesListView({
     syncUrlParam: "record",
   });
   const exportList = useListExport();
-  const { dateRange, setDateRange, search, setSearch, bounds } = useListPageFilters();
+  const {
+    dateRange,
+    setDateRange,
+    customDateRange,
+    setCustomDateRange,
+    search,
+    setSearch,
+    bounds,
+  } = useListPageFilters({ defaultDateRange: "all_time" });
   const [statusFilter, setStatusFilter] = useState("");
   const [paymentStatusFilter, setPaymentStatusFilter] = useState("");
   const [locationFilter, setLocationFilter] = useState("");
@@ -463,7 +471,12 @@ export function Hq6SalesListView({
         chrome={chrome}
         filters={
           <Hq6FilterGrid>
-            <Hq6FilterDateRange value={dateRange} onChange={setDateRange} />
+            <Hq6FilterDateRange
+              value={dateRange}
+              onChange={setDateRange}
+              customValue={customDateRange}
+              onCustomChange={setCustomDateRange}
+            />
             {!saleStatus ? (
               <Hq6FilterSelect
                 label="Status"

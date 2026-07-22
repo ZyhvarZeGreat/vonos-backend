@@ -90,10 +90,19 @@ export function parseMovementLines(lines: unknown): Array<{
   sku: string;
   name: string;
   quantity: number;
+  unitCost?: number;
+  expDate?: string;
 }> {
   if (!Array.isArray(lines)) return [];
   return lines.map((line) => {
     const row = line as Record<string, unknown>;
+    const unitCostRaw = row.unitCost;
+    const unitCost =
+      unitCostRaw === null || unitCostRaw === undefined
+        ? undefined
+        : toNumber(unitCostRaw as Prisma.Decimal | number | string | null);
+    const expDate =
+      typeof row.expDate === 'string' && row.expDate ? row.expDate : undefined;
     return {
       itemId: toStringField(row.itemId),
       sku: toStringField(row.sku),
@@ -101,6 +110,8 @@ export function parseMovementLines(lines: unknown): Array<{
       quantity: toNumber(
         row.quantity as Prisma.Decimal | number | string | null,
       ),
+      ...(unitCost !== undefined ? { unitCost } : {}),
+      ...(expDate ? { expDate } : {}),
     };
   });
 }

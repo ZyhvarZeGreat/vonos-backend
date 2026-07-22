@@ -2,7 +2,7 @@
 
 import type { ReactNode } from "react";
 import { DateRangeDropdown } from "@/components/molecules/DateRangeDropdown";
-import type { DateRangePreset } from "@/stores/uiStore";
+import type { CustomDateRange, DateRangePreset } from "@/stores/uiStore";
 
 export function Hq6FilterCheckbox({
   label,
@@ -60,15 +60,24 @@ export function Hq6FilterDateRange({
   label = "Date Range",
   value,
   onChange,
+  customValue,
+  onCustomChange,
 }: {
   label?: string;
   value: DateRangePreset;
   onChange: (value: DateRangePreset) => void;
+  customValue?: CustomDateRange | null;
+  onCustomChange?: (range: CustomDateRange | null) => void;
 }) {
   return (
     <div className="hq6-field">
       <span>{label}:</span>
-      <DateRangeDropdown value={value} onChange={onChange} />
+      <DateRangeDropdown
+        value={value}
+        onChange={onChange}
+        customValue={customValue}
+        onCustomChange={onCustomChange}
+      />
     </div>
   );
 }

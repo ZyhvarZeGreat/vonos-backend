@@ -414,7 +414,8 @@ def write_postgres(
             "StockMovement",
             [
                 "id", "tenantId", "type", "reference", "status", "lines", "notes",
-                "supplierId", "source", "date", "createdByUserId", "createdByName",
+                "locationCode", "supplierId", "source", "paymentStatus", "paymentMethod",
+                "date", "createdByUserId", "createdByName",
                 "createdAt", "updatedAt",
             ],
             movements,

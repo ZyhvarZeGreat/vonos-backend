@@ -40,7 +40,9 @@ function tabStatusFilter(tab: string): string | undefined {
 export function JobsListView() {
   const { goToDetail } = useRecordNavigation("jobs");
   const tenantId = useTenantId();
-  const { dateRange, setDateRange, search, setSearch, bounds } = useListPageFilters();
+  const { dateRange, setDateRange, search, setSearch, bounds } = useListPageFilters({
+    defaultDateRange: "all_time",
+  });
   const [activeTab, setActiveTab] = useState("all");
   const [statusFilter, setStatusFilter] = useState("");
 

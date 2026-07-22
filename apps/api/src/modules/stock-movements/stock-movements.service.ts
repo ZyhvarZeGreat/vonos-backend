@@ -140,7 +140,15 @@ export class StockMovementsService {
         : {}),
       ...(filters.supplierId ? { supplierId: filters.supplierId } : {}),
       ...(filters.paymentStatus
-        ? { paymentStatus: filters.paymentStatus }
+        ? filters.paymentStatus === 'due'
+          ? // Migrated purchases often have null paymentStatus; treat as due.
+            {
+              OR: [
+                { paymentStatus: 'due' as const },
+                { paymentStatus: null },
+              ],
+            }
+          : { paymentStatus: filters.paymentStatus }
         : {}),
       ...(filters.paymentMethod
         ? { paymentMethod: filters.paymentMethod }

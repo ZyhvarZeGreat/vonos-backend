@@ -83,6 +83,22 @@ export class CatalogService {
         ],
         ...(filters.status ? { status: filters.status } : {}),
         ...(filters.category ? { category: filters.category } : {}),
+        ...(filters.unit
+          ? { unit: { equals: filters.unit, mode: 'insensitive' as const } }
+          : {}),
+        ...(filters.brandName
+          ? {
+              brand: {
+                name: {
+                  equals: filters.brandName,
+                  mode: 'insensitive' as const,
+                },
+              },
+            }
+          : {}),
+        ...(filters.availableForRetail !== undefined
+          ? { availableForRetail: filters.availableForRetail }
+          : {}),
         ...(filters.locationCode || filters.search
           ? {
               AND: [
@@ -131,6 +147,7 @@ export class CatalogService {
           : {}),
         ...(pagination.where ?? {}),
       },
+      include: { brand: { select: { name: true } } },
       orderBy: [{ name: 'asc' }, { id: 'asc' }],
       take: pagination.take,
     });

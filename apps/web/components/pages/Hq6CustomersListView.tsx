@@ -51,7 +51,15 @@ export function Hq6CustomersListView() {
   const { goToDetail, detailPath } = useRecordNavigation("customers");
   const tenantId = useTenantId();
   const openCreateModal = useUiStore((state) => state.openCreateModal);
-  const { dateRange, setDateRange, search, setSearch, bounds } = useListPageFilters();
+  const {
+    dateRange,
+    setDateRange,
+    customDateRange,
+    setCustomDateRange,
+    search,
+    setSearch,
+    bounds,
+  } = useListPageFilters({ defaultDateRange: "all_time" });
   const [localSearch, setLocalSearch] = useState(search);
   const chrome = useHq6ListChrome();
 
@@ -365,7 +373,12 @@ export function Hq6CustomersListView() {
           onChange={setStatus}
           options={HQ6_CUSTOMER_FILTERS[7]!.options!}
         />
-        <Hq6FilterDateRange value={dateRange} onChange={setDateRange} />
+        <Hq6FilterDateRange
+          value={dateRange}
+          onChange={setDateRange}
+          customValue={customDateRange}
+          onCustomChange={setCustomDateRange}
+        />
       </Hq6FilterGrid>
     </Hq6FilterStack>
   );
