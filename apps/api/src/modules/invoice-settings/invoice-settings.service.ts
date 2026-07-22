@@ -1,11 +1,13 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import type {
   CreateInvoiceSchemeInput,
+  CreateInvoiceLayoutInput,
   CreateReceiptPrinterInput,
   InvoiceLayout,
   InvoiceScheme,
   InvoiceSettings,
   ReceiptPrinter,
+  UpdateInvoiceLayoutInput,
   UpdateInvoiceSchemeInput,
   UpdateInvoiceSettingsInput,
   UpdateReceiptPrinterInput,
@@ -82,7 +84,29 @@ export class InvoiceSettingsService {
 
   async getSettings(): Promise<InvoiceSettings> {
     const tenantId = this.tenantDb.requireTenantId();
-    const { layouts, schemes, printers } = await this.loadSettingsRows(tenantId);
+    let { layouts, schemes, printers } = await this.loadSettingsRows(tenantId);
+
+    // Migration / merge can leave multiple isDefault=true — keep one.
+    const defaulted = layouts.filter((row) => row.isDefault);
+    if (defaulted.length > 1) {
+      const keepId = defaulted[0]!.id;
+      await this.tenantDb.db.invoiceLayout.updateMany({
+        where: { tenantId, deletedAt: null, id: { not: keepId } },
+        data: { isDefault: false },
+      });
+      layouts = layouts.map((row) =>
+        row.id === keepId ? row : { ...row, isDefault: false },
+      );
+    } else if (layouts.length > 0 && defaulted.length === 0) {
+      const keepId = layouts[0]!.id;
+      await this.tenantDb.db.invoiceLayout.update({
+        where: { id: keepId },
+        data: { isDefault: true },
+      });
+      layouts = layouts.map((row) =>
+        row.id === keepId ? { ...row, isDefault: true } : row,
+      );
+    }
 
     const defaultLayout = layouts.find((row) => row.isDefault) ?? layouts[0];
     const defaultScheme = schemes.find((row) => row.isDefault) ?? schemes[0];
@@ -227,6 +251,88 @@ export class InvoiceSettingsService {
     });
     if (!existing) throw new NotFoundException('Invoice scheme not found');
     await this.tenantDb.db.invoiceScheme.update({
+      where: { id },
+      data: { deletedAt: new Date() },
+    });
+  }
+
+  async createLayout(dto: CreateInvoiceLayoutInput): Promise<InvoiceLayout> {
+    const tenantId = this.tenantDb.requireTenantId();
+    const name = dto.name.trim();
+    if (!name) throw new BadRequestException('Layout name is required');
+
+    const design = (dto.design?.trim() || 'classic').toLowerCase();
+
+    if (dto.isDefault) {
+      await this.tenantDb.db.invoiceLayout.updateMany({
+        where: { tenantId, deletedAt: null },
+        data: { isDefault: false },
+      });
+    }
+
+    const row = await this.tenantDb.db.invoiceLayout.create({
+      data: {
+        tenantId,
+        name,
+        design,
+        headerText: dto.headerText?.trim() || null,
+        footerText: dto.footerText?.trim() || null,
+        termsText: dto.termsText?.trim() || null,
+        isDefault: dto.isDefault ?? false,
+      },
+    });
+    return this.serializeLayout(row);
+  }
+
+  async updateLayout(
+    id: string,
+    dto: UpdateInvoiceLayoutInput,
+  ): Promise<InvoiceLayout> {
+    const tenantId = this.tenantDb.requireTenantId();
+    const existing = await this.tenantDb.db.invoiceLayout.findFirst({
+      where: { id, tenantId, deletedAt: null },
+    });
+    if (!existing) throw new NotFoundException('Invoice layout not found');
+
+    if (dto.isDefault) {
+      await this.tenantDb.db.invoiceLayout.updateMany({
+        where: { tenantId, deletedAt: null },
+        data: { isDefault: false },
+      });
+    }
+
+    const row = await this.tenantDb.db.invoiceLayout.update({
+      where: { id },
+      data: {
+        ...(dto.name !== undefined ? { name: dto.name.trim() } : {}),
+        ...(dto.design !== undefined
+          ? { design: dto.design.trim().toLowerCase() || 'classic' }
+          : {}),
+        ...(dto.headerText !== undefined
+          ? { headerText: dto.headerText?.trim() || null }
+          : {}),
+        ...(dto.footerText !== undefined
+          ? { footerText: dto.footerText?.trim() || null }
+          : {}),
+        ...(dto.termsText !== undefined
+          ? { termsText: dto.termsText?.trim() || null }
+          : {}),
+        ...(dto.isDefault !== undefined ? { isDefault: dto.isDefault } : {}),
+      },
+    });
+    return this.serializeLayout(row);
+  }
+
+  async deleteLayout(id: string): Promise<void> {
+    const tenantId = this.tenantDb.requireTenantId();
+    const existing = await this.tenantDb.db.invoiceLayout.findFirst({
+      where: { id, tenantId, deletedAt: null },
+    });
+    if (!existing) throw new NotFoundException('Invoice layout not found');
+    if (existing.isDefault) {
+      throw new BadRequestException('Cannot delete the default invoice layout');
+    }
+    await this.tenantDb.db.invoiceLayout.update({
       where: { id },
       data: { deletedAt: new Date() },
     });

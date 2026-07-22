@@ -66,6 +66,26 @@ export interface UpdateInvoiceSchemeInput {
   isDefault?: boolean;
 }
 
+export type InvoiceLayoutDesign = "classic" | "slim" | "detailed" | "elegant";
+
+export interface CreateInvoiceLayoutInput {
+  name: string;
+  design?: InvoiceLayoutDesign | string;
+  headerText?: string | null;
+  footerText?: string | null;
+  termsText?: string | null;
+  isDefault?: boolean;
+}
+
+export interface UpdateInvoiceLayoutInput {
+  name?: string;
+  design?: InvoiceLayoutDesign | string;
+  headerText?: string | null;
+  footerText?: string | null;
+  termsText?: string | null;
+  isDefault?: boolean;
+}
+
 export interface CreateReceiptPrinterInput {
   name: string;
   printerType?: string;

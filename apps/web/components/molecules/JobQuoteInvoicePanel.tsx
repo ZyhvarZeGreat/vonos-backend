@@ -2,12 +2,13 @@
 
 import { useMemo, useState } from "react";
 import { Eye, FileText, Receipt, Printer, ShoppingBag } from "lucide-react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useAppMutation } from "@/lib/hooks/useAppMutation";
 import { useRouteTenant } from "@/lib/hooks/useRouteTenant";
 import type { JobDetail } from "@/lib/api/jobs";
 import { updateJobBilling } from "@/lib/api/jobs";
+import { getInvoiceSettings } from "@/lib/api/invoiceSettings";
 import {
   InvoiceDocument,
   type InvoiceContact,
@@ -19,6 +20,7 @@ import { cn } from "@/lib/utils/cn";
 import { amountToWords } from "@/lib/utils/amountToWords";
 import { saleRecordPath } from "@/lib/utils/recordDetailPath";
 import { isHq6Tenant } from "@/lib/utils/isHq6Tenant";
+import { invoiceDocumentLayoutProps } from "@/lib/utils/resolveInvoiceLayout";
 import { useUiStore } from "@/stores/uiStore";
 
 type BillingTab = "quotation" | "invoice";
@@ -67,6 +69,14 @@ export function JobQuoteInvoicePanel({ job, onJobChange }: JobQuoteInvoicePanelP
   const openAddSaleModal = useUiStore((state) => state.openAddSaleModal);
   const [tab, setTab] = useState<BillingTab>("quotation");
   const [previewOpen, setPreviewOpen] = useState(false);
+
+  const { data: invoiceSettings } = useQuery({
+    queryKey: ["invoice-settings", tenantId],
+    queryFn: getInvoiceSettings,
+    enabled: Boolean(tenantId),
+    staleTime: 10 * 60_000,
+  });
+  const layoutProps = invoiceDocumentLayoutProps(invoiceSettings);
 
   const suggestedTotal = useMemo(() => {
     const materials = job.materials.reduce((sum, row) => sum + row.totalCost, 0);
@@ -165,6 +175,7 @@ export function JobQuoteInvoicePanel({ job, onJobChange }: JobQuoteInvoicePanelP
       jobDescription={job.description}
       vehicleLabel={vehicleLabel}
       amountInWords={amountToWords(documentTotal)}
+      {...layoutProps}
       className="invoice-print-root"
     />
   );

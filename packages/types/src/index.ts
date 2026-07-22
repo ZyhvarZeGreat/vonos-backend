@@ -12,6 +12,7 @@ export * from "./appointment";
 export * from "./sale";
 export * from "./customer";
 export * from "./tenantConfig";
+export * from "./businessSettings";
 export * from "./group";
 export * from "./stock";
 export * from "./catalogPresets";

@@ -11,6 +11,7 @@ import { ServerPaginatedTable } from "@/components/organisms/ServerPaginatedTabl
 import { ListPageShell } from "@/components/organisms/ListPageShell";
 import { RowActionsMenu } from "@/components/molecules/RowActionsMenu";
 import { getInvoice, getInvoicesPage } from "@/lib/api/invoices";
+import { getInvoiceSettings } from "@/lib/api/invoiceSettings";
 import { serverPaginationBarProps, useServerListPage } from "@/lib/hooks/useServerListPage";
 import { useListPageFilters } from "@/lib/hooks/useListPageFilters";
 import { useRouteTenant, useTenantId } from "@/lib/hooks/useRouteTenant";
@@ -23,6 +24,7 @@ import {
   invoiceDetailToLines,
   invoiceKindLabel,
 } from "@/lib/utils/invoiceBuilders";
+import { invoiceDocumentLayoutProps } from "@/lib/utils/resolveInvoiceLayout";
 import { InvoiceDocumentSkeleton } from "@/components/organisms/skeletons";
 
 const KIND_OPTIONS = [
@@ -75,6 +77,14 @@ export function InvoicesListView() {
     enabled: Boolean(tenantId && previewId),
     staleTime: 60_000,
   });
+
+  const { data: invoiceSettings } = useQuery({
+    queryKey: ["invoice-settings", tenantId],
+    queryFn: getInvoiceSettings,
+    enabled: Boolean(tenantId && previewId),
+    staleTime: 10 * 60_000,
+  });
+  const layoutProps = invoiceDocumentLayoutProps(invoiceSettings);
 
   const columns: ColumnConfig<InvoiceListRow>[] = useMemo(
     () => [
@@ -151,6 +161,7 @@ export function InvoicesListView() {
       currency={previewDetail.currency}
       notes={previewDetail.notes}
       validUntil={previewDetail.dueDate}
+      {...layoutProps}
     />
   ) : null;
 

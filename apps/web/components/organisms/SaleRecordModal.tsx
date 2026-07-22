@@ -21,6 +21,7 @@ import {
 } from "@/lib/utils/invoiceBuilders";
 import { formatCurrency } from "@/lib/utils/formatCurrency";
 import { formatDate } from "@/lib/utils/formatDate";
+import { invoiceDocumentLayoutProps } from "@/lib/utils/resolveInvoiceLayout";
 
 export interface SaleRecordModalProps {
   saleId: string | null;
@@ -69,6 +70,8 @@ export function SaleRecordModal({
     [lineItems],
   );
 
+  const layoutProps = invoiceDocumentLayoutProps(invoiceSettings);
+
   const document = sale ? (
     <InvoiceDocument
       kind={documentKind}
@@ -80,8 +83,9 @@ export function SaleRecordModal({
       subtotal={subtotal}
       total={sale.total}
       currency={sale.currency}
-      notes={invoiceSettings?.termsText ?? null}
+      notes={null}
       balanceDue={sale.customerTotalSellDue ?? null}
+      {...layoutProps}
       className="invoice-print-root"
     />
   ) : null;

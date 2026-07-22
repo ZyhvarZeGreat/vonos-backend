@@ -14,6 +14,7 @@ import {
 import { DocumentPreviewModal } from "@/components/organisms/DocumentPreviewModal";
 import { formatCurrency } from "@/lib/utils/formatCurrency";
 import { saleToInvoiceContact } from "@/lib/utils/invoiceBuilders";
+import { invoiceDocumentLayoutProps } from "@/lib/utils/resolveInvoiceLayout";
 
 export interface SaleReceiptPanelProps {
   sale: SaleDetail;
@@ -29,6 +30,8 @@ export function SaleReceiptPanel({ sale }: SaleReceiptPanelProps) {
     enabled: Boolean(tenantId),
     staleTime: 10 * 60_000,
   });
+
+  const layoutProps = invoiceDocumentLayoutProps(invoiceSettings);
 
   const lineItems = useMemo<InvoiceLineItem[]>(
     () =>
@@ -50,7 +53,6 @@ export function SaleReceiptPanel({ sale }: SaleReceiptPanelProps) {
   const contact: InvoiceContact = saleToInvoiceContact(sale);
 
   const notes = [
-    invoiceSettings?.termsText,
     sale.paymentStatus === "paid"
       ? "Payment received. Thank you for your business."
       : sale.paymentStatus === "partial"
@@ -75,6 +77,7 @@ export function SaleReceiptPanel({ sale }: SaleReceiptPanelProps) {
       currency={sale.currency}
       notes={notes || null}
       balanceDue={sale.customerTotalSellDue ?? null}
+      {...layoutProps}
       className="invoice-print-root"
     />
   );

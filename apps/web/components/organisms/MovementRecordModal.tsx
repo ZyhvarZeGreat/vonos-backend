@@ -14,6 +14,7 @@ import { useRouteTenant } from "@/lib/hooks/useRouteTenant";
 import { movementToPurchaseLines } from "@/lib/utils/invoiceBuilders";
 import { formatCurrency } from "@/lib/utils/formatCurrency";
 import { formatDate } from "@/lib/utils/formatDate";
+import { invoiceDocumentLayoutProps } from "@/lib/utils/resolveInvoiceLayout";
 
 export interface MovementRecordModalProps {
   movementId: string | null;
@@ -59,6 +60,8 @@ export function MovementRecordModal({
   const total = subtotal;
   const currency = "NGN";
 
+  const layoutProps = invoiceDocumentLayoutProps(invoiceSettings);
+
   const purchaseDoc = movement ? (
     <InvoiceDocument
       kind="purchase"
@@ -70,7 +73,8 @@ export function MovementRecordModal({
       subtotal={subtotal}
       total={total}
       currency={currency}
-      notes={invoiceSettings?.termsText ?? movement.notes}
+      notes={movement.notes}
+      {...layoutProps}
       className="invoice-print-root"
     />
   ) : null;

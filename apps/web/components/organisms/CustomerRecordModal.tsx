@@ -17,6 +17,7 @@ import { getInvoiceSettings } from "@/lib/api/invoiceSettings";
 import { useRouteTenant } from "@/lib/hooks/useRouteTenant";
 import { formatCurrency } from "@/lib/utils/formatCurrency";
 import { formatDate } from "@/lib/utils/formatDate";
+import { invoiceDocumentLayoutProps } from "@/lib/utils/resolveInvoiceLayout";
 
 export interface CustomerRecordModalProps {
   customerId: string | null;
@@ -76,6 +77,8 @@ export function CustomerRecordModal({ customerId, onClose }: CustomerRecordModal
   const currency = summary?.currency ?? "NGN";
   const today = new Date().toISOString().slice(0, 10);
 
+  const layoutProps = invoiceDocumentLayoutProps(invoiceSettings);
+
   const statementDoc = contact ? (
     <InvoiceDocument
       kind="statement"
@@ -92,8 +95,9 @@ export function CustomerRecordModal({ customerId, onClose }: CustomerRecordModal
       subtotal={totalActivity}
       total={summary?.totalAmount ?? totalActivity}
       currency={currency}
-      notes={invoiceSettings?.termsText ?? null}
+      notes={null}
       balanceDue={summary?.totalDue ?? contact.totalSellDue}
+      {...layoutProps}
       className="invoice-print-root"
     />
   ) : null;

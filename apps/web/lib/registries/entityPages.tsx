@@ -186,6 +186,8 @@ function transactionRetailPages(code: TenantCode): SlugMap {
     ...expensePages,
     ...invoicePages,
     ...hrmPages,
+    // Business Settings must win over any HRM slug collision on `settings`.
+    settings: sharedSettings,
     ...settingsPages,
     ...legacyReportPages,
   };
@@ -382,6 +384,8 @@ const ENTITY_PAGES: Record<TenantCode, SlugMap> = {
     ...expensePages,
     ...invoicePages,
     ...hrmPages,
+    // Business Settings must win over any HRM slug collision on `settings`.
+    settings: sharedSettings,
     ...settingsPages,
     ...legacyReportPages,
     ...hq6SharedShellPages,
@@ -414,6 +418,8 @@ const ENTITY_PAGES: Record<TenantCode, SlugMap> = {
     ...expensePages,
     ...invoicePages,
     ...hrmPages,
+    // Business Settings must win over any HRM slug collision on `settings`.
+    settings: sharedSettings,
     ...settingsPages,
     ...legacyReportPages,
     ...hq6SharedShellPages,
@@ -455,6 +461,8 @@ const ENTITY_PAGES: Record<TenantCode, SlugMap> = {
     ...expensePages,
     ...invoicePages,
     ...hrmPages,
+    // Business Settings must win over any HRM slug collision on `settings`.
+    settings: sharedSettings,
     ...settingsPages,
     ...legacyReportPages,
     ...hq6SharedShellPages,
@@ -525,6 +533,8 @@ const ENTITY_PAGES: Record<TenantCode, SlugMap> = {
     ...expensePages,
     ...invoicePages,
     ...hrmPages,
+    // Business Settings must win over any HRM slug collision on `settings`.
+    settings: sharedSettings,
     ...settingsPages,
     ...legacyReportPages,
     ...hq6SharedShellPages,
@@ -563,6 +573,8 @@ const ENTITY_PAGES: Record<TenantCode, SlugMap> = {
     ...expensePages,
     ...invoicePages,
     ...hrmPages,
+    // Business Settings must win over any HRM slug collision on `settings`.
+    settings: sharedSettings,
     ...settingsPages,
     ...legacyReportPages,
     ...hq6SharedShellPages,

@@ -47,8 +47,8 @@ export const HRM_SLUG_TO_TAB: Record<string, HrmTab> = {
   "sales-targets": "sales-targets",
   hr: "hr-people",
   "hr-people": "hr-people",
+  /** HRM settings tab only — must NOT use bare `settings` (that is Business Settings). */
   "hrm-settings": "settings",
-  settings: "settings",
 };
 
 const Placeholder = createPosPlaceholderView;

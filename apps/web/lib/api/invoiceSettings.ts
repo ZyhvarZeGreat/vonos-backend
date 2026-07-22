@@ -1,9 +1,12 @@
 import type {
+  CreateInvoiceLayoutInput,
   CreateInvoiceSchemeInput,
   CreateReceiptPrinterInput,
+  InvoiceLayout,
   InvoiceScheme,
   InvoiceSettings,
   ReceiptPrinter,
+  UpdateInvoiceLayoutInput,
   UpdateInvoiceSchemeInput,
   UpdateInvoiceSettingsInput,
   UpdateReceiptPrinterInput,
@@ -58,6 +61,38 @@ export async function deleteInvoiceScheme(id: string): Promise<void> {
     method: "DELETE",
   });
   if (!response.ok) throw new Error("Failed to delete invoice scheme");
+}
+
+export async function createInvoiceLayout(
+  input: CreateInvoiceLayoutInput,
+): Promise<InvoiceLayout> {
+  const response = await apiFetch("/invoice-settings/layouts", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  if (!response.ok) throw new Error("Failed to create invoice layout");
+  return response.json();
+}
+
+export async function updateInvoiceLayout(
+  id: string,
+  input: UpdateInvoiceLayoutInput,
+): Promise<InvoiceLayout> {
+  const response = await apiFetch(`/invoice-settings/layouts/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  if (!response.ok) throw new Error("Failed to update invoice layout");
+  return response.json();
+}
+
+export async function deleteInvoiceLayout(id: string): Promise<void> {
+  const response = await apiFetch(`/invoice-settings/layouts/${id}`, {
+    method: "DELETE",
+  });
+  if (!response.ok) throw new Error("Failed to delete invoice layout");
 }
 
 export async function createReceiptPrinter(

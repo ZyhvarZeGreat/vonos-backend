@@ -3,7 +3,9 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import type { Prisma } from '@prisma/client';
 import type { TenantConfig, UpdateTenantConfigRequest } from '@vonos/types';
+import { mergeHq6BusinessSettings } from '@vonos/types';
 import { PrismaService } from '../../common/prisma/prisma.service';
 
 @Injectable()
@@ -64,17 +66,28 @@ export class TenantsService {
       ...(patch.storageLocations !== undefined
         ? { storageLocations: patch.storageLocations }
         : {}),
+      ...(patch.businessSettings !== undefined
+        ? {
+            businessSettings: mergeHq6BusinessSettings(
+              current.businessSettings,
+              patch.businessSettings,
+            ),
+          }
+        : {}),
     };
+
+    // Zod-inferred nested objects are not assignable to Prisma.InputJsonValue.
+    const configJson = next as unknown as Prisma.InputJsonValue;
 
     if (patch.name !== undefined) {
       await this.prisma.tenant.update({
         where: { id: tenantId },
-        data: { name: patch.name, config: next },
+        data: { name: patch.name, config: configJson },
       });
     } else {
       await this.prisma.tenant.update({
         where: { id: tenantId },
-        data: { config: next },
+        data: { config: configJson },
       });
     }
 

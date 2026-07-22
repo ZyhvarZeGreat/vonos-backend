@@ -15,8 +15,10 @@ import {
 } from '../../common/guards/auth.guards';
 import { Roles } from '../../common/decorators/roles.decorator';
 import type {
+  CreateInvoiceLayoutInput,
   CreateInvoiceSchemeInput,
   CreateReceiptPrinterInput,
+  UpdateInvoiceLayoutInput,
   UpdateInvoiceSchemeInput,
   UpdateInvoiceSettingsInput,
   UpdateReceiptPrinterInput,
@@ -55,6 +57,24 @@ export class InvoiceSettingsController {
   @Roles('admin', 'manager')
   deleteScheme(@Param('id') id: string) {
     return this.service.deleteScheme(id);
+  }
+
+  @Post('layouts')
+  @Roles('admin', 'manager')
+  createLayout(@Body() body: CreateInvoiceLayoutInput) {
+    return this.service.createLayout(body);
+  }
+
+  @Patch('layouts/:id')
+  @Roles('admin', 'manager')
+  updateLayout(@Param('id') id: string, @Body() body: UpdateInvoiceLayoutInput) {
+    return this.service.updateLayout(id, body);
+  }
+
+  @Delete('layouts/:id')
+  @Roles('admin', 'manager')
+  deleteLayout(@Param('id') id: string) {
+    return this.service.deleteLayout(id);
   }
 
   @Get('printers')

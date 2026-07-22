@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { ARCHETYPES } from "./role";
+import { Hq6BusinessSettingsSchema } from "./businessSettings";
 
 export const NavItemSchema = z.object({
   label: z.string(),
@@ -35,6 +36,8 @@ export const TenantConfigSchema = z.object({
   businessLocations: z.array(BusinessLocationSchema).optional(),
   /** Bin / rack slots within a branch. */
   storageLocations: z.array(z.string()).optional(),
+  /** HQ6 Business Settings form bag (tabs + custom labels). */
+  businessSettings: Hq6BusinessSettingsSchema.optional(),
 });
 
 export type NavItem = z.infer<typeof NavItemSchema>;
@@ -56,6 +59,7 @@ export type UpdateTenantConfigRequest = Partial<
     | "itemCategories"
     | "businessLocations"
     | "storageLocations"
+    | "businessSettings"
   >
 > & {
   accentColor?: string;

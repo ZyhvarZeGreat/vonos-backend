@@ -31,6 +31,73 @@ const JOB_STATUS_COLORS: Record<string, string> = {
   Cancelled: '#ef4444',
 };
 
+/** One SQL round-trip for job KPI counts (avoids Promise.all stampede → P2024). */
+async function jobHomeCountMetrics(
+  db: TenantScopedPrisma,
+  tenantId: string,
+  window: { from: Date; to: Date },
+  prior: { from: Date; to: Date },
+): Promise<{
+  activeJobs: number;
+  pendingQc: number;
+  completedJobs: number;
+  priorCompleted: number;
+}> {
+  const rows = await db.$queryRaw<
+    Array<{
+      active_jobs: bigint;
+      pending_qc: bigint;
+      completed_jobs: bigint;
+      prior_completed: bigint;
+    }>
+  >`
+    SELECT
+      COUNT(*) FILTER (
+        WHERE status NOT IN ('Delivered', 'Cancelled')
+      )::bigint AS active_jobs,
+      COUNT(*) FILTER (WHERE status = 'QC')::bigint AS pending_qc,
+      COUNT(*) FILTER (
+        WHERE status = 'Delivered'
+          AND "createdAt" >= ${window.from}
+          AND "createdAt" <= ${window.to}
+      )::bigint AS completed_jobs,
+      COUNT(*) FILTER (
+        WHERE status = 'Delivered'
+          AND "createdAt" >= ${prior.from}
+          AND "createdAt" <= ${prior.to}
+      )::bigint AS prior_completed
+    FROM "Job"
+    WHERE "tenantId" = ${tenantId}
+      AND "deletedAt" IS NULL
+  `;
+  const row = rows[0];
+  return {
+    activeJobs: Number(row?.active_jobs ?? 0),
+    pendingQc: Number(row?.pending_qc ?? 0),
+    completedJobs: Number(row?.completed_jobs ?? 0),
+    priorCompleted: Number(row?.prior_completed ?? 0),
+  };
+}
+
+async function jobPartsPendingCount(
+  db: TenantScopedPrisma,
+  tenantId: string,
+): Promise<number> {
+  const rows = await db.$queryRaw<[{ count: bigint }]>`
+    SELECT COUNT(DISTINCT j.id)::bigint AS count
+    FROM "Job" j
+    INNER JOIN "Requisition" r
+      ON r."jobId" = j.id
+     AND r."tenantId" = j."tenantId"
+     AND r."deletedAt" IS NULL
+     AND r.status IN ('Pending', 'Approved')
+    WHERE j."tenantId" = ${tenantId}
+      AND j."deletedAt" IS NULL
+      AND j.status <> 'Delivered'
+  `;
+  return Number(rows[0]?.count ?? 0);
+}
+
 async function pendingMovementsTable(
   db: TenantScopedPrisma,
 ): Promise<OverviewDashboard['table']> {
@@ -388,97 +455,74 @@ export async function buildJobOverview(
   const window = resolveDateWindow(from, to);
   const prior = priorWindow(window);
 
-  // Light job KPIs only — full costing charts live on Reports, not home.
-  const [
-    activeJobs,
-    completedJobs,
-    priorCompleted,
-    finance,
-    statusGroups,
-    pendingQc,
-    partsPending,
-    dueSoon,
-    inShop,
-  ] = await Promise.all([
-    db.job.count({
-      where: {
-        deletedAt: null,
-        status: { notIn: ['Delivered', 'Cancelled'] },
-      },
-    }),
-    isMechanics
-      ? Promise.resolve(0)
-      : db.job.count({
-          where: {
-            deletedAt: null,
-            status: 'Delivered',
-            createdAt: { gte: window.from, lte: window.to },
-          },
-        }),
-    isMechanics
-      ? Promise.resolve(0)
-      : db.job.count({
-          where: {
-            deletedAt: null,
-            status: 'Delivered',
-            createdAt: { gte: prior.from, lte: prior.to },
-          },
-        }),
-    buildLedgerFinanceSlice(db, tenantId, from, to),
-    db.job.groupBy({
-      by: ['status'],
-      where: { deletedAt: null },
-      _count: { _all: true },
-    }),
-    db.job.count({ where: { deletedAt: null, status: 'QC' } }),
-    // Jobs still open that have an unfulfilled parts requisition.
-    db.$queryRaw<[{ count: bigint }]>`
-      SELECT COUNT(DISTINCT j.id)::bigint AS count
-      FROM "Job" j
-      INNER JOIN "Requisition" r
-        ON r."jobId" = j.id
-       AND r."tenantId" = j."tenantId"
-       AND r."deletedAt" IS NULL
-       AND r.status IN ('Pending', 'Approved')
-      WHERE j."tenantId" = ${tenantId}
-        AND j."deletedAt" IS NULL
-        AND j.status <> 'Delivered'
-    `.then((rows) => Number(rows[0]?.count ?? 0)),
-    isMechanics
-      ? Promise.resolve([])
-      : db.job.findMany({
-          where: {
-            deletedAt: null,
-            status: { not: 'Delivered' },
-            dueDate: { lte: soon },
-          },
-          orderBy: { dueDate: 'asc' },
-          take: 8,
-          select: {
-            id: true,
-            reference: true,
-            status: true,
-            customerName: true,
-            dueDate: true,
-          },
-        }),
-    isMechanics
-      ? db.job.findMany({
-          where: {
-            deletedAt: null,
-            status: 'In Progress',
-            vehicleId: { not: null },
-          },
-          take: 8,
-          select: {
-            id: true,
-            status: true,
-            customerName: true,
-            vehicleId: true,
-          },
-        })
-      : Promise.resolve([]),
-  ]);
+  // Phase 1 — job pipeline only (≤4 connections). Do NOT nest finance here.
+  const [counts, statusGroups, partsPending, dueSoon, inShop] =
+    await Promise.all([
+      jobHomeCountMetrics(db, tenantId, window, prior),
+      db.job.groupBy({
+        by: ['status'],
+        where: { deletedAt: null },
+        _count: { _all: true },
+      }),
+      jobPartsPendingCount(db, tenantId),
+      isMechanics
+        ? Promise.resolve([])
+        : db.job.findMany({
+            where: {
+              deletedAt: null,
+              status: { not: 'Delivered' },
+              dueDate: { lte: soon },
+            },
+            orderBy: { dueDate: 'asc' },
+            take: 8,
+            select: {
+              id: true,
+              reference: true,
+              status: true,
+              customerName: true,
+              dueDate: true,
+            },
+          }),
+      isMechanics
+        ? db.job.findMany({
+            where: {
+              deletedAt: null,
+              status: 'In Progress',
+              vehicleId: { not: null },
+            },
+            take: 8,
+            select: {
+              id: true,
+              status: true,
+              customerName: true,
+              vehicleId: true,
+            },
+          })
+        : Promise.resolve([]),
+    ]);
+
+  const activeJobs = counts.activeJobs;
+  const pendingQc = counts.pendingQc;
+  const completedJobs = isMechanics ? 0 : counts.completedJobs;
+  const priorCompleted = isMechanics ? 0 : counts.priorCompleted;
+
+  // Phase 2 — finance + HQ6 extras in small waves (frees phase-1 connections first).
+  const finance = await buildLedgerFinanceSlice(db, tenantId, from, to);
+
+  const [vaHomeKpis, vaHomeCharts] = isMechanics
+    ? await Promise.all([
+        buildVaHq6HomeFinanceKpis(db, tenantId, from, to),
+        buildVaHq6HomeCharts(db, tenantId),
+      ])
+    : [null, null];
+
+  const vaHomePanels = isMechanics
+    ? await Promise.all([
+        buildSalesPaymentDuesPanel(db, tenantId),
+        buildPurchasePaymentDuesPanel(db, tenantId),
+        buildStockAlertPanel(db, tenantId),
+      ])
+    : null;
 
   const jobStatusPie = statusGroups.map((group) => ({
     label: group.status,
@@ -594,20 +638,6 @@ export async function buildJobOverview(
           currency: revenue?.currency ?? 'NGN',
         },
       ];
-
-  const vaHomeKpis = isMechanics
-    ? await buildVaHq6HomeFinanceKpis(db, tenantId, from, to)
-    : null;
-  const vaHomeCharts = isMechanics
-    ? await buildVaHq6HomeCharts(db, tenantId)
-    : null;
-  const vaHomePanels = isMechanics
-    ? await Promise.all([
-        buildSalesPaymentDuesPanel(db, tenantId),
-        buildPurchasePaymentDuesPanel(db, tenantId),
-        buildStockAlertPanel(db, tenantId),
-      ])
-    : null;
 
   return {
     kpis,
