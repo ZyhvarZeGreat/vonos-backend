@@ -57,7 +57,7 @@ export function Hq6DiscountsListView() {
   const [deleteTarget, setDeleteTarget] = useState<Discount | null>(null);
   const [form, setForm] = useState(emptyDiscountForm);
   const [localSearch, setLocalSearch] = useState("");
-  const chrome = useHq6ListChrome();
+  const chrome = useHq6ListChrome("discounts");
 
   const {
     items,
@@ -77,7 +77,7 @@ export function Hq6DiscountsListView() {
   } = useServerListPage<Discount>({
     queryKey: ["discounts", tenantId, "hq6"],
     enabled: Boolean(tenantId),
-    fetchPage: (cursor, limit) => getDiscountsPage(tenantId!, cursor, limit),
+    fetchPage: (cursor, limit, _sort, opts) => getDiscountsPage(tenantId!, cursor, limit, { includeSummary: opts?.includeSummary }),
   });
 
   const openCreate = () => {

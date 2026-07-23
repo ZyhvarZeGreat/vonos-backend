@@ -41,6 +41,12 @@ function supplierExtraParams(filters?: SupplierFilters): Record<string, string |
     openingBalance: filters.openingBalance ? "true" : undefined,
     assignedToUserId: filters.assignedToUserId,
     status: filters.status,
+    includeSummary:
+      filters.includeSummary === false
+        ? "0"
+        : filters.includeSummary === true
+          ? "1"
+          : undefined,
   };
 }
 
@@ -67,7 +73,30 @@ export async function getSuppliersPage(
   limit = DEFAULT_TABLE_PAGE_SIZE,
   filters?: SupplierFilters,
 ): Promise<ListPage<SupplierListRow>> {
-  return fetchTenantListPage(LIST_PATH, tenantId, cursor, limit, supplierExtraParams(filters));
+  return fetchTenantListPage(
+    LIST_PATH,
+    tenantId,
+    cursor,
+    limit,
+    supplierExtraParams({
+      ...filters,
+      includeSummary: filters?.includeSummary ?? false,
+    }),
+  );
+}
+
+/** Count + amountSummary only (limit=1) — pair with rows-first getSuppliersPage. */
+export async function getSuppliersListSummary(
+  tenantId: string,
+  filters?: SupplierFilters,
+): Promise<Pick<ListPage<SupplierListRow>, "totalCount" | "amountSummary">> {
+  const page = await getSuppliersPage(
+    tenantId,
+    undefined,
+    1,
+    { ...filters, includeSummary: true },
+  );
+  return { totalCount: page.totalCount, amountSummary: page.amountSummary };
 }
 
 /** Full supplier list for export — not for table rendering. */
@@ -124,6 +153,9 @@ export interface CreateSupplierRequest {
   address?: string;
   locationCode?: string;
   notes?: string;
+  taxNumber?: string | null;
+  openingBalance?: number;
+  assignedToUserId?: string;
 }
 
 export type UpdateSupplierRequest = Partial<CreateSupplierRequest>;

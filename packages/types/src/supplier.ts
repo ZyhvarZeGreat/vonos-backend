@@ -28,6 +28,8 @@ export interface SupplierFilters {
   openingBalance?: boolean;
   assignedToUserId?: string;
   status?: "active" | "inactive";
+  /** When false, skip count/amountSummary for faster first paint. */
+  includeSummary?: boolean;
 }
 
 /** List/detail row with display fields returned by the suppliers API. */

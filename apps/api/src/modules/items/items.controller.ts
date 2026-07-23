@@ -106,6 +106,12 @@ export class ItemsController {
     return this.itemsService.importCsv(body.csv ?? '');
   }
 
+  @Post('import-opening-stock')
+  @Roles('manager', 'admin', 'super_admin')
+  importOpeningStock(@Body() body: { csv: string }) {
+    return this.itemsService.importOpeningStockCsv(body.csv ?? '');
+  }
+
   @Post('bulk-price')
   @Roles('manager', 'admin', 'super_admin')
   bulkUpdatePrice(

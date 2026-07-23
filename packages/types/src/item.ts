@@ -75,6 +75,8 @@ export interface ItemFilters {
   limit?: number;
   sortBy?: string;
   sortDir?: "asc" | "desc";
+  /** When false, skip count/amountSummary for faster first paint. */
+  includeSummary?: boolean;
 }
 
 export interface KpiSummary {

@@ -18,6 +18,7 @@ export interface PaymentFilters {
   search?: string;
   cursor?: string;
   limit?: number;
+  includeSummary?: boolean;
 }
 
 async function fetchPaymentsRaw(
@@ -70,6 +71,7 @@ export async function getPaymentsPage(
     from: filters?.from,
     to: filters?.to,
     search: filters?.search,
+    includeSummary: filters?.includeSummary ?? false,
   });
 }
 
@@ -77,13 +79,22 @@ export async function getAccountBookPage(
   accountId: string,
   cursor: string | undefined,
   limit = DEFAULT_TABLE_PAGE_SIZE,
-  filters: { from?: string; to?: string; search?: string; type?: string } = {},
+  filters: {
+    from?: string;
+    to?: string;
+    search?: string;
+    type?: string;
+    includeSummary?: boolean;
+  } = {},
 ): Promise<ListPage<AccountTransaction>> {
   return fetchJsonListPage(
     `/payments/account-book/${accountId}`,
     cursor,
     limit,
-    filters,
+    {
+      ...filters,
+      includeSummary: filters.includeSummary ?? false,
+    },
   );
 }
 

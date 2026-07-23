@@ -41,6 +41,7 @@ export class ExpensesController {
     @Query('createdById') createdById?: string,
     @Query('categoryId') categoryId?: string,
     @Query('paymentStatus') paymentStatus?: string,
+    @Query('includeSummary') includeSummary?: string,
   ) {
     return this.service.listExpenses({
       cursor,
@@ -54,6 +55,7 @@ export class ExpensesController {
       createdById,
       categoryId,
       paymentStatus,
+      includeSummary: includeSummary !== '0' && includeSummary !== 'false',
     });
   }
 

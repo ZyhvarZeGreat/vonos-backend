@@ -10,6 +10,10 @@ import { TenantDbService } from '../../common/prisma/tenant-db.service';
 import { CacheService } from '../../common/cache/cache.service';
 import { invalidateTenantDashboardCache } from '../../common/cache/cacheInvalidation';
 import { applyDailyFinanceDelta } from '../../common/utils/dailyFinanceRollup';
+import {
+  listPageFilterKey,
+  withListPageCache,
+} from '../../common/utils/listPageCache';
 import { buildCompositeCursorQuery } from '../../common/utils/pagination';
 import type { PaginatedList } from '../../common/utils/paginatedList';
 import { toIso, toNumber } from '../../common/utils/serializers';
@@ -44,7 +48,7 @@ type ExpenseRow = {
 };
 
 const expenseInclude = {
-  category: true,
+  category: { select: { id: true, name: true } },
   expenseForCustomer: { select: { name: true } },
   contactCustomer: { select: { name: true } },
 } as const;
@@ -69,8 +73,50 @@ export class ExpensesService {
     createdById?: string;
     categoryId?: string;
     paymentStatus?: string;
+    includeSummary?: boolean;
   } = {}): Promise<PaginatedList<Expense>> {
     const tenantId = this.tenantDb.requireTenantId();
+    const filterKey = listPageFilterKey({
+      search: filters.search,
+      from: filters.from,
+      to: filters.to,
+      locationCode: filters.locationCode,
+      expenseForCustomerId: filters.expenseForCustomerId,
+      contactCustomerId: filters.contactCustomerId,
+      createdById: filters.createdById,
+      categoryId: filters.categoryId,
+      paymentStatus: filters.paymentStatus,
+      cursor: filters.cursor,
+      limit: filters.limit ?? 10,
+      sum: filters.includeSummary === false ? 0 : 1,
+    });
+
+    return withListPageCache(
+      this.cache,
+      tenantId,
+      'expenses',
+      filterKey,
+      () => this.listExpensesUncached(filters, tenantId),
+    );
+  }
+
+  private async listExpensesUncached(
+    filters: {
+      cursor?: string;
+      limit?: number;
+      search?: string;
+      from?: string;
+      to?: string;
+      locationCode?: string;
+      expenseForCustomerId?: string;
+      contactCustomerId?: string;
+      createdById?: string;
+      categoryId?: string;
+      paymentStatus?: string;
+      includeSummary?: boolean;
+    },
+    tenantId: string,
+  ): Promise<PaginatedList<Expense>> {
     const dateFilter =
       filters.from || filters.to
         ? {
@@ -144,22 +190,16 @@ export class ExpensesService {
           }
         : {}),
     };
-    const [rows, totalCount, amountAgg] = await Promise.all([
-      this.tenantDb.db.expense.findMany({
-        where: {
-          ...baseWhere,
-          ...(pagination.where ?? {}),
-        },
-        include: expenseInclude,
-        orderBy: [{ expenseDate: 'desc' }, { id: 'desc' }],
-        take: pagination.take,
-      }),
-      this.tenantDb.db.expense.count({ where: baseWhere }),
-      this.tenantDb.db.expense.aggregate({
-        where: baseWhere,
-        _sum: { totalAmount: true, paymentDue: true },
-      }),
-    ]);
+    const rows = await this.tenantDb.db.expense.findMany({
+      where: {
+        ...baseWhere,
+        ...(pagination.where ?? {}),
+      },
+      include: expenseInclude,
+      orderBy: [{ expenseDate: 'desc' }, { id: 'desc' }],
+      take: pagination.take,
+    });
+
     const userIds = [
       ...new Set(rows.map((r) => r.createdById).filter((id): id is string => Boolean(id))),
     ];
@@ -171,10 +211,24 @@ export class ExpensesService {
           })
         : [];
     const userNames = new Map(users.map((u) => [u.id, u.name]));
+    const items = rows.map((row) =>
+      this.serializeExpense(row, userNames.get(row.createdById ?? '') ?? null),
+    );
+
+    if (filters.includeSummary === false) {
+      return { items };
+    }
+
+    const [totalCount, amountAgg] = await Promise.all([
+      this.tenantDb.db.expense.count({ where: baseWhere }),
+      this.tenantDb.db.expense.aggregate({
+        where: baseWhere,
+        _sum: { totalAmount: true, paymentDue: true },
+      }),
+    ]);
+
     return {
-      items: rows.map((row) =>
-        this.serializeExpense(row, userNames.get(row.createdById ?? '') ?? null),
-      ),
+      items,
       totalCount,
       amountSummary: {
         totalAmount: toNumber(amountAgg._sum.totalAmount),

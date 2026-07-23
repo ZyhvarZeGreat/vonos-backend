@@ -14,7 +14,17 @@ import type {
   SupplierListRow,
 } from '@vonos/types';
 import { TenantDbService } from '../../common/prisma/tenant-db.service';
+import { CacheService } from '../../common/cache/cache.service';
+import { invalidateTenantDashboardCache } from '../../common/cache/cacheInvalidation';
 import { AuditService } from '../audit/audit.service';
+import {
+  listPageFilterKey,
+  withListPageCache,
+} from '../../common/utils/listPageCache';
+import {
+  getLegacyContactIdsForPage,
+  warmLegacyContactIdMap,
+} from '../../common/utils/legacyContactIdMap';
 import { buildCompositeCursorQuery } from '../../common/utils/pagination';
 import type { PaginatedList } from '../../common/utils/paginatedList';
 import { parseCsv, pickCsvField } from '../../common/utils/csvImport';
@@ -116,10 +126,37 @@ export class SuppliersService {
   constructor(
     private readonly tenantDb: TenantDbService,
     private readonly auditService: AuditService,
+    private readonly cache: CacheService,
   ) {}
 
   async list(filters: SupplierFilters = {}): Promise<PaginatedList<SupplierListRow>> {
     const tenantId = this.tenantDb.requireTenantId();
+    const filterKey = listPageFilterKey({
+      search: filters.search,
+      status: filters.status,
+      assignedToUserId: filters.assignedToUserId,
+      openingBalance: filters.openingBalance ? 1 : 0,
+      purchaseDue: filters.purchaseDue ? 1 : 0,
+      purchaseReturn: filters.purchaseReturn ? 1 : 0,
+      advanceBalance: filters.advanceBalance ? 1 : 0,
+      cursor: filters.cursor,
+      limit: filters.limit ?? 10,
+      sum: filters.includeSummary === false ? 0 : 1,
+    });
+
+    return withListPageCache(
+      this.cache,
+      tenantId,
+      'suppliers',
+      filterKey,
+      () => this.listUncached(filters, tenantId),
+    );
+  }
+
+  private async listUncached(
+    filters: SupplierFilters,
+    tenantId: string,
+  ): Promise<PaginatedList<SupplierListRow>> {
     const pagination = buildCompositeCursorQuery({
       sortField: 'name',
       sortDir: 'asc',
@@ -157,60 +194,52 @@ export class SuppliersService {
         : {}),
     };
 
-    // Page rows first, then count + amount footer (≤2 concurrent) — avoids
-    // 3-way Promise.all stampede when Neon is waking / pool is tight.
-    const rows = await this.tenantDb.db.supplier.findMany({
-      where: {
-        ...baseWhere,
-        ...(pagination.where ?? {}),
-      },
-      include: { assignedToUser: { select: { name: true } } },
-      orderBy: [{ name: 'asc' }, { id: 'asc' }],
-      take: pagination.take,
-    });
-    const [totalCount, amountAgg] = await Promise.all([
-      this.tenantDb.db.supplier.count({ where: baseWhere }),
-      this.tenantDb.db.supplier.aggregate({
-        where: baseWhere,
-        _sum: {
-          totalPurchase: true,
-          totalPurchaseDue: true,
-          totalPurchasePaid: true,
+    // Rows first; legacy IDs from warm map (0 RTT) or page-scoped IN (1 RTT).
+    const includeSummary = filters.includeSummary !== false;
+    const [rows, totalCount, amountAgg] = await Promise.all([
+      this.tenantDb.db.supplier.findMany({
+        where: {
+          ...baseWhere,
+          ...(pagination.where ?? {}),
         },
+        include: { assignedToUser: { select: { name: true } } },
+        orderBy: [{ name: 'asc' }, { id: 'asc' }],
+        take: pagination.take,
       }),
+      includeSummary
+        ? this.tenantDb.db.supplier.count({ where: baseWhere })
+        : Promise.resolve(undefined as number | undefined),
+      includeSummary
+        ? this.tenantDb.db.supplier.aggregate({
+            where: baseWhere,
+            _sum: {
+              totalPurchase: true,
+              totalPurchaseDue: true,
+              totalPurchasePaid: true,
+            },
+          })
+        : Promise.resolve(undefined),
     ]);
 
-    if (rows.length === 0) {
-      return {
-        items: [],
-        totalCount,
-        amountSummary: {
-          totalAmount: toNumber(amountAgg._sum.totalPurchase),
-          totalDue: toNumber(amountAgg._sum.totalPurchaseDue),
-          totalPaid: toNumber(amountAgg._sum.totalPurchasePaid),
-          currency: 'NGN',
-        },
-      };
-    }
-
-    const legacyIds = await this.tenantDb.db.migrationLegacyId.findMany({
-      where: {
-        tenantId,
-        entityType: 'supplier',
-        newId: { in: rows.map((row) => row.id) },
-      },
-      select: { newId: true, legacyId: true },
-    });
-    const legacyById = new Map(
-      legacyIds.map((l) => [l.newId, `CO${String(l.legacyId).padStart(4, '0')}`]),
+    const legacyById = await getLegacyContactIdsForPage(
+      this.tenantDb.db,
+      this.cache,
+      tenantId,
+      'supplier',
+      rows.map((row) => row.id),
     );
 
+    const items = rows.map((row) =>
+      toListRow(row, { contactId: legacyById.get(row.id) ?? null }),
+    );
+
+    if (!includeSummary || totalCount == null || amountAgg == null) {
+      return { items };
+    }
+
     // Trust denormalized purchase totals on list (refreshed on movement write).
-    // Live StockMovement JSON scans per page were ~20s on Neon.
     return {
-      items: rows.map((row) =>
-        toListRow(row, { contactId: legacyById.get(row.id) ?? null }),
-      ),
+      items,
       totalCount,
       amountSummary: {
         totalAmount: toNumber(amountAgg._sum.totalPurchase),
@@ -301,6 +330,7 @@ export class SuppliersService {
       entityId: row.id,
       summary: `Created supplier ${row.name}`,
     });
+    void invalidateTenantDashboardCache(this.cache, tenantId);
     return toListRow(row);
   }
 
@@ -341,6 +371,7 @@ export class SuppliersService {
       entityId: id,
       summary: `Updated supplier ${row.name}`,
     });
+    void invalidateTenantDashboardCache(this.cache, tenantId);
     return toListRow(row);
   }
 
@@ -451,6 +482,7 @@ export class SuppliersService {
       entityId: id,
       summary: `Deleted supplier ${existing.name}`,
     });
+    void invalidateTenantDashboardCache(this.cache, tenantId);
   }
 
   /** Apply contact payment across oldest due/partial inbound purchases (HQ6 pay-contact-due). */
@@ -664,5 +696,83 @@ export class SuppliersService {
     }
 
     return result;
+  }
+}
+
+/** Boot/cron: seed default first-page supplier list caches. */
+export async function warmDefaultSupplierListPages(
+  prisma: import('@prisma/client').PrismaClient,
+  cache: CacheService,
+  tenantId: string,
+): Promise<void> {
+  await warmLegacyContactIdMap(prisma, cache, tenantId, 'supplier');
+  for (const limit of [10, 25] as const) {
+    for (const includeSummary of [false, true] as const) {
+      const filterKey = listPageFilterKey({
+        search: undefined,
+        status: undefined,
+        assignedToUserId: undefined,
+        openingBalance: 0,
+        purchaseDue: 0,
+        purchaseReturn: 0,
+        advanceBalance: 0,
+        cursor: undefined,
+        limit,
+        sum: includeSummary ? 1 : 0,
+      });
+      await withListPageCache(
+        cache,
+        tenantId,
+        'suppliers',
+        filterKey,
+        async () => {
+          const baseWhere = { tenantId, deletedAt: null as null };
+          const [rows, totalCount, amountAgg] = await Promise.all([
+            prisma.supplier.findMany({
+              where: baseWhere,
+              include: { assignedToUser: { select: { name: true } } },
+              orderBy: [{ name: 'asc' }, { id: 'asc' }],
+              take: limit,
+            }),
+            includeSummary
+              ? prisma.supplier.count({ where: baseWhere })
+              : Promise.resolve(undefined as number | undefined),
+            includeSummary
+              ? prisma.supplier.aggregate({
+                  where: baseWhere,
+                  _sum: {
+                    totalPurchase: true,
+                    totalPurchaseDue: true,
+                    totalPurchasePaid: true,
+                  },
+                })
+              : Promise.resolve(undefined),
+          ]);
+          const legacyById = await getLegacyContactIdsForPage(
+            prisma,
+            cache,
+            tenantId,
+            'supplier',
+            rows.map((row) => row.id),
+          );
+          const items = rows.map((row) =>
+            toListRow(row, { contactId: legacyById.get(row.id) ?? null }),
+          );
+          if (!includeSummary || totalCount == null || amountAgg == null) {
+            return { items };
+          }
+          return {
+            items,
+            totalCount,
+            amountSummary: {
+              totalAmount: toNumber(amountAgg._sum.totalPurchase),
+              totalDue: toNumber(amountAgg._sum.totalPurchaseDue),
+              totalPaid: toNumber(amountAgg._sum.totalPurchasePaid),
+              currency: 'NGN',
+            },
+          };
+        },
+      );
+    }
   }
 }

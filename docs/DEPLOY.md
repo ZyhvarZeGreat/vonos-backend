@@ -98,21 +98,29 @@ Expected response should include:
 { "backend": "redis", "keyCount": 123 }
 ```
 
-### VAG group overview cron (snapshots + optional cache warm)
+### Neon compute (always-on)
 
-Schedule on Railway (every **5 minutes**). Refreshes entity snapshots **and** warms all three `group-overview:*` Redis keys (aligned with UI `last_7_days`):
+On the Neon project → **Settings → Compute**, set the compute to **Always on** (or raise the scale-to-zero idle timeout). Cold Neon compute is a multi-second floor that app caching cannot remove. Prefer always-on for production Railway API traffic.
+
+### VAG / VA hot-path warm (snapshots + cache)
+
+Schedule on Railway (every **5 minutes**). Refreshes entity snapshots **and** warms Redis keys (aligned with UI `last_7_days`):
 
 ```bash
 cd apps/api && npx tsx prisma/scripts/refresh-entity-snapshots.ts
 ```
 
-The API also runs the same warm logic **~3s after boot** (`OverviewService.onModuleInit`) so the in-process L1 cache serves **0–1ms** hits without waiting for the first user request.
+The API also:
 
-Optional — keep Redis hot for the default group overview window:
+1. Warms **~3s after boot** (`GROUP_OVERVIEW_BOOTSTRAP_DELAY_MS`, default `3000`).
+2. Re-warms on an in-process interval (`HOT_PATHS_WARM_INTERVAL_MS`, default `120000` / 2 min; set `0` to disable). Covers VAG group overview/finance/reports plus VA overview, HQ6 home, report dashboards, and invoice settings.
 
 | Variable | Value |
 |----------|--------|
 | `GROUP_WARM_SECRET` | Random secret (e.g. `openssl rand -hex 32`) |
+| `HOT_PATHS_WARM_INTERVAL_MS` | `120000` (default) or `0` to disable |
+
+External cron (optional if the in-process interval is enough):
 
 ```bash
 curl -X POST "$API/internal/overview/group-warm" \

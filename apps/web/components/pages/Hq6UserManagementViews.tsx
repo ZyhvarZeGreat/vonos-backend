@@ -32,7 +32,7 @@ export function Hq6PosListView() {
   const [localSearch, setLocalSearch] = useState("");
   const [editRegister, setEditRegister] = useState<PosRegisterRow | null>(null);
   const [editName, setEditName] = useState("");
-  const chrome = useHq6ListChrome();
+  const chrome = useHq6ListChrome("pos-registers");
 
   const rows = useMemo(() => {
     if (!localSearch.trim()) return DEMO_REGISTERS;
@@ -197,7 +197,7 @@ export function Hq6RolesListView() {
   const { detailPath } = useRecordNavigation("roles");
   const [localSearch, setLocalSearch] = useState("");
   const [deleteRole, setDeleteRole] = useState<{ id: string; name: string } | null>(null);
-  const chrome = useHq6ListChrome();
+  const chrome = useHq6ListChrome("roles");
 
   const roles = useMemo(() => {
     const builtIn = [
@@ -302,7 +302,7 @@ export function Hq6RolesListView() {
 
 /** HQ6 Commission agents — ui-audit/03_sales-commission-agents/screenshot.png */
 export function Hq6CommissionAgentsListView() {
-  const chrome = useHq6ListChrome();
+  const chrome = useHq6ListChrome("commission-agents");
   const [localSearch, setLocalSearch] = useState("");
 
   return (

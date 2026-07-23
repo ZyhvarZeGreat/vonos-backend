@@ -2,6 +2,7 @@ import type {
   MovementSource,
   MovementStatus,
   MovementType,
+  PurchaseViewBundle,
   StockMovement,
   StockMovementFilters as StockMovementApiFilters,
   StockMovementListRow,
@@ -39,6 +40,8 @@ function buildStockMovementsPath(
   if (filters?.search) params.set("search", filters.search);
   if (filters?.sortBy) params.set("sortBy", filters.sortBy);
   if (filters?.sortDir) params.set("sortDir", filters.sortDir);
+  if (filters?.includeSummary === false) params.set("includeSummary", "0");
+  else if (filters?.includeSummary === true) params.set("includeSummary", "1");
   if (cursor) params.set("cursor", cursor);
   if (limit) params.set("limit", String(limit));
   const query = params.toString();
@@ -71,10 +74,29 @@ export async function getStockMovementsPage(
 ): Promise<ListPage<StockMovementListRow>> {
   return fetchListPage(
     (pageCursor, pageLimit) =>
-      fetchStockMovementsRaw(tenantId, filters, pageCursor, pageLimit),
+      fetchStockMovementsRaw(
+        tenantId,
+        { ...filters, includeSummary: filters?.includeSummary ?? false },
+        pageCursor,
+        pageLimit,
+      ),
     cursor,
     limit,
   );
+}
+
+/** Count only (limit=1) — pair with rows-first getStockMovementsPage. */
+export async function getStockMovementsListSummary(
+  tenantId: string,
+  filters?: StockMovementFilters,
+): Promise<Pick<ListPage<StockMovementListRow>, "totalCount" | "amountSummary">> {
+  const page = await getStockMovementsPage(
+    tenantId,
+    { ...filters, includeSummary: true },
+    undefined,
+    1,
+  );
+  return { totalCount: page.totalCount, amountSummary: page.amountSummary };
 }
 
 /** Full movement list for export — not for table rendering. */
@@ -110,6 +132,18 @@ export async function getStockMovements(
 export async function getStockMovement(id: string): Promise<StockMovement> {
   const response = await apiFetch(`/stock-movements/${id}`);
   if (!response.ok) throw new Error("Failed to fetch stock movement");
+  return response.json();
+}
+
+/** Purchase modal bundle: movement + payments + supplier (one round-trip). */
+export async function getPurchaseView(
+  tenantId: string,
+  id: string,
+): Promise<PurchaseViewBundle> {
+  const response = await apiFetch(
+    withTenantQuery(`/stock-movements/${id}/view`, tenantId),
+  );
+  if (!response.ok) throw new Error("Failed to fetch purchase view");
   return response.json();
 }
 

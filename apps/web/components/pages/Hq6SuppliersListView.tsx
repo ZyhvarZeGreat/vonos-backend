@@ -5,11 +5,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { DataTable, type ColumnConfig } from "@/components/organisms/DataTable";
 import { Hq6ActionsMenu } from "@/components/hq6/Hq6ActionsMenu";
-import {
-  Hq6Field,
-  Hq6Modal,
-  Hq6ModalSaveClose,
-} from "@/components/hq6/Hq6Modal";
+import { Hq6EditSupplierModal } from "@/components/hq6/Hq6EditSupplierModal";
 import { Hq6PaySupplierModal } from "@/components/hq6/Hq6PaySupplierModal";
 import {
   Hq6FilterCheckbox,
@@ -23,10 +19,10 @@ import { Hq6StandardListShell, useHq6ListChrome } from "@/components/hq6/Hq6Stan
 import {
   getSuppliersPage,
   setSupplierStatus,
-  updateSupplier,
   type SupplierListRow,
 } from "@/lib/api/suppliers";
 import { getUsers } from "@/lib/api/users";
+import { TYPEAHEAD_PAGE_SIZE } from "@/lib/api/fetchAllPages";
 import { useServerListPage } from "@/lib/hooks/useServerListPage";
 import { useListPageFilters } from "@/lib/hooks/useListPageFilters";
 import { useRecordNavigation } from "@/lib/hooks/useRecordNavigation";
@@ -60,21 +56,16 @@ export function Hq6SuppliersListView() {
   const [openingBalance, setOpeningBalance] = useState(false);
   const [assignedToUserId, setAssignedToUserId] = useState("");
   const [status, setStatus] = useState("");
-  const chrome = useHq6ListChrome();
+  const chrome = useHq6ListChrome("suppliers");
 
   const [editTarget, setEditTarget] = useState<SupplierListRow | null>(null);
   const [payTarget, setPayTarget] = useState<SupplierListRow | null>(null);
-  const [editName, setEditName] = useState("");
-  const [editContact, setEditContact] = useState("");
-  const [editEmail, setEditEmail] = useState("");
-  const [editPhone, setEditPhone] = useState("");
-  const [saving, setSaving] = useState(false);
 
   const usersQuery = useQuery({
     queryKey: ["users", tenantId, "filter"],
-    queryFn: () => getUsers(tenantId),
+    queryFn: () => getUsers(tenantId!, { limit: TYPEAHEAD_PAGE_SIZE }),
     enabled: Boolean(tenantId),
-    staleTime: 5 * 60_000,
+    staleTime: 10 * 60_000,
   });
 
   const apiFilters = useMemo(
@@ -120,7 +111,7 @@ export function Hq6SuppliersListView() {
     enabled: Boolean(tenantId),
     filters: apiFilters,
     search: localSearch || search,
-    fetchPage: (cursor, limit) => getSuppliersPage(tenantId!, cursor, limit, apiFilters),
+    fetchPage: (cursor, limit, _sort, opts) => getSuppliersPage(tenantId!, cursor, limit, { ...apiFilters, includeSummary: opts?.includeSummary }),
     getCursor: (row) => nameListCursor(row),
   });
 
@@ -132,34 +123,7 @@ export function Hq6SuppliersListView() {
 
   const openEdit = useCallback((row: SupplierListRow) => {
     setEditTarget(row);
-    setEditName(row.name);
-    setEditContact(row.contactName ?? "");
-    setEditEmail(row.email ?? "");
-    setEditPhone(row.phone ?? "");
   }, []);
-
-  const handleSaveEdit = useCallback(async () => {
-    if (!editTarget || !editName.trim()) {
-      toast.error("Supplier name is required");
-      return;
-    }
-    setSaving(true);
-    try {
-      await updateSupplier(editTarget.id, {
-        name: editName.trim(),
-        contactName: editContact.trim() || undefined,
-        email: editEmail.trim() || undefined,
-        phone: editPhone.trim() || undefined,
-      });
-      toast.success("Supplier updated");
-      setEditTarget(null);
-      await invalidate();
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Update failed");
-    } finally {
-      setSaving(false);
-    }
-  }, [editContact, editEmail, editName, editPhone, editTarget, invalidate]);
 
   const columns: ColumnConfig<SupplierListRow>[] = useMemo(
     () => [
@@ -270,30 +234,35 @@ export function Hq6SuppliersListView() {
       {
         key: "openingBalance",
         header: "Opening Balance",
+        numeric: true,
         sortValue: (r) => r.openingBalance ?? 0,
         render: (r) => formatHq6Currency(r.openingBalance ?? 0),
       },
       {
         key: "totalPurchase",
         header: "Total Purchase",
+        numeric: true,
         sortValue: (r) => r.totalPurchase ?? 0,
         render: (r) => formatHq6Currency(r.totalPurchase ?? 0),
       },
       {
         key: "totalPurchaseDue",
         header: "Total Purchase Due",
+        numeric: true,
         sortValue: (r) => r.totalPurchaseDue ?? 0,
         render: (r) => formatHq6Currency(r.totalPurchaseDue ?? 0),
       },
       {
         key: "totalPurchasePaid",
         header: "Purchase Paid",
+        numeric: true,
         sortValue: (r) => r.totalPurchasePaid ?? 0,
         render: (r) => formatHq6Currency(r.totalPurchasePaid ?? 0),
       },
       {
         key: "advanceBalance",
         header: "Advance Balance",
+        numeric: true,
         sortValue: (r) => r.totalAdvance ?? 0,
         render: (r) => formatHq6Currency(r.totalAdvance ?? 0),
       },
@@ -312,6 +281,7 @@ export function Hq6SuppliersListView() {
       {
         key: "totalPurchaseReturn",
         header: "Total Purchase Return Due",
+        numeric: true,
         sortValue: (r) => r.totalPurchaseReturn ?? 0,
         render: (r) => formatHq6Currency(r.totalPurchaseReturn ?? 0),
       },
@@ -450,6 +420,11 @@ export function Hq6SuppliersListView() {
           displayMode="table"
           embedded
           disablePagination
+          stickyHeader
+          stickyFirstColumn
+          density={chrome.density}
+          onDensityChange={chrome.setDensity}
+          showDensityControl={false}
           isLoading={isLoading}
           isFetching={isFetching && !isLoading}
           error={error ? "Failed to load suppliers." : null}
@@ -458,51 +433,15 @@ export function Hq6SuppliersListView() {
         />
       </Hq6StandardListShell>
 
-      <Hq6Modal
+      <Hq6EditSupplierModal
         open={Boolean(editTarget)}
+        supplier={editTarget}
+        tenantId={tenantId}
         onClose={() => setEditTarget(null)}
-        title="Edit contact"
-        size="md"
-        footer={
-          <Hq6ModalSaveClose
-            onSave={handleSaveEdit}
-            onClose={() => setEditTarget(null)}
-            saving={saving}
-          />
-        }
-      >
-        <div className="grid gap-3 sm:grid-cols-2">
-          <Hq6Field label="Business Name" required>
-            <input
-              className="hq6-modal-input"
-              value={editName}
-              onChange={(e) => setEditName(e.target.value)}
-            />
-          </Hq6Field>
-          <Hq6Field label="Name">
-            <input
-              className="hq6-modal-input"
-              value={editContact}
-              onChange={(e) => setEditContact(e.target.value)}
-            />
-          </Hq6Field>
-          <Hq6Field label="Email">
-            <input
-              className="hq6-modal-input"
-              type="email"
-              value={editEmail}
-              onChange={(e) => setEditEmail(e.target.value)}
-            />
-          </Hq6Field>
-          <Hq6Field label="Mobile">
-            <input
-              className="hq6-modal-input"
-              value={editPhone}
-              onChange={(e) => setEditPhone(e.target.value)}
-            />
-          </Hq6Field>
-        </div>
-      </Hq6Modal>
+        onSaved={() => {
+          void invalidate();
+        }}
+      />
       <Hq6PaySupplierModal
         open={Boolean(payTarget)}
         supplier={payTarget}

@@ -88,6 +88,8 @@ export interface StockMovementFilters {
   search?: string;
   sortBy?: string;
   sortDir?: "asc" | "desc";
+  /** When false, skip count for faster first paint. */
+  includeSummary?: boolean;
 }
 
 export interface TransferZoneSummary {
@@ -105,4 +107,24 @@ export interface TransferRow extends StockMovement {
   requestedBy: string;
   displayStatus: "Pending" | "In Transit" | "Completed" | "Rejected";
   itemsSummary: string;
+}
+
+export interface PurchasePaymentViewRow {
+  id: string;
+  amount: number;
+  currency: string;
+  method: string | null;
+  paymentRefNo: string | null;
+  paidOn: string | null;
+  note: string | null;
+  accountId: string | null;
+  accountName: string | null;
+  createdByName: string | null;
+}
+
+/** Purchase modal: movement + payments + supplier in one round-trip. */
+export interface PurchaseViewBundle {
+  movement: StockMovement;
+  payments: PurchasePaymentViewRow[];
+  supplier: import("./supplier").SupplierListRow | null;
 }

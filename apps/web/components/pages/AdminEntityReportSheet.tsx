@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { Printer, Upload } from "lucide-react";
 import { AdminEntityBanner } from "@/components/molecules/AdminEntityBanner";
@@ -21,9 +20,9 @@ import { getTenantByCode, type TenantCode } from "@/lib/registries/tenants";
 import { useCursorPage } from "@/lib/hooks/useCursorPage";
 import { useListPageFilters } from "@/lib/hooks/useListPageFilters";
 import { useReportFilterOptions } from "@/lib/hooks/useReportFilterOptions";
+import { useReportRecordModals } from "@/lib/hooks/useReportRecordModals";
 import { useDebouncedValue } from "@/lib/hooks/useDebouncedValue";
 import { ledgerChartSubtitle } from "@/lib/utils/ledgerCharts";
-import { reportRowDetailPath } from "@/lib/utils/recordDetailPath";
 import { cn } from "@/lib/utils/cn";
 import type {
   ProductSellReportView,
@@ -32,6 +31,7 @@ import type {
 } from "@vonos/types";
 import { isPaginatedTableReport } from "@vonos/types";
 import { useUiStore } from "@/stores/uiStore";
+import { useAdminEntityStore } from "@/stores/adminEntityStore";
 
 export interface AdminEntityReportSheetProps {
   tenantCode: TenantCode;
@@ -42,7 +42,6 @@ export function AdminEntityReportSheet({
   tenantCode,
   reportSlug,
 }: AdminEntityReportSheetProps) {
-  const router = useRouter();
   const tenant = getTenantByCode(tenantCode);
   const entry = reportEntryBySlug(reportSlug);
   const { dateRange, setDateRange, bounds } = useListPageFilters();
@@ -69,6 +68,15 @@ export function AdminEntityReportSheet({
     reset: resetTablePage,
   } = useCursorPage();
   const [pageSize, setPageSize] = useState(TABLE_REPORT_PAGE_SIZE);
+  const setViewingCode = useAdminEntityStore((state) => state.setViewingCode);
+
+  const {
+    openReportRecord,
+    handleRowAction,
+    modals: recordModals,
+  } = useReportRecordModals({
+    onBeforeOpen: () => setViewingCode(tenantCode),
+  });
 
   const filterKey = useMemo(
     () => JSON.stringify(compactReportFilters(debouncedFilters)),
@@ -177,8 +185,7 @@ export function AdminEntityReportSheet({
   };
 
   const handleRowClick = (row: ReportsTableRow & { id: string }) => {
-    const path = reportRowDetailPath(tenantCode, row);
-    if (path) router.push(path);
+    openReportRecord(row);
   };
 
   const activeView = (filters.view ?? "detailed") as ProductSellReportView;
@@ -264,9 +271,12 @@ export function AdminEntityReportSheet({
             }
             searchPlaceholder={searchPlaceholder}
             onRowClick={handleRowClick}
+            onRowAction={handleRowAction}
           />
         ) : null}
       </div>
+
+      {recordModals}
     </div>
   );
 }

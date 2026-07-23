@@ -79,9 +79,10 @@ export function PaymentAccountsListView() {
       status: statusFilter || undefined,
       type: typeFilter || undefined,
     },
-    fetchPage: (cursor, limit) =>
+    fetchPage: (cursor, limit, _sort, opts) =>
       getPaymentAccountsPage(tenantId!, cursor, limit, {
         search: search.trim() || undefined,
+        includeSummary: opts?.includeSummary,
       }),
   });
 

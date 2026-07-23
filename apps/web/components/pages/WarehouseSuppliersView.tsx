@@ -129,8 +129,11 @@ function WarehouseSuppliersViewBody() {
   const [ledgerSupplierName, setLedgerSupplierName] = useState("");
 
   const { summary, ledger, isLoading: ledgerLoading } = useContactLedgerQuery(
-    () => getSupplierSummary(tenantId!, ledgerSupplierId!),
-    () => getSupplierLedger(tenantId!, ledgerSupplierId!),
+    async () => {
+      const summary = await getSupplierSummary(tenantId!, ledgerSupplierId!);
+      const ledger = await getSupplierLedger(tenantId!, ledgerSupplierId!);
+      return { summary, ledger };
+    },
     isHq6 ? null : ledgerSupplierId,
     "supplier-ledger",
   );
@@ -184,13 +187,16 @@ function WarehouseSuppliersViewBody() {
           category: categoryFilter || undefined,
           tab: activeTab,
         },
-    fetchPage: (cursor, limit) =>
-      getSuppliersPage(tenantId!, cursor, limit, isHq6
-        ? hq6ApiFilters
-        : {
-            search: search.trim() || undefined,
-            status: activeTab === "active" ? "active" : undefined,
-          }),
+    fetchPage: (cursor, limit, _sort, opts) =>
+      getSuppliersPage(tenantId!, cursor, limit, {
+        ...(isHq6
+          ? hq6ApiFilters
+          : {
+              search: search.trim() || undefined,
+              status: activeTab === "active" ? "active" : undefined,
+            }),
+        includeSummary: opts?.includeSummary,
+      }),
     getCursor: (row) => nameListCursor(row),
   });
 

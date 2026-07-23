@@ -8,13 +8,14 @@ import { Button } from "@/components/atoms/Button";
 import { RecordViewModal } from "@/components/organisms/RecordViewModal";
 import { InvoiceDocument } from "@/components/organisms/InvoiceDocument";
 import { DocumentPreviewModal } from "@/components/organisms/DocumentPreviewModal";
-import {
-  getCustomerContact,
-  getCustomerLedger,
-  getCustomerSummary,
-} from "@/lib/api/customers";
+import { getCustomerView } from "@/lib/api/customers";
 import { getInvoiceSettings } from "@/lib/api/invoiceSettings";
 import { useRouteTenant } from "@/lib/hooks/useRouteTenant";
+import {
+  MODAL_RECORD_STALE_MS,
+  MODAL_REF_STALE_MS,
+  modalKeys,
+} from "@/lib/query/modalQueryKeys";
 import { formatCurrency } from "@/lib/utils/formatCurrency";
 import { formatDate } from "@/lib/utils/formatDate";
 import { invoiceDocumentLayoutProps } from "@/lib/utils/resolveInvoiceLayout";
@@ -22,40 +23,35 @@ import { invoiceDocumentLayoutProps } from "@/lib/utils/resolveInvoiceLayout";
 export interface CustomerRecordModalProps {
   customerId: string | null;
   onClose: () => void;
+  /** When false, hide the "Open full page" link. */
+  showFullPageLink?: boolean;
 }
 
-export function CustomerRecordModal({ customerId, onClose }: CustomerRecordModalProps) {
+export function CustomerRecordModal({
+  customerId,
+  onClose,
+  showFullPageLink = true,
+}: CustomerRecordModalProps) {
   const router = useRouter();
   const { tenantId, tenantName, tenantCode } = useRouteTenant();
   const [statementOpen, setStatementOpen] = useState(false);
 
-  const { data: contact, isLoading, error } = useQuery({
-    queryKey: ["customer-contact", tenantId, customerId],
-    queryFn: () => getCustomerContact(customerId!),
+  const { data: bundle, isLoading, error } = useQuery({
+    queryKey: modalKeys.customerView(tenantId, customerId),
+    queryFn: () => getCustomerView(tenantId!, customerId!),
     enabled: Boolean(tenantId && customerId),
-    staleTime: 60_000,
+    staleTime: MODAL_RECORD_STALE_MS,
   });
-
-  const { data: summary } = useQuery({
-    queryKey: ["customer-summary", tenantId, customerId],
-    queryFn: () => getCustomerSummary(tenantId!, customerId!),
-    enabled: Boolean(tenantId && customerId),
-    staleTime: 60_000,
-  });
-
-  const { data: ledger } = useQuery({
-    queryKey: ["customer-ledger", tenantId, customerId],
-    queryFn: () => getCustomerLedger(tenantId!, customerId!),
-    enabled: Boolean(tenantId && customerId),
-    staleTime: 60_000,
-  });
+  const contact = bundle?.customer;
+  const summary = bundle?.summary;
+  const ledger = bundle?.ledger;
 
   // Invoice settings only when printing / opening statement.
   const { data: invoiceSettings } = useQuery({
-    queryKey: ["invoice-settings", tenantId],
+    queryKey: modalKeys.invoiceSettings(tenantId),
     queryFn: getInvoiceSettings,
     enabled: Boolean(tenantId && statementOpen),
-    staleTime: 10 * 60_000,
+    staleTime: MODAL_REF_STALE_MS,
   });
 
   const statementRows = useMemo(
@@ -114,7 +110,9 @@ export function CustomerRecordModal({ customerId, onClose }: CustomerRecordModal
         }
         onClose={onClose}
         fullPageHref={
-          customerId && tenantCode ? `/${tenantCode}/customers/${customerId}` : undefined
+          showFullPageLink && customerId && tenantCode
+            ? `/${tenantCode}/customers/${customerId}`
+            : undefined
         }
         isLoading={isLoading}
         error={error ? "Could not load this customer." : null}

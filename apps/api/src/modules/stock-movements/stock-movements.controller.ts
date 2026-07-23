@@ -44,6 +44,7 @@ export class StockMovementsController {
     @Query('limit') limit?: string,
     @Query('sortBy') sortBy?: string,
     @Query('sortDir') sortDir?: string,
+    @Query('includeSummary') includeSummary?: string,
   ) {
     return this.movementsService.list({
       type,
@@ -65,12 +66,19 @@ export class StockMovementsController {
       limit: limit ? Number(limit) : undefined,
       sortBy,
       sortDir,
+      // Opt-in: COUNT over large movement tables is expensive; rows-first is default.
+      includeSummary: includeSummary === '1' || includeSummary === 'true',
     });
   }
 
   @Get(':id/payments')
   listPayments(@Param('id') id: string) {
     return this.movementsService.listPayments(id);
+  }
+
+  @Get(':id/view')
+  getView(@Param('id') id: string) {
+    return this.movementsService.getView(id);
   }
 
   @Get(':id')

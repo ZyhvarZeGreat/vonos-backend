@@ -27,9 +27,12 @@ export async function getRequisitionsPage(
   tenantId: string,
   cursor: string | undefined,
   limit = DEFAULT_TABLE_PAGE_SIZE,
-  filters: { search?: string } = {},
+  filters: { search?: string; includeSummary?: boolean } = {},
 ): Promise<ListPage<Requisition>> {
-  return fetchTenantListPage(LIST_PATH, tenantId, cursor, limit, filters);
+  return fetchTenantListPage(LIST_PATH, tenantId, cursor, limit, {
+    ...filters,
+    includeSummary: filters.includeSummary ?? false,
+  });
 }
 
 /** Full requisition list for export — not for table rendering. */
@@ -74,9 +77,12 @@ export async function getIncomingRequisitionsPage(
   tenantId: string,
   cursor: string | undefined,
   limit = DEFAULT_TABLE_PAGE_SIZE,
-  filters: { search?: string } = {},
+  filters: { search?: string; includeSummary?: boolean } = {},
 ): Promise<ListPage<Requisition>> {
-  return fetchTenantListPage(INCOMING_PATH, tenantId, cursor, limit, filters);
+  return fetchTenantListPage(INCOMING_PATH, tenantId, cursor, limit, {
+    ...filters,
+    includeSummary: filters.includeSummary ?? false,
+  });
 }
 
 export async function getAllIncomingRequisitions(

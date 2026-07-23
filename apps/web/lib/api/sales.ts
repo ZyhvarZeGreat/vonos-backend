@@ -1,4 +1,4 @@
-import type { CreateSaleRequest, CreateSaleReturnRequest, Sale, SaleDetail, SaleFilters, CsvImportResult, UpdateSaleShippingRequest } from "@vonos/types";
+import type { CreateSaleRequest, CreateSaleReturnRequest, Sale, SaleDetail, SaleFilters, SaleViewBundle, CsvImportResult, UpdateSaleShippingRequest } from "@vonos/types";
 import { apiFetch, withTenantQuery } from "@/lib/api/client";
 import {
   DEFAULT_TABLE_PAGE_SIZE,
@@ -35,6 +35,9 @@ async function fetchSalesRaw(
   if (filters?.to) params.set("to", filters.to);
   if (filters?.sortBy) params.set("sortBy", filters.sortBy);
   if (filters?.sortDir) params.set("sortDir", filters.sortDir);
+  // Rows-first by default — count/amountSummary is a second round-trip.
+  if (filters?.includeSummary === false) params.set("includeSummary", "0");
+  else if (filters?.includeSummary === true) params.set("includeSummary", "1");
   if (cursor) params.set("cursor", cursor);
   if (limit) params.set("limit", String(limit));
   const query = params.toString();
@@ -51,10 +54,30 @@ export async function getSalesPage(
   limit = DEFAULT_TABLE_PAGE_SIZE,
 ): Promise<ListPage<Sale>> {
   return fetchListPage(
-    (pageCursor, pageLimit) => fetchSalesRaw(tenantId, filters, pageCursor, pageLimit),
+    (pageCursor, pageLimit) =>
+      fetchSalesRaw(
+        tenantId,
+        { ...filters, includeSummary: filters?.includeSummary ?? false },
+        pageCursor,
+        pageLimit,
+      ),
     cursor,
     limit,
   );
+}
+
+/** Count + amountSummary only (limit=1) — pair with rows-first getSalesPage. */
+export async function getSalesListSummary(
+  tenantId: string,
+  filters?: SaleFilters,
+): Promise<Pick<ListPage<Sale>, "totalCount" | "amountSummary">> {
+  const page = await getSalesPage(
+    tenantId,
+    { ...filters, includeSummary: true },
+    undefined,
+    1,
+  );
+  return { totalCount: page.totalCount, amountSummary: page.amountSummary };
 }
 
 export async function getAllSales(
@@ -90,6 +113,17 @@ export async function getSale(id: string, tenantId: string): Promise<SaleDetail>
   const path = withTenantQuery(`/sales/${id}`, tenantId);
   const response = await apiFetch(path);
   if (!response.ok) throw new Error("Failed to fetch sale");
+  return response.json();
+}
+
+/** Sale modal bundle: detail + payments + activity (one round-trip). */
+export async function getSaleView(
+  id: string,
+  tenantId: string,
+): Promise<SaleViewBundle> {
+  const path = withTenantQuery(`/sales/${id}/view`, tenantId);
+  const response = await apiFetch(path);
+  if (!response.ok) throw new Error("Failed to fetch sale view");
   return response.json();
 }
 

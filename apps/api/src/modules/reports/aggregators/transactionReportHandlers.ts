@@ -10,6 +10,7 @@ import { Prisma } from '@prisma/client';
 import type { TenantScopedPrisma } from '../../../common/prisma/prisma.service';
 import { ledgerDateFilter } from '../../../common/utils/ledgerAggregates';
 import { parseMovementLines } from '../../../common/utils/stockQuantity';
+import { runPool } from '../../../common/utils/mapPool';
 import { toNumber } from '../../../common/utils/serializers';
 import {
   computeDelta,
@@ -30,6 +31,8 @@ import {
   type PeriodInvoicePage,
   type PeriodInvoiceRef,
 } from './salesReportQueries';
+
+const NEON_QUERY_CONCURRENCY = 2;
 
 export {
   buildItemsReport,
@@ -286,45 +289,54 @@ export async function buildPurchaseSaleReport(
   const pagingOnly = Boolean(options?.taxTable && options?.cursor);
 
   const [period, priorPeriod, purchaseAgg, priorPurchaseAgg, salesBuckets, costBuckets, summary] =
-    await Promise.all([
-      pagingOnly
-        ? Promise.resolve({ revenue: 0, count: 0, currency: 'NGN' })
-        : sumSalesWindow(db, tenantId, window),
-      pagingOnly
-        ? Promise.resolve({ revenue: 0, count: 0, currency: 'NGN' })
-        : sumSalesWindow(db, tenantId, prior),
-      pagingOnly
-        ? Promise.resolve({ _sum: { amount: null as null } })
-        : db.ledgerEntry.aggregate({
-            where: {
-              deletedAt: null,
-              type: 'cost',
-              date: { gte: window.from, lte: window.to },
-            },
-            _sum: { amount: true },
-          }),
-      pagingOnly
-        ? Promise.resolve({ _sum: { amount: null as null } })
-        : db.ledgerEntry.aggregate({
-            where: {
-              deletedAt: null,
-              type: 'cost',
-              date: { gte: prior.from, lte: prior.to },
-            },
-            _sum: { amount: true },
-          }),
-      pagingOnly
-        ? Promise.resolve(
-            [] as Awaited<ReturnType<typeof salesRevenueByBucket>>,
-          )
-        : salesRevenueByBucket(db, tenantId, window),
-      pagingOnly
-        ? Promise.resolve(
-            [] as Awaited<ReturnType<typeof ledgerCostByBucket>>,
-          )
-        : ledgerCostByBucket(db, tenantId, window),
-      taxReportSummaryAggregates(db, tenantId, window),
-    ]);
+    await runPool(
+      [
+        () =>
+          pagingOnly
+            ? Promise.resolve({ revenue: 0, count: 0, currency: 'NGN' })
+            : sumSalesWindow(db, tenantId, window),
+        () =>
+          pagingOnly
+            ? Promise.resolve({ revenue: 0, count: 0, currency: 'NGN' })
+            : sumSalesWindow(db, tenantId, prior),
+        () =>
+          pagingOnly
+            ? Promise.resolve({ _sum: { amount: null as null } })
+            : db.ledgerEntry.aggregate({
+                where: {
+                  deletedAt: null,
+                  type: 'cost',
+                  date: { gte: window.from, lte: window.to },
+                },
+                _sum: { amount: true },
+              }),
+        () =>
+          pagingOnly
+            ? Promise.resolve({ _sum: { amount: null as null } })
+            : db.ledgerEntry.aggregate({
+                where: {
+                  deletedAt: null,
+                  type: 'cost',
+                  date: { gte: prior.from, lte: prior.to },
+                },
+                _sum: { amount: true },
+              }),
+        () =>
+          pagingOnly
+            ? Promise.resolve(
+                [] as Awaited<ReturnType<typeof salesRevenueByBucket>>,
+              )
+            : salesRevenueByBucket(db, tenantId, window),
+        () =>
+          pagingOnly
+            ? Promise.resolve(
+                [] as Awaited<ReturnType<typeof ledgerCostByBucket>>,
+              )
+            : ledgerCostByBucket(db, tenantId, window),
+        () => taxReportSummaryAggregates(db, tenantId, window),
+      ],
+      NEON_QUERY_CONCURRENCY,
+    );
 
   const currency = summary.currency || period.currency;
   const tables = await loadTaxTables(
@@ -731,71 +743,78 @@ export async function buildPurchasePaymentReport(
 
   const fetchCap = Math.min(Math.max(pageSize * 5, 50), 150);
 
-  const [payments, accountDebits, expenseAgg, expenseRows] = await Promise.all([
-    db.payment.findMany({
-      where: {
-        deletedAt: null,
-        saleId: null,
-        paymentFor: { not: null },
-        ...(options?.paymentMethod
-          ? { method: options.paymentMethod }
-          : {}),
-        OR: [
-          { paidOn: { gte: window.from, lte: window.to } },
-          { paidOn: null, createdAt: { gte: window.from, lte: window.to } },
-        ],
-      },
-      select: {
-        id: true,
-        amount: true,
-        method: true,
-        currency: true,
-        paymentFor: true,
-        paidOn: true,
-        createdAt: true,
-        account: { select: { name: true } },
-      },
-      orderBy: [{ paidOn: 'desc' }, { id: 'desc' }],
-      take: fetchCap,
-    }),
-    db.accountTransaction.findMany({
-      where: {
-        deletedAt: null,
-        type: 'debit',
-        operationDate: { gte: window.from, lte: window.to },
-        ...(options?.paymentMethod
-          ? { paymentMethod: options.paymentMethod }
-          : {}),
-      },
-      select: {
-        id: true,
-        amount: true,
-        operationDate: true,
-        note: true,
-        paymentMethod: true,
-        account: { select: { name: true } },
-      },
-      orderBy: [{ operationDate: 'desc' }, { id: 'desc' }],
-      take: fetchCap,
-    }),
-    db.ledgerEntry.aggregate({
-      where: { deletedAt: null, type: 'expense', ...dateFilter },
-      _sum: { amount: true },
-    }),
-    db.ledgerEntry.findMany({
-      where: { deletedAt: null, type: 'expense', ...dateFilter },
-      select: {
-        id: true,
-        category: true,
-        description: true,
-        amount: true,
-        currency: true,
-        date: true,
-      },
-      orderBy: [{ date: 'desc' }, { id: 'desc' }],
-      take: fetchCap,
-    }),
-  ]);
+  const [payments, accountDebits, expenseAgg, expenseRows] = await runPool(
+    [
+      () =>
+        db.payment.findMany({
+          where: {
+            deletedAt: null,
+            saleId: null,
+            paymentFor: { not: null },
+            ...(options?.paymentMethod
+              ? { method: options.paymentMethod }
+              : {}),
+            OR: [
+              { paidOn: { gte: window.from, lte: window.to } },
+              { paidOn: null, createdAt: { gte: window.from, lte: window.to } },
+            ],
+          },
+          select: {
+            id: true,
+            amount: true,
+            method: true,
+            currency: true,
+            paymentFor: true,
+            paidOn: true,
+            createdAt: true,
+            account: { select: { name: true } },
+          },
+          orderBy: [{ paidOn: 'desc' }, { id: 'desc' }],
+          take: fetchCap,
+        }),
+      () =>
+        db.accountTransaction.findMany({
+          where: {
+            deletedAt: null,
+            type: 'debit',
+            operationDate: { gte: window.from, lte: window.to },
+            ...(options?.paymentMethod
+              ? { paymentMethod: options.paymentMethod }
+              : {}),
+          },
+          select: {
+            id: true,
+            amount: true,
+            operationDate: true,
+            note: true,
+            paymentMethod: true,
+            account: { select: { name: true } },
+          },
+          orderBy: [{ operationDate: 'desc' }, { id: 'desc' }],
+          take: fetchCap,
+        }),
+      () =>
+        db.ledgerEntry.aggregate({
+          where: { deletedAt: null, type: 'expense', ...dateFilter },
+          _sum: { amount: true },
+        }),
+      () =>
+        db.ledgerEntry.findMany({
+          where: { deletedAt: null, type: 'expense', ...dateFilter },
+          select: {
+            id: true,
+            category: true,
+            description: true,
+            amount: true,
+            currency: true,
+            date: true,
+          },
+          orderBy: [{ date: 'desc' }, { id: 'desc' }],
+          take: fetchCap,
+        }),
+    ],
+    NEON_QUERY_CONCURRENCY,
+  );
 
   const currency = payments[0]?.currency ?? expenseRows[0]?.currency ?? 'NGN';
   const paymentTotal = payments.reduce((sum, p) => sum + toNumber(p.amount), 0);
@@ -971,26 +990,31 @@ export async function buildContactsSummaryReport(
   const window = resolveDateWindow(from, to);
 
   const [customerCount, supplierCount, saleStats, suppliers] =
-    await Promise.all([
-      db.customer.count({ where: { deletedAt: null } }),
-      db.supplier.count({ where: { deletedAt: null } }),
-      db.sale.groupBy({
-        by: ['customerId'],
-        where: {
-          deletedAt: null,
-          status: { not: 'draft' },
-          date: { gte: window.from, lte: window.to },
-        },
-        _count: { _all: true },
-        _sum: { total: true },
-      }),
-      db.supplier.findMany({
-        where: { deletedAt: null },
-        select: { name: true, phone: true },
-        orderBy: { name: 'asc' },
-        take: 50,
-      }),
-    ]);
+    await runPool(
+      [
+        () => db.customer.count({ where: { deletedAt: null } }),
+        () => db.supplier.count({ where: { deletedAt: null } }),
+        () =>
+          db.sale.groupBy({
+            by: ['customerId'],
+            where: {
+              deletedAt: null,
+              status: { not: 'draft' },
+              date: { gte: window.from, lte: window.to },
+            },
+            _count: { _all: true },
+            _sum: { total: true },
+          }),
+        () =>
+          db.supplier.findMany({
+            where: { deletedAt: null },
+            select: { name: true, phone: true },
+            orderBy: { name: 'asc' },
+            take: 50,
+          }),
+      ],
+      NEON_QUERY_CONCURRENCY,
+    );
 
   let walkInCount = 0;
   let walkInRevenue = 0;
@@ -1036,6 +1060,8 @@ export async function buildContactsSummaryReport(
       const customer = customerById.get(stats.customerId);
       if (!customer) return null;
       return {
+        id: customer.id,
+        recordType: 'customer',
         name: customer.name,
         phone: customer.phone ?? '—',
         transactions: stats.count,

@@ -29,7 +29,12 @@ import {
   type CreateFlowKey,
 } from "@/lib/registries/createFlows";
 import { useIsVaHq6 } from "@/lib/hooks/useIsVaHq6";
+import {
+  MODAL_REF_STALE_MS,
+  modalKeys,
+} from "@/lib/query/modalQueryKeys";
 import { useUiStore } from "@/stores/uiStore";
+import { Hq6AddSupplierModal } from "@/components/hq6/Hq6AddSupplierModal";
 
 function resetOnClose() {
   return {
@@ -127,14 +132,14 @@ export function CreateRecordModal() {
       Boolean(tenantId) &&
       open &&
       (movementType !== null || createFlow === "sale"),
-    staleTime: 5 * 60_000,
+    staleTime: MODAL_REF_STALE_MS,
   });
 
   const { data: customerGroups = [] } = useQuery({
-    queryKey: ["customer-groups", tenantId, "create-modal"],
+    queryKey: modalKeys.customerGroups(tenantId),
     queryFn: () => getCustomerGroups(tenantId!),
     enabled: Boolean(tenantId) && open && createFlow === "customer",
-    staleTime: 5 * 60_000,
+    staleTime: MODAL_REF_STALE_MS,
   });
 
   const categoryOptions = useMemo(() => {
@@ -364,6 +369,17 @@ export function CreateRecordModal() {
   if (!createFlow) return null;
   // Avoid flashing the create modal while redirecting to HQ6 full pages.
   if (isHq6 && (isItemFlow(createFlow) || createFlow === "sale")) return null;
+
+  // HQ6 suppliers use the Ultimate POS “Add a new contact” modal.
+  if (isHq6 && createFlow === "supplier") {
+    return (
+      <Hq6AddSupplierModal
+        open={open}
+        tenantId={tenantId}
+        onClose={handleClose}
+      />
+    );
+  }
 
   return (
     <Modal open={open} onClose={handleClose}>

@@ -12,6 +12,7 @@ import type {
   UpdateInvoiceSettingsInput,
   UpdateReceiptPrinterInput,
 } from '@vonos/types';
+import { CacheService } from '../../common/cache/cache.service';
 import { TenantDbService } from '../../common/prisma/tenant-db.service';
 import type { TenantScopedPrisma } from '../../common/prisma/prisma.service';
 import { toIso } from '../../common/utils/serializers';
@@ -22,9 +23,23 @@ const DEFAULT_LAYOUTS = [
   { name: 'Detailed', design: 'detailed' },
 ] as const;
 
+const SETTINGS_CACHE_TTL_S = 600;
+
 @Injectable()
 export class InvoiceSettingsService {
-  constructor(private readonly tenantDb: TenantDbService) {}
+  constructor(
+    private readonly tenantDb: TenantDbService,
+    private readonly cache: CacheService,
+  ) {}
+
+  private async settingsCacheKey(tenantId: string): Promise<string> {
+    return this.cache.tenantScopedKey(tenantId, `invoice-settings:${tenantId}`);
+  }
+
+  private async invalidateSettingsCache(tenantId: string): Promise<void> {
+    const key = await this.settingsCacheKey(tenantId);
+    await this.cache.del(key);
+  }
 
   private async seedDefaultsIfEmpty(
     db: TenantScopedPrisma,
@@ -69,20 +84,31 @@ export class InvoiceSettingsService {
   }
 
   private async loadSettingsRows(tenantId: string) {
-    await this.seedDefaultsIfEmpty(this.tenantDb.db, tenantId);
-
     const listOrder = [{ isDefault: 'desc' as const }, { name: 'asc' as const }];
     const where = { tenantId, deletedAt: null };
 
-    // Sequential reads keep pool pressure low during Neon wake.
-    const layouts = await this.tenantDb.db.invoiceLayout.findMany({
+    // Read first — seed only when empty (not on every request).
+    let layouts = await this.tenantDb.db.invoiceLayout.findMany({
       where,
       orderBy: listOrder,
     });
-    const schemes = await this.tenantDb.db.invoiceScheme.findMany({
+    let schemes = await this.tenantDb.db.invoiceScheme.findMany({
       where,
       orderBy: listOrder,
     });
+
+    if (layouts.length === 0 || schemes.length === 0) {
+      await this.seedDefaultsIfEmpty(this.tenantDb.db, tenantId);
+      layouts = await this.tenantDb.db.invoiceLayout.findMany({
+        where,
+        orderBy: listOrder,
+      });
+      schemes = await this.tenantDb.db.invoiceScheme.findMany({
+        where,
+        orderBy: listOrder,
+      });
+    }
+
     const printers = await this.tenantDb.db.receiptPrinter.findMany({
       where,
       orderBy: listOrder,
@@ -93,6 +119,10 @@ export class InvoiceSettingsService {
 
   async getSettings(): Promise<InvoiceSettings> {
     const tenantId = this.tenantDb.requireTenantId();
+    const cacheKey = await this.settingsCacheKey(tenantId);
+    const cached = await this.cache.get<InvoiceSettings>(cacheKey);
+    if (cached) return cached;
+
     let { layouts, schemes, printers } = await this.loadSettingsRows(tenantId);
 
     // Migration / merge can leave multiple isDefault=true — keep one.
@@ -120,7 +150,7 @@ export class InvoiceSettingsService {
     const defaultLayout = layouts.find((row) => row.isDefault) ?? layouts[0];
     const defaultScheme = schemes.find((row) => row.isDefault) ?? schemes[0];
 
-    return {
+    const result: InvoiceSettings = {
       layouts: layouts.map((row) => this.serializeLayout(row)),
       schemes: schemes.map((row) => this.serializeScheme(row)),
       printers: printers.map((row) => this.serializePrinter(row)),
@@ -128,6 +158,8 @@ export class InvoiceSettingsService {
       defaultSchemeId: defaultScheme?.id ?? null,
       termsText: defaultLayout?.termsText ?? null,
     };
+    await this.cache.set(cacheKey, result, SETTINGS_CACHE_TTL_S);
+    return result;
   }
 
   async updateSettings(dto: UpdateInvoiceSettingsInput): Promise<InvoiceSettings> {
@@ -177,6 +209,7 @@ export class InvoiceSettingsService {
       });
     }
 
+    await this.invalidateSettingsCache(tenantId);
     return this.getSettings();
   }
 
@@ -207,6 +240,7 @@ export class InvoiceSettingsService {
         isDefault: dto.isDefault ?? false,
       },
     });
+    await this.invalidateSettingsCache(tenantId);
     return this.serializeScheme(row);
   }
 
@@ -250,6 +284,7 @@ export class InvoiceSettingsService {
         ...(dto.isDefault !== undefined ? { isDefault: dto.isDefault } : {}),
       },
     });
+    await this.invalidateSettingsCache(tenantId);
     return this.serializeScheme(row);
   }
 
@@ -263,6 +298,7 @@ export class InvoiceSettingsService {
       where: { id },
       data: { deletedAt: new Date() },
     });
+    await this.invalidateSettingsCache(tenantId);
   }
 
   async createLayout(dto: CreateInvoiceLayoutInput): Promise<InvoiceLayout> {
@@ -290,6 +326,7 @@ export class InvoiceSettingsService {
         isDefault: dto.isDefault ?? false,
       },
     });
+    await this.invalidateSettingsCache(tenantId);
     return this.serializeLayout(row);
   }
 
@@ -329,6 +366,7 @@ export class InvoiceSettingsService {
         ...(dto.isDefault !== undefined ? { isDefault: dto.isDefault } : {}),
       },
     });
+    await this.invalidateSettingsCache(tenantId);
     return this.serializeLayout(row);
   }
 
@@ -345,6 +383,7 @@ export class InvoiceSettingsService {
       where: { id },
       data: { deletedAt: new Date() },
     });
+    await this.invalidateSettingsCache(tenantId);
   }
 
   async listPrinters(): Promise<ReceiptPrinter[]> {
@@ -377,6 +416,7 @@ export class InvoiceSettingsService {
         isDefault: dto.isDefault ?? false,
       },
     });
+    await this.invalidateSettingsCache(tenantId);
     return this.serializePrinter(row);
   }
 
@@ -410,6 +450,7 @@ export class InvoiceSettingsService {
         ...(dto.isDefault !== undefined ? { isDefault: dto.isDefault } : {}),
       },
     });
+    await this.invalidateSettingsCache(tenantId);
     return this.serializePrinter(row);
   }
 
@@ -423,6 +464,7 @@ export class InvoiceSettingsService {
       where: { id },
       data: { deletedAt: new Date() },
     });
+    await this.invalidateSettingsCache(tenantId);
   }
 
   private serializeLayout(row: {

@@ -5,6 +5,9 @@ import { Hq6DataListPage } from "@/components/hq6/Hq6DataListPage";
 import { Hq6ColumnVisibilityModal } from "@/components/hq6/Hq6ColumnVisibilityModal";
 import { Hq6PrintModal } from "@/components/hq6/Hq6PrintModal";
 import { hq6ListActionRule, hq6CopyForSlug } from "@/lib/registries/hq6PageCopy";
+import { useTableViewPrefs } from "@/lib/hooks/useTableViewPrefs";
+import { useRouteTenant } from "@/lib/hooks/useRouteTenant";
+import type { TableDensity } from "@/lib/utils/tableColumnAlign";
 
 export interface Hq6ListChromeState {
   printOpen: boolean;
@@ -13,19 +16,29 @@ export interface Hq6ListChromeState {
   setColumnsOpen: (open: boolean) => void;
   visibleColumnKeys: string[] | null;
   setVisibleColumnKeys: (keys: string[] | null) => void;
+  resetColumnVisibility: () => void;
+  density: TableDensity;
+  setDensity: (density: TableDensity) => void;
 }
 
-export function useHq6ListChrome(): Hq6ListChromeState {
+/** Optional page slug enables localStorage persistence for columns + density. */
+export function useHq6ListChrome(pageSlug?: string): Hq6ListChromeState {
+  const { tenantCode } = useRouteTenant();
+  const storageKey =
+    pageSlug && tenantCode ? `${tenantCode}.${pageSlug}` : undefined;
+  const prefs = useTableViewPrefs(storageKey);
   const [printOpen, setPrintOpen] = useState(false);
   const [columnsOpen, setColumnsOpen] = useState(false);
-  const [visibleColumnKeys, setVisibleColumnKeys] = useState<string[] | null>(null);
   return {
     printOpen,
     setPrintOpen,
     columnsOpen,
     setColumnsOpen,
-    visibleColumnKeys,
-    setVisibleColumnKeys,
+    visibleColumnKeys: prefs.visibleColumnKeys,
+    setVisibleColumnKeys: prefs.setVisibleColumnKeys,
+    resetColumnVisibility: prefs.resetColumnVisibility,
+    density: prefs.density,
+    setDensity: prefs.setDensity,
   };
 }
 
@@ -50,7 +63,13 @@ export interface Hq6StandardListShellProps {
   tableFooter?: ReactNode;
   summaryStrip?: ReactNode;
   bulkActions?: ReactNode;
-  tabs?: Array<{ id: string; label: string; active?: boolean; icon?: ReactNode; onClick?: () => void }>;
+  tabs?: Array<{
+    id: string;
+    label: string;
+    active?: boolean;
+    icon?: ReactNode;
+    onClick?: () => void;
+  }>;
   tabActions?: ReactNode;
   pagination?: {
     pageIndex?: number;
@@ -70,6 +89,8 @@ export interface Hq6StandardListShellProps {
   modals?: ReactNode;
   hidePrimaryAction?: boolean;
   hideToolbar?: boolean;
+  /** Freeze first column on horizontal scroll. Default true. */
+  freezeFirstColumn?: boolean;
 }
 
 /** Standard HQ6 list chrome wired from hq6PageCopy action rules. */
@@ -99,6 +120,7 @@ export function Hq6StandardListShell({
   modals,
   hidePrimaryAction,
   hideToolbar,
+  freezeFirstColumn = true,
 }: Hq6StandardListShellProps) {
   const rules = hq6ListActionRule(slug);
   const copy = hq6CopyForSlug(slug);
@@ -158,16 +180,22 @@ export function Hq6StandardListShell({
               onPrint: () => chrome.setPrintOpen(true),
               onColumnVisibility: () => chrome.setColumnsOpen(true),
               onExportPdf: () => undefined,
+              density: chrome.density,
+              onDensityChange: chrome.setDensity,
             }
       }
       tableFooter={tableFooter}
       summaryStrip={summaryStrip}
       bulkActions={bulkActions}
       pagination={pagination}
+      freezeFirstColumn={freezeFirstColumn}
       modals={
         <>
           {modals}
-          <Hq6PrintModal open={chrome.printOpen} onClose={() => chrome.setPrintOpen(false)} />
+          <Hq6PrintModal
+            open={chrome.printOpen}
+            onClose={() => chrome.setPrintOpen(false)}
+          />
           <Hq6ColumnVisibilityModal
             open={chrome.columnsOpen}
             onClose={() => chrome.setColumnsOpen(false)}
@@ -178,6 +206,10 @@ export function Hq6StandardListShell({
               columnOptions.map((c) => c.key)
             }
             onChange={chrome.setVisibleColumnKeys}
+            onReset={() => {
+              chrome.resetColumnVisibility();
+              chrome.setColumnsOpen(false);
+            }}
           />
         </>
       }

@@ -410,12 +410,14 @@ async function buildProductSellFromJobs(
     const lineTotal = toNumber(row.totalCost);
     return {
       id: row.id,
+      itemId: row.itemId ?? undefined,
       recordType: 'job',
       product: row.name,
       sku: item?.sku ?? '—',
       carModel: item?.carModel?.trim() ? item.carModel : '—',
       customerName:
         row.job.customer?.name ?? row.job.customerName ?? 'WALK-IN-CUSTOMER',
+      customerId: row.job.customer?.id,
       contactId: row.job.customer?.id?.slice(0, 10) ?? '—',
       contactNumber: row.job.customer?.phone ?? '—',
       invoiceNo: row.job.reference,
@@ -680,11 +682,13 @@ async function buildProductSellDetailed(
       // Line id stays unique for table keys; saleId is used for navigation.
       id: row.id,
       saleId: row.sale.id,
+      itemId: row.itemId ?? undefined,
       recordType: 'sale',
       product: row.name,
       sku: row.sku,
       carModel: item?.carModel?.trim() ? item.carModel : '—',
       customerName: row.sale.customer?.name ?? 'WALK-IN-CUSTOMER',
+      customerId: row.sale.customer?.id,
       contactId: row.sale.customer?.id?.slice(0, 10) ?? '—',
       contactNumber: row.sale.customer?.phone ?? '—',
       invoiceNo: row.sale.reference,
@@ -1153,16 +1157,14 @@ export async function buildItemsReport(
   to?: string,
   options?: ReportRunOptions,
 ): Promise<ReportsDashboard> {
-  const window = resolveDateWindow(from, to);
   const pageSize = pageSizeOf(options);
-  // Reuse sell date window for sells; purchase side is best-effort lookup
+  // Items report = sold lines + latest inbound purchase lookup per SKU.
   const sellReport = await buildProductSellDetailed(
     db,
     tenantId,
     from,
     to,
     options,
-    { skipLineCount: true },
   );
 
   const skus = [
@@ -1172,22 +1174,31 @@ export async function buildItemsReport(
         .filter(Boolean),
     ),
   ];
+  const itemIds = [
+    ...new Set(
+      (sellReport.table?.rows ?? [])
+        .map((r) => (r.itemId != null ? String(r.itemId) : ''))
+        .filter(Boolean),
+    ),
+  ];
 
   type InboundHit = {
     sku: string;
     date: Date;
     reference: string;
+    supplier_id: string | null;
     supplier_name: string | null;
     unit_cost: Prisma.Decimal | null;
   };
 
-  const inbound =
+  const [inbound, itemDescriptions] = await Promise.all([
     skus.length > 0
-      ? await db.$queryRaw<InboundHit[]>`
+      ? db.$queryRaw<InboundHit[]>`
           SELECT DISTINCT ON (COALESCE(elem->>'sku', ''))
             COALESCE(elem->>'sku', '') AS sku,
             sm.date,
             sm.reference,
+            sm."supplierId" AS supplier_id,
             sup.name AS supplier_name,
             COALESCE(
               (elem->>'unitCost')::numeric,
@@ -1209,25 +1220,71 @@ export async function buildItemsReport(
             AND COALESCE(elem->>'sku', '') = ANY(${skus})
           ORDER BY COALESCE(elem->>'sku', ''), sm.date DESC
         `
-      : [];
+      : Promise.resolve([] as InboundHit[]),
+    itemIds.length > 0
+      ? db.item.findMany({
+          where: { id: { in: itemIds }, deletedAt: null },
+          select: { id: true, description: true },
+        })
+      : Promise.resolve([] as Array<{ id: string; description: string | null }>),
+  ]);
 
   const inboundBySku = new Map(inbound.map((r) => [r.sku, r]));
+  const descriptionByItemId = new Map(
+    itemDescriptions.map((i) => [i.id, i.description?.trim() || '']),
+  );
 
-  const rows: ReportsTableRow[] = (sellReport.table?.rows ?? []).map((row) => {
+  const supplierFilter = options?.supplierId?.trim() || '';
+
+  const mappedRows: ReportsTableRow[] = (sellReport.table?.rows ?? []).map((row) => {
     const sku = String(row.sku ?? '');
     const hit = inboundBySku.get(sku);
     const sellQty = Number(row.quantity ?? 0);
     const sellPrice = Number(row.unitPrice ?? 0);
+    const itemId = row.itemId != null ? String(row.itemId) : '';
+    const saleId = row.saleId != null ? String(row.saleId) : '';
+    const customerId = row.customerId != null ? String(row.customerId) : '';
+    const description =
+      (itemId ? descriptionByItemId.get(itemId) : '') ||
+      String(row.product ?? '').trim() ||
+      '—';
+    // Prefer product modal when we have a catalog item; otherwise sale.
+    const recordType = itemId ? 'item' : saleId ? 'sale' : String(row.recordType ?? '');
+    const actions: ReportRowAction[] = [];
+    if (itemId) {
+      actions.push({
+        kind: 'view-record',
+        label: 'View product',
+        payload: { recordType: 'item', itemId, id: itemId },
+      });
+    }
+    if (saleId) {
+      actions.push({
+        kind: 'view-record',
+        label: 'View sale',
+        payload: { recordType: 'sale', saleId, id: saleId },
+      });
+    }
+    if (customerId) {
+      actions.push({
+        kind: 'view-record',
+        label: 'View customer',
+        payload: { recordType: 'customer', customerId, id: customerId },
+      });
+    }
     return {
       id: String(row.id),
-      saleId: row.saleId != null ? String(row.saleId) : undefined,
-      recordType: 'sale',
+      saleId: saleId || undefined,
+      itemId: itemId || undefined,
+      customerId: customerId || undefined,
+      recordType,
       product: row.product ?? '—',
       sku,
-      description: '—',
+      description,
       purchaseDate: hit ? hit.date.toISOString().slice(0, 10) : '—',
       purchase: hit?.reference ?? '—',
-      supplier: hit?.supplier_name ?? '—',
+      supplier: hit?.supplier_name ?? String(row.supplierName ?? '—'),
+      supplierId: hit?.supplier_id ?? undefined,
       purchasePrice: hit
         ? Math.round(toNumber(hit.unit_cost ?? 0) * 100) / 100
         : '—',
@@ -1237,21 +1294,45 @@ export async function buildItemsReport(
       location: row.location ?? '—',
       sellQuantity: sellQty,
       sellingPrice: sellPrice,
-      subtotal: Math.round(sellQty * sellPrice * 100) / 100,
+      subtotal:
+        row.total != null
+          ? Math.round(Number(row.total) * 100) / 100
+          : Math.round(sellQty * sellPrice * 100) / 100,
       currency: 'NGN',
-      actions: row.actions as ReportRowAction[] | undefined,
+      actions: actions.length > 0 ? actions : undefined,
     };
   });
 
+  const rows = supplierFilter
+    ? mappedRows.filter((row) => String(row.supplierId ?? '') === supplierFilter)
+    : mappedRows;
+
+  const totalLines = supplierFilter
+    ? rows.length
+    : Number(
+        sellReport.kpis?.find((k) => k.metricKey === 'lines')?.value ??
+          rows.length,
+      );
+  const uniqueProducts = new Set(
+    rows
+      .map((r) => (r.itemId != null ? String(r.itemId) : String(r.sku ?? '')))
+      .filter(Boolean),
+  ).size;
+  const totalRevenue = supplierFilter
+    ? rows.reduce((sum, row) => sum + Number(row.subtotal ?? 0), 0)
+    : Number(
+        sellReport.kpis?.find((k) => k.metricKey === 'revenue')?.value ??
+          rows.reduce((sum, row) => sum + Number(row.subtotal ?? 0), 0),
+      );
+
   return {
     kpis: [
-      countKpi('Items (page)', 'items', rows.length, '#2563eb', 'package'),
+      countKpi('Products', 'products', uniqueProducts, '#9333ea', 'package'),
+      countKpi('Sold lines', 'items', totalLines, '#2563eb', 'list'),
       currencyKpi(
-        'Subtotal (page)',
+        'Subtotal',
         'revenue',
-        Math.round(
-          rows.reduce((sum, row) => sum + Number(row.subtotal ?? 0), 0),
-        ),
+        Math.round(totalRevenue),
         'NGN',
         '#059669',
         'wallet',
@@ -1276,14 +1357,14 @@ export async function buildItemsReport(
         { key: 'subtotal', header: 'Subtotal' },
       ],
       rows,
-      hasMore: sellReport.table?.hasMore,
-      nextCursor: sellReport.table?.nextCursor,
+      hasMore: supplierFilter ? false : sellReport.table?.hasMore,
+      nextCursor: supplierFilter ? null : sellReport.table?.nextCursor,
       pageSize: sellReport.table?.pageSize ?? pageSize,
       columnTotals: {
-        ...(sellReport.table?.columnTotals?.quantity != null
+        ...(sellReport.table?.columnTotals?.quantity != null && !supplierFilter
           ? { sellQuantity: sellReport.table.columnTotals.quantity }
           : {}),
-        ...(sellReport.table?.columnTotals?.total != null
+        ...(sellReport.table?.columnTotals?.total != null && !supplierFilter
           ? { subtotal: sellReport.table.columnTotals.total }
           : {}),
       },

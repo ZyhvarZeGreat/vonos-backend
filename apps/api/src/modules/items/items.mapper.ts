@@ -1,13 +1,41 @@
-import type {
-  Item as PrismaItem,
-  ItemLocationStock as PrismaItemLocationStock,
-  Brand as PrismaBrand,
-} from '@prisma/client';
+import type { Brand as PrismaBrand, StockStatus } from '@prisma/client';
 import type { Item, KpiSummary } from '@vonos/types';
 import { toIso, toNumber } from '../../common/utils/serializers';
 
-type ItemWithStock = PrismaItem & {
-  locationStock?: PrismaItemLocationStock[];
+/** List/detail row shape — supports Prisma `select` projections (not full models). */
+export type ItemWithStock = {
+  id: string;
+  tenantId: string;
+  sku: string;
+  name: string;
+  category: string | null;
+  subCategory?: string | null;
+  description?: string | null;
+  barcodeType?: string | null;
+  unit?: string | null;
+  weight?: string | null;
+  carModel?: string | null;
+  enableImei?: boolean | null;
+  preparationMinutes?: number | null;
+  quantity: number;
+  binLocation: string | null;
+  locationCode: string | null;
+  reorderPoint: number | null;
+  costPrice: { toString(): string } | number;
+  sellPrice: { toString(): string } | number | null;
+  currency: string;
+  status: StockStatus;
+  availableForRetail: boolean;
+  brandId?: string | null;
+  createdByUserId: string | null;
+  createdByName: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  locationStock?: Array<{
+    locationCode: string;
+    binLocation: string | null;
+    quantity: number;
+  }>;
   brand?: Pick<PrismaBrand, 'name'> | null;
 };
 

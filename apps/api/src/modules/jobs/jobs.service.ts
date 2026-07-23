@@ -15,7 +15,7 @@ import {
 } from '../../common/utils/jobStages';
 import { buildCompositeCursorQuery } from '../../common/utils/pagination';
 import { toIso, toNumber } from '../../common/utils/serializers';
-import { computeStockStatus } from '../../common/utils/stockQuantity';
+import { computeStockStatus, movementLineRollups } from '../../common/utils/stockQuantity';
 
 export interface JobDetail extends Job {
   customer?: {
@@ -689,6 +689,16 @@ export class JobsService {
     } else if (sourceType === 'external' && supplierId) {
       // Explicit external purchase — inbound movement for Purchases list.
       const suffix = Date.now().toString(36).slice(-4).toUpperCase();
+      const purchaseLines = [
+        {
+          itemId: body.itemId ?? null,
+          name,
+          quantity,
+          unitCost,
+          total: totalCost,
+        },
+      ];
+      const purchaseRollups = movementLineRollups(purchaseLines);
       const purchase = await this.tenantDb.db.stockMovement.create({
         data: {
           tenantId,
@@ -696,15 +706,9 @@ export class JobsService {
           reference: `${job.reference}-P${suffix}`,
           status: 'Received',
           supplierId,
-          lines: [
-            {
-              itemId: body.itemId ?? null,
-              name,
-              quantity,
-              unitCost,
-              total: totalCost,
-            },
-          ] as unknown as Prisma.InputJsonValue,
+          lines: purchaseLines as unknown as Prisma.InputJsonValue,
+          itemCount: purchaseRollups.itemCount,
+          grandTotal: purchaseRollups.grandTotal,
           notes: `External purchase for job ${job.reference} | ${supplierName}`,
           date: new Date(),
         },
@@ -1074,22 +1078,26 @@ export class JobsService {
     }
 
     const suffix = Date.now().toString(36).slice(-4).toUpperCase();
+    const purchaseLines = [
+      {
+        itemId: localItem?.id ?? input.itemId ?? null,
+        sku: sku,
+        name: input.name,
+        quantity: input.quantity,
+        unitCost: input.unitCost,
+        total: totalCost,
+      },
+    ];
+    const purchaseRollups = movementLineRollups(purchaseLines);
     const purchase = await this.tenantDb.db.stockMovement.create({
       data: {
         tenantId: input.tenantId,
         type: 'inbound',
         reference: `${input.jobReference}-P${suffix}`,
         status: 'Received',
-        lines: [
-          {
-            itemId: localItem?.id ?? input.itemId ?? null,
-            sku: sku,
-            name: input.name,
-            quantity: input.quantity,
-            unitCost: input.unitCost,
-            total: totalCost,
-          },
-        ] as unknown as Prisma.InputJsonValue,
+        lines: purchaseLines as unknown as Prisma.InputJsonValue,
+        itemCount: purchaseRollups.itemCount,
+        grandTotal: purchaseRollups.grandTotal,
         notes: `Auto-purchase for job ${input.jobReference} — not enough stock in shop or VW`,
         date: new Date(),
       },

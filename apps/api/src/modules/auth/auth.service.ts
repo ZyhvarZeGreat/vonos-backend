@@ -14,6 +14,7 @@ import type {
   TwoFactorSetupResponse,
 } from '@vonos/types';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { CacheService } from '../../common/cache/cache.service';
 import {
   generateOpaqueToken,
   hashOpaqueToken,
@@ -55,6 +56,9 @@ interface LoginDto {
   password: string;
 }
 
+/** Avoid a Neon RTT on every authenticated request; revocation lags ≤ TTL. */
+const ACCESS_TOKEN_VERSION_CACHE_TTL_S = 60;
+
 export interface SessionResult extends LoginSuccessResponse {
   refreshTokenRaw: string;
 }
@@ -65,6 +69,7 @@ export class AuthService {
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
     private readonly mail: AuthMailService,
+    private readonly cache: CacheService,
   ) {}
 
   async login(
@@ -345,6 +350,12 @@ export class AuthService {
       throw new UnauthorizedException('Invalid token type');
     }
 
+    const versionKey = `auth:tv:${payload.sub}:${payload.tokenVersion}`;
+    const cachedOk = await this.cache.get<boolean>(versionKey);
+    if (cachedOk) {
+      return payload;
+    }
+
     const user = await this.prisma.user.findFirst({
       where: {
         id: payload.sub,
@@ -358,6 +369,7 @@ export class AuthService {
       throw new UnauthorizedException('Token revoked');
     }
 
+    await this.cache.set(versionKey, true, ACCESS_TOKEN_VERSION_CACHE_TTL_S);
     return payload;
   }
 
@@ -479,6 +491,8 @@ export class AuthService {
       },
       data: { usedAt: new Date() },
     });
+    // Drop cached access-token version checks for this user.
+    await this.cache.invalidatePrefix(`auth:tv:${userId}:`);
   }
 
   private async requireAdminUser(userId: string) {

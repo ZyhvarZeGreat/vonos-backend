@@ -25,7 +25,7 @@ export function NavItem({
   return (
     <Link
       href={href}
-      prefetch
+      prefetch={false}
       onPointerDown={onPrefetch}
       onMouseEnter={onPrefetch}
       onFocus={onPrefetch}

@@ -34,9 +34,12 @@ export async function getPaymentAccountsPage(
   tenantId: string,
   cursor: string | undefined,
   limit = DEFAULT_TABLE_PAGE_SIZE,
-  extra?: { search?: string },
+  extra?: { search?: string; includeSummary?: boolean },
 ): Promise<ListPage<PaymentAccount>> {
-  return fetchTenantListPage(LIST_PATH, tenantId, cursor, limit, extra);
+  return fetchTenantListPage(LIST_PATH, tenantId, cursor, limit, {
+    ...extra,
+    includeSummary: extra?.includeSummary ?? false,
+  });
 }
 
 export async function getPaymentAccount(

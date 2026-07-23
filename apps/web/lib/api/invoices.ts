@@ -21,6 +21,7 @@ export interface InvoiceFilters {
   payrollId?: string;
   payrollGroupId?: string;
   jobId?: string;
+  includeSummary?: boolean;
 }
 
 async function fetchInvoicesRaw(

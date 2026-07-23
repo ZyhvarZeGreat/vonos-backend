@@ -14,12 +14,14 @@ export function Hq6ColumnVisibilityModal({
   columns,
   visibleKeys,
   onChange,
+  onReset,
 }: {
   open: boolean;
   onClose: () => void;
   columns: Hq6ColumnOption[];
   visibleKeys: string[];
   onChange: (keys: string[]) => void;
+  onReset?: () => void;
 }) {
   const [draft, setDraft] = useState<Set<string>>(() => new Set(visibleKeys));
 
@@ -36,14 +38,27 @@ export function Hq6ColumnVisibilityModal({
       title="Column visibility"
       size="sm"
       footer={
-        <Hq6ModalSaveClose
-          onClose={onClose}
-          onSave={() => {
-            onChange(allKeys.filter((k) => draft.has(k)));
-            onClose();
-          }}
-          saveLabel="Apply"
-        />
+        <div className="flex w-full items-center justify-between gap-2">
+          {onReset ? (
+            <button
+              type="button"
+              className="text-sm text-[#6b7280] hover:text-[#111827]"
+              onClick={onReset}
+            >
+              Reset to default
+            </button>
+          ) : (
+            <span />
+          )}
+          <Hq6ModalSaveClose
+            onClose={onClose}
+            onSave={() => {
+              onChange(allKeys.filter((k) => draft.has(k)));
+              onClose();
+            }}
+            saveLabel="Apply"
+          />
+        </div>
       }
     >
       <div className="space-y-2">

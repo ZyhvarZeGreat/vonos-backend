@@ -11,8 +11,11 @@ export async function getDiscountsPage(
   tenantId: string,
   cursor: string | undefined,
   limit = DEFAULT_TABLE_PAGE_SIZE,
+  opts?: { includeSummary?: boolean },
 ): Promise<ListPage<Discount>> {
-  return fetchTenantListPage("/discounts", tenantId, cursor, limit);
+  return fetchTenantListPage("/discounts", tenantId, cursor, limit, {
+    includeSummary: opts?.includeSummary ?? false,
+  });
 }
 
 export async function createDiscount(

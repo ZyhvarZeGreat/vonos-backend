@@ -1,5 +1,6 @@
 import type { ReportsDashboard } from '@vonos/types';
 import type { TenantScopedPrisma } from '../../../common/prisma/prisma.service';
+import { runPool } from '../../../common/utils/mapPool';
 import { computeDelta, priorWindow, resolveDateWindow, asChartData } from './date-utils';
 import {
   hourlyOrderCounts,
@@ -11,6 +12,8 @@ import {
 
 type TransactionTab = 'sales' | 'closeout';
 
+const NEON_QUERY_CONCURRENCY = 2;
+
 export async function buildTransactionReports(
   db: TenantScopedPrisma,
   tenantId: string,
@@ -21,14 +24,18 @@ export async function buildTransactionReports(
   const window = resolveDateWindow(from, to);
   const prior = priorWindow(window);
 
-  const [period, priorPeriod, trendData, topProducts] = await Promise.all([
-    salesKpiSnapshot(db, tenantId, window.from, window.to),
-    salesKpiSnapshot(db, tenantId, prior.from, prior.to),
-    salesRevenueTrend(db, tenantId, window),
-    tab === 'sales'
-      ? topProductsInWindow(db, tenantId, window.from, window.to, 12)
-      : Promise.resolve([]),
-  ]);
+  const [period, priorPeriod, trendData, topProducts] = await runPool(
+    [
+      () => salesKpiSnapshot(db, tenantId, window.from, window.to),
+      () => salesKpiSnapshot(db, tenantId, prior.from, prior.to),
+      () => salesRevenueTrend(db, tenantId, window),
+      () =>
+        tab === 'sales'
+          ? topProductsInWindow(db, tenantId, window.from, window.to, 12)
+          : Promise.resolve([]),
+    ],
+    NEON_QUERY_CONCURRENCY,
+  );
 
   const {
     transactionCount,
@@ -150,10 +157,13 @@ export async function buildTransactionReports(
     };
   }
 
-  const [dailyRevenue, paymentPie] = await Promise.all([
-    salesRevenueTrend(db, tenantId, window),
-    paymentStatusBreakdown(db, tenantId, window.from, window.to),
-  ]);
+  const [dailyRevenue, paymentPie] = await runPool(
+    [
+      () => salesRevenueTrend(db, tenantId, window),
+      () => paymentStatusBreakdown(db, tenantId, window.from, window.to),
+    ],
+    NEON_QUERY_CONCURRENCY,
+  );
 
   return {
     kpis: [

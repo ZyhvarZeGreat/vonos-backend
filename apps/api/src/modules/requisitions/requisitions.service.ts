@@ -14,7 +14,7 @@ import { TenantDbService } from '../../common/prisma/tenant-db.service';
 import { AuditService } from '../audit/audit.service';
 import { buildCompositeCursorQuery } from '../../common/utils/pagination';
 import { toIso } from '../../common/utils/serializers';
-import { computeStockStatus } from '../../common/utils/stockQuantity';
+import { computeStockStatus, movementLineRollups } from '../../common/utils/stockQuantity';
 import { adjustItemLocationStock } from '../../common/utils/itemLocationStock';
 import {
   assertSourceHasAvailableStock,
@@ -403,6 +403,7 @@ export class RequisitionsService {
       }
 
       const now = new Date();
+      const transferRollups = movementLineRollups(movementLines);
       await tx.stockMovement.create({
         data: {
           tenantId: sourceTenantId,
@@ -410,6 +411,8 @@ export class RequisitionsService {
           reference: `${requisition.reference}-OUT`,
           status: 'Received',
           lines: movementLines,
+          itemCount: transferRollups.itemCount,
+          grandTotal: transferRollups.grandTotal,
           notes: `Transfer for requisition ${requisition.reference}`,
           date: now,
         },
@@ -421,6 +424,8 @@ export class RequisitionsService {
           reference: `${requisition.reference}-IN`,
           status: 'Received',
           lines: movementLines,
+          itemCount: transferRollups.itemCount,
+          grandTotal: transferRollups.grandTotal,
           notes: `Transfer from source for requisition ${requisition.reference}`,
           date: now,
         },

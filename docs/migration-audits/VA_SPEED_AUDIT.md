@@ -73,7 +73,7 @@ entity-overview  932ms cache=hit  tenant=tenant_va_001
 ## Out of scope (unchanged)
 
 - App-wide memoization sweep
-- Neon always-on / keep-alive cron
+- Neon always-on (console) + API `HOT_PATHS_WARM_INTERVAL_MS` / `POST /internal/overview/group-warm`
 - VAG group overview rollup — see [VAG_SPEED_AUDIT.md](./VAG_SPEED_AUDIT.md)
 ## Phase 2 — Instant navigation (2026-07-20)
 

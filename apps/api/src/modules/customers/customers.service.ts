@@ -7,12 +7,23 @@ import type {
   CustomerFilters,
   CustomerProfile,
   CustomerTransactionHistoryEntry,
+  CustomerViewBundle,
   CsvImportResult,
   PayContactDueRequest,
   PayContactDueResult,
   UpdateCustomerInput,
 } from '@vonos/types';
 import { TenantDbService } from '../../common/prisma/tenant-db.service';
+import { CacheService } from '../../common/cache/cache.service';
+import { invalidateTenantDashboardCache } from '../../common/cache/cacheInvalidation';
+import {
+  listPageFilterKey,
+  withListPageCache,
+} from '../../common/utils/listPageCache';
+import {
+  getLegacyContactIdsForPage,
+  warmLegacyContactIdMap,
+} from '../../common/utils/legacyContactIdMap';
 import { buildCompositeCursorQuery } from '../../common/utils/pagination';
 import type { PaginatedList } from '../../common/utils/paginatedList';
 import { parseCsv, pickCsvField } from '../../common/utils/csvImport';
@@ -158,10 +169,41 @@ export class CustomersService {
   constructor(
     private readonly tenantDb: TenantDbService,
     private readonly auditService: AuditService,
+    private readonly cache: CacheService,
   ) {}
 
   async list(filters: CustomerFilters): Promise<PaginatedList<Customer>> {
     const tenantId = this.tenantDb.requireTenantId();
+    const filterKey = listPageFilterKey({
+      search: filters.search,
+      status: filters.status,
+      customerGroupId: filters.customerGroupId,
+      assignedToUserId: filters.assignedToUserId,
+      openingBalance: filters.openingBalance ? 1 : 0,
+      sellDue: filters.sellDue ? 1 : 0,
+      advanceBalance: filters.advanceBalance ? 1 : 0,
+      sellReturn: filters.sellReturn ? 1 : 0,
+      hasNoSellMonths: filters.hasNoSellMonths,
+      from: filters.from,
+      to: filters.to,
+      cursor: filters.cursor,
+      limit: filters.limit ?? 10,
+      sum: filters.includeSummary === false ? 0 : 1,
+    });
+
+    return withListPageCache(
+      this.cache,
+      tenantId,
+      'customers',
+      filterKey,
+      () => this.listUncached(filters, tenantId),
+    );
+  }
+
+  private async listUncached(
+    filters: CustomerFilters,
+    tenantId: string,
+  ): Promise<PaginatedList<Customer>> {
     const sinceCutoff =
       filters.hasNoSellMonths != null
         ? monthsAgo(filters.hasNoSellMonths)
@@ -220,63 +262,77 @@ export class CustomersService {
         : {}),
     };
 
-    // Page rows first, then count + amount footer (≤2 concurrent).
-    const rows = await this.tenantDb.db.customer.findMany({
-      where: {
-        ...baseWhere,
-        ...(pagination.where ?? {}),
-      },
-      include: {
-        customerGroup: { select: { name: true } },
-        assignedToUser: { select: { name: true } },
-      },
-      orderBy: [{ name: 'asc' }, { id: 'asc' }],
-      take: pagination.take,
-    });
-    const [totalCount, amountAgg] = await Promise.all([
-      this.tenantDb.db.customer.count({ where: baseWhere }),
-      this.tenantDb.db.customer.aggregate({
-        where: baseWhere,
-        _sum: {
+    // Rows first; legacy IDs from warm map (0 RTT) or page-scoped IN (1 RTT).
+    const includeSummary = filters.includeSummary !== false;
+    const [rows, totalCount, amountAgg] = await Promise.all([
+      this.tenantDb.db.customer.findMany({
+        where: {
+          ...baseWhere,
+          ...(pagination.where ?? {}),
+        },
+        // List projection only — avoid full Customer + relation payloads.
+        select: {
+          id: true,
+          tenantId: true,
+          name: true,
+          email: true,
+          phone: true,
+          customerGroupId: true,
+          assignedToUserId: true,
+          openingBalance: true,
           totalSell: true,
           totalSellDue: true,
           totalSellPaid: true,
+          totalSellReturn: true,
+          totalAdvance: true,
+          visitCount: true,
+          status: true,
+          taxNumber: true,
+          createdByUserId: true,
+          createdByName: true,
+          createdAt: true,
+          updatedAt: true,
+          customerGroup: { select: { name: true } },
+          assignedToUser: { select: { name: true } },
         },
+        orderBy: [{ name: 'asc' }, { id: 'asc' }],
+        take: pagination.take,
       }),
+      includeSummary
+        ? this.tenantDb.db.customer.count({ where: baseWhere })
+        : Promise.resolve(undefined as number | undefined),
+      includeSummary
+        ? this.tenantDb.db.customer.aggregate({
+            where: baseWhere,
+            _sum: {
+              totalSell: true,
+              totalSellDue: true,
+              totalSellPaid: true,
+            },
+          })
+        : Promise.resolve(undefined),
     ]);
 
-    if (rows.length === 0) {
-      return {
-        items: [],
-        totalCount,
-        amountSummary: {
-          totalAmount: toNumber(amountAgg._sum.totalSell),
-          totalPaid: toNumber(amountAgg._sum.totalSellPaid),
-          totalDue: toNumber(amountAgg._sum.totalSellDue),
-          currency: 'NGN',
-        },
-      };
-    }
-
-    // Only the current page — never the whole tenant's legacy map.
-    const legacyIds = await this.tenantDb.db.migrationLegacyId.findMany({
-      where: {
-        tenantId,
-        entityType: 'customer',
-        newId: { in: rows.map((row) => row.id) },
-      },
-      select: { newId: true, legacyId: true },
-    });
-    const legacyById = new Map(
-      legacyIds.map((l) => [l.newId, `CU${String(l.legacyId).padStart(4, '0')}`]),
+    const legacyById = await getLegacyContactIdsForPage(
+      this.tenantDb.db,
+      this.cache,
+      tenantId,
+      'customer',
+      rows.map((row) => row.id),
     );
+
+    const items = rows.map((row) =>
+      serializeCustomer(row, { contactId: legacyById.get(row.id) ?? null }),
+    );
+
+    if (!includeSummary || totalCount == null || amountAgg == null) {
+      return { items };
+    }
 
     // Trust denormalized totals on list (refreshed on sale write). Live sale scans
     // per page were ~20s on Neon and stampeded the pool.
     return {
-      items: rows.map((row) =>
-        serializeCustomer(row, { contactId: legacyById.get(row.id) ?? null }),
-      ),
+      items,
       totalCount,
       amountSummary: {
         totalAmount: toNumber(amountAgg._sum.totalSell),
@@ -318,6 +374,7 @@ export class CustomersService {
       entityId: row.id,
       summary: `Created customer ${row.name}`,
     });
+    void invalidateTenantDashboardCache(this.cache, tenantId);
     return serializeCustomer({ ...row, sales: [] });
   }
 
@@ -364,6 +421,7 @@ export class CustomersService {
       entityId: id,
       summary: `Updated customer ${row.name}`,
     });
+    void invalidateTenantDashboardCache(this.cache, tenantId);
     return serializeCustomer({ ...row, sales: [] });
   }
 
@@ -390,6 +448,7 @@ export class CustomersService {
       entityId: id,
       summary: `Deleted customer ${existing.name}`,
     });
+    void invalidateTenantDashboardCache(this.cache, tenantId);
   }
 
   /** Apply a contact payment across oldest due/partial sales (HQ6 pay-contact-due). */
@@ -640,6 +699,14 @@ export class CustomersService {
     };
   }
 
+  /** Modal bundle: contact + summary + ledger (sequential DB / nested awaits). */
+  async getView(id: string): Promise<CustomerViewBundle> {
+    const customer = await this.getContact(id);
+    const summary = await this.getSummary(id);
+    const ledger = await this.getLedger(id);
+    return { customer, summary, ledger };
+  }
+
   async getSummary(id: string): Promise<ContactDueSummary> {
     const tenantId = this.tenantDb.requireTenantId();
     const row = await this.tenantDb.db.customer.findFirst({
@@ -757,5 +824,92 @@ export class CustomersService {
     }
 
     return result;
+  }
+}
+
+/** Boot/cron: seed default first-page customer list caches (limit 10/25, rows+summary). */
+export async function warmDefaultCustomerListPages(
+  prisma: import('@prisma/client').PrismaClient,
+  cache: CacheService,
+  tenantId: string,
+): Promise<void> {
+  await warmLegacyContactIdMap(prisma, cache, tenantId, 'customer');
+  for (const limit of [10, 25] as const) {
+    for (const includeSummary of [false, true] as const) {
+      const filterKey = listPageFilterKey({
+        search: undefined,
+        status: undefined,
+        customerGroupId: undefined,
+        assignedToUserId: undefined,
+        openingBalance: 0,
+        sellDue: 0,
+        advanceBalance: 0,
+        sellReturn: 0,
+        hasNoSellMonths: undefined,
+        from: undefined,
+        to: undefined,
+        cursor: undefined,
+        limit,
+        sum: includeSummary ? 1 : 0,
+      });
+      await withListPageCache(
+        cache,
+        tenantId,
+        'customers',
+        filterKey,
+        async () => {
+          const baseWhere = { tenantId, deletedAt: null };
+          const [rows, totalCount, amountAgg] = await Promise.all([
+            prisma.customer.findMany({
+              where: baseWhere,
+              include: {
+                customerGroup: { select: { name: true } },
+                assignedToUser: { select: { name: true } },
+              },
+              orderBy: [{ name: 'asc' }, { id: 'asc' }],
+              take: limit,
+            }),
+            includeSummary
+              ? prisma.customer.count({ where: baseWhere })
+              : Promise.resolve(undefined as number | undefined),
+            includeSummary
+              ? prisma.customer.aggregate({
+                  where: baseWhere,
+                  _sum: {
+                    totalSell: true,
+                    totalSellDue: true,
+                    totalSellPaid: true,
+                  },
+                })
+              : Promise.resolve(undefined),
+          ]);
+          const legacyById = await getLegacyContactIdsForPage(
+            prisma,
+            cache,
+            tenantId,
+            'customer',
+            rows.map((row) => row.id),
+          );
+          const items = rows.map((row) =>
+            serializeCustomer(row, {
+              contactId: legacyById.get(row.id) ?? null,
+            }),
+          );
+          if (!includeSummary || totalCount == null || amountAgg == null) {
+            return { items };
+          }
+          return {
+            items,
+            totalCount,
+            amountSummary: {
+              totalAmount: toNumber(amountAgg._sum.totalSell),
+              totalPaid: toNumber(amountAgg._sum.totalSellPaid),
+              totalDue: toNumber(amountAgg._sum.totalSellDue),
+              currency: 'NGN',
+            },
+          };
+        },
+      );
+    }
   }
 }

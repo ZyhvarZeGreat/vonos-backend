@@ -269,6 +269,22 @@ export async function importItems(
   return response.json();
 }
 
+export async function importOpeningStock(
+  tenantId: string,
+  csv: string,
+): Promise<CsvImportResult> {
+  const response = await apiFetch(
+    withTenantQuery("/items/import-opening-stock", tenantId),
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ csv }),
+    },
+  );
+  if (!response.ok) throw new Error("Failed to import opening stock");
+  return response.json();
+}
+
 export async function bulkUpdatePrices(
   tenantId: string,
   body: {

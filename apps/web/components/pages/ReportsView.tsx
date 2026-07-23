@@ -19,31 +19,14 @@ import type { TenantCode } from "@/lib/registries/tenants";
 import { getTenantByCode } from "@/lib/registries/tenants";
 import { ledgerChartSubtitle } from "@/lib/utils/ledgerCharts";
 import { formatCurrency, formatCurrencyCompact, formatNumberCompact } from "@/lib/utils/formatCurrency";
-import { reportRowDetailPath } from "@/lib/utils/recordDetailPath";
 import { ChartPanelSkeleton } from "@/components/organisms/skeletons";
 import { ReportDetailSheet } from "@/components/organisms/ReportDetailSheet";
 import { HqReportPageSkeleton } from "@/components/organisms/HqReportPageLayout";
+import { useReportRecordModals } from "@/lib/hooks/useReportRecordModals";
+import { REPORT_TABS } from "@/lib/registries/reportTabs";
 import { useUiStore } from "@/stores/uiStore";
 
-export const REPORT_TABS: Record<string, { id: string; label: string }[]> = {
-  stock: [
-    { id: "valuation", label: "Stock Valuation" },
-    { id: "movement", label: "Movement Summary" },
-    { id: "lowstock", label: "Low Stock" },
-  ],
-  transaction: [
-    { id: "sales", label: "Sales Summary" },
-    { id: "closeout", label: "Daily Closeout History" },
-  ],
-  job: [
-    { id: "costing", label: "Job Costing Summary" },
-    { id: "turnaround", label: "Turnaround Time" },
-  ],
-  appointment: [
-    { id: "stylist", label: "Revenue per Stylist" },
-    { id: "noshow", label: "No-show Rate" },
-  ],
-};
+export { REPORT_TABS } from "@/lib/registries/reportTabs";
 
 function formatKpiValue(kpi: ReportsKpi): string {
   if (kpi.deltaPercent && kpi.metricKey === "noShowRate") {
@@ -176,9 +159,12 @@ export function ReportsDashboardBody({
   /** VAG group: navigate to /admin/reports/[code] */
   onEntityReportsClick?: (tenantCode: string) => void;
 }) {
-  const router = useRouter();
   const openExportModal = useUiStore((state) => state.openExportModal);
   const chartSubtitle = ledgerChartSubtitle(dateRange);
+  const {
+    openReportRecord,
+    modals: recordModals,
+  } = useReportRecordModals();
 
   const kpis = dashboard?.kpis ?? [];
   const { deltas, deltaLabels, deltaPercents } = kpiDeltas(kpis);
@@ -312,7 +298,7 @@ export function ReportsDashboardBody({
             subtitle={
               onEntityReportsClick
                 ? "Click a row to open that entity's reports"
-                : "Click a row to open the full record"
+                : "Click a row to view details"
             }
             onExport={() => openExportModal()}
             dateRange={dateRange}
@@ -361,13 +347,13 @@ export function ReportsDashboardBody({
                 if (code) onEntityReportsClick(code);
                 return;
               }
-              if (!tenantCode) return;
-              const path = reportRowDetailPath(tenantCode, row);
-              if (path) router.push(path);
+              openReportRecord(row);
             }}
           />
         </div>
       ) : null}
+
+      {recordModals}
     </div>
   );
 }

@@ -2,8 +2,15 @@
 
 import type { ReactNode } from "react";
 import { CursorPaginationBar } from "@/components/molecules/CursorPaginationBar";
-import { DataTable, type ColumnConfig, type FilterConfig, type ServerSortConfig } from "@/components/organisms/DataTable";
+import {
+  DataTable,
+  type ColumnConfig,
+  type DataTableBulkAction,
+  type FilterConfig,
+  type ServerSortConfig,
+} from "@/components/organisms/DataTable";
 import type { ServerListPaginationProps } from "@/lib/hooks/useServerListPage";
+import type { TableDensity } from "@/lib/utils/tableColumnAlign";
 
 type ServerPaginatedTableBaseProps<T extends { id: string }> = {
   items: T[];
@@ -16,6 +23,14 @@ type ServerPaginatedTableBaseProps<T extends { id: string }> = {
   virtualized?: boolean;
   toolbar?: ReactNode;
   serverSort?: ServerSortConfig;
+  selectable?: boolean;
+  stickyHeader?: boolean;
+  stickyFirstColumn?: boolean;
+  density?: TableDensity;
+  onDensityChange?: (density: TableDensity) => void;
+  enableColumnVisibility?: boolean;
+  tableId?: string;
+  bulkActions?: DataTableBulkAction[];
 };
 
 export type ServerPaginatedTableProps<T extends { id: string }> =
@@ -61,6 +76,14 @@ export function ServerPaginatedTable<T extends { id: string }>(
     virtualized = false,
     toolbar,
     serverSort,
+    selectable = false,
+    stickyHeader = true,
+    stickyFirstColumn = false,
+    density,
+    onDensityChange,
+    enableColumnVisibility = false,
+    tableId,
+    bulkActions,
   } = props;
 
   const {
@@ -82,7 +105,6 @@ export function ServerPaginatedTable<T extends { id: string }>(
 
   return (
     <div className="overflow-hidden rounded-xl border border-border bg-card shadow-card">
-      {toolbar}
       <DataTable
         data={items}
         columns={columns}
@@ -91,6 +113,15 @@ export function ServerPaginatedTable<T extends { id: string }>(
         embedded
         virtualized={virtualized}
         disablePagination
+        selectable={selectable}
+        stickyHeader={stickyHeader}
+        stickyFirstColumn={stickyFirstColumn}
+        density={density}
+        onDensityChange={onDensityChange}
+        enableColumnVisibility={enableColumnVisibility}
+        tableId={tableId}
+        toolbar={toolbar}
+        bulkActions={bulkActions}
         isLoading={isLoading}
         isFetching={busy}
         error={error}

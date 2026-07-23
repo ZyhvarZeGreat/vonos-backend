@@ -48,7 +48,7 @@ export function Hq6ExpenseCategoriesListView() {
   } = useServerListPage<ExpenseCategory>({
     queryKey: ["expense-categories", tenantId],
     enabled: Boolean(tenantId),
-    fetchPage: (cursor, limit) => getExpenseCategoriesPage(tenantId!, cursor, limit),
+    fetchPage: (cursor, limit, _sort, opts) => getExpenseCategoriesPage(tenantId!, cursor, limit, { includeSummary: opts?.includeSummary }),
   });
 
   const createMutation = useMutation({

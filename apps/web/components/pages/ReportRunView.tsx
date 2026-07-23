@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ProductSellReportView, ReportRowAction, ReportRunOptions } from "@vonos/types";
 import { isPaginatedTableReport } from "@vonos/types";
@@ -20,14 +19,10 @@ import {
 import { useCursorPage } from "@/lib/hooks/useCursorPage";
 import { useListPageFilters } from "@/lib/hooks/useListPageFilters";
 import { useReportFilterOptions } from "@/lib/hooks/useReportFilterOptions";
+import { useReportRecordModals } from "@/lib/hooks/useReportRecordModals";
 import { useDebouncedValue } from "@/lib/hooks/useDebouncedValue";
 import { useRouteTenant } from "@/lib/hooks/useRouteTenant";
 import { ledgerChartSubtitle } from "@/lib/utils/ledgerCharts";
-import {
-  recordDetailPath,
-  reportRowDetailPath,
-  saleRecordPath,
-} from "@/lib/utils/recordDetailPath";
 import { ListPageShell } from "@/components/organisms/ListPageShell";
 import { HqReportPageLayout, HqReportPageSkeleton } from "@/components/organisms/HqReportPageLayout";
 import { ReportFilterShell } from "@/components/organisms/ReportFilterShell";
@@ -43,15 +38,15 @@ import { useUiStore } from "@/stores/uiStore";
 import { Button } from "@/components/atoms/Button";
 import { Printer } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
+import type { ReportsTableRow } from "@vonos/types";
 
 interface ReportRunViewProps {
   slug: string;
 }
 
 export function ReportRunView({ slug }: ReportRunViewProps) {
-  const router = useRouter();
   const queryClient = useQueryClient();
-  const { tenantId, tenantCode } = useRouteTenant();
+  const { tenantId } = useRouteTenant();
   const openExportModal = useUiStore((state) => state.openExportModal);
   const entry = reportEntryBySlug(slug);
   const { dateRange, setDateRange, bounds } = useListPageFilters();
@@ -61,6 +56,12 @@ export function ReportRunView({ slug }: ReportRunViewProps) {
   const [fixStock, setFixStock] = useState<FixStockPayload | null>(null);
   const [filters, setFilters] = useState<ReportRunOptions>(() => emptyReportFilters());
   const debouncedFilters = useDebouncedValue(filters, 400);
+
+  const {
+    openReportRecord,
+    handleRowAction: openLinkedRecordAction,
+    modals: recordModals,
+  } = useReportRecordModals();
 
   const isProfitLoss = entry?.id === "profit-loss";
   const isPaginated = Boolean(entry && isPaginatedTableReport(entry.id));
@@ -222,36 +223,16 @@ export function ReportRunView({ slug }: ReportRunViewProps) {
         });
         break;
       case "view-record":
-      case "edit-payment": {
-        if (!tenantCode) return;
-        const recordType = String(
-          action.payload.recordType ?? "payment",
-        );
-        if (recordType === "payment") {
-          router.push(`/${tenantCode}/payments`);
-          return;
-        }
-        // Prefer saleId when viewing a sale — paymentId must not win here.
-        const recordId = String(
-          recordType === "sale"
-            ? (action.payload.saleId ?? action.payload.id ?? "")
-            : (action.payload.paymentId ??
-                action.payload.saleId ??
-                action.payload.id ??
-                ""),
-        );
-        if (!recordId) return;
-        if (recordType === "sale") {
-          router.push(saleRecordPath(tenantCode, recordId));
-          return;
-        }
-        const path = recordDetailPath(tenantCode, recordType, recordId);
-        if (path) router.push(path);
+      case "edit-payment":
+        openLinkedRecordAction(action);
         break;
-      }
       default:
         break;
     }
+  };
+
+  const handleRowClick = (row: ReportsTableRow & { id: string }) => {
+    openReportRecord(row);
   };
 
   const exportPayload =
@@ -376,19 +357,14 @@ export function ReportRunView({ slug }: ReportRunViewProps) {
                 setFilters((prev) => ({ ...prev, search }))
               }
               searchPlaceholder={searchPlaceholder}
-              onRowClick={
-                tenantCode
-                  ? (row) => {
-                      const path = reportRowDetailPath(tenantCode, row);
-                      if (path) router.push(path);
-                    }
-                  : undefined
-              }
+              onRowClick={handleRowClick}
               onRowAction={handleRowAction}
             />
           ) : null}
         </div>
       </ListPageShell>
+
+      {recordModals}
 
       <ReportExpiryEditModal
         open={expiryEdit}

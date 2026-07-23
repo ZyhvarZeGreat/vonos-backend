@@ -3,17 +3,24 @@
 import { useMemo, useState } from "react";
 import { Eye, CheckCircle, RotateCcw } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import type { SaleDetail, SaleReturnDisposition } from "@vonos/types";
+import type { SaleReturnDisposition } from "@vonos/types";
 import { Button } from "@/components/atoms/Button";
 import { Select } from "@/components/atoms/Select";
 import { StatusPill } from "@/components/atoms/StatusPill";
+import { Hq6SaleViewModal } from "@/components/hq6/Hq6SaleViewModal";
 import { RecordViewModal } from "@/components/organisms/RecordViewModal";
 import { InvoiceDocument } from "@/components/organisms/InvoiceDocument";
 import { DocumentPreviewModal } from "@/components/organisms/DocumentPreviewModal";
 import { getInvoiceSettings } from "@/lib/api/invoiceSettings";
-import { createSaleReturn, finalizeSale, getSale } from "@/lib/api/sales";
+import { createSaleReturn, finalizeSale, getSaleView } from "@/lib/api/sales";
 import { useAppMutation } from "@/lib/hooks/useAppMutation";
+import { useIsVaHq6 } from "@/lib/hooks/useIsVaHq6";
 import { useRouteTenant } from "@/lib/hooks/useRouteTenant";
+import {
+  MODAL_RECORD_STALE_MS,
+  MODAL_REF_STALE_MS,
+  modalKeys,
+} from "@/lib/query/modalQueryKeys";
 import {
   saleDocumentKind,
   saleToInvoiceContact,
@@ -27,13 +34,17 @@ export interface SaleRecordModalProps {
   saleId: string | null;
   listSlug?: string;
   onClose: () => void;
+  /** When false, hide the "Open full page" link (e.g. reports stay on-page). */
+  showFullPageLink?: boolean;
 }
 
 export function SaleRecordModal({
   saleId,
   listSlug = "sales",
   onClose,
+  showFullPageLink = true,
 }: SaleRecordModalProps) {
+  const isHq6 = useIsVaHq6();
   const { tenantId, tenantName, tenantCode } = useRouteTenant();
   const queryClient = useQueryClient();
   const [docPreviewOpen, setDocPreviewOpen] = useState(false);
@@ -41,18 +52,19 @@ export function SaleRecordModal({
   const [disposition, setDisposition] = useState<SaleReturnDisposition>("refunded");
   const [returnNotes, setReturnNotes] = useState("");
 
-  const { data: sale, isLoading, error } = useQuery({
-    queryKey: ["sale-modal", tenantId, saleId],
-    queryFn: () => getSale(saleId!, tenantId!),
-    enabled: Boolean(tenantId && saleId),
-    staleTime: 60_000,
+  const { data: bundle, isLoading, error } = useQuery({
+    queryKey: modalKeys.saleView(tenantId, saleId),
+    queryFn: () => getSaleView(saleId!, tenantId!),
+    enabled: Boolean(tenantId && saleId) && !isHq6,
+    staleTime: MODAL_RECORD_STALE_MS,
   });
+  const sale = bundle?.sale;
 
   const { data: invoiceSettings } = useQuery({
-    queryKey: ["invoice-settings", tenantId],
+    queryKey: modalKeys.invoiceSettings(tenantId),
     queryFn: getInvoiceSettings,
     enabled: Boolean(tenantId),
-    staleTime: 10 * 60_000,
+    staleTime: MODAL_REF_STALE_MS,
   });
 
   const documentKind = useMemo(
@@ -119,7 +131,7 @@ export function SaleRecordModal({
     },
     successMessage: "Sale finalized",
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["sale-modal", tenantId, saleId] });
+      await queryClient.invalidateQueries({ queryKey: modalKeys.saleView(tenantId, saleId) });
       await queryClient.invalidateQueries({ queryKey: ["sales"] });
       await queryClient.invalidateQueries({ queryKey: ["items"] });
       await queryClient.invalidateQueries({ queryKey: ["ledgerTablePage"] });
@@ -138,13 +150,34 @@ export function SaleRecordModal({
     onSuccess: async () => {
       setReturnOpen(false);
       setReturnNotes("");
-      await queryClient.invalidateQueries({ queryKey: ["sale-modal", tenantId, saleId] });
+      await queryClient.invalidateQueries({ queryKey: modalKeys.saleView(tenantId, saleId) });
       await queryClient.invalidateQueries({ queryKey: ["sales"] });
       await queryClient.invalidateQueries({ queryKey: ["returns"] });
       await queryClient.invalidateQueries({ queryKey: ["items"] });
       await queryClient.invalidateQueries({ queryKey: ["ledgerTablePage"] });
     },
   });
+
+  if (isHq6) {
+    return (
+      <>
+        <Hq6SaleViewModal
+          open={Boolean(saleId)}
+          saleId={saleId}
+          onClose={onClose}
+          onPrintInvoice={() => setDocPreviewOpen(true)}
+          onPackingSlip={() => setDocPreviewOpen(true)}
+        />
+        <DocumentPreviewModal
+          open={docPreviewOpen}
+          title="Invoice preview"
+          onClose={() => setDocPreviewOpen(false)}
+        >
+          {saleId ? <Hq6SaleInvoicePreview saleId={saleId} /> : null}
+        </DocumentPreviewModal>
+      </>
+    );
+  }
 
   return (
     <>
@@ -162,7 +195,9 @@ export function SaleRecordModal({
         }
         onClose={onClose}
         fullPageHref={
-          saleId && tenantCode ? `/${tenantCode}/${listSlug}/${saleId}` : undefined
+          showFullPageLink && saleId && tenantCode
+            ? `/${tenantCode}/${listSlug}/${saleId}`
+            : undefined
         }
         isLoading={isLoading}
         error={error ? "Could not load this sale." : null}
@@ -243,7 +278,7 @@ export function SaleRecordModal({
                 <Eye className="mr-1.5 h-4 w-4" />
                 Preview {documentKind === "quotation" ? "quotation" : documentKind}
               </Button>
-              {saleId && tenantCode ? (
+              {showFullPageLink && saleId && tenantCode ? (
                 <a
                   href={`/${tenantCode}/${listSlug}/${saleId}`}
                   target="_blank"
@@ -337,5 +372,49 @@ export function SaleRecordModal({
         {document}
       </DocumentPreviewModal>
     </>
+  );
+}
+
+/** Lightweight invoice document for HQ6 print from the Sell Details modal. */
+function Hq6SaleInvoicePreview({ saleId }: { saleId: string }) {
+  const { tenantId, tenantName } = useRouteTenant();
+  const { data: bundle } = useQuery({
+    queryKey: modalKeys.saleView(tenantId, saleId),
+    queryFn: () => getSaleView(saleId, tenantId!),
+    enabled: Boolean(tenantId && saleId),
+    staleTime: MODAL_RECORD_STALE_MS,
+  });
+  const sale = bundle?.sale;
+  const { data: invoiceSettings } = useQuery({
+    queryKey: modalKeys.invoiceSettings(tenantId),
+    queryFn: getInvoiceSettings,
+    enabled: Boolean(tenantId),
+    staleTime: MODAL_REF_STALE_MS,
+  });
+
+  if (!sale) {
+    return <p className="p-4 text-sm text-muted">Loading invoice…</p>;
+  }
+
+  const kind = saleDocumentKind(sale.recordStatus, sale.paymentStatus);
+  const lines = saleToInvoiceLines(sale);
+  const sub = lines.reduce((sum, line) => sum + line.total, 0);
+
+  return (
+    <InvoiceDocument
+      kind={kind}
+      tenantName={tenantName}
+      reference={sale.reference}
+      date={sale.date}
+      contact={saleToInvoiceContact(sale)}
+      lineItems={lines}
+      subtotal={sub}
+      total={sale.total}
+      currency={sale.currency}
+      notes={sale.notes}
+      balanceDue={sale.sellDue ?? null}
+      {...invoiceDocumentLayoutProps(invoiceSettings)}
+      className="invoice-print-root"
+    />
   );
 }

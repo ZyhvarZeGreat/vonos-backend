@@ -11,6 +11,8 @@ export { Hq6ColumnVisibilityModal } from "./Hq6ColumnVisibilityModal";
 export { Hq6PrintModal } from "./Hq6PrintModal";
 export { Hq6ConfirmModal } from "./Hq6ConfirmModal";
 export { Hq6ContactEditModal, Hq6PayContactModal } from "./Hq6ContactModals";
+export { Hq6AddSupplierModal } from "./Hq6AddSupplierModal";
+export { Hq6EditSupplierModal } from "./Hq6EditSupplierModal";
 export {
   Hq6ContactDetailShell,
   parseHq6ContactTab,
@@ -24,6 +26,7 @@ export type {
 export { Hq6PaySupplierModal } from "./Hq6PaySupplierModal";
 export { Hq6PayPurchaseModal } from "./Hq6PayPurchaseModal";
 export { Hq6PurchaseViewModal } from "./Hq6PurchaseViewModal";
+export { Hq6SaleViewModal } from "./Hq6SaleViewModal";
 export { Hq6ViewPaymentsModal } from "./Hq6ViewPaymentsModal";
 export { Hq6InvoiceUrlModal } from "./Hq6InvoiceUrlModal";
 export { Hq6StackCell } from "./Hq6StackCell";

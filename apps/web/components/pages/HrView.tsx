@@ -190,18 +190,20 @@ function HrViewBody({ allTenants = false, embedded = false }: HrViewProps) {
     enabled: activeTab === "app-access" && (allTenants || Boolean(tenantId)),
     search,
     filters: { role: roleFilter || undefined, status: statusFilter || undefined },
-    fetchPage: (cursor, limit) =>
+    fetchPage: (cursor, limit, _sort, opts) =>
       allTenants
         ? getAllTenantUsersPage(cursor, limit, {
             search: search.trim() || undefined,
             role: roleFilter || undefined,
             status: statusFilter || undefined,
-          })
+        includeSummary: opts?.includeSummary,
+      })
         : getUsersPage(tenantId!, cursor, limit, {
             search: search.trim() || undefined,
             role: roleFilter || undefined,
             status: statusFilter || undefined,
-          }),
+        includeSummary: opts?.includeSummary,
+      }),
   });
 
   const workforce = workforceQuery.data ?? [];

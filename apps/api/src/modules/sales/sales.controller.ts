@@ -44,6 +44,7 @@ export class SalesController {
     @Query('limit') limit?: string,
     @Query('sortBy') sortBy?: string,
     @Query('sortDir') sortDir?: string,
+    @Query('includeSummary') includeSummary?: string,
   ) {
     const filters: SaleFilters = {
       search,
@@ -65,6 +66,7 @@ export class SalesController {
       limit: limit ? Number(limit) : undefined,
       sortBy,
       sortDir: sortDir === 'asc' || sortDir === 'desc' ? sortDir : undefined,
+      includeSummary: includeSummary !== '0' && includeSummary !== 'false',
     };
     return this.salesService.list(filters);
   }
@@ -121,6 +123,11 @@ export class SalesController {
   @Get(':id/meta')
   getMeta(@Param('id') id: string) {
     return this.salesService.getMeta(id);
+  }
+
+  @Get(':id/view')
+  getView(@Param('id') id: string) {
+    return this.salesService.getView(id);
   }
 
   @Get(':id/payments')

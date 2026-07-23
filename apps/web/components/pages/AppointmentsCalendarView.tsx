@@ -45,12 +45,13 @@ export function AppointmentsCalendarView() {
       status: statusFilter || undefined,
     },
     defaultPageSize: 10,
-    fetchPage: (cursor, limit) =>
+    fetchPage: (cursor, limit, _sort, opts) =>
       getAppointmentsPage(tenantId!, cursor, limit, {
         search: search.trim() || undefined,
         from: bounds?.from,
         to: bounds?.to,
         status: statusFilter || undefined,
+        includeSummary: opts?.includeSummary,
       }),
   });
 

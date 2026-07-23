@@ -62,7 +62,7 @@ export function Hq6CustomersListView() {
     bounds,
   } = useListPageFilters({ defaultDateRange: "all_time" });
   const [localSearch, setLocalSearch] = useState(search);
-  const chrome = useHq6ListChrome();
+  const chrome = useHq6ListChrome("customers");
 
   const [sellDue, setSellDue] = useState(false);
   const [sellReturn, setSellReturn] = useState(false);
@@ -145,7 +145,7 @@ export function Hq6CustomersListView() {
     enabled: Boolean(tenantId),
     filters: apiFilters,
     search: localSearch || search,
-    fetchPage: (cursor, limit) => getCustomersPage(tenantId!, apiFilters, cursor, limit),
+    fetchPage: (cursor, limit, _sort, opts) => getCustomersPage(tenantId!, { ...apiFilters, includeSummary: opts?.includeSummary }, cursor, limit),
     getCursor: (row) => customerListCursor(row),
   });
 
@@ -268,30 +268,35 @@ export function Hq6CustomersListView() {
       {
         key: "openingBalance",
         header: "Opening Balance",
+        numeric: true,
         sortValue: (r) => r.openingBalance ?? 0,
         render: (r) => formatHq6Currency(r.openingBalance ?? 0),
       },
       {
         key: "totalSell",
         header: "Total Sale",
+        numeric: true,
         sortValue: (r) => r.totalSell ?? r.totalSpend ?? 0,
         render: (r) => formatHq6Currency(r.totalSell ?? r.totalSpend ?? 0),
       },
       {
         key: "totalSellDue",
         header: "Total Sale Due",
+        numeric: true,
         sortValue: (r) => r.totalSellDue ?? 0,
         render: (r) => formatHq6Currency(r.totalSellDue ?? 0),
       },
       {
         key: "totalSellPaid",
         header: "Sale Paid",
+        numeric: true,
         sortValue: (r) => r.totalSellPaid ?? 0,
         render: (r) => formatHq6Currency(r.totalSellPaid ?? 0),
       },
       {
         key: "advanceBalance",
         header: "Advance Balance",
+        numeric: true,
         sortValue: (r) => r.totalAdvance ?? 0,
         render: (r) => formatHq6Currency(r.totalAdvance ?? 0),
       },
@@ -314,6 +319,7 @@ export function Hq6CustomersListView() {
       {
         key: "totalSellReturn",
         header: "Total Sell Return Due",
+        numeric: true,
         sortValue: (r) => r.totalSellReturn ?? 0,
         render: (r) => formatHq6Currency(r.totalSellReturn ?? 0),
       },
@@ -469,6 +475,11 @@ export function Hq6CustomersListView() {
           displayMode="table"
           embedded
           disablePagination
+          stickyHeader
+          stickyFirstColumn
+          density={chrome.density}
+          onDensityChange={chrome.setDensity}
+          showDensityControl={false}
           isLoading={isLoading}
           isFetching={isFetching && !isLoading}
           error={error ? "Failed to load customers." : null}

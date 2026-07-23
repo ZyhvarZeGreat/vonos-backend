@@ -8,6 +8,7 @@ import type {
 import { AUTOS_GROUP_CODES } from '@vonos/types';
 import { Prisma, type PrismaClient } from '@prisma/client';
 import { resolveGroupFinanceSource } from '../../common/utils/dailyFinanceRollup';
+import { runPool } from '../../common/utils/mapPool';
 import {
   buildGroupEntityStatsBundle,
   type EntityStatsBundle,
@@ -18,6 +19,8 @@ import {
 } from '../reports/aggregators/groupReports';
 import { resolveDateWindow, defaultVagOverviewApiBounds } from '../reports/aggregators/date-utils';
 import type { GroupFinanceQueryOptions } from '../reports/aggregators/groupReportQueries';
+
+const NEON_QUERY_CONCURRENCY = 2;
 
 type GroupTenant = {
   id: string;
@@ -182,57 +185,64 @@ async function loadGroupAlertInputs(
   const vw = tenants.find((t) => t.code === 'VW');
 
   const [lowRows, jobCounts, retailLowStock, pendingInbound] =
-    await Promise.all([
-      itemTenantIds.length > 0
-        ? prisma.$queryRaw<Array<{ tenantId: string; low_stock: bigint }>>`
-            SELECT
-              "tenantId",
-              COUNT(*) FILTER (
-                WHERE status IN ('low_stock', 'out_of_stock')
-              )::bigint AS low_stock
-            FROM "Item"
-            WHERE "deletedAt" IS NULL
-              AND "tenantId" IN (${Prisma.join(itemTenantIds)})
-            GROUP BY "tenantId"
-          `
-        : Promise.resolve([]),
-      jobIds.length > 0
-        ? prisma.$queryRaw<
-            Array<{ tenantId: string; active: bigint; pending_qc: bigint }>
-          >`
-            SELECT
-              "tenantId",
-              COUNT(*) FILTER (
-                WHERE status NOT IN ('Delivered', 'Cancelled')
-              )::bigint AS active,
-              COUNT(*) FILTER (WHERE status = 'QC')::bigint AS pending_qc
-            FROM "Job"
-            WHERE "deletedAt" IS NULL
-              AND "tenantId" IN (${Prisma.join(jobIds)})
-            GROUP BY "tenantId"
-          `
-        : Promise.resolve([]),
-      vw
-        ? prisma.item.count({
-            where: {
-              tenantId: vw.id,
-              deletedAt: null,
-              availableForRetail: true,
-              status: { in: ['low_stock', 'out_of_stock'] },
-            },
-          })
-        : Promise.resolve(0),
-      vw
-        ? prisma.stockMovement.count({
-            where: {
-              tenantId: vw.id,
-              deletedAt: null,
-              type: 'inbound',
-              status: 'Pending',
-            },
-          })
-        : Promise.resolve(0),
-    ]);
+    await runPool(
+      [
+        () =>
+          itemTenantIds.length > 0
+            ? prisma.$queryRaw<Array<{ tenantId: string; low_stock: bigint }>>`
+                SELECT
+                  "tenantId",
+                  COUNT(*) FILTER (
+                    WHERE status IN ('low_stock', 'out_of_stock')
+                  )::bigint AS low_stock
+                FROM "Item"
+                WHERE "deletedAt" IS NULL
+                  AND "tenantId" IN (${Prisma.join(itemTenantIds)})
+                GROUP BY "tenantId"
+              `
+            : Promise.resolve([]),
+        () =>
+          jobIds.length > 0
+            ? prisma.$queryRaw<
+                Array<{ tenantId: string; active: bigint; pending_qc: bigint }>
+              >`
+                SELECT
+                  "tenantId",
+                  COUNT(*) FILTER (
+                    WHERE status NOT IN ('Delivered', 'Cancelled')
+                  )::bigint AS active,
+                  COUNT(*) FILTER (WHERE status = 'QC')::bigint AS pending_qc
+                FROM "Job"
+                WHERE "deletedAt" IS NULL
+                  AND "tenantId" IN (${Prisma.join(jobIds)})
+                GROUP BY "tenantId"
+              `
+            : Promise.resolve([]),
+        () =>
+          vw
+            ? prisma.item.count({
+                where: {
+                  tenantId: vw.id,
+                  deletedAt: null,
+                  availableForRetail: true,
+                  status: { in: ['low_stock', 'out_of_stock'] },
+                },
+              })
+            : Promise.resolve(0),
+        () =>
+          vw
+            ? prisma.stockMovement.count({
+                where: {
+                  tenantId: vw.id,
+                  deletedAt: null,
+                  type: 'inbound',
+                  status: 'Pending',
+                },
+              })
+            : Promise.resolve(0),
+      ],
+      NEON_QUERY_CONCURRENCY,
+    );
 
   const lowByTenant = new Map(
     lowRows.map((row) => [row.tenantId, Number(row.low_stock)]),
@@ -442,9 +452,12 @@ export async function warmGroupOverviewCache(
   const warmFrom = from ?? defaults.from;
   const warmTo = to ?? defaults.to;
 
-  await Promise.all([
-    buildGroupOverviewSummary(prisma, warmFrom, warmTo, cache),
-    buildGroupOverviewDetails(prisma, warmFrom, warmTo, cache),
-    buildGroupOverview(prisma, warmFrom, warmTo, cache),
-  ]);
+  await runPool(
+    [
+      () => buildGroupOverviewSummary(prisma, warmFrom, warmTo, cache),
+      () => buildGroupOverviewDetails(prisma, warmFrom, warmTo, cache),
+      () => buildGroupOverview(prisma, warmFrom, warmTo, cache),
+    ],
+    NEON_QUERY_CONCURRENCY,
+  );
 }

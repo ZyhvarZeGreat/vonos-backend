@@ -9,6 +9,7 @@ import type {
   MovementType,
   PayContactDueRequest,
   PurchasePaymentStatus,
+  PurchaseViewBundle,
 } from '@vonos/types';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { TenantDbService } from '../../common/prisma/tenant-db.service';
@@ -16,11 +17,16 @@ import { CacheService } from '../../common/cache/cache.service';
 import { invalidateTenantDashboardCache } from '../../common/cache/cacheInvalidation';
 import { applyDailyFinanceDelta } from '../../common/utils/dailyFinanceRollup';
 import { refreshSupplierPurchaseRollups } from '../../common/utils/supplierRollups';
+import {
+  listPageFilterKey,
+  withListPageCache,
+} from '../../common/utils/listPageCache';
 import { buildCompositeCursorQuery } from '../../common/utils/pagination';
 import type { PaginatedList } from '../../common/utils/paginatedList';
 import { resolveListSort } from '../../common/utils/listSort';
 import {
   computeStockStatus,
+  movementLineRollups,
   parseMovementLines,
   shouldApplyInboundQty,
   shouldApplyOutboundQty,
@@ -99,99 +105,182 @@ export class StockMovementsService {
     limit?: number;
     sortBy?: string;
     sortDir?: string;
+    /** When false, skip count for rows-first paint. */
+    includeSummary?: boolean;
   }): Promise<PaginatedList<StockMovementListRow>> {
     const tenantId = this.tenantDb.requireTenantId();
-    const dateFilter =
-      filters.from || filters.to
-        ? {
-            date: {
-              ...(filters.from ? { gte: new Date(filters.from) } : {}),
-              ...(filters.to ? { lte: new Date(filters.to) } : {}),
-            },
-          }
-        : {};
-    const sort = resolveListSort(filters.sortBy, filters.sortDir, {
-      date: { field: 'date', type: 'date' },
-      reference: { field: 'reference', type: 'string' },
-      grandTotal: { field: 'grandTotal', type: 'number' },
-      paymentDue: { field: 'paymentDue', type: 'number' },
-      status: { field: 'status', type: 'string' },
-      createdAt: { field: 'createdAt', type: 'date' },
-    }, {
-      sortField: 'date',
-      sortDir: 'desc',
-      sortValueType: 'date',
-    });
-    const pagination = buildCompositeCursorQuery({
-      sortField: sort.sortField,
-      sortDir: sort.sortDir,
+    // Sort by computed totals isn't a DB column — fall back to date.
+    const sortBy =
+      filters.sortBy === 'grandTotal' || filters.sortBy === 'paymentDue'
+        ? 'date'
+        : filters.sortBy;
+    const filterKey = listPageFilterKey({
+      type: filters.type,
+      status: filters.status,
+      source: filters.source,
+      locationCode: filters.locationCode,
+      supplierId: filters.supplierId,
+      paymentStatus: filters.paymentStatus,
+      paymentMethod: filters.paymentMethod,
+      search: filters.search,
+      from: filters.from,
+      to: filters.to,
       cursor: filters.cursor,
       limit: filters.limit ?? 10,
-      sortValueType: sort.sortValueType,
+      sortBy,
+      sortDir: filters.sortDir,
+      sum: filters.includeSummary === true ? 1 : 0,
     });
-    const baseWhere = {
+
+    return withListPageCache(
+      this.cache,
       tenantId,
-      deletedAt: null as null,
-      ...(filters.type ? { type: filters.type } : {}),
-      ...movementStatusWhere(filters.status),
-      ...(filters.source ? { source: filters.source } : {}),
-      ...(filters.locationCode
-        ? { locationCode: filters.locationCode }
-        : {}),
-      ...(filters.supplierId ? { supplierId: filters.supplierId } : {}),
-      ...(filters.paymentStatus
-        ? filters.paymentStatus === 'due'
-          ? // Migrated purchases often have null paymentStatus; treat as due.
-            {
-              OR: [
-                { paymentStatus: 'due' as const },
-                { paymentStatus: null },
-              ],
-            }
-          : { paymentStatus: filters.paymentStatus }
-        : {}),
-      ...(filters.paymentMethod
-        ? { paymentMethod: filters.paymentMethod }
-        : {}),
-      ...(filters.search
-        ? {
-            OR: [
-              {
-                reference: {
-                  contains: filters.search,
-                  mode: 'insensitive' as const,
+      'stock-movements',
+      filterKey,
+      async () => {
+        const dateFilter =
+          filters.from || filters.to
+            ? {
+                date: {
+                  ...(filters.from ? { gte: new Date(filters.from) } : {}),
+                  ...(filters.to ? { lte: new Date(filters.to) } : {}),
                 },
-              },
-              {
-                supplier: {
-                  name: {
-                    contains: filters.search,
-                    mode: 'insensitive' as const,
+              }
+            : {};
+        const sort = resolveListSort(
+          sortBy,
+          filters.sortDir,
+          {
+            date: { field: 'date', type: 'date' },
+            reference: { field: 'reference', type: 'string' },
+            status: { field: 'status', type: 'string' },
+            createdAt: { field: 'createdAt', type: 'date' },
+          },
+          {
+            sortField: 'date',
+            sortDir: 'desc',
+            sortValueType: 'date',
+          },
+        );
+        const pagination = buildCompositeCursorQuery({
+          sortField: sort.sortField,
+          sortDir: sort.sortDir,
+          cursor: filters.cursor,
+          limit: filters.limit ?? 10,
+          sortValueType: sort.sortValueType,
+        });
+        const baseWhere = {
+          tenantId,
+          deletedAt: null as null,
+          ...(filters.type ? { type: filters.type } : {}),
+          ...movementStatusWhere(filters.status),
+          ...(filters.source ? { source: filters.source } : {}),
+          ...(filters.locationCode
+            ? { locationCode: filters.locationCode }
+            : {}),
+          ...(filters.supplierId ? { supplierId: filters.supplierId } : {}),
+          ...(filters.paymentStatus
+            ? filters.paymentStatus === 'due'
+              ? // Migrated purchases often have null paymentStatus; treat as due.
+                {
+                  OR: [
+                    { paymentStatus: 'due' as const },
+                    { paymentStatus: null },
+                  ],
+                }
+              : { paymentStatus: filters.paymentStatus }
+            : {}),
+          ...(filters.paymentMethod
+            ? { paymentMethod: filters.paymentMethod }
+            : {}),
+          ...(filters.search
+            ? {
+                OR: [
+                  {
+                    reference: {
+                      contains: filters.search,
+                      mode: 'insensitive' as const,
+                    },
                   },
-                },
-              },
-              { notes: { contains: filters.search, mode: 'insensitive' as const } },
-            ],
-          }
-        : {}),
-      ...dateFilter,
-    };
-    const [rows, totalCount] = await Promise.all([
-      this.tenantDb.db.stockMovement.findMany({
-        where: {
-          ...baseWhere,
-          ...(pagination.where ?? {}),
-        },
-        include: { supplier: { select: { name: true } } },
-        orderBy: [{ [sort.sortField]: sort.sortDir }, { id: sort.sortDir }],
-        take: pagination.take,
-      }),
-      this.tenantDb.db.stockMovement.count({ where: baseWhere }),
-    ]);
-    return {
-      items: rows.map(toMovementListRow),
-      totalCount,
-    };
+                  {
+                    supplier: {
+                      name: {
+                        contains: filters.search,
+                        mode: 'insensitive' as const,
+                      },
+                    },
+                  },
+                  {
+                    notes: {
+                      contains: filters.search,
+                      mode: 'insensitive' as const,
+                    },
+                  },
+                ],
+              }
+            : {}),
+          ...dateFilter,
+        };
+        // Skip lines JSON on list — use denormalized itemCount / grandTotal.
+        const includeSummary = filters.includeSummary === true;
+        // Summary fetch uses limit=1 and only reads totalCount — skip page work.
+        const countOnly =
+          includeSummary && !filters.cursor && (filters.limit ?? 10) === 1;
+
+        if (countOnly) {
+          const totalCount = await this.tenantDb.db.stockMovement.count({
+            where: baseWhere,
+          });
+          return { items: [], totalCount };
+        }
+
+        const [rows, totalCount] = await Promise.all([
+          this.tenantDb.db.stockMovement.findMany({
+            where: {
+              ...baseWhere,
+              ...(pagination.where ?? {}),
+            },
+            select: {
+              id: true,
+              tenantId: true,
+              type: true,
+              reference: true,
+              status: true,
+              notes: true,
+              locationCode: true,
+              supplierId: true,
+              source: true,
+              paymentStatus: true,
+              paymentMethod: true,
+              date: true,
+              itemCount: true,
+              grandTotal: true,
+              createdByUserId: true,
+              createdByName: true,
+              createdAt: true,
+              updatedAt: true,
+              deletedAt: true,
+              supplier: { select: { name: true } },
+            },
+            orderBy: [{ [sort.sortField]: sort.sortDir }, { id: sort.sortDir }],
+            take: pagination.take,
+          }),
+          includeSummary
+            ? this.tenantDb.db.stockMovement.count({ where: baseWhere })
+            : Promise.resolve(undefined as number | undefined),
+        ]);
+
+        return {
+          items: rows.map((row) =>
+            toMovementListRow({
+              ...row,
+              lines: [],
+            }),
+          ),
+          ...(totalCount != null ? { totalCount } : {}),
+        };
+      },
+    );
   }
 
   async getById(id: string) {
@@ -201,6 +290,85 @@ export class StockMovementsService {
     });
     if (!row) throw new NotFoundException('Movement not found');
     return serializeMovement(row);
+  }
+
+  /** Purchase/view modal: movement + payments + supplier (sequential DB). */
+  async getView(id: string): Promise<PurchaseViewBundle> {
+    const tenantId = this.tenantDb.requireTenantId();
+    const row = await this.tenantDb.db.stockMovement.findFirst({
+      where: { id, tenantId, deletedAt: null },
+    });
+    if (!row) throw new NotFoundException('Movement not found');
+    const movement = serializeMovement(row);
+
+    const paymentRows = await this.tenantDb.db.payment.findMany({
+      where: {
+        tenantId,
+        deletedAt: null,
+        paymentFor: 'purchase',
+        paymentRefNo: row.reference,
+      },
+      include: { account: { select: { name: true } } },
+      orderBy: [{ paidOn: 'desc' }, { createdAt: 'desc' }],
+    });
+    const payments = paymentRows.map((payment) => ({
+      id: payment.id,
+      amount: toNumber(payment.amount),
+      currency: payment.currency,
+      method: payment.method,
+      paymentRefNo: payment.paymentRefNo,
+      paidOn: payment.paidOn ? toIso(payment.paidOn) : null,
+      note: payment.note,
+      accountId: payment.accountId,
+      accountName: payment.account?.name ?? null,
+      createdByName: payment.createdByName,
+    }));
+
+    let supplier: PurchaseViewBundle['supplier'] = null;
+    if (row.supplierId) {
+      const supplierRow = await this.tenantDb.db.supplier.findFirst({
+        where: { id: row.supplierId, tenantId, deletedAt: null },
+      });
+      if (supplierRow) {
+        supplier = {
+          id: supplierRow.id,
+          tenantId: supplierRow.tenantId,
+          name: supplierRow.name,
+          contactName: supplierRow.contactName,
+          email: supplierRow.email,
+          phone: supplierRow.phone,
+          address: supplierRow.address,
+          locationCode: supplierRow.locationCode,
+          notes: supplierRow.notes,
+          taxNumber: supplierRow.taxNumber,
+          openingBalance: supplierRow.openingBalance
+            ? toNumber(supplierRow.openingBalance)
+            : undefined,
+          assignedToUserId: supplierRow.assignedToUserId,
+          assignedToName: null,
+          createdByUserId: supplierRow.createdByUserId,
+          createdByName: supplierRow.createdByName,
+          createdAt: toIso(supplierRow.createdAt),
+          updatedAt: toIso(supplierRow.updatedAt),
+          category: 'General',
+          leadTimeDays: 7,
+          location: supplierRow.locationCode ?? supplierRow.address ?? '—',
+          rating: 4.5,
+          contactId: supplierRow.id.slice(0, 8).toUpperCase(),
+          businessName: supplierRow.name,
+          payTerm: null,
+          totalPurchase: toNumber(supplierRow.totalPurchase ?? 0),
+          totalPurchaseDue: toNumber(supplierRow.totalPurchaseDue ?? 0),
+          totalPurchasePaid: toNumber(supplierRow.totalPurchasePaid ?? 0),
+          totalPurchaseReturn: toNumber(supplierRow.totalPurchaseReturn ?? 0),
+          totalAdvance: toNumber(supplierRow.totalAdvance ?? 0),
+          status:
+            supplierRow.status === 'inactive' ? 'inactive' : 'active',
+        };
+      }
+    }
+
+    return { movement, payments, supplier };
   }
 
   async updateStatus(id: string, status: MovementStatus) {
@@ -553,6 +721,7 @@ export class StockMovementsService {
     const locationCode = await this.tenantDb.resolveBusinessLocation(
       body.locationCode,
     );
+    const rollups = movementLineRollups(body.lines);
     const row = await this.tenantDb.db.stockMovement.create({
       data: {
         tenantId,
@@ -562,6 +731,8 @@ export class StockMovementsService {
         paymentStatus: body.paymentStatus ?? null,
         paymentMethod: body.paymentMethod?.trim() || null,
         lines: body.lines,
+        itemCount: rollups.itemCount,
+        grandTotal: rollups.grandTotal,
         notes: body.notes ?? null,
         supplierId: body.supplierId ?? null,
         source: body.source ?? 'standard',
@@ -703,5 +874,88 @@ export class StockMovementsService {
         ),
       };
     });
+  }
+}
+
+/** Boot/cron: seed default inbound purchase list caches. */
+export async function warmDefaultStockMovementListPages(
+  prisma: import('@prisma/client').PrismaClient,
+  cache: CacheService,
+  tenantId: string,
+): Promise<void> {
+  for (const limit of [10, 25, 50] as const) {
+    for (const includeSummary of [false, true] as const) {
+      const filterKey = listPageFilterKey({
+        type: 'inbound',
+        status: undefined,
+        source: undefined,
+        locationCode: undefined,
+        supplierId: undefined,
+        paymentStatus: undefined,
+        paymentMethod: undefined,
+        search: undefined,
+        from: undefined,
+        to: undefined,
+        cursor: undefined,
+        limit,
+        sortBy: undefined,
+        sortDir: undefined,
+        sum: includeSummary ? 1 : 0,
+      });
+      await withListPageCache(
+        cache,
+        tenantId,
+        'stock-movements',
+        filterKey,
+        async () => {
+          const baseWhere = {
+            tenantId,
+            deletedAt: null as null,
+            type: 'inbound' as const,
+          };
+          const [rows, totalCount] = await Promise.all([
+            prisma.stockMovement.findMany({
+              where: baseWhere,
+              select: {
+                id: true,
+                tenantId: true,
+                type: true,
+                reference: true,
+                status: true,
+                notes: true,
+                locationCode: true,
+                supplierId: true,
+                source: true,
+                paymentStatus: true,
+                paymentMethod: true,
+                date: true,
+                itemCount: true,
+                grandTotal: true,
+                createdByUserId: true,
+                createdByName: true,
+                createdAt: true,
+                updatedAt: true,
+                deletedAt: true,
+                supplier: { select: { name: true } },
+              },
+              orderBy: [{ date: 'desc' }, { id: 'desc' }],
+              take: limit,
+            }),
+            includeSummary
+              ? prisma.stockMovement.count({ where: baseWhere })
+              : Promise.resolve(undefined as number | undefined),
+          ]);
+          return {
+            items: rows.map((row) =>
+              toMovementListRow({
+                ...row,
+                lines: [],
+              }),
+            ),
+            ...(totalCount != null ? { totalCount } : {}),
+          };
+        },
+      );
+    }
   }
 }

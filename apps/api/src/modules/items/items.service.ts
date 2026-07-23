@@ -18,6 +18,16 @@ import { AuditService } from '../audit/audit.service';
 import { buildCompositeCursorQuery } from '../../common/utils/pagination';
 import { resolveListSort } from '../../common/utils/listSort';
 import { parseCsv, pickCsvField } from '../../common/utils/csvImport';
+import {
+  businessLocationsFromConfig,
+  resolveBusinessLocationCode,
+} from '../../common/utils/businessLocation';
+import {
+  isHq6ProductCsv,
+  parseProductCsvRow,
+} from '../../common/utils/productCsvImport';
+import { parseOpeningStockCsvRow } from '../../common/utils/openingStockCsvImport';
+import { adjustItemLocationStock } from '../../common/utils/itemLocationStock';
 import { toNumber } from '../../common/utils/serializers';
 import { serializeItem } from './items.mapper';
 import {
@@ -230,9 +240,47 @@ export class ItemsService {
         ...(pagination.where ?? {}),
       },
       orderBy: [{ [sort.sortField]: sort.sortDir }, { id: sort.sortDir }],
-      include: {
+      // List projection — never pull full Item + all locationStock columns.
+      select: {
+        id: true,
+        tenantId: true,
+        sku: true,
+        name: true,
+        category: true,
+        subCategory: true,
+        description: true,
+        barcodeType: true,
+        unit: true,
+        weight: true,
+        carModel: true,
+        enableImei: true,
+        preparationMinutes: true,
+        quantity: true,
+        binLocation: true,
+        locationCode: true,
+        reorderPoint: true,
+        costPrice: true,
+        sellPrice: true,
+        currency: true,
+        status: true,
+        availableForRetail: true,
+        brandId: true,
+        createdByUserId: true,
+        createdByName: true,
+        createdAt: true,
+        updatedAt: true,
         brand: { select: { name: true } },
-        ...(filters.locationCode ? { locationStock: true } : {}),
+        ...(filters.locationCode
+          ? {
+              locationStock: {
+                select: {
+                  locationCode: true,
+                  binLocation: true,
+                  quantity: true,
+                },
+              },
+            }
+          : {}),
       },
       take: pagination.take,
     });
@@ -792,6 +840,11 @@ export class ItemsService {
   async importCsv(csv: string): Promise<CsvImportResult> {
     const rows = parseCsv(csv);
     const result: CsvImportResult = { created: 0, updated: 0, errors: [] };
+    if (rows.length === 0) return result;
+
+    if (isHq6ProductCsv(rows)) {
+      return this.importHq6ProductCsv(rows);
+    }
 
     for (let index = 0; index < rows.length; index += 1) {
       const row = rows[index];
@@ -815,6 +868,7 @@ export class ItemsService {
           quantity: Number(pickCsvField(row, 'quantity', 'stock') || '0') || 0,
           costPrice,
           currency: pickCsvField(row, 'currency') || 'NGN',
+          availableForRetail: true,
         });
         result.created += 1;
       } catch (error) {
@@ -826,6 +880,297 @@ export class ItemsService {
     }
 
     return result;
+  }
+
+  private async importHq6ProductCsv(
+    rows: Record<string, string>[],
+  ): Promise<CsvImportResult> {
+    const result: CsvImportResult = { created: 0, updated: 0, errors: [] };
+    const tenantId = this.tenantDb.requireTenantId();
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { config: true },
+    });
+    const config = tenant?.config;
+    const locations = businessLocationsFromConfig(config);
+    const defaultMargin = Number(
+      (config as { businessSettings?: { business?: { defaultProfitPercent?: string } } })
+        ?.businessSettings?.business?.defaultProfitPercent ?? 0,
+    );
+
+    for (let index = 0; index < rows.length; index += 1) {
+      const row = rows[index];
+      try {
+        const parsed = parseProductCsvRow(row, index, defaultMargin);
+        await this.ensureCatalogMeta({
+          brandName: parsed.brandName,
+          category: parsed.category,
+          subCategory: parsed.subCategory,
+          unit: parsed.unit,
+          variationName: parsed.variationName,
+          variationValues:
+            parsed.productType === 'variable' ? parsed.variationValues : undefined,
+        });
+
+        let locationCode: string | null =
+          resolveBusinessLocationCode(config, parsed.openingStockLocation) ??
+          resolveBusinessLocationCode(config, parsed.productLocations[0]) ??
+          (locations[0]?.code ?? null);
+
+        for (const variant of parsed.variants) {
+          const locationStock =
+            locationCode && parsed.manageStock
+              ? [
+                  {
+                    locationCode,
+                    binLocation: variant.binLocation,
+                    quantity: variant.quantity,
+                  },
+                ]
+              : undefined;
+
+          await this.create({
+            sku: variant.sku,
+            name: variant.name,
+            category: parsed.category,
+            subCategory: parsed.subCategory,
+            description: parsed.description,
+            barcodeType: parsed.barcodeType,
+            unit: parsed.unit,
+            weight: parsed.weight,
+            enableImei: parsed.enableImei,
+            quantity: locationStock ? undefined : variant.quantity,
+            reorderPoint: parsed.alertQuantity,
+            costPrice: variant.costPrice,
+            sellPrice: variant.sellPrice,
+            brandName: parsed.brandName,
+            availableForRetail: parsed.availableForRetail,
+            locationCode: locationCode ?? undefined,
+            binLocation: variant.binLocation,
+            locationStock,
+          });
+          result.created += 1;
+        }
+      } catch (error) {
+        result.errors.push({
+          row: index + 2,
+          message: error instanceof Error ? error.message : 'Import failed',
+        });
+      }
+    }
+
+    return result;
+  }
+
+  /**
+   * HQ6 Import Opening Stock — add qty to existing products by SKU,
+   * update unit cost, and optionally record lot / expiry in audit metadata.
+   */
+  async importOpeningStockCsv(csv: string): Promise<CsvImportResult> {
+    const rows = parseCsv(csv);
+    const result: CsvImportResult = { created: 0, updated: 0, errors: [] };
+    if (rows.length === 0) return result;
+
+    const tenantId = this.tenantDb.requireTenantId();
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { config: true },
+    });
+    const config = tenant?.config;
+    const locations = businessLocationsFromConfig(config);
+    const defaultLocationCode = locations[0]?.code ?? null;
+
+    for (let index = 0; index < rows.length; index += 1) {
+      const row = rows[index];
+      try {
+        const parsed = parseOpeningStockCsvRow(row);
+
+        const item = await this.tenantDb.db.item.findFirst({
+          where: {
+            tenantId,
+            deletedAt: null,
+            sku: { equals: parsed.sku, mode: 'insensitive' },
+          },
+          select: {
+            id: true,
+            sku: true,
+            quantity: true,
+            reorderPoint: true,
+            locationCode: true,
+            binLocation: true,
+            costPrice: true,
+          },
+        });
+        if (!item) {
+          throw new Error(`Product with SKU "${parsed.sku}" not found`);
+        }
+
+        const locationCode =
+          resolveBusinessLocationCode(config, parsed.location) ??
+          item.locationCode ??
+          defaultLocationCode;
+
+        if (locations.length > 0 && !locationCode) {
+          throw new Error('Business location is required');
+        }
+
+        const nextQuantity = item.quantity + parsed.quantity;
+        const status = deriveStatus(nextQuantity, item.reorderPoint);
+
+        await this.tenantDb.db.$transaction(async (tx) => {
+          await tx.item.update({
+            where: { id: item.id },
+            data: {
+              quantity: nextQuantity,
+              costPrice: parsed.unitCost,
+              status,
+              ...(locationCode && !item.locationCode
+                ? { locationCode }
+                : {}),
+            },
+          });
+
+          if (locationCode) {
+            await adjustItemLocationStock(tx, {
+              tenantId,
+              itemId: item.id,
+              locationCode,
+              binLocation: item.binLocation,
+              delta: parsed.quantity,
+            });
+          }
+        });
+
+        await this.auditService.log({
+          action: 'updated',
+          entityType: 'item',
+          entityId: item.id,
+          summary: `Opening stock +${parsed.quantity} for ${item.sku}`,
+          metadata: {
+            sku: item.sku,
+            quantityAdded: parsed.quantity,
+            unitCost: parsed.unitCost,
+            locationCode,
+            lotNumber: parsed.lotNumber ?? null,
+            expiryDate: parsed.expiryDate ?? null,
+          },
+        });
+
+        result.updated += 1;
+      } catch (error) {
+        result.errors.push({
+          row: index + 2,
+          message: error instanceof Error ? error.message : 'Import failed',
+        });
+      }
+    }
+
+    if (result.updated > 0) {
+      void this.invalidateItemCaches();
+    }
+
+    return result;
+  }
+
+  /** Find-or-create brand / category / unit / variation template from CSV names. */
+  private async ensureCatalogMeta(input: {
+    brandName?: string;
+    category?: string;
+    subCategory?: string;
+    unit?: string;
+    variationName?: string;
+    variationValues?: string[];
+  }): Promise<void> {
+    const tenantId = this.tenantDb.requireTenantId();
+    const db = this.tenantDb.db;
+
+    if (input.unit?.trim()) {
+      const unitName = input.unit.trim();
+      const existingUnit = await db.productUnit.findFirst({
+        where: {
+          tenantId,
+          deletedAt: null,
+          OR: [
+            { name: { equals: unitName, mode: 'insensitive' } },
+            { shortName: { equals: unitName, mode: 'insensitive' } },
+          ],
+        },
+        select: { id: true },
+      });
+      if (!existingUnit) {
+        const shortName = unitName.slice(0, 8);
+        await db.productUnit.create({
+          data: { tenantId, name: unitName, shortName },
+        });
+      }
+    }
+
+    let parentCategoryId: string | null = null;
+    if (input.category?.trim()) {
+      const name = input.category.trim();
+      const existing = await db.productCategory.findFirst({
+        where: {
+          tenantId,
+          deletedAt: null,
+          parentId: null,
+          name: { equals: name, mode: 'insensitive' },
+        },
+        select: { id: true },
+      });
+      if (existing) {
+        parentCategoryId = existing.id;
+      } else {
+        const created = await db.productCategory.create({
+          data: { tenantId, name },
+          select: { id: true },
+        });
+        parentCategoryId = created.id;
+      }
+    }
+
+    if (input.subCategory?.trim() && parentCategoryId) {
+      const name = input.subCategory.trim();
+      const existing = await db.productCategory.findFirst({
+        where: {
+          tenantId,
+          deletedAt: null,
+          parentId: parentCategoryId,
+          name: { equals: name, mode: 'insensitive' },
+        },
+        select: { id: true },
+      });
+      if (!existing) {
+        await db.productCategory.create({
+          data: { tenantId, name, parentId: parentCategoryId },
+        });
+      }
+    }
+
+    if (input.variationName?.trim() && input.variationValues?.length) {
+      const name = input.variationName.trim();
+      const values = input.variationValues.map((v) => v.trim()).filter(Boolean);
+      const existing = await db.variationTemplate.findFirst({
+        where: {
+          tenantId,
+          deletedAt: null,
+          name: { equals: name, mode: 'insensitive' },
+        },
+        select: { id: true, values: true },
+      });
+      if (!existing) {
+        await db.variationTemplate.create({
+          data: { tenantId, name, values },
+        });
+      } else {
+        const merged = Array.from(new Set([...existing.values, ...values]));
+        if (merged.length !== existing.values.length) {
+          await db.variationTemplate.update({
+            where: { id: existing.id },
+            data: { values: merged },
+          });
+        }
+      }
+    }
   }
 
   async bulkUpdatePrice(body: {

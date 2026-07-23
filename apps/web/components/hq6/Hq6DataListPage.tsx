@@ -48,6 +48,10 @@ export interface Hq6DataListPageProps {
     onPrint?: () => void;
     onColumnVisibility?: () => void;
     onExportPdf?: () => void;
+    density?: import("@/lib/utils/tableColumnAlign").TableDensity;
+    onDensityChange?: (
+      density: import("@/lib/utils/tableColumnAlign").TableDensity,
+    ) => void;
   };
   children: ReactNode;
   tableFooter?: ReactNode;
@@ -70,6 +74,8 @@ export interface Hq6DataListPageProps {
   };
   modals?: ReactNode;
   className?: string;
+  /** Freeze first table column while scrolling horizontally. */
+  freezeFirstColumn?: boolean;
 }
 
 function PrimaryActionButton({ action }: { action: Hq6PrimaryAction }) {
@@ -121,6 +127,7 @@ export function Hq6DataListPage({
   pagination,
   modals,
   className,
+  freezeFirstColumn = true,
 }: Hq6DataListPageProps) {
   const visibleActions = primaryActions.filter((a) => !a.hidden);
 
@@ -135,7 +142,7 @@ export function Hq6DataListPage({
 
       {filters ? <Hq6FiltersCard>{filters}</Hq6FiltersCard> : null}
 
-      <div className="hq6-card hq6-products-box overflow-hidden">
+      <div className="hq6-card hq6-products-box overflow-x-clip">
         {tabs && tabs.length > 0 ? (
           <div className="hq6-tab-row">
             <div className="flex min-w-0 flex-1">
@@ -165,7 +172,12 @@ export function Hq6DataListPage({
 
         {toolbar !== false && toolbar ? <Hq6ListToolbar {...toolbar} /> : null}
 
-        <div className="hq6-table-wrap relative">
+        <div
+          className={cn(
+            "hq6-table-wrap relative",
+            freezeFirstColumn && "hq6-table-freeze-first",
+          )}
+        >
           {children}
           {tableFooter}
           {summaryStrip}

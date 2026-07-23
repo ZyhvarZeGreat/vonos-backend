@@ -11,8 +11,21 @@ const tenantId = process.env.PROBE_TENANT_ID ?? 'tenant_va_001';
 
 const ENDPOINTS = [
   { name: 'customers', path: '/customers?limit=25' },
+  { name: 'customers-rows', path: '/customers?limit=25&includeSummary=0' },
   { name: 'suppliers', path: '/suppliers?limit=25' },
+  { name: 'suppliers-rows', path: '/suppliers?limit=25&includeSummary=0' },
   { name: 'sales', path: '/sales?limit=25' },
+  { name: 'sales-rows', path: '/sales?limit=25&includeSummary=0' },
+  {
+    name: 'purchases-inbound',
+    path: '/stock-movements?type=inbound&limit=25',
+  },
+  {
+    name: 'purchases-inbound-rows',
+    path: '/stock-movements?type=inbound&limit=25&includeSummary=0',
+  },
+  { name: 'reports-dashboard', path: '/reports/dashboard' },
+  { name: 'invoice-settings', path: '/invoice-settings' },
 ];
 
 async function json(res) {

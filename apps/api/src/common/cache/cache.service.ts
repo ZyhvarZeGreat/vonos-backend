@@ -7,15 +7,21 @@ const L1_TTL_MS = 30_000;
 /** VAG group overview keys stay in L1 for the full Redis TTL (avoid Upstash RTT). */
 const L1_LONG_TTL_MS = 900_000;
 const L1_LONG_KEY_PREFIXES = [
+  'cacheVer:',
   'group-overview',
   'ledger-group-',
   'report-group',
   'report-group-run',
   'stock-availability',
   'entity-overview',
+  'hq6-home:',
   'ledger:',
   'report-dash:',
   'workforce:',
+  'invoice-settings:',
+  'list:',
+  'auth:tv:',
+  'legacy-map:',
 ];
 
 @Injectable()

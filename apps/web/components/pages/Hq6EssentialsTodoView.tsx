@@ -63,7 +63,7 @@ export function Hq6EssentialsTodoView() {
   const tenantId = useTenantId();
   const router = useRouter();
   const { detailPath } = useRecordNavigation("essentials-todo");
-  const chrome = useHq6ListChrome();
+  const chrome = useHq6ListChrome("essentials-todo");
   const { dateRange, setDateRange, customDateRange, setCustomDateRange, bounds } =
     useListPageFilters({ defaultDateRange: "all_time" });
   const [localSearch, setLocalSearch] = useState("");

@@ -154,19 +154,19 @@ export function PayrollView({
     queryKey: ["payrolls", tenantId],
     enabled: Boolean(tenantId) && activeTab === "payrolls",
     search,
-    fetchPage: (cursor, limit) => getPayrollsPage(tenantId!, cursor, limit),
+    fetchPage: (cursor, limit, _sort, opts) => getPayrollsPage(tenantId!, cursor, limit, { includeSummary: opts?.includeSummary }),
   });
 
   const groupsPage = useServerListPage<PayrollGroup>({
     queryKey: ["payroll-groups", tenantId],
     enabled: Boolean(tenantId) && activeTab === "groups",
-    fetchPage: (cursor, limit) => getPayrollGroupsPage(tenantId!, cursor, limit),
+    fetchPage: (cursor, limit, _sort, opts) => getPayrollGroupsPage(tenantId!, cursor, limit, { includeSummary: opts?.includeSummary }),
   });
 
   const componentsPage = useServerListPage<PayComponent>({
     queryKey: ["pay-components", tenantId],
     enabled: Boolean(tenantId) && activeTab === "components",
-    fetchPage: (cursor, limit) => getPayComponentsPage(tenantId!, cursor, limit),
+    fetchPage: (cursor, limit, _sort, opts) => getPayComponentsPage(tenantId!, cursor, limit, { includeSummary: opts?.includeSummary }),
   });
 
   const createPayrollMutation = useMutation({

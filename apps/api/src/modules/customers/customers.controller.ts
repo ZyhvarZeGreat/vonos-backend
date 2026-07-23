@@ -43,6 +43,7 @@ export class CustomersController {
     @Query('to') to?: string,
     @Query('cursor') cursor?: string,
     @Query('limit') limit?: string,
+    @Query('includeSummary') includeSummary?: string,
   ) {
     const months = Number(hasNoSellMonths);
     const filters: CustomerFilters = {
@@ -62,6 +63,7 @@ export class CustomersController {
       to,
       cursor,
       limit: limit ? Number(limit) : undefined,
+      includeSummary: includeSummary !== '0' && includeSummary !== 'false',
     };
     return this.customersService.list(filters);
   }
@@ -81,6 +83,11 @@ export class CustomersController {
   @Get(':id/summary')
   getSummary(@Param('id') id: string) {
     return this.customersService.getSummary(id);
+  }
+
+  @Get(':id/view')
+  getView(@Param('id') id: string) {
+    return this.customersService.getView(id);
   }
 
   @Get(':id/contact')

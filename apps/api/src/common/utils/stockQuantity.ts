@@ -74,3 +74,23 @@ export function parseMovementLines(lines: unknown): MovementLine[] {
     ];
   });
 }
+
+/** Persist on write so list queries never expand lines JSON. */
+export function movementLineRollups(lines: unknown): {
+  itemCount: number;
+  grandTotal: number;
+} {
+  if (!Array.isArray(lines)) return { itemCount: 0, grandTotal: 0 };
+  let itemCount = 0;
+  let grandTotal = 0;
+  for (const line of lines) {
+    if (typeof line !== 'object' || line === null) continue;
+    const record = line as Record<string, unknown>;
+    const quantity = Number(record.quantity ?? 0);
+    if (Number.isNaN(quantity)) continue;
+    itemCount += 1;
+    const unitCost = Number(record.unitCost ?? 0);
+    grandTotal += quantity * (Number.isNaN(unitCost) ? 0 : unitCost);
+  }
+  return { itemCount, grandTotal };
+}

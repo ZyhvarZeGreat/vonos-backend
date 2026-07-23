@@ -98,7 +98,7 @@ export function WarehouseInventoryView() {
     queryKey: ["items", tenantId],
     enabled: Boolean(tenantId) && section === "products",
     filters: apiFilters,
-    fetchPage: (cursor, limit) => getItemsPage(tenantId!, apiFilters, cursor, limit),
+    fetchPage: (cursor, limit, _sort, opts) => getItemsPage(tenantId!, { ...apiFilters, includeSummary: opts?.includeSummary }, cursor, limit),
   });
 
   const filtered = useMemo(() => {

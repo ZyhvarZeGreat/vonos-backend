@@ -60,7 +60,7 @@ export function Hq6ProductsListView() {
   const [stockItem, setStockItem] = useState<Item | null>(null);
   const [locationModalOpen, setLocationModalOpen] = useState(false);
   const [deleteItem, setDeleteItem] = useState<Item | null>(null);
-  const chrome = useHq6ListChrome();
+  const chrome = useHq6ListChrome("products");
 
   const apiFilters = useMemo(() => {
     const next: {
@@ -112,7 +112,7 @@ export function Hq6ProductsListView() {
     enabled: Boolean(tenantId) && listTab === "products",
     filters: apiFilters,
     defaultPageSize: 50,
-    fetchPage: (cursor, limit) => getCatalogPage(tenantId!, apiFilters, cursor, limit),
+    fetchPage: (cursor, limit, _sort, opts) => getCatalogPage(tenantId!, { ...apiFilters, includeSummary: opts?.includeSummary }, cursor, limit),
   });
 
   const categoryOptions = useMemo(
@@ -302,18 +302,21 @@ export function Hq6ProductsListView() {
       {
         key: "costPrice",
         header: "Unit Purchase Price",
+        numeric: true,
         sortValue: (row) => row.costPrice,
         render: (row) => formatCurrency(row.costPrice, row.currency),
       },
       {
         key: "sellPrice",
         header: "Selling Price",
+        numeric: true,
         sortValue: (row) => row.sellPrice ?? row.costPrice,
         render: (row) => formatCurrency(row.sellPrice ?? row.costPrice, row.currency),
       },
       {
         key: "quantity",
         header: "Current stock",
+        numeric: true,
         sortValue: (row) => row.quantity,
         render: (row) => (
           <span className={cn(row.quantity < 0 && "hq6-stock-neg")}>
@@ -560,12 +563,44 @@ export function Hq6ProductsListView() {
           displayMode="table"
           embedded
           selectable
+          stickyHeader
+          stickyFirstColumn
+          density={chrome.density}
+          onDensityChange={chrome.setDensity}
+          showDensityControl={false}
           disablePagination
           isLoading={isLoading}
           isFetching={isFetching && !isLoading}
           error={error ? "Could not load products." : null}
           onRowClick={(row) => goToDetail(row.id)}
           emptyState={{ message: "No products found." }}
+          bulkActions={[
+            {
+              id: "export",
+              label: "Export selected",
+              onClick: (ids) => {
+                const rows = visibleItems.filter((item) => ids.includes(item.id));
+                exportList(
+                  "products-selected",
+                  [
+                    { key: "sku", header: "SKU" },
+                    { key: "name", header: "Product" },
+                    { key: "quantity", header: "Current Stock" },
+                    { key: "costPrice", header: "Unit Purchase Price" },
+                    { key: "sellPrice", header: "Selling Price" },
+                  ],
+                  rows.map((row) => ({
+                    sku: row.sku,
+                    name: row.name,
+                    quantity: row.quantity,
+                    costPrice: row.costPrice,
+                    sellPrice: row.sellPrice ?? row.costPrice,
+                  })),
+                  "Export Selected Products",
+                );
+              },
+            },
+          ]}
         />
       )}
     </Hq6StandardListShell>

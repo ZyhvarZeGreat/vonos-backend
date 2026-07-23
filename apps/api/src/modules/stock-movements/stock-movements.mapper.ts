@@ -33,17 +33,32 @@ export function serializeMovement(row: PrismaMovement): StockMovement {
 }
 
 export function toMovementListRow(
-  row: PrismaMovement & { supplier?: { name: string } | null },
+  row: Omit<PrismaMovement, 'lines' | 'itemCount' | 'grandTotal'> & {
+    lines?: PrismaMovement['lines'] | null;
+    supplier?: { name: string } | null;
+    /** Precomputed — avoids shipping full lines JSON on list. */
+    itemCount?: number | null;
+    grandTotal?: number | PrismaMovement['grandTotal'] | null;
+  },
 ): StockMovementListRow {
-  const lines = parseMovementLines(row.lines);
   const supplierOrDest =
     row.supplier?.name ??
     (row.notes?.split('|')[0]?.trim() || row.notes || '—');
-  const grandTotal = lines.reduce(
-    (sum, line) =>
-      sum + line.quantity * toNumber((line as StockMovementLine).unitCost ?? 0),
-    0,
-  );
+  let itemCount = row.itemCount ?? undefined;
+  let grandTotal =
+    row.grandTotal == null ? undefined : toNumber(row.grandTotal);
+  if (itemCount == null || grandTotal == null) {
+    const lines = parseMovementLines(row.lines ?? []);
+    itemCount = itemCount ?? lines.length;
+    grandTotal =
+      grandTotal ??
+      lines.reduce(
+        (sum, line) =>
+          sum +
+          line.quantity * toNumber((line as StockMovementLine).unitCost ?? 0),
+        0,
+      );
+  }
   // Never infer "paid" from receipt status — Received ≠ paid.
   // Null paymentStatus (common on migrated rows) means still due.
   const paymentStatus = row.paymentStatus ?? 'due';
@@ -51,7 +66,7 @@ export function toMovementListRow(
     id: row.id,
     reference: row.reference,
     supplierOrDest,
-    itemCount: lines.length,
+    itemCount,
     status: row.status,
     date: toIso(row.date).slice(0, 10),
     locationCode: row.locationCode,

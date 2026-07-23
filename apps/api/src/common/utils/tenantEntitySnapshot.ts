@@ -1,7 +1,10 @@
 import type { GroupEntityStat } from '@vonos/types';
 import { AUTOS_GROUP_CODES } from '@vonos/types';
 import { Prisma, type PrismaClient } from '@prisma/client';
+import { runPool } from './mapPool';
 import { toNumber } from './serializers';
+
+const NEON_QUERY_CONCURRENCY = 2;
 
 export const SNAPSHOT_MAX_AGE_MS = 15 * 60 * 1000;
 
@@ -83,7 +86,9 @@ async function fetchLiveEntityMaps(
     appointmentStats,
     retailLowStock,
     pendingInbound,
-  ] = await Promise.all([
+  ] = await runPool(
+    [
+    () =>
     itemTenantIds.length > 0
       ? prisma.$queryRaw<
           Array<{
@@ -106,6 +111,7 @@ async function fetchLiveEntityMaps(
           GROUP BY "tenantId"
         `
       : Promise.resolve([]),
+    () =>
     stockIds.length > 0
       ? prisma.$queryRaw<Array<{ tenantId: string; inbound: bigint }>>`
           SELECT "tenantId", COUNT(*)::bigint AS inbound
@@ -117,6 +123,7 @@ async function fetchLiveEntityMaps(
           GROUP BY "tenantId"
         `
       : Promise.resolve([]),
+    () =>
     transactionIds.length > 0
       ? prisma.$queryRaw<
           Array<{
@@ -140,6 +147,7 @@ async function fetchLiveEntityMaps(
           GROUP BY "tenantId"
         `
       : Promise.resolve([]),
+    () =>
     jobIds.length > 0
       ? prisma.$queryRaw<
           Array<{ tenantId: string; active: bigint; pending_qc: bigint }>
@@ -156,6 +164,7 @@ async function fetchLiveEntityMaps(
           GROUP BY "tenantId"
         `
       : Promise.resolve([]),
+    () =>
     jobIds.length > 0
       ? prisma.$queryRaw<
           Array<{ tenantId: string; revenue: Prisma.Decimal | null }>
@@ -170,6 +179,7 @@ async function fetchLiveEntityMaps(
           GROUP BY "tenantId"
         `
       : Promise.resolve([]),
+    () =>
     appointmentIds.length > 0
       ? prisma.$queryRaw<
           Array<{
@@ -190,6 +200,7 @@ async function fetchLiveEntityMaps(
           GROUP BY "tenantId"
         `
       : Promise.resolve([]),
+    () =>
     vw
       ? prisma.item.count({
           where: {
@@ -200,6 +211,7 @@ async function fetchLiveEntityMaps(
           },
         })
       : Promise.resolve(0),
+    () =>
     vw
       ? prisma.stockMovement.count({
           where: {
@@ -210,7 +222,9 @@ async function fetchLiveEntityMaps(
           },
         })
       : Promise.resolve(0),
-  ]);
+  ],
+    NEON_QUERY_CONCURRENCY,
+  );
 
   const itemByTenant = new Map(
     itemStats.map((row) => [

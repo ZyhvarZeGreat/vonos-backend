@@ -14,7 +14,7 @@ import { getOverviewDashboard, getVaHq6Home } from "@/lib/api/overview";
 import { getRequisitionsPage } from "@/lib/api/requisitions";
 import { getGroupReports, getReportsDashboard } from "@/lib/api/reports";
 import { getSalesPage } from "@/lib/api/sales";
-import { getStockMovementsPage } from "@/lib/api/stockMovements";
+import { getStockMovementsPage, getStockMovementsListSummary } from "@/lib/api/stockMovements";
 import { getSuppliersPage } from "@/lib/api/suppliers";
 import { getVehiclesPage } from "@/lib/api/vehicles";
 import { DEFAULT_TABLE_PAGE_SIZE } from "@/lib/api/fetchAllPages";
@@ -27,7 +27,7 @@ import type { DateRangeBounds } from "@/lib/utils/dateRange";
 import { prefetchEntityHrm } from "@/lib/prefetch/prefetchEntityHrm";
 import { prefetchGroupOverview } from "@/lib/prefetch/prefetchGroupOverview";
 import { scheduleIdleBatch } from "@/lib/prefetch/scheduleIdle";
-import { REPORT_TABS } from "@/components/pages/ReportsView";
+import { REPORT_TABS } from "@/lib/registries/reportTabs";
 
 export const ROUTE_PREFETCH_STALE_MS = ADMIN_ENTITY_STALE_MS;
 
@@ -217,6 +217,43 @@ function prefetchTenantListSection(
     case "inbound":
     case "outbound": {
       const type = slug as "inbound" | "outbound";
+      // HQ6 purchases list (inbound) uses a dedicated query key + page size 50.
+      if (type === "inbound") {
+        const hq6Filters = { type: "inbound" as const };
+        const hq6FilterKey = emptyListFilterKey(hq6Filters);
+        prefetchQuery(queryClient, {
+          queryKey: [
+            "stock-movements",
+            tenantId,
+            "inbound",
+            "hq6",
+            hq6FilterKey,
+            0,
+            undefined,
+            50,
+            null,
+          ],
+          queryFn: () =>
+            getStockMovementsPage(
+              tenantId,
+              { ...hq6Filters, includeSummary: false },
+              undefined,
+              50,
+            ),
+        });
+        prefetchQuery(queryClient, {
+          queryKey: [
+            "stock-movements",
+            tenantId,
+            "inbound",
+            "hq6",
+            "summary",
+            hq6FilterKey,
+          ],
+          queryFn: () =>
+            getStockMovementsListSummary(tenantId, hq6Filters),
+        });
+      }
       const filterKey = emptyListFilterKey(bounds);
       prefetchQuery(queryClient, {
         queryKey: [
@@ -232,7 +269,7 @@ function prefetchTenantListSection(
         queryFn: () =>
           getStockMovementsPage(
             tenantId,
-            { type, from, to },
+            { type, from, to, includeSummary: false },
             undefined,
             DEFAULT_TABLE_PAGE_SIZE,
           ),

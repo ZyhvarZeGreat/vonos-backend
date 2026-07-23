@@ -219,7 +219,7 @@ function Hq6ListPageShell({
   ) : undefined;
 
   const box = (
-    <div className="hq6-card hq6-products-box overflow-hidden">
+    <div className="hq6-card hq6-products-box overflow-x-clip">
       <div className="hq6-tab-row">
         <div className="flex min-w-0 flex-1 overflow-x-auto">
           {tabs.map((tab) => (

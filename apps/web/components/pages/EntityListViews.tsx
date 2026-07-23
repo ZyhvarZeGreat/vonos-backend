@@ -19,7 +19,7 @@ import {
   sectionFromParams,
   type ProductSectionId,
 } from "@/components/organisms/ProductMetaPanel";
-import { getCustomersPage, getCustomerLedger, getCustomerSummary, importCustomers } from "@/lib/api/customers";
+import { getCustomersPage, getCustomerView, importCustomers } from "@/lib/api/customers";
 import { getCatalogPage } from "@/lib/api/catalog";
 import { getSalesPage } from "@/lib/api/sales";
 import { getOrdersPage } from "@/lib/api/orders";
@@ -144,7 +144,7 @@ function SalesListViewBody({
     enabled: Boolean(tenantId),
     filters: apiFilters,
     search,
-    fetchPage: (cursor, limit) => getSalesPage(tenantId!, apiFilters, cursor, limit),
+    fetchPage: (cursor, limit, _sort, opts) => getSalesPage(tenantId!, { ...apiFilters, includeSummary: opts?.includeSummary }, cursor, limit),
     getCursor: (row) => saleListCursor(row),
   });
 
@@ -330,7 +330,7 @@ export function OrdersListView() {
     enabled: Boolean(tenantId),
     filters: apiFilters,
     search,
-    fetchPage: (cursor, limit) => getOrdersPage(tenantId!, apiFilters, cursor, limit),
+    fetchPage: (cursor, limit, _sort, opts) => getOrdersPage(tenantId!, { ...apiFilters, includeSummary: opts?.includeSummary }, cursor, limit),
     getCursor: (row) =>
       saleListCursor({ id: row.id, date: row.saleDate ?? row.createdAt }),
   });
@@ -423,10 +423,12 @@ function CustomersListViewBody() {
   const [ledgerCustomerName, setLedgerCustomerName] = useState("");
 
   const { summary, ledger, isLoading: ledgerLoading } = useContactLedgerQuery(
-    () => getCustomerSummary(tenantId!, ledgerCustomerId!),
-    () => getCustomerLedger(tenantId!, ledgerCustomerId!),
+    async () => {
+      const view = await getCustomerView(tenantId!, ledgerCustomerId!);
+      return { summary: view.summary, ledger: view.ledger };
+    },
     ledgerCustomerId,
-    "customer-ledger",
+    "customer-view",
   );
 
   const apiFilters = useMemo(
@@ -459,7 +461,7 @@ function CustomersListViewBody() {
     enabled: Boolean(tenantId),
     filters: apiFilters,
     search,
-    fetchPage: (cursor, limit) => getCustomersPage(tenantId!, apiFilters, cursor, limit),
+    fetchPage: (cursor, limit, _sort, opts) => getCustomersPage(tenantId!, { ...apiFilters, includeSummary: opts?.includeSummary }, cursor, limit),
     getCursor: (row) => customerListCursor(row),
   });
 
@@ -618,7 +620,7 @@ function ReturnsListViewBody() {
     enabled: Boolean(tenantId),
     filters: apiFilters,
     search,
-    fetchPage: (cursor, limit) => getReturnsPage(tenantId!, apiFilters, cursor, limit),
+    fetchPage: (cursor, limit, _sort, opts) => getReturnsPage(tenantId!, { ...apiFilters, includeSummary: opts?.includeSummary }, cursor, limit),
   });
 
   const filtered = returns;
@@ -756,9 +758,10 @@ export function VehiclesListView() {
     queryKey: ["vehicles", tenantId],
     enabled: Boolean(tenantId),
     search,
-    fetchPage: (cursor, limit) =>
+    fetchPage: (cursor, limit, _sort, opts) =>
       getVehiclesPage(tenantId!, cursor, limit, {
         search: search.trim() || undefined,
+        includeSummary: opts?.includeSummary,
       }),
   });
 
@@ -916,9 +919,10 @@ export function RequisitionsListView() {
     queryKey: ["requisitions", tenantId],
     enabled: Boolean(tenantId),
     search,
-    fetchPage: (cursor, limit) =>
+    fetchPage: (cursor, limit, _sort, opts) =>
       getRequisitionsPage(tenantId!, cursor, limit, {
         search: search.trim() || undefined,
+        includeSummary: opts?.includeSummary,
       }),
   });
 
@@ -1028,9 +1032,10 @@ export function IncomingRequisitionsListView() {
     queryKey: ["incoming-requisitions", tenantId],
     enabled: Boolean(tenantId),
     search,
-    fetchPage: (cursor, limit) =>
+    fetchPage: (cursor, limit, _sort, opts) =>
       getIncomingRequisitionsPage(tenantId!, cursor, limit, {
         search: search.trim() || undefined,
+        includeSummary: opts?.includeSummary,
       }),
   });
 
@@ -1155,8 +1160,8 @@ export function MenuItemsListView() {
     enabled: Boolean(tenantId),
     filters: apiFilters,
     search,
-    fetchPage: async (cursor, limit) => {
-      const page = await getItemsPage(tenantId!, apiFilters, cursor, limit);
+    fetchPage: async (cursor, limit, _sort, opts) => {
+      const page = await getItemsPage(tenantId!, { ...apiFilters, includeSummary: opts?.includeSummary }, cursor, limit);
       return {
         ...page,
         items: page.items.map((item) => ({
@@ -1259,9 +1264,10 @@ export function ServicesListView() {
     queryKey: ["salon-services", tenantId],
     enabled: Boolean(tenantId),
     search,
-    fetchPage: (cursor, limit) =>
+    fetchPage: (cursor, limit, _sort, opts) =>
       getSalonServicesPage(tenantId!, cursor, limit, {
         search: search.trim() || undefined,
+        includeSummary: opts?.includeSummary,
       }),
   });
 
@@ -1389,7 +1395,7 @@ export function CatalogListView() {
     queryKey: ["catalog", tenantId],
     enabled: Boolean(tenantId) && section === "products",
     filters: apiFilters,
-    fetchPage: (cursor, limit) => getCatalogPage(tenantId!, apiFilters, cursor, limit),
+    fetchPage: (cursor, limit, _sort, opts) => getCatalogPage(tenantId!, { ...apiFilters, includeSummary: opts?.includeSummary }, cursor, limit),
   });
 
   const filtered = items;

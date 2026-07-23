@@ -46,6 +46,8 @@ export interface ExpenseFilters {
   createdById?: string;
   categoryId?: string;
   paymentStatus?: string;
+  /** When false, skip count/amountSummary for faster first paint. */
+  includeSummary?: boolean;
 }
 
 export interface CreateExpenseRequest {

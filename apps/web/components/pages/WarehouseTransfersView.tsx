@@ -130,12 +130,13 @@ export function WarehouseTransfersView() {
       to: bounds?.to,
       tab: activeTab,
     },
-    fetchPage: (cursor, limit) =>
+    fetchPage: (cursor, limit, _sort, opts) =>
       getTransfersPage(cursor, limit, {
         search: search.trim() || undefined,
         from: bounds?.from,
         to: bounds?.to,
         status: statusFilter || (activeTab !== "all" ? activeTab : undefined),
+        includeSummary: opts?.includeSummary,
       }),
   });
 

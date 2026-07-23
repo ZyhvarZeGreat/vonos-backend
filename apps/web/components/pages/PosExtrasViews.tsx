@@ -172,7 +172,7 @@ function DiscountsListViewBody() {
   } = useServerListPage<Discount>({
     queryKey: ["discounts", tenantId],
     enabled: Boolean(tenantId),
-    fetchPage: (cursor, limit) => getDiscountsPage(tenantId!, cursor, limit),
+    fetchPage: (cursor, limit, _sort, opts) => getDiscountsPage(tenantId!, cursor, limit, { includeSummary: opts?.includeSummary }),
   });
 
   const createMutation = useAppMutation({
@@ -328,7 +328,7 @@ export function VariationsListView() {
   } = useServerListPage<VariationTemplate>({
     queryKey: ["variations", tenantId],
     enabled: Boolean(tenantId),
-    fetchPage: (cursor, limit) => getVariationsPage(tenantId!, cursor, limit),
+    fetchPage: (cursor, limit, _sort, opts) => getVariationsPage(tenantId!, cursor, limit, { includeSummary: opts?.includeSummary }),
   });
 
   const createMutation = useAppMutation({

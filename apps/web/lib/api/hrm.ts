@@ -166,7 +166,7 @@ export async function getPayrollsPage(
   tenantId: string,
   cursor: string | undefined,
   limit = DEFAULT_TABLE_PAGE_SIZE,
-  filters: PayrollFilters = {},
+  filters: PayrollFilters & { includeSummary?: boolean } = {},
 ): Promise<ListPage<Payroll>> {
   return fetchTenantListPage(PAYROLL_PATH, tenantId, cursor, limit, {
     search: filters.search,
@@ -180,6 +180,7 @@ export async function getPayrollsPage(
     paymentStatus: filters.paymentStatus,
     sortBy: filters.sortBy,
     sortDir: filters.sortDir,
+    includeSummary: filters.includeSummary ?? false,
   });
 }
 
@@ -279,16 +280,22 @@ export async function getPayrollGroupsPage(
   tenantId: string,
   cursor: string | undefined,
   limit = DEFAULT_TABLE_PAGE_SIZE,
+  opts?: { includeSummary?: boolean },
 ): Promise<ListPage<PayrollGroup>> {
-  return fetchTenantListPage(PAYROLL_GROUPS_PATH, tenantId, cursor, limit);
+  return fetchTenantListPage(PAYROLL_GROUPS_PATH, tenantId, cursor, limit, {
+    includeSummary: opts?.includeSummary ?? false,
+  });
 }
 
 export async function getPayComponentsPage(
   tenantId: string,
   cursor: string | undefined,
   limit = DEFAULT_TABLE_PAGE_SIZE,
+  opts?: { includeSummary?: boolean },
 ): Promise<ListPage<PayComponent>> {
-  return fetchTenantListPage(PAY_COMPONENTS_PATH, tenantId, cursor, limit);
+  return fetchTenantListPage(PAY_COMPONENTS_PATH, tenantId, cursor, limit, {
+    includeSummary: opts?.includeSummary ?? false,
+  });
 }
 
 /** Full payroll list for export — not for table rendering. */

@@ -31,12 +31,23 @@ export function recordDetailPath(
 export function reportRowRecordId(row: {
   id?: string | number;
   saleId?: string | number;
+  itemId?: string | number;
+  customerId?: string | number;
   recordType?: string;
 }): string | null {
   const recordType = String(row.recordType ?? "");
   if (recordType === "sale") {
     const saleId = row.saleId != null && row.saleId !== "" ? String(row.saleId) : "";
     if (saleId) return saleId;
+  }
+  if (recordType === "item") {
+    const itemId = row.itemId != null && row.itemId !== "" ? String(row.itemId) : "";
+    if (itemId) return itemId;
+  }
+  if (recordType === "customer") {
+    const customerId =
+      row.customerId != null && row.customerId !== "" ? String(row.customerId) : "";
+    if (customerId) return customerId;
   }
   if (row.id == null || row.id === "") return null;
   return String(row.id);

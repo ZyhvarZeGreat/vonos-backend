@@ -11,6 +11,11 @@ import { DocumentPreviewModal } from "@/components/organisms/DocumentPreviewModa
 import { getStockMovement } from "@/lib/api/stockMovements";
 import { getInvoiceSettings } from "@/lib/api/invoiceSettings";
 import { useRouteTenant } from "@/lib/hooks/useRouteTenant";
+import {
+  MODAL_RECORD_STALE_MS,
+  MODAL_REF_STALE_MS,
+  modalKeys,
+} from "@/lib/query/modalQueryKeys";
 import { movementToPurchaseLines } from "@/lib/utils/invoiceBuilders";
 import { formatCurrency } from "@/lib/utils/formatCurrency";
 import { formatDate } from "@/lib/utils/formatDate";
@@ -20,6 +25,8 @@ export interface MovementRecordModalProps {
   movementId: string | null;
   listSlug?: string;
   onClose: () => void;
+  /** When false, hide the "Open full page" link (e.g. reports stay on-page). */
+  showFullPageLink?: boolean;
 }
 
 function partyFromNotes(notes: string | null): string {
@@ -31,20 +38,23 @@ export function MovementRecordModal({
   movementId,
   listSlug = "inbound",
   onClose,
+  showFullPageLink = true,
 }: MovementRecordModalProps) {
   const { tenantId, tenantName, tenantCode } = useRouteTenant();
   const [docOpen, setDocOpen] = useState(false);
 
   const { data: movement, isLoading, error } = useQuery({
-    queryKey: ["movement-modal", tenantId, movementId],
+    queryKey: modalKeys.movement(tenantId, movementId),
     queryFn: () => getStockMovement(movementId!),
     enabled: Boolean(tenantId && movementId),
+    staleTime: MODAL_RECORD_STALE_MS,
   });
 
   const { data: invoiceSettings } = useQuery({
-    queryKey: ["invoice-settings", tenantId],
+    queryKey: modalKeys.invoiceSettings(tenantId),
     queryFn: getInvoiceSettings,
-    enabled: Boolean(tenantId),
+    enabled: Boolean(tenantId && docOpen),
+    staleTime: MODAL_REF_STALE_MS,
   });
 
   const lineItems = useMemo(
@@ -99,7 +109,9 @@ export function MovementRecordModal({
         }
         onClose={onClose}
         fullPageHref={
-          movementId && tenantCode ? `/${tenantCode}/${listSlug}/${movementId}` : undefined
+          showFullPageLink && movementId && tenantCode
+            ? `/${tenantCode}/${listSlug}/${movementId}`
+            : undefined
         }
         isLoading={isLoading}
         error={error ? "Could not load this movement." : null}

@@ -273,6 +273,20 @@ h6,
   transform-origin: top center;
 }
 
+/* Sidebar section dropdown — snappier than motion-pop-in */
+@keyframes sidebar-nav-expand {
+  from {
+    opacity: 0.35;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.sidebar-nav-expand {
+  animation: sidebar-nav-expand 60ms var(--motion-ease-out) both;
+}
+
 .motion-page-in {
   animation: motion-page-in var(--motion-page) var(--motion-ease-out) both;
 }
@@ -302,7 +316,8 @@ h6,
   .motion-backdrop-in,
   .motion-dialog-in,
   .motion-pop-in,
-  .motion-page-in {
+  .motion-page-in,
+  .sidebar-nav-expand {
     animation: none !important;
   }
 

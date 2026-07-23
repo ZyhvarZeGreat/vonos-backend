@@ -10,6 +10,10 @@ import {
 import { getPaymentAccounts } from "@/lib/api/paymentAccounts";
 import { payStockMovement } from "@/lib/api/stockMovements";
 import type { StockMovementListRow } from "@/lib/api/stockMovements";
+import {
+  MODAL_REF_STALE_MS,
+  modalKeys,
+} from "@/lib/query/modalQueryKeys";
 import { formatHq6Currency, formatHq6DateTime } from "@/lib/utils/hq6Format";
 import { toast } from "@/stores/toastStore";
 
@@ -63,9 +67,10 @@ export function Hq6PayPurchaseModal({
   const [saving, setSaving] = useState(false);
 
   const { data: accounts = [] } = useQuery({
-    queryKey: ["payment-accounts", tenantId, "pay-purchase"],
+    queryKey: modalKeys.paymentAccounts(tenantId),
     queryFn: () => getPaymentAccounts(tenantId!),
     enabled: Boolean(open && tenantId),
+    staleTime: MODAL_REF_STALE_MS,
   });
 
   useEffect(() => {

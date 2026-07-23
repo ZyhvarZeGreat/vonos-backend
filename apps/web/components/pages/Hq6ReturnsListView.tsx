@@ -41,7 +41,7 @@ export function Hq6ReturnsListView() {
   const [locationFilter, setLocationFilter] = useState("");
   const [customerFilter, setCustomerFilter] = useState("");
   const [localSearch, setLocalSearch] = useState(search);
-  const chrome = useHq6ListChrome();
+  const chrome = useHq6ListChrome("returns");
 
   const customersQuery = useQuery({
     queryKey: ["customers", tenantId, "return-filter"],
@@ -90,7 +90,7 @@ export function Hq6ReturnsListView() {
     enabled: Boolean(tenantId),
     filters: apiFilters,
     search: localSearch || search,
-    fetchPage: (cursor, limit) => getReturnsPage(tenantId!, apiFilters, cursor, limit),
+    fetchPage: (cursor, limit, _sort, opts) => getReturnsPage(tenantId!, { ...apiFilters, includeSummary: opts?.includeSummary }, cursor, limit),
   });
 
   const commitSearch = useCallback(() => setSearch(localSearch), [localSearch, setSearch]);

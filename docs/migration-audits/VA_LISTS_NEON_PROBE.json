@@ -1,26 +1,171 @@
 {
-  "at": "2026-07-23T07:10:00.000Z",
+  "at": "2026-07-23T10:58:47.073Z",
   "tenantId": "tenant_va_001",
-  "change": "List paths trust denormalized amount columns; skip live sale/movement rollup scans. Sales list serialized findMany then count+aggregate.",
   "baselineColdMs": {
     "customers": 21679,
     "suppliers": 21597,
     "sales": 12871
   },
-  "afterColdMs": {
-    "customers": 5110,
-    "suppliers": 5187,
-    "sales": 5239
-  },
-  "afterWarmMs": {
-    "customers": 5397,
-    "suppliers": 5482,
-    "sales": 5010
-  },
-  "improvement": {
-    "customers": "~4.2x faster cold",
-    "suppliers": "~4.2x faster cold",
-    "sales": "~2.5x faster cold"
-  },
-  "note": "Warm≈cold (~5s) means remaining cost is Neon RTT/compute + count/aggregate, not the removed live rollups. Totals refresh on sale/movement writes."
+  "results": [
+    {
+      "name": "customers",
+      "path": "/customers?limit=25",
+      "cold": {
+        "ms": 2968,
+        "status": 200,
+        "rows": 25,
+        "err": null
+      },
+      "warm": {
+        "ms": 184,
+        "status": 200,
+        "rows": 25,
+        "err": null
+      }
+    },
+    {
+      "name": "customers-rows",
+      "path": "/customers?limit=25&includeSummary=0",
+      "cold": {
+        "ms": 184,
+        "status": 200,
+        "rows": 25,
+        "err": null
+      },
+      "warm": {
+        "ms": 171,
+        "status": 200,
+        "rows": 25,
+        "err": null
+      }
+    },
+    {
+      "name": "suppliers",
+      "path": "/suppliers?limit=25",
+      "cold": {
+        "ms": 4506,
+        "status": 200,
+        "rows": 25,
+        "err": null
+      },
+      "warm": {
+        "ms": 172,
+        "status": 200,
+        "rows": 25,
+        "err": null
+      }
+    },
+    {
+      "name": "suppliers-rows",
+      "path": "/suppliers?limit=25&includeSummary=0",
+      "cold": {
+        "ms": 185,
+        "status": 200,
+        "rows": 25,
+        "err": null
+      },
+      "warm": {
+        "ms": 148,
+        "status": 200,
+        "rows": 25,
+        "err": null
+      }
+    },
+    {
+      "name": "sales",
+      "path": "/sales?limit=25",
+      "cold": {
+        "ms": 3490,
+        "status": 200,
+        "rows": 25,
+        "err": null
+      },
+      "warm": {
+        "ms": 177,
+        "status": 200,
+        "rows": 25,
+        "err": null
+      }
+    },
+    {
+      "name": "sales-rows",
+      "path": "/sales?limit=25&includeSummary=0",
+      "cold": {
+        "ms": 156,
+        "status": 200,
+        "rows": 25,
+        "err": null
+      },
+      "warm": {
+        "ms": 159,
+        "status": 200,
+        "rows": 25,
+        "err": null
+      }
+    },
+    {
+      "name": "purchases-inbound",
+      "path": "/stock-movements?type=inbound&limit=25",
+      "cold": {
+        "ms": 22610,
+        "status": 200,
+        "rows": 25,
+        "err": null
+      },
+      "warm": {
+        "ms": 481,
+        "status": 200,
+        "rows": 25,
+        "err": null
+      }
+    },
+    {
+      "name": "purchases-inbound-rows",
+      "path": "/stock-movements?type=inbound&limit=25&includeSummary=0",
+      "cold": {
+        "ms": 446,
+        "status": 200,
+        "rows": 25,
+        "err": null
+      },
+      "warm": {
+        "ms": 324,
+        "status": 200,
+        "rows": 25,
+        "err": null
+      }
+    },
+    {
+      "name": "reports-dashboard",
+      "path": "/reports/dashboard",
+      "cold": {
+        "ms": 11770,
+        "status": 200,
+        "rows": null,
+        "err": null
+      },
+      "warm": {
+        "ms": 180,
+        "status": 200,
+        "rows": null,
+        "err": null
+      }
+    },
+    {
+      "name": "invoice-settings",
+      "path": "/invoice-settings",
+      "cold": {
+        "ms": 178,
+        "status": 200,
+        "rows": null,
+        "err": null
+      },
+      "warm": {
+        "ms": 171,
+        "status": 200,
+        "rows": null,
+        "err": null
+      }
+    }
+  ]
 }

@@ -1,5 +1,6 @@
 import type { ReportsDashboard } from '@vonos/types';
 import type { TenantScopedPrisma } from '../../../common/prisma/prisma.service';
+import { runPool } from '../../../common/utils/mapPool';
 import { computeDelta, priorWindow, resolveDateWindow } from './date-utils';
 import {
   avgDeliveredTurnaroundDays,
@@ -11,6 +12,9 @@ import {
 } from './jobReportQueries';
 
 type JobTab = 'costing' | 'turnaround';
+
+/** Neon pool-safe concurrency for report aggregations. */
+const REPORT_QUERY_CONCURRENCY = 2;
 
 function avgCost(summary: { jobCount: number; totalCost: number }): number {
   return summary.jobCount > 0 ? summary.totalCost / summary.jobCount : 0;
@@ -36,7 +40,7 @@ export async function buildJobReports(
   });
 
   if (tab === 'turnaround') {
-    // Light path only — no per-job day arrays, no costing joins.
+    // Cap fan-out — unbounded Promise.all stampedes Neon and triggers P1001.
     const [
       activeJobs,
       totalRevenue,
@@ -45,21 +49,28 @@ export async function buildJobReports(
       priorAvgTurnaround,
       periodDelivered,
       priorDelivered,
-    ] = await Promise.all([
-      db.job.count({
-        where: {
-          tenantId,
-          deletedAt: null,
-          status: { notIn: ['Delivered', 'Cancelled'] },
-        },
-      }),
-      sumDeliveredQuoteRevenue(db, tenantId, window.from, window.to),
-      deliveredTurnaroundHistogram(db, tenantId, window.from, window.to),
-      avgDeliveredTurnaroundDays(db, tenantId, window.from, window.to),
-      avgDeliveredTurnaroundDays(db, tenantId, prior.from, prior.to),
-      db.job.count({ where: jobCountWhere(window, 'Delivered') }),
-      db.job.count({ where: jobCountWhere(prior, 'Delivered') }),
-    ]);
+    ] = await runPool(
+      [
+        () =>
+          db.job.count({
+            where: {
+              tenantId,
+              deletedAt: null,
+              status: { notIn: ['Delivered', 'Cancelled'] },
+            },
+          }),
+        () => sumDeliveredQuoteRevenue(db, tenantId, window.from, window.to),
+        () =>
+          deliveredTurnaroundHistogram(db, tenantId, window.from, window.to),
+        () =>
+          avgDeliveredTurnaroundDays(db, tenantId, window.from, window.to),
+        () =>
+          avgDeliveredTurnaroundDays(db, tenantId, prior.from, prior.to),
+        () => db.job.count({ where: jobCountWhere(window, 'Delivered') }),
+        () => db.job.count({ where: jobCountWhere(prior, 'Delivered') }),
+      ],
+      REPORT_QUERY_CONCURRENCY,
+    );
 
     const histData = histogram.map((row) => ({
       label: `${row.bucket}d`,
@@ -114,7 +125,7 @@ export async function buildJobReports(
     };
   }
 
-  // Costing tab
+  // Costing tab — two waves max concurrency 2 (KPIs then charts/table).
   const [
     activeJobs,
     completedJobs,
@@ -123,39 +134,43 @@ export async function buildJobReports(
     priorRevenue,
     periodCostSummary,
     priorCostSummary,
-    statusGroups,
-    periodTableRows,
-    costByMonth,
-  ] = await Promise.all([
-    db.job.count({
-      where: {
-        tenantId,
-        deletedAt: null,
-        status: { notIn: ['Delivered', 'Cancelled'] },
-      },
-    }),
-    db.job.count({
-      where: jobCountWhere(window, 'Delivered'),
-    }),
-    db.job.count({
-      where: jobCountWhere(prior, 'Delivered'),
-    }),
-    sumDeliveredQuoteRevenue(db, tenantId, window.from, window.to),
-    sumDeliveredQuoteRevenue(db, tenantId, prior.from, prior.to),
-    jobCostSummaryInWindow(db, tenantId, window.from, window.to),
-    jobCostSummaryInWindow(db, tenantId, prior.from, prior.to),
-    db.job.groupBy({
-      by: ['status'],
-      where: {
-        tenantId,
-        deletedAt: null,
-        createdAt: { gte: pipelineFrom, lte: pipelineTo },
-      },
-      _count: { _all: true },
-    }),
-    jobTableRowsInWindow(db, tenantId, window.from, window.to),
-    jobCostByMonth(db, tenantId, window.from, window.to),
-  ]);
+  ] = await runPool(
+    [
+      () =>
+        db.job.count({
+          where: {
+            tenantId,
+            deletedAt: null,
+            status: { notIn: ['Delivered', 'Cancelled'] },
+          },
+        }),
+      () => db.job.count({ where: jobCountWhere(window, 'Delivered') }),
+      () => db.job.count({ where: jobCountWhere(prior, 'Delivered') }),
+      () => sumDeliveredQuoteRevenue(db, tenantId, window.from, window.to),
+      () => sumDeliveredQuoteRevenue(db, tenantId, prior.from, prior.to),
+      () => jobCostSummaryInWindow(db, tenantId, window.from, window.to),
+      () => jobCostSummaryInWindow(db, tenantId, prior.from, prior.to),
+    ],
+    REPORT_QUERY_CONCURRENCY,
+  );
+
+  const [statusGroups, periodTableRows, costByMonth] = await runPool(
+    [
+      () =>
+        db.job.groupBy({
+          by: ['status'],
+          where: {
+            tenantId,
+            deletedAt: null,
+            createdAt: { gte: pipelineFrom, lte: pipelineTo },
+          },
+          _count: { _all: true },
+        }),
+      () => jobTableRowsInWindow(db, tenantId, window.from, window.to),
+      () => jobCostByMonth(db, tenantId, window.from, window.to),
+    ],
+    REPORT_QUERY_CONCURRENCY,
+  );
 
   const avgJobCost = avgCost(periodCostSummary);
   const priorAvgCost = avgCost(priorCostSummary);

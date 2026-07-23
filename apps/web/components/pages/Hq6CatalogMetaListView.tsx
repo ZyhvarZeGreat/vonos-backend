@@ -111,7 +111,7 @@ export function Hq6CatalogMetaListView({ kind }: { kind: CatalogMetaKind }) {
   const queryClient = useQueryClient();
   const slug = SLUG_BY_KIND[kind];
   const copy = hq6CopyForSlug(slug);
-  const chrome = useHq6ListChrome();
+  const chrome = useHq6ListChrome(slug);
   const [editTarget, setEditTarget] = useState<MetaRow | null>(null);
   const [editForm, setEditForm] = useState(emptyEditState);
   const [deleteTarget, setDeleteTarget] = useState<MetaRow | null>(null);
@@ -135,8 +135,8 @@ export function Hq6CatalogMetaListView({ kind }: { kind: CatalogMetaKind }) {
   } = useServerListPage<CatalogMetaRow>({
     queryKey: ["catalog-meta", tenantId, kind, "hq6"],
     enabled: Boolean(tenantId),
-    fetchPage: (cursor, limit) =>
-      getCatalogMetaPage(tenantId!, kind, cursor, limit),
+    fetchPage: (cursor, limit, _sort, opts) =>
+      getCatalogMetaPage(tenantId!, kind, cursor, limit, { includeSummary: opts?.includeSummary }),
   });
 
   const rows = useMemo(() => toMetaRows(kind, data), [data, kind]);

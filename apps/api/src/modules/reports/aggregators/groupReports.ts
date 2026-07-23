@@ -5,6 +5,7 @@ import {
   resolveGroupFinanceSource,
   sumDailyFinanceRollupForTenants,
 } from '../../../common/utils/dailyFinanceRollup';
+import { runPool } from '../../../common/utils/mapPool';
 import { toNumber } from '../../../common/utils/serializers';
 import { resolveDateWindow } from './date-utils';
 import {
@@ -13,6 +14,8 @@ import {
   groupRevenueTrendByMonth,
   type GroupFinanceQueryOptions,
 } from './groupReportQueries';
+
+const NEON_QUERY_CONCURRENCY = 2;
 
 const ENTITY_COLORS: Record<string, string> = {
   VW: '#059669',
@@ -55,16 +58,20 @@ export async function buildGroupCoreKpis(
   const groupTenants = tenants ?? (await loadGroupTenants(prisma));
   const tenantIds = groupTenants.map((t) => t.id);
 
-  const [revenueRows, jobRows] = await Promise.all([
-    groupRevenueByTenant(
-      prisma,
-      tenantIds,
-      window.from,
-      window.to,
-      financeOptions,
-    ),
-    groupJobsByTenant(prisma, tenantIds, window.from, window.to),
-  ]);
+  const [revenueRows, jobRows] = await runPool(
+    [
+      () =>
+        groupRevenueByTenant(
+          prisma,
+          tenantIds,
+          window.from,
+          window.to,
+          financeOptions,
+        ),
+      () => groupJobsByTenant(prisma, tenantIds, window.from, window.to),
+    ],
+    NEON_QUERY_CONCURRENCY,
+  );
 
   const revenueByTenant = new Map(
     revenueRows.map((row) => [row.tenantId, row.revenue]),
@@ -126,29 +133,34 @@ export async function buildGroupCharts(
   const tenantIds = groupTenants.map((t) => t.id);
 
   const financeOpts = financeOptions;
-  const [trendRows, revenueRows] = await Promise.all([
-    groupRevenueTrendByMonth(
-      prisma,
-      tenantIds,
-      window.from,
-      window.to,
-      financeOpts,
-    ),
-    revenueByTenant
-      ? Promise.resolve(
-          [...revenueByTenant.entries()].map(([tenantId, revenue]) => ({
-            tenantId,
-            revenue,
-          })),
-        )
-      : groupRevenueByTenant(
+  const [trendRows, revenueRows] = await runPool(
+    [
+      () =>
+        groupRevenueTrendByMonth(
           prisma,
           tenantIds,
           window.from,
           window.to,
           financeOpts,
         ),
-  ]);
+      () =>
+        revenueByTenant
+          ? Promise.resolve(
+              [...revenueByTenant.entries()].map(([tenantId, revenue]) => ({
+                tenantId,
+                revenue,
+              })),
+            )
+          : groupRevenueByTenant(
+              prisma,
+              tenantIds,
+              window.from,
+              window.to,
+              financeOpts,
+            ),
+    ],
+    NEON_QUERY_CONCURRENCY,
+  );
 
   const revenueMap =
     revenueByTenant ??
@@ -231,62 +243,74 @@ export async function buildGroupReports(
   );
 
   const [charts, purchasesExpenses, movementCount, lowStockCount] =
-    await Promise.all([
-      buildGroupCharts(
-        prisma,
-        from,
-        to,
-        tenants,
-        core.revenueByTenant,
-        financeOptions,
-      ),
-      useRollup
-        ? sumDailyFinanceRollupForTenants(
+    await runPool(
+      [
+        () =>
+          buildGroupCharts(
             prisma,
-            tenantIds,
-            window.from,
-            window.to,
-          )
-        : Promise.all([
-            prisma.ledgerEntry.aggregate({
-              where: {
-                tenantId: { in: tenantIds },
-                deletedAt: null,
-                isInternalTransfer: false,
-                type: 'cost',
-                date: { gte: window.from, lte: window.to },
-              },
-              _sum: { amount: true },
-            }),
-            prisma.ledgerEntry.aggregate({
-              where: {
-                tenantId: { in: tenantIds },
-                deletedAt: null,
-                isInternalTransfer: false,
-                type: 'expense',
-                date: { gte: window.from, lte: window.to },
-              },
-              _sum: { amount: true },
-            }),
-          ]).then(([purchasesAgg, expensesAgg]) => ({
-            costs: toNumber(purchasesAgg._sum.amount),
-            expenses: toNumber(expensesAgg._sum.amount),
-          })),
-      prisma.stockMovement.count({
-        where: {
-          tenantId: { in: tenantIds },
-          deletedAt: null,
-          date: { gte: window.from, lte: window.to },
-        },
-      }),
-      prisma.item.count({
-        where: {
-          tenantId: { in: tenantIds },
-          deletedAt: null,
-          status: { in: ['low_stock', 'out_of_stock'] },
-        },
-      }),
-    ]);
+            from,
+            to,
+            tenants,
+            core.revenueByTenant,
+            financeOptions,
+          ),
+        () =>
+          (useRollup
+            ? sumDailyFinanceRollupForTenants(
+                prisma,
+                tenantIds,
+                window.from,
+                window.to,
+              )
+            : runPool(
+                [
+                  () =>
+                    prisma.ledgerEntry.aggregate({
+                      where: {
+                        tenantId: { in: tenantIds },
+                        deletedAt: null,
+                        isInternalTransfer: false,
+                        type: 'cost',
+                        date: { gte: window.from, lte: window.to },
+                      },
+                      _sum: { amount: true },
+                    }),
+                  () =>
+                    prisma.ledgerEntry.aggregate({
+                      where: {
+                        tenantId: { in: tenantIds },
+                        deletedAt: null,
+                        isInternalTransfer: false,
+                        type: 'expense',
+                        date: { gte: window.from, lte: window.to },
+                      },
+                      _sum: { amount: true },
+                    }),
+                ],
+                NEON_QUERY_CONCURRENCY,
+              ).then(([purchasesAgg, expensesAgg]) => ({
+                costs: toNumber(purchasesAgg._sum.amount),
+                expenses: toNumber(expensesAgg._sum.amount),
+              }))) as Promise<{ costs: number; expenses: number }>,
+        () =>
+          prisma.stockMovement.count({
+            where: {
+              tenantId: { in: tenantIds },
+              deletedAt: null,
+              date: { gte: window.from, lte: window.to },
+            },
+          }),
+        () =>
+          prisma.item.count({
+            where: {
+              tenantId: { in: tenantIds },
+              deletedAt: null,
+              status: { in: ['low_stock', 'out_of_stock'] },
+            },
+          }),
+      ],
+      NEON_QUERY_CONCURRENCY,
+    );
 
   const totalPurchases = purchasesExpenses.costs;
   const totalExpenses = purchasesExpenses.expenses;

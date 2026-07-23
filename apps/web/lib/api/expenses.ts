@@ -31,6 +31,7 @@ export type ExpenseListFilters = Pick<
   | "createdById"
   | "categoryId"
   | "paymentStatus"
+  | "includeSummary"
 >;
 
 async function fetchExpensesRaw(
@@ -40,7 +41,12 @@ async function fetchExpensesRaw(
   extra?: ExpenseListFilters,
 ): Promise<Expense[] | { items: Expense[]; totalCount?: number }> {
   const tenantPath = withTenantQuery(EXPENSES_PATH, tenantId);
-  const url = appendListQuery(tenantPath, { cursor, limit, ...extra });
+  const url = appendListQuery(tenantPath, {
+    cursor,
+    limit,
+    includeSummary: extra?.includeSummary ?? false,
+    ...extra,
+  });
   const res = await apiFetch(url);
   if (!res.ok) throw new Error("Failed to fetch expenses");
   return res.json();
@@ -64,7 +70,10 @@ export async function getExpensesPage(
   limit = DEFAULT_TABLE_PAGE_SIZE,
   extra?: ExpenseListFilters,
 ): Promise<ListPage<Expense>> {
-  return fetchTenantListPage(EXPENSES_PATH, tenantId, cursor, limit, extra);
+  return fetchTenantListPage(EXPENSES_PATH, tenantId, cursor, limit, {
+    ...extra,
+    includeSummary: extra?.includeSummary ?? false,
+  });
 }
 
 export async function getExpense(
@@ -100,8 +109,11 @@ export async function getExpenseCategoriesPage(
   tenantId: string,
   cursor: string | undefined,
   limit = DEFAULT_TABLE_PAGE_SIZE,
+  opts?: { includeSummary?: boolean },
 ): Promise<ListPage<ExpenseCategory>> {
-  return fetchTenantListPage(CATEGORIES_PATH, tenantId, cursor, limit);
+  return fetchTenantListPage(CATEGORIES_PATH, tenantId, cursor, limit, {
+    includeSummary: opts?.includeSummary ?? false,
+  });
 }
 
 /** Full expense list for export — not for table rendering. */

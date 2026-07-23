@@ -27,9 +27,12 @@ export async function getSalonServicesPage(
   tenantId: string,
   cursor: string | undefined,
   limit = DEFAULT_TABLE_PAGE_SIZE,
-  filters: { search?: string } = {},
+  filters: { search?: string; includeSummary?: boolean } = {},
 ): Promise<ListPage<SalonService>> {
-  return fetchTenantListPage(LIST_PATH, tenantId, cursor, limit, filters);
+  return fetchTenantListPage(LIST_PATH, tenantId, cursor, limit, {
+    ...filters,
+    includeSummary: filters.includeSummary ?? false,
+  });
 }
 
 /** Full service list for export — not for table rendering. */

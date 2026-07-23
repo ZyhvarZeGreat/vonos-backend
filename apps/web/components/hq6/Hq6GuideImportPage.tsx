@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type MouseEvent } from "react";
 import { Download } from "lucide-react";
 import type { CsvImportResult } from "@vonos/types";
 import { Hq6FormShell } from "@/components/hq6/Hq6Chrome";
@@ -11,6 +11,21 @@ export type Hq6ImportColumn = {
   name: string;
   instruction: string;
 };
+
+/** Strip "(Required)" / "(Optional)" suffixes for CSV header row. */
+function csvHeaderFromColumnName(name: string): string {
+  return name
+    .replace(/\s*\((?:Required|Optional)(?:[^)]*)\)\s*$/i, "")
+    .trim();
+}
+
+function buildTemplateCsv(columns: Hq6ImportColumn[]): string {
+  const headers = columns.map((col) => {
+    const header = csvHeaderFromColumnName(col.name);
+    return header.includes(",") ? `"${header}"` : header;
+  });
+  return `${headers.join(",")}\n`;
+}
 
 export function Hq6GuideImportPage({
   title,
@@ -54,7 +69,14 @@ export function Hq6GuideImportPage({
       const csv = await file.text();
       const importResult = await onImport(csv);
       setResult(importResult);
-      toast.success(`Imported ${importResult.created} row(s)`);
+      const applied = importResult.created + importResult.updated;
+      if (importResult.errors.length > 0) {
+        toast.success(
+          `Imported ${applied} row(s) · ${importResult.errors.length} error(s)`,
+        );
+      } else {
+        toast.success(`Imported ${applied} row(s)`);
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : "Import failed";
       setError(message);
@@ -62,6 +84,20 @@ export function Hq6GuideImportPage({
     } finally {
       setBusy(false);
     }
+  };
+
+  const handleDownloadTemplate = (e: MouseEvent<HTMLAnchorElement>) => {
+    if (templateHref) return;
+    e.preventDefault();
+    const blob = new Blob([buildTemplateCsv(columns)], {
+      type: "text/csv;charset=utf-8",
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${title.toLowerCase().replace(/\s+/g, "-")}-template.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   return (
@@ -92,12 +128,7 @@ export function Hq6GuideImportPage({
             className="hq6-btn-green inline-flex items-center gap-2 no-underline"
             href={templateHref ?? "#"}
             download={Boolean(templateHref)}
-            onClick={(e) => {
-              if (!templateHref) {
-                e.preventDefault();
-                toast.info("Template download will use the server template next.");
-              }
-            }}
+            onClick={handleDownloadTemplate}
           >
             <Download className="h-4 w-4" />
             Download template file
@@ -105,10 +136,21 @@ export function Hq6GuideImportPage({
         </div>
         {error ? <p className="mt-2 text-sm text-[#dc2626]">{error}</p> : null}
         {result ? (
-          <p className="mt-2 text-sm text-[#6b7280]">
-            Imported {result.created} row(s)
-            {result.errors.length > 0 ? ` · ${result.errors.length} error(s)` : ""}
-          </p>
+          <div className="mt-2 space-y-1 text-sm text-[#6b7280]">
+            <p>
+              Imported {result.created + result.updated} row(s)
+              {result.errors.length > 0 ? ` · ${result.errors.length} error(s)` : ""}
+            </p>
+            {result.errors.length > 0 ? (
+              <ul className="max-h-40 overflow-y-auto rounded border border-[#fecaca] bg-[#fef2f2] px-3 py-2 text-[#b91c1c]">
+                {result.errors.slice(0, 20).map((row) => (
+                  <li key={`${row.row}-${row.message}`}>
+                    Row {row.row}: {row.message}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </div>
         ) : null}
       </section>
 
@@ -122,8 +164,8 @@ export function Hq6GuideImportPage({
           </ol>
         ) : (
           <p className="mb-3 text-sm text-[#555]">
-            Carefully follow the instructions before importing the file. The columns
-            of the CSV file should be in the following order.
+            Follow the instructions carefully before importing the file.
+            The columns of the file should be in the following order.
           </p>
         )}
         {numberedInstructions?.length ? (

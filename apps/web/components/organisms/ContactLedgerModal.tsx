@@ -82,24 +82,22 @@ export function ContactLedgerModal({
 }
 
 export function useContactLedgerQuery(
-  fetchSummary: () => Promise<ContactDueSummary>,
-  fetchLedger: () => Promise<ContactLedgerEntry[]>,
+  fetchBundle: () => Promise<{
+    summary: ContactDueSummary;
+    ledger: ContactLedgerEntry[];
+  }>,
   contactId: string | null,
   queryKeyPrefix: string,
 ) {
-  const summaryQuery = useQuery({
-    queryKey: [queryKeyPrefix, "summary", contactId],
+  /** One useQuery — caller supplies a sequential/bundled fetch (no parallel hooks). */
+  const query = useQuery({
+    queryKey: [queryKeyPrefix, "bundle", contactId],
     enabled: Boolean(contactId),
-    queryFn: fetchSummary,
-  });
-  const ledgerQuery = useQuery({
-    queryKey: [queryKeyPrefix, "ledger", contactId],
-    enabled: Boolean(contactId),
-    queryFn: fetchLedger,
+    queryFn: fetchBundle,
   });
   return {
-    summary: summaryQuery.data ?? null,
-    ledger: ledgerQuery.data ?? [],
-    isLoading: summaryQuery.isLoading || ledgerQuery.isLoading,
+    summary: query.data?.summary ?? null,
+    ledger: query.data?.ledger ?? [],
+    isLoading: query.isLoading,
   };
 }

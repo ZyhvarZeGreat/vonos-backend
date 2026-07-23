@@ -39,6 +39,7 @@ export class SuppliersController {
     @Query('openingBalance') openingBalance?: string,
     @Query('assignedToUserId') assignedToUserId?: string,
     @Query('status') status?: 'active' | 'inactive',
+    @Query('includeSummary') includeSummary?: string,
   ) {
     const filters: SupplierFilters = {
       cursor,
@@ -50,6 +51,7 @@ export class SuppliersController {
       openingBalance: openingBalance === 'true',
       assignedToUserId,
       status,
+      includeSummary: includeSummary !== '0' && includeSummary !== 'false',
     };
     return this.suppliersService.list(filters);
   }
@@ -110,6 +112,7 @@ export class SuppliersController {
       phone?: string;
       address?: string;
       notes?: string;
+      taxNumber?: string | null;
       openingBalance?: number;
       assignedToUserId?: string;
     },

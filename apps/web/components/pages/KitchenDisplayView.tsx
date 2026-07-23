@@ -49,6 +49,7 @@ export function KitchenDisplayView() {
     goToPage,
     canSelectPage,
   } = useServerListPage<Order>({
+    deferSummary: false,
     queryKey: ["kitchen-orders", tenantId],
     enabled: Boolean(tenantId),
     search,
@@ -59,13 +60,14 @@ export function KitchenDisplayView() {
     },
     defaultPageSize: 10,
     refetchInterval: 30_000,
-    fetchPage: (cursor, limit) =>
+    fetchPage: (cursor, limit, _sort, opts) =>
       getOrdersPage(
         tenantId!,
         {
           search: search.trim() || undefined,
           from: bounds?.from,
           to: bounds?.to,
+          includeSummary: opts?.includeSummary,
         },
         cursor,
         limit,

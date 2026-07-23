@@ -6,6 +6,7 @@ import type {
   CustomerContact,
   CustomerFilters,
   CustomerProfile,
+  CustomerViewBundle,
   CsvImportResult,
   PayContactDueRequest,
   PayContactDueResult,
@@ -43,6 +44,8 @@ async function fetchCustomersRaw(
   if (filters?.status) params.set("status", filters.status);
   if (filters?.from) params.set("from", filters.from);
   if (filters?.to) params.set("to", filters.to);
+  if (filters?.includeSummary === false) params.set("includeSummary", "0");
+  else if (filters?.includeSummary === true) params.set("includeSummary", "1");
   if (cursor) params.set("cursor", cursor);
   if (limit) params.set("limit", String(limit));
   const query = params.toString();
@@ -63,10 +66,29 @@ export async function getCustomersPage(
 ): Promise<ListPage<Customer>> {
   return fetchListPage(
     (pageCursor, pageLimit) =>
-      fetchCustomersRaw(tenantId, filters, pageCursor, pageLimit),
+      fetchCustomersRaw(
+        tenantId,
+        { ...filters, includeSummary: filters?.includeSummary ?? false },
+        pageCursor,
+        pageLimit,
+      ),
     cursor,
     limit,
   );
+}
+
+/** Count + amountSummary only (limit=1) — pair with rows-first getCustomersPage. */
+export async function getCustomersListSummary(
+  tenantId: string,
+  filters?: CustomerFilters,
+): Promise<Pick<ListPage<Customer>, "totalCount" | "amountSummary">> {
+  const page = await getCustomersPage(
+    tenantId,
+    { ...filters, includeSummary: true },
+    undefined,
+    1,
+  );
+  return { totalCount: page.totalCount, amountSummary: page.amountSummary };
 }
 
 /** Full customer list for export — not for table rendering. */
@@ -206,6 +228,18 @@ export async function getCustomerSummary(
     withTenantQuery(`/customers/${customerId}/summary`, tenantId),
   );
   if (!response.ok) throw new Error("Failed to fetch customer summary");
+  return response.json();
+}
+
+/** Customer modal bundle: contact + summary + ledger (one round-trip). */
+export async function getCustomerView(
+  tenantId: string,
+  customerId: string,
+): Promise<CustomerViewBundle> {
+  const response = await apiFetch(
+    withTenantQuery(`/customers/${customerId}/view`, tenantId),
+  );
+  if (!response.ok) throw new Error("Failed to fetch customer view");
   return response.json();
 }
 

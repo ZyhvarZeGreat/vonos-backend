@@ -5,7 +5,12 @@ import {
   FileSpreadsheet,
   FileText,
   Printer,
+  Rows2,
+  Rows3,
+  Rows4,
 } from "lucide-react";
+import type { TableDensity } from "@/lib/utils/tableColumnAlign";
+import { cn } from "@/lib/utils/cn";
 
 export interface Hq6ListToolbarProps {
   pageSize: number;
@@ -18,6 +23,8 @@ export interface Hq6ListToolbarProps {
   onPrint?: () => void;
   onColumnVisibility?: () => void;
   onExportPdf?: () => void;
+  density?: TableDensity;
+  onDensityChange?: (density: TableDensity) => void;
 }
 
 /** DataTables-style toolbar — ui-audit list pages (products, sales, purchases, etc.). */
@@ -32,6 +39,8 @@ export function Hq6ListToolbar({
   onPrint,
   onColumnVisibility,
   onExportPdf,
+  density,
+  onDensityChange,
 }: Hq6ListToolbarProps) {
   const commit = () => onSearchCommit?.();
 
@@ -53,6 +62,36 @@ export function Hq6ListToolbar({
       </label>
 
       <div className="flex flex-wrap items-center gap-1.5">
+        {onDensityChange && density ? (
+          <div
+            className="inline-flex items-center rounded border border-[var(--hq6-border)] bg-white p-0.5"
+            role="group"
+            aria-label="Row density"
+          >
+            {(
+              [
+                ["condensed", Rows4, "Condensed"],
+                ["regular", Rows3, "Regular"],
+                ["relaxed", Rows2, "Relaxed"],
+              ] as const
+            ).map(([value, Icon, label]) => (
+              <button
+                key={value}
+                type="button"
+                title={label}
+                aria-label={label}
+                aria-pressed={density === value}
+                className={cn(
+                  "rounded px-1.5 py-1 text-[#6b7280] hover:bg-[#f3f4f6] hover:text-[#111827]",
+                  density === value && "bg-[#f3f4f6] text-[#111827]",
+                )}
+                onClick={() => onDensityChange(value)}
+              >
+                <Icon className="h-3.5 w-3.5" />
+              </button>
+            ))}
+          </div>
+        ) : null}
         {onExportCsv ? (
           <button type="button" className="hq6-btn hq6-btn-outline" onClick={onExportCsv}>
             <FileText className="h-3.5 w-3.5" />

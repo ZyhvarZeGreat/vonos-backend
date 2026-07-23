@@ -117,10 +117,11 @@ function ExpensesListViewBody() {
     enabled: Boolean(tenantId),
     search,
     filters: listFilters,
-    fetchPage: (cursor, limit) =>
+    fetchPage: (cursor, limit, _sort, opts) =>
       getExpensesPage(tenantId!, cursor, limit, {
         ...listFilters,
         search: search.trim() || undefined,
+        includeSummary: opts?.includeSummary,
       }),
   });
 
@@ -929,7 +930,7 @@ function ExpenseCategoriesListViewBody() {
   } = useServerListPage<ExpenseCategory>({
     queryKey: ["expense-categories", tenantId],
     enabled: Boolean(tenantId),
-    fetchPage: (cursor, limit) => getExpenseCategoriesPage(tenantId!, cursor, limit),
+    fetchPage: (cursor, limit, _sort, opts) => getExpenseCategoriesPage(tenantId!, cursor, limit, { includeSummary: opts?.includeSummary }),
   });
 
   const createMutation = useMutation({

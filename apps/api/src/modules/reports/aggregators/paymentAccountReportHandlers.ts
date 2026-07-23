@@ -8,8 +8,11 @@ import type { TenantScopedPrisma } from '../../../common/prisma/prisma.service';
 import {
   computeAllTimeOutstandingReceivables,
 } from '../../../common/utils/outstandingReceivables';
+import { runPool } from '../../../common/utils/mapPool';
 import { toNumber } from '../../../common/utils/serializers';
 import { resolveDateWindow } from './date-utils';
+
+const NEON_QUERY_CONCURRENCY = 2;
 
 type AccountBalance = {
   id: string;
@@ -159,12 +162,15 @@ export async function buildBalanceSheetReport(
   to?: string,
 ): Promise<ReportsDashboard> {
   const window = resolveDateWindow(from, to);
-  const [accounts, customerDue, supplierDue, closingStock] = await Promise.all([
-    accountBalances(db, window.to),
-    computeAllTimeOutstandingReceivables(db),
-    computeSupplierDue(db),
-    computeClosingStock(db),
-  ]);
+  const [accounts, customerDue, supplierDue, closingStock] = await runPool(
+    [
+      () => accountBalances(db, window.to),
+      () => computeAllTimeOutstandingReceivables(db),
+      () => computeSupplierDue(db),
+      () => computeClosingStock(db),
+    ],
+    NEON_QUERY_CONCURRENCY,
+  );
 
   const currency = accounts[0]?.currency ?? 'NGN';
   const accountBalanceTotal = accounts.reduce(

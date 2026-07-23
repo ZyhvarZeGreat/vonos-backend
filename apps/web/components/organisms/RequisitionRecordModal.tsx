@@ -16,6 +16,10 @@ import {
 } from "@/lib/api/requisitions";
 import { useAppMutation } from "@/lib/hooks/useAppMutation";
 import { useRouteTenant } from "@/lib/hooks/useRouteTenant";
+import {
+  MODAL_RECORD_STALE_MS,
+  modalKeys,
+} from "@/lib/query/modalQueryKeys";
 import { formatDate } from "@/lib/utils/formatDate";
 import { formatNumber } from "@/lib/utils/formatCurrency";
 import { hasPermission } from "@/lib/utils/permissions";
@@ -43,10 +47,11 @@ export function RequisitionRecordModal({
   const canCreate = role ? hasPermission(role, "createRecord") : false;
 
   const { data: fetched, isLoading, error } = useQuery({
-    queryKey: ["requisition-modal", tenantId, requisitionId],
+    queryKey: modalKeys.requisition(tenantId, requisitionId),
     queryFn: () => getRequisition(tenantId!, requisitionId!),
     enabled: Boolean(tenantId && requisitionId),
     initialData: initialRecord ?? undefined,
+    staleTime: MODAL_RECORD_STALE_MS,
   });
 
   const requisition = fetched ?? initialRecord;

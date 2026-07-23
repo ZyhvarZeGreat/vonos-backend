@@ -13,6 +13,11 @@ import {
   paySupplierDue,
   type SupplierListRow,
 } from "@/lib/api/suppliers";
+import {
+  MODAL_RECORD_STALE_MS,
+  MODAL_REF_STALE_MS,
+  modalKeys,
+} from "@/lib/query/modalQueryKeys";
 import { formatHq6Currency, formatHq6DateTime } from "@/lib/utils/hq6Format";
 import { toast } from "@/stores/toastStore";
 
@@ -64,16 +69,21 @@ export function Hq6PaySupplierModal({
   const [paidOn, setPaidOn] = useState(nowPaidOnLocal);
   const [saving, setSaving] = useState(false);
 
-  const { data: accounts = [] } = useQuery({
-    queryKey: ["payment-accounts", tenantId, "pay-supplier"],
+  const accountsQuery = useQuery({
+    queryKey: modalKeys.paymentAccounts(tenantId),
     queryFn: () => getPaymentAccounts(tenantId!),
     enabled: Boolean(open && tenantId),
+    staleTime: MODAL_REF_STALE_MS,
   });
+  const accounts = accountsQuery.data ?? [];
 
   const { data: summary } = useQuery({
     queryKey: ["supplier-summary", tenantId, supplier?.id, "pay-modal"],
     queryFn: () => getSupplierSummary(tenantId!, supplier!.id),
-    enabled: Boolean(open && tenantId && supplier?.id),
+    enabled: Boolean(
+      open && tenantId && supplier?.id && accountsQuery.isFetched,
+    ),
+    staleTime: MODAL_RECORD_STALE_MS,
   });
 
   const totals = useMemo(() => {

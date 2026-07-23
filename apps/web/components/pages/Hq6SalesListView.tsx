@@ -26,13 +26,18 @@ import { Hq6SalesSummaryStrip } from "@/components/hq6/Hq6SalesSummaryStrip";
 import { Hq6StandardListShell, useHq6ListChrome } from "@/components/hq6/Hq6StandardListShell";
 import { Hq6ViewPaymentsModal } from "@/components/hq6/Hq6ViewPaymentsModal";
 import { Hq6InvoiceUrlModal } from "@/components/hq6/Hq6InvoiceUrlModal";
-import { deleteSale, getSalesPage } from "@/lib/api/sales";
+import { deleteSale, getSaleView, getSalesPage } from "@/lib/api/sales";
 import { getCustomers } from "@/lib/api/customers";
 import { useServerListPage } from "@/lib/hooks/useServerListPage";
 import { useListExport } from "@/lib/hooks/useListExport";
 import { useListRecordModal } from "@/lib/hooks/useListRecordModal";
 import { useListPageFilters } from "@/lib/hooks/useListPageFilters";
 import { useRouteTenant, useTenantId } from "@/lib/hooks/useRouteTenant";
+import {
+  MODAL_RECORD_STALE_MS,
+  modalKeys,
+  prefetchModalQuery,
+} from "@/lib/query/modalQueryKeys";
 import { toast } from "@/stores/toastStore";
 import { saleListCursor } from "@/lib/utils/pagination";
 import {
@@ -71,8 +76,17 @@ export function Hq6SalesListView({
   const router = useRouter();
   const tenantId = useTenantId();
   const { config, tenantCode } = useRouteTenant();
+  const queryClient = useQueryClient();
   const { recordId, openRecord, closeRecord } = useListRecordModal({
     syncUrlParam: "record",
+    onPrefetchRecord: (id) => {
+      if (!tenantId) return;
+      prefetchModalQuery(queryClient, {
+        queryKey: modalKeys.saleView(tenantId, id),
+        queryFn: () => getSaleView(id, tenantId),
+        staleTime: MODAL_RECORD_STALE_MS,
+      });
+    },
   });
   const exportList = useListExport();
   const {
@@ -89,8 +103,7 @@ export function Hq6SalesListView({
   const [locationFilter, setLocationFilter] = useState("");
   const [customerFilter, setCustomerFilter] = useState("");
   const [localSearch, setLocalSearch] = useState(search);
-  const chrome = useHq6ListChrome();
-  const queryClient = useQueryClient();
+  const chrome = useHq6ListChrome(slug);
   const [deleteTarget, setDeleteTarget] = useState<Sale | null>(null);
   const [invoiceUrlSale, setInvoiceUrlSale] = useState<Sale | null>(null);
   const [paymentsSale, setPaymentsSale] = useState<Sale | null>(null);
@@ -153,7 +166,7 @@ export function Hq6SalesListView({
     filters: apiFilters,
     search: localSearch || search,
     defaultPageSize: 25,
-    fetchPage: (cursor, limit) => getSalesPage(tenantId!, apiFilters, cursor, limit),
+    fetchPage: (cursor, limit, _sort, opts) => getSalesPage(tenantId!, { ...apiFilters, includeSummary: opts?.includeSummary }, cursor, limit),
     getCursor: (row) => saleListCursor(row),
   });
 
@@ -381,12 +394,14 @@ export function Hq6SalesListView({
       {
         key: "total",
         header: "Total amount",
+        numeric: true,
         sortValue: (row) => row.total,
         render: (row) => formatHq6Currency(row.total, row.currency),
       },
       {
         key: "totalPaid",
         header: "Total paid",
+        numeric: true,
         sortValue: (row) => row.totalPaid ?? 0,
         render: (row) =>
           formatHq6Currency(row.totalPaid ?? 0, row.currency),
@@ -394,6 +409,7 @@ export function Hq6SalesListView({
       {
         key: "sellDue",
         header: "Sell Due",
+        numeric: true,
         sortValue: (row) => row.sellDue ?? 0,
         render: (row) => formatHq6Currency(row.sellDue ?? 0, row.currency),
       },
@@ -695,6 +711,11 @@ export function Hq6SalesListView({
           displayMode="table"
           embedded
           disablePagination
+          stickyHeader
+          stickyFirstColumn
+          density={chrome.density}
+          onDensityChange={chrome.setDensity}
+          showDensityControl={false}
           isLoading={isLoading}
           isFetching={isFetching && !isLoading}
           error={error ? "Could not load sales." : null}

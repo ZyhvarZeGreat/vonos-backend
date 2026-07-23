@@ -9,7 +9,17 @@ export interface ListQueryParams {
   cursor?: string;
   limit?: number;
   search?: string;
-  [key: string]: string | number | undefined;
+  includeSummary?: boolean | string | number;
+  [key: string]: string | number | boolean | undefined;
+}
+
+function normalizeIncludeSummary(
+  value: boolean | string | number | undefined,
+): "0" | "1" | undefined {
+  if (value === undefined) return "0"; // rows-first default
+  if (value === false || value === "0" || value === 0) return "0";
+  if (value === true || value === "1" || value === 1) return "1";
+  return undefined;
 }
 
 export function appendListQuery(
@@ -18,9 +28,15 @@ export function appendListQuery(
 ): string {
   const qs = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {
-    if (value !== undefined && value !== "") {
-      qs.set(key, String(value));
+    if (value === undefined || value === "") continue;
+    if (key === "includeSummary") {
+      const normalized = normalizeIncludeSummary(
+        value as boolean | string | number | undefined,
+      );
+      if (normalized) qs.set(key, normalized);
+      continue;
     }
+    qs.set(key, String(value));
   }
   const query = qs.toString();
   return query ? `${basePath}?${query}` : basePath;
@@ -34,6 +50,7 @@ export async function fetchJsonListPage<T extends { id: string }>(
 ): Promise<ListPage<T>> {
   return fetchListPage(async (pageCursor, pageLimit) => {
     const url = appendListQuery(path, {
+      includeSummary: false,
       ...extraParams,
       cursor: pageCursor,
       limit: pageLimit,

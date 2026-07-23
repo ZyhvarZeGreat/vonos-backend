@@ -1,7 +1,7 @@
-import { Prisma } from '@prisma/client';
-import type { PrismaClient } from '@prisma/client';
+import { Prisma, type PrismaClient } from '@prisma/client';
 import type { TenantScopedPrisma } from '../../common/prisma/prisma.service';
 import { EXCLUDE_INTERNAL_TRANSFER_SQL } from '../../common/utils/internalTransfer';
+import { runPool } from '../../common/utils/mapPool';
 import { toNumber } from '../../common/utils/serializers';
 import {
   groupDailyFinanceTrend,
@@ -14,6 +14,8 @@ import {
   ledgerRevenueBreakdown,
   type LedgerChartsPayload,
 } from '../reports/aggregators/ledgerReportQueries';
+
+const NEON_QUERY_CONCURRENCY = 2;
 
 function dateTruncUnit(spanDays: number): 'hour' | 'day' | 'month' {
   if (spanDays <= 2) return 'hour';
@@ -38,10 +40,13 @@ export async function buildTenantLedgerCharts(
   to?: string,
 ): Promise<LedgerChartsPayload> {
   const window = resolveDateWindow(from, to);
-  const [plTrend, revenueByCategory] = await Promise.all([
-    ledgerPlTrend(db, tenantId, window),
-    ledgerRevenueBreakdown(db, tenantId, window.from, window.to),
-  ]);
+  const [plTrend, revenueByCategory] = await runPool(
+    [
+      () => ledgerPlTrend(db, tenantId, window),
+      () => ledgerRevenueBreakdown(db, tenantId, window.from, window.to),
+    ],
+    NEON_QUERY_CONCURRENCY,
+  );
   return { plTrend, revenueByCategory };
 }
 
@@ -67,15 +72,19 @@ export async function buildGroupLedgerCharts(
   );
 
   if (useRollup) {
-    const [plTrend, totals] = await Promise.all([
-      groupDailyFinanceTrend(prisma, tenantIds, window.from, window.to),
-      sumDailyFinanceRollupForTenants(
-        prisma,
-        tenantIds,
-        window.from,
-        window.to,
-      ),
-    ]);
+    const [plTrend, totals] = await runPool(
+      [
+        () => groupDailyFinanceTrend(prisma, tenantIds, window.from, window.to),
+        () =>
+          sumDailyFinanceRollupForTenants(
+            prisma,
+            tenantIds,
+            window.from,
+            window.to,
+          ),
+      ],
+      NEON_QUERY_CONCURRENCY,
+    );
     const revenueByCategory = [
       { label: 'Costs', value: totals.costs },
       { label: 'Expenses', value: totals.expenses },

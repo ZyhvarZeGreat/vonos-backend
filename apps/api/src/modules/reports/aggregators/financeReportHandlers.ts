@@ -7,6 +7,7 @@ import type {
 import { Prisma } from '@prisma/client';
 import type { TenantScopedPrisma } from '../../../common/prisma/prisma.service';
 import { buildLedgerSummaryFromGroups, ledgerDateFilter } from '../../../common/utils/ledgerAggregates';
+import { runPool } from '../../../common/utils/mapPool';
 import { computeOutstandingReceivables } from '../../../common/utils/outstandingReceivables';
 import { computeSalesRevenueTotal } from '../../../common/utils/salesRevenue';
 import { toNumber } from '../../../common/utils/serializers';
@@ -25,6 +26,8 @@ import {
   loadProfitLossContext,
   type ProfitLossLoadContext,
 } from './profitLossQueries';
+
+const NEON_QUERY_CONCURRENCY = 2;
 
 function priorWindow(window: { from: Date; to: Date }) {
   const spanMs = window.to.getTime() - window.from.getTime();
@@ -59,11 +62,14 @@ async function assembleProfitLossShell(
     loaded?.salesRevenue.currency ??
     (await ledgerCurrency(db, tenantId));
 
-  const [outstanding, priorLedger, trendRows] = await Promise.all([
-    computeOutstandingReceivables(db, from, to),
-    ledgerSummaryInWindow(db, tenantId, prior.from, prior.to),
-    ledgerPlTrend(db, tenantId, window),
-  ]);
+  const [outstanding, priorLedger, trendRows] = await runPool(
+    [
+      () => computeOutstandingReceivables(db, from, to),
+      () => ledgerSummaryInWindow(db, tenantId, prior.from, prior.to),
+      () => ledgerPlTrend(db, tenantId, window),
+    ],
+    NEON_QUERY_CONCURRENCY,
+  );
 
   const summary = buildLedgerSummaryFromGroups(
     groups.map((g) => ({
@@ -338,43 +344,50 @@ export async function buildExpenseReport(
   };
 
   const [expenseGroups, currencyRow, entryCount, expenseRowsRaw] =
-    await Promise.all([
-      db.ledgerEntry.groupBy({
-        by: ['category'],
-        where: ledgerWhere,
-        _sum: { amount: true },
-        orderBy: { category: 'asc' },
-      }),
-      db.ledgerEntry.findFirst({
-        where: ledgerWhere,
-        select: { currency: true },
-        orderBy: { date: 'desc' },
-      }),
-      db.expense.count({
-        where: expenseWhere,
-      }),
-      db.expense.findMany({
-        where: expenseWhere,
-        select: {
-          id: true,
-          refNo: true,
-          expenseDate: true,
-          totalAmount: true,
-          paymentStatus: true,
-          note: true,
-          locationCode: true,
-          expenseFor: true,
-          contactName: true,
-          category: { select: { name: true } },
-          invoice: { select: { reference: true } },
-        },
-        orderBy: [{ expenseDate: 'desc' }, { id: 'desc' }],
-        take: pageSize + 1,
-        ...(options?.cursor
-          ? { cursor: { id: options.cursor }, skip: 1 }
-          : {}),
-      }),
-    ]);
+    await runPool(
+      [
+        () =>
+          db.ledgerEntry.groupBy({
+            by: ['category'],
+            where: ledgerWhere,
+            _sum: { amount: true },
+            orderBy: { category: 'asc' },
+          }),
+        () =>
+          db.ledgerEntry.findFirst({
+            where: ledgerWhere,
+            select: { currency: true },
+            orderBy: { date: 'desc' },
+          }),
+        () =>
+          db.expense.count({
+            where: expenseWhere,
+          }),
+        () =>
+          db.expense.findMany({
+            where: expenseWhere,
+            select: {
+              id: true,
+              refNo: true,
+              expenseDate: true,
+              totalAmount: true,
+              paymentStatus: true,
+              note: true,
+              locationCode: true,
+              expenseFor: true,
+              contactName: true,
+              category: { select: { name: true } },
+              invoice: { select: { reference: true } },
+            },
+            orderBy: [{ expenseDate: 'desc' }, { id: 'desc' }],
+            take: pageSize + 1,
+            ...(options?.cursor
+              ? { cursor: { id: options.cursor }, skip: 1 }
+              : {}),
+          }),
+      ],
+      NEON_QUERY_CONCURRENCY,
+    );
 
   const hasMore = expenseRowsRaw.length > pageSize;
   const expenseRows = hasMore

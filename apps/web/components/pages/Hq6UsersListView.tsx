@@ -77,11 +77,12 @@ export function Hq6UsersListView() {
     enabled: Boolean(tenantId),
     search,
     filters: { role: roleFilter || undefined, status: statusFilter || undefined },
-    fetchPage: (cursor, limit) =>
+    fetchPage: (cursor, limit, _sort, opts) =>
       getUsersPage(tenantId!, cursor, limit, {
         search: (localSearch || search).trim() || undefined,
         role: roleFilter || undefined,
         status: statusFilter || undefined,
+        includeSummary: opts?.includeSummary,
       }),
   });
 
@@ -228,7 +229,7 @@ export function Hq6UsersListView() {
         ) : null}
       </div>
 
-      <div className="hq6-card hq6-products-box overflow-hidden">
+      <div className="hq6-card hq6-products-box overflow-x-clip">
         <div className="hq6-tab-row">
           <div className="flex min-w-0 flex-1">
             <button type="button" className="hq6-tab hq6-tab-active">

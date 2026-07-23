@@ -26,7 +26,7 @@ export function Hq6CustomerGroupsListView() {
   const tenantId = useTenantId();
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
-  const chrome = useHq6ListChrome();
+  const chrome = useHq6ListChrome("customer-groups");
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<CustomerGroup | null>(null);
   const [name, setName] = useState("");
@@ -55,9 +55,10 @@ export function Hq6CustomerGroupsListView() {
     enabled: Boolean(tenantId),
     filters: { search: search.trim() || undefined },
     search,
-    fetchPage: (cursor, limit) =>
+    fetchPage: (cursor, limit, _sort, opts) =>
       getCustomerGroupsPage(tenantId!, cursor, limit, {
         search: search.trim() || undefined,
+        includeSummary: opts?.includeSummary,
       }),
   });
 

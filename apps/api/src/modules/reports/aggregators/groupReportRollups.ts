@@ -5,9 +5,12 @@ import type {
 } from '@vonos/types';
 import type { PrismaClient } from '@prisma/client';
 import { ledgerDateFilter } from '../../../common/utils/ledgerAggregates';
+import { mapPool, runPool } from '../../../common/utils/mapPool';
 import { toNumber } from '../../../common/utils/serializers';
 import { resolveDateWindow } from './date-utils';
 import { tenantStockValue } from './groupReportQueries';
+
+const NEON_QUERY_CONCURRENCY = 2;
 
 export interface GroupEntityRollupRow {
   code: string;
@@ -245,8 +248,7 @@ export async function buildEntityRollupForReport(
 
   switch (source.kind) {
     case 'ledger': {
-      return Promise.all(
-        tenants.map(async (tenant) => {
+      return mapPool(tenants, NEON_QUERY_CONCURRENCY, async (tenant) => {
           const groups = await prisma.ledgerEntry.groupBy({
             by: ['type'],
             where: {
@@ -267,25 +269,28 @@ export async function buildEntityRollupForReport(
             code: tenant.code,
             rows: [{ revenue, costs, net: revenue - costs }],
           };
-        }),
-      );
+        });
     }
     case 'stock': {
-      return Promise.all(
-        tenants.map(async (tenant) => {
-          const [stockValue, lowStock, skuCount] = await Promise.all([
-            tenantStockValue(prisma, tenant.id),
-            prisma.item.count({
-              where: {
-                tenantId: tenant.id,
-                deletedAt: null,
-                status: { in: ['low_stock', 'out_of_stock'] },
-              },
-            }),
-            prisma.item.count({
-              where: { tenantId: tenant.id, deletedAt: null },
-            }),
-          ]);
+      return mapPool(tenants, NEON_QUERY_CONCURRENCY, async (tenant) => {
+          const [stockValue, lowStock, skuCount] = await runPool(
+            [
+              () => tenantStockValue(prisma, tenant.id),
+              () =>
+                prisma.item.count({
+                  where: {
+                    tenantId: tenant.id,
+                    deletedAt: null,
+                    status: { in: ['low_stock', 'out_of_stock'] },
+                  },
+                }),
+              () =>
+                prisma.item.count({
+                  where: { tenantId: tenant.id, deletedAt: null },
+                }),
+            ],
+            NEON_QUERY_CONCURRENCY,
+          );
           if (source.handler === 'lowstock') {
             return {
               code: tenant.code,
@@ -302,35 +307,38 @@ export async function buildEntityRollupForReport(
               },
             ],
           };
-        }),
-      );
+        });
     }
     case 'product':
     case 'sales': {
-      return Promise.all(
-        tenants.map(async (tenant) => {
-          const [salesAgg, jobAgg] = await Promise.all([
-            prisma.sale.aggregate({
-              where: {
-                tenantId: tenant.id,
-                deletedAt: null,
-                status: { not: 'draft' },
-                date: { gte: window.from, lte: window.to },
-              },
-              _sum: { total: true },
-              _count: { _all: true },
-            }),
-            prisma.job.aggregate({
-              where: {
-                tenantId: tenant.id,
-                deletedAt: null,
-                status: 'Delivered',
-                updatedAt: { gte: window.from, lte: window.to },
-              },
-              _sum: { invoiceAmount: true, quoteAmount: true },
-              _count: { _all: true },
-            }),
-          ]);
+      return mapPool(tenants, NEON_QUERY_CONCURRENCY, async (tenant) => {
+          const [salesAgg, jobAgg] = await runPool(
+            [
+              () =>
+                prisma.sale.aggregate({
+                  where: {
+                    tenantId: tenant.id,
+                    deletedAt: null,
+                    status: { not: 'draft' },
+                    date: { gte: window.from, lte: window.to },
+                  },
+                  _sum: { total: true },
+                  _count: { _all: true },
+                }),
+              () =>
+                prisma.job.aggregate({
+                  where: {
+                    tenantId: tenant.id,
+                    deletedAt: null,
+                    status: 'Delivered',
+                    updatedAt: { gte: window.from, lte: window.to },
+                  },
+                  _sum: { invoiceAmount: true, quoteAmount: true },
+                  _count: { _all: true },
+                }),
+            ],
+            NEON_QUERY_CONCURRENCY,
+          );
           const salesRevenue = toNumber(salesAgg._sum.total ?? 0);
           const jobRevenue = Math.max(
             toNumber(jobAgg._sum.invoiceAmount ?? 0),
@@ -347,12 +355,10 @@ export async function buildEntityRollupForReport(
               },
             ],
           };
-        }),
-      );
+        });
     }
     case 'payments': {
-      return Promise.all(
-        tenants.map(async (tenant) => {
+      return mapPool(tenants, NEON_QUERY_CONCURRENCY, async (tenant) => {
           const agg = await prisma.payment.aggregate({
             where: {
               tenantId: tenant.id,
@@ -371,26 +377,28 @@ export async function buildEntityRollupForReport(
               },
             ],
           };
-        }),
-      );
+        });
     }
     case 'contacts': {
-      return Promise.all(
-        tenants.map(async (tenant) => {
-          const [customers, suppliers] = await Promise.all([
-            prisma.customer.count({
-              where: { tenantId: tenant.id, deletedAt: null },
-            }),
-            prisma.supplier.count({
-              where: { tenantId: tenant.id, deletedAt: null },
-            }),
-          ]);
+      return mapPool(tenants, NEON_QUERY_CONCURRENCY, async (tenant) => {
+          const [customers, suppliers] = await runPool(
+            [
+              () =>
+                prisma.customer.count({
+                  where: { tenantId: tenant.id, deletedAt: null },
+                }),
+              () =>
+                prisma.supplier.count({
+                  where: { tenantId: tenant.id, deletedAt: null },
+                }),
+            ],
+            NEON_QUERY_CONCURRENCY,
+          );
           return {
             code: tenant.code,
             rows: [{ customers, suppliers }],
           };
-        }),
-      );
+        });
     }
   }
 

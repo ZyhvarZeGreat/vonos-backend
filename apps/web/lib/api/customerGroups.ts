@@ -31,9 +31,16 @@ export async function getCustomerGroupsPage(
   tenantId: string,
   cursor: string | undefined,
   limit = DEFAULT_TABLE_PAGE_SIZE,
-  filters: { search?: string; discount?: 'has' | 'none' } = {},
+  filters: {
+    search?: string;
+    discount?: "has" | "none";
+    includeSummary?: boolean;
+  } = {},
 ): Promise<ListPage<CustomerGroup>> {
-  return fetchTenantListPage(LIST_PATH, tenantId, cursor, limit, filters);
+  return fetchTenantListPage(LIST_PATH, tenantId, cursor, limit, {
+    ...filters,
+    includeSummary: filters.includeSummary ?? false,
+  });
 }
 
 /** Full customer group list for export — not for table rendering. */

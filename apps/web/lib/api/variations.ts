@@ -11,8 +11,11 @@ export async function getVariationsPage(
   tenantId: string,
   cursor: string | undefined,
   limit = DEFAULT_TABLE_PAGE_SIZE,
+  opts?: { includeSummary?: boolean },
 ): Promise<ListPage<VariationTemplate>> {
-  return fetchTenantListPage("/variations", tenantId, cursor, limit);
+  return fetchTenantListPage("/variations", tenantId, cursor, limit, {
+    includeSummary: opts?.includeSummary ?? false,
+  });
 }
 
 export async function createVariation(

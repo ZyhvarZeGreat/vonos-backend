@@ -96,18 +96,18 @@ Changes for consistent L1 hits:
    ```bash
    cd apps/api && npx tsx prisma/scripts/refresh-entity-snapshots.ts
    ```
-3. **Optional cache warm** (same schedule or after deploy):
+3. **Cache warm** — API boot + in-process interval (`HOT_PATHS_WARM_INTERVAL_MS`, default 2 min), and/or:
    ```bash
    curl -X POST "$API/internal/overview/group-warm" \
      -H "X-Group-Warm-Secret: $GROUP_WARM_SECRET"
    ```
 4. Rollup totals include all non-deleted ledger rows; live group SQL excludes internal transfers — parity gap deferred.
 5. Set `GROUP_WARM_SECRET` in Railway for the internal warm route.
+6. **Neon always-on** — Neon console → Settings → Compute → Always on (removes cold-compute floor).
 
 ## Out of scope (unchanged)
 
 - Period **job count** rollup for KPI strip (`groupJobsByTenant` still live)
-- Neon always-on / keep-alive
 - Cross-entity transfer elimination in rollup numbers
 ## Phase 2 — Instant navigation + hot-path warm (2026-07-20)
 
@@ -122,7 +122,7 @@ Changes for consistent L1 hits:
 ### Backend
 - L1 long-TTL matches versioned keys (`entity-overview`, `ledger:`, `report-dash:`, etc.)
 - Redis TTL 900s for entity overview, ledger, reports
-- `warmHotPathsCache` — group overview + finance + reports + VA overview on boot/cron
+- `warmHotPathsCache` — group overview + finance + reports + VA overview / HQ6 home / report dash / invoice-settings on boot + periodic interval + cron
 - Group ledger rollup-first (`TenantDailyFinance`) for summary/by-entity/charts
 - Stock availability Redis cache (900s) on default admin stock query
 - HRM workforce tenant-scoped cache (900s)

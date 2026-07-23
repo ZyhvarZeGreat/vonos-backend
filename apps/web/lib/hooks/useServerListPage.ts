@@ -15,13 +15,34 @@ function useDebouncedValue<T>(value: T, delayMs = 300): T {
   return debounced;
 }
 
+export interface ListPageSummary {
+  totalCount?: number;
+  amountSummary?: ListPage<{ id: string }>["amountSummary"];
+}
+
+export interface ListPageFetchOpts {
+  /** When false, API skips count/amountSummary for faster first paint. */
+  includeSummary?: boolean;
+}
+
 export interface UseServerListPageOptions<T extends { id: string }> {
   queryKey: readonly unknown[];
   fetchPage: (
     cursor: string | undefined,
     limit: number,
     sort: ListSortState | null,
+    opts?: ListPageFetchOpts,
   ) => Promise<ListPage<T>>;
+  /**
+   * Optional deferred count/amountSummary fetch. When omitted and
+   * `deferSummary` is true, a second request runs with includeSummary=true.
+   */
+  fetchSummary?: () => Promise<ListPageSummary>;
+  /**
+   * Rows-first by default: page fetch uses includeSummary=false, then summary
+   * loads in parallel. Set false for live/polling views that need one shot.
+   */
+  deferSummary?: boolean;
   enabled?: boolean;
   /** Serialized into the query key; changing values resets to page 1. */
   filters?: Record<string, unknown>;
@@ -30,6 +51,8 @@ export interface UseServerListPageOptions<T extends { id: string }> {
   debounceSearchMs?: number;
   /** Poll interval in ms for live views (e.g. kitchen display). */
   refetchInterval?: number;
+  /** React Query staleTime for list pages (default 45s). */
+  staleTime?: number;
   /** Encode composite cursor from the last row (defaults to row.id). */
   getCursor?: (row: T, sort: ListSortState | null) => string;
   /** Initial server sort — when set, DataTable should use serverSort. */
@@ -39,12 +62,15 @@ export interface UseServerListPageOptions<T extends { id: string }> {
 export function useServerListPage<T extends { id: string }>({
   queryKey,
   fetchPage,
+  fetchSummary,
+  deferSummary = true,
   enabled = true,
   filters = {},
   search = "",
   defaultPageSize = DEFAULT_TABLE_PAGE_SIZE,
   debounceSearchMs = 300,
   refetchInterval,
+  staleTime = 45_000,
   getCursor,
   defaultSort = null,
 }: UseServerListPageOptions<T>) {
@@ -95,7 +121,9 @@ export function useServerListPage<T extends { id: string }>({
 
   const walkCursor = useCallback(
     async (fetchCursor: string | undefined) => {
-      const data = await fetchPage(fetchCursor, pageSize, sort);
+      const data = await fetchPage(fetchCursor, pageSize, sort, {
+        includeSummary: false,
+      });
       if (data.items.length === 0) return null;
       if (!data.hasMore && data.items.length < pageSize) return null;
       const last = data.items[data.items.length - 1]!;
@@ -108,16 +136,38 @@ export function useServerListPage<T extends { id: string }>({
     // Include `pageIndex` so React Query refetches even if `cursor` lags
     // during a jump/URL-sync transition.
     queryKey: [...queryKey, filterKey, pageIndex, cursor, pageSize, sort],
-    queryFn: () => fetchPage(cursor, pageSize, sort),
+    queryFn: () =>
+      fetchPage(cursor, pageSize, sort, {
+        includeSummary: deferSummary ? false : true,
+      }),
     enabled,
     refetchInterval,
+    staleTime,
     placeholderData: (prev) => prev,
+  });
+
+  const resolveSummary = useCallback(async (): Promise<ListPageSummary> => {
+    if (fetchSummary) return fetchSummary();
+    const page = await fetchPage(undefined, 1, sort, { includeSummary: true });
+    return {
+      totalCount: page.totalCount,
+      amountSummary: page.amountSummary,
+    };
+  }, [fetchPage, fetchSummary, sort]);
+
+  const summaryQuery = useQuery({
+    queryKey: [...queryKey, "summary", filterKey],
+    queryFn: resolveSummary,
+    enabled: enabled && deferSummary,
+    staleTime,
   });
 
   const items = pageQuery.data?.items ?? [];
   const hasMore = pageQuery.data?.hasMore ?? false;
-  const totalCount = pageQuery.data?.totalCount;
-  const amountSummary = pageQuery.data?.amountSummary;
+  const totalCount =
+    summaryQuery.data?.totalCount ?? pageQuery.data?.totalCount;
+  const amountSummary =
+    summaryQuery.data?.amountSummary ?? pageQuery.data?.amountSummary;
 
   const handleNext = () => {
     const last = items[items.length - 1];

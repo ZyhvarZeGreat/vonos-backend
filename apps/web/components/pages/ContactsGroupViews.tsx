@@ -11,7 +11,7 @@ import { Hq6GuideImportPage } from "@/components/hq6/Hq6GuideImportPage";
 import { Hq6PageFrame } from "@/components/hq6/Hq6Chrome";
 import { getCustomerGroupsPage } from "@/lib/api/customerGroups";
 import { importCustomers } from "@/lib/api/customers";
-import { importItems } from "@/lib/api/items";
+import { importItems, importOpeningStock } from "@/lib/api/items";
 import { importSales } from "@/lib/api/sales";
 import { useServerListPage } from "@/lib/hooks/useServerListPage";
 import { useIsVaHq6 } from "@/lib/hooks/useIsVaHq6";
@@ -68,7 +68,7 @@ function CustomerGroupsListViewBody() {
   } = useServerListPage<CustomerGroup>({
     queryKey: ["customer-groups", tenantId],
     enabled: Boolean(tenantId),
-    fetchPage: (cursor, limit) => getCustomerGroupsPage(tenantId!, cursor, limit),
+    fetchPage: (cursor, limit, _sort, opts) => getCustomerGroupsPage(tenantId!, cursor, limit, { includeSummary: opts?.includeSummary }),
   });
 
   return (
@@ -385,7 +385,19 @@ function CsvImportPanel({
 
 export function ImportProductsView() {
   const tenantId = useTenantId();
+  const isHq6 = useIsVaHq6();
   if (!tenantId) return null;
+
+  if (isHq6) {
+    return (
+      <Hq6GuideImportPage
+        title="Import Products"
+        columns={HQ6_PRODUCT_IMPORT_COLUMNS}
+        templateHref="/templates/products-import.csv"
+        onImport={(csv) => importItems(tenantId, csv)}
+      />
+    );
+  }
 
   return (
     <CsvImportPanel
@@ -396,6 +408,226 @@ export function ImportProductsView() {
     />
   );
 }
+
+export function ImportOpeningStockView() {
+  const tenantId = useTenantId();
+  const isHq6 = useIsVaHq6();
+  if (!tenantId) return null;
+
+  if (!isHq6) {
+    return (
+      <div className="rounded-lg border border-border bg-card p-6 text-sm text-muted">
+        Import opening stock is available in the HQ6 experience.
+      </div>
+    );
+  }
+
+  return (
+    <Hq6GuideImportPage
+      title="Import Opening Stock"
+      columns={HQ6_OPENING_STOCK_IMPORT_COLUMNS}
+      templateHref="/templates/opening-stock-import.csv"
+      onImport={(csv) => importOpeningStock(tenantId, csv)}
+    />
+  );
+}
+
+const HQ6_OPENING_STOCK_IMPORT_COLUMNS: Array<{
+  n: number;
+  name: string;
+  instruction: string;
+}> = [
+  { n: 1, name: "SKU (Required)", instruction: "" },
+  {
+    n: 2,
+    name: "Location (Optional)",
+    instruction:
+      "Name of the business location. If blank first business location will be used",
+  },
+  { n: 3, name: "Quantity (Required)", instruction: "" },
+  {
+    n: 4,
+    name: "Unit Cost (Before Tax) (Required)",
+    instruction: "",
+  },
+  { n: 5, name: "Lot Number (Optional)", instruction: "" },
+  {
+    n: 6,
+    name: "Expiry Date (Optional)",
+    instruction:
+      "Stock expiry date in Business date format dd-mm-yyyy, Type: text, Example: 23-07-2026",
+  },
+];
+
+const HQ6_PRODUCT_IMPORT_COLUMNS: Array<{ n: number; name: string; instruction: string }> = [
+  { n: 1, name: "Product Name (Required)", instruction: "Name of the product" },
+  {
+    n: 2,
+    name: "Brand (Optional)",
+    instruction:
+      "Name of the brand (If not found new brand with the given name will be created)",
+  },
+  { n: 3, name: "Unit (Required)", instruction: "Name of the unit" },
+  {
+    n: 4,
+    name: "Category (Optional)",
+    instruction:
+      "Name of the Category (If not found new category with the given name will be created)",
+  },
+  {
+    n: 5,
+    name: "Sub Category (Optional)",
+    instruction:
+      "Name of the Sub-Category (If not found new sub-category with the given name under the Parent Category will be created)",
+  },
+  {
+    n: 6,
+    name: "SKU (Optional)",
+    instruction: "Product SKU. If blank an SKU will be automatically generated",
+  },
+  {
+    n: 7,
+    name: "Barcode Type (Optional)",
+    instruction:
+      "Barcode Type for the product. Currently supported: C128, C39, EAN-13, EAN-8, UPC-A, UPC-E, ITF-14",
+  },
+  {
+    n: 8,
+    name: "Manage Stock? (Required)",
+    instruction: "Enable or disable stock management. 1 = Yes, 0 = No",
+  },
+  { n: 9, name: "Alert quantity (Optional)", instruction: "Alert quantity" },
+  {
+    n: 10,
+    name: "Expires in (Optional)",
+    instruction: "Product expiry period (Only in numbers)",
+  },
+  {
+    n: 11,
+    name: "Expiry Period Unit (Optional)",
+    instruction: "Unit for expiry period: days or months",
+  },
+  {
+    n: 12,
+    name: "Applicable Tax (Optional)",
+    instruction: "Name of the Tax Rate. Required if purchase prices excl/incl differ",
+  },
+  {
+    n: 13,
+    name: "Selling Price Tax Type (Required)",
+    instruction: "Selling Price Tax Type: inclusive or exclusive",
+  },
+  {
+    n: 14,
+    name: "Product Type (Required)",
+    instruction: "Product Type: single or variable",
+  },
+  {
+    n: 15,
+    name: "Variation Name (Optional)",
+    instruction:
+      'Required if product type is variable. Name of the variation (e.g. "Size", "Color")',
+  },
+  {
+    n: 16,
+    name: "Variation Values (Optional)",
+    instruction:
+      "Required for variable products. Values separated with '|' (e.g. Red|Blue|Green)",
+  },
+  {
+    n: 17,
+    name: "Variation SKUs (Optional)",
+    instruction: "SKUs of each variation separated with '|'",
+  },
+  {
+    n: 18,
+    name: "Purchase Price (Including Tax) (Required if purchase price excluding tax is not given)",
+    instruction: "Purchase Price (Including Tax). For variable products separate with '|'",
+  },
+  {
+    n: 19,
+    name: "Purchase Price (Excluding Tax) (Required if purchase price including tax is not given)",
+    instruction: "Purchase Price (Excluding Tax). For variable products separate with '|'",
+  },
+  {
+    n: 20,
+    name: "Profit Margin % (Optional)",
+    instruction:
+      "Profit Margin. If blank default business profit margin will be used for the product",
+  },
+  {
+    n: 21,
+    name: "Selling Price (Optional)",
+    instruction:
+      "Selling Price. If blank it will be calculated with the given Purchase Price and Applicable Tax",
+  },
+  {
+    n: 22,
+    name: "Opening Stock (Optional)",
+    instruction:
+      "Opening Stock. For variable products separate quantities with '|' (e.g. 100|150|200)",
+  },
+  {
+    n: 23,
+    name: "Opening stock location (Optional)",
+    instruction:
+      "Name of the business location where opening stock is added",
+  },
+  {
+    n: 24,
+    name: "Expiry Date (Optional)",
+    instruction: "Stock Expiry Date in format mm-dd-yyyy (e.g. 11-25-2018)",
+  },
+  {
+    n: 25,
+    name: "Enable Product description, IMEI or Serial Number (Optional)",
+    instruction:
+      "Enable Product description, IMEI or Serial Number. 1 = Yes, 0 = No (default)",
+  },
+  { n: 26, name: "Weight (Optional)", instruction: "Optional" },
+  {
+    n: 27,
+    name: "Rack (Optional)",
+    instruction:
+      "Rack details separated by '|' for different business locations sequentially",
+  },
+  {
+    n: 28,
+    name: "Row (Optional)",
+    instruction:
+      "Row details separated by '|' for different business locations sequentially",
+  },
+  {
+    n: 29,
+    name: "Position (Optional)",
+    instruction:
+      "Position details separated by '|' for different business locations sequentially",
+  },
+  {
+    n: 30,
+    name: "Image (Optional)",
+    instruction: "Image name with extension (must be uploaded) or image URL",
+  },
+  {
+    n: 31,
+    name: "Product Description (Optional)",
+    instruction: "Optional",
+  },
+  { n: 32, name: "Custom Field 1 (Optional)", instruction: "Optional" },
+  { n: 33, name: "Custom Field 2 (Optional)", instruction: "Optional" },
+  { n: 34, name: "Custom Field 3 (Optional)", instruction: "Optional" },
+  { n: 35, name: "Custom Field 4 (Optional)", instruction: "Optional" },
+  {
+    n: 36,
+    name: "Not for selling (Optional)",
+    instruction: "1 = Yes (not for selling), 0 = No",
+  },
+  {
+    n: 37,
+    name: "Product locations (Optional)",
+    instruction: "Comma separated names of business locations where product will be available",
+  },
+];
 
 export function ImportSalesView() {
   const tenantId = useTenantId();

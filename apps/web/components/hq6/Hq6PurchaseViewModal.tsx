@@ -4,12 +4,12 @@ import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Printer } from "lucide-react";
 import { Hq6Modal } from "@/components/hq6/Hq6Modal";
-import {
-  getStockMovement,
-  getStockMovementPayments,
-} from "@/lib/api/stockMovements";
-import { getSupplier } from "@/lib/api/suppliers";
+import { getPurchaseView } from "@/lib/api/stockMovements";
 import { useRouteTenant, useTenantId } from "@/lib/hooks/useRouteTenant";
+import {
+  MODAL_RECORD_STALE_MS,
+  modalKeys,
+} from "@/lib/query/modalQueryKeys";
 import { formatHq6Currency, formatHq6Date, formatHq6PaymentStatus } from "@/lib/utils/hq6Format";
 import { businessLocationName } from "@/lib/utils/locationLabels";
 
@@ -39,23 +39,17 @@ export function Hq6PurchaseViewModal({
   const tenantId = useTenantId();
   const { config, tenantName } = useRouteTenant();
 
-  const { data: movement, isLoading } = useQuery({
-    queryKey: ["purchase-view-modal", tenantId, purchaseId],
-    queryFn: () => getStockMovement(purchaseId!),
+  const { data: bundle, isLoading } = useQuery({
+    queryKey: modalKeys.purchaseView(tenantId, purchaseId),
+    queryFn: () => getPurchaseView(tenantId!, purchaseId!),
     enabled: Boolean(open && tenantId && purchaseId),
+    staleTime: MODAL_RECORD_STALE_MS,
   });
 
-  const { data: payments = [], isLoading: paymentsLoading } = useQuery({
-    queryKey: ["purchase-view-payments", tenantId, purchaseId],
-    queryFn: () => getStockMovementPayments(tenantId!, purchaseId!),
-    enabled: Boolean(open && tenantId && purchaseId),
-  });
-
-  const { data: supplier } = useQuery({
-    queryKey: ["supplier", tenantId, movement?.supplierId],
-    queryFn: () => getSupplier(movement!.supplierId!),
-    enabled: Boolean(open && tenantId && movement?.supplierId),
-  });
+  const movement = bundle?.movement;
+  const payments = bundle?.payments ?? [];
+  const supplier = bundle?.supplier ?? null;
+  const paymentsLoading = isLoading && !bundle;
 
   const currency = "NGN";
   const locationLabel = businessLocationName(

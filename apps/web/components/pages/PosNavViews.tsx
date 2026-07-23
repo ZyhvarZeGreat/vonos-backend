@@ -70,8 +70,8 @@ export function AccountBookView({ accountId }: { accountId?: string }) {
     enabled: Boolean(accountId),
     search,
     filters: apiFilters,
-    fetchPage: (cursor, limit) =>
-      getAccountBookPage(accountId!, cursor, limit, apiFilters),
+    fetchPage: (cursor, limit, _sort, opts) =>
+      getAccountBookPage(accountId!, cursor, limit, { ...apiFilters, includeSummary: opts?.includeSummary }),
   });
 
   const { items: data, isLoading, error } = listPage;
@@ -219,8 +219,8 @@ export function PaymentsListView() {
       type: typeFilter || undefined,
       account: accountFilter || undefined,
     },
-    fetchPage: (cursor, limit) =>
-      getPaymentsPage(tenantId!, apiFilters, cursor, limit),
+    fetchPage: (cursor, limit, _sort, opts) =>
+      getPaymentsPage(tenantId!, { ...apiFilters, includeSummary: opts?.includeSummary }, cursor, limit),
   });
 
   const { items: data, isLoading, error } = listPage;

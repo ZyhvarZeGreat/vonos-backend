@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, type ReactNode } from "react";
 import { MoreHorizontal } from "lucide-react";
 import { Button } from "@/components/atoms/Button";
 import { FloatingMenuPanel } from "@/components/molecules/FloatingMenuPanel";
 import { Hq6ActionsMenu } from "@/components/hq6/Hq6ActionsMenu";
 import { useIsVaHq6 } from "@/lib/hooks/useIsVaHq6";
+import { hq6ActionIcon } from "@/lib/utils/hq6ActionIcon";
 import { cn } from "@/lib/utils/cn";
 
 export interface RowAction {
@@ -13,6 +14,7 @@ export interface RowAction {
   label: string;
   onClick: () => void;
   destructive?: boolean;
+  icon?: ReactNode;
 }
 
 interface RowActionsMenuProps {
@@ -31,6 +33,7 @@ export function RowActionsMenu({ actions, className }: RowActionsMenuProps) {
           label: action.label,
           onClick: action.onClick,
           danger: action.destructive,
+          icon: action.icon,
         }))}
       />
     );
@@ -82,23 +85,31 @@ function DefaultRowActionsMenu({ actions, className }: RowActionsMenuProps) {
         align="end"
         className="min-w-[10rem] rounded-md border border-border bg-card py-1 shadow-lg"
       >
-        {actions.map((action) => (
-          <button
-            key={action.id}
-            type="button"
-            className={cn(
-              "block w-full px-3 py-1.5 text-left text-sm hover:bg-[var(--color-surface-muted)]",
-              action.destructive && "text-red-600",
-            )}
-            onClick={(e) => {
-              e.stopPropagation();
-              setOpen(false);
-              action.onClick();
-            }}
-          >
-            {action.label}
-          </button>
-        ))}
+        {actions.map((action) => {
+          const leadingIcon = action.icon ?? hq6ActionIcon(action.id);
+          return (
+            <button
+              key={action.id}
+              type="button"
+              className={cn(
+                "flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-[var(--color-surface-muted)]",
+                action.destructive && "text-red-600",
+              )}
+              onClick={(e) => {
+                e.stopPropagation();
+                setOpen(false);
+                action.onClick();
+              }}
+            >
+              {leadingIcon ? (
+                <span className="inline-flex shrink-0 opacity-80" aria-hidden>
+                  {leadingIcon}
+                </span>
+              ) : null}
+              {action.label}
+            </button>
+          );
+        })}
       </FloatingMenuPanel>
     </div>
   );

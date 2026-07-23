@@ -5,10 +5,13 @@ import {
   decodeCompositeCursor,
   nextCompositeCursor,
 } from '../../../common/utils/pagination';
+import { runPool } from '../../../common/utils/mapPool';
 import { toNumber } from '../../../common/utils/serializers';
 import { bucketLabel, type DateWindow } from './date-utils';
 import type { AggregatedProductSale } from './productSales';
 import { computeJobRevenueTotal } from './jobSalesData';
+
+const NEON_QUERY_CONCURRENCY = 2;
 
 export interface SalesKpiSnapshot {
   transactionCount: number;
@@ -57,20 +60,25 @@ export async function salesKpiSnapshot(
   from: Date,
   to: Date,
 ): Promise<SalesKpiSnapshot> {
-  const [agg, refundedCount, currency] = await Promise.all([
-    db.sale.aggregate({
-      where: saleBaseWhere(tenantId, from, to),
-      _count: { _all: true },
-      _sum: { total: true },
-    }),
-    db.sale.count({
-      where: {
-        ...saleBaseWhere(tenantId, from, to),
-        status: { in: ['refunded', 'partially_refunded', 'written_off'] },
-      },
-    }),
-    salesCurrency(db, tenantId),
-  ]);
+  const [agg, refundedCount, currency] = await runPool(
+    [
+      () =>
+        db.sale.aggregate({
+          where: saleBaseWhere(tenantId, from, to),
+          _count: { _all: true },
+          _sum: { total: true },
+        }),
+      () =>
+        db.sale.count({
+          where: {
+            ...saleBaseWhere(tenantId, from, to),
+            status: { in: ['refunded', 'partially_refunded', 'written_off'] },
+          },
+        }),
+      () => salesCurrency(db, tenantId),
+    ],
+    NEON_QUERY_CONCURRENCY,
+  );
 
   return {
     transactionCount: agg._count._all,
@@ -657,9 +665,10 @@ export async function taxReportSummaryAggregates(
     * COALESCE((elem->>'unitCost')::numeric, 0)
   `;
 
-  const [currency, purchaseRows, saleRows, dueRows] = await Promise.all([
-    salesCurrency(db, tenantId),
-    db.$queryRaw<
+  const [currency, purchaseRows, saleRows, dueRows] = await runPool(
+    [
+    () => salesCurrency(db, tenantId),
+    () => db.$queryRaw<
       Array<{
         total_purchase: Prisma.Decimal | null;
         purchase_inc_tax: Prisma.Decimal | null;
@@ -707,7 +716,7 @@ export async function taxReportSummaryAggregates(
         AND sm.date >= ${window.from}
         AND sm.date <= ${window.to}
     `,
-    db.$queryRaw<
+    () => db.$queryRaw<
       Array<{
         total_sale: Prisma.Decimal | null;
         sale_inc_tax: Prisma.Decimal | null;
@@ -750,7 +759,7 @@ export async function taxReportSummaryAggregates(
             AND s.date <= ${window.to}
         ), 0) AS sell_return
     `,
-    db.$queryRaw<[{ sale_due: Prisma.Decimal | null }]>`
+    () => db.$queryRaw<[{ sale_due: Prisma.Decimal | null }]>`
       SELECT COALESCE(SUM(
         GREATEST(0, s.total - COALESCE(p.paid, 0))
       ), 0) AS sale_due
@@ -768,7 +777,9 @@ export async function taxReportSummaryAggregates(
         AND s.date >= ${window.from}
         AND s.date <= ${window.to}
     `,
-  ]);
+  ],
+    NEON_QUERY_CONCURRENCY,
+  );
 
   const purchase = purchaseRows[0];
   const sale = saleRows[0];

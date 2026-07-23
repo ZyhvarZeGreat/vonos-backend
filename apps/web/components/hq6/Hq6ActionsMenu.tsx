@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { ChevronDown } from "lucide-react";
+import { hq6ActionIcon } from "@/lib/utils/hq6ActionIcon";
 import { cn } from "@/lib/utils/cn";
 
 export interface Hq6ActionItem {
@@ -10,7 +11,7 @@ export interface Hq6ActionItem {
   onClick: () => void;
   danger?: boolean;
   disabled?: boolean;
-  /** Optional leading icon (lucide node). */
+  /** Optional leading icon (lucide node). Falls back to id-based default. */
   icon?: ReactNode;
   /** Render a separator line before this item. */
   dividerBefore?: boolean;
@@ -68,33 +69,36 @@ export function Hq6ActionsMenu({
           className="hq6-actions-menu"
           onClick={(e) => e.stopPropagation()}
         >
-          {items.map((item) => (
-            <li key={item.id} role="none">
-              {item.dividerBefore ? (
-                <div className="hq6-actions-menu-divider" role="separator" />
-              ) : null}
-              <button
-                type="button"
-                role="menuitem"
-                disabled={item.disabled}
-                className={cn(
-                  "hq6-actions-menu-item",
-                  item.danger && "hq6-actions-menu-item-danger",
-                )}
-                onClick={() => {
-                  setOpen(false);
-                  item.onClick();
-                }}
-              >
-                {item.icon ? (
-                  <span className="hq6-actions-menu-icon" aria-hidden>
-                    {item.icon}
-                  </span>
+          {items.map((item) => {
+            const leadingIcon = item.icon ?? hq6ActionIcon(item.id);
+            return (
+              <li key={item.id} role="none">
+                {item.dividerBefore ? (
+                  <div className="hq6-actions-menu-divider" role="separator" />
                 ) : null}
-                {item.label}
-              </button>
-            </li>
-          ))}
+                <button
+                  type="button"
+                  role="menuitem"
+                  disabled={item.disabled}
+                  className={cn(
+                    "hq6-actions-menu-item",
+                    item.danger && "hq6-actions-menu-item-danger",
+                  )}
+                  onClick={() => {
+                    setOpen(false);
+                    item.onClick();
+                  }}
+                >
+                  {leadingIcon ? (
+                    <span className="hq6-actions-menu-icon" aria-hidden>
+                      {leadingIcon}
+                    </span>
+                  ) : null}
+                  {item.label}
+                </button>
+              </li>
+            );
+          })}
         </ul>
       ) : null}
     </div>

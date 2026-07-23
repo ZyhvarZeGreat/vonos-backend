@@ -34,9 +34,13 @@ export async function getAppointmentsPage(
     from?: string;
     to?: string;
     status?: string;
+    includeSummary?: boolean;
   } = {},
 ): Promise<ListPage<AppointmentListRow>> {
-  return fetchTenantListPage(LIST_PATH, tenantId, cursor, limit, filters);
+  return fetchTenantListPage(LIST_PATH, tenantId, cursor, limit, {
+    ...filters,
+    includeSummary: filters.includeSummary ?? false,
+  });
 }
 
 /** Full appointment list for export — not for table rendering. */

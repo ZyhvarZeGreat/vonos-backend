@@ -10,7 +10,8 @@ export interface ListAmountSummary {
 
 export interface PaginatedList<T> {
   items: T[];
-  totalCount: number;
+  /** Filtered row count. Omitted when `includeSummary=0` (rows-first paint). */
+  totalCount?: number;
   amountSummary?: ListAmountSummary;
 }
 
@@ -20,8 +21,7 @@ export function isPaginatedList<T>(
   return (
     typeof value === 'object' &&
     value != null &&
-    Array.isArray((value as PaginatedList<T>).items) &&
-    typeof (value as PaginatedList<T>).totalCount === 'number'
+    Array.isArray((value as PaginatedList<T>).items)
   );
 }
 

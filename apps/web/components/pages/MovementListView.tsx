@@ -9,6 +9,7 @@ import { ListPageShell } from "@/components/organisms/ListPageShell";
 import { Hq6ActionsMenu } from "@/components/hq6/Hq6ActionsMenu";
 import {
   getAllStockMovements,
+  getStockMovementsListSummary,
   getStockMovementsPage,
   type StockMovementListRow,
 } from "@/lib/api/stockMovements";
@@ -101,8 +102,9 @@ function MovementListViewBody({
     enabled: Boolean(tenantId),
     filters: apiFilters,
     search,
-    fetchPage: (cursor, limit) =>
-      getStockMovementsPage(tenantId!, apiFilters, cursor, limit),
+    fetchPage: (cursor, limit, _sort, opts) =>
+      getStockMovementsPage(tenantId!, { ...apiFilters, includeSummary: opts?.includeSummary }, cursor, limit),
+    fetchSummary: () => getStockMovementsListSummary(tenantId!, apiFilters),
     getCursor: (row) => movementListCursor(row),
   });
 

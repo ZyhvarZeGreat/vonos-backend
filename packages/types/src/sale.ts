@@ -1,3 +1,5 @@
+import type { AuditLogEntry } from "./audit";
+
 /** UI-facing labels — matches StatusPill `saleReturnStatus` vocabulary */
 export const SALE_RETURN_STATUSES = [
   "Completed",
@@ -108,6 +110,28 @@ export interface SaleDetail extends Sale {
   customerPhone?: string | null;
   customerBusinessName?: string | null;
   customerTotalSellDue?: number | null;
+  /** Linked job vehicle label (make-model plate) when available. */
+  vehicleLabel?: string | null;
+}
+
+/** One modal round-trip: sale detail + payments + recent activity. */
+export interface SalePaymentViewRow {
+  id: string;
+  amount: number;
+  currency: string;
+  method: string | null;
+  paymentRefNo: string | null;
+  paidOn: string | null;
+  note: string | null;
+  accountId: string | null;
+  accountName: string | null;
+  createdByName: string | null;
+}
+
+export interface SaleViewBundle {
+  sale: SaleDetail;
+  payments: SalePaymentViewRow[];
+  activities: AuditLogEntry[];
 }
 
 export interface SaleFilters {
@@ -136,6 +160,8 @@ export interface SaleFilters {
   search?: string;
   sortBy?: string;
   sortDir?: "asc" | "desc";
+  /** When false, skip count/amountSummary for faster first paint. */
+  includeSummary?: boolean;
 }
 
 export interface CreateSaleLineRequest {

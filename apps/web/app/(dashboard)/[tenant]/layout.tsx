@@ -4,7 +4,7 @@ import { useParams, usePathname } from "next/navigation";
 import { Sidebar } from "@/components/organisms/Sidebar";
 import { TopBar } from "@/components/organisms/TopBar";
 import { isNavRouteActive, parseTenantPath } from "@/lib/utils/tenantRoutes";
-import { getEntityPage } from "@/lib/registries/entityPages";
+import { getEntityPageMeta } from "@/lib/registries/entityPageMeta";
 import { navSectionsForTenant } from "@/lib/utils/navRoutes";
 import { useRouteTenant } from "@/lib/hooks/useRouteTenant";
 import { useRecordTitle } from "@/lib/hooks/useRecordTitle";
@@ -41,7 +41,7 @@ function TenantLayoutInner({ children }: { children: React.ReactNode }) {
     tenantId,
   );
 
-  const pageConfig = getEntityPage(params.tenant, section);
+  const pageConfig = getEntityPageMeta(params.tenant, section);
   const isFinance = section === "finance";
   const isOverview = section === "overview";
 

@@ -63,7 +63,12 @@ export async function getUsersPage(
   tenantId: string,
   cursor: string | undefined,
   limit = DEFAULT_TABLE_PAGE_SIZE,
-  filters: { search?: string; role?: string; status?: string } = {},
+  filters: {
+    search?: string;
+    role?: string;
+    status?: string;
+    includeSummary?: boolean;
+  } = {},
 ): Promise<ListPage<UserListRow>> {
   return fetchListPage(
     (pageCursor, pageLimit) =>
@@ -85,7 +90,12 @@ export async function getUsersPage(
 export async function getAllTenantUsersPage(
   cursor: string | undefined,
   limit = DEFAULT_TABLE_PAGE_SIZE,
-  filters: { search?: string; role?: string; status?: string } = {},
+  filters: {
+    search?: string;
+    role?: string;
+    status?: string;
+    includeSummary?: boolean;
+  } = {},
 ): Promise<ListPage<UserListRow>> {
   return fetchListPage(
     (pageCursor, pageLimit) =>

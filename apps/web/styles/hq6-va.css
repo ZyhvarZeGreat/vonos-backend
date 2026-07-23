@@ -373,11 +373,17 @@
 }
 
 [data-hq6="true"] .hq6-table-wrap {
-  overflow-x: auto;
+  overflow: auto;
+  max-height: min(70vh, 720px);
+  /* Establish sticky containing block cleanly */
+  position: relative;
+  -webkit-overflow-scrolling: touch;
 }
 
 [data-hq6="true"] .hq6-table-wrap table {
   font-size: 0.8125rem;
+  border-collapse: separate;
+  border-spacing: 0;
 }
 
 [data-hq6="true"] .hq6-table-wrap thead th {
@@ -388,6 +394,10 @@
   border-bottom: 1px solid #d1d5db !important;
   padding-top: 0.55rem !important;
   padding-bottom: 0.55rem !important;
+  position: sticky !important;
+  top: 0 !important;
+  z-index: 4;
+  box-shadow: 0 1px 0 0 #d1d5db;
 }
 
 [data-hq6="true"] .hq6-table-wrap tbody td {
@@ -395,12 +405,27 @@
   vertical-align: middle;
 }
 
-[data-hq6="true"] .hq6-table-wrap tbody tr:nth-child(even) {
-  background: #fafafa;
-}
-
 [data-hq6="true"] .hq6-table-wrap tbody tr:hover {
   background: #f3f4f6;
+}
+
+[data-hq6="true"] .hq6-table-wrap tbody tr[data-selected="true"] {
+  background: #eef5ff;
+}
+
+/* Freeze first data column (actions is often first in HQ6). */
+[data-hq6="true"] .hq6-table-wrap.hq6-table-freeze-first thead th:first-child,
+[data-hq6="true"] .hq6-table-wrap.hq6-table-freeze-first tbody td:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: #fff;
+  box-shadow: 2px 0 4px -2px rgba(0, 0, 0, 0.08);
+}
+
+[data-hq6="true"] .hq6-table-wrap.hq6-table-freeze-first thead th:first-child {
+  background: #ecf0f5 !important;
+  z-index: 3;
 }
 
 [data-hq6="true"] .hq6-pay-badge {
@@ -1588,6 +1613,66 @@ textarea.hq6-modal-input {
   border-radius: 0.25rem;
   color: #4b5563;
   white-space: pre-wrap;
+}
+
+/* —— HQ6 Sell Details modal —— */
+
+.hq6-modal-btn-packing {
+  background: #00a65a;
+  color: #fff;
+}
+
+.hq6-modal-btn-packing:hover:not(:disabled) {
+  background: #008d4c;
+}
+
+.hq6-sale-view-lines th.text-right,
+.hq6-sale-view-lines td.text-right {
+  text-align: right;
+}
+
+.hq6-sale-view-totals tbody tr:nth-child(even) {
+  background: #f3f4f6;
+}
+
+.hq6-sale-view-totals tbody tr:nth-child(odd) {
+  background: #fff;
+}
+
+.hq6-sale-view-notes {
+  margin-top: 1rem;
+}
+
+.hq6-sale-activity-note {
+  display: block;
+  margin-bottom: 0.25rem;
+}
+
+.hq6-sale-activity-badges {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.hq6-sale-activity-badge {
+  display: inline-block;
+  padding: 0.1rem 0.4rem;
+  border-radius: 0.2rem;
+  background: #00c0ef;
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.hq6-sale-activity-badge-to {
+  background: #00a65a;
+}
+
+.hq6-sale-activity-arrow {
+  color: #6b7280;
+  font-size: 0.75rem;
 }
 
 /* —— HQ6 Add Sale / Add Purchase form pages —— */

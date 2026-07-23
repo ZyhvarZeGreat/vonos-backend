@@ -1,74 +1,77 @@
 import type { ComponentType } from "react";
-import { FinanceView } from "@/components/pages/FinanceView";
-import { WarehouseInventoryView } from "@/components/pages/WarehouseInventoryView";
-import { Hq6ProductsListView } from "@/components/pages/Hq6ProductsListView";
-import { Hq6ChecklistView } from "@/components/pages/Hq6ChecklistView";
-import { Hq6EssentialsTodoView } from "@/components/pages/Hq6EssentialsTodoView";
-import { WarehouseTransfersView } from "@/components/pages/WarehouseTransfersView";
-import { WarehouseSuppliersView } from "@/components/pages/WarehouseSuppliersView";
-import { EntityReportsView } from "@/components/pages/EntityReportsView";
-import {
-  MovementListView,
-  PurchaseOrdersView,
-  PurchaseReturnsView,
-} from "@/components/pages/MovementListView";
-import { ReportRunView } from "@/components/pages/ReportRunView";
-import { KidsWearInventoryView } from "@/components/pages/KidsWearInventoryView";
-import { JobsListView } from "@/components/pages/JobsListView";
-import {
-  SalesListView,
-  DraftsListView,
-  QuotationsListView,
-  OrdersListView,
-  CustomersListView,
-  ReturnsListView,
-  VehiclesListView,
-  RequisitionsListView,
-  IncomingRequisitionsListView,
-  MenuItemsListView,
-  ServicesListView,
-  CatalogListView,
-} from "@/components/pages/EntityListViews";
-import { KitchenDisplayView } from "@/components/pages/KitchenDisplayView";
-import { TableManagementView } from "@/components/pages/TableManagementView";
-import {
-  AppointmentsCalendarView,
-  StylistScheduleView,
-} from "@/components/pages/AppointmentsCalendarView";
-import { HrView, UsersView } from "@/components/pages/HrView";
-import { LocationsView } from "@/components/pages/LocationsView";
-import { SettingsView } from "@/components/pages/UsersSettingsViews";
-import { AddOrderView, AddDraftView, AddQuotationView, AddSaleView } from "@/components/pages/AddSaleView";
-import {
-  DiscountsListView,
-  ListPosView,
-  PrintLabelsView,
-  ShipmentsListView,
-  UpdatePriceView,
-  VariationsListView,
-} from "@/components/pages/PosExtrasViews";
-import { AddProductView } from "@/components/pages/AddProductView";
-import { ProductSlugRedirect } from "@/components/pages/ProductSectionRedirect";
 import {
   AccountBookView,
-  createPosPlaceholderView,
-  PaymentsListView,
-  PosPlaceholderViews,
-} from "@/components/pages/PosNavViews";
-import { CatalogMetaListView } from "@/components/pages/CatalogMetaListView";
-import { RolesListView, CommissionAgentsListView } from "@/components/pages/UserManagementViews";
-import { CustomerGroupsListView, ImportContactsView, ImportExpenseView, ImportProductsView, ImportSalesView } from "@/components/pages/ContactsGroupViews";
-import { AddExpenseView, ExpenseCategoriesListView, ExpensesListView } from "@/components/pages/ExpensesViews";
-import {
+  AddDraftView,
+  AddExpenseView,
+  AddOrderView,
+  AddProductView,
+  AddPurchaseView,
+  AddQuotationView,
+  AddSaleView,
+  AppointmentsCalendarView,
+  BarcodeSettingsView,
+  CatalogListView,
+  CatalogMetaListView,
+  CommissionAgentsListView,
+  CustomerGroupsListView,
+  CustomersListView,
+  DiscountsListView,
+  DraftsListView,
+  EntityReportsView,
+  ExpenseCategoriesListView,
+  ExpensesListView,
+  FinanceView,
+  Hq6ChecklistView,
+  Hq6EssentialsTodoView,
+  Hq6ProductsListView,
+  HrView,
+  HrmPageView,
+  ImportContactsView,
+  ImportExpenseView,
+  ImportOpeningStockView,
+  ImportProductsView,
+  ImportSalesView,
+  IncomingRequisitionsListView,
+  InvoiceSettingsView,
+  InvoicesListView,
+  JobsListView,
+  KidsWearInventoryView,
+  KitchenDisplayView,
+  ListPosView,
+  LocationsView,
+  MenuItemsListView,
+  MovementListView,
+  OrdersListView,
   PaymentAccountReportView,
   PaymentAccountsListView,
-} from "@/components/pages/PaymentAccountViews";
-import { AddPurchaseView } from "@/components/pages/AddPurchaseView";
-import { PayrollView } from "@/components/pages/PayrollView";
-import { InvoicesListView } from "@/components/pages/InvoicesListView";
-import { HrmPageView, HRM_SLUG_TO_TAB, type HrmTab } from "@/components/pages/HrmPageView";
-import { InvoiceSettingsView, BarcodeSettingsView, ReceiptPrintersView, TaxRatesListView } from "@/components/pages/SettingsSubViews";
+  PaymentsListView,
+  PosTerminalView,
+  PrintLabelsView,
+  PurchaseOrdersView,
+  PurchaseReturnsView,
+  QuotationsListView,
+  ReceiptPrintersView,
+  ReportRunView,
+  RequisitionsListView,
+  ReturnsListView,
+  RolesListView,
+  SalesListView,
+  ServicesListView,
+  SettingsView,
+  ShipmentsListView,
+  StylistScheduleView,
+  TableManagementView,
+  TaxRatesListView,
+  UpdatePriceView,
+  UsersView,
+  VariationsListView,
+  VehiclesListView,
+  WarehouseInventoryView,
+  WarehouseSuppliersView,
+  WarehouseTransfersView,
+} from "@/lib/registries/lazyEntityViews";
 import type { TenantCode } from "@/lib/registries/tenants";
+import { HRM_SLUG_TO_TAB, type HrmTab } from "@/lib/registries/hrmTabs";
 
 import type { CreateFlowKey } from "@/lib/registries/createFlows";
 import { REPORT_REGISTRY } from "@/lib/registries/reportRegistry";
@@ -197,7 +200,7 @@ function posSellPages(addSaleView: ComponentType): SlugMap {
   return {
     "add-sale": { title: "Add Sale", View: addSaleView },
     pos: { title: "List POS", View: ListPosView },
-    "pos-terminal": { title: "POS", View: PosPlaceholderViews["pos-terminal"] },
+    "pos-terminal": { title: "POS", View: PosTerminalView },
     "add-draft": { title: "Add Draft", View: AddDraftView },
     drafts: { title: "List Drafts", View: DraftsListView },
     "add-quotation": { title: "Add Quotation", View: AddQuotationView },
@@ -216,7 +219,7 @@ const posProductPages: SlugMap = {
   "import-products": { title: "Import Products", View: ImportProductsView },
   "import-opening-stock": {
     title: "Import Opening Stock",
-    View: ImportProductsView,
+    View: ImportOpeningStockView,
   },
   "price-groups": { title: "Selling Price Group", View: () => <CatalogMetaListView kind="price-groups" /> },
   units: { title: "Units", View: () => <CatalogMetaListView kind="units" /> },

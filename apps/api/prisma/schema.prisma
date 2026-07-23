@@ -305,6 +305,10 @@ model StockMovement {
   reference String
   status    MovementStatus @default(Ordered)
   lines          Json
+  /// Denormalized from lines[] — list pages must not expand jsonb.
+  itemCount      Int            @default(0)
+  /// Denormalized Σ(qty × unitCost) from lines[].
+  grandTotal     Decimal        @default(0)
   notes          String?
   locationCode   String?
   supplierId     String?
@@ -327,6 +331,8 @@ model StockMovement {
   @@index([tenantId, date])
   @@index([tenantId, type, date])
   @@index([tenantId, type, status])
+  @@index([tenantId, type, deletedAt])
+  @@index([tenantId, type, deletedAt, date])
   @@index([tenantId, source])
   @@index([tenantId, paymentStatus])
   @@index([supplierId])

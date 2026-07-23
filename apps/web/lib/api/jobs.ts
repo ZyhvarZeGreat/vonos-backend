@@ -45,6 +45,7 @@ export interface JobFilters {
   to?: string;
   cursor?: string;
   limit?: number;
+  includeSummary?: boolean;
 }
 
 async function fetchJobsRaw(

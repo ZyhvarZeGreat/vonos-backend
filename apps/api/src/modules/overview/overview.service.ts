@@ -1,4 +1,10 @@
-import { BadRequestException, Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  OnModuleDestroy,
+  OnModuleInit,
+} from '@nestjs/common';
 import type {
   GroupOverviewDashboard,
   GroupOverviewDetails,
@@ -31,10 +37,15 @@ import {
 import { buildVaHq6HomeBundle } from './overviewFinance';
 
 const ENTITY_CACHE_TTL_S = 900;
+/** Keep Redis + L1 warm past Neon idle; 0 disables. Default 2 min. */
+const DEFAULT_HOT_PATHS_WARM_INTERVAL_MS = 120_000;
 
 @Injectable()
-export class OverviewService implements OnModuleInit {
+export class OverviewService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(OverviewService.name);
+  private warmInterval: ReturnType<typeof setInterval> | null = null;
+  private warmInFlight = false;
+  private bootstrapTimeout: ReturnType<typeof setTimeout> | null = null;
 
   constructor(
     private readonly tenantDb: TenantDbService,
@@ -43,11 +54,33 @@ export class OverviewService implements OnModuleInit {
   ) {}
 
   onModuleInit(): void {
-    // Warm snapshots + group overview in background so first VAG visit hits L1 (~ms).
+    // Warm snapshots + hot paths in background so first visit hits L1 (~ms).
     const delayMs = Number(process.env.GROUP_OVERVIEW_BOOTSTRAP_DELAY_MS ?? 3_000);
-    setTimeout(() => {
+    this.bootstrapTimeout = setTimeout(() => {
+      this.bootstrapTimeout = null;
       void this.bootstrapGroupOverviewCache();
     }, delayMs);
+
+    const intervalMs = Number(
+      process.env.HOT_PATHS_WARM_INTERVAL_MS ?? DEFAULT_HOT_PATHS_WARM_INTERVAL_MS,
+    );
+    if (intervalMs > 0) {
+      this.warmInterval = setInterval(() => {
+        void this.runPeriodicHotPathsWarm();
+      }, intervalMs);
+      this.logger.log(`hot-paths warm interval ${intervalMs}ms`);
+    }
+  }
+
+  onModuleDestroy(): void {
+    if (this.bootstrapTimeout) {
+      clearTimeout(this.bootstrapTimeout);
+      this.bootstrapTimeout = null;
+    }
+    if (this.warmInterval) {
+      clearInterval(this.warmInterval);
+      this.warmInterval = null;
+    }
   }
 
   private async bootstrapGroupOverviewCache(): Promise<void> {
@@ -62,6 +95,25 @@ export class OverviewService implements OnModuleInit {
       this.logger.warn(
         `group-overview bootstrap failed: ${err instanceof Error ? err.message : err}`,
       );
+    }
+  }
+
+  private async runPeriodicHotPathsWarm(): Promise<void> {
+    if (this.warmInFlight) {
+      this.logger.debug('hot-paths warm skipped (previous still running)');
+      return;
+    }
+    this.warmInFlight = true;
+    const startedAt = Date.now();
+    try {
+      await warmHotPathsCache(this.prisma, this.cache);
+      this.logger.log(`hot-paths periodic warm ${Date.now() - startedAt}ms`);
+    } catch (err) {
+      this.logger.warn(
+        `hot-paths periodic warm failed: ${err instanceof Error ? err.message : err}`,
+      );
+    } finally {
+      this.warmInFlight = false;
     }
   }
 

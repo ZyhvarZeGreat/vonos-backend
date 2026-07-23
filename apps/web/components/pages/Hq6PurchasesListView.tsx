@@ -36,6 +36,8 @@ import { Hq6ViewPaymentsModal } from "@/components/hq6/Hq6ViewPaymentsModal";
 import {
   deleteStockMovement,
   getAllStockMovements,
+  getPurchaseView,
+  getStockMovementsListSummary,
   getStockMovementsPage,
   updateStockMovementStatus,
   type StockMovementListRow,
@@ -45,7 +47,13 @@ import { useServerListPage } from "@/lib/hooks/useServerListPage";
 import { useListExport } from "@/lib/hooks/useListExport";
 import { useListRecordModal } from "@/lib/hooks/useListRecordModal";
 import { useListPageFilters } from "@/lib/hooks/useListPageFilters";
+import { useTableViewPrefs } from "@/lib/hooks/useTableViewPrefs";
 import { useRouteTenant, useTenantId } from "@/lib/hooks/useRouteTenant";
+import {
+  MODAL_RECORD_STALE_MS,
+  modalKeys,
+  prefetchModalQuery,
+} from "@/lib/query/modalQueryKeys";
 import { HQ6_PURCHASE_FILTERS } from "@/lib/registries/hq6Filters";
 import { movementListCursor } from "@/lib/utils/pagination";
 import {
@@ -70,7 +78,16 @@ export function Hq6PurchasesListView() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const { tenantCode, config } = useRouteTenant();
-  const { recordId, openRecord, closeRecord } = useListRecordModal();
+  const { recordId, openRecord, closeRecord } = useListRecordModal({
+    onPrefetchRecord: (id) => {
+      if (!tenantId) return;
+      prefetchModalQuery(queryClient, {
+        queryKey: modalKeys.purchaseView(tenantId, id),
+        queryFn: () => getPurchaseView(tenantId, id),
+        staleTime: MODAL_RECORD_STALE_MS,
+      });
+    },
+  });
   const exportList = useListExport();
   const {
     dateRange,
@@ -89,7 +106,11 @@ export function Hq6PurchasesListView() {
   const [localSearch, setLocalSearch] = useState(search);
   const [printOpen, setPrintOpen] = useState(false);
   const [columnsOpen, setColumnsOpen] = useState(false);
-  const [visibleColumnKeys, setVisibleColumnKeys] = useState<string[] | null>(null);
+  const tablePrefs = useTableViewPrefs(
+    tenantCode ? `${tenantCode}.purchases` : undefined,
+  );
+  const { visibleColumnKeys, setVisibleColumnKeys, density, setDensity, resetColumnVisibility } =
+    tablePrefs;
   const [deleteTarget, setDeleteTarget] = useState<StockMovementListRow | null>(null);
   const [payTarget, setPayTarget] = useState<StockMovementListRow | null>(null);
   const [paymentsTarget, setPaymentsTarget] = useState<StockMovementListRow | null>(null);
@@ -148,8 +169,9 @@ export function Hq6PurchasesListView() {
     filters: apiFilters,
     search: localSearch || search,
     defaultPageSize: 50,
-    fetchPage: (cursor, limit) =>
-      getStockMovementsPage(tenantId!, apiFilters, cursor, limit),
+    fetchPage: (cursor, limit, _sort, opts) =>
+      getStockMovementsPage(tenantId!, { ...apiFilters, includeSummary: opts?.includeSummary }, cursor, limit),
+    fetchSummary: () => getStockMovementsListSummary(tenantId!, apiFilters),
     getCursor: (row) => movementListCursor(row),
   });
 
@@ -329,12 +351,14 @@ export function Hq6PurchasesListView() {
       {
         key: "grandTotal",
         header: "Grand Total",
+        numeric: true,
         sortValue: (row) => row.grandTotal ?? 0,
         render: (row) => formatHq6Currency(row.grandTotal ?? 0, "NGN"),
       },
       {
         key: "paymentDue",
         header: "Payment due",
+        numeric: true,
         sortValue: (row) => row.paymentDue ?? 0,
         render: (row) => formatHq6Currency(row.paymentDue ?? 0, "NGN"),
       },
@@ -432,7 +456,7 @@ export function Hq6PurchasesListView() {
         ) : null}
       </div>
 
-      <div className="hq6-card hq6-products-box overflow-hidden">
+      <div className="hq6-card hq6-products-box overflow-x-clip">
         <div className="hq6-tab-row">
           <div className="flex min-w-0 flex-1">
             <button type="button" className="hq6-tab hq6-tab-active">
@@ -471,15 +495,22 @@ export function Hq6PurchasesListView() {
           onPrint={() => setPrintOpen(true)}
           onColumnVisibility={() => setColumnsOpen(true)}
           onExportPdf={() => undefined}
+          density={density}
+          onDensityChange={setDensity}
         />
 
-        <div className="hq6-table-wrap relative">
+        <div className="hq6-table-wrap hq6-table-freeze-first relative">
           <DataTable
             data={purchases}
             columns={effectiveColumns}
             displayMode="table"
             embedded
             disablePagination
+            stickyHeader
+            stickyFirstColumn
+            density={density}
+            onDensityChange={setDensity}
+            showDensityControl={false}
             isLoading={isLoading}
             isFetching={isFetching && !isLoading}
             error={error ? "Could not load purchases." : null}
@@ -600,6 +631,10 @@ export function Hq6PurchasesListView() {
         columns={columnOptions}
         visibleKeys={visibleColumnKeys ?? columnOptions.map((c) => c.key)}
         onChange={setVisibleColumnKeys}
+        onReset={() => {
+          resetColumnVisibility();
+          setColumnsOpen(false);
+        }}
       />
     </div>
   );

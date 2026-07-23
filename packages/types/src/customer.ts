@@ -45,6 +45,8 @@ export interface CustomerFilters {
   from?: string;
   /** ISO date — filter by customer createdAt <= to */
   to?: string;
+  /** When false, skip count/amountSummary for faster first paint. */
+  includeSummary?: boolean;
 }
 
 export interface CreateCustomerInput {
@@ -133,6 +135,13 @@ export interface ContactLedgerEntry {
   linkedRecordType?: string | null;
   linkedRecordId?: string | null;
   reference?: string | null;
+}
+
+/** Customer modal: contact + due summary + ledger in one round-trip. */
+export interface CustomerViewBundle {
+  customer: CustomerContact;
+  summary: ContactDueSummary;
+  ledger: ContactLedgerEntry[];
 }
 
 export interface CsvImportResult {

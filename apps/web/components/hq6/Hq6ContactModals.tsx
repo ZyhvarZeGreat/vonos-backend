@@ -15,6 +15,11 @@ import {
   payCustomerDue,
   updateCustomer,
 } from "@/lib/api/customers";
+import {
+  MODAL_RECORD_STALE_MS,
+  MODAL_REF_STALE_MS,
+  modalKeys,
+} from "@/lib/query/modalQueryKeys";
 import { formatHq6Currency, formatHq6DateTime } from "@/lib/utils/hq6Format";
 import { toast } from "@/stores/toastStore";
 
@@ -85,9 +90,10 @@ export function Hq6ContactEditModal({
   const [saving, setSaving] = useState(false);
 
   const { data: groups = [] } = useQuery({
-    queryKey: ["customer-groups", tenantId, "edit-contact"],
+    queryKey: modalKeys.customerGroups(tenantId),
     queryFn: () => getCustomerGroups(tenantId!),
     enabled: Boolean(open && tenantId),
+    staleTime: MODAL_REF_STALE_MS,
   });
 
   useEffect(() => {
@@ -397,16 +403,21 @@ export function Hq6PayContactModal({
   const [paidOn, setPaidOn] = useState(nowPaidOnLocal);
   const [saving, setSaving] = useState(false);
 
-  const { data: accounts = [] } = useQuery({
-    queryKey: ["payment-accounts", tenantId, "pay-contact"],
+  const accountsQuery = useQuery({
+    queryKey: modalKeys.paymentAccounts(tenantId),
     queryFn: () => getPaymentAccounts(tenantId!),
     enabled: Boolean(open && tenantId),
+    staleTime: MODAL_REF_STALE_MS,
   });
+  const accounts = accountsQuery.data ?? [];
 
   const { data: summary } = useQuery({
     queryKey: ["customer-summary", tenantId, customer?.id, "pay-modal"],
     queryFn: () => getCustomerSummary(tenantId!, customer!.id),
-    enabled: Boolean(open && tenantId && customer?.id),
+    enabled: Boolean(
+      open && tenantId && customer?.id && accountsQuery.isFetched,
+    ),
+    staleTime: MODAL_RECORD_STALE_MS,
   });
 
   const totals = useMemo(() => {

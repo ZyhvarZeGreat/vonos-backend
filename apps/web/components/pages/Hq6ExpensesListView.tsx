@@ -30,6 +30,7 @@ import { getUsers } from "@/lib/api/users";
 import { useServerListPage } from "@/lib/hooks/useServerListPage";
 import { useListExport } from "@/lib/hooks/useListExport";
 import { useListPageFilters } from "@/lib/hooks/useListPageFilters";
+import { useTableViewPrefs } from "@/lib/hooks/useTableViewPrefs";
 import { useRouteTenant, useTenantId } from "@/lib/hooks/useRouteTenant";
 import { expensePageRoute } from "@/lib/registries/expenseNav";
 import {
@@ -74,7 +75,11 @@ export function Hq6ExpensesListView() {
   const [paymentsExpense, setPaymentsExpense] = useState<Expense | null>(null);
   const [printOpen, setPrintOpen] = useState(false);
   const [columnsOpen, setColumnsOpen] = useState(false);
-  const [visibleColumnKeys, setVisibleColumnKeys] = useState<string[] | null>(null);
+  const tablePrefs = useTableViewPrefs(
+    tenantCode ? `${tenantCode}.expenses` : undefined,
+  );
+  const { visibleColumnKeys, setVisibleColumnKeys, density, setDensity, resetColumnVisibility } =
+    tablePrefs;
 
   const customersQuery = useQuery({
     queryKey: ["customers", tenantId, "expense-filter"],
@@ -132,10 +137,11 @@ export function Hq6ExpensesListView() {
     enabled: Boolean(tenantId),
     search,
     filters: listFilters,
-    fetchPage: (cursor, limit) =>
+    fetchPage: (cursor, limit, _sort, opts) =>
       getExpensesPage(tenantId!, cursor, limit, {
         ...listFilters,
         search: (localSearch || search).trim() || undefined,
+        includeSummary: opts?.includeSummary,
       }),
   });
 
@@ -267,18 +273,21 @@ export function Hq6ExpensesListView() {
       {
         key: "taxAmount",
         header: "Tax",
+        numeric: true,
         sortValue: (row) => row.taxAmount,
         render: (row) => formatHq6Currency(row.taxAmount, "NGN"),
       },
       {
         key: "totalAmount",
         header: "Total Amount",
+        numeric: true,
         sortValue: (row) => row.totalAmount,
         render: (row) => formatHq6Currency(row.totalAmount, "NGN"),
       },
       {
         key: "paymentDue",
         header: "Payment Due",
+        numeric: true,
         sortValue: (row) => row.paymentDue,
         render: (row) => formatHq6Currency(row.paymentDue, "NGN"),
       },
@@ -386,7 +395,7 @@ export function Hq6ExpensesListView() {
           ) : null}
         </div>
 
-        <div className="hq6-card hq6-products-box overflow-hidden">
+        <div className="hq6-card hq6-products-box overflow-x-clip">
           <div className="hq6-tab-row">
             <div className="flex min-w-0 flex-1">
               <button type="button" className="hq6-tab hq6-tab-active">
@@ -428,15 +437,22 @@ export function Hq6ExpensesListView() {
             onPrint={() => setPrintOpen(true)}
             onColumnVisibility={() => setColumnsOpen(true)}
             onExportPdf={() => undefined}
+            density={density}
+            onDensityChange={setDensity}
           />
 
-          <div className="hq6-table-wrap relative">
+          <div className="hq6-table-wrap hq6-table-freeze-first relative">
             <DataTable
               data={items}
               columns={effectiveColumns}
               displayMode="table"
               embedded
               disablePagination
+              stickyHeader
+              stickyFirstColumn
+              density={density}
+              onDensityChange={setDensity}
+              showDensityControl={false}
               isLoading={isLoading}
               isFetching={isFetching && !isLoading}
               error={error ? "Could not load expenses." : null}
@@ -579,6 +595,10 @@ export function Hq6ExpensesListView() {
         columns={columnOptions}
         visibleKeys={visibleColumnKeys ?? columnOptions.map((c) => c.key)}
         onChange={setVisibleColumnKeys}
+        onReset={() => {
+          resetColumnVisibility();
+          setColumnsOpen(false);
+        }}
       />
     </>
   );

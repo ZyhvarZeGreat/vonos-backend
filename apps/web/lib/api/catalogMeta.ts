@@ -55,8 +55,11 @@ export async function getCatalogMetaPage(
   kind: CatalogMetaKind,
   cursor: string | undefined,
   limit = DEFAULT_TABLE_PAGE_SIZE,
+  opts?: { includeSummary?: boolean },
 ): Promise<ListPage<CatalogMetaRow>> {
-  return fetchTenantListPage(ENDPOINTS[kind], tenantId, cursor, limit);
+  return fetchTenantListPage(ENDPOINTS[kind], tenantId, cursor, limit, {
+    includeSummary: opts?.includeSummary ?? false,
+  });
 }
 
 export async function getCatalogCategoriesPage(
