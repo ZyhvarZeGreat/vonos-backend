@@ -36,6 +36,7 @@ import {
   toIso,
   toNumber,
 } from '../../common/utils/serializers';
+import { encodePublicInvoiceToken } from '../../common/utils/publicInvoiceToken';
 
 function normalizeCreateStatus(
   status?: SaleStatus | 'final',
@@ -209,70 +210,71 @@ export class SalesService {
         : {}),
     };
 
-    const [rows, totalCount, saleAmountAgg, paymentAmountAgg] =
-      await Promise.all([
-        this.tenantDb.db.sale.findMany({
-          where: {
-            ...baseWhere,
-            ...(pagination.where ?? {}),
-          },
-          select: {
-            id: true,
-            tenantId: true,
-            reference: true,
-            customerId: true,
-            customer: { select: { name: true, phone: true } },
-            jobId: true,
-            job: { select: { reference: true } },
-            total: true,
-            discountAmount: true,
-            taxAmount: true,
-            notes: true,
-            originalSaleId: true,
-            currency: true,
-            status: true,
-            paymentStatus: true,
-            paymentMethod: true,
-            payments: {
-              where: { deletedAt: null, isReturn: false },
-              select: { amount: true },
-            },
-            cleanerUserId: true,
-            cleanerName: true,
-            serviceStaffEmployeeId: true,
-            serviceStaffEmployee: { select: { name: true } },
-            locationCode: true,
-            shippingStatus: true,
-            shippingAddress: true,
-            trackingNumber: true,
-            date: true,
-            createdByUserId: true,
-            createdByName: true,
-            createdAt: true,
-            updatedAt: true,
-            _count: { select: { lines: true } },
-          },
-          orderBy: [{ [sort.sortField]: sort.sortDir }, { id: sort.sortDir }],
-          take: pagination.take,
-        }),
-        this.tenantDb.db.sale.count({ where: baseWhere }),
-        this.tenantDb.db.sale.aggregate({
-          where: baseWhere,
-          _sum: { total: true },
-        }),
-        this.tenantDb.db.payment.aggregate({
-          where: {
-            deletedAt: null,
-            isReturn: false,
-            sale: baseWhere,
-          },
-          _sum: { amount: true },
-        }),
-      ]);
+    // Page first, then count + amount (≤2 concurrent) — avoid 3-way Neon stampede.
+    const rows = await this.tenantDb.db.sale.findMany({
+      where: {
+        ...baseWhere,
+        ...(pagination.where ?? {}),
+      },
+      select: {
+        id: true,
+        tenantId: true,
+        reference: true,
+        customerId: true,
+        customer: { select: { name: true, phone: true } },
+        jobId: true,
+        job: { select: { reference: true } },
+        total: true,
+        discountAmount: true,
+        taxAmount: true,
+        notes: true,
+        originalSaleId: true,
+        currency: true,
+        status: true,
+        paymentStatus: true,
+        paymentMethod: true,
+        // List path skips Payment rows — paid/due inferred from paymentStatus (detail loads real payments).
+        cleanerUserId: true,
+        cleanerName: true,
+        serviceStaffEmployeeId: true,
+        serviceStaffEmployee: { select: { name: true } },
+        locationCode: true,
+        shippingStatus: true,
+        shippingAddress: true,
+        trackingNumber: true,
+        date: true,
+        createdByUserId: true,
+        createdByName: true,
+        createdAt: true,
+        updatedAt: true,
+        _count: { select: { lines: true } },
+      },
+      orderBy: [{ [sort.sortField]: sort.sortDir }, { id: sort.sortDir }],
+      take: pagination.take,
+    });
+    const [totalCount, saleAmountAgg] = await Promise.all([
+      this.tenantDb.db.sale.count({ where: baseWhere }),
+      // Filtered total only — nested Payment.aggregate over Sale filters was a multi-second join.
+      this.tenantDb.db.sale.aggregate({
+        where: baseWhere,
+        _sum: { total: true },
+      }),
+    ]);
 
     const totalAmount = toNumber(saleAmountAgg._sum.total);
-    const totalPaid = toNumber(paymentAmountAgg._sum.amount);
-    const totalDue = Math.max(0, totalAmount - totalPaid);
+    // Paid/due for the filtered set: prefer page-accurate math when this page is the full set;
+    // otherwise leave paid/due unset so the UI shows Total from amountSummary + page paid/due.
+    let totalPaid: number | undefined;
+    let totalDue: number | undefined;
+    if (rows.length >= totalCount) {
+      totalPaid = 0;
+      totalDue = 0;
+      for (const row of rows) {
+        const mapped = this.toSale(row);
+        totalPaid += mapped.totalPaid ?? 0;
+        totalDue += mapped.sellDue ?? 0;
+      }
+    }
 
     const ms = Date.now() - startedAt;
     if (ms > 500) {
@@ -704,6 +706,7 @@ export class SalesService {
               amount: payment.amount,
               currency,
               method: payment.method ?? 'cash',
+              paymentRefNo: `SP${saleDate.getFullYear()}/${sale.reference}`,
               paidOn: saleDate,
               paymentFor: 'sale',
               saleId: sale.id,
@@ -848,6 +851,7 @@ export class SalesService {
             amount: payment.amount,
             currency: existing.currency,
             method: payment.method ?? 'cash',
+            paymentRefNo: `SP${existing.date.getFullYear()}/${sale.reference}`,
             paidOn: existing.date,
             paymentFor: 'sale',
             saleId: sale.id,
@@ -1157,8 +1161,11 @@ export class SalesService {
       amount: number;
       currency: string;
       method: string | null;
+      paymentRefNo: string | null;
       paidOn: string | null;
       note: string | null;
+      accountId: string | null;
+      accountName: string | null;
       createdByName: string | null;
     }>
   > {
@@ -1171,6 +1178,7 @@ export class SalesService {
 
     const rows = await this.tenantDb.db.payment.findMany({
       where: { tenantId, saleId: id, deletedAt: null, isReturn: false },
+      include: { account: { select: { name: true } } },
       orderBy: [{ paidOn: 'desc' }, { createdAt: 'desc' }],
     });
 
@@ -1179,10 +1187,25 @@ export class SalesService {
       amount: toNumber(row.amount),
       currency: row.currency,
       method: row.method,
+      paymentRefNo: row.paymentRefNo,
       paidOn: row.paidOn ? toIso(row.paidOn) : null,
       note: row.note,
+      accountId: row.accountId,
+      accountName: row.account?.name ?? null,
       createdByName: row.createdByName,
     }));
+  }
+
+  /** HQ6 “Invoice URL” share link (public `/invoice/:token`, no login). */
+  async getInvoiceShareUrl(id: string): Promise<{ token: string; path: string }> {
+    const tenantId = this.tenantDb.requireTenantId();
+    const sale = await this.tenantDb.db.sale.findFirst({
+      where: { id, tenantId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!sale) throw new NotFoundException('Sale not found');
+    const token = encodePublicInvoiceToken(sale.id);
+    return { token, path: `/invoice/${token}` };
   }
 
   async importCsv(csv: string): Promise<CsvImportResult> {

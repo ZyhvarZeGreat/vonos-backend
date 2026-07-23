@@ -10,7 +10,7 @@ import { getCustomersPage } from "@/lib/api/customers";
 import { getItemsPage, getStockAvailability } from "@/lib/api/items";
 import { getWorkforce } from "@/lib/api/hrm";
 import { getJobsPage } from "@/lib/api/jobs";
-import { getOverviewDashboard } from "@/lib/api/overview";
+import { getOverviewDashboard, getVaHq6Home } from "@/lib/api/overview";
 import { getRequisitionsPage } from "@/lib/api/requisitions";
 import { getGroupReports, getReportsDashboard } from "@/lib/api/reports";
 import { getSalesPage } from "@/lib/api/sales";
@@ -111,7 +111,15 @@ function prefetchTenantOverview(
   tenantId: string,
   from: string,
   to: string,
+  tenantCode?: string,
 ): void {
+  if (tenantCode === "VA") {
+    prefetchQuery(queryClient, {
+      queryKey: ["vaHq6Home", tenantId, from, to],
+      queryFn: () => getVaHq6Home({ from, to }),
+    });
+    return;
+  }
   prefetchQuery(queryClient, {
     queryKey: ["overviewDashboard", tenantId, from, to],
     queryFn: () => getOverviewDashboard({ from, to }),
@@ -322,7 +330,7 @@ export function prefetchRoute(
   const section = pathname.split("/").filter(Boolean)[1] ?? "";
   switch (section) {
     case "overview":
-      prefetchTenantOverview(queryClient, tenantId, from, to);
+      prefetchTenantOverview(queryClient, tenantId, from, to, tenantCode);
       break;
     case "jobs":
       prefetchTenantJobs(queryClient, tenantId, from, to);

@@ -16,7 +16,7 @@ import { TenantDbService } from '../../common/prisma/tenant-db.service';
 import { buildCompositeCursorQuery } from '../../common/utils/pagination';
 import type { PaginatedList } from '../../common/utils/paginatedList';
 import { parseCsv, pickCsvField } from '../../common/utils/csvImport';
-import { refreshCustomerFinancialRollups, computeCustomerFinancialRollupsForIds } from '../../common/utils/customerRollups';
+import { refreshCustomerFinancialRollups } from '../../common/utils/customerRollups';
 import { toIso, toNumber } from '../../common/utils/serializers';
 import { AuditService } from '../audit/audit.service';
 
@@ -220,65 +220,39 @@ export class CustomersService {
         : {}),
     };
 
-    const [rows, totalCount, saleAmountAgg, paymentAmountAgg] =
-      await Promise.all([
-        this.tenantDb.db.customer.findMany({
-          where: {
-            ...baseWhere,
-            ...(pagination.where ?? {}),
-          },
-          include: {
-            customerGroup: { select: { name: true } },
-            assignedToUser: { select: { name: true } },
-          },
-          orderBy: [{ name: 'asc' }, { id: 'asc' }],
-          take: pagination.take,
-        }),
-        this.tenantDb.db.customer.count({ where: baseWhere }),
-        this.tenantDb.db.sale.aggregate({
-          where: {
-            deletedAt: null,
-            status: {
-              notIn: ['refunded', 'partially_refunded', 'written_off', 'draft', 'quotation'],
-            },
-            customer: baseWhere,
-          },
-          _sum: { total: true },
-        }),
-        this.tenantDb.db.payment.aggregate({
-          where: {
-            deletedAt: null,
-            isReturn: false,
-            sale: {
-              deletedAt: null,
-              status: {
-                notIn: [
-                  'refunded',
-                  'partially_refunded',
-                  'written_off',
-                  'draft',
-                  'quotation',
-                ],
-              },
-              customer: baseWhere,
-            },
-          },
-          _sum: { amount: true },
-        }),
-      ]);
+    // Page rows first, then count + amount footer (≤2 concurrent).
+    const rows = await this.tenantDb.db.customer.findMany({
+      where: {
+        ...baseWhere,
+        ...(pagination.where ?? {}),
+      },
+      include: {
+        customerGroup: { select: { name: true } },
+        assignedToUser: { select: { name: true } },
+      },
+      orderBy: [{ name: 'asc' }, { id: 'asc' }],
+      take: pagination.take,
+    });
+    const [totalCount, amountAgg] = await Promise.all([
+      this.tenantDb.db.customer.count({ where: baseWhere }),
+      this.tenantDb.db.customer.aggregate({
+        where: baseWhere,
+        _sum: {
+          totalSell: true,
+          totalSellDue: true,
+          totalSellPaid: true,
+        },
+      }),
+    ]);
 
     if (rows.length === 0) {
       return {
         items: [],
         totalCount,
         amountSummary: {
-          totalAmount: toNumber(saleAmountAgg._sum.total),
-          totalPaid: toNumber(paymentAmountAgg._sum.amount),
-          totalDue: Math.max(
-            0,
-            toNumber(saleAmountAgg._sum.total) -
-              toNumber(paymentAmountAgg._sum.amount),
-          ),
+          totalAmount: toNumber(amountAgg._sum.totalSell),
+          totalPaid: toNumber(amountAgg._sum.totalSellPaid),
+          totalDue: toNumber(amountAgg._sum.totalSellDue),
           currency: 'NGN',
         },
       };
@@ -297,58 +271,17 @@ export class CustomersService {
       legacyIds.map((l) => [l.newId, `CU${String(l.legacyId).padStart(4, '0')}`]),
     );
 
-    const items = rows.map((row) =>
-      serializeCustomer(row, { contactId: legacyById.get(row.id) ?? null }),
-    );
-
-    // Overlay live sale totals — denormalized columns are often still 0 after migration.
-    const liveRollups = await computeCustomerFinancialRollupsForIds(
-      this.tenantDb.db,
-      rows.map((row) => row.id),
-    );
-
-    void Promise.all(
-      rows.map(async (row) => {
-        const live = liveRollups.get(row.id);
-        if (!live) return;
-        if (
-          toNumber(row.totalSell) === live.totalSell &&
-          toNumber(row.totalSellDue) === live.totalSellDue &&
-          toNumber(row.totalSellPaid) === live.totalSellPaid
-        ) {
-          return;
-        }
-        await this.tenantDb.db.customer.update({
-          where: { id: row.id },
-          data: live,
-        });
-      }),
-    ).catch(() => undefined);
-
+    // Trust denormalized totals on list (refreshed on sale write). Live sale scans
+    // per page were ~20s on Neon and stampeded the pool.
     return {
-      items: items.map((item) => {
-        const live = liveRollups.get(item.id);
-        if (!live) return item;
-        return {
-          ...item,
-          totalSpend: live.totalSell,
-          totalSell: live.totalSell,
-          totalSellDue: live.totalSellDue,
-          totalSellPaid: live.totalSellPaid,
-          totalSellReturn: live.totalSellReturn,
-          totalAdvance: live.totalAdvance,
-          visitCount: live.visitCount || item.visitCount,
-        };
-      }),
+      items: rows.map((row) =>
+        serializeCustomer(row, { contactId: legacyById.get(row.id) ?? null }),
+      ),
       totalCount,
       amountSummary: {
-        totalAmount: toNumber(saleAmountAgg._sum.total),
-        totalPaid: toNumber(paymentAmountAgg._sum.amount),
-        totalDue: Math.max(
-          0,
-          toNumber(saleAmountAgg._sum.total) -
-            toNumber(paymentAmountAgg._sum.amount),
-        ),
+        totalAmount: toNumber(amountAgg._sum.totalSell),
+        totalPaid: toNumber(amountAgg._sum.totalSellPaid),
+        totalDue: toNumber(amountAgg._sum.totalSellDue),
         currency: 'NGN',
       },
     };

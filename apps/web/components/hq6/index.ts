@@ -25,6 +25,7 @@ export { Hq6PaySupplierModal } from "./Hq6PaySupplierModal";
 export { Hq6PayPurchaseModal } from "./Hq6PayPurchaseModal";
 export { Hq6PurchaseViewModal } from "./Hq6PurchaseViewModal";
 export { Hq6ViewPaymentsModal } from "./Hq6ViewPaymentsModal";
+export { Hq6InvoiceUrlModal } from "./Hq6InvoiceUrlModal";
 export { Hq6StackCell } from "./Hq6StackCell";
 export { Hq6GlobalChromeModals } from "./Hq6GlobalChromeModals";
 export {

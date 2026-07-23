@@ -1,0 +1,31 @@
+{
+  "at": "2026-07-23T06:19:06.000Z",
+  "apiBase": "http://localhost:3001",
+  "tenantId": "tenant_va_001",
+  "endpoint": "/overview/hq6-home",
+  "boot": {
+    "poolLog": "Database connected (limit=8 pgbouncer=true host=…-pooler…)",
+    "PRISMA_CONNECTION_LIMIT": "8"
+  },
+  "history": {
+    "entityOverviewColdMissMs_before": 13362,
+    "entityOverviewColdMissMs_afterPhase1FinanceCollapse": 5928,
+    "hq6HomeColdMissMs_firstAfterInvoicePath": 2745,
+    "hq6HomeColdMissMs_warmDb": 1798
+  },
+  "probe": {
+    "coldMissApiMs": 1798,
+    "warmHitApiMs": 159
+  },
+  "poolAfterCold": {
+    "connectionLimit": "8",
+    "wait": 0
+  },
+  "decision": "Low pool wait. /VA/overview uses GET /overview/hq6-home (Sale/Invoice totals). Warm-DB cold miss ~1.8s; warm hit ~160ms. Keep connection_limit=8.",
+  "successCriteria": {
+    "warmApiUnder500ms": true,
+    "noP1001AtLimit8": true,
+    "coldMateriallyImproved": true,
+    "coldUnder2sWarmDb": true
+  }
+}

@@ -27,16 +27,18 @@ export class InvoiceSettingsService {
   constructor(private readonly tenantDb: TenantDbService) {}
 
   private async seedDefaultsIfEmpty(
-    tx: Parameters<Parameters<TenantScopedPrisma['$transaction']>[0]>[0],
+    db: TenantScopedPrisma,
     tenantId: string,
   ): Promise<void> {
-    const [layoutCount, schemeCount] = await Promise.all([
-      tx.invoiceLayout.count({ where: { tenantId, deletedAt: null } }),
-      tx.invoiceScheme.count({ where: { tenantId, deletedAt: null } }),
-    ]);
+    const layoutCount = await db.invoiceLayout.count({
+      where: { tenantId, deletedAt: null },
+    });
+    const schemeCount = await db.invoiceScheme.count({
+      where: { tenantId, deletedAt: null },
+    });
 
     if (layoutCount === 0) {
-      await tx.invoiceLayout.createMany({
+      await db.invoiceLayout.createMany({
         data: DEFAULT_LAYOUTS.map((layout, index) => ({
           tenantId,
           name: layout.name,
@@ -47,7 +49,7 @@ export class InvoiceSettingsService {
     }
 
     if (schemeCount === 0) {
-      await tx.invoiceScheme.create({
+      await db.invoiceScheme.create({
         data: {
           tenantId,
           name: 'Default',
@@ -62,24 +64,31 @@ export class InvoiceSettingsService {
   }
 
   private async ensureDefaults(tenantId: string): Promise<void> {
-    await this.tenantDb.db.$transaction(async (tx) => {
-      await this.seedDefaultsIfEmpty(tx, tenantId);
-    });
+    // No interactive $transaction — PgBouncer + Neon rejects / drops long txs.
+    await this.seedDefaultsIfEmpty(this.tenantDb.db, tenantId);
   }
 
   private async loadSettingsRows(tenantId: string) {
-    return this.tenantDb.db.$transaction(async (tx) => {
-      await this.seedDefaultsIfEmpty(tx, tenantId);
+    await this.seedDefaultsIfEmpty(this.tenantDb.db, tenantId);
 
-      const listOrder = [{ isDefault: 'desc' as const }, { name: 'asc' as const }];
-      const where = { tenantId, deletedAt: null };
+    const listOrder = [{ isDefault: 'desc' as const }, { name: 'asc' as const }];
+    const where = { tenantId, deletedAt: null };
 
-      const layouts = await tx.invoiceLayout.findMany({ where, orderBy: listOrder });
-      const schemes = await tx.invoiceScheme.findMany({ where, orderBy: listOrder });
-      const printers = await tx.receiptPrinter.findMany({ where, orderBy: listOrder });
-
-      return { layouts, schemes, printers };
+    // Sequential reads keep pool pressure low during Neon wake.
+    const layouts = await this.tenantDb.db.invoiceLayout.findMany({
+      where,
+      orderBy: listOrder,
     });
+    const schemes = await this.tenantDb.db.invoiceScheme.findMany({
+      where,
+      orderBy: listOrder,
+    });
+    const printers = await this.tenantDb.db.receiptPrinter.findMany({
+      where,
+      orderBy: listOrder,
+    });
+
+    return { layouts, schemes, printers };
   }
 
   async getSettings(): Promise<InvoiceSettings> {

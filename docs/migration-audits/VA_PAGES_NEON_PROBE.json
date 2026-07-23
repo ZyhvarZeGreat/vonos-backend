@@ -1,0 +1,441 @@
+{
+  "at": "2026-07-23T07:01:15.909Z",
+  "apiBase": "http://localhost:3001",
+  "tenantId": "tenant_va_001",
+  "connectionLimit": "8",
+  "pool": {
+    "connectionsOpen": 8,
+    "connectionsBusy": 0,
+    "connectionsIdle": 8,
+    "connectionLimit": "8"
+  },
+  "queries": {
+    "total": 165,
+    "active": 0,
+    "wait": 0,
+    "waitMs": null
+  },
+  "summary": {
+    "endpoints": 19,
+    "coldOk": 0,
+    "coldSlow": 0,
+    "coldVerySlow": 18,
+    "coldErrors": 1,
+    "worstCold": [
+      {
+        "page": "/VA/reports",
+        "name": "reports-dashboard",
+        "path": "/reports/dashboard",
+        "coldMs": 45734,
+        "warmMs": 15528,
+        "coldStatus": 500,
+        "warmStatus": 200,
+        "coldVerdict": "neon_unreachable",
+        "warmVerdict": "very_slow"
+      },
+      {
+        "page": "/VA/invoice-settings",
+        "name": "invoice-settings",
+        "path": "/invoice-settings",
+        "coldMs": 25618,
+        "warmMs": 30312,
+        "coldStatus": 200,
+        "warmStatus": 200,
+        "coldVerdict": "very_slow",
+        "warmVerdict": "very_slow"
+      },
+      {
+        "page": "/VA/customers",
+        "name": "customers",
+        "path": "/customers?limit=25",
+        "coldMs": 21679,
+        "warmMs": 21763,
+        "coldStatus": 200,
+        "warmStatus": 200,
+        "coldVerdict": "very_slow",
+        "warmVerdict": "very_slow"
+      },
+      {
+        "page": "/VA/suppliers",
+        "name": "suppliers",
+        "path": "/suppliers?limit=25",
+        "coldMs": 21597,
+        "warmMs": 22650,
+        "coldStatus": 200,
+        "warmStatus": 200,
+        "coldVerdict": "very_slow",
+        "warmVerdict": "very_slow"
+      },
+      {
+        "page": "/VA/hrm",
+        "name": "hrm-workforce",
+        "path": "/hrm/workforce",
+        "coldMs": 16338,
+        "warmMs": 4654,
+        "coldStatus": 200,
+        "warmStatus": 200,
+        "coldVerdict": "very_slow",
+        "warmVerdict": "slow"
+      },
+      {
+        "page": "/VA/overview",
+        "name": "panel-sales-dues",
+        "path": "/overview/panels/sales-payment-dues",
+        "coldMs": 12948,
+        "warmMs": 9593,
+        "coldStatus": 200,
+        "warmStatus": 200,
+        "coldVerdict": "very_slow",
+        "warmVerdict": "very_slow"
+      },
+      {
+        "page": "/VA/sales",
+        "name": "sales",
+        "path": "/sales?limit=25",
+        "coldMs": 12871,
+        "warmMs": 11580,
+        "coldStatus": 200,
+        "warmStatus": 200,
+        "coldVerdict": "very_slow",
+        "warmVerdict": "very_slow"
+      },
+      {
+        "page": "/VA/purchases",
+        "name": "stock-movements-inbound",
+        "path": "/stock-movements?type=inbound&limit=25",
+        "coldMs": 12097,
+        "warmMs": 28570,
+        "coldStatus": 200,
+        "warmStatus": 200,
+        "coldVerdict": "very_slow",
+        "warmVerdict": "very_slow"
+      }
+    ]
+  },
+  "pages": [
+    {
+      "page": "/VA/overview",
+      "endpoints": [
+        {
+          "name": "hq6-home",
+          "path": "/overview/hq6-home",
+          "coldMs": 6570,
+          "warmMs": 4585,
+          "coldStatus": 200,
+          "warmStatus": 200,
+          "coldVerdict": "very_slow",
+          "warmVerdict": "slow"
+        },
+        {
+          "name": "panel-stock-alert",
+          "path": "/overview/panels/stock-alert",
+          "coldMs": 8991,
+          "warmMs": 6358,
+          "coldStatus": 200,
+          "warmStatus": 200,
+          "coldVerdict": "very_slow",
+          "warmVerdict": "very_slow"
+        },
+        {
+          "name": "panel-sales-dues",
+          "path": "/overview/panels/sales-payment-dues",
+          "coldMs": 12948,
+          "warmMs": 9593,
+          "coldStatus": 200,
+          "warmStatus": 200,
+          "coldVerdict": "very_slow",
+          "warmVerdict": "very_slow"
+        },
+        {
+          "name": "panel-purchase-dues",
+          "path": "/overview/panels/purchase-payment-dues",
+          "coldMs": 10614,
+          "warmMs": 10223,
+          "coldStatus": 200,
+          "warmStatus": 200,
+          "coldVerdict": "very_slow",
+          "warmVerdict": "very_slow"
+        }
+      ],
+      "burst": {
+        "wallMs": 15274,
+        "endpoints": [
+          {
+            "path": "/overview/hq6-home",
+            "ms": 4687,
+            "status": 200,
+            "verdict": "slow"
+          },
+          {
+            "path": "/overview/panels/stock-alert",
+            "ms": 11770,
+            "status": 200,
+            "verdict": "very_slow"
+          },
+          {
+            "path": "/overview/panels/sales-payment-dues",
+            "ms": 15274,
+            "status": 200,
+            "verdict": "very_slow"
+          },
+          {
+            "path": "/overview/panels/purchase-payment-dues",
+            "ms": 13506,
+            "status": 200,
+            "verdict": "very_slow"
+          }
+        ]
+      }
+    },
+    {
+      "page": "/VA/jobs",
+      "endpoints": [
+        {
+          "name": "jobs",
+          "path": "/jobs?limit=25",
+          "coldMs": 7590,
+          "warmMs": 9012,
+          "coldStatus": 200,
+          "warmStatus": 200,
+          "coldVerdict": "very_slow",
+          "warmVerdict": "very_slow"
+        }
+      ],
+      "burst": null
+    },
+    {
+      "page": "/VA/vehicles",
+      "endpoints": [
+        {
+          "name": "vehicles",
+          "path": "/vehicles?limit=25",
+          "coldMs": 6675,
+          "warmMs": 8463,
+          "coldStatus": 200,
+          "warmStatus": 200,
+          "coldVerdict": "very_slow",
+          "warmVerdict": "very_slow"
+        }
+      ],
+      "burst": null
+    },
+    {
+      "page": "/VA/requisitions",
+      "endpoints": [
+        {
+          "name": "requisitions",
+          "path": "/requisitions?limit=25",
+          "coldMs": 8093,
+          "warmMs": 8333,
+          "coldStatus": 200,
+          "warmStatus": 200,
+          "coldVerdict": "very_slow",
+          "warmVerdict": "very_slow"
+        }
+      ],
+      "burst": null
+    },
+    {
+      "page": "/VA/customers",
+      "endpoints": [
+        {
+          "name": "customers",
+          "path": "/customers?limit=25",
+          "coldMs": 21679,
+          "warmMs": 21763,
+          "coldStatus": 200,
+          "warmStatus": 200,
+          "coldVerdict": "very_slow",
+          "warmVerdict": "very_slow"
+        }
+      ],
+      "burst": null
+    },
+    {
+      "page": "/VA/suppliers",
+      "endpoints": [
+        {
+          "name": "suppliers",
+          "path": "/suppliers?limit=25",
+          "coldMs": 21597,
+          "warmMs": 22650,
+          "coldStatus": 200,
+          "warmStatus": 200,
+          "coldVerdict": "very_slow",
+          "warmVerdict": "very_slow"
+        }
+      ],
+      "burst": null
+    },
+    {
+      "page": "/VA/sales",
+      "endpoints": [
+        {
+          "name": "sales",
+          "path": "/sales?limit=25",
+          "coldMs": 12871,
+          "warmMs": 11580,
+          "coldStatus": 200,
+          "warmStatus": 200,
+          "coldVerdict": "very_slow",
+          "warmVerdict": "very_slow"
+        }
+      ],
+      "burst": null
+    },
+    {
+      "page": "/VA/products",
+      "endpoints": [
+        {
+          "name": "items",
+          "path": "/items?limit=25",
+          "coldMs": 9861,
+          "warmMs": 9137,
+          "coldStatus": 200,
+          "warmStatus": 200,
+          "coldVerdict": "very_slow",
+          "warmVerdict": "very_slow"
+        }
+      ],
+      "burst": null
+    },
+    {
+      "page": "/VA/purchases",
+      "endpoints": [
+        {
+          "name": "stock-movements-inbound",
+          "path": "/stock-movements?type=inbound&limit=25",
+          "coldMs": 12097,
+          "warmMs": 28570,
+          "coldStatus": 200,
+          "warmStatus": 200,
+          "coldVerdict": "very_slow",
+          "warmVerdict": "very_slow"
+        }
+      ],
+      "burst": null
+    },
+    {
+      "page": "/VA/expenses",
+      "endpoints": [
+        {
+          "name": "expenses",
+          "path": "/expenses?limit=25",
+          "coldMs": 10088,
+          "warmMs": 3119,
+          "coldStatus": 200,
+          "warmStatus": 200,
+          "coldVerdict": "very_slow",
+          "warmVerdict": "slow"
+        }
+      ],
+      "burst": null
+    },
+    {
+      "page": "/VA/finance",
+      "endpoints": [
+        {
+          "name": "ledger-summary",
+          "path": "/ledger/summary",
+          "coldMs": 6452,
+          "warmMs": 4668,
+          "coldStatus": 200,
+          "warmStatus": 200,
+          "coldVerdict": "very_slow",
+          "warmVerdict": "slow"
+        },
+        {
+          "name": "ledger-charts",
+          "path": "/ledger/charts",
+          "coldMs": 11554,
+          "warmMs": 4727,
+          "coldStatus": 200,
+          "warmStatus": 200,
+          "coldVerdict": "very_slow",
+          "warmVerdict": "slow"
+        },
+        {
+          "name": "ledger-list",
+          "path": "/ledger?limit=25",
+          "coldMs": 8475,
+          "warmMs": 5903,
+          "coldStatus": 200,
+          "warmStatus": 200,
+          "coldVerdict": "very_slow",
+          "warmVerdict": "very_slow"
+        }
+      ],
+      "burst": {
+        "wallMs": 16762,
+        "endpoints": [
+          {
+            "path": "/ledger/summary",
+            "ms": 5513,
+            "status": 200,
+            "verdict": "very_slow"
+          },
+          {
+            "path": "/ledger/charts",
+            "ms": 16762,
+            "status": 200,
+            "verdict": "very_slow"
+          },
+          {
+            "path": "/ledger?limit=25",
+            "ms": 9621,
+            "status": 200,
+            "verdict": "very_slow"
+          }
+        ]
+      }
+    },
+    {
+      "page": "/VA/reports",
+      "endpoints": [
+        {
+          "name": "reports-dashboard",
+          "path": "/reports/dashboard",
+          "coldMs": 45734,
+          "warmMs": 15528,
+          "coldStatus": 500,
+          "warmStatus": 200,
+          "coldVerdict": "neon_unreachable",
+          "warmVerdict": "very_slow"
+        }
+      ],
+      "burst": null
+    },
+    {
+      "page": "/VA/invoice-settings",
+      "endpoints": [
+        {
+          "name": "invoice-settings",
+          "path": "/invoice-settings",
+          "coldMs": 25618,
+          "warmMs": 30312,
+          "coldStatus": 200,
+          "warmStatus": 200,
+          "coldVerdict": "very_slow",
+          "warmVerdict": "very_slow"
+        }
+      ],
+      "burst": null
+    },
+    {
+      "page": "/VA/hrm",
+      "endpoints": [
+        {
+          "name": "hrm-workforce",
+          "path": "/hrm/workforce",
+          "coldMs": 16338,
+          "warmMs": 4654,
+          "coldStatus": 200,
+          "warmStatus": 200,
+          "coldVerdict": "very_slow",
+          "warmVerdict": "slow"
+        }
+      ],
+      "burst": null
+    }
+  ]
+}

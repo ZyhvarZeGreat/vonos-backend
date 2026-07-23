@@ -9,7 +9,7 @@ import { decodeAccessToken } from "@/lib/utils/jwt";
 import { isAuthSkipped } from "@/lib/utils/devAccess";
 import { PageShellSkeleton } from "@/components/organisms/skeletons";
 
-const PUBLIC_PREFIXES = ["/login", "/reset-password", "/invite"];
+const PUBLIC_PREFIXES = ["/login", "/reset-password", "/invite", "/invoice"];
 const skipAuth = isAuthSkipped();
 
 function isPublicPath(pathname: string): boolean {

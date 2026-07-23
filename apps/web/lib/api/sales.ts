@@ -200,8 +200,11 @@ export interface SalePaymentRow {
   amount: number;
   currency: string;
   method: string | null;
+  paymentRefNo: string | null;
   paidOn: string | null;
   note: string | null;
+  accountId: string | null;
+  accountName: string | null;
   createdByName: string | null;
 }
 
@@ -213,5 +216,16 @@ export async function getSalePayments(
     withTenantQuery(`/sales/${saleId}/payments`, tenantId),
   );
   if (!response.ok) throw new Error("Failed to fetch sale payments");
+  return response.json();
+}
+
+export async function getSaleInvoiceUrl(
+  tenantId: string,
+  saleId: string,
+): Promise<{ token: string; path: string }> {
+  const response = await apiFetch(
+    withTenantQuery(`/sales/${saleId}/invoice-url`, tenantId),
+  );
+  if (!response.ok) throw new Error("Failed to fetch invoice URL");
   return response.json();
 }

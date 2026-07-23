@@ -128,6 +128,11 @@ export class SalesController {
     return this.salesService.listPayments(id);
   }
 
+  @Get(':id/invoice-url')
+  getInvoiceUrl(@Param('id') id: string) {
+    return this.salesService.getInvoiceShareUrl(id);
+  }
+
   @Get(':id')
   getById(@Param('id') id: string) {
     return this.salesService.getById(id);

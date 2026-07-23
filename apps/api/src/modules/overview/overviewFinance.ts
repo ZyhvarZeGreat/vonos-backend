@@ -1,24 +1,11 @@
 import type { ReportsChart, ReportsKpi } from '@vonos/types';
 import type { TenantScopedPrisma } from '../../common/prisma/prisma.service';
 import {
-  dailyFinanceTrend,
-  hasDailyFinanceRollup,
-  sumDailyFinanceRollup,
-} from '../../common/utils/dailyFinanceRollup';
-import {
   computeDelta,
   priorWindow,
   resolveDateWindow,
   asChartData,
 } from '../reports/aggregators/date-utils';
-import {
-  ledgerCurrency,
-  ledgerExpenseBreakdown,
-  ledgerPlTrend,
-  ledgerSummaryInWindow,
-} from '../reports/aggregators/ledgerReportQueries';
-import { taxReportSummaryAggregates, purchaseRevenueByBucket, salesRevenueByBucket } from '../reports/aggregators/salesReportQueries';
-
 export interface LedgerFinanceSlice {
   currency: string;
   financeCharts: ReportsChart[];
@@ -33,29 +20,115 @@ export async function buildLedgerFinanceSlice(
 ): Promise<LedgerFinanceSlice> {
   const window = resolveDateWindow(from, to);
   const prior = priorWindow(window);
+  const earliest =
+    prior.from.getTime() <= window.from.getTime() ? prior.from : window.from;
+  const latest =
+    prior.to.getTime() >= window.to.getTime() ? prior.to : window.to;
 
-  const useRollup = await hasDailyFinanceRollup(
-    db,
-    tenantId,
-    window.from,
-    window.to,
-  );
+  // Try rollup first (no separate probe RTT). Fall back to live ledger if empty.
+  const rollupRows = await db.$queryRaw<
+    Array<{
+      cur_revenue: unknown;
+      cur_costs: unknown;
+      cur_expenses: unknown;
+      cur_net: unknown;
+      prior_revenue: unknown;
+      prior_costs: unknown;
+      prior_expenses: unknown;
+      prior_net: unknown;
+      trend: unknown;
+      row_count: unknown;
+    }>
+  >`
+    WITH daily AS (
+      SELECT date, revenue, costs, expenses, net
+      FROM "TenantDailyFinance"
+      WHERE "tenantId" = ${tenantId}
+        AND date >= ${earliest}
+        AND date <= ${latest}
+    )
+    SELECT
+      COALESCE(SUM(revenue) FILTER (
+        WHERE date >= ${window.from} AND date <= ${window.to}
+      ), 0) AS cur_revenue,
+      COALESCE(SUM(costs) FILTER (
+        WHERE date >= ${window.from} AND date <= ${window.to}
+      ), 0) AS cur_costs,
+      COALESCE(SUM(expenses) FILTER (
+        WHERE date >= ${window.from} AND date <= ${window.to}
+      ), 0) AS cur_expenses,
+      COALESCE(SUM(net) FILTER (
+        WHERE date >= ${window.from} AND date <= ${window.to}
+      ), 0) AS cur_net,
+      COALESCE(SUM(revenue) FILTER (
+        WHERE date >= ${prior.from} AND date <= ${prior.to}
+      ), 0) AS prior_revenue,
+      COALESCE(SUM(costs) FILTER (
+        WHERE date >= ${prior.from} AND date <= ${prior.to}
+      ), 0) AS prior_costs,
+      COALESCE(SUM(expenses) FILTER (
+        WHERE date >= ${prior.from} AND date <= ${prior.to}
+      ), 0) AS prior_expenses,
+      COALESCE(SUM(net) FILTER (
+        WHERE date >= ${prior.from} AND date <= ${prior.to}
+      ), 0) AS prior_net,
+      COALESCE(
+        (
+          SELECT json_agg(
+            json_build_object(
+              'label', to_char(date, 'YYYY-MM-DD'),
+              'revenue', revenue,
+              'costs', costs + expenses
+            )
+            ORDER BY date ASC
+          )
+          FROM daily
+          WHERE date >= ${window.from} AND date <= ${window.to}
+        ),
+        '[]'::json
+      ) AS trend,
+      (SELECT COUNT(*)::int FROM daily) AS row_count
+    FROM daily
+  `;
 
-  if (useRollup) {
-    // Rollup-only path: no LedgerEntry scans (expense category pie uses cost vs expense totals).
-    const [summary, priorSummary, plTrend] = await Promise.all([
-      sumDailyFinanceRollup(db, tenantId, window.from, window.to),
-      sumDailyFinanceRollup(db, tenantId, prior.from, prior.to),
-      dailyFinanceTrend(db, tenantId, window.from, window.to),
-    ]);
-
+  const rollupRow = rollupRows[0];
+  if (Number(rollupRow?.row_count ?? 0) > 0) {
+    const summary = {
+      revenue: Number(rollupRow?.cur_revenue ?? 0),
+      costs: Number(rollupRow?.cur_costs ?? 0),
+      expenses: Number(rollupRow?.cur_expenses ?? 0),
+      net: Number(rollupRow?.cur_net ?? 0),
+    };
+    const priorSummary = {
+      revenue: Number(rollupRow?.prior_revenue ?? 0),
+      costs: Number(rollupRow?.prior_costs ?? 0),
+      expenses: Number(rollupRow?.prior_expenses ?? 0),
+      net: Number(rollupRow?.prior_net ?? 0),
+    };
     const costs = summary.costs + summary.expenses;
     const priorCosts = priorSummary.costs + priorSummary.expenses;
     const currency = 'NGN';
     const expenseBreakdown = [
       { label: 'Costs', value: summary.costs },
       { label: 'Expenses', value: summary.expenses },
-    ].filter((row) => row.value > 0);
+    ].filter((entry) => entry.value > 0);
+    const trendRaw = Array.isArray(rollupRow?.trend)
+      ? (rollupRow.trend as Array<{ label: string; revenue: number; costs: number }>)
+      : typeof rollupRow?.trend === 'string'
+        ? (JSON.parse(rollupRow.trend) as Array<{
+            label: string;
+            revenue: number;
+            costs: number;
+          }>)
+        : [];
+    const plTrend =
+      trendRaw.length > 0
+        ? trendRaw.map((t) => ({
+            label: t.label,
+            revenue: Number(t.revenue),
+            costs: Number(t.costs),
+          }))
+        : [{ label: '—', revenue: 0, costs: 0 }];
 
     return {
       currency,
@@ -81,19 +154,160 @@ export async function buildLedgerFinanceSlice(
     };
   }
 
-  const [summary, priorSummary, currency, plTrend, expenseBreakdown] =
-    await Promise.all([
-      ledgerSummaryInWindow(db, tenantId, window.from, window.to),
-      ledgerSummaryInWindow(db, tenantId, prior.from, prior.to),
-      ledgerCurrency(db, tenantId),
-      ledgerPlTrend(db, tenantId, window),
-      ledgerExpenseBreakdown(db, tenantId, window.from, window.to),
-    ]);
+  // Ledger path: one FILTER query for summaries + currency; one for trend+categories.
+  const [summaryRow, detailRows] = await Promise.all([
+    db.$queryRaw<
+      Array<{
+        revenue: unknown;
+        costs: unknown;
+        prior_revenue: unknown;
+        prior_costs: unknown;
+        currency: string | null;
+      }>
+    >`
+      SELECT
+        COALESCE(SUM(amount) FILTER (
+          WHERE type = 'revenue'
+            AND date >= ${window.from}
+            AND date <= ${window.to}
+        ), 0) AS revenue,
+        COALESCE(SUM(amount) FILTER (
+          WHERE type <> 'revenue'
+            AND date >= ${window.from}
+            AND date <= ${window.to}
+        ), 0) AS costs,
+        COALESCE(SUM(amount) FILTER (
+          WHERE type = 'revenue'
+            AND date >= ${prior.from}
+            AND date <= ${prior.to}
+        ), 0) AS prior_revenue,
+        COALESCE(SUM(amount) FILTER (
+          WHERE type <> 'revenue'
+            AND date >= ${prior.from}
+            AND date <= ${prior.to}
+        ), 0) AS prior_costs,
+        (
+          SELECT currency
+          FROM "LedgerEntry"
+          WHERE "tenantId" = ${tenantId}
+            AND "deletedAt" IS NULL
+          ORDER BY id ASC
+          LIMIT 1
+        ) AS currency
+      FROM "LedgerEntry"
+      WHERE "tenantId" = ${tenantId}
+        AND "deletedAt" IS NULL
+        AND date >= ${earliest}
+        AND date <= ${latest}
+    `,
+    db.$queryRaw<
+      Array<{
+        pl_trend: unknown;
+        expense_breakdown: unknown;
+      }>
+    >`
+      WITH windowed AS (
+        SELECT date, type, category, amount
+        FROM "LedgerEntry"
+        WHERE "tenantId" = ${tenantId}
+          AND "deletedAt" IS NULL
+          AND date >= ${window.from}
+          AND date <= ${window.to}
+      )
+      SELECT
+        COALESCE(
+          (
+            SELECT json_agg(
+              json_build_object(
+                'label', label,
+                'revenue', revenue,
+                'costs', costs
+              )
+              ORDER BY label ASC
+            )
+            FROM (
+              SELECT
+                to_char(date_trunc('day', date), 'YYYY-MM-DD') AS label,
+                COALESCE(SUM(amount) FILTER (WHERE type = 'revenue'), 0) AS revenue,
+                COALESCE(SUM(amount) FILTER (WHERE type <> 'revenue'), 0) AS costs
+              FROM windowed
+              GROUP BY 1
+            ) t
+          ),
+          '[]'::json
+        ) AS pl_trend,
+        COALESCE(
+          (
+            SELECT json_agg(
+              json_build_object('label', category, 'value', total)
+              ORDER BY total DESC
+            )
+            FROM (
+              SELECT category, COALESCE(SUM(amount), 0) AS total
+              FROM windowed
+              WHERE type <> 'revenue'
+              GROUP BY category
+              ORDER BY total DESC
+              LIMIT 8
+            ) e
+          ),
+          '[]'::json
+        ) AS expense_breakdown
+    `,
+  ]);
+
+  const summary = summaryRow[0];
+  const details = detailRows[0];
+  const currency = summary?.currency ?? 'NGN';
+  const plTrendRaw = Array.isArray(details?.pl_trend)
+    ? (details.pl_trend as Array<{ label: string; revenue: number; costs: number }>)
+    : typeof details?.pl_trend === 'string'
+      ? (JSON.parse(details.pl_trend) as Array<{
+          label: string;
+          revenue: number;
+          costs: number;
+        }>)
+      : [];
+  const expenseRaw = Array.isArray(details?.expense_breakdown)
+    ? (details.expense_breakdown as Array<{ label: string; value: number }>)
+    : typeof details?.expense_breakdown === 'string'
+      ? (JSON.parse(details.expense_breakdown) as Array<{
+          label: string;
+          value: number;
+        }>)
+      : [];
+
+  const plTrend =
+    plTrendRaw.length > 0
+      ? plTrendRaw.map((t) => ({
+          label: t.label,
+          revenue: Number(t.revenue),
+          costs: Number(t.costs),
+        }))
+      : [{ label: '—', revenue: 0, costs: 0 }];
+  const expenseBreakdown =
+    expenseRaw.length > 0
+      ? expenseRaw.map((e) => ({ label: e.label, value: Number(e.value) }))
+      : [{ label: '—', value: 0 }];
 
   return {
     currency,
-    financeCharts: financeCharts(plTrend, expenseBreakdown),
-    financeKpis: financeKpis(summary, priorSummary, currency),
+    financeCharts: financeCharts(bucketTrend(plTrend, window), expenseBreakdown),
+    financeKpis: financeKpis(
+      {
+        revenue: Number(summary?.revenue ?? 0),
+        costs: Number(summary?.costs ?? 0),
+        net: Number(summary?.revenue ?? 0) - Number(summary?.costs ?? 0),
+      },
+      {
+        revenue: Number(summary?.prior_revenue ?? 0),
+        costs: Number(summary?.prior_costs ?? 0),
+        net:
+          Number(summary?.prior_revenue ?? 0) -
+          Number(summary?.prior_costs ?? 0),
+      },
+      currency,
+    ),
   };
 }
 
@@ -149,86 +363,8 @@ function financeCharts(
 }
 
 /** HQ6 Home stat cards — ui-audit/00_home/screenshot.png (VA only). */
-export async function buildVaHq6HomeFinanceKpis(
-  db: TenantScopedPrisma,
-  tenantId: string,
-  from?: string,
-  to?: string,
-): Promise<ReportsKpi[]> {
-  const window = resolveDateWindow(from, to);
-  const [summary, taxAgg] = await Promise.all([
-    ledgerSummaryInWindow(db, tenantId, window.from, window.to),
-    taxReportSummaryAggregates(db, tenantId, window),
-  ]);
-  const currency = taxAgg.currency;
-  const expenseTotal = summary.costs;
-
-  return [
-    {
-      label: 'Total Sales',
-      icon: 'wallet',
-      metricKey: 'totalSale',
-      color: '#3b82f6',
-      value: taxAgg.totalSale,
-      currency,
-    },
-    {
-      label: 'Net',
-      icon: 'wallet',
-      metricKey: 'net',
-      color: '#9333ea',
-      value: summary.net,
-      currency,
-    },
-    {
-      label: 'Invoice due',
-      icon: 'alert',
-      metricKey: 'invoiceDue',
-      color: '#f39c12',
-      value: taxAgg.saleDue,
-      currency,
-    },
-    {
-      label: 'Total Sell Return',
-      icon: 'rotate',
-      metricKey: 'sellReturn',
-      color: '#dd4b39',
-      value: taxAgg.sellReturnIncludingTax,
-      currency,
-    },
-    {
-      label: 'Total purchase',
-      icon: 'cart',
-      metricKey: 'purchase',
-      color: '#00a65a',
-      value: taxAgg.totalPurchase,
-      currency,
-    },
-    {
-      label: 'Purchase due',
-      icon: 'alert',
-      metricKey: 'purchaseDue',
-      color: '#f39c12',
-      value: taxAgg.purchaseDue,
-      currency,
-    },
-    {
-      label: 'Total Purchase Return',
-      icon: 'package',
-      metricKey: 'purchaseReturn',
-      color: '#605ca8',
-      value: taxAgg.purchaseReturnIncludingTax,
-      currency,
-    },
-    {
-      label: 'Expense',
-      icon: 'receipt',
-      metricKey: 'expense',
-      color: '#2563eb',
-      value: expenseTotal,
-      currency,
-    },
-  ];
+function num(value: unknown): number {
+  return Number(value ?? 0);
 }
 
 function last30DayWindow(): { from: Date; to: Date } {
@@ -240,39 +376,330 @@ function last30DayWindow(): { from: Date; to: Date } {
   return { from, to };
 }
 
-/** HQ6 home chart row — ui-audit/00_home (Sales / Purchase last 30 days). */
+function parseJsonArray<T>(value: unknown): T[] {
+  if (Array.isArray(value)) return value as T[];
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value) as unknown;
+      return Array.isArray(parsed) ? (parsed as T[]) : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+}
+
+export interface VaHq6HomeBundle {
+  currency: string;
+  revenue: number;
+  financeKpis: ReportsKpi[];
+  charts: ReportsChart[];
+}
+
+/**
+ * VA HQ6 home — one SQL round trip for finance KPIs + last-30-day charts.
+ * Uses Sale / Invoice totals (indexed) instead of StockMovement JSON line scans.
+ */
+export async function buildVaHq6HomeBundle(
+  db: TenantScopedPrisma,
+  tenantId: string,
+  from?: string,
+  to?: string,
+): Promise<VaHq6HomeBundle> {
+  const kpiWindow = resolveDateWindow(from, to);
+  const chartWindow = last30DayWindow();
+
+  const rows = await db.$queryRaw<
+    Array<{
+      currency: string | null;
+      ledger_costs: unknown;
+      ledger_revenue: unknown;
+      total_sale: unknown;
+      sale_due: unknown;
+      sell_return: unknown;
+      total_purchase: unknown;
+      purchase_due: unknown;
+      purchase_return: unknown;
+      sales_trend: unknown;
+      purchase_trend: unknown;
+    }>
+  >`
+    SELECT
+      (
+        SELECT currency FROM "Sale"
+        WHERE "tenantId" = ${tenantId} AND "deletedAt" IS NULL
+        ORDER BY id ASC LIMIT 1
+      ) AS currency,
+      COALESCE((
+        SELECT SUM(amount) FILTER (WHERE type <> 'revenue')
+        FROM "LedgerEntry"
+        WHERE "tenantId" = ${tenantId}
+          AND "deletedAt" IS NULL
+          AND date >= ${kpiWindow.from}
+          AND date <= ${kpiWindow.to}
+      ), 0) AS ledger_costs,
+      COALESCE((
+        SELECT SUM(amount) FILTER (WHERE type = 'revenue')
+        FROM "LedgerEntry"
+        WHERE "tenantId" = ${tenantId}
+          AND "deletedAt" IS NULL
+          AND date >= ${kpiWindow.from}
+          AND date <= ${kpiWindow.to}
+      ), 0) AS ledger_revenue,
+      COALESCE((
+        SELECT SUM(s.total)
+        FROM "Sale" s
+        WHERE s."tenantId" = ${tenantId}
+          AND s."deletedAt" IS NULL
+          AND s.status::text NOT IN (
+            'draft', 'quotation', 'refunded', 'partially_refunded', 'written_off'
+          )
+          AND s.date >= ${kpiWindow.from}
+          AND s.date <= ${kpiWindow.to}
+      ), 0) AS total_sale,
+      COALESCE((
+        SELECT SUM(GREATEST(0, s.total - COALESCE(p.paid, 0)))
+        FROM "Sale" s
+        LEFT JOIN (
+          SELECT "saleId", SUM(amount) AS paid
+          FROM "Payment"
+          WHERE "deletedAt" IS NULL
+          GROUP BY "saleId"
+        ) p ON p."saleId" = s.id
+        WHERE s."tenantId" = ${tenantId}
+          AND s."deletedAt" IS NULL
+          AND s.status::text <> 'draft'
+          AND s."paymentStatus"::text IN ('due', 'partial', 'overdue')
+          AND s.date >= ${kpiWindow.from}
+          AND s.date <= ${kpiWindow.to}
+      ), 0) AS sale_due,
+      COALESCE((
+        SELECT SUM(s.total)
+        FROM "Sale" s
+        WHERE s."tenantId" = ${tenantId}
+          AND s."deletedAt" IS NULL
+          AND s.status::text IN (
+            'refunded', 'partially_refunded', 'written_off'
+          )
+          AND s.date >= ${kpiWindow.from}
+          AND s.date <= ${kpiWindow.to}
+      ), 0) AS sell_return,
+      COALESCE((
+        SELECT SUM(i.total)
+        FROM "Invoice" i
+        INNER JOIN "StockMovement" sm ON sm.id = i."stockMovementId"
+        WHERE i."tenantId" = ${tenantId}
+          AND i."deletedAt" IS NULL
+          AND i.kind = 'purchase'
+          AND sm."deletedAt" IS NULL
+          AND sm.source::text = 'standard'
+          AND i."documentDate" >= ${kpiWindow.from}
+          AND i."documentDate" <= ${kpiWindow.to}
+      ), 0) AS total_purchase,
+      COALESCE((
+        SELECT SUM(i.total)
+        FROM "Invoice" i
+        INNER JOIN "StockMovement" sm ON sm.id = i."stockMovementId"
+        WHERE i."tenantId" = ${tenantId}
+          AND i."deletedAt" IS NULL
+          AND i.kind = 'purchase'
+          AND sm."deletedAt" IS NULL
+          AND sm.source::text = 'standard'
+          AND COALESCE(i."paymentStatus", sm."paymentStatus"::text)
+            IN ('due', 'partial', 'overdue')
+          AND i."documentDate" >= ${kpiWindow.from}
+          AND i."documentDate" <= ${kpiWindow.to}
+      ), 0) AS purchase_due,
+      COALESCE((
+        SELECT SUM(i.total)
+        FROM "Invoice" i
+        INNER JOIN "StockMovement" sm ON sm.id = i."stockMovementId"
+        WHERE i."tenantId" = ${tenantId}
+          AND i."deletedAt" IS NULL
+          AND i.kind = 'purchase'
+          AND sm."deletedAt" IS NULL
+          AND sm.source::text = 'purchase_return'
+          AND i."documentDate" >= ${kpiWindow.from}
+          AND i."documentDate" <= ${kpiWindow.to}
+      ), 0) AS purchase_return,
+      COALESCE(
+        (
+          SELECT json_agg(
+            json_build_object(
+              'label', to_char(bucket, 'Mon DD'),
+              'sales', sales
+            )
+            ORDER BY bucket ASC
+          )
+          FROM (
+            SELECT date_trunc('day', date) AS bucket, COALESCE(SUM(total), 0) AS sales
+            FROM "Sale"
+            WHERE "tenantId" = ${tenantId}
+              AND "deletedAt" IS NULL
+              AND status::text <> 'draft'
+              AND date >= ${chartWindow.from}
+              AND date <= ${chartWindow.to}
+            GROUP BY 1
+          ) s
+        ),
+        '[]'::json
+      ) AS sales_trend,
+      COALESCE(
+        (
+          SELECT json_agg(
+            json_build_object(
+              'label', to_char(bucket, 'Mon DD'),
+              'purchase', purchase
+            )
+            ORDER BY bucket ASC
+          )
+          FROM (
+            SELECT date_trunc('day', i."documentDate") AS bucket,
+              COALESCE(SUM(i.total), 0) AS purchase
+            FROM "Invoice" i
+            INNER JOIN "StockMovement" sm ON sm.id = i."stockMovementId"
+            WHERE i."tenantId" = ${tenantId}
+              AND i."deletedAt" IS NULL
+              AND i.kind = 'purchase'
+              AND sm."deletedAt" IS NULL
+              AND sm.source::text = 'standard'
+              AND i."documentDate" >= ${chartWindow.from}
+              AND i."documentDate" <= ${chartWindow.to}
+            GROUP BY 1
+          ) p
+        ),
+        '[]'::json
+      ) AS purchase_trend
+  `;
+
+  const row = rows[0];
+  const currency = row?.currency ?? 'NGN';
+  const expenseTotal = num(row?.ledger_costs);
+  const revenue = num(row?.ledger_revenue);
+  const salesRaw = parseJsonArray<{ label: string; sales: number }>(
+    row?.sales_trend,
+  );
+  const purchaseRaw = parseJsonArray<{ label: string; purchase: number }>(
+    row?.purchase_trend,
+  );
+
+  return {
+    currency,
+    revenue,
+    financeKpis: [
+      {
+        label: 'Total Sales',
+        icon: 'wallet',
+        metricKey: 'totalSale',
+        color: '#3b82f6',
+        value: num(row?.total_sale),
+        currency,
+      },
+      {
+        label: 'Net',
+        icon: 'wallet',
+        metricKey: 'net',
+        color: '#9333ea',
+        value: revenue - expenseTotal,
+        currency,
+      },
+      {
+        label: 'Invoice due',
+        icon: 'alert',
+        metricKey: 'invoiceDue',
+        color: '#f39c12',
+        value: num(row?.sale_due),
+        currency,
+      },
+      {
+        label: 'Total Sell Return',
+        icon: 'rotate',
+        metricKey: 'sellReturn',
+        color: '#dd4b39',
+        value: num(row?.sell_return),
+        currency,
+      },
+      {
+        label: 'Total purchase',
+        icon: 'cart',
+        metricKey: 'purchase',
+        color: '#00a65a',
+        value: num(row?.total_purchase),
+        currency,
+      },
+      {
+        label: 'Purchase due',
+        icon: 'alert',
+        metricKey: 'purchaseDue',
+        color: '#f39c12',
+        value: num(row?.purchase_due),
+        currency,
+      },
+      {
+        label: 'Total Purchase Return',
+        icon: 'package',
+        metricKey: 'purchaseReturn',
+        color: '#605ca8',
+        value: num(row?.purchase_return),
+        currency,
+      },
+      {
+        label: 'Expense',
+        icon: 'receipt',
+        metricKey: 'expense',
+        color: '#2563eb',
+        value: expenseTotal,
+        currency,
+      },
+    ],
+    charts: [
+      {
+        id: 'hq6-sales-last-30',
+        title: 'Sales Last 30 Days',
+        subtitle: 'Total sales value',
+        type: 'line',
+        series: [{ name: 'Total Sales', dataKey: 'sales', color: '#3b82f6' }],
+        data: asChartData(
+          salesRaw.map((r) => ({ label: r.label, sales: Number(r.sales) })),
+        ),
+      },
+      {
+        id: 'hq6-purchase-last-30',
+        title: 'Purchase Last 30 Days',
+        subtitle: 'Total purchase value',
+        type: 'line',
+        series: [
+          { name: 'Total Purchase', dataKey: 'purchase', color: '#00a65a' },
+        ],
+        data: asChartData(
+          purchaseRaw.map((r) => ({
+            label: r.label,
+            purchase: Number(r.purchase),
+          })),
+        ),
+      },
+    ],
+  };
+}
+
+/** @deprecated Prefer buildVaHq6HomeBundle — kept for any external callers. */
+export async function buildVaHq6HomeFinanceKpis(
+  db: TenantScopedPrisma,
+  tenantId: string,
+  from?: string,
+  to?: string,
+): Promise<ReportsKpi[]> {
+  const bundle = await buildVaHq6HomeBundle(db, tenantId, from, to);
+  return bundle.financeKpis;
+}
+
+/** @deprecated Prefer buildVaHq6HomeBundle — kept for any external callers. */
 export async function buildVaHq6HomeCharts(
   db: TenantScopedPrisma,
   tenantId: string,
 ): Promise<ReportsChart[]> {
-  const window = last30DayWindow();
-  const [sales, purchases] = await Promise.all([
-    salesRevenueByBucket(db, tenantId, window),
-    purchaseRevenueByBucket(db, tenantId, window),
-  ]);
-
-  return [
-    {
-      id: 'hq6-sales-last-30',
-      title: 'Sales Last 30 Days',
-      subtitle: 'Total sales value',
-      type: 'line',
-      series: [{ name: 'Total Sales', dataKey: 'sales', color: '#3b82f6' }],
-      data: asChartData(
-        sales.map((row) => ({ label: row.label, sales: row.sales })),
-      ),
-    },
-    {
-      id: 'hq6-purchase-last-30',
-      title: 'Purchase Last 30 Days',
-      subtitle: 'Total purchase value',
-      type: 'line',
-      series: [{ name: 'Total Purchase', dataKey: 'purchase', color: '#00a65a' }],
-      data: asChartData(
-        purchases.map((row) => ({ label: row.label, purchase: row.purchase })),
-      ),
-    },
-  ];
+  const bundle = await buildVaHq6HomeBundle(db, tenantId);
+  return bundle.charts;
 }
 
 function financeKpis(

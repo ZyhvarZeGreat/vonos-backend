@@ -489,8 +489,11 @@ export class StockMovementsService {
       amount: number;
       currency: string;
       method: string | null;
+      paymentRefNo: string | null;
       paidOn: string | null;
       note: string | null;
+      accountId: string | null;
+      accountName: string | null;
       createdByName: string | null;
     }>
   > {
@@ -508,6 +511,7 @@ export class StockMovementsService {
         paymentFor: 'purchase',
         paymentRefNo: movement.reference,
       },
+      include: { account: { select: { name: true } } },
       orderBy: [{ paidOn: 'desc' }, { createdAt: 'desc' }],
     });
 
@@ -516,8 +520,11 @@ export class StockMovementsService {
       amount: toNumber(row.amount),
       currency: row.currency,
       method: row.method,
+      paymentRefNo: row.paymentRefNo,
       paidOn: row.paidOn ? toIso(row.paidOn) : null,
       note: row.note,
+      accountId: row.accountId,
+      accountName: row.account?.name ?? null,
       createdByName: row.createdByName,
     }));
   }

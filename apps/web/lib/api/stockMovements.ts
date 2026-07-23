@@ -212,8 +212,11 @@ export async function getStockMovementPayments(
     amount: number;
     currency: string;
     method: string | null;
+    paymentRefNo: string | null;
     paidOn: string | null;
     note: string | null;
+    accountId: string | null;
+    accountName: string | null;
     createdByName: string | null;
   }>
 > {

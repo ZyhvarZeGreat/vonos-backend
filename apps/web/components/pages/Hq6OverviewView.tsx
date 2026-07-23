@@ -22,7 +22,7 @@ import {
   KpiRowSkeleton,
 } from "@/components/organisms/skeletons";
 import {
-  getOverviewDashboard,
+  getVaHq6Home,
   getPurchasePaymentDuesPanel,
   getSalesPaymentDuesPanel,
   getStockAlertPanel,
@@ -158,32 +158,35 @@ export function Hq6OverviewView() {
   const [locationCode, setLocationCode] = useState("");
 
   const overviewQuery = useQuery({
-    queryKey: ["overviewDashboard", tenantId, bounds?.from, bounds?.to, "hq6"],
+    queryKey: ["vaHq6Home", tenantId, bounds?.from, bounds?.to],
     queryFn: () =>
-      getOverviewDashboard({
+      getVaHq6Home({
         from: bounds?.from,
         to: bounds?.to,
       }),
     enabled: Boolean(tenantId),
   });
 
+  // Defer panels until HQ6 home settles so we don't stack finance + 3 panel bursts.
+  const panelsDeferred = Boolean(tenantId) && overviewQuery.isFetched;
+
   const stockAlertQuery = useQuery({
     queryKey: ["overviewPanel", "stock-alert", tenantId],
     queryFn: getStockAlertPanel,
-    enabled: Boolean(tenantId),
+    enabled: panelsDeferred,
   });
   const salesDueQuery = useQuery({
     queryKey: ["overviewPanel", "sales-dues", tenantId],
     queryFn: getSalesPaymentDuesPanel,
-    enabled: Boolean(tenantId),
+    enabled: panelsDeferred,
   });
   const purchaseDueQuery = useQuery({
     queryKey: ["overviewPanel", "purchase-dues", tenantId],
     queryFn: getPurchasePaymentDuesPanel,
-    enabled: Boolean(tenantId),
+    enabled: panelsDeferred,
   });
 
-  const financeKpis = overviewQuery.data?.financeKpis ?? overviewQuery.data?.kpis ?? [];
+  const financeKpis = overviewQuery.data?.financeKpis ?? [];
   const statRows = useMemo(() => {
     const rows: ReportsKpi[][] = [];
     for (let i = 0; i < financeKpis.length; i += 4) {
@@ -193,13 +196,11 @@ export function Hq6OverviewView() {
   }, [financeKpis]);
 
   const charts = overviewQuery.data?.charts ?? [];
-  const panels = overviewQuery.data?.panels?.length
-    ? overviewQuery.data.panels
-    : [
-        salesDueQuery.data,
-        purchaseDueQuery.data,
-        stockAlertQuery.data,
-      ].filter(Boolean) as OverviewPanel[];
+  const panels = [
+    salesDueQuery.data,
+    purchaseDueQuery.data,
+    stockAlertQuery.data,
+  ].filter(Boolean) as OverviewPanel[];
 
   return (
     <div className="hq6-page">

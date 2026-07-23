@@ -24,7 +24,6 @@ import {
   toNumber,
 } from '../../common/utils/serializers';
 import {
-  computeSupplierPurchaseRollupsForIds,
   refreshSupplierPurchaseRollups,
   supplierActivityStatus,
 } from '../../common/utils/supplierRollups';
@@ -158,17 +157,27 @@ export class SuppliersService {
         : {}),
     };
 
-    const [rows, totalCount] = await Promise.all([
-      this.tenantDb.db.supplier.findMany({
-        where: {
-          ...baseWhere,
-          ...(pagination.where ?? {}),
-        },
-        include: { assignedToUser: { select: { name: true } } },
-        orderBy: [{ name: 'asc' }, { id: 'asc' }],
-        take: pagination.take,
-      }),
+    // Page rows first, then count + amount footer (≤2 concurrent) — avoids
+    // 3-way Promise.all stampede when Neon is waking / pool is tight.
+    const rows = await this.tenantDb.db.supplier.findMany({
+      where: {
+        ...baseWhere,
+        ...(pagination.where ?? {}),
+      },
+      include: { assignedToUser: { select: { name: true } } },
+      orderBy: [{ name: 'asc' }, { id: 'asc' }],
+      take: pagination.take,
+    });
+    const [totalCount, amountAgg] = await Promise.all([
       this.tenantDb.db.supplier.count({ where: baseWhere }),
+      this.tenantDb.db.supplier.aggregate({
+        where: baseWhere,
+        _sum: {
+          totalPurchase: true,
+          totalPurchaseDue: true,
+          totalPurchasePaid: true,
+        },
+      }),
     ]);
 
     if (rows.length === 0) {
@@ -176,9 +185,9 @@ export class SuppliersService {
         items: [],
         totalCount,
         amountSummary: {
-          totalAmount: 0,
-          totalPaid: 0,
-          totalDue: 0,
+          totalAmount: toNumber(amountAgg._sum.totalPurchase),
+          totalDue: toNumber(amountAgg._sum.totalPurchaseDue),
+          totalPaid: toNumber(amountAgg._sum.totalPurchasePaid),
           currency: 'NGN',
         },
       };
@@ -196,88 +205,17 @@ export class SuppliersService {
       legacyIds.map((l) => [l.newId, `CO${String(l.legacyId).padStart(4, '0')}`]),
     );
 
-    // Overlay live purchase totals — denormalized columns are often still 0 after migration.
-    const liveRollups = await computeSupplierPurchaseRollupsForIds(
-      this.tenantDb.db,
-      rows.map((row) => row.id),
-    );
-
-    // Persist corrected rollups in the background so filters stay accurate.
-    void Promise.all(
-      rows.map(async (row) => {
-        const live = liveRollups.get(row.id);
-        if (!live) return;
-        if (
-          toNumber(row.totalPurchase) === live.totalPurchase &&
-          toNumber(row.totalPurchaseDue) === live.totalPurchaseDue &&
-          toNumber(row.totalPurchasePaid) === live.totalPurchasePaid
-        ) {
-          return;
-        }
-        await this.tenantDb.db.supplier.update({
-          where: { id: row.id },
-          data: {
-            totalPurchase: live.totalPurchase,
-            totalPurchaseDue: live.totalPurchaseDue,
-            totalPurchasePaid: live.totalPurchasePaid,
-            totalPurchaseReturn: live.totalPurchaseReturn,
-            totalAdvance: live.totalAdvance,
-            lastPurchaseAt: live.lastPurchaseAt,
-          },
-        });
-      }),
-    ).catch(() => undefined);
-
-    // Filtered totals across all matching suppliers (not just this page).
-    const matchingIds =
-      totalCount <= 2500
-        ? (
-            await this.tenantDb.db.supplier.findMany({
-              where: baseWhere,
-              select: { id: true },
-            })
-          ).map((row) => row.id)
-        : rows.map((row) => row.id);
-    const summaryRollups =
-      matchingIds.length === rows.length
-        ? liveRollups
-        : await computeSupplierPurchaseRollupsForIds(
-            this.tenantDb.db,
-            matchingIds,
-          );
-    let totalAmount = 0;
-    let totalDue = 0;
-    let totalPaid = 0;
-    for (const id of matchingIds) {
-      const live = summaryRollups.get(id);
-      if (!live) continue;
-      totalAmount += live.totalPurchase;
-      totalDue += live.totalPurchaseDue;
-      totalPaid += live.totalPurchasePaid;
-    }
-
+    // Trust denormalized purchase totals on list (refreshed on movement write).
+    // Live StockMovement JSON scans per page were ~20s on Neon.
     return {
-      items: rows.map((row) => {
-        const live = liveRollups.get(row.id);
-        return toListRow(
-          live
-            ? {
-                ...row,
-                totalPurchase: live.totalPurchase,
-                totalPurchaseDue: live.totalPurchaseDue,
-                totalPurchasePaid: live.totalPurchasePaid,
-                totalPurchaseReturn: live.totalPurchaseReturn,
-                totalAdvance: live.totalAdvance,
-              }
-            : row,
-          { contactId: legacyById.get(row.id) ?? null },
-        );
-      }),
+      items: rows.map((row) =>
+        toListRow(row, { contactId: legacyById.get(row.id) ?? null }),
+      ),
       totalCount,
       amountSummary: {
-        totalAmount,
-        totalDue,
-        totalPaid,
+        totalAmount: toNumber(amountAgg._sum.totalPurchase),
+        totalDue: toNumber(amountAgg._sum.totalPurchaseDue),
+        totalPaid: toNumber(amountAgg._sum.totalPurchasePaid),
         currency: 'NGN',
       },
     };

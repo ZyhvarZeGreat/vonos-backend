@@ -251,6 +251,7 @@ Wired for HQ6 list outcomes (ui-table-rows):
 | Sale Delete | `DELETE /sales/:id` → confirm “Are you sure ?” |
 | Sale Edit | `/VA/add-sale?edit=` (create-replace) |
 | Sale View Payments | `GET /sales/:id/payments` → `Hq6ViewPaymentsModal` |
+| Sale Invoice URL | `GET /sales/:id/invoice-url` → `Hq6InvoiceUrlModal` → public `/invoice/:token` |
 | Purchase Pay | `POST /stock-movements/:id/pay` → `Hq6PayPurchaseModal` |
 | Purchase Delete | `DELETE /stock-movements/:id` |
 | Purchase Edit | `/VA/add-purchase?edit=` (create-replace) |

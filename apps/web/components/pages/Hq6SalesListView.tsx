@@ -17,7 +17,6 @@ import { SaleRecordModal } from "@/components/organisms/SaleRecordModal";
 import { Hq6ActionsMenu } from "@/components/hq6/Hq6ActionsMenu";
 import { Hq6ConfirmModal } from "@/components/hq6/Hq6ConfirmModal";
 import { Hq6ListAmountFooter } from "@/components/hq6/Hq6ListAmountFooter";
-import { Hq6Modal, Hq6ModalSaveClose } from "@/components/hq6/Hq6Modal";
 import {
   Hq6FilterDateRange,
   Hq6FilterGrid,
@@ -26,6 +25,7 @@ import {
 import { Hq6SalesSummaryStrip } from "@/components/hq6/Hq6SalesSummaryStrip";
 import { Hq6StandardListShell, useHq6ListChrome } from "@/components/hq6/Hq6StandardListShell";
 import { Hq6ViewPaymentsModal } from "@/components/hq6/Hq6ViewPaymentsModal";
+import { Hq6InvoiceUrlModal } from "@/components/hq6/Hq6InvoiceUrlModal";
 import { deleteSale, getSalesPage } from "@/lib/api/sales";
 import { getCustomers } from "@/lib/api/customers";
 import { useServerListPage } from "@/lib/hooks/useServerListPage";
@@ -538,16 +538,24 @@ export function Hq6SalesListView({
                       amount: amountSummary.totalAmount ?? 0,
                       currency: sales[0]?.currency,
                     },
-                    {
-                      label: "Paid",
-                      amount: amountSummary.totalPaid ?? 0,
-                      currency: sales[0]?.currency,
-                    },
-                    {
-                      label: "Due",
-                      amount: amountSummary.totalDue ?? 0,
-                      currency: sales[0]?.currency,
-                    },
+                    ...(amountSummary.totalPaid != null
+                      ? [
+                          {
+                            label: "Paid",
+                            amount: amountSummary.totalPaid,
+                            currency: sales[0]?.currency,
+                          },
+                        ]
+                      : []),
+                    ...(amountSummary.totalDue != null
+                      ? [
+                          {
+                            label: "Due",
+                            amount: amountSummary.totalDue,
+                            currency: sales[0]?.currency,
+                          },
+                        ]
+                      : []),
                   ]}
                 />
               ) : null}
@@ -634,42 +642,50 @@ export function Hq6SalesListView({
               open={Boolean(paymentsSale)}
               title={
                 paymentsSale
-                  ? `View Payments (Invoice No: ${paymentsSale.reference})`
+                  ? `View Payments ( Invoice No.: ${paymentsSale.reference} )`
                   : "View Payments"
               }
               tenantId={tenantId}
               kind="sale"
               recordId={paymentsSale?.id ?? null}
+              context={
+                paymentsSale
+                  ? {
+                      customerName: paymentsSale.customerName,
+                      customerPhone: paymentsSale.customerPhone,
+                      businessName: config?.name ?? undefined,
+                      businessLocation: businessLocationName(
+                        paymentsSale.locationCode,
+                        config?.businessLocations,
+                      ),
+                      businessMobile:
+                        typeof config?.businessSettings?.business?.mobile ===
+                        "string"
+                          ? config.businessSettings.business.mobile
+                          : typeof config?.businessSettings?.business?.phone ===
+                              "string"
+                            ? config.businessSettings.business.phone
+                            : null,
+                      businessEmail:
+                        typeof config?.businessSettings?.business?.email ===
+                        "string"
+                          ? config.businessSettings.business.email
+                          : null,
+                      invoiceNo: paymentsSale.reference,
+                      date: paymentsSale.date ?? paymentsSale.createdAt,
+                      paymentStatus: paymentsSale.paymentStatus,
+                    }
+                  : null
+              }
               onClose={() => setPaymentsSale(null)}
             />
-            <Hq6Modal
+            <Hq6InvoiceUrlModal
               open={Boolean(invoiceUrlSale)}
+              tenantId={tenantId}
+              saleId={invoiceUrlSale?.id ?? null}
+              invoiceNo={invoiceUrlSale?.reference}
               onClose={() => setInvoiceUrlSale(null)}
-              title={
-                invoiceUrlSale
-                  ? `Invoice URL - Invoice No.: ${invoiceUrlSale.reference}`
-                  : "Invoice URL"
-              }
-              size="md"
-              footer={
-                <Hq6ModalSaveClose
-                  onClose={() => setInvoiceUrlSale(null)}
-                  closeLabel="Close"
-                />
-              }
-            >
-              {invoiceUrlSale && tenantCode ? (
-                <div className="space-y-2">
-                  <p className="text-sm text-[#4b5563]">Shareable invoice link:</p>
-                  <input
-                    className="hq6-modal-input w-full"
-                    readOnly
-                    value={`${typeof window !== "undefined" ? window.location.origin : ""}/${tenantCode}/sales/${invoiceUrlSale.id}`}
-                    onFocus={(e) => e.currentTarget.select()}
-                  />
-                </div>
-              ) : null}
-            </Hq6Modal>
+            />
           </>
         }
       >

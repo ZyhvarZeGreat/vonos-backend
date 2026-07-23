@@ -780,6 +780,28 @@
   background: #2563eb;
 }
 
+.hq6-modal-btn-notify {
+  background: #3c8dbc;
+  color: #fff;
+}
+
+.hq6-modal-btn-notify:hover:not(:disabled) {
+  background: #367fa9;
+}
+
+.hq6-modal-btn-view {
+  background: #72a5d5;
+  color: #fff;
+}
+
+.hq6-modal-btn-view:hover:not(:disabled) {
+  background: #5d93c6;
+}
+
+.hq6-modal-btn-view:disabled {
+  opacity: 0.55;
+}
+
 .hq6-modal-btn-danger {
   background: #dd4b39;
   color: #fff;

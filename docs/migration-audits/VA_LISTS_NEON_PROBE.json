@@ -1,0 +1,26 @@
+{
+  "at": "2026-07-23T07:10:00.000Z",
+  "tenantId": "tenant_va_001",
+  "change": "List paths trust denormalized amount columns; skip live sale/movement rollup scans. Sales list serialized findMany then count+aggregate.",
+  "baselineColdMs": {
+    "customers": 21679,
+    "suppliers": 21597,
+    "sales": 12871
+  },
+  "afterColdMs": {
+    "customers": 5110,
+    "suppliers": 5187,
+    "sales": 5239
+  },
+  "afterWarmMs": {
+    "customers": 5397,
+    "suppliers": 5482,
+    "sales": 5010
+  },
+  "improvement": {
+    "customers": "~4.2x faster cold",
+    "suppliers": "~4.2x faster cold",
+    "sales": "~2.5x faster cold"
+  },
+  "note": "Warm≈cold (~5s) means remaining cost is Neon RTT/compute + count/aggregate, not the removed live rollups. Totals refresh on sale/movement writes."
+}

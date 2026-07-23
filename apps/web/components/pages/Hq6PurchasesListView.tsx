@@ -542,12 +542,27 @@ export function Hq6PurchasesListView() {
         open={Boolean(paymentsTarget)}
         title={
           paymentsTarget
-            ? `View Payments (Reference No: ${paymentsTarget.reference})`
+            ? `View Payments ( Reference No.: ${paymentsTarget.reference} )`
             : "View Payments"
         }
         tenantId={tenantId}
         kind="purchase"
         recordId={paymentsTarget?.id ?? null}
+        context={
+          paymentsTarget
+            ? {
+                customerName: paymentsTarget.supplierOrDest || undefined,
+                businessName: config?.name ?? undefined,
+                businessLocation: businessLocationName(
+                  paymentsTarget.locationCode ?? null,
+                  config?.businessLocations,
+                ),
+                invoiceNo: paymentsTarget.reference,
+                date: paymentsTarget.date,
+                paymentStatus: paymentsTarget.paymentStatus,
+              }
+            : null
+        }
         onClose={() => setPaymentsTarget(null)}
       />
       <Hq6ConfirmModal

@@ -28,6 +28,7 @@ import {
   buildSalesPaymentDuesPanel,
   buildStockAlertPanel,
 } from './overviewPanels';
+import { buildVaHq6HomeBundle } from './overviewFinance';
 
 const ENTITY_CACHE_TTL_S = 900;
 
@@ -137,6 +138,45 @@ export class OverviewService implements OnModuleInit {
   async salesPaymentDuesPanel(): Promise<OverviewPanel> {
     const tenantId = this.tenantDb.requireTenantId();
     return buildSalesPaymentDuesPanel(this.tenantDb.db, tenantId);
+  }
+
+  /** VA HQ6 home stats + charts — separate from job dashboard to keep /VA/overview fast. */
+  async hq6Home(from?: string, to?: string) {
+    const startedAt = Date.now();
+    const tenantId = this.tenantDb.requireTenantId();
+    const cacheKey = await this.cache.tenantScopedKey(
+      tenantId,
+      `hq6-home:${tenantId}:${groupOverviewCacheWindowKey(from, to)}`,
+    );
+    const cached = await this.cache.get<{
+      financeKpis: OverviewDashboard['financeKpis'];
+      charts: OverviewDashboard['charts'];
+      currency: string;
+      revenue: number;
+    }>(cacheKey);
+    if (cached) {
+      this.logger.log(
+        `hq6-home ${Date.now() - startedAt}ms cache=hit tenant=${tenantId}`,
+      );
+      return cached;
+    }
+    const bundle = await buildVaHq6HomeBundle(
+      this.tenantDb.db,
+      tenantId,
+      from,
+      to,
+    );
+    const result = {
+      financeKpis: bundle.financeKpis,
+      charts: bundle.charts,
+      currency: bundle.currency,
+      revenue: bundle.revenue,
+    };
+    await this.cache.set(cacheKey, result, ENTITY_CACHE_TTL_S);
+    this.logger.log(
+      `hq6-home ${Date.now() - startedAt}ms cache=miss tenant=${tenantId}`,
+    );
+    return result;
   }
 
   async group(from?: string, to?: string): Promise<GroupOverviewDashboard> {

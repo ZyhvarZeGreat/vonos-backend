@@ -20,6 +20,25 @@ export async function getOverviewDashboard(params?: {
   return response.json();
 }
 
+/** VA HQ6 home — finance KPIs + charts (prefer over full dashboard for /VA/overview). */
+export async function getVaHq6Home(params?: {
+  from?: string;
+  to?: string;
+}): Promise<{
+  financeKpis: OverviewDashboard["financeKpis"];
+  charts: OverviewDashboard["charts"];
+  currency: string;
+  revenue: number;
+}> {
+  const search = new URLSearchParams();
+  if (params?.from) search.set("from", params.from);
+  if (params?.to) search.set("to", params.to);
+  const qs = search.toString();
+  const response = await apiFetch(`/overview/hq6-home${qs ? `?${qs}` : ""}`);
+  if (!response.ok) throw new Error("Failed to fetch VA HQ6 home");
+  return response.json();
+}
+
 function overviewRangeQuery(params?: { from?: string; to?: string }): string {
   const search = new URLSearchParams();
   if (params?.from) search.set("from", params.from);

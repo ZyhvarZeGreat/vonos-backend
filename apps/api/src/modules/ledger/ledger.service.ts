@@ -133,34 +133,48 @@ export class LedgerService {
     const window = resolveDateWindow(from, to);
     const dateFilter = ledgerDateFilter(from, to);
 
-    const [rollup, groups, currencyRow, outstanding] = await Promise.all([
-      sumDailyFinanceRollup(this.tenantDb.db, tenantId, window.from, window.to),
-      this.tenantDb.db.ledgerEntry.groupBy({
-        by: ['type'],
-        where: { tenantId, deletedAt: null, ...dateFilter },
-        _sum: { amount: true },
-      }),
+    // Rollup first (1 RTT). Skip live groupBy when rollup covers the window —
+    // avoids a 4-way Promise.all stampede on Neon wake.
+    const rollup = await sumDailyFinanceRollup(
+      this.tenantDb.db,
+      tenantId,
+      window.from,
+      window.to,
+    );
+    const useRollup =
+      rollup.revenue > 0 || rollup.costs > 0 || rollup.expenses > 0;
+
+    const [currencyRow, outstanding, groups] = await Promise.all([
       this.tenantDb.db.ledgerEntry.findFirst({
         where: { tenantId, deletedAt: null, ...dateFilter },
         select: { currency: true },
         orderBy: { date: 'desc' },
       }),
       computeOutstandingReceivables(this.tenantDb.db, from, to),
+      useRollup
+        ? Promise.resolve(null)
+        : this.tenantDb.db.ledgerEntry.groupBy({
+            by: ['type'],
+            where: { tenantId, deletedAt: null, ...dateFilter },
+            _sum: { amount: true },
+          }),
     ]);
 
-    const summary = buildLedgerSummaryFromGroups(
-      groups.map((group) => ({
-        type: group.type,
-        _sum: { amount: group._sum.amount },
-      })),
-      currencyRow?.currency ?? 'NGN',
-    );
-
-    if (rollup.revenue > 0 || rollup.costs > 0 || rollup.expenses > 0) {
-      summary.revenue = rollup.revenue;
-      summary.costs = rollup.costs + rollup.expenses;
-      summary.net = rollup.net;
-    }
+    const summary = useRollup
+      ? {
+          revenue: rollup.revenue,
+          costs: rollup.costs + rollup.expenses,
+          net: rollup.net,
+          currency: currencyRow?.currency ?? 'NGN',
+          outstanding: 0,
+        }
+      : buildLedgerSummaryFromGroups(
+          (groups ?? []).map((group) => ({
+            type: group.type,
+            _sum: { amount: group._sum.amount },
+          })),
+          currencyRow?.currency ?? 'NGN',
+        );
 
     summary.outstanding = outstanding;
 

@@ -28,11 +28,17 @@ Do **not** deploy the API to Vercel serverless for production (reports and Prism
 
 1. Sign up at [neon.tech](https://neon.tech).
 2. Create a project (e.g. `vonos-prod`), region **EU (London)** or closest to Lagos.
-3. Copy the **pooled** connection string (`?sslmode=require`):
+3. Copy the **pooled** connection string (`*-pooler*` host, `?sslmode=require`):
    ```
    postgresql://USER:PASS@ep-xxx-pooler.eu-west-2.aws.neon.tech/neondb?sslmode=require
    ```
-4. Apply migrations (from your machine, once):
+   Prisma will auto-append `pgbouncer=true` and `connection_limit=5` when the host contains `-pooler`.
+4. **Avoid Neon bottlenecks (P1001 / slow lists):**
+   - Always use the **pooler** URL for the API (never the direct host for app traffic).
+   - Keep `PRISMA_CONNECTION_LIMIT` at **5–10** per API process. Higher values stampede Neon and cause `Can't reach database server`.
+   - Prefer **Scale to zero off** (or a paid compute that stays warm) for staging/prod — cold wake + parallel overview/report queries is what makes dashboards feel stuck.
+   - Ensure Upstash Redis is set so overview/ledger/report caches actually hit.
+5. Apply migrations (from your machine, once):
 
    ```bash
    cd apps/api
