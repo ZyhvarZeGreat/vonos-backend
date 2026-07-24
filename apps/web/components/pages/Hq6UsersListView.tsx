@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { ChevronDown, CloudDownload, Filter, Plus } from "lucide-react";
@@ -13,9 +13,10 @@ import { Hq6ColumnVisibilityModal } from "@/components/hq6/Hq6ColumnVisibilityMo
 import { Hq6ListToolbar } from "@/components/hq6/Hq6ListToolbar";
 import { hq6CopyForSlug } from "@/lib/registries/hq6PageCopy";
 import { Hq6PrintModal } from "@/components/hq6/Hq6PrintModal";
-import { getUsersPage, type UserListRow } from "@/lib/api/users";
+import { getUsersPage, getAllUsers, type UserListRow } from "@/lib/api/users";
 import { useServerListPage } from "@/lib/hooks/useServerListPage";
 import { HQ6_TABLE_PAGE_SIZE } from "@/lib/api/fetchAllPages";
+import { useListExport } from "@/lib/hooks/useListExport";
 import { useListPageFilters } from "@/lib/hooks/useListPageFilters";
 import { useRecordNavigation } from "@/lib/hooks/useRecordNavigation";
 import { useTenantId } from "@/lib/hooks/useRouteTenant";
@@ -94,6 +95,42 @@ export function Hq6UsersListView() {
   });
 
   const commitSearch = () => setSearch(localSearch);
+  const exportList = useListExport();
+
+  const handleExport = useCallback(() => {
+    if (!tenantId) return;
+    void (async () => {
+      const rows = await getAllUsers(tenantId);
+      const filtered = rows.filter((row) => {
+        if (roleFilter && row.role !== roleFilter) return false;
+        if (statusFilter && row.status !== statusFilter) return false;
+        const q = search.trim().toLowerCase();
+        if (!q) return true;
+        return (
+          row.name.toLowerCase().includes(q) ||
+          row.email.toLowerCase().includes(q)
+        );
+      });
+      exportList(
+        "users",
+        [
+          { key: "username", header: "Username" },
+          { key: "name", header: "Name" },
+          { key: "email", header: "Email" },
+          { key: "role", header: "Role" },
+          { key: "status", header: "Status" },
+        ],
+        filtered.map((row) => ({
+          username: row.email.split("@")[0] ?? "",
+          name: row.name,
+          email: row.email,
+          role: formatRole(row.role),
+          status: formatStatus(row.status),
+        })),
+        "Export Users",
+      );
+    })();
+  }, [exportList, roleFilter, search, statusFilter, tenantId]);
 
   const warmUser = (row: UserListRow) => {
     prefetchDetail(row.id);
@@ -267,7 +304,11 @@ export function Hq6UsersListView() {
                 <Plus className="h-3.5 w-3.5" />
                 Add
               </button>
-              <button type="button" className="hq6-btn hq6-btn-download">
+              <button
+                type="button"
+                className="hq6-btn hq6-btn-download"
+                onClick={handleExport}
+              >
                 <CloudDownload className="h-3.5 w-3.5" />
                 Download Excel
               </button>

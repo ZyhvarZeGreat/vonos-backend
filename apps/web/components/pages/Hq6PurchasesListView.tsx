@@ -527,7 +527,6 @@ export function Hq6PurchasesListView() {
           onExportExcel={() => void handleExport()}
           onPrint={() => setPrintOpen(true)}
           onColumnVisibility={() => setColumnsOpen(true)}
-          onExportPdf={() => undefined}
           density={density}
           onDensityChange={setDensity}
         />

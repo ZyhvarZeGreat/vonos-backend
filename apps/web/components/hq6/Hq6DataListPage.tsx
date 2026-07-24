@@ -104,7 +104,12 @@ function PrimaryActionButton({ action }: { action: Hq6PrimaryAction }) {
   }
 
   return (
-    <button type="button" className={className} onClick={action.onClick}>
+    <button
+      type="button"
+      className={className}
+      onClick={action.onClick}
+      disabled={!action.onClick && !action.href}
+    >
       {icon}
       {label}
     </button>
@@ -130,7 +135,9 @@ export function Hq6DataListPage({
   className,
   freezeFirstColumn = true,
 }: Hq6DataListPageProps) {
-  const visibleActions = primaryActions.filter((a) => !a.hidden);
+  const visibleActions = primaryActions.filter(
+    (a) => !a.hidden && (a.onClick || a.href),
+  );
 
   return (
     <div className={cn("hq6-page", className)}>

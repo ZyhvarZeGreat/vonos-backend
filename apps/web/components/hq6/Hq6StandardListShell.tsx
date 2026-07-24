@@ -133,7 +133,7 @@ export function Hq6StandardListShell({
   const primaryActions = useMemo(() => {
     if (hidePrimaryAction || tabActions) return [];
     const actions = [];
-    if (rules.addVariant !== "none") {
+    if (rules.addVariant !== "none" && (onAdd || addHref)) {
       actions.push({
         label: "Add",
         variant: rules.addVariant,
@@ -184,7 +184,6 @@ export function Hq6StandardListShell({
               onExportExcel: onExport,
               onPrint: () => chrome.setPrintOpen(true),
               onColumnVisibility: () => chrome.setColumnsOpen(true),
-              onExportPdf: () => undefined,
               density: chrome.density,
               onDensityChange: chrome.setDensity,
             }

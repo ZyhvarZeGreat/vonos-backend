@@ -33,6 +33,7 @@ import {
 } from "@/components/organisms/skeletons";
 import { cn } from "@/lib/utils/cn";
 import { stripHtmlToText } from "@/lib/utils/stripHtml";
+import { toast } from "@/stores/toastStore";
 
 export function InvoiceSettingsView() {
   const isHq6 = useIsVaHq6();
@@ -553,14 +554,23 @@ function Hq6InvoiceSettingsView() {
 
 export function BarcodeSettingsView() {
   const isHq6 = useIsVaHq6();
+  const [barcodeType, setBarcodeType] = useState("C128");
+  const [stickerSheet, setStickerSheet] = useState("20");
+
+  const handleSave = () => {
+    toast.info(
+      "Barcode settings will persist when the labels API is connected.",
+    );
+  };
+
   const body = (
     <div className="space-y-4">
       <div className="grid gap-4 sm:grid-cols-2">
         <div>
           <label className="mb-1 block text-sm font-medium text-foreground">Barcode Type</label>
           <MenuSelect
-            value="C128"
-            onChange={() => {}}
+            value={barcodeType}
+            onChange={setBarcodeType}
             options={[
               { value: "C128", label: "C128" },
               { value: "C39", label: "C39" },
@@ -574,8 +584,8 @@ export function BarcodeSettingsView() {
         <div>
           <label className="mb-1 block text-sm font-medium text-foreground">Sticker Sheet</label>
           <MenuSelect
-            value="20"
-            onChange={() => {}}
+            value={stickerSheet}
+            onChange={setStickerSheet}
             options={[
               { value: "20", label: "20 per sheet (4 × 5)" },
               { value: "30", label: "30 per sheet (3 × 10)" },
@@ -586,11 +596,11 @@ export function BarcodeSettingsView() {
       </div>
       <div className="flex justify-end">
         {isHq6 ? (
-          <button type="button" className="hq6-btn-purple">
+          <button type="button" className="hq6-btn-purple" onClick={handleSave}>
             Save
           </button>
         ) : (
-          <Button>Save Settings</Button>
+          <Button onClick={handleSave}>Save Settings</Button>
         )}
       </div>
     </div>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { SaleReturnRow } from "@/lib/types/entityRows";
 import type { Sale, SaleReturnStatus } from "@vonos/types";
@@ -25,9 +26,11 @@ import { prefetchSaleListModals } from "@/lib/query/prefetchListModals";
 import { formatCurrency } from "@/lib/utils/formatCurrency";
 import { formatDate } from "@/lib/utils/formatDate";
 import { saleSeedFromReturnRow } from "@/lib/utils/listModalSeeds";
+import { toast } from "@/stores/toastStore";
 
 /** HQ6 Sell Return list — ui-audit/32_sell-return/screenshot.png */
 export function Hq6ReturnsListView() {
+  const router = useRouter();
   const tenantId = useTenantId();
   const queryClient = useQueryClient();
   const { recordId, recordSeed, openRecord, closeRecord } = useListRecordModal<Sale>({
@@ -36,7 +39,7 @@ export function Hq6ReturnsListView() {
       prefetchSaleListModals(queryClient, tenantId, id);
     },
   });
-  const { config } = useRouteTenant();
+  const { config, tenantCode } = useRouteTenant();
   const {
     dateRange,
     setDateRange,
@@ -216,6 +219,11 @@ export function Hq6ReturnsListView() {
       searchValue={localSearch}
       onSearchChange={setLocalSearch}
       onSearchCommit={commitSearch}
+      onAdd={() => {
+        if (!tenantCode) return;
+        toast.info("Open a sale, then use Actions → Sell return.");
+        router.push(`/${tenantCode}/sales`);
+      }}
       pagination={{
         pageIndex,
         pageSize,
