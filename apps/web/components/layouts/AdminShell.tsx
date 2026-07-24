@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { Sidebar } from "@/components/organisms/Sidebar";
 import { TopBar } from "@/components/organisms/TopBar";
+import { AdminEntityContextBar } from "@/components/molecules/AdminEntityContextBar";
 import { getPostLoginPath } from "@/lib/utils/authRedirect";
 import { isAuthSkipped } from "@/lib/utils/devAccess";
 import {
@@ -52,6 +53,10 @@ export function AdminShell({
   const hq6AccentCode = viewingUnit
     ? accentTenantCodeForVagUnit(viewingUnit.id)
     : "VA";
+  /** Switcher identity — VAG when consolidated so Group is the active item. */
+  const topbarCode = viewingUnit
+    ? accentTenantCodeForVagUnit(viewingUnit.id)
+    : "VAG";
   const topbarName = viewingUnit?.name ?? "Vonos Autos Group";
 
   useEffect(() => {
@@ -94,10 +99,11 @@ export function AdminShell({
       <div className="flex min-w-0 flex-1 flex-col">
         <TopBar
           title={pageTitle}
-          tenantCode={hq6AccentCode}
+          tenantCode={topbarCode}
           tenantName={topbarName}
           variant="admin"
         />
+        <AdminEntityContextBar />
         <main className="flex-1 overflow-y-auto">
           {!skipAuth && !hydrated ? (
             <div className="space-y-4 p-4">

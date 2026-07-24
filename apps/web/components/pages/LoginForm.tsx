@@ -3,7 +3,7 @@
 import { useEffect, useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
-import { ArrowRight, Lock, Mail } from "lucide-react";
+import { ArrowRight, Eye, EyeOff, Mail } from "lucide-react";
 import { Button } from "@/components/atoms/Button";
 import { Input } from "@/components/atoms/Input";
 import { AuthFooterLink, AuthTemplate } from "@/components/templates/AuthTemplate";
@@ -28,6 +28,7 @@ export function LoginForm() {
   const [, startTransition] = useTransition();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [totpCode, setTotpCode] = useState("");
   const [challengeToken, setChallengeToken] = useState<string | null>(null);
   const [challengeEmail, setChallengeEmail] = useState<string | null>(null);
@@ -209,7 +210,7 @@ export function LoginForm() {
         <div className="relative">
           <Input
             label="PASSWORD"
-            type="password"
+            type={showPassword ? "text" : "password"}
             autoComplete="current-password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
@@ -217,10 +218,19 @@ export function LoginForm() {
             required
             className={authFieldClass}
           />
-          <Lock
-            className="pointer-events-none absolute right-3.5 bottom-3 h-4 w-4 text-[var(--auth-blue,#0b5ed7)]/70"
-            aria-hidden
-          />
+          <button
+            type="button"
+            className="absolute right-3 bottom-2.5 rounded-md p-1 text-[var(--auth-blue,#0b5ed7)]/70 hover:text-[var(--auth-blue,#0b5ed7)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--auth-blue,#0b5ed7)]/30"
+            onClick={() => setShowPassword((prev) => !prev)}
+            aria-label={showPassword ? "Hide password" : "Show password"}
+            aria-pressed={showPassword}
+          >
+            {showPassword ? (
+              <EyeOff className="h-4 w-4" aria-hidden />
+            ) : (
+              <Eye className="h-4 w-4" aria-hidden />
+            )}
+          </button>
         </div>
         <div className="flex justify-end">
           <AuthFooterLink href="/reset-password">Forgot Password?</AuthFooterLink>

@@ -18,7 +18,6 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/atoms/Button";
 import { IconButton } from "@/components/atoms/IconButton";
-import { AdminEntitySwitcher } from "@/components/molecules/AdminEntitySwitcher";
 import { TenantSwitcher } from "@/components/molecules/TenantSwitcher";
 import { typographyRoles } from "@/lib/registries/typography";
 import { NotificationPanel } from "@/components/organisms/NotificationPanel";
@@ -159,7 +158,12 @@ export function TopBar({
           </IconButton>
           {isAdminChrome ? (
             <div className="flex min-w-0 items-center gap-3">
-              <AdminEntitySwitcher variant="topbar" className="min-w-0" />
+              <TenantSwitcher
+                tenantCode={tenantCode}
+                tenantName={tenantName}
+                variant="topbar"
+                className="min-w-0"
+              />
               <div className="hidden min-w-0 sm:block">
                 <p className="truncate text-xs text-white/80">VAG Super Admin</p>
               </div>
