@@ -16,11 +16,7 @@ import {
 import { ChartPanel } from "@/components/organisms/ChartPanel";
 import { DateRangeDropdown } from "@/components/molecules/DateRangeDropdown";
 import { MenuSelect } from "@/components/molecules/MenuSelect";
-import {
-  ChartPanelSkeleton,
-  DataTableSkeleton,
-  KpiRowSkeleton,
-} from "@/components/organisms/skeletons";
+import { Spinner } from "@/components/atoms/Spinner";
 import {
   getVaHq6Home,
   getPurchasePaymentDuesPanel,
@@ -51,10 +47,16 @@ function statIcon(metricKey: string) {
   return STAT_ICONS[metricKey] ?? Wallet;
 }
 
-function Hq6StatCard({ kpi }: { kpi: ReportsKpi }) {
+function Hq6StatCard({
+  kpi,
+  isLoading = false,
+}: {
+  kpi: ReportsKpi;
+  isLoading?: boolean;
+}) {
   const Icon = statIcon(kpi.metricKey);
   return (
-    <div className="hq6-stat-card">
+    <div className="hq6-stat-card" aria-busy={isLoading || undefined}>
       <div
         className="hq6-stat-icon"
         style={{
@@ -66,12 +68,100 @@ function Hq6StatCard({ kpi }: { kpi: ReportsKpi }) {
       </div>
       <div>
         <p className="hq6-stat-label">{kpi.label}</p>
-        <p className="hq6-stat-value">
-          {kpi.currency
-            ? formatHq6Currency(kpi.value, kpi.currency)
-            : String(kpi.value)}
-        </p>
+        {isLoading ? (
+          <div className="mt-1 flex items-baseline gap-2">
+            <p className="hq6-stat-value">0</p>
+            <Spinner size="sm" className="text-muted" />
+          </div>
+        ) : (
+          <p className="hq6-stat-value">
+            {kpi.currency
+              ? formatHq6Currency(kpi.value, kpi.currency)
+              : String(kpi.value)}
+          </p>
+        )}
       </div>
+    </div>
+  );
+}
+
+const HQ6_PLACEHOLDER_KPIS: ReportsKpi[] = [
+  {
+    label: "Total Sales",
+    icon: "wallet",
+    metricKey: "totalSale",
+    color: "#3b82f6",
+    value: 0,
+    currency: "NGN",
+  },
+  {
+    label: "Net",
+    icon: "wallet",
+    metricKey: "net",
+    color: "#9333ea",
+    value: 0,
+    currency: "NGN",
+  },
+  {
+    label: "Invoice due",
+    icon: "alert",
+    metricKey: "invoiceDue",
+    color: "#f39c12",
+    value: 0,
+    currency: "NGN",
+  },
+  {
+    label: "Total Sell Return",
+    icon: "rotate",
+    metricKey: "sellReturn",
+    color: "#dd4b39",
+    value: 0,
+    currency: "NGN",
+  },
+  {
+    label: "Total purchase",
+    icon: "cart",
+    metricKey: "purchase",
+    color: "#00a65a",
+    value: 0,
+    currency: "NGN",
+  },
+  {
+    label: "Purchase due",
+    icon: "alert",
+    metricKey: "purchaseDue",
+    color: "#f39c12",
+    value: 0,
+    currency: "NGN",
+  },
+  {
+    label: "Total Purchase Return",
+    icon: "package",
+    metricKey: "purchaseReturn",
+    color: "#605ca8",
+    value: 0,
+    currency: "NGN",
+  },
+  {
+    label: "Expense",
+    icon: "receipt",
+    metricKey: "expense",
+    color: "#2563eb",
+    value: 0,
+    currency: "NGN",
+  },
+];
+
+function Hq6ChartLoadingCard({ title }: { title: string }) {
+  return (
+    <div
+      className="hq6-card flex min-h-[240px] flex-col items-center justify-center gap-2 p-6"
+      aria-busy
+    >
+      <p className="text-sm font-semibold text-[#111827]">{title}</p>
+      <p className="text-2xl font-semibold tabular-nums">0</p>
+      <Spinner size="md" className="text-muted" />
+      <p className="text-xs text-muted">Loading…</p>
     </div>
   );
 }
@@ -192,7 +282,10 @@ export function Hq6OverviewView() {
     enabled: panelsDeferred,
   });
 
-  const financeKpis = overviewQuery.data?.financeKpis ?? [];
+  const financeKpis =
+    overviewQuery.data?.financeKpis ??
+    (overviewQuery.isLoading ? HQ6_PLACEHOLDER_KPIS : []);
+  const overviewLoading = overviewQuery.isLoading && !overviewQuery.data;
   const statRows = useMemo(() => {
     const rows: ReportsKpi[][] = [];
     for (let i = 0; i < financeKpis.length; i += 4) {
@@ -231,74 +324,71 @@ export function Hq6OverviewView() {
         </div>
       </div>
 
-      {overviewQuery.isLoading ? (
-        <div
-          className="space-y-[var(--hq6-section-gap)]"
-          aria-busy
-          aria-label="Loading dashboard"
-        >
-          <KpiRowSkeleton count={4} />
-          <KpiRowSkeleton count={4} />
-          <div className="grid gap-[var(--hq6-section-gap)] lg:grid-cols-2">
-            <ChartPanelSkeleton />
-            <ChartPanelSkeleton />
-          </div>
-          <div className="grid gap-[var(--hq6-section-gap)] lg:grid-cols-2">
-            <DataTableSkeleton rows={5} columns={4} withPagination={false} />
-            <DataTableSkeleton rows={5} columns={4} withPagination={false} />
-          </div>
-          <DataTableSkeleton rows={5} columns={5} withPagination={false} />
-        </div>
-      ) : (
-        <>
-          {statRows.map((row, index) => (
-            <div key={index} className="hq6-stat-grid">
-              {row.map((kpi) => (
-                <Hq6StatCard key={kpi.metricKey} kpi={kpi} />
-              ))}
-            </div>
-          ))}
-
-          {charts.length > 0 ? (
-            <div className="grid gap-[var(--hq6-section-gap)] lg:grid-cols-2">
-              {charts.slice(0, 2).map((chart) => (
-                <div key={chart.id} className="hq6-card p-4">
-                  <ChartPanel
-                    title={chart.title}
-                    subtitle={chart.subtitle}
-                    type={
-                      chart.type === "pie"
-                        ? "pie"
-                        : chart.type === "line"
-                          ? "line"
-                          : "bar"
-                    }
-                    series={chart.series}
-                    data={chart.data}
-                    hidePeriodControl
-                    formatTooltipValue={(value) =>
-                      formatCurrencyCompact(Number(value), "NGN")
-                    }
-                  />
-                </div>
-              ))}
-            </div>
-          ) : null}
-
-          <div className="grid gap-[var(--hq6-section-gap)] lg:grid-cols-2">
-            {panels.slice(0, 2).map((panel) => (
-              <Hq6OverviewPanelTable key={panel.id} panel={panel} />
+      <div
+        className="space-y-[var(--hq6-section-gap)]"
+        aria-busy={overviewLoading || undefined}
+        aria-label={overviewLoading ? "Loading dashboard" : undefined}
+      >
+        {statRows.map((row, index) => (
+          <div key={index} className="hq6-stat-grid">
+            {row.map((kpi) => (
+              <Hq6StatCard
+                key={kpi.metricKey}
+                kpi={kpi}
+                isLoading={overviewLoading}
+              />
             ))}
           </div>
-          {panels.length > 2 ? (
-            <div className="space-y-[var(--hq6-section-gap)]">
-              {panels.slice(2).map((panel) => (
+        ))}
+
+        {overviewLoading ? (
+          <div className="grid gap-[var(--hq6-section-gap)] lg:grid-cols-2">
+            <Hq6ChartLoadingCard title="Sales Last 30 Days" />
+            <Hq6ChartLoadingCard title="Purchase Last 30 Days" />
+          </div>
+        ) : charts.length > 0 ? (
+          <div className="grid gap-[var(--hq6-section-gap)] lg:grid-cols-2">
+            {charts.slice(0, 2).map((chart) => (
+              <div key={chart.id} className="hq6-card p-4">
+                <ChartPanel
+                  title={chart.title}
+                  subtitle={chart.subtitle}
+                  type={
+                    chart.type === "pie"
+                      ? "pie"
+                      : chart.type === "line"
+                        ? "line"
+                        : "bar"
+                  }
+                  series={chart.series}
+                  data={chart.data}
+                  hidePeriodControl
+                  formatTooltipValue={(value) =>
+                    formatCurrencyCompact(Number(value), "NGN")
+                  }
+                />
+              </div>
+            ))}
+          </div>
+        ) : null}
+
+        {overviewLoading ? null : (
+          <>
+            <div className="grid gap-[var(--hq6-section-gap)] lg:grid-cols-2">
+              {panels.slice(0, 2).map((panel) => (
                 <Hq6OverviewPanelTable key={panel.id} panel={panel} />
               ))}
             </div>
-          ) : null}
-        </>
-      )}
+            {panels.length > 2 ? (
+              <div className="space-y-[var(--hq6-section-gap)]">
+                {panels.slice(2).map((panel) => (
+                  <Hq6OverviewPanelTable key={panel.id} panel={panel} />
+                ))}
+              </div>
+            ) : null}
+          </>
+        )}
+      </div>
 
       <p className="hq6-footer">
         Vonos Autos Head Office - V6.8 | Copyright © {new Date().getFullYear()} All

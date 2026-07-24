@@ -19,6 +19,7 @@ import {
 import { ChevronDown } from "lucide-react";
 import { Button } from "@/components/atoms/Button";
 import { EmptyState } from "@/components/atoms/EmptyState";
+import { Spinner } from "@/components/atoms/Spinner";
 import { ChartLegendItem } from "@/components/molecules/ChartLegendItem";
 import { ChartPanelSkeleton } from "@/components/organisms/skeletons";
 import { formatNumberCompact } from "@/lib/utils/formatCurrency";
@@ -58,6 +59,8 @@ export interface ChartPanelProps {
   hideHeader?: boolean;
   horizontal?: boolean;
   isLoading?: boolean;
+  /** `zero-spinner` shows 0 + spinner instead of a chart skeleton. */
+  loadingDisplay?: "skeleton" | "zero-spinner";
   error?: string | null;
   className?: string;
 }
@@ -76,6 +79,7 @@ export function ChartPanel({
   hideHeader = false,
   horizontal = false,
   isLoading = false,
+  loadingDisplay = "skeleton",
   error = null,
   className,
 }: ChartPanelProps) {
@@ -139,7 +143,21 @@ export function ChartPanel({
       ) : null}
 
       {isLoading ? (
-        <ChartPanelSkeleton withHeader={false} className="h-full min-h-[240px] border-0 p-0 shadow-none" />
+        loadingDisplay === "zero-spinner" ? (
+          <div
+            className="flex min-h-[240px] flex-col items-center justify-center gap-2"
+            aria-busy
+          >
+            <p className="text-2xl font-semibold tabular-nums text-foreground">0</p>
+            <Spinner size="md" className="text-muted" />
+            <p className="text-xs text-muted">Loading…</p>
+          </div>
+        ) : (
+          <ChartPanelSkeleton
+            withHeader={false}
+            className="h-full min-h-[240px] border-0 p-0 shadow-none"
+          />
+        )
       ) : error ? (
         <EmptyState title="Something went wrong" message={error} />
       ) : data.length === 0 ? (

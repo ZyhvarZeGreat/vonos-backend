@@ -23,7 +23,7 @@ import type { DateRangePreset } from "@/stores/uiStore";
 import type { TenantCode } from "@/lib/registries/tenants";
 import { TENANT_ACCENT } from "@/lib/registries/tenantAccents";
 import { recordDetailPath } from "@/lib/utils/recordDetailPath";
-import { ChartPanelSkeleton } from "@/components/organisms/skeletons";
+import { Spinner } from "@/components/atoms/Spinner";
 import { OverviewPanelsLazy } from "@/components/organisms/OverviewPanelsLazy";
 import { getTenantConfigByCode } from "@/lib/registries/tenantConfigs";
 
@@ -175,19 +175,28 @@ export function OverviewLiveBody({
 
   if (isLoading && !dashboard) {
     return (
-      <div className="space-y-6">
+      <div className="space-y-6" aria-busy aria-label="Loading overview">
         <KpiRow
           cards={tenantKpiCards}
-          values={{}}
+          values={Object.fromEntries(
+            tenantKpiCards.map((card) => [card.metricKey, "0"]),
+          )}
           isLoading
+          loadingDisplay="zero-spinner"
         />
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-          <ChartPanelSkeleton withHeader={false} />
-          <ChartPanelSkeleton withHeader={false} />
-        </div>
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-          <ChartPanelSkeleton withHeader={false} />
-          <ChartPanelSkeleton withHeader={false} />
+          <div className="flex min-h-[240px] flex-col items-center justify-center gap-2 rounded-xl border border-border bg-card p-6">
+            <p className="text-sm font-semibold text-foreground">Overview chart</p>
+            <p className="text-2xl font-semibold tabular-nums">0</p>
+            <Spinner size="md" className="text-muted" />
+            <p className="text-xs text-muted">Loading…</p>
+          </div>
+          <div className="flex min-h-[240px] flex-col items-center justify-center gap-2 rounded-xl border border-border bg-card p-6">
+            <p className="text-sm font-semibold text-foreground">Overview chart</p>
+            <p className="text-2xl font-semibold tabular-nums">0</p>
+            <Spinner size="md" className="text-muted" />
+            <p className="text-xs text-muted">Loading…</p>
+          </div>
         </div>
       </div>
     );
