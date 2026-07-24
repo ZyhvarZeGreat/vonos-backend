@@ -37,6 +37,7 @@ export function JobVehiclePanel({
     onSuccess: (updated) => {
       onJobChange(updated);
       void queryClient.invalidateQueries({ queryKey: ["job", job.id] });
+      void queryClient.invalidateQueries({ queryKey: ["jobs"] });
     },
   });
 

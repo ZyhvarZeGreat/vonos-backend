@@ -94,6 +94,7 @@ export function Hq6ContactEditModal({
     queryFn: () => getCustomerGroups(tenantId!),
     enabled: Boolean(open && tenantId),
     staleTime: MODAL_REF_STALE_MS,
+    placeholderData: (prev) => prev,
   });
 
   useEffect(() => {
@@ -408,6 +409,7 @@ export function Hq6PayContactModal({
     queryFn: () => getPaymentAccounts(tenantId!),
     enabled: Boolean(open && tenantId),
     staleTime: MODAL_REF_STALE_MS,
+    placeholderData: (prev) => prev,
   });
   const accounts = accountsQuery.data ?? [];
 
@@ -418,6 +420,7 @@ export function Hq6PayContactModal({
       open && tenantId && customer?.id && accountsQuery.isFetched,
     ),
     staleTime: MODAL_RECORD_STALE_MS,
+    placeholderData: (prev) => prev,
   });
 
   const totals = useMemo(() => {

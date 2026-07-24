@@ -1,5 +1,6 @@
 import { accentForTenantCode } from "@/lib/registries/tenantAccents";
 import { getTenantByCode } from "@/lib/registries/tenants";
+import { getVagViewUnit, isVagViewUnitId } from "@/lib/registries/vagViewUnits";
 import { cn } from "@/lib/utils/cn";
 
 export interface EntityColorBadgeProps {
@@ -16,7 +17,10 @@ export function EntityColorBadge({
   className,
 }: EntityColorBadgeProps) {
   const accent = accentForTenantCode(code);
-  const name = getTenantByCode(code)?.name ?? code;
+  const name = isVagViewUnitId(code)
+    ? getVagViewUnit(code).name
+    : (getTenantByCode(code)?.name ?? code);
+  const badge = isVagViewUnitId(code) ? getVagViewUnit(code).badge : code;
   const dotSize = size === "sm" ? "h-2 w-2" : "h-2.5 w-2.5";
   const textSize = size === "sm" ? "text-xs" : "text-sm";
 
@@ -29,7 +33,7 @@ export function EntityColorBadge({
       />
       {showName ? (
         <span className={cn("font-medium text-foreground", textSize)}>
-          {code}
+          {badge}
           <span className="font-normal text-muted"> · {name}</span>
         </span>
       ) : (

@@ -17,8 +17,12 @@ import { useAdminEntityStore } from "@/stores/adminEntityStore";
 import { useUiStore } from "@/stores/uiStore";
 import { PageTransition } from "@/components/atoms/PageTransition";
 import { Spinner } from "@/components/atoms/Spinner";
-import { AdminEntityContextBar } from "@/components/molecules/AdminEntityContextBar";
-import { getTenantByCode } from "@/lib/registries/tenants";
+import {
+  accentTenantCodeForVagUnit,
+  getVagViewUnit,
+  isVagViewUnitId,
+} from "@/lib/registries/vagViewUnits";
+import { tenantAccentStyle } from "@/lib/registries/tenantAccents";
 import { scheduleIdle } from "@/lib/prefetch/scheduleIdle";
 import { prefetchVagAdminShell } from "@/lib/prefetch/routePrefetchRegistry";
 
@@ -40,9 +44,15 @@ export function AdminShell({
   const authEmail = useAuthStore((state) => state.email);
   const sidebarCollapsed = useUiStore((state) => state.sidebarCollapsed);
   const viewingCode = useAdminEntityStore((state) => state.viewingCode);
-  const viewingTenant = viewingCode ? getTenantByCode(viewingCode) : null;
-  const topbarCode = viewingCode ?? "VAG";
-  const topbarName = viewingTenant?.name ?? "Vonos Autos Group";
+  const viewingUnit =
+    viewingCode && isVagViewUnitId(viewingCode)
+      ? getVagViewUnit(viewingCode)
+      : null;
+  /** Accent for HQ6 tokens — viewing unit, else VA green like HQ6 Home. */
+  const hq6AccentCode = viewingUnit
+    ? accentTenantCodeForVagUnit(viewingUnit.id)
+    : "VA";
+  const topbarName = viewingUnit?.name ?? "Vonos Autos Group";
 
   useEffect(() => {
     if (skipAuth) return;
@@ -63,14 +73,18 @@ export function AdminShell({
   }
 
   const pageTitle = title ?? adminPageTitle(pathname);
-  const showContentLoader = !skipAuth && !hydrated;
 
   return (
-    <div className="flex h-screen overflow-hidden bg-background">
+    <div
+      className="flex h-screen overflow-hidden bg-background"
+      data-hq6="true"
+      data-tenant={hq6AccentCode}
+      style={tenantAccentStyle(hq6AccentCode)}
+    >
       <Sidebar
         sections={VAG_NAV_SECTIONS}
         tenantName="Vonos Autos Group"
-        tenantCode="VAG"
+        tenantCode={hq6AccentCode}
         userName={authName ?? undefined}
         userEmail={authEmail ?? undefined}
         activeRoute={pathname}
@@ -78,15 +92,22 @@ export function AdminShell({
         collapsed={sidebarCollapsed}
       />
       <div className="flex min-w-0 flex-1 flex-col">
-        <TopBar title={pageTitle} tenantCode={topbarCode} tenantName={topbarName} />
-        <AdminEntityContextBar />
-        <main className="flex-1 overflow-y-auto p-6 lg:p-10">
-          {showContentLoader ? (
-            <div className="flex min-h-[40vh] items-center justify-center">
-              <Spinner size="lg" />
+        <TopBar
+          title={pageTitle}
+          tenantCode={hq6AccentCode}
+          tenantName={topbarName}
+          variant="admin"
+        />
+        <main className="flex-1 overflow-y-auto">
+          {!skipAuth && !hydrated ? (
+            <div className="space-y-4 p-4">
+              <p className="text-sm text-muted">Loading {pageTitle}…</p>
+              <div className="flex min-h-[20vh] items-center justify-center">
+                <Spinner size="lg" />
+              </div>
             </div>
           ) : (
-            <PageTransition className="mx-auto max-w-[var(--space-content-max)]">
+            <PageTransition className="mx-auto w-full max-w-none">
               {children}
             </PageTransition>
           )}

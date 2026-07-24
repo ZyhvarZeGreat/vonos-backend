@@ -11,7 +11,9 @@ export interface UseListRecordModalOptions {
 }
 
 /** Keeps list pages in place while opening a record detail modal. */
-export function useListRecordModal(options?: UseListRecordModalOptions) {
+export function useListRecordModal<TSeed = unknown>(
+  options?: UseListRecordModalOptions,
+) {
   const syncUrlParam = options?.syncUrlParam;
   const onPrefetchRecord = options?.onPrefetchRecord;
   const router = useRouter();
@@ -20,10 +22,12 @@ export function useListRecordModal(options?: UseListRecordModalOptions) {
   const urlRecordId = syncUrlParam ? searchParams.get(syncUrlParam) : null;
 
   const [recordId, setRecordId] = useState<string | null>(urlRecordId);
+  const [recordSeed, setRecordSeed] = useState<TSeed | null>(null);
 
   useEffect(() => {
     if (!syncUrlParam) return;
     setRecordId(urlRecordId);
+    if (!urlRecordId) setRecordSeed(null);
   }, [syncUrlParam, urlRecordId]);
 
   const writeUrl = useCallback(
@@ -39,8 +43,9 @@ export function useListRecordModal(options?: UseListRecordModalOptions) {
   );
 
   const openRecord = useCallback(
-    (id: string) => {
+    (id: string, seed?: TSeed) => {
       onPrefetchRecord?.(id);
+      setRecordSeed(seed ?? null);
       setRecordId(id);
       writeUrl(id);
     },
@@ -49,11 +54,13 @@ export function useListRecordModal(options?: UseListRecordModalOptions) {
 
   const closeRecord = useCallback(() => {
     setRecordId(null);
+    setRecordSeed(null);
     writeUrl(null);
   }, [writeUrl]);
 
   return {
     recordId,
+    recordSeed,
     isOpen: recordId !== null,
     openRecord,
     closeRecord,

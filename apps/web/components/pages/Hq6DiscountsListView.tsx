@@ -26,6 +26,7 @@ import { useAppMutation } from "@/lib/hooks/useAppMutation";
 import { useBusinessLocationOptions } from "@/lib/hooks/useBusinessLocationOptions";
 import { useRouteTenant, useTenantId } from "@/lib/hooks/useRouteTenant";
 import { useServerListPage } from "@/lib/hooks/useServerListPage";
+import { HQ6_TABLE_PAGE_SIZE } from "@/lib/api/fetchAllPages";
 import { formatCurrency } from "@/lib/utils/formatCurrency";
 
 function emptyDiscountForm() {
@@ -70,6 +71,7 @@ export function Hq6DiscountsListView() {
     setPageSize,
     isLoading,
     isFetching,
+    isPaging,
     error,
     goToPage,
     canSelectPage,
@@ -77,6 +79,7 @@ export function Hq6DiscountsListView() {
   } = useServerListPage<Discount>({
     queryKey: ["discounts", tenantId, "hq6"],
     enabled: Boolean(tenantId),
+    defaultPageSize: HQ6_TABLE_PAGE_SIZE,
     fetchPage: (cursor, limit, _sort, opts) => getDiscountsPage(tenantId!, cursor, limit, { includeSummary: opts?.includeSummary }),
   });
 
@@ -234,7 +237,7 @@ export function Hq6DiscountsListView() {
         onPageSelect: goToPage,
         canSelectPage,
         totalItems: totalCount,
-        isBusy: isFetching && !isLoading,
+        isBusy: isPaging,
       }}
       modals={
         <>

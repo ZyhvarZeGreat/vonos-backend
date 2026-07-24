@@ -166,6 +166,7 @@ function DiscountsListViewBody() {
     setPageSize,
     isLoading,
     isFetching,
+    isPaging,
     error,
     goToPage,
     canSelectPage,
@@ -297,6 +298,7 @@ function DiscountsListViewBody() {
         canSelectPage={canSelectPage}
         isLoading={isLoading}
         isFetching={isFetching}
+          isPaging={isPaging}
         error={error ? "Failed to load discounts" : null}
         emptyState={{ message: "No discounts yet." }}
       />
@@ -322,6 +324,7 @@ export function VariationsListView() {
     setPageSize,
     isLoading,
     isFetching,
+    isPaging,
     error,
     goToPage,
     canSelectPage,
@@ -434,6 +437,7 @@ export function VariationsListView() {
         canSelectPage={canSelectPage}
         isLoading={isLoading}
         isFetching={isFetching}
+          isPaging={isPaging}
         error={error ? "Failed to load variations" : null}
         emptyState={{ message: "No variation templates yet." }}
       />

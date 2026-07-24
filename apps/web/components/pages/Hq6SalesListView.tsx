@@ -26,20 +26,17 @@ import { Hq6SalesSummaryStrip } from "@/components/hq6/Hq6SalesSummaryStrip";
 import { Hq6StandardListShell, useHq6ListChrome } from "@/components/hq6/Hq6StandardListShell";
 import { Hq6ViewPaymentsModal } from "@/components/hq6/Hq6ViewPaymentsModal";
 import { Hq6InvoiceUrlModal } from "@/components/hq6/Hq6InvoiceUrlModal";
-import { deleteSale, getSaleView, getSalesPage } from "@/lib/api/sales";
+import { deleteSale, getSalesPage } from "@/lib/api/sales";
 import { getCustomers } from "@/lib/api/customers";
-import { useServerListPage } from "@/lib/hooks/useServerListPage";
+import { useServerListPage, serverSortProps, withListSort } from "@/lib/hooks/useServerListPage";
+import { HQ6_TABLE_PAGE_SIZE } from "@/lib/api/fetchAllPages";
 import { useListExport } from "@/lib/hooks/useListExport";
 import { useListRecordModal } from "@/lib/hooks/useListRecordModal";
 import { useListPageFilters } from "@/lib/hooks/useListPageFilters";
 import { useRouteTenant, useTenantId } from "@/lib/hooks/useRouteTenant";
-import {
-  MODAL_RECORD_STALE_MS,
-  modalKeys,
-  prefetchModalQuery,
-} from "@/lib/query/modalQueryKeys";
+import { prefetchSaleListModals } from "@/lib/query/prefetchListModals";
+import { compositeListCursorFrom } from "@/lib/utils/pagination";
 import { toast } from "@/stores/toastStore";
-import { saleListCursor } from "@/lib/utils/pagination";
 import {
   formatHq6Currency,
   formatHq6DateTime,
@@ -47,6 +44,7 @@ import {
   formatHq6PaymentStatus,
 } from "@/lib/utils/hq6Format";
 import { businessLocationName } from "@/lib/utils/locationLabels";
+import { hq6PaymentBadgeClass } from "@/lib/utils/hq6PaymentBadge";
 import type { Sale, SaleReturnStatus, SaleStatus } from "@vonos/types";
 import { cn } from "@/lib/utils/cn";
 
@@ -59,10 +57,7 @@ export interface Hq6SalesListViewProps {
 }
 
 function paymentBadgeClass(status: string | null | undefined): string {
-  if (status === "paid") return "hq6-pay-paid";
-  if (status === "due" || status === "overdue") return "hq6-pay-due";
-  if (status === "partial") return "hq6-pay-partial";
-  return "hq6-pay-due";
+  return hq6PaymentBadgeClass(status);
 }
 
 /** HQ6 All Sales list — ui-audit/24_sells/screenshot.png */
@@ -77,15 +72,11 @@ export function Hq6SalesListView({
   const tenantId = useTenantId();
   const { config, tenantCode } = useRouteTenant();
   const queryClient = useQueryClient();
-  const { recordId, openRecord, closeRecord } = useListRecordModal({
+  const { recordId, recordSeed, openRecord, closeRecord } = useListRecordModal<Sale>({
     syncUrlParam: "record",
     onPrefetchRecord: (id) => {
       if (!tenantId) return;
-      prefetchModalQuery(queryClient, {
-        queryKey: modalKeys.saleView(tenantId, id),
-        queryFn: () => getSaleView(id, tenantId),
-        staleTime: MODAL_RECORD_STALE_MS,
-      });
+      prefetchSaleListModals(queryClient, tenantId, id);
     },
   });
   const exportList = useListExport();
@@ -118,7 +109,7 @@ export function Hq6SalesListView({
 
   const apiFilters = useMemo(
     () => ({
-      search: (localSearch || search).trim() || undefined,
+      search: (search).trim() || undefined,
       saleStatus,
       shipmentsOnly,
       status: (statusFilter || undefined) as SaleReturnStatus | undefined,
@@ -134,7 +125,6 @@ export function Hq6SalesListView({
       bounds?.from,
       bounds?.to,
       customerFilter,
-      localSearch,
       locationFilter,
       paymentStatusFilter,
       saleStatus,
@@ -157,17 +147,35 @@ export function Hq6SalesListView({
     setPageSize,
     isLoading,
     isFetching,
+    isPaging,
     error,
     goToPage,
     canSelectPage,
+    sort,
+    setSort,
   } = useServerListPage({
     queryKey: ["sales", tenantId, saleStatus ?? "all", "hq6"],
     enabled: Boolean(tenantId),
     filters: apiFilters,
-    search: localSearch || search,
-    defaultPageSize: 25,
-    fetchPage: (cursor, limit, _sort, opts) => getSalesPage(tenantId!, { ...apiFilters, includeSummary: opts?.includeSummary }, cursor, limit),
-    getCursor: (row) => saleListCursor(row),
+    search: search,
+    defaultPageSize: HQ6_TABLE_PAGE_SIZE,
+    defaultSort: { sortBy: "date", sortDir: "desc" },
+    fetchPage: (cursor, limit, listSort, opts) =>
+      getSalesPage(
+        tenantId!,
+        withListSort(
+          { ...apiFilters, includeSummary: opts?.includeSummary },
+          listSort,
+        ),
+        cursor,
+        limit,
+      ),
+    getCursor: (row, listSort) => {
+      const sortBy = listSort?.sortBy ?? "date";
+      const type =
+        sortBy === "total" ? "number" : sortBy === "date" || sortBy === "createdAt" ? "date" : "string";
+      return compositeListCursorFrom(row, sortBy, type);
+    },
   });
 
   const commitSearch = () => setSearch(localSearch);
@@ -221,7 +229,7 @@ export function Hq6SalesListView({
                   id: "view",
                   label: "View",
                   icon: <Eye size={15} strokeWidth={1.75} />,
-                  onClick: () => openRecord(row.id),
+                  onClick: () => openRecord(row.id, row),
                 },
                 {
                   id: "edit",
@@ -238,13 +246,13 @@ export function Hq6SalesListView({
                   id: "print",
                   label: "Print",
                   icon: <Printer size={15} strokeWidth={1.75} />,
-                  onClick: () => openRecord(row.id),
+                  onClick: () => openRecord(row.id, row),
                 },
                 {
                   id: "convert",
                   label: "Convert to Proforma Invoice",
                   icon: <RefreshCw size={15} strokeWidth={1.75} />,
-                  onClick: () => openRecord(row.id),
+                  onClick: () => openRecord(row.id, row),
                 },
                 {
                   id: "delete",
@@ -285,7 +293,7 @@ export function Hq6SalesListView({
                 },
               ]
             : [
-                { id: "view", label: "View", onClick: () => openRecord(row.id) },
+                { id: "view", label: "View", onClick: () => openRecord(row.id, row) },
                 {
                   id: "edit",
                   label: "Edit",
@@ -301,27 +309,32 @@ export function Hq6SalesListView({
                 {
                   id: "edit_shipping",
                   label: "Edit Shipping",
-                  onClick: () => openRecord(row.id),
+                  onClick: () => openRecord(row.id, row),
                 },
                 {
                   id: "print",
                   label: "Print Invoice",
-                  onClick: () => openRecord(row.id),
+                  onClick: () => openRecord(row.id, row),
                 },
                 {
                   id: "packing_slip",
                   label: "Packing Slip",
-                  onClick: () => openRecord(row.id),
+                  onClick: () => openRecord(row.id, row),
                 },
                 {
                   id: "delivery_note",
                   label: "Delivery Note",
-                  onClick: () => openRecord(row.id),
+                  onClick: () => openRecord(row.id, row),
                 },
                 {
                   id: "view_payments",
                   label: "View Payments",
-                  onClick: () => setPaymentsSale(row),
+                  onClick: () => {
+                    if (tenantId) {
+                      prefetchSaleListModals(queryClient, tenantId, row.id);
+                    }
+                    setPaymentsSale(row);
+                  },
                 },
                 {
                   id: "sell_return",
@@ -352,6 +365,7 @@ export function Hq6SalesListView({
       {
         key: "customerName",
         header: "Customer name",
+        sortable: false,
         render: (row) => (
           <div>
             <div className="font-medium">{row.customerName}</div>
@@ -364,11 +378,13 @@ export function Hq6SalesListView({
       {
         key: "customerPhone",
         header: "Contact Number",
+        sortable: false,
         render: (row) => row.customerPhone ?? "—",
       },
       {
         key: "locationCode",
         header: "Location",
+        sortable: false,
         render: (row) =>
           businessLocationName(row.locationCode, config?.businessLocations) ?? "—",
       },
@@ -389,6 +405,7 @@ export function Hq6SalesListView({
       {
         key: "paymentMethod",
         header: "Payment Method",
+        sortable: false,
         render: (row) => formatHq6PaymentMethod(row.paymentMethod),
       },
       {
@@ -402,6 +419,7 @@ export function Hq6SalesListView({
         key: "totalPaid",
         header: "Total paid",
         numeric: true,
+        sortable: false,
         sortValue: (row) => row.totalPaid ?? 0,
         render: (row) =>
           formatHq6Currency(row.totalPaid ?? 0, row.currency),
@@ -410,6 +428,7 @@ export function Hq6SalesListView({
         key: "sellDue",
         header: "Sell Due",
         numeric: true,
+        sortable: false,
         sortValue: (row) => row.sellDue ?? 0,
         render: (row) => formatHq6Currency(row.sellDue ?? 0, row.currency),
       },
@@ -620,12 +639,24 @@ export function Hq6SalesListView({
           onPageSelect: goToPage,
           canSelectPage,
           totalItems: totalCount,
-          isBusy: isFetching && !isLoading,
-          show: (sales.length > 0 || canGoPrev || isLoading) && !isLoading,
+          isBusy: isPaging || isLoading,
+          // Keep bar visible while changing pages (loading clears rows briefly).
+          show:
+            sales.length > 0 ||
+            canGoPrev ||
+            hasMore ||
+            pageIndex > 0 ||
+            isFetching ||
+            isLoading,
         }}
         modals={
           <>
-            <SaleRecordModal saleId={recordId} listSlug="sales" onClose={closeRecord} />
+            <SaleRecordModal
+              saleId={recordId}
+              initialSale={recordSeed}
+              listSlug="sales"
+              onClose={closeRecord}
+            />
             <Hq6ConfirmModal
               open={Boolean(deleteTarget)}
               onClose={() => setDeleteTarget(null)}
@@ -711,7 +742,6 @@ export function Hq6SalesListView({
           displayMode="table"
           embedded
           disablePagination
-          stickyHeader
           stickyFirstColumn
           density={chrome.density}
           onDensityChange={chrome.setDensity}
@@ -719,8 +749,9 @@ export function Hq6SalesListView({
           isLoading={isLoading}
           isFetching={isFetching && !isLoading}
           error={error ? "Could not load sales." : null}
-          onRowClick={(row) => openRecord(row.id)}
+          onRowClick={(row) => openRecord(row.id, row)}
           emptyState={{ message: "No sales found." }}
+          serverSort={serverSortProps({ sort, setSort })}
         />
       </Hq6StandardListShell>
     </>

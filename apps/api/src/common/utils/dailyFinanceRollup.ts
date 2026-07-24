@@ -1,5 +1,6 @@
 import type { LedgerEntryType } from '@prisma/client';
 import { Prisma } from '@prisma/client';
+import { EXCLUDE_MIRRORED_JOB_SALE_REVENUE_SQL } from './ledgerRevenueDedupe';
 import { toNumber } from './serializers';
 
 type TenantDailyFinanceTenantFilter = string | { in: string[] };
@@ -202,19 +203,18 @@ export async function resolveGroupFinanceSource(
   return hasDailyFinanceRollupForTenants(db, tenantIds, from, to);
 }
 
-/** True when any tenant in the set has rollup rows in the window. */
+/** True when any of these tenants has daily-finance rollup rows (any date).
+ * Window emptiness must not force a LedgerEntry live scan — empty rollup
+ * windows return 0 via the unique (tenantId, date) index in sub-ms. */
 export async function hasDailyFinanceRollupForTenants(
   db: FinanceClient,
   tenantIds: string[],
-  from: Date,
-  to: Date,
+  _from: Date,
+  _to: Date,
 ): Promise<boolean> {
   if (tenantIds.length === 0) return false;
   const count = await db.tenantDailyFinance.count({
-    where: {
-      tenantId: { in: tenantIds },
-      date: { gte: dayStart(from), lte: dayStart(to) },
-    },
+    where: { tenantId: { in: tenantIds } },
   });
   return count > 0;
 }
@@ -489,6 +489,7 @@ export async function backfillDailyFinanceFromLedger(
       FROM "LedgerEntry"
       WHERE "deletedAt" IS NULL
         AND "tenantId" = ${tenantId}
+        ${EXCLUDE_MIRRORED_JOB_SALE_REVENUE_SQL}
       GROUP BY "tenantId", date_trunc('day', date AT TIME ZONE 'UTC')
     `;
     return Number(result);
@@ -516,6 +517,7 @@ export async function backfillDailyFinanceFromLedger(
       NOW()
     FROM "LedgerEntry"
     WHERE "deletedAt" IS NULL
+      ${EXCLUDE_MIRRORED_JOB_SALE_REVENUE_SQL}
     GROUP BY "tenantId", date_trunc('day', date AT TIME ZONE 'UTC')
   `;
   return Number(result);

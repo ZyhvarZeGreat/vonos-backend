@@ -14,6 +14,10 @@ import { TenantDbService } from '../../common/prisma/tenant-db.service';
 import { CacheService } from '../../common/cache/cache.service';
 import { invalidateTenantDashboardCache } from '../../common/cache/cacheInvalidation';
 import { buildCompositeCursorQuery } from '../../common/utils/pagination';
+import {
+  listPageFilterKey,
+  withListPageCache,
+} from '../../common/utils/listPageCache';
 import { toIso, toNumber } from '../../common/utils/serializers';
 
 @Injectable()
@@ -108,6 +112,28 @@ export class PaymentAccountsService {
     search?: string;
   } = {}): Promise<PaymentAccount[]> {
     const tenantId = this.tenantDb.requireTenantId();
+    const filterKey = listPageFilterKey({
+      search: filters.search,
+      cursor: filters.cursor,
+      limit: filters.limit ?? 10,
+    });
+    return withListPageCache(
+      this.cache,
+      tenantId,
+      'payment-accounts',
+      filterKey,
+      () => this.listUncached(filters, tenantId),
+    );
+  }
+
+  private async listUncached(
+    filters: {
+      cursor?: string;
+      limit?: number;
+      search?: string;
+    },
+    tenantId: string,
+  ): Promise<PaymentAccount[]> {
     const pagination = buildCompositeCursorQuery({
       sortField: 'name',
       sortDir: 'asc',

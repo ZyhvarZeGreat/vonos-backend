@@ -24,6 +24,7 @@ export const ENTITY_COLOR_LEGEND = (
 export const VAG_ACCENT = "#1E293B";
 
 export function accentForTenantCode(code: string): string {
+  if (code === "SP") return TENANT_ACCENT.VISP;
   if (code in TENANT_ACCENT) {
     return TENANT_ACCENT[code as TenantCode];
   }

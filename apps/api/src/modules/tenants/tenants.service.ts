@@ -5,7 +5,7 @@ import {
 } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
 import type { TenantConfig, UpdateTenantConfigRequest } from '@vonos/types';
-import { mergeHq6BusinessSettings } from '@vonos/types';
+import { mergeHq6BusinessSettings, mergeHrmSettings } from '@vonos/types';
 import { PrismaService } from '../../common/prisma/prisma.service';
 
 @Injectable()
@@ -71,6 +71,14 @@ export class TenantsService {
             businessSettings: mergeHq6BusinessSettings(
               current.businessSettings,
               patch.businessSettings,
+            ),
+          }
+        : {}),
+      ...(patch.hrmSettings !== undefined
+        ? {
+            hrmSettings: mergeHrmSettings(
+              current.hrmSettings,
+              patch.hrmSettings,
             ),
           }
         : {}),

@@ -152,6 +152,14 @@ export async function getUsers(
   );
 }
 
+/** Single user for detail pages — prefer over scanning getUsers(). */
+export async function getUser(id: string, tenantId?: string | null): Promise<User> {
+  const path = withTenantQuery(`/users/${id}`, tenantId ?? undefined);
+  const response = await apiFetch(path);
+  if (!response.ok) throw new Error("Failed to fetch user");
+  return response.json();
+}
+
 async function parseUserMutationError(
   response: Response,
   fallback: string,

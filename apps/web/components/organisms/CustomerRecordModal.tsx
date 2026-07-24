@@ -18,10 +18,14 @@ import {
 } from "@/lib/query/modalQueryKeys";
 import { formatCurrency } from "@/lib/utils/formatCurrency";
 import { formatDate } from "@/lib/utils/formatDate";
+import { customerContactSeedFromList } from "@/lib/utils/listModalSeeds";
 import { invoiceDocumentLayoutProps } from "@/lib/utils/resolveInvoiceLayout";
+import type { Customer } from "@vonos/types";
 
 export interface CustomerRecordModalProps {
   customerId: string | null;
+  /** List row — paints contact header immediately while detail loads. */
+  initialCustomer?: Customer | null;
   onClose: () => void;
   /** When false, hide the "Open full page" link. */
   showFullPageLink?: boolean;
@@ -29,6 +33,7 @@ export interface CustomerRecordModalProps {
 
 export function CustomerRecordModal({
   customerId,
+  initialCustomer = null,
   onClose,
   showFullPageLink = true,
 }: CustomerRecordModalProps) {
@@ -36,15 +41,25 @@ export function CustomerRecordModal({
   const { tenantId, tenantName, tenantCode } = useRouteTenant();
   const [statementOpen, setStatementOpen] = useState(false);
 
+  const seeded =
+    initialCustomer && customerId && initialCustomer.id === customerId
+      ? customerContactSeedFromList(initialCustomer)
+      : null;
+
   const { data: bundle, isLoading, error } = useQuery({
     queryKey: modalKeys.customerView(tenantId, customerId),
     queryFn: () => getCustomerView(tenantId!, customerId!),
     enabled: Boolean(tenantId && customerId),
     staleTime: MODAL_RECORD_STALE_MS,
+    placeholderData: (prev) =>
+      prev?.customer?.id === customerId ? prev : undefined,
   });
-  const contact = bundle?.customer;
-  const summary = bundle?.summary;
-  const ledger = bundle?.ledger;
+  const contact =
+    bundle?.customer?.id === customerId ? bundle.customer : seeded;
+  const summary =
+    bundle?.customer?.id === customerId ? bundle.summary : undefined;
+  const ledger =
+    bundle?.customer?.id === customerId ? bundle.ledger : undefined;
 
   // Invoice settings only when printing / opening statement.
   const { data: invoiceSettings } = useQuery({
@@ -52,6 +67,7 @@ export function CustomerRecordModal({
     queryFn: getInvoiceSettings,
     enabled: Boolean(tenantId && statementOpen),
     staleTime: MODAL_REF_STALE_MS,
+    placeholderData: (prev) => prev,
   });
 
   const statementRows = useMemo(
@@ -114,8 +130,8 @@ export function CustomerRecordModal({
             ? `/${tenantCode}/customers/${customerId}`
             : undefined
         }
-        isLoading={isLoading}
-        error={error ? "Could not load this customer." : null}
+        isLoading={isLoading && !contact}
+        error={error && !contact ? "Could not load this customer." : null}
         footer={
           contact && tenantCode ? (
             <div className="flex flex-wrap items-center justify-end gap-2 px-4 pb-4">
@@ -154,24 +170,42 @@ export function CustomerRecordModal({
               <div>
                 <dt className="text-xs text-muted">Total sales</dt>
                 <dd className="text-sm font-semibold">
-                  {formatCurrency(summary?.totalAmount ?? 0, currency)}
+                  {formatCurrency(
+                    summary?.totalAmount ?? initialCustomer?.totalSell ?? 0,
+                    currency,
+                  )}
                 </dd>
               </div>
               <div>
                 <dt className="text-xs text-muted">Amount due</dt>
                 <dd className="text-sm font-semibold text-amber-700">
-                  {formatCurrency(summary?.totalDue ?? contact.totalSellDue, currency)}
+                  {formatCurrency(
+                    summary?.totalDue ??
+                      contact.totalSellDue ??
+                      initialCustomer?.totalSellDue ??
+                      0,
+                    currency,
+                  )}
                 </dd>
               </div>
               <div>
                 <dt className="text-xs text-muted">Paid</dt>
                 <dd className="text-sm">
-                  {formatCurrency(summary?.totalPaid ?? 0, currency)}
+                  {formatCurrency(
+                    summary?.totalPaid ?? initialCustomer?.totalSellPaid ?? 0,
+                    currency,
+                  )}
                 </dd>
               </div>
               <div>
                 <dt className="text-xs text-muted">Ledger entries</dt>
-                <dd className="text-sm">{ledger?.length ?? "—"}</dd>
+                <dd className="text-sm">
+                  {ledger
+                    ? ledger.length
+                    : isLoading
+                      ? "Loading…"
+                      : "—"}
+                </dd>
               </div>
             </dl>
 
@@ -196,7 +230,9 @@ export function CustomerRecordModal({
                 </ul>
               </div>
             ) : (
-              <p className="text-sm text-muted">No ledger activity yet.</p>
+              <p className="text-sm text-muted">
+                {isLoading ? "Loading activity…" : "No ledger activity yet."}
+              </p>
             )}
           </div>
         ) : null}

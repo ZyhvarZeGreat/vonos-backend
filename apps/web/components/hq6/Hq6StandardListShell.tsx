@@ -55,6 +55,7 @@ export interface Hq6StandardListShellProps {
   searchValue: string;
   onSearchChange: (value: string) => void;
   onSearchCommit?: () => void;
+  searchPlaceholder?: string;
   columnOptions: Array<{ key: string; label: string }>;
   /** When set, column visibility starts from these keys (HQ6 default thead). */
   defaultVisibleColumnKeys?: string[];
@@ -107,6 +108,7 @@ export function Hq6StandardListShell({
   searchValue,
   onSearchChange,
   onSearchCommit,
+  searchPlaceholder,
   columnOptions,
   defaultVisibleColumnKeys,
   chrome,
@@ -125,6 +127,8 @@ export function Hq6StandardListShell({
   const rules = hq6ListActionRule(slug);
   const copy = hq6CopyForSlug(slug);
   const resolvedTitle = title ?? copy.title;
+  const resolvedSearchPlaceholder =
+    searchPlaceholder ?? copy.searchPlaceholder;
 
   const primaryActions = useMemo(() => {
     if (hidePrimaryAction || tabActions) return [];
@@ -175,6 +179,7 @@ export function Hq6StandardListShell({
               searchValue,
               onSearchChange,
               onSearchCommit,
+              searchPlaceholder: resolvedSearchPlaceholder,
               onExportCsv: onExport,
               onExportExcel: onExport,
               onPrint: () => chrome.setPrintOpen(true),

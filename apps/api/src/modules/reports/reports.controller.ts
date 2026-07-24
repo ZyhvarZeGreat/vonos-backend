@@ -35,8 +35,12 @@ export class ReportsController {
 
   @Get('group')
   @Roles('super_admin')
-  group(@Query('from') from?: string, @Query('to') to?: string) {
-    return this.reportsService.group(from, to);
+  group(
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('mode') mode?: 'core' | 'full',
+  ) {
+    return this.reportsService.group(from, to, mode === 'core' ? 'core' : 'full');
   }
 
   @Get('run')

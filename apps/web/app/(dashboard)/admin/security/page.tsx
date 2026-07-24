@@ -1,15 +1,17 @@
+"use client";
+
+import { Hq6PageFrame } from "@/components/hq6/Hq6Chrome";
 import { SecuritySettingsPanel } from "@/components/pages/SecuritySettingsPanel";
 
 export default function SecurityPage() {
   return (
-    <div className="mx-auto max-w-2xl space-y-6">
-      <div>
-        <h2 className="text-2xl font-semibold text-foreground">Security</h2>
-        <p className="mt-1 text-sm text-muted">
-          Manage authentication settings for your super admin account.
-        </p>
+    <Hq6PageFrame
+      title="Security"
+      subtitle="Authentication settings for your super admin account"
+    >
+      <div className="hq6-card p-4 md:p-6">
+        <SecuritySettingsPanel />
       </div>
-      <SecuritySettingsPanel />
-    </div>
+    </Hq6PageFrame>
   );
 }

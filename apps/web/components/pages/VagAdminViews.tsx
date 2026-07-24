@@ -5,17 +5,21 @@ import { ChartPanel } from "@/components/organisms/ChartPanel";
 import { DateRangeDropdown } from "@/components/molecules/DateRangeDropdown";
 import { EntityOverviewCard } from "@/components/organisms/EntityOverviewCard";
 import { KpiRow } from "@/components/organisms/KpiRow";
+import { Spinner } from "@/components/atoms/Spinner";
 import {
   getGroupOverviewDetails,
   getGroupOverviewSummary,
 } from "@/lib/api/overview";
-import { AUTOS_GROUP_ENTITIES } from "@/lib/registries/tenants";
+import {
+  accentTenantCodeForVagUnit,
+  VAG_VIEW_UNITS,
+  vagViewUnitIdForTenantCode,
+} from "@/lib/registries/vagViewUnits";
 import { tenantOverviewPath } from "@/lib/utils/authRedirect";
-import { TENANT_ACCENT } from "@/lib/registries/tenantAccents";
+import { accentForTenantCode } from "@/lib/registries/tenantAccents";
 import { useListPageFilters } from "@/lib/hooks/useListPageFilters";
 import { ledgerChartSubtitle } from "@/lib/utils/ledgerCharts";
 import { formatCurrencyCompact, formatNumberCompact } from "@/lib/utils/formatCurrency";
-import { ChartPanelSkeleton } from "@/components/organisms/skeletons";
 import type { ReportsKpi, GroupOverviewAlert } from "@vonos/types";
 
 const GROUP_KPIS = [
@@ -31,7 +35,11 @@ function formatGroupKpi(kpi: ReportsKpi): string {
 }
 
 export function VagGroupOverview() {
-  const { dateRange, setDateRange, bounds } = useListPageFilters();
+  const { dateRange, setDateRange, bounds } = useListPageFilters({
+    defaultDateRange: "last_7_days",
+    unboundedAllTime: false,
+    isolateDateRange: true,
+  });
   const rangeKey = [bounds?.from, bounds?.to] as const;
 
   const summaryQuery = useQuery({
@@ -45,6 +53,10 @@ export function VagGroupOverview() {
     placeholderData: (previousData) => previousData,
   });
 
+  // Text/KPI labels first — defer charts + alerts until summary settles (same
+  // staged pattern as VA HQ6 home panelsDeferred).
+  const detailsDeferred = summaryQuery.isFetched;
+
   const detailsQuery = useQuery({
     queryKey: ["groupOverview", "details", ...rangeKey],
     queryFn: () =>
@@ -52,6 +64,7 @@ export function VagGroupOverview() {
         from: bounds?.from,
         to: bounds?.to,
       }),
+    enabled: detailsDeferred,
     staleTime: 10 * 60_000,
     placeholderData: (previousData) => previousData,
   });
@@ -63,41 +76,76 @@ export function VagGroupOverview() {
     (summary?.entityStats ?? []).map((row) => [row.code, row.stats]),
   );
 
+  const unitCards = VAG_VIEW_UNITS.map((unit) => {
+    if (unit.tenantCodes.length === 1) {
+      const code = unit.tenantCodes[0]!;
+      return {
+        unit,
+        stats: (entityStats.get(code) ?? ["—", "—", "—"]) as [string, string, string],
+      };
+    }
+    // Combine VISP + VSP stat lines (prefer first non-placeholder from each slot).
+    const merged: [string, string, string] = ["—", "—", "—"];
+    for (let i = 0; i < 3; i++) {
+      const parts = unit.tenantCodes
+        .map((code) => entityStats.get(code)?.[i])
+        .filter((s): s is string => Boolean(s) && s !== "—");
+      merged[i] = parts.length > 0 ? parts.join(" · ") : "—";
+    }
+    return { unit, stats: merged };
+  });
+
   const kpiValues = Object.fromEntries(
     (summary?.kpis ?? []).map((kpi) => [kpi.metricKey, formatGroupKpi(kpi)]),
   );
 
+  // Labels stay visible; 0 + spinner while summary loads (legacy POS feel).
+  const summaryLoading = summaryQuery.isLoading || summaryQuery.isFetching;
+  const detailsLoading = !detailsDeferred || (detailsQuery.isLoading && !details);
+  const kpiValuesOrZero = summaryLoading
+    ? Object.fromEntries(GROUP_KPIS.map((card) => [card.metricKey, "0"]))
+    : kpiValues;
+
   const entityComparisonChart = details?.charts.find((c) => c.id === "entity-comparison");
   const revenueTrendChart = details?.charts.find((c) => c.id === "group-revenue-trend");
 
-  const entityComparisonData =
-    entityComparisonChart?.data.map((row) => ({
-      label: String(row.label),
-      value: Number(row.value ?? 0),
-      color: TENANT_ACCENT[String(row.label) as keyof typeof TENANT_ACCENT],
-    })) ?? [];
-
-  const summaryLoading = summaryQuery.isLoading && !summary;
-  const detailsLoading = detailsQuery.isLoading && !details;
+  const entityComparisonData = (() => {
+    if (!entityComparisonChart) return [];
+    const byUnit = new Map<string, number>();
+    for (const row of entityComparisonChart.data) {
+      const label = String(row.label);
+      const unitId = vagViewUnitIdForTenantCode(label) ?? label;
+      byUnit.set(unitId, (byUnit.get(unitId) ?? 0) + Number(row.value ?? 0));
+    }
+    return VAG_VIEW_UNITS.map((unit) => ({
+      label: unit.badge,
+      value: byUnit.get(unit.id) ?? 0,
+      color: accentForTenantCode(accentTenantCodeForVagUnit(unit.id)),
+    }));
+  })();
 
   return (
     <div className="space-y-8">
-      <div className="flex flex-wrap items-center justify-end gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-sm text-muted">
+          Showing <span className="font-medium text-foreground">{periodLabel}</span>
+        </p>
         <DateRangeDropdown value={dateRange} onChange={setDateRange} />
       </div>
 
-      <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-100">
-        <p className="font-medium">Group overview</p>
-        <p className="mt-1 text-amber-900/90 dark:text-amber-100/90">
+      <div className="hq6-card px-4 py-3 text-sm text-[#6b7280]">
+        <p className="font-semibold text-[#111827]">Group overview</p>
+        <p className="mt-1">
           Each card is a separate Vonos business. Select <strong>Enter</strong> or use the entity
-          switcher in the top bar to work in that location.
+          switcher to work in that location.
         </p>
       </div>
 
       <KpiRow
         cards={GROUP_KPIS}
-        values={kpiValues}
-        isLoading={summaryLoading}
+        values={kpiValuesOrZero}
+        isLoading={summaryLoading && !summary}
+        loadingDisplay="zero-spinner"
       />
 
       {(details?.alerts?.length ?? 0) > 0 ? (
@@ -128,14 +176,16 @@ export function VagGroupOverview() {
 
       <section>
         <h3 className="mb-4 text-base font-semibold text-foreground">Entities</h3>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          {AUTOS_GROUP_ENTITIES.map((entity) => (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          {unitCards.map(({ unit, stats }) => (
             <EntityOverviewCard
-              key={entity.code}
-              code={entity.code}
-              name={entity.name}
-              stats={entityStats.get(entity.code) ?? ["—", "—", "—"]}
-              href={tenantOverviewPath(entity.code)}
+              key={unit.id}
+              code={unit.badge}
+              name={unit.name}
+              description={unit.description}
+              stats={stats}
+              href={tenantOverviewPath(unit.enterCode)}
+              isLoading={summaryLoading && !summary}
             />
           ))}
         </div>
@@ -144,14 +194,18 @@ export function VagGroupOverview() {
       <div className="grid gap-6 lg:grid-cols-2">
         {detailsLoading ? (
           <>
-            <ChartPanelSkeleton
-              title="Group revenue trend"
-              subtitle={periodLabel}
-            />
-            <ChartPanelSkeleton
-              title="Entity comparison"
-              subtitle={periodLabel}
-            />
+            <div className="hq6-card flex min-h-[240px] flex-col items-center justify-center gap-2 p-6">
+              <p className="text-sm font-semibold text-[#111827]">Group revenue trend</p>
+              <p className="text-2xl font-semibold tabular-nums">0</p>
+              <Spinner size="md" className="text-muted" />
+              <p className="text-xs text-muted">Loading…</p>
+            </div>
+            <div className="hq6-card flex min-h-[240px] flex-col items-center justify-center gap-2 p-6">
+              <p className="text-sm font-semibold text-[#111827]">Entity comparison</p>
+              <p className="text-2xl font-semibold tabular-nums">0</p>
+              <Spinner size="md" className="text-muted" />
+              <p className="text-xs text-muted">Loading…</p>
+            </div>
           </>
         ) : (
           <>

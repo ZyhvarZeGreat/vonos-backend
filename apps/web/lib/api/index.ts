@@ -14,7 +14,7 @@ export { getLedgerEntries, getLedgerSummary } from "@/lib/api/ledger";
 export { getUsers, type UserListRow } from "@/lib/api/users";
 export { getSales, getSale, getSaleMeta } from "@/lib/api/sales";
 export { getJobs, getJob, getJobShell, getJobCosts, getJobMeta, type JobDetail } from "@/lib/api/jobs";
-export { getCustomers, getCustomer, getCustomerContact } from "@/lib/api/customers";
+export { getCustomers, getCustomer, getCustomerContact, getCustomerHistory } from "@/lib/api/customers";
 export {
   getStockMovements,
   getStockMovement,

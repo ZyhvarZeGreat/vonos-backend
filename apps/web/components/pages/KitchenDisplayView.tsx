@@ -45,6 +45,7 @@ export function KitchenDisplayView() {
     setPageSize,
     isLoading,
     isFetching,
+    isPaging,
     error,
     goToPage,
     canSelectPage,

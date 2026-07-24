@@ -18,6 +18,10 @@ import { buildCompositeCursorQuery } from '../../common/utils/pagination';
 import type { PaginatedList } from '../../common/utils/paginatedList';
 import { toIso, toNumber } from '../../common/utils/serializers';
 import { InvoiceHubService } from '../invoices/invoice-hub.service';
+import {
+  relationStringOr,
+  tokenizedSearchWhere,
+} from '../../common/utils/listSearch';
 
 type ExpenseRow = {
   id: string;
@@ -151,44 +155,18 @@ export class ExpensesService {
       ...(filters.paymentStatus
         ? { paymentStatus: filters.paymentStatus }
         : {}),
-      ...(filters.search
-        ? {
-            OR: [
-              { refNo: { contains: filters.search, mode: 'insensitive' as const } },
-              {
-                contactName: {
-                  contains: filters.search,
-                  mode: 'insensitive' as const,
-                },
-              },
-              { note: { contains: filters.search, mode: 'insensitive' as const } },
-              {
-                category: {
-                  name: {
-                    contains: filters.search,
-                    mode: 'insensitive' as const,
-                  },
-                },
-              },
-              {
-                expenseForCustomer: {
-                  name: {
-                    contains: filters.search,
-                    mode: 'insensitive' as const,
-                  },
-                },
-              },
-              {
-                contactCustomer: {
-                  name: {
-                    contains: filters.search,
-                    mode: 'insensitive' as const,
-                  },
-                },
-              },
-            ],
-          }
-        : {}),
+      ...(tokenizedSearchWhere(filters.search, (_token, contains) => [
+        { refNo: contains },
+        { contactName: contains },
+        { note: contains },
+        { expenseFor: contains },
+        { subCategory: contains },
+        { locationCode: contains },
+        { paymentStatus: contains },
+        relationStringOr('category', 'name', contains),
+        relationStringOr('expenseForCustomer', 'name', contains),
+        relationStringOr('contactCustomer', 'name', contains),
+      ]) ?? {}),
     };
     const rows = await this.tenantDb.db.expense.findMany({
       where: {

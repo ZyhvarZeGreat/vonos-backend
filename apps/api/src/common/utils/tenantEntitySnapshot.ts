@@ -52,6 +52,70 @@ type LiveEntityMaps = {
   pendingInbound: number;
 };
 
+type ItemTenantStatRow = {
+  tenantId: string;
+  sku: bigint;
+  stock_value: Prisma.Decimal | null;
+  low_stock: bigint;
+};
+
+type JobTenantCountRow = {
+  tenantId: string;
+  active: bigint;
+  pending_qc: bigint;
+};
+
+async function itemStatsByTenant(
+  prisma: PrismaClient,
+  tenantIds: string[],
+): Promise<ItemTenantStatRow[]> {
+  if (tenantIds.length === 0) return [];
+  const chunks = await runPool(
+    tenantIds.map(
+      (tenantId) => () =>
+        prisma.$queryRaw<ItemTenantStatRow[]>`
+          SELECT
+            ${tenantId} AS "tenantId",
+            COUNT(*)::bigint AS sku,
+            COALESCE(SUM(quantity * "costPrice"), 0) AS stock_value,
+            COUNT(*) FILTER (
+              WHERE status IN ('low_stock', 'out_of_stock')
+            )::bigint AS low_stock
+          FROM "Item"
+          WHERE "deletedAt" IS NULL
+            AND "tenantId" = ${tenantId}
+        `,
+    ),
+    NEON_QUERY_CONCURRENCY,
+  );
+  return chunks.flat();
+}
+
+async function jobCountsByTenant(
+  prisma: PrismaClient,
+  tenantIds: string[],
+): Promise<JobTenantCountRow[]> {
+  if (tenantIds.length === 0) return [];
+  const chunks = await runPool(
+    tenantIds.map(
+      (tenantId) => () =>
+        prisma.$queryRaw<JobTenantCountRow[]>`
+          SELECT
+            ${tenantId} AS "tenantId",
+            COUNT(*) FILTER (
+              WHERE status NOT IN ('Delivered', 'Cancelled')
+            )::bigint AS active,
+            COUNT(*) FILTER (WHERE status = 'QC')::bigint AS pending_qc
+          FROM "Job"
+          WHERE "deletedAt" IS NULL
+            AND "tenantId" = ${tenantId}
+        `,
+    ),
+    NEON_QUERY_CONCURRENCY,
+  );
+  return chunks.flat();
+}
+
 async function fetchLiveEntityMaps(
   prisma: PrismaClient,
   groupTenants: GroupTenantRef[],
@@ -88,29 +152,7 @@ async function fetchLiveEntityMaps(
     pendingInbound,
   ] = await runPool(
     [
-    () =>
-    itemTenantIds.length > 0
-      ? prisma.$queryRaw<
-          Array<{
-            tenantId: string;
-            sku: bigint;
-            stock_value: Prisma.Decimal | null;
-            low_stock: bigint;
-          }>
-        >`
-          SELECT
-            "tenantId",
-            COUNT(*)::bigint AS sku,
-            COALESCE(SUM(quantity * "costPrice"), 0) AS stock_value,
-            COUNT(*) FILTER (
-              WHERE status IN ('low_stock', 'out_of_stock')
-            )::bigint AS low_stock
-          FROM "Item"
-          WHERE "deletedAt" IS NULL
-            AND "tenantId" IN (${Prisma.join(itemTenantIds)})
-          GROUP BY "tenantId"
-        `
-      : Promise.resolve([]),
+    () => itemStatsByTenant(prisma, itemTenantIds),
     () =>
     stockIds.length > 0
       ? prisma.$queryRaw<Array<{ tenantId: string; inbound: bigint }>>`
@@ -147,23 +189,7 @@ async function fetchLiveEntityMaps(
           GROUP BY "tenantId"
         `
       : Promise.resolve([]),
-    () =>
-    jobIds.length > 0
-      ? prisma.$queryRaw<
-          Array<{ tenantId: string; active: bigint; pending_qc: bigint }>
-        >`
-          SELECT
-            "tenantId",
-            COUNT(*) FILTER (
-              WHERE status NOT IN ('Delivered', 'Cancelled')
-            )::bigint AS active,
-            COUNT(*) FILTER (WHERE status = 'QC')::bigint AS pending_qc
-          FROM "Job"
-          WHERE "deletedAt" IS NULL
-            AND "tenantId" IN (${Prisma.join(jobIds)})
-          GROUP BY "tenantId"
-        `
-      : Promise.resolve([]),
+    () => jobCountsByTenant(prisma, jobIds),
     () =>
     jobIds.length > 0
       ? prisma.$queryRaw<
@@ -505,54 +531,56 @@ export async function refreshTenantEntitySnapshots(
   if (groupTenants.length === 0) return 0;
 
   const maps = await fetchLiveEntityMaps(prisma, groupTenants);
-  await Promise.all(
+  await runPool(
     groupTenants.map((tenant) => {
       const items = maps.itemByTenant.get(tenant.id);
       const sales = maps.salesByTenant.get(tenant.id);
       const jobs = maps.jobByTenant.get(tenant.id);
       const appts = maps.apptByTenant.get(tenant.id);
 
-      return prisma.tenantEntitySnapshot.upsert({
-        where: { tenantId: tenant.id },
-        create: {
-          tenantId: tenant.id,
-          archetype: tenant.archetype,
-          sku: items?.sku ?? 0,
-          stockValue: items?.stockValue ?? 0,
-          lowStock: items?.lowStock ?? 0,
-          inboundToday: maps.inboundByTenant.get(tenant.id) ?? 0,
-          salesTodayRevenue: sales?.revenue ?? 0,
-          salesReturns: sales?.returns ?? 0,
-          activeJobs: jobs?.active ?? 0,
-          pendingQc: jobs?.pendingQc ?? 0,
-          jobRevenueToday: jobs?.revenue ?? 0,
-          apptsToday: appts?.count ?? 0,
-          apptRevenueToday: appts?.revenue ?? 0,
-          retailLowStock:
-            tenant.code === 'VW' ? maps.retailLowStock : 0,
-          pendingInbound:
-            tenant.code === 'VW' ? maps.pendingInbound : 0,
-        },
-        update: {
-          archetype: tenant.archetype,
-          sku: items?.sku ?? 0,
-          stockValue: items?.stockValue ?? 0,
-          lowStock: items?.lowStock ?? 0,
-          inboundToday: maps.inboundByTenant.get(tenant.id) ?? 0,
-          salesTodayRevenue: sales?.revenue ?? 0,
-          salesReturns: sales?.returns ?? 0,
-          activeJobs: jobs?.active ?? 0,
-          pendingQc: jobs?.pendingQc ?? 0,
-          jobRevenueToday: jobs?.revenue ?? 0,
-          apptsToday: appts?.count ?? 0,
-          apptRevenueToday: appts?.revenue ?? 0,
-          retailLowStock:
-            tenant.code === 'VW' ? maps.retailLowStock : 0,
-          pendingInbound:
-            tenant.code === 'VW' ? maps.pendingInbound : 0,
-        },
-      });
+      return () =>
+        prisma.tenantEntitySnapshot.upsert({
+          where: { tenantId: tenant.id },
+          create: {
+            tenantId: tenant.id,
+            archetype: tenant.archetype,
+            sku: items?.sku ?? 0,
+            stockValue: items?.stockValue ?? 0,
+            lowStock: items?.lowStock ?? 0,
+            inboundToday: maps.inboundByTenant.get(tenant.id) ?? 0,
+            salesTodayRevenue: sales?.revenue ?? 0,
+            salesReturns: sales?.returns ?? 0,
+            activeJobs: jobs?.active ?? 0,
+            pendingQc: jobs?.pendingQc ?? 0,
+            jobRevenueToday: jobs?.revenue ?? 0,
+            apptsToday: appts?.count ?? 0,
+            apptRevenueToday: appts?.revenue ?? 0,
+            retailLowStock:
+              tenant.code === 'VW' ? maps.retailLowStock : 0,
+            pendingInbound:
+              tenant.code === 'VW' ? maps.pendingInbound : 0,
+          },
+          update: {
+            archetype: tenant.archetype,
+            sku: items?.sku ?? 0,
+            stockValue: items?.stockValue ?? 0,
+            lowStock: items?.lowStock ?? 0,
+            inboundToday: maps.inboundByTenant.get(tenant.id) ?? 0,
+            salesTodayRevenue: sales?.revenue ?? 0,
+            salesReturns: sales?.returns ?? 0,
+            activeJobs: jobs?.active ?? 0,
+            pendingQc: jobs?.pendingQc ?? 0,
+            jobRevenueToday: jobs?.revenue ?? 0,
+            apptsToday: appts?.count ?? 0,
+            apptRevenueToday: appts?.revenue ?? 0,
+            retailLowStock:
+              tenant.code === 'VW' ? maps.retailLowStock : 0,
+            pendingInbound:
+              tenant.code === 'VW' ? maps.pendingInbound : 0,
+          },
+        });
     }),
+    NEON_QUERY_CONCURRENCY,
   );
 
   return groupTenants.length;

@@ -74,6 +74,7 @@ export function Hq6PaySupplierModal({
     queryFn: () => getPaymentAccounts(tenantId!),
     enabled: Boolean(open && tenantId),
     staleTime: MODAL_REF_STALE_MS,
+    placeholderData: (prev) => prev,
   });
   const accounts = accountsQuery.data ?? [];
 
@@ -84,6 +85,7 @@ export function Hq6PaySupplierModal({
       open && tenantId && supplier?.id && accountsQuery.isFetched,
     ),
     staleTime: MODAL_RECORD_STALE_MS,
+    placeholderData: (prev) => prev,
   });
 
   const totals = useMemo(() => {

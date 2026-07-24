@@ -10,7 +10,7 @@ import { PrismaService } from '../../common/prisma/prisma.service';
 import { CacheService } from '../../common/cache/cache.service';
 import { ItemsService } from '../items/items.service';
 import { buildAppointmentReports } from './aggregators/appointmentReports';
-import { buildGroupReports } from './aggregators/groupReports';
+import { buildGroupReports, buildGroupReportsCore } from './aggregators/groupReports';
 import { buildJobReports } from './aggregators/jobReports';
 import { buildStockReports } from './aggregators/stockReports';
 import { buildTransactionReports } from './aggregators/transactionReports';
@@ -269,18 +269,35 @@ export class ReportsService {
     return result;
   }
 
-  async group(from?: string, to?: string): Promise<ReportsDashboard> {
+  async group(
+    from?: string,
+    to?: string,
+    mode: 'core' | 'full' = 'full',
+  ): Promise<ReportsDashboard> {
     const startedAt = Date.now();
-    const cacheKey = `report-group:${from ?? ''}:${to ?? ''}`;
+    const cacheKey = `report-group:${mode}:${from ?? ''}:${to ?? ''}`;
     const cached = await this.cache.get<ReportsDashboard>(cacheKey);
     if (cached) {
-      this.logReportTiming('group', startedAt, { from, to, cache: 'hit' });
+      this.logReportTiming('group', startedAt, {
+        from,
+        to,
+        mode,
+        cache: 'hit',
+      });
       return cached;
     }
 
-    const result = await buildGroupReports(this.prisma, from, to);
+    const result =
+      mode === 'core'
+        ? await buildGroupReportsCore(this.prisma, from, to)
+        : await buildGroupReports(this.prisma, from, to);
     await this.cache.set(cacheKey, result, REPORT_CACHE_TTL_S);
-    this.logReportTiming('group', startedAt, { from, to, cache: 'miss' });
+    this.logReportTiming('group', startedAt, {
+      from,
+      to,
+      mode,
+      cache: 'miss',
+    });
     return result;
   }
 

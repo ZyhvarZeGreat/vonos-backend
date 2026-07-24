@@ -1,9 +1,6 @@
-import { DataTableSkeleton } from "@/components/organisms/skeletons";
+import { Hq6ListRouteSkeleton } from "@/components/organisms/skeletons";
 
+/** Keep list chrome stable — only table body rows shimmer while the route loads. */
 export default function TenantListLoading() {
-  return (
-    <div className="mx-auto max-w-[var(--space-content-max)] space-y-6">
-      <DataTableSkeleton rows={10} columns={5} />
-    </div>
-  );
+  return <Hq6ListRouteSkeleton />;
 }

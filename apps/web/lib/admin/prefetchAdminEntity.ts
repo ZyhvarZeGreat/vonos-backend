@@ -82,7 +82,7 @@ export async function prefetchAdminEntity(
     );
   }
 
-  if (section === "users") {
+  if (section === "users" || section === "hrm") {
     tasks.push(
       queryClient.prefetchQuery({
         queryKey: ["workforce", tenantId, "dashboard"],

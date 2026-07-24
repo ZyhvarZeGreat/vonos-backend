@@ -15,7 +15,6 @@ import { useUiStore } from "@/stores/uiStore";
 import { dateRangePresetToApiBounds } from "@/lib/utils/dateRange";
 import { isHq6Tenant } from "@/lib/utils/isHq6Tenant";
 import { Spinner } from "@/components/atoms/Spinner";
-import { scheduleIdle } from "@/lib/prefetch/scheduleIdle";
 import { prefetchTenantShell } from "@/lib/prefetch/routePrefetchRegistry";
 
 export function TenantShell({ children }: { children: React.ReactNode }) {
@@ -109,8 +108,13 @@ export function TenantShell({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!registryEntry?.tenantId) return;
     if (!isTenantCode(tenantCode)) return;
-    scheduleIdle(() =>
-      prefetchTenantShell(queryClient, tenantCode, registryEntry.tenantId, dateBounds),
+    // Warm Home immediately so it shares the page query; do not idle-batch the
+    // whole sidebar (that made post-login feel stuck on a spinner).
+    prefetchTenantShell(
+      queryClient,
+      tenantCode,
+      registryEntry.tenantId,
+      dateBounds,
     );
   }, [tenantCode, registryEntry?.tenantId, queryClient, dateBounds]);
 

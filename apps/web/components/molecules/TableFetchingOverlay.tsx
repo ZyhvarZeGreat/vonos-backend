@@ -14,7 +14,8 @@ export function TableFetchingOverlay({
   return (
     <div
       className={cn(
-        "absolute inset-0 z-10 flex items-center justify-center bg-card/55 backdrop-blur-[1px]",
+        // pointer-events-none: do not block column-sort / row clicks while refetching
+        "pointer-events-none absolute inset-0 z-10 flex items-center justify-center bg-card/55 backdrop-blur-[1px]",
         className,
       )}
       aria-busy

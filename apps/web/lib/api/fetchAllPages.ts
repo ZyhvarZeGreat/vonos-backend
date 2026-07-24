@@ -1,6 +1,12 @@
 /** Rows shown per table page — matches DataTable default. */
 export const DEFAULT_TABLE_PAGE_SIZE = 10;
 
+/**
+ * HQ6 / Ultimate POS list default (Show 10/25/50/100).
+ * Use for all HQ6 StandardListShell pages so pagination feels consistent.
+ */
+export const HQ6_TABLE_PAGE_SIZE = 25;
+
 /** @deprecated Use DEFAULT_TABLE_PAGE_SIZE */
 export const DEFAULT_LIST_LIMIT = DEFAULT_TABLE_PAGE_SIZE;
 
@@ -56,9 +62,16 @@ function normalizeListPayload<T extends { id: string }>(
     };
   }
   const items = payload.items ?? [];
+  // Explicit hasMore wins. Otherwise: short page ⇒ end; full page ⇒ maybe more
+  // (useServerListPage refines with totalCount + pageIndex when summary loads).
+  const hasMore =
+    payload.hasMore !== undefined
+      ? Boolean(payload.hasMore)
+      : items.length >= limit;
+
   return {
     items,
-    hasMore: payload.hasMore ?? items.length >= limit,
+    hasMore,
     pageSize: limit,
     totalCount: payload.totalCount,
     amountSummary: payload.amountSummary,

@@ -11,8 +11,14 @@ import type {
 } from '@vonos/types';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { TenantDbService } from '../../common/prisma/tenant-db.service';
+import { CacheService } from '../../common/cache/cache.service';
+import { invalidateTenantDashboardCache } from '../../common/cache/cacheInvalidation';
 import { AuditService } from '../audit/audit.service';
 import { buildCompositeCursorQuery } from '../../common/utils/pagination';
+import {
+  listPageFilterKey,
+  withListPageCache,
+} from '../../common/utils/listPageCache';
 import { toIso } from '../../common/utils/serializers';
 import { computeStockStatus, movementLineRollups } from '../../common/utils/stockQuantity';
 import { adjustItemLocationStock } from '../../common/utils/itemLocationStock';
@@ -77,7 +83,18 @@ export class RequisitionsService {
     private readonly tenantDb: TenantDbService,
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
+    private readonly cache: CacheService,
   ) {}
+
+  private invalidateRequisitionCaches(
+    requestingTenantId: string,
+    sourceTenantId?: string | null,
+  ): void {
+    void invalidateTenantDashboardCache(this.cache, requestingTenantId);
+    if (sourceTenantId && sourceTenantId !== requestingTenantId) {
+      void invalidateTenantDashboardCache(this.cache, sourceTenantId);
+    }
+  }
 
   /** Requisitions where this tenant is the fulfilment source (e.g. Warehouse inbox). */
   async listIncoming(filters: {
@@ -86,6 +103,28 @@ export class RequisitionsService {
     search?: string;
   } = {}): Promise<Requisition[]> {
     const sourceTenantId = this.tenantDb.requireTenantId();
+    const filterKey = listPageFilterKey({
+      search: filters.search,
+      cursor: filters.cursor,
+      limit: filters.limit ?? 10,
+    });
+    return withListPageCache(
+      this.cache,
+      sourceTenantId,
+      'requisitions-incoming',
+      filterKey,
+      () => this.listIncomingUncached(filters, sourceTenantId),
+    );
+  }
+
+  private async listIncomingUncached(
+    filters: {
+      cursor?: string;
+      limit?: number;
+      search?: string;
+    },
+    sourceTenantId: string,
+  ): Promise<Requisition[]> {
     const pagination = buildCompositeCursorQuery({
       sortField: 'createdAt',
       sortDir: 'desc',
@@ -126,6 +165,28 @@ export class RequisitionsService {
     search?: string;
   } = {}): Promise<Requisition[]> {
     const tenantId = this.tenantDb.requireTenantId();
+    const filterKey = listPageFilterKey({
+      search: filters.search,
+      cursor: filters.cursor,
+      limit: filters.limit ?? 10,
+    });
+    return withListPageCache(
+      this.cache,
+      tenantId,
+      'requisitions',
+      filterKey,
+      () => this.listUncached(filters, tenantId),
+    );
+  }
+
+  private async listUncached(
+    filters: {
+      cursor?: string;
+      limit?: number;
+      search?: string;
+    },
+    tenantId: string,
+  ): Promise<Requisition[]> {
     const pagination = buildCompositeCursorQuery({
       sortField: 'createdAt',
       sortDir: 'desc',
@@ -209,6 +270,7 @@ export class RequisitionsService {
       entityId: row.id,
       summary: `Created requisition ${row.reference}`,
     });
+    this.invalidateRequisitionCaches(tenantId, sourceTenantId);
     return serialize(row);
   }
 
@@ -235,6 +297,10 @@ export class RequisitionsService {
       summary: `Status → Cancelled`,
       metadata: { previousStatus: existing.status, status: 'Cancelled' },
     });
+    this.invalidateRequisitionCaches(
+      requestingTenantId,
+      existing.sourceTenantId,
+    );
     return this.getById(id);
   }
 
@@ -266,6 +332,7 @@ export class RequisitionsService {
       summary: `Status → Approved`,
       metadata: { previousStatus: existing.status, status: 'Approved' },
     });
+    this.invalidateRequisitionCaches(existing.tenantId, sourceTenantId);
     return this.getById(id);
   }
 
@@ -289,6 +356,7 @@ export class RequisitionsService {
       summary: `Status → Rejected`,
       metadata: { previousStatus: existing.status, status: 'Rejected' },
     });
+    this.invalidateRequisitionCaches(existing.tenantId, sourceTenantId);
     return this.getById(id);
   }
 
@@ -449,6 +517,7 @@ export class RequisitionsService {
       metadata: { sourceTenantId, lineCount: lines.length },
     });
 
+    this.invalidateRequisitionCaches(requestingTenantId, sourceTenantId);
     return this.getById(id);
   }
 

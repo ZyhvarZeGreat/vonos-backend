@@ -1,6 +1,7 @@
 "use client";
 
-import type { InvoiceDetail, Payroll } from "@vonos/types";
+import Image from "next/image";
+import type { InvoiceListRow, Payroll } from "@vonos/types";
 import { formatCurrency } from "@/lib/utils/formatCurrency";
 import { formatDate } from "@/lib/utils/formatDate";
 import { amountToWords } from "@/lib/utils/amountToWords";
@@ -12,13 +13,27 @@ export interface PayslipLine {
   amount: number;
 }
 
+export interface PayslipExtraDetails {
+  taxPayerId?: string | null;
+  bankName?: string | null;
+  bankBranch?: string | null;
+  bankIdentifierCode?: string | null;
+  bankAccountNo?: string | null;
+  daysPresent?: number | null;
+  daysAbsent?: number | null;
+  totalWorkDuration?: string | null;
+  paymentMode?: string | null;
+  paymentNote?: string | null;
+}
+
 export interface PayrollPayslipDocumentProps {
   payroll: Payroll;
   tenantName: string;
   tenantAddress?: string | null;
   locationLabel?: string | null;
   currency?: string;
-  invoice?: InvoiceDetail | null;
+  invoice?: Pick<InvoiceListRow, "documentDate" | "reference" | "paymentStatus"> | null;
+  extras?: PayslipExtraDetails | null;
   className?: string;
 }
 
@@ -26,13 +41,6 @@ function monthLabel(iso: string): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return iso;
   return date.toLocaleString("en", { month: "long", year: "numeric" });
-}
-
-function initials(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return "V";
-  if (parts.length === 1) return parts[0]!.slice(0, 2).toUpperCase();
-  return `${parts[0]![0] ?? ""}${parts[1]![0] ?? ""}`.toUpperCase();
 }
 
 function buildEarnings(payroll: Payroll): PayslipLine[] {
@@ -111,7 +119,6 @@ function buildDeductions(payroll: Payroll): PayslipLine[] {
   if (summed <= 0) {
     named[named.length - 1]!.amount = payroll.totalDeduction;
   } else if (Math.abs(summed - payroll.totalDeduction) > 0.01) {
-    // Prefer named amounts; if they under-count, leave remainder on last line.
     const remainder = payroll.totalDeduction - summed;
     if (remainder > 0) {
       named[named.length - 1]!.amount += remainder;
@@ -119,6 +126,24 @@ function buildDeductions(payroll: Payroll): PayslipLine[] {
   }
 
   return named;
+}
+
+/** Pull labeled meta out of payroll notes (legacy SQL / Ultimate POS). */
+function extractNoteField(
+  note: string | null | undefined,
+  labels: string[],
+): string | null {
+  if (!note) return null;
+  for (const part of note.split(/[·|;]/)) {
+    const trimmed = part.trim();
+    for (const label of labels) {
+      const match = trimmed.match(
+        new RegExp(`^${label}\\s*[:：]\\s*(.+)$`, "i"),
+      );
+      if (match?.[1]?.trim()) return match[1].trim();
+    }
+  }
+  return null;
 }
 
 function InfoRow({ label, value }: { label: string; value?: string | null }) {
@@ -137,6 +162,7 @@ export function PayrollPayslipDocument({
   locationLabel,
   currency = "NGN",
   invoice,
+  extras,
   className,
 }: PayrollPayslipDocumentProps) {
   const earnings = buildEarnings(payroll);
@@ -150,6 +176,43 @@ export function PayrollPayslipDocument({
     payroll.status === "paid" ||
     Boolean(invoice);
 
+  const taxPayerId =
+    extras?.taxPayerId ??
+    payroll.taxPayerId ??
+    extractNoteField(payroll.note, ["Tax Payer ID", "Tax ID", "TIN", "Tax"]);
+  const bankName =
+    extras?.bankName ??
+    payroll.bankName ??
+    extractNoteField(payroll.note, ["Bank Name", "Bank"]);
+  const bankBranch =
+    extras?.bankBranch ??
+    payroll.bankBranch ??
+    extractNoteField(payroll.note, ["Branch", "Bank Branch"]);
+  const bankIdentifierCode =
+    extras?.bankIdentifierCode ??
+    payroll.bankCode ??
+    extractNoteField(payroll.note, [
+      "Bank Identifier Code",
+      "BIC",
+      "Swift",
+      "Sort Code",
+      "Bank Code",
+    ]);
+  const bankAccountNo =
+    extras?.bankAccountNo ??
+    payroll.bankAccountNo ??
+    extractNoteField(payroll.note, [
+      "Bank Account No",
+      "Bank Account No.",
+      "Account No",
+      "Account Number",
+      "A/C",
+    ]);
+
+  const daysPresent = extras?.daysPresent ?? 0;
+  const daysAbsent = extras?.daysAbsent ?? 0;
+  const totalWorkDuration = extras?.totalWorkDuration ?? "0";
+
   const noteLines =
     payroll.note
       ?.split(/[·|;]/)
@@ -158,6 +221,13 @@ export function PayrollPayslipDocument({
       .filter((part) => {
         if (/^Added deduction\s+/i.test(part)) return false;
         if (/^.+?[:：]\s*₦?\s*[\d,.]+\s*$/.test(part)) return false;
+        if (
+          /^(Tax Payer ID|Tax ID|TIN|Bank Name|Bank|Branch|Bank Branch|Bank Identifier Code|BIC|Swift|Sort Code|Bank Account No\.?|Account No\.?|Account Number|A\/C)\s*[:：]/i.test(
+            part,
+          )
+        ) {
+          return false;
+        }
         return true;
       }) ?? [];
   const noteText = noteLines.join(" · ");
@@ -169,56 +239,80 @@ export function PayrollPayslipDocument({
         className,
       )}
     >
-      <header className="relative border-b border-neutral-800 px-6 pb-4 pt-5">
+      <div className="relative border-b border-neutral-800 px-6 pb-4 pt-5">
         <div className="flex items-start justify-between gap-4">
-          <div className="flex-1" />
+          <div className="flex flex-1 items-start">
+            <div className="relative h-16 w-16 overflow-hidden rounded-full border border-neutral-200 bg-white">
+              <Image
+                src="/brand/vonos-autos-logo.png"
+                alt="Vonos Autos"
+                fill
+                className="object-contain p-1.5"
+                sizes="64px"
+                priority
+              />
+            </div>
+          </div>
           <div className="flex flex-1 justify-center pt-1">
-            <div className="flex h-16 w-16 items-center justify-center rounded-full border-2 border-neutral-300 bg-white text-lg font-bold tracking-tight">
-              <span className="text-red-600">{initials(tenantName).slice(0, 1)}</span>
-              <span className="text-blue-700">{initials(tenantName).slice(1, 2)}</span>
+            <div className="relative h-16 w-16 overflow-hidden rounded-full border-2 border-neutral-300 bg-white">
+              <Image
+                src="/brand/vonos-autos-mark.png"
+                alt=""
+                fill
+                className="object-contain p-2"
+                sizes="64px"
+              />
             </div>
           </div>
           <div className="flex-1 text-right">
             <p className="text-lg font-bold leading-tight">{tenantName}</p>
             {tenantAddress ? (
               <p className="mt-1 text-xs leading-snug text-neutral-700">{tenantAddress}</p>
-            ) : null}
+            ) : (
+              <p className="mt-1 text-xs leading-snug text-neutral-700">
+                Vonos Autos Group
+              </p>
+            )}
           </div>
         </div>
         <p className="mt-4 text-center text-sm font-medium">
           Payslip for the month of {month}
         </p>
-      </header>
+      </div>
 
       <section className="grid border-b border-neutral-800 sm:grid-cols-2">
         <div className="space-y-0.5 border-b border-neutral-800 px-5 py-4 sm:border-b-0 sm:border-r">
           <InfoRow label="Employee" value={payroll.employeeName} />
+          <InfoRow label="Employee ID" value={payroll.employeeId} />
           <InfoRow label="Department" value={payroll.payrollGroupName} />
           <InfoRow label="Designation" value={payroll.designationName} />
           <InfoRow
             label="Primary work location"
             value={locationLabel ?? payroll.locationCode}
           />
-          <InfoRow label="Tax Payer ID" value={null} />
+          <InfoRow label="Tax Payer ID" value={taxPayerId} />
+          <InfoRow label="Status" value={payroll.status} />
         </div>
         <div className="space-y-0.5 px-5 py-4">
-          <InfoRow label="Bank Name" value={null} />
-          <InfoRow label="Branch" value={null} />
-          <InfoRow label="Bank Identifier Code" value={null} />
+          <InfoRow label="Bank Name" value={bankName} />
+          <InfoRow label="Branch" value={bankBranch} />
+          <InfoRow label="Bank Identifier Code" value={bankIdentifierCode} />
           <InfoRow label="Account Holder's Name" value={payroll.employeeName} />
-          <InfoRow label="Bank Account No." value={null} />
+          <InfoRow label="Bank Account No." value={bankAccountNo} />
+          <InfoRow label="Payment status" value={payroll.paymentStatus} />
         </div>
       </section>
 
       <section className="grid grid-cols-3 border-b border-neutral-800 text-[13px]">
         <div className="border-r border-neutral-800 px-5 py-3">
-          <span className="font-semibold">Total work duration:</span> 0
+          <span className="font-semibold">Total work duration:</span>{" "}
+          {totalWorkDuration}
         </div>
         <div className="border-r border-neutral-800 px-5 py-3">
-          <span className="font-semibold">Days present:</span> 0
+          <span className="font-semibold">Days present:</span> {daysPresent}
         </div>
         <div className="px-5 py-3">
-          <span className="font-semibold">Days absent:</span> 0
+          <span className="font-semibold">Days absent:</span> {daysAbsent}
         </div>
       </section>
 
@@ -337,20 +431,27 @@ export function PayrollPayslipDocument({
                 <td className="px-3 py-2 tabular-nums">
                   {formatCurrency(payroll.netPay, currency)}
                 </td>
-                <td className="px-3 py-2">Bank Transfer</td>
-                <td className="px-3 py-2">--</td>
+                <td className="px-3 py-2">
+                  {extras?.paymentMode ?? "Bank Transfer"}
+                </td>
+                <td className="px-3 py-2">
+                  {extras?.paymentNote ?? invoice?.paymentStatus ?? "--"}
+                </td>
               </tr>
             </tbody>
           </table>
         </section>
       ) : null}
 
-      <footer className="px-5 py-4 text-[13px]">
+      <div className="px-5 py-4 text-[13px]">
         <p>
           <span className="font-semibold">Note:</span>{" "}
-          {noteText}
+          {noteText || "—"}
         </p>
-      </footer>
+        <p className="mt-1 text-xs text-neutral-600">
+          Created {formatDate(payroll.createdAt)}
+        </p>
+      </div>
     </article>
   );
 }

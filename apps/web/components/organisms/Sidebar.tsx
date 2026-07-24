@@ -82,8 +82,7 @@ import { isHq6Tenant } from "@/lib/utils/isHq6Tenant";
 import { logout } from "@/lib/api/auth";
 import { useAuthStore } from "@/stores/authStore";
 import { useTenantId } from "@/lib/hooks/useRouteTenant";
-import { prefetchRoute, prefetchTenantNavRoutes, prefetchVagAdminShell } from "@/lib/prefetch/routePrefetchRegistry";
-import { scheduleIdle } from "@/lib/prefetch/scheduleIdle";
+import { prefetchRoute } from "@/lib/prefetch/routePrefetchRegistry";
 import { dateRangePresetToApiBounds } from "@/lib/utils/dateRange";
 import { isTenantCode } from "@/lib/registries/tenants";
 import { useUiStore } from "@/stores/uiStore";
@@ -267,16 +266,8 @@ export function Sidebar({
       ? [{ label: "Menu", items: navItems }]
       : []);
 
-  useEffect(() => {
-    if (tenantCode === "VAG") {
-      scheduleIdle(() => prefetchVagAdminShell(queryClient));
-      return;
-    }
-    if (!tenantId || !tenantCode || !isTenantCode(tenantCode)) return;
-    scheduleIdle(() =>
-      prefetchTenantNavRoutes(queryClient, tenantCode, tenantId, dateBounds),
-    );
-  }, [tenantCode, tenantId, queryClient, dateBounds]);
+  // Nav data is warmed on hover (and a small priority set from TenantShell /
+  // AdminShell). Full sidebar prefetch here raced Home after login.
 
   return (
     <aside

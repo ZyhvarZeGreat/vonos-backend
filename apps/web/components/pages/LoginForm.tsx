@@ -1,12 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import { ArrowRight, Lock, Mail } from "lucide-react";
 import { Button } from "@/components/atoms/Button";
 import { Input } from "@/components/atoms/Input";
 import { AuthFooterLink, AuthTemplate } from "@/components/templates/AuthTemplate";
 import { isTwoFactorChallenge, login, verifyTwoFactor } from "@/lib/api/auth";
+import { warmPostLoginDestination } from "@/lib/prefetch/warmPostLogin";
 import { getPostLoginPath } from "@/lib/utils/authRedirect";
 import { useAuthStore } from "@/stores/authStore";
 import { toast } from "@/stores/toastStore";
@@ -17,7 +19,13 @@ const authFieldClass =
 export function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const queryClient = useQueryClient();
   const setAuth = useAuthStore((state) => state.setAuth);
+  const hydrated = useAuthStore((state) => state.hydrated);
+  const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
+  const role = useAuthStore((state) => state.role);
+  const tenantId = useAuthStore((state) => state.tenantId);
+  const [, startTransition] = useTransition();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [totpCode, setTotpCode] = useState("");
@@ -25,6 +33,34 @@ export function LoginForm() {
   const [challengeEmail, setChallengeEmail] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  // Already signed in (bookmark / back) — leave login without waiting on AuthGuard.
+  useEffect(() => {
+    if (!hydrated || !isAuthenticated || !role) return;
+    const redirect = searchParams.get("redirect");
+    const requested =
+      redirect && redirect.startsWith("/") && !redirect.startsWith("/login")
+        ? redirect
+        : getPostLoginPath(role, tenantId);
+    const destination = warmPostLoginDestination(queryClient, {
+      role,
+      tenantId,
+      destination: requested,
+    });
+    router.prefetch(destination);
+    startTransition(() => {
+      router.replace(destination);
+    });
+  }, [
+    hydrated,
+    isAuthenticated,
+    role,
+    tenantId,
+    queryClient,
+    router,
+    searchParams,
+    startTransition,
+  ]);
 
   function completeLogin(result: {
     accessToken: string;
@@ -45,11 +81,21 @@ export function LoginForm() {
       token: result.accessToken,
     });
     const redirect = searchParams.get("redirect");
-    const destination =
+    const requested =
       redirect && redirect.startsWith("/") && !redirect.startsWith("/login")
         ? redirect
         : getPostLoginPath(result.user.role, result.user.tenantId);
-    router.replace(destination);
+
+    const destination = warmPostLoginDestination(queryClient, {
+      role: result.user.role,
+      tenantId: result.user.tenantId,
+      destination: requested,
+    });
+
+    router.prefetch(destination);
+    startTransition(() => {
+      router.replace(destination);
+    });
     toast.success(`Welcome back, ${result.user.name}`);
   }
 

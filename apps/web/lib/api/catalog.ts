@@ -14,7 +14,7 @@ async function fetchCatalogRaw(
   filters: ItemFilters | undefined,
   cursor?: string,
   limit?: number,
-): Promise<Item[]> {
+): Promise<Item[] | { items: Item[]; totalCount?: number }> {
   const params = new URLSearchParams();
   if (filters?.status) params.set("status", filters.status);
   if (filters?.category) params.set("category", filters.category);
@@ -24,6 +24,11 @@ async function fetchCatalogRaw(
   if (filters?.brandName) params.set("brandName", filters.brandName);
   if (filters?.availableForRetail === true) params.set("availableForRetail", "true");
   if (filters?.availableForRetail === false) params.set("availableForRetail", "false");
+  if (filters?.sortBy) params.set("sortBy", filters.sortBy);
+  if (filters?.sortDir) params.set("sortDir", filters.sortDir);
+  // Rows-first by default — count is a second round-trip via includeSummary.
+  if (filters?.includeSummary === false) params.set("includeSummary", "0");
+  else if (filters?.includeSummary === true) params.set("includeSummary", "1");
   if (cursor) params.set("cursor", cursor);
   if (limit) params.set("limit", String(limit));
   const query = params.toString();
@@ -40,10 +45,30 @@ export async function getCatalogPage(
   limit = DEFAULT_TABLE_PAGE_SIZE,
 ): Promise<ListPage<Item>> {
   return fetchListPage(
-    (pageCursor, pageLimit) => fetchCatalogRaw(tenantId, filters, pageCursor, pageLimit),
+    (pageCursor, pageLimit) =>
+      fetchCatalogRaw(
+        tenantId,
+        { ...filters, includeSummary: filters?.includeSummary ?? false },
+        pageCursor,
+        pageLimit,
+      ),
     cursor,
     limit,
   );
+}
+
+/** Count only (limit=1) — pair with rows-first getCatalogPage. */
+export async function getCatalogListSummary(
+  tenantId: string,
+  filters?: ItemFilters,
+): Promise<Pick<ListPage<Item>, "totalCount">> {
+  const page = await getCatalogPage(
+    tenantId,
+    { ...filters, includeSummary: true },
+    undefined,
+    1,
+  );
+  return { totalCount: page.totalCount };
 }
 
 export async function getAllCatalog(
@@ -61,7 +86,13 @@ export async function getCatalog(
   filters?: ItemFilters,
 ): Promise<Item[]> {
   if (filters?.cursor || filters?.limit) {
-    return fetchCatalogRaw(tenantId, filters, filters.cursor, filters.limit);
+    const payload = await fetchCatalogRaw(
+      tenantId,
+      filters,
+      filters.cursor,
+      filters.limit,
+    );
+    return Array.isArray(payload) ? payload : (payload.items ?? []);
   }
 
   return fetchFirstPage(

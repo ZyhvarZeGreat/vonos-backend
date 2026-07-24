@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/atoms/Button";
 import { IconButton } from "@/components/atoms/IconButton";
+import { AdminEntitySwitcher } from "@/components/molecules/AdminEntitySwitcher";
 import { TenantSwitcher } from "@/components/molecules/TenantSwitcher";
 import { typographyRoles } from "@/lib/registries/typography";
 import { NotificationPanel } from "@/components/organisms/NotificationPanel";
@@ -50,6 +51,11 @@ export interface TopBarProps {
   onPrimaryAction?: () => void;
   primaryAction?: React.ReactNode;
   className?: string;
+  /**
+   * VAG admin chrome: entity name + "VAG Super Admin" + notifications + date only
+   * (no POS / calculator / todo shortcuts).
+   */
+  variant?: "default" | "admin";
 }
 
 export function TopBar({
@@ -60,6 +66,7 @@ export function TopBar({
   onPrimaryAction,
   primaryAction,
   className,
+  variant = "default",
 }: TopBarProps) {
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -74,7 +81,9 @@ export function TopBar({
   const notifications = useUiStore((state) => state.notifications);
   const unreadCount = notifications.filter((n) => !n.read).length;
   const tenantId = useTenantId();
-  const isHq6 = isHq6Tenant(tenantCode);
+  const isAdminChrome = variant === "admin";
+  const isHq6 = isHq6Tenant(tenantCode) || isAdminChrome;
+  const showHq6Tools = isHq6 && !isAdminChrome;
   const [hq6GlobalModal, setHq6GlobalModal] = useState<Hq6GlobalModalId>(null);
   const userName = useAuthStore((state) => state.name ?? state.email ?? "Admin");
   const userInitial = userName.trim().charAt(0).toUpperCase() || "A";
@@ -83,6 +92,8 @@ export function TopBar({
     const pad = (n: number) => String(n).padStart(2, "0");
     return `${pad(d.getDate())}-${pad(d.getMonth() + 1)}-${d.getFullYear()}`;
   })();
+  const adminUserLabel =
+    userName.includes("@") ? userName.split("@")[0]! : userName;
 
   const notificationsQuery = useQuery({
     queryKey: ["notifications", tenantId],
@@ -142,38 +153,49 @@ export function TopBar({
           className,
         )}
       >
-        <div className="flex items-center gap-3">
+        <div className="flex min-w-0 items-center gap-3">
           <IconButton label="Toggle sidebar" className="md:hidden" onClick={toggleSidebar}>
             <Menu className="h-5 w-5" />
           </IconButton>
-          <TenantSwitcher
-            tenantCode={tenantCode}
-            tenantName={tenantName}
-            variant="topbar"
-            className="hidden md:block"
-          />
-          <span
-            className={cn(
-              "hidden text-[var(--color-topbar-text-muted)] md:inline",
-              isHq6 && "md:hidden",
-            )}
-            aria-hidden
-          >
-            /
-          </span>
-          <h1
-            className={cn(
-              typographyRoles.pageTitle,
-              "!text-[var(--color-topbar-text)]",
-              isHq6 && "sr-only",
-            )}
-          >
-            {title}
-          </h1>
+          {isAdminChrome ? (
+            <div className="flex min-w-0 items-center gap-3">
+              <AdminEntitySwitcher variant="topbar" className="min-w-0" />
+              <div className="hidden min-w-0 sm:block">
+                <p className="truncate text-xs text-white/80">VAG Super Admin</p>
+              </div>
+            </div>
+          ) : (
+            <>
+              <TenantSwitcher
+                tenantCode={tenantCode}
+                tenantName={tenantName}
+                variant="topbar"
+                className="hidden md:block"
+              />
+              <span
+                className={cn(
+                  "hidden text-[var(--color-topbar-text-muted)] md:inline",
+                  isHq6 && "md:hidden",
+                )}
+                aria-hidden
+              >
+                /
+              </span>
+              <h1
+                className={cn(
+                  typographyRoles.pageTitle,
+                  "!text-[var(--color-topbar-text)]",
+                  isHq6 && "sr-only",
+                )}
+              >
+                {title}
+              </h1>
+            </>
+          )}
         </div>
 
         <div className="flex items-center gap-2 md:gap-3">
-          {isHq6 ? (
+          {showHq6Tools ? (
             <div className="hq6-topbar-tools hidden lg:flex">
               <button
                 type="button"
@@ -243,6 +265,11 @@ export function TopBar({
               </span>
             </div>
           ) : null}
+          {isAdminChrome ? (
+            <span className="hq6-topbar-date hidden sm:inline" aria-label="Today's date">
+              {todayLabel}
+            </span>
+          ) : null}
           {!isHq6 ? (
             <IconButton label="Inbox" className="text-white/80 hover:bg-white/10 hover:text-white">
               <Inbox className="h-5 w-5" />
@@ -261,7 +288,17 @@ export function TopBar({
               onItemClick={handleNotificationClick}
             />
           </div>
-          {isHq6 ? (
+          {isAdminChrome ? (
+            <button
+              type="button"
+              className="hq6-topbar-user hidden md:inline-flex"
+              title={`${adminUserLabel} · VAG Super Admin`}
+              onClick={handleLogout}
+            >
+              <span className="hq6-topbar-user-avatar">{userInitial}</span>
+              <span>{adminUserLabel}</span>
+            </button>
+          ) : isHq6 ? (
             <button
               type="button"
               className="hq6-topbar-user hidden md:inline-flex"
@@ -308,7 +345,7 @@ export function TopBar({
       <AddProductModal />
       <AddExpenseModal />
       <ExportDocumentModal />
-      {isHq6 ? (
+      {showHq6Tools ? (
         <Hq6GlobalChromeModals
           active={hq6GlobalModal}
           onClose={() => setHq6GlobalModal(null)}

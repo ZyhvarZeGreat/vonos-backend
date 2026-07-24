@@ -28,6 +28,7 @@ import { buildCompositeCursorQuery } from '../../common/utils/pagination';
 import type { PaginatedList } from '../../common/utils/paginatedList';
 import { parseCsv, pickCsvField } from '../../common/utils/csvImport';
 import { refreshCustomerFinancialRollups } from '../../common/utils/customerRollups';
+import { tokenizedSearchWhere } from '../../common/utils/listSearch';
 import { toIso, toNumber } from '../../common/utils/serializers';
 import { AuditService } from '../audit/audit.service';
 
@@ -238,15 +239,12 @@ export class CustomersService {
             },
           }
         : {}),
-      ...(filters.search
-        ? {
-            OR: [
-              { name: { contains: filters.search, mode: 'insensitive' as const } },
-              { email: { contains: filters.search, mode: 'insensitive' as const } },
-              { phone: { contains: filters.search, mode: 'insensitive' as const } },
-            ],
-          }
-        : {}),
+      // Trigram-backed fields only (Customer_name/phone/email_trgm_idx).
+      ...(tokenizedSearchWhere(filters.search, (_token, contains) => [
+        { name: contains },
+        { email: contains },
+        { phone: contains },
+      ]) ?? {}),
       ...(sinceCutoff
         ? {
             NOT: {
@@ -568,63 +566,87 @@ export class CustomersService {
     };
   }
 
-  async getById(id: string): Promise<CustomerProfile> {
+  /**
+   * Profile shell — denormalized totals only (fast).
+   * Pass `includeHistory: true` (or call getHistory) for sales/jobs/appointments.
+   */
+  async getById(
+    id: string,
+    opts: { includeHistory?: boolean } = {},
+  ): Promise<CustomerProfile> {
     const tenantId = this.tenantDb.requireTenantId();
     const row = await this.tenantDb.db.customer.findFirst({
       where: { id, tenantId, deletedAt: null },
       include: {
         customerGroup: { select: { name: true } },
         assignedToUser: { select: { name: true } },
-        sales: {
-          where: { deletedAt: null },
-          select: {
-            id: true,
-            reference: true,
-            total: true,
-            currency: true,
-            status: true,
-            paymentStatus: true,
-            date: true,
-            payments: { where: { deletedAt: null }, select: { amount: true } },
-          },
-          orderBy: { date: 'desc' },
-          take: 100,
-        },
-        jobs: {
-          where: { deletedAt: null },
-          select: {
-            id: true,
-            reference: true,
-            status: true,
-            invoiceAmount: true,
-            quoteAmount: true,
-            dueDate: true,
-            createdAt: true,
-          },
-          orderBy: { createdAt: 'desc' },
-          take: 100,
-        },
-        appointments: {
-          where: { deletedAt: null },
-          select: {
-            id: true,
-            serviceName: true,
-            servicePrice: true,
-            currency: true,
-            status: true,
-            startTime: true,
-          },
-          orderBy: { startTime: 'desc' },
-          take: 50,
-        },
       },
     });
     if (!row) throw new NotFoundException('Customer not found');
 
-    const computed = saleTotals(row.sales);
+    if (!opts.includeHistory) {
+      return serializeCustomer(row, { transactionHistory: [] });
+    }
 
-    const transactionHistory: CustomerTransactionHistoryEntry[] = [
-      ...row.sales.map((sale) => ({
+    const history = await this.getHistory(id);
+    return serializeCustomer(row, { transactionHistory: history });
+  }
+
+  /** Sales / jobs / appointments feed for customer profile tabs. */
+  async getHistory(id: string): Promise<CustomerTransactionHistoryEntry[]> {
+    const tenantId = this.tenantDb.requireTenantId();
+    const existing = await this.tenantDb.db.customer.findFirst({
+      where: { id, tenantId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!existing) throw new NotFoundException('Customer not found');
+
+    const [sales, jobs, appointments] = await Promise.all([
+      this.tenantDb.db.sale.findMany({
+        where: { customerId: id, tenantId, deletedAt: null },
+        select: {
+          id: true,
+          reference: true,
+          total: true,
+          currency: true,
+          status: true,
+          paymentStatus: true,
+          date: true,
+        },
+        orderBy: { date: 'desc' },
+        take: 100,
+      }),
+      this.tenantDb.db.job.findMany({
+        where: { customerId: id, tenantId, deletedAt: null },
+        select: {
+          id: true,
+          reference: true,
+          status: true,
+          invoiceAmount: true,
+          quoteAmount: true,
+          dueDate: true,
+          createdAt: true,
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 100,
+      }),
+      this.tenantDb.db.appointment.findMany({
+        where: { customerId: id, tenantId, deletedAt: null },
+        select: {
+          id: true,
+          serviceName: true,
+          servicePrice: true,
+          currency: true,
+          status: true,
+          startTime: true,
+        },
+        orderBy: { startTime: 'desc' },
+        take: 50,
+      }),
+    ]);
+
+    return [
+      ...sales.map((sale) => ({
         id: sale.id,
         kind: 'sale' as const,
         reference: sale.reference,
@@ -634,7 +656,7 @@ export class CustomersService {
         status: sale.status,
         paymentStatus: sale.paymentStatus,
       })),
-      ...row.jobs.map((job) => ({
+      ...jobs.map((job) => ({
         id: job.id,
         kind: 'job' as const,
         reference: job.reference,
@@ -644,7 +666,7 @@ export class CustomersService {
         status: job.status,
         paymentStatus: null,
       })),
-      ...row.appointments.map((appt) => ({
+      ...appointments.map((appt) => ({
         id: appt.id,
         kind: 'appointment' as const,
         reference: appt.serviceName,
@@ -655,11 +677,6 @@ export class CustomersService {
         paymentStatus: null,
       })),
     ].sort((a, b) => b.date.localeCompare(a.date));
-
-    return serializeCustomer(row, {
-      ...computed,
-      transactionHistory,
-    });
   }
 
   async getContact(id: string): Promise<{

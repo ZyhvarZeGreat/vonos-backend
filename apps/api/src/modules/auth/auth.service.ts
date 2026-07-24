@@ -15,6 +15,7 @@ import type {
 } from '@vonos/types';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { CacheService } from '../../common/cache/cache.service';
+import { invalidateTenantDashboardCache } from '../../common/cache/cacheInvalidation';
 import {
   generateOpaqueToken,
   hashOpaqueToken,
@@ -287,6 +288,10 @@ export class AuthService {
       });
     });
 
+    if (user.tenantId) {
+      void invalidateTenantDashboardCache(this.cache, user.tenantId);
+    }
+
     return this.issueSession(user);
   }
 
@@ -375,7 +380,7 @@ export class AuthService {
 
   private async issueSession(user: User): Promise<SessionResult> {
     const { raw, hash } = generateOpaqueToken();
-    await this.prisma.$transaction([
+    const [updated] = await this.prisma.$transaction([
       this.prisma.user.update({
         where: { id: user.id },
         data: { lastLoginAt: new Date() },
@@ -390,19 +395,15 @@ export class AuthService {
       }),
     ]);
 
-    const fresh = await this.prisma.user.findUniqueOrThrow({
-      where: { id: user.id },
-    });
-
     return {
-      accessToken: this.signAccessToken(fresh),
+      accessToken: this.signAccessToken(updated),
       refreshTokenRaw: raw,
       user: {
-        id: fresh.id,
-        email: fresh.email,
-        name: fresh.name,
-        role: fresh.role,
-        tenantId: fresh.tenantId,
+        id: updated.id,
+        email: updated.email,
+        name: updated.name,
+        role: updated.role,
+        tenantId: updated.tenantId,
       },
     };
   }

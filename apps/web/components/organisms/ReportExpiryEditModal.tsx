@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Button } from "@/components/atoms/Button";
+import { Modal } from "@/components/atoms/Modal";
 
 export interface ExpiryEditPayload {
   movementId: string;
@@ -48,34 +49,32 @@ export function ReportExpiryEditModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="w-full max-w-md rounded-xl border border-border bg-card p-6 shadow-lg">
-        <h3 className="text-lg font-semibold text-foreground">Edit expiry date</h3>
-        <p className="mt-1 text-sm text-muted">
-          {open.name ?? open.lineSku} — inbound line expiry.
-        </p>
-        <form onSubmit={handleSubmit} className="mt-4 space-y-4">
-          <label className="block text-sm">
-            <span className="text-muted">Expiry date</span>
-            <input
-              type="date"
-              required
-              value={expDate}
-              onChange={(e) => setExpDate(e.target.value)}
-              className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
-            />
-          </label>
-          {error ? <p className="text-sm text-red-600">{error}</p> : null}
-          <div className="flex justify-end gap-2">
-            <Button type="button" variant="ghost" onClick={onClose} disabled={saving}>
-              Cancel
-            </Button>
-            <Button type="submit" disabled={saving}>
-              {saving ? "Saving…" : "Update"}
-            </Button>
-          </div>
-        </form>
-      </div>
-    </div>
+    <Modal open onClose={onClose} panelClassName="max-w-md rounded-xl border border-border p-6">
+      <h3 className="text-lg font-semibold text-foreground">Edit expiry date</h3>
+      <p className="mt-1 text-sm text-muted">
+        {open.name ?? open.lineSku} — inbound line expiry.
+      </p>
+      <form onSubmit={handleSubmit} className="mt-4 space-y-4">
+        <label className="block text-sm">
+          <span className="text-muted">Expiry date</span>
+          <input
+            type="date"
+            required
+            value={expDate}
+            onChange={(e) => setExpDate(e.target.value)}
+            className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
+          />
+        </label>
+        {error ? <p className="text-sm text-red-600">{error}</p> : null}
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="ghost" onClick={onClose} disabled={saving}>
+            Cancel
+          </Button>
+          <Button type="submit" disabled={saving}>
+            {saving ? "Saving…" : "Update"}
+          </Button>
+        </div>
+      </form>
+    </Modal>
   );
 }

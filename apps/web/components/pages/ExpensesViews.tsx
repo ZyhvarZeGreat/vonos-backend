@@ -109,6 +109,7 @@ function ExpensesListViewBody() {
     isLoading,
 
     isFetching,
+    isPaging,
     error,
     goToPage,
     canSelectPage,
@@ -306,6 +307,7 @@ function ExpensesListViewBody() {
           canSelectPage={canSelectPage}
           isLoading={isLoading || exporting}
           isFetching={isFetching}
+          isPaging={isPaging}
           error={error ? "Failed to load expenses" : null}
           emptyState={{
             message: "No expenses recorded yet. Add an expense to start tracking.",
@@ -924,6 +926,7 @@ function ExpenseCategoriesListViewBody() {
     isLoading,
 
     isFetching,
+    isPaging,
     error,
     goToPage,
     canSelectPage,
@@ -1092,6 +1095,7 @@ function ExpenseCategoriesListViewBody() {
         canSelectPage={canSelectPage}
         isLoading={isLoading}
         isFetching={isFetching}
+          isPaging={isPaging}
         error={error ? "Failed to load expense categories" : null}
         emptyState={{
           message: "No expense categories yet. Create one to classify business expenses.",

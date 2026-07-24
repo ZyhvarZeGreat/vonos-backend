@@ -1,6 +1,7 @@
 import type { IconComponent } from "@/lib/utils/icons";
 import { formatNumberCompact } from "@/lib/utils/formatCurrency";
 import { Skeleton } from "@/components/atoms/Skeleton";
+import { Spinner } from "@/components/atoms/Spinner";
 import { cn } from "@/lib/utils/cn";
 
 export interface KpiCardProps {
@@ -15,6 +16,11 @@ export interface KpiCardProps {
   color?: string;
   /** When true, keep label/icon and skeleton only the value. */
   isLoading?: boolean;
+  /**
+   * `skeleton` (default) — value skeletons.
+   * `zero-spinner` — show 0 + spinner (VAG / legacy Ultimate POS feel).
+   */
+  loadingDisplay?: "skeleton" | "zero-spinner";
   className?: string;
 }
 
@@ -46,11 +52,13 @@ export function KpiCard({
   deltaPercent,
   tint = "emerald",
   isLoading = false,
+  loadingDisplay = "skeleton",
   className,
 }: KpiCardProps) {
   const tintStyle = tintClasses[tint];
   const deltaTone =
     delta === undefined ? "neutral" : delta >= 0 ? "positive" : "negative";
+  const showZeroSpinner = isLoading && loadingDisplay === "zero-spinner";
 
   return (
     <article
@@ -73,7 +81,15 @@ export function KpiCard({
         <span className="text-base font-semibold text-foreground">{label}</span>
       </div>
       <div className="mt-auto flex items-baseline gap-2">
-        {isLoading ? (
+        {showZeroSpinner ? (
+          <>
+            <span className="font-heading text-3xl font-semibold tracking-tight text-foreground">
+              0
+            </span>
+            <Spinner size="sm" className="text-muted" />
+            <span className="text-xs text-muted">Loading…</span>
+          </>
+        ) : isLoading ? (
           <>
             <Skeleton className="h-9 w-24" />
             <Skeleton className="h-4 w-16" />

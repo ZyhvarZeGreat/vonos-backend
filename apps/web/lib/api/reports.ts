@@ -28,10 +28,13 @@ export async function getReportsDashboard(params: {
 export async function getGroupReports(params?: {
   from?: string;
   to?: string;
+  /** `core` = KPIs + entity table only (fast). Default full includes charts. */
+  mode?: "core" | "full";
 }): Promise<ReportsDashboard> {
   const search = new URLSearchParams();
   if (params?.from) search.set("from", params.from);
   if (params?.to) search.set("to", params.to);
+  if (params?.mode) search.set("mode", params.mode);
   const qs = search.toString();
   const response = await apiFetch(`/reports/group${qs ? `?${qs}` : ""}`);
   if (!response.ok) throw new Error("Failed to fetch group reports");

@@ -108,6 +108,11 @@ export class CustomersController {
     );
   }
 
+  @Get(':id/history')
+  getHistory(@Param('id') id: string) {
+    return this.customersService.getHistory(id);
+  }
+
   @Post(':id/pay-due')
   @Roles('staff', 'manager', 'admin', 'super_admin')
   payDue(@Param('id') id: string, @Body() body: PayContactDueRequest) {

@@ -15,6 +15,7 @@ import {
   EXCLUDE_INTERNAL_TRANSFER_SQL,
   isInternalTransferEntry,
 } from '../../common/utils/internalTransfer';
+import { EXCLUDE_MIRRORED_JOB_SALE_REVENUE_SQL } from '../../common/utils/ledgerRevenueDedupe';
 import { toIso, toNumber } from '../../common/utils/serializers';
 import { resolveDateWindow } from '../reports/aggregators/date-utils';
 import {
@@ -99,6 +100,7 @@ export async function buildGroupLedgerByEntity(
       AND date >= ${window.from}
       AND date <= ${window.to}
       ${EXCLUDE_INTERNAL_TRANSFER_SQL}
+      ${EXCLUDE_MIRRORED_JOB_SALE_REVENUE_SQL}
     GROUP BY "tenantId", type
   `;
 
@@ -191,6 +193,7 @@ export async function buildGroupLedgerSummary(
         AND date >= ${window.from}
         AND date <= ${window.to}
         ${EXCLUDE_INTERNAL_TRANSFER_SQL}
+        ${EXCLUDE_MIRRORED_JOB_SALE_REVENUE_SQL}
       GROUP BY type
     `,
     prisma.ledgerEntry.findFirst({

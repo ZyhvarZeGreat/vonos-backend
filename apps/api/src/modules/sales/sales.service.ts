@@ -28,6 +28,10 @@ import { AuditService } from '../audit/audit.service';
 import { InvoiceHubService } from '../invoices/invoice-hub.service';
 import { buildCompositeCursorQuery } from '../../common/utils/pagination';
 import type { PaginatedList } from '../../common/utils/paginatedList';
+import {
+  relationStringOr,
+  tokenizedSearchWhere,
+} from '../../common/utils/listSearch';
 import { resolveListSort } from '../../common/utils/listSort';
 import { computeStockStatus, movementLineRollups } from '../../common/utils/stockQuantity';
 import { adjustItemLocationStock } from '../../common/utils/itemLocationStock';
@@ -203,10 +207,22 @@ export class SalesService {
       sortValueType: sort.sortValueType,
     });
 
-    // Prefer reference-only search when query looks like a sale # (avoids customer join).
+    // Tokenized multi-field search: every word must hit at least one field.
     const search = filters.search?.trim();
-    const searchLooksLikeRef =
-      Boolean(search) && /^[A-Za-z0-9._-]{2,}$/.test(search!);
+    const searchWhere = tokenizedSearchWhere(search, (_token, contains) => [
+      { reference: contains },
+      { paymentMethod: contains },
+      { locationCode: contains },
+      { notes: contains },
+      { createdByName: contains },
+      { cleanerName: contains },
+      { shippingStatus: contains },
+      { trackingNumber: contains },
+      relationStringOr('customer', 'name', contains),
+      relationStringOr('customer', 'phone', contains),
+      relationStringOr('customer', 'email', contains),
+      relationStringOr('job', 'reference', contains),
+    ]);
 
     const baseWhere = {
       tenantId,
@@ -231,24 +247,7 @@ export class SalesService {
       ...(filters.createdByUserId
         ? { createdByUserId: filters.createdByUserId }
         : {}),
-      ...(search
-        ? searchLooksLikeRef
-          ? {
-              reference: { contains: search, mode: 'insensitive' as const },
-            }
-          : {
-              OR: [
-                {
-                  reference: { contains: search, mode: 'insensitive' as const },
-                },
-                {
-                  customer: {
-                    name: { contains: search, mode: 'insensitive' as const },
-                  },
-                },
-              ],
-            }
-        : {}),
+      ...(searchWhere ?? {}),
     };
 
     // One Neon wave: rows alone, or rows+count+sum when summary requested.

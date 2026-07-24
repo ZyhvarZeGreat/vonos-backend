@@ -1,8 +1,14 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import type { SalonService } from '@vonos/types';
 import { TenantDbService } from '../../common/prisma/tenant-db.service';
+import { CacheService } from '../../common/cache/cache.service';
+import { invalidateTenantDashboardCache } from '../../common/cache/cacheInvalidation';
 import { AuditService } from '../audit/audit.service';
 import { buildCompositeCursorQuery } from '../../common/utils/pagination';
+import {
+  listPageFilterKey,
+  withListPageCache,
+} from '../../common/utils/listPageCache';
 import { toIso, toNumber } from '../../common/utils/serializers';
 
 function serialize(row: {
@@ -32,6 +38,7 @@ export class SalonServicesService {
   constructor(
     private readonly tenantDb: TenantDbService,
     private readonly auditService: AuditService,
+    private readonly cache: CacheService,
   ) {}
 
   async list(filters: {
@@ -40,6 +47,28 @@ export class SalonServicesService {
     search?: string;
   } = {}): Promise<SalonService[]> {
     const tenantId = this.tenantDb.requireTenantId();
+    const filterKey = listPageFilterKey({
+      search: filters.search,
+      cursor: filters.cursor,
+      limit: filters.limit ?? 10,
+    });
+    return withListPageCache(
+      this.cache,
+      tenantId,
+      'salon-services',
+      filterKey,
+      () => this.listUncached(filters, tenantId),
+    );
+  }
+
+  private async listUncached(
+    filters: {
+      cursor?: string;
+      limit?: number;
+      search?: string;
+    },
+    tenantId: string,
+  ): Promise<SalonService[]> {
     const pagination = buildCompositeCursorQuery({
       sortField: 'name',
       sortDir: 'asc',
@@ -93,6 +122,7 @@ export class SalonServicesService {
       entityId: row.id,
       summary: `Added service ${row.name}`,
     });
+    void invalidateTenantDashboardCache(this.cache, tenantId);
     return serialize(row);
   }
 }

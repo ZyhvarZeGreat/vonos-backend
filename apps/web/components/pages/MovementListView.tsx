@@ -13,7 +13,7 @@ import {
   getStockMovementsPage,
   type StockMovementListRow,
 } from "@/lib/api/stockMovements";
-import { useServerListPage } from "@/lib/hooks/useServerListPage";
+import { useServerListPage, serverSortProps, withListSort } from "@/lib/hooks/useServerListPage";
 import { MovementRecordModal } from "@/components/organisms/MovementRecordModal";
 import { useListRecordModal } from "@/lib/hooks/useListRecordModal";
 import { useRouteTenant, useTenantId } from "@/lib/hooks/useRouteTenant";
@@ -21,10 +21,13 @@ import { useListPageFilters } from "@/lib/hooks/useListPageFilters";
 import { useListExport } from "@/lib/hooks/useListExport";
 import { useIsVaHq6 } from "@/lib/hooks/useIsVaHq6";
 import { Hq6PurchasesListView } from "@/components/pages/Hq6PurchasesListView";
+import { prefetchMovementListModals } from "@/lib/query/prefetchListModals";
+import { prefetchMovementDetail } from "@/lib/query/prefetchListDetails";
 import { formatCurrency } from "@/lib/utils/formatCurrency";
 import { formatDate } from "@/lib/utils/formatDate";
 import { uniqueFieldOptions } from "@/lib/utils/listFilters";
-import { movementListCursor } from "@/lib/utils/pagination";
+import { compositeListCursorFrom } from "@/lib/utils/pagination";
+import { useQueryClient } from "@tanstack/react-query";
 
 interface MovementListViewProps {
   type: "inbound" | "outbound";
@@ -52,9 +55,17 @@ function MovementListViewBody({
   defaultStatus,
   source,
 }: MovementListViewProps) {
-  const { recordId, openRecord, closeRecord } = useListRecordModal();
   const { tenantCode } = useRouteTenant();
   const tenantId = useTenantId();
+  const queryClient = useQueryClient();
+  const { recordId, recordSeed, openRecord, closeRecord } =
+    useListRecordModal<StockMovementListRow>({
+    onPrefetchRecord: (id) => {
+      if (!tenantId) return;
+      prefetchMovementListModals(queryClient, tenantId, id);
+      prefetchMovementDetail(queryClient, tenantId, id);
+    },
+  });
   const isHq6 = useIsVaHq6();
   const exportList = useListExport();
   const { dateRange, setDateRange, search, setSearch, bounds } = useListPageFilters({
@@ -94,18 +105,45 @@ function MovementListViewBody({
     isLoading,
 
     isFetching,
+    isPaging,
     error,
     goToPage,
     canSelectPage,
+    sort,
+    setSort,
   } = useServerListPage<StockMovementListRow>({
     queryKey: ["stock-movements", tenantId, type, source, defaultStatus],
     enabled: Boolean(tenantId),
     filters: apiFilters,
     search,
-    fetchPage: (cursor, limit, _sort, opts) =>
-      getStockMovementsPage(tenantId!, { ...apiFilters, includeSummary: opts?.includeSummary }, cursor, limit),
+    defaultSort: { sortBy: "date", sortDir: "desc" },
+    fetchPage: (cursor, limit, listSort, opts) =>
+      getStockMovementsPage(
+        tenantId!,
+        withListSort(
+          { ...apiFilters, includeSummary: opts?.includeSummary },
+          listSort,
+        ),
+        cursor,
+        limit,
+      ),
     fetchSummary: () => getStockMovementsListSummary(tenantId!, apiFilters),
-    getCursor: (row) => movementListCursor(row),
+    getCursor: (row, listSort) => {
+      const requested = listSort?.sortBy ?? "date";
+      const sortBy =
+        requested === "paymentDue"
+          ? "grandTotal"
+          : requested === "supplierOrDest"
+            ? "supplierId"
+            : requested;
+      const type =
+        sortBy === "grandTotal"
+          ? "number"
+          : sortBy === "date"
+            ? "date"
+            : "string";
+      return compositeListCursorFrom(row, sortBy, type);
+    },
   });
 
   const columns: ColumnConfig<StockMovementListRow>[] = useMemo(() => {
@@ -117,7 +155,7 @@ function MovementListViewBody({
           render: (row) => (
             <Hq6ActionsMenu
               items={[
-                { id: "view", label: "View", onClick: () => openRecord(row.id) },
+                { id: "view", label: "View", onClick: () => openRecord(row.id, row) },
                 ...(type === "inbound"
                   ? [
                       {
@@ -145,7 +183,7 @@ function MovementListViewBody({
       return [
         ...(actionsCol ? [actionsCol] : []),
         ...base,
-        { key: "locationName", header: "Location", render: (r) => r.locationName ?? "—" },
+        { key: "locationName", header: "Location", sortable: false, render: (r) => r.locationName ?? "—" },
         {
           key: "status",
           header: "Status",
@@ -168,13 +206,13 @@ function MovementListViewBody({
           sortValue: (r) => r.paymentDue ?? 0,
           render: (r) => formatCurrency(r.paymentDue ?? 0, "NGN"),
         },
-        { key: "itemCount", header: "Items", sortValue: (r) => r.itemCount },
+        { key: "itemCount", header: "Items", sortable: false, sortValue: (r) => r.itemCount },
       ];
     }
     return [
       ...(actionsCol ? [actionsCol] : []),
       ...base,
-      { key: "itemCount", header: "Items", sortValue: (r) => r.itemCount },
+      { key: "itemCount", header: "Items", sortable: false, sortValue: (r) => r.itemCount },
       {
         key: "status",
         header: "Status",
@@ -265,12 +303,20 @@ function MovementListViewBody({
         totalCount={totalCount}
         isLoading={isLoading}
         isFetching={isFetching}
+          isPaging={isPaging}
         error={error ? "Failed to load movements" : null}
-        onRowClick={(row) => openRecord(row.id)}
+        onRowPointerEnter={(row) => {
+          if (!tenantId) return;
+          prefetchMovementListModals(queryClient, tenantId, row.id);
+          prefetchMovementDetail(queryClient, tenantId, row.id);
+        }}
+        onRowClick={(row) => openRecord(row.id, row)}
         emptyState={{ message: `No ${title?.toLowerCase() ?? type} records yet.` }}
+        serverSort={serverSortProps({ sort, setSort })}
       />
       <MovementRecordModal
         movementId={recordId}
+        initialRow={recordSeed}
         listSlug={type}
         onClose={closeRecord}
       />

@@ -35,14 +35,28 @@ export class HrmService {
   ) {}
 
   async listWorkforce(
-    filters: { search?: string; cursor?: string; limit?: number } = {},
-  ): Promise<WorkforceMember[]> {
+    filters: {
+      search?: string;
+      cursor?: string;
+      limit?: number;
+      includeSummary?: boolean;
+    } = {},
+  ): Promise<{
+    items: WorkforceMember[];
+    totalCount?: number;
+    hasMore?: boolean;
+  }> {
     const tenantId = this.tenantDb.requireTenantId();
+    const includeSummary = filters.includeSummary !== false;
     const cacheKey = await this.cache.tenantScopedKey(
       tenantId,
-      `workforce:dashboard:${filters.search ?? ''}:${filters.cursor ?? ''}:${filters.limit ?? ''}`,
+      `workforce:list:${filters.search ?? ''}:${filters.cursor ?? ''}:${filters.limit ?? ''}:${includeSummary ? 1 : 0}`,
     );
-    const cached = await this.cache.get<WorkforceMember[]>(cacheKey);
+    const cached = await this.cache.get<{
+      items: WorkforceMember[];
+      totalCount?: number;
+      hasMore?: boolean;
+    }>(cacheKey);
     if (cached) return cached;
 
     const result = await this.queryWorkforce({
@@ -50,6 +64,7 @@ export class HrmService {
       search: filters.search,
       cursor: filters.cursor,
       limit: filters.limit,
+      includeSummary,
     });
     await this.cache.set(cacheKey, result, 900);
     return result;
@@ -57,8 +72,17 @@ export class HrmService {
 
   async listWorkforceAllTenants(
     requestRole: string,
-    filters: { search?: string; cursor?: string; limit?: number } = {},
-  ): Promise<WorkforceMember[]> {
+    filters: {
+      search?: string;
+      cursor?: string;
+      limit?: number;
+      includeSummary?: boolean;
+    } = {},
+  ): Promise<{
+    items: WorkforceMember[];
+    totalCount?: number;
+    hasMore?: boolean;
+  }> {
     if (requestRole !== 'super_admin') {
       throw new ForbiddenException('Super admin access required');
     }
@@ -66,7 +90,77 @@ export class HrmService {
       search: filters.search,
       cursor: filters.cursor,
       limit: filters.limit,
+      includeSummary: filters.includeSummary !== false,
     });
+  }
+
+  /** Accurate dashboard counts (not page-length). */
+  async getWorkforceStats(): Promise<{
+    totalCount: number;
+    byLocation: Array<{ locationCode: string | null; count: number }>;
+  }> {
+    const tenantId = this.tenantDb.requireTenantId();
+    const cacheKey = await this.cache.tenantScopedKey(
+      tenantId,
+      'workforce:stats',
+    );
+    const cached = await this.cache.get<{
+      totalCount: number;
+      byLocation: Array<{ locationCode: string | null; count: number }>;
+    }>(cacheKey);
+    if (cached) return cached;
+
+    const where = { tenantId, deletedAt: null as null };
+    const employeeCount = await this.tenantDb.db.employee.count({ where });
+    if (employeeCount > 0) {
+      const grouped = await this.tenantDb.db.employee.groupBy({
+        by: ['locationCode'],
+        where,
+        _count: { _all: true },
+        orderBy: { locationCode: 'asc' },
+      });
+      const result = {
+        totalCount: employeeCount,
+        byLocation: grouped.map((row) => ({
+          locationCode: row.locationCode,
+          count: row._count._all,
+        })),
+      };
+      await this.cache.set(cacheKey, result, 900);
+      return result;
+    }
+
+    // Fallback when only payroll-derived roster exists
+    const distinct = await this.tenantDb.db.$queryRawUnsafe<
+      Array<{ locationCode: string | null; count: bigint }>
+    >(
+      `
+      SELECT "locationCode", COUNT(*)::bigint AS count
+      FROM (
+        SELECT DISTINCT ON (COALESCE(NULLIF(TRIM("employeeId"), ''), LOWER(TRIM("employeeName"))))
+          "locationCode"
+        FROM "Payroll"
+        WHERE "tenantId" = $1
+          AND "deletedAt" IS NULL
+          AND "employeeName" IS NOT NULL
+          AND TRIM("employeeName") <> ''
+        ORDER BY COALESCE(NULLIF(TRIM("employeeId"), ''), LOWER(TRIM("employeeName"))),
+                 "createdAt" DESC
+      ) roster
+      GROUP BY "locationCode"
+      ORDER BY "locationCode" ASC NULLS LAST
+      `,
+      tenantId,
+    );
+    const result = {
+      totalCount: distinct.reduce((sum, row) => sum + Number(row.count), 0),
+      byLocation: distinct.map((row) => ({
+        locationCode: row.locationCode,
+        count: Number(row.count),
+      })),
+    };
+    await this.cache.set(cacheKey, result, 900);
+    return result;
   }
 
   private async queryWorkforce(options: {
@@ -74,7 +168,12 @@ export class HrmService {
     search?: string;
     cursor?: string;
     limit?: number;
-  }): Promise<WorkforceMember[]> {
+    includeSummary?: boolean;
+  }): Promise<{
+    items: WorkforceMember[];
+    totalCount?: number;
+    hasMore?: boolean;
+  }> {
     const pagination = buildCompositeCursorQuery({
       sortField: 'name',
       sortDir: 'asc',
@@ -82,18 +181,21 @@ export class HrmService {
       limit: options.limit ?? 10,
       sortValueType: 'string',
     });
+    const baseWhere = {
+      deletedAt: null as null,
+      ...(options.tenantId ? { tenantId: options.tenantId } : {}),
+      ...(options.search?.trim()
+        ? {
+            name: {
+              contains: options.search.trim(),
+              mode: 'insensitive' as const,
+            },
+          }
+        : {}),
+    };
     const employees = await this.tenantDb.db.employee.findMany({
       where: {
-        deletedAt: null,
-        ...(options.tenantId ? { tenantId: options.tenantId } : {}),
-        ...(options.search?.trim()
-          ? {
-              name: {
-                contains: options.search.trim(),
-                mode: 'insensitive' as const,
-              },
-            }
-          : {}),
+        ...baseWhere,
         ...(pagination.where ?? {}),
       },
       include: {
@@ -112,16 +214,24 @@ export class HrmService {
       take: pagination.take,
     });
 
-    if (employees.length > 0) {
+    const employeeTotal =
+      options.includeSummary === false && employees.length > 0
+        ? null
+        : await this.tenantDb.db.employee.count({ where: baseWhere });
+
+    if ((employeeTotal ?? employees.length) > 0) {
       const employeeIds = employees.map((row) => row.id);
-      const netPayAgg = await this.tenantDb.db.payroll.groupBy({
-        by: ['employeeRecordId'],
-        where: {
-          deletedAt: null,
-          employeeRecordId: { in: employeeIds },
-        },
-        _sum: { netPay: true },
-      });
+      const netPayAgg =
+        employeeIds.length > 0
+          ? await this.tenantDb.db.payroll.groupBy({
+              by: ['employeeRecordId'],
+              where: {
+                deletedAt: null,
+                employeeRecordId: { in: employeeIds },
+              },
+              _sum: { netPay: true },
+            })
+          : [];
       const netByEmployee = new Map(
         netPayAgg
           .filter((row) => row.employeeRecordId != null)
@@ -131,7 +241,7 @@ export class HrmService {
           ]),
       );
 
-      return employees.map((row) => {
+      const items = employees.map((row) => {
         const lastPayroll = row.payrolls[0];
         return {
           id: row.id,
@@ -152,10 +262,32 @@ export class HrmService {
           totalNetPay: netByEmployee.get(row.id) ?? 0,
         };
       });
+
+      const pageLimit = options.limit ?? 10;
+      if (options.includeSummary === false) {
+        return { items, hasMore: items.length >= pageLimit };
+      }
+      return {
+        items,
+        totalCount: employeeTotal ?? items.length,
+        hasMore: items.length >= pageLimit,
+      };
     }
 
     // Fallback: derive roster from payroll history when Employee rows are absent
-    return this.queryWorkforceFromPayroll(options);
+    const fallback = await this.queryWorkforceFromPayroll(options);
+    const pageLimit = options.limit ?? 10;
+    if (options.includeSummary === false) {
+      return {
+        items: fallback,
+        hasMore: fallback.length >= pageLimit,
+      };
+    }
+    return {
+      items: fallback,
+      totalCount: fallback.length,
+      hasMore: false,
+    };
   }
 
   private async queryWorkforceFromPayroll(options: {
@@ -248,35 +380,52 @@ export class HrmService {
     cursor?: string;
     limit?: number;
     search?: string;
-  } = {}): Promise<Designation[]> {
+    includeSummary?: boolean;
+  } = {}): Promise<{
+    items: Designation[];
+    totalCount?: number;
+    hasMore?: boolean;
+  }> {
     const tenantId = this.tenantDb.requireTenantId();
+    const pageLimit = filters.limit ?? 10;
     const pagination = buildCompositeCursorQuery({
       sortField: 'name',
       sortDir: 'asc',
       cursor: filters.cursor,
-      limit: filters.limit ?? 10,
+      limit: pageLimit,
       sortValueType: 'string',
     });
+    const baseWhere = {
+      tenantId,
+      deletedAt: null as null,
+      ...(filters.search
+        ? { name: { contains: filters.search, mode: 'insensitive' as const } }
+        : {}),
+    };
     const rows = await this.tenantDb.db.designation.findMany({
       where: {
-        tenantId,
-        deletedAt: null,
-        ...(filters.search
-          ? { name: { contains: filters.search, mode: 'insensitive' } }
-          : {}),
+        ...baseWhere,
         ...(pagination.where ?? {}),
       },
       include: { _count: { select: { employees: true } } },
       orderBy: [{ name: 'asc' }, { id: 'asc' }],
       take: pagination.take,
     });
-    return rows.map((row) => ({
+    const items = rows.map((row) => ({
       id: row.id,
       tenantId: row.tenantId,
       name: row.name,
+      description: row.description ?? null,
       employeeCount: row._count.employees,
       createdAt: toIso(row.createdAt),
     }));
+    if (filters.includeSummary === false) {
+      return { items, hasMore: items.length >= pageLimit };
+    }
+    const totalCount = await this.tenantDb.db.designation.count({
+      where: baseWhere,
+    });
+    return { items, totalCount, hasMore: items.length >= pageLimit };
   }
 
   async createDesignation(dto: CreateDesignationRequest): Promise<Designation> {
@@ -286,16 +435,67 @@ export class HrmService {
       throw new BadRequestException('Designation name is required');
     }
     const row = await this.tenantDb.db.designation.create({
-      data: { tenantId, name },
+      data: {
+        tenantId,
+        name,
+        description: dto.description?.trim() || null,
+      },
       include: { _count: { select: { employees: true } } },
     });
     return {
       id: row.id,
       tenantId: row.tenantId,
       name: row.name,
+      description: row.description ?? null,
       employeeCount: row._count.employees,
       createdAt: toIso(row.createdAt),
     };
+  }
+
+  async updateDesignation(
+    id: string,
+    dto: { name?: string; description?: string | null },
+  ): Promise<Designation> {
+    const tenantId = this.tenantDb.requireTenantId();
+    const existing = await this.tenantDb.db.designation.findFirst({
+      where: { id, tenantId, deletedAt: null },
+    });
+    if (!existing) {
+      throw new BadRequestException('Designation not found');
+    }
+    const row = await this.tenantDb.db.designation.update({
+      where: { id },
+      data: {
+        ...(dto.name !== undefined ? { name: dto.name.trim() } : {}),
+        ...(dto.description !== undefined
+          ? { description: dto.description?.trim() || null }
+          : {}),
+      },
+      include: { _count: { select: { employees: true } } },
+    });
+    return {
+      id: row.id,
+      tenantId: row.tenantId,
+      name: row.name,
+      description: row.description ?? null,
+      employeeCount: row._count.employees,
+      createdAt: toIso(row.createdAt),
+    };
+  }
+
+  async deleteDesignation(id: string): Promise<{ ok: true }> {
+    const tenantId = this.tenantDb.requireTenantId();
+    const existing = await this.tenantDb.db.designation.findFirst({
+      where: { id, tenantId, deletedAt: null },
+    });
+    if (!existing) {
+      throw new BadRequestException('Designation not found');
+    }
+    await this.tenantDb.db.designation.update({
+      where: { id },
+      data: { deletedAt: new Date() },
+    });
+    return { ok: true };
   }
 
   async listEmployees(filters: {
@@ -392,7 +592,11 @@ export class HrmService {
     return this.serializeEmployee(row);
   }
 
-  async listPayrolls(filters: PayrollFilters = {}): Promise<Payroll[]> {
+  async listPayrolls(filters: PayrollFilters & { includeSummary?: boolean } = {}): Promise<{
+    items: Payroll[];
+    totalCount?: number;
+    hasMore?: boolean;
+  }> {
     const tenantId = this.tenantDb.requireTenantId();
     const monthYearFilter =
       filters.year != null || filters.month != null
@@ -430,41 +634,102 @@ export class HrmService {
       limit: filters.limit ?? 10,
       sortValueType: sort.sortValueType,
     });
+
+    const baseWhere = {
+      tenantId,
+      deletedAt: null as null,
+      ...monthYearFilter,
+      ...(filters.payrollGroupId
+        ? { payrollGroupId: filters.payrollGroupId }
+        : {}),
+      ...(filters.employeeRecordId
+        ? { employeeRecordId: filters.employeeRecordId }
+        : {}),
+      ...(filters.locationCode
+        ? { locationCode: filters.locationCode }
+        : {}),
+      ...(filters.designationId
+        ? { designationId: filters.designationId }
+        : {}),
+      ...(filters.status ? { status: filters.status } : {}),
+      ...(filters.paymentStatus
+        ? { paymentStatus: filters.paymentStatus }
+        : {}),
+      ...(filters.search
+        ? {
+            OR: [
+              {
+                employeeName: {
+                  contains: filters.search,
+                  mode: 'insensitive' as const,
+                },
+              },
+              {
+                employeeId: {
+                  contains: filters.search,
+                  mode: 'insensitive' as const,
+                },
+              },
+              {
+                locationCode: {
+                  contains: filters.search,
+                  mode: 'insensitive' as const,
+                },
+              },
+              {
+                note: {
+                  contains: filters.search,
+                  mode: 'insensitive' as const,
+                },
+              },
+              {
+                payrollGroup: {
+                  name: {
+                    contains: filters.search,
+                    mode: 'insensitive' as const,
+                  },
+                },
+              },
+            ],
+          }
+        : {}),
+    };
+
     const rows = await this.tenantDb.db.payroll.findMany({
       where: {
-        tenantId,
-        deletedAt: null,
-        ...monthYearFilter,
-        ...(filters.payrollGroupId
-          ? { payrollGroupId: filters.payrollGroupId }
-          : {}),
-        ...(filters.employeeRecordId
-          ? { employeeRecordId: filters.employeeRecordId }
-          : {}),
-        ...(filters.locationCode
-          ? { locationCode: filters.locationCode }
-          : {}),
-        ...(filters.designationId
-          ? { designationId: filters.designationId }
-          : {}),
-        ...(filters.search
-          ? {
-              employeeName: {
-                contains: filters.search,
-                mode: 'insensitive',
-              },
-            }
-          : {}),
+        ...baseWhere,
         ...(pagination.where ?? {}),
       },
       include: {
         payrollGroup: true,
         designation: { select: { name: true } },
+        employeeRecord: {
+          select: {
+            accountHolderName: true,
+            bankName: true,
+            bankBranch: true,
+            bankCode: true,
+            bankAccountNo: true,
+            taxPayerId: true,
+          },
+        },
       },
       orderBy: [{ [sort.sortField]: sort.sortDir }, { id: sort.sortDir }],
       take: pagination.take,
     });
-    return rows.map((row) => this.serializePayroll(row));
+    const items = rows.map((row) => this.serializePayroll(row));
+    const pageLimit = filters.limit ?? 10;
+    if (filters.includeSummary === false) {
+      return { items, hasMore: items.length >= pageLimit };
+    }
+    const totalCount = await this.tenantDb.db.payroll.count({
+      where: baseWhere,
+    });
+    return {
+      items,
+      totalCount,
+      hasMore: items.length >= pageLimit,
+    };
   }
 
   async createPayroll(dto: CreatePayrollRequest): Promise<Payroll> {
@@ -534,6 +799,16 @@ export class HrmService {
       include: {
         payrollGroup: true,
         designation: { select: { name: true } },
+        employeeRecord: {
+          select: {
+            accountHolderName: true,
+            bankName: true,
+            bankBranch: true,
+            bankCode: true,
+            bankAccountNo: true,
+            taxPayerId: true,
+          },
+        },
       },
     });
     await this.invoiceHub.ensurePayrollInvoice(this.tenantDb.db, row);
@@ -597,6 +872,16 @@ export class HrmService {
       include: {
         payrollGroup: true,
         designation: { select: { name: true } },
+        employeeRecord: {
+          select: {
+            accountHolderName: true,
+            bankName: true,
+            bankBranch: true,
+            bankCode: true,
+            bankAccountNo: true,
+            taxPayerId: true,
+          },
+        },
       },
     });
     await this.invoiceHub.ensurePayrollInvoice(this.tenantDb.db, row);
@@ -607,35 +892,53 @@ export class HrmService {
     cursor?: string;
     limit?: number;
     search?: string;
-  } = {}): Promise<PayrollGroup[]> {
+    includeSummary?: boolean;
+  } = {}): Promise<{
+    items: PayrollGroup[];
+    totalCount?: number;
+    hasMore?: boolean;
+  }> {
     const tenantId = this.tenantDb.requireTenantId();
+    const pageLimit = filters.limit ?? 10;
     const pagination = buildCompositeCursorQuery({
       sortField: 'name',
       sortDir: 'asc',
       cursor: filters.cursor,
-      limit: filters.limit ?? 10,
+      limit: pageLimit,
       sortValueType: 'string',
     });
+    const baseWhere = {
+      tenantId,
+      deletedAt: null as null,
+      ...(filters.search
+        ? { name: { contains: filters.search, mode: 'insensitive' as const } }
+        : {}),
+    };
     const rows = await this.tenantDb.db.payrollGroup.findMany({
       where: {
-        tenantId,
-        deletedAt: null,
-        ...(filters.search
-          ? { name: { contains: filters.search, mode: 'insensitive' } }
-          : {}),
+        ...baseWhere,
         ...(pagination.where ?? {}),
       },
       include: { _count: { select: { payrolls: true } } },
       orderBy: [{ name: 'asc' }, { id: 'asc' }],
       take: pagination.take,
     });
-    return rows.map((row) => ({
+    const items = rows.map((row) => ({
       id: row.id,
       tenantId: row.tenantId,
       name: row.name,
+      code: row.code ?? null,
+      description: row.description ?? null,
       payrollCount: row._count.payrolls,
       createdAt: toIso(row.createdAt),
     }));
+    if (filters.includeSummary === false) {
+      return { items, hasMore: items.length >= pageLimit };
+    }
+    const totalCount = await this.tenantDb.db.payrollGroup.count({
+      where: baseWhere,
+    });
+    return { items, totalCount, hasMore: items.length >= pageLimit };
   }
 
   async createPayrollGroup(dto: CreatePayrollGroupRequest): Promise<PayrollGroup> {
@@ -645,7 +948,12 @@ export class HrmService {
       throw new BadRequestException('Department name is required');
     }
     const row = await this.tenantDb.db.payrollGroup.create({
-      data: { tenantId, name },
+      data: {
+        tenantId,
+        name,
+        code: dto.code?.trim() || null,
+        description: dto.description?.trim() || null,
+      },
       include: { _count: { select: { payrolls: true } } },
     });
     try {
@@ -657,37 +965,96 @@ export class HrmService {
       id: row.id,
       tenantId: row.tenantId,
       name: row.name,
+      code: row.code ?? null,
+      description: row.description ?? null,
       payrollCount: row._count.payrolls,
       createdAt: toIso(row.createdAt),
     };
+  }
+
+  async updatePayrollGroup(
+    id: string,
+    dto: { name?: string; code?: string | null; description?: string | null },
+  ): Promise<PayrollGroup> {
+    const tenantId = this.tenantDb.requireTenantId();
+    const existing = await this.tenantDb.db.payrollGroup.findFirst({
+      where: { id, tenantId, deletedAt: null },
+    });
+    if (!existing) {
+      throw new BadRequestException('Department not found');
+    }
+    const row = await this.tenantDb.db.payrollGroup.update({
+      where: { id },
+      data: {
+        ...(dto.name !== undefined ? { name: dto.name.trim() } : {}),
+        ...(dto.code !== undefined ? { code: dto.code?.trim() || null } : {}),
+        ...(dto.description !== undefined
+          ? { description: dto.description?.trim() || null }
+          : {}),
+      },
+      include: { _count: { select: { payrolls: true } } },
+    });
+    return {
+      id: row.id,
+      tenantId: row.tenantId,
+      name: row.name,
+      code: row.code ?? null,
+      description: row.description ?? null,
+      payrollCount: row._count.payrolls,
+      createdAt: toIso(row.createdAt),
+    };
+  }
+
+  async deletePayrollGroup(id: string): Promise<{ ok: true }> {
+    const tenantId = this.tenantDb.requireTenantId();
+    const existing = await this.tenantDb.db.payrollGroup.findFirst({
+      where: { id, tenantId, deletedAt: null },
+    });
+    if (!existing) {
+      throw new BadRequestException('Department not found');
+    }
+    await this.tenantDb.db.payrollGroup.update({
+      where: { id },
+      data: { deletedAt: new Date() },
+    });
+    return { ok: true };
   }
 
   async listPayComponents(filters: {
     cursor?: string;
     limit?: number;
     search?: string;
-  } = {}): Promise<PayComponent[]> {
+    includeSummary?: boolean;
+  } = {}): Promise<{
+    items: PayComponent[];
+    totalCount?: number;
+    hasMore?: boolean;
+  }> {
     const tenantId = this.tenantDb.requireTenantId();
+    const pageLimit = filters.limit ?? 10;
     const pagination = buildCompositeCursorQuery({
       sortField: 'name',
       sortDir: 'asc',
       cursor: filters.cursor,
-      limit: filters.limit ?? 10,
+      limit: pageLimit,
       sortValueType: 'string',
     });
+    const baseWhere = {
+      tenantId,
+      deletedAt: null as null,
+      ...(filters.search
+        ? { name: { contains: filters.search, mode: 'insensitive' as const } }
+        : {}),
+    };
     const rows = await this.tenantDb.db.payComponent.findMany({
       where: {
-        tenantId,
-        deletedAt: null,
-        ...(filters.search
-          ? { name: { contains: filters.search, mode: 'insensitive' } }
-          : {}),
+        ...baseWhere,
         ...(pagination.where ?? {}),
       },
       orderBy: [{ name: 'asc' }, { id: 'asc' }],
       take: pagination.take,
     });
-    return rows.map((row) => ({
+    const items = rows.map((row) => ({
       id: row.id,
       tenantId: row.tenantId,
       name: row.name,
@@ -695,6 +1062,13 @@ export class HrmService {
       amount: toNumber(row.amount),
       createdAt: toIso(row.createdAt),
     }));
+    if (filters.includeSummary === false) {
+      return { items, hasMore: items.length >= pageLimit };
+    }
+    const totalCount = await this.tenantDb.db.payComponent.count({
+      where: baseWhere,
+    });
+    return { items, totalCount, hasMore: items.length >= pageLimit };
   }
 
   async createPayComponent(dto: CreatePayComponentRequest): Promise<PayComponent> {
@@ -727,6 +1101,12 @@ export class HrmService {
     designationId: string;
     userId: string | null;
     isServiceStaff: boolean;
+    accountHolderName?: string | null;
+    bankName?: string | null;
+    bankBranch?: string | null;
+    bankCode?: string | null;
+    bankAccountNo?: string | null;
+    taxPayerId?: string | null;
     createdAt: Date;
     designation: { name: string };
     payrollGroup: { name: string } | null;
@@ -743,6 +1123,12 @@ export class HrmService {
       designationName: row.designation.name,
       userId: row.userId,
       isServiceStaff: row.isServiceStaff,
+      accountHolderName: row.accountHolderName ?? null,
+      bankName: row.bankName ?? null,
+      bankBranch: row.bankBranch ?? null,
+      bankCode: row.bankCode ?? null,
+      bankAccountNo: row.bankAccountNo ?? null,
+      taxPayerId: row.taxPayerId ?? null,
       createdAt: toIso(row.createdAt),
     };
   }
@@ -767,7 +1153,16 @@ export class HrmService {
     createdAt: Date;
     payrollGroup: { name: string } | null;
     designation?: { name: string } | null;
+    employeeRecord?: {
+      accountHolderName: string | null;
+      bankName: string | null;
+      bankBranch: string | null;
+      bankCode: string | null;
+      bankAccountNo: string | null;
+      taxPayerId: string | null;
+    } | null;
   }): Payroll {
+    const bank = row.employeeRecord;
     return {
       id: row.id,
       tenantId: row.tenantId,
@@ -788,6 +1183,12 @@ export class HrmService {
       payrollMonth: toIso(row.payrollMonth),
       note: row.note,
       createdAt: toIso(row.createdAt),
+      accountHolderName: bank?.accountHolderName ?? null,
+      bankName: bank?.bankName ?? null,
+      bankBranch: bank?.bankBranch ?? null,
+      bankCode: bank?.bankCode ?? null,
+      bankAccountNo: bank?.bankAccountNo ?? null,
+      taxPayerId: bank?.taxPayerId ?? null,
     };
   }
 }

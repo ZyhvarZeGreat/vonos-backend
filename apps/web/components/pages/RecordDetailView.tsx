@@ -1,13 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAppMutation } from "@/lib/hooks/useAppMutation";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { EmptyState } from "@/components/atoms/EmptyState";
 import { DetailPageShell } from "@/components/pages/DetailPageShell";
 import { JobDetailView as JobDetailPage } from "@/components/pages/JobDetailView";
-import { getCustomer, getItem, getJobCosts, getJobShell, getSale, getCatalogItem } from "@/lib/api";
+import { getCustomer, getCustomerHistory, getItem, getJobCosts, getJobShell, getSale, getCatalogItem } from "@/lib/api";
 import { getItemStockHistory } from "@/lib/api/items";
 import { getAppointment } from "@/lib/api/appointments";
 import { getReturn } from "@/lib/api/returns";
@@ -19,6 +19,8 @@ import { useRecordNavigation } from "@/lib/hooks/useRecordNavigation";
 import { formatCurrency } from "@/lib/utils/formatCurrency";
 import { formatDate, formatDateTime } from "@/lib/utils/formatDate";
 import { useTenantId } from "@/lib/hooks/useRouteTenant";
+import { DETAIL_RECORD_STALE_MS } from "@/lib/query/prefetchListDetails";
+import { prefetchSaleListModals } from "@/lib/query/prefetchListModals";
 import { useTenantStore } from "@/stores/tenantStore";
 import type { SectionInstance, HistoryFeedEntry } from "@/lib/registries/sectionTypes";
 import type {
@@ -85,14 +87,16 @@ function ItemDetailView({
   const showStockHistory = searchParams.get("view") === "stock_history";
 
   const { data: item, isLoading } = useQuery({
-    queryKey: ["item", recordId, catalogMode ? "catalog" : "inventory"],
+    queryKey: ["item", tenantId, recordId, catalogMode ? "catalog" : "inventory"],
     queryFn: () => (catalogMode ? getCatalogItem(recordId) : getItem(recordId)),
+    enabled: Boolean(tenantId),
+    staleTime: DETAIL_RECORD_STALE_MS,
   });
   const { entries: auditEntries } = useAuditHistoryFeed("item", recordId, tenantId);
   const { data: stockHistory = [], isLoading: historyLoading } = useQuery({
-    queryKey: ["item-stock-history", recordId],
+    queryKey: ["item-stock-history", tenantId, recordId],
     queryFn: () => getItemStockHistory(recordId),
-    enabled: showStockHistory,
+    enabled: Boolean(tenantId) && showStockHistory,
   });
 
   if (isLoading) {
@@ -213,17 +217,20 @@ function ItemDetailView({
 
 function JobRecordDetail({ recordId }: { recordId: string }) {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const tenantId = useTenantId();
   const { listPath } = useRecordNavigation("jobs");
   const { data: shell, isLoading: shellLoading } = useQuery({
     queryKey: ["job", tenantId, recordId, "shell"],
     queryFn: () => getJobShell(recordId),
     enabled: Boolean(tenantId),
+    staleTime: DETAIL_RECORD_STALE_MS,
   });
   const { data: costs } = useQuery({
     queryKey: ["job", tenantId, recordId, "costs"],
     queryFn: () => getJobCosts(recordId),
     enabled: Boolean(tenantId) && Boolean(shell),
+    staleTime: DETAIL_RECORD_STALE_MS,
   });
   const [jobState, setJobState] = useState<JobDetail | undefined>();
 
@@ -257,6 +264,11 @@ function JobRecordDetail({ recordId }: { recordId: string }) {
       listPath={listPath}
       onJobChange={(next) => {
         setJobState(next);
+        queryClient.setQueryData(["job", tenantId, recordId, "shell"], next);
+        queryClient.setQueryData(["job", tenantId, recordId, "costs"], {
+          materials: next.materials,
+          labourEntries: next.labourEntries,
+        });
       }}
     />
   );
@@ -271,11 +283,13 @@ function VehicleDetailView({ recordId }: { recordId: string }) {
     queryKey: ["vehicle", tenantId, recordId],
     queryFn: () => getVehicle(recordId),
     enabled: Boolean(tenantId),
+    staleTime: DETAIL_RECORD_STALE_MS,
   });
   const { data: history = [] } = useQuery({
     queryKey: ["vehicle-history", tenantId, recordId],
     queryFn: () => getVehicleHistory(recordId),
-    enabled: Boolean(tenantId),
+    enabled: Boolean(tenantId) && Boolean(vehicle),
+    staleTime: DETAIL_RECORD_STALE_MS,
   });
 
   if (!tenantId || isLoading) {
@@ -386,12 +400,19 @@ function CustomerDetailViewBody({ recordId }: { recordId: string }) {
     queryKey: ["customer", tenantId, recordId],
     queryFn: () => getCustomer(recordId),
     enabled: Boolean(tenantId),
+    staleTime: DETAIL_RECORD_STALE_MS,
+  });
+  const { data: history = [] } = useQuery({
+    queryKey: ["customer-history", tenantId, recordId],
+    queryFn: () => getCustomerHistory(recordId),
+    enabled: Boolean(tenantId && recordId && customer),
+    staleTime: DETAIL_RECORD_STALE_MS,
   });
   const { entries: auditEntries } = useAuditHistoryFeed("customer", recordId, tenantId);
   const createdBy = createdByField(customer?.createdByName);
   const isSaloon = params.tenant === "VS";
   const transactionEntries = customer
-    ? transactionHistoryFeed(params.tenant, customer.transactionHistory)
+    ? transactionHistoryFeed(params.tenant, history)
     : [];
 
   if (!tenantId || isLoading) {
@@ -644,30 +665,43 @@ function MovementDetailView({
   );
 }
 
+function Hq6SaleDetailRedirect({ recordId }: { recordId: string }) {
+  const router = useRouter();
+  const queryClient = useQueryClient();
+  const tenantId = useTenantId();
+  const tenantCode = useTenantStore((s) => s.tenantConfig?.code ?? "VA");
+
+  useLayoutEffect(() => {
+    if (tenantId) {
+      prefetchSaleListModals(queryClient, tenantId, recordId);
+    }
+    router.replace(saleRecordPath(tenantCode, recordId));
+  }, [queryClient, recordId, router, tenantCode, tenantId]);
+
+  return null;
+}
+
 function SaleDetailView({ recordId }: { recordId: string }) {
   const router = useRouter();
   const tenantId = useTenantId();
   const isHq6 = useIsVaHq6();
-  const tenantCode = useTenantStore((s) => s.tenantConfig?.code ?? "VA");
   const exportDetail = useDetailExport();
   const { listPath } = useRecordNavigation("sales");
-
-  // HQ6 sales open as a list modal — bounce detail URLs to ?record=
-  useEffect(() => {
-    if (isHq6 && tenantCode) {
-      router.replace(saleRecordPath(tenantCode, recordId));
-    }
-  }, [isHq6, recordId, router, tenantCode]);
 
   const { data: sale, isLoading } = useQuery({
     queryKey: ["sale", tenantId, recordId],
     queryFn: () => getSale(recordId, tenantId!),
     enabled: Boolean(tenantId) && !isHq6,
   });
-  const { entries: auditEntries } = useAuditHistoryFeed("sale", recordId, tenantId);
+  const { entries: auditEntries } = useAuditHistoryFeed(
+    "sale",
+    recordId,
+    tenantId,
+    { enabled: !isHq6 },
+  );
 
   if (isHq6) {
-    return <DetailLoading />;
+    return <Hq6SaleDetailRedirect recordId={recordId} />;
   }
 
   if (!tenantId || isLoading) {

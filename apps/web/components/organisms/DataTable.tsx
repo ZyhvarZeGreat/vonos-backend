@@ -16,7 +16,6 @@ import { KanbanSkeleton, CalendarGridSkeleton } from "@/components/organisms/ske
 import { Input } from "@/components/atoms/Input";
 import { Select } from "@/components/atoms/Select";
 import { PaginationBar } from "@/components/molecules/PaginationBar";
-import { TableFetchingOverlay } from "@/components/molecules/TableFetchingOverlay";
 import { TableRow } from "@/components/molecules/TableRow";
 import { assertDisplayModeImplemented } from "@/lib/registries/displayModes";
 import { formatTableCellValue } from "@/lib/utils/formatDisplay";
@@ -97,6 +96,8 @@ export interface DataTableProps<T extends { id: string }> {
   maxBodyHeight?: number;
   embedded?: boolean;
   onRowClick?: (row: T) => void;
+  /** Fire when pointer enters a row — use to prefetch detail / modal data. */
+  onRowPointerEnter?: (row: T) => void;
   emptyState?: { message: string; ctaLabel?: string; onCta?: () => void };
   isLoading?: boolean;
   /** Refetch/pagination — keeps visible rows and shows a light overlay. */
@@ -108,7 +109,7 @@ export interface DataTableProps<T extends { id: string }> {
    * reordering only the current page of rows.
    */
   serverSort?: ServerSortConfig;
-  /** Sticky table header while scrolling the body. Default true. */
+  /** Sticky table header while scrolling the body. Default false (shadcn-style). */
   stickyHeader?: boolean;
   /** Freeze the first data column (after checkbox) on horizontal scroll. */
   stickyFirstColumn?: boolean;
@@ -177,13 +178,14 @@ export function DataTable<T extends { id: string }>({
   maxBodyHeight = 720,
   embedded = false,
   onRowClick,
+  onRowPointerEnter,
   emptyState,
   isLoading = false,
   isFetching = false,
   error = null,
   className,
   serverSort,
-  stickyHeader = true,
+  stickyHeader = false,
   stickyFirstColumn = false,
   density: densityProp,
   onDensityChange,
@@ -407,6 +409,9 @@ export function DataTable<T extends { id: string }>({
                   });
                 }
               : undefined
+        }
+        onPointerEnter={
+          onRowPointerEnter ? () => onRowPointerEnter(row) : undefined
         }
         cells={cells}
         cellClassNames={cellClassNames}
@@ -731,7 +736,6 @@ export function DataTable<T extends { id: string }>({
               : undefined
           }
         >
-          {isFetching ? <TableFetchingOverlay /> : null}
           <table className="min-w-full">
             <thead className="bg-[var(--color-surface-muted)]">
               <tr>

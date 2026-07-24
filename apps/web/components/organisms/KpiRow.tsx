@@ -35,6 +35,8 @@ export interface KpiRowProps {
   deltaLabels?: Record<string, string>;
   deltaPercents?: Record<string, string>;
   isLoading?: boolean;
+  /** Passed to each KpiCard — VAG uses `zero-spinner`. */
+  loadingDisplay?: "skeleton" | "zero-spinner";
   className?: string;
 }
 
@@ -45,10 +47,11 @@ export function KpiRow({
   deltaLabels = {},
   deltaPercents = {},
   isLoading = false,
+  loadingDisplay = "skeleton",
   className,
 }: KpiRowProps) {
-  // No known labels yet — fall back to blank card skeletons.
-  if (isLoading && cards.length === 0) {
+  // No known labels yet — fall back to blank card skeletons (unless zero-spinner).
+  if (isLoading && cards.length === 0 && loadingDisplay === "skeleton") {
     return <KpiRowSkeleton count={4} className={className} />;
   }
 
@@ -64,17 +67,28 @@ export function KpiRow({
       {cards.map((card) => {
         const Icon = iconMap[card.icon] ?? Package;
         const tint = tintByMetric[card.metricKey] ?? "emerald";
+        const zeroWhileLoading =
+          isLoading && loadingDisplay === "zero-spinner"
+            ? typeof values[card.metricKey] === "number"
+              ? 0
+              : "0"
+            : undefined;
         return (
           <KpiCard
             key={card.metricKey}
             label={card.label}
             icon={Icon}
-            value={values[card.metricKey] ?? "—"}
+            value={
+              zeroWhileLoading ??
+              values[card.metricKey] ??
+              (loadingDisplay === "zero-spinner" ? "0" : "—")
+            }
             delta={isLoading ? undefined : deltas[card.metricKey]}
             deltaLabel={isLoading ? undefined : deltaLabels[card.metricKey]}
             deltaPercent={isLoading ? undefined : deltaPercents[card.metricKey]}
             tint={tint}
             isLoading={isLoading}
+            loadingDisplay={loadingDisplay}
           />
         );
       })}

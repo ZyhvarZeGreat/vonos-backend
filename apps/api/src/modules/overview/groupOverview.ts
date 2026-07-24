@@ -28,6 +28,38 @@ type GroupTenant = {
   archetype: string;
 };
 
+function compactNgn(amount: number): string {
+  if (amount >= 1_000_000) return `₦ ${(amount / 1_000_000).toFixed(1)}M`;
+  if (amount >= 1_000) return `₦ ${Math.round(amount / 1_000)}K`;
+  return `₦ ${Math.round(amount)}`;
+}
+
+/**
+ * Snapshot entity cards use *today* sales/revenue. Overlay the selected period's
+ * finance totals so cards don't read ₦0 while Group Revenue is large.
+ */
+function applyPeriodRevenueToEntityStats(
+  entityStats: GroupEntityStat[],
+  tenants: GroupTenant[],
+  revenueByTenant: Map<string, number>,
+): GroupEntityStat[] {
+  const byCode = new Map(tenants.map((t) => [t.code, t]));
+  return entityStats.map((row) => {
+    const tenant = byCode.get(row.code);
+    if (!tenant) return row;
+    const revenue = revenueByTenant.get(tenant.id) ?? 0;
+    const stats: [string, string, string] = [...row.stats];
+    if (tenant.archetype === 'job') {
+      stats[2] = `${compactNgn(revenue)} revenue`;
+    } else if (tenant.archetype === 'transaction') {
+      stats[0] = `${compactNgn(revenue)} sales`;
+    } else if (tenant.archetype === 'appointment') {
+      stats[2] = `${compactNgn(revenue)} revenue`;
+    }
+    return { code: row.code, stats };
+  });
+}
+
 const TENANT_LIST_TTL_MS = 5 * 60 * 1000;
 let cachedAutosGroupTenants: {
   at: number;
@@ -304,7 +336,11 @@ export async function buildGroupOverviewSummary(
 
   const result: GroupOverviewSummary = {
     kpis: core.kpis,
-    entityStats: statsBundle.entityStats,
+    entityStats: applyPeriodRevenueToEntityStats(
+      statsBundle.entityStats,
+      tenants,
+      core.revenueByTenant,
+    ),
   };
 
   if (cache) {
@@ -430,7 +466,11 @@ export async function buildGroupOverview(
   const result: GroupOverviewDashboard = {
     kpis: core.kpis,
     charts,
-    entityStats: statsBundle.entityStats,
+    entityStats: applyPeriodRevenueToEntityStats(
+      statsBundle.entityStats,
+      tenants,
+      core.revenueByTenant,
+    ),
     alerts,
   };
 

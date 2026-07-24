@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { Eye, CheckCircle, RotateCcw } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import type { SaleReturnDisposition } from "@vonos/types";
+import type { Sale, SaleReturnDisposition } from "@vonos/types";
 import { Button } from "@/components/atoms/Button";
 import { Select } from "@/components/atoms/Select";
 import { StatusPill } from "@/components/atoms/StatusPill";
@@ -32,6 +32,8 @@ import { invoiceDocumentLayoutProps } from "@/lib/utils/resolveInvoiceLayout";
 
 export interface SaleRecordModalProps {
   saleId: string | null;
+  /** List row for instant HQ6 frame paint while detail loads. */
+  initialSale?: Sale | null;
   listSlug?: string;
   onClose: () => void;
   /** When false, hide the "Open full page" link (e.g. reports stay on-page). */
@@ -40,6 +42,7 @@ export interface SaleRecordModalProps {
 
 export function SaleRecordModal({
   saleId,
+  initialSale = null,
   listSlug = "sales",
   onClose,
   showFullPageLink = true,
@@ -57,6 +60,7 @@ export function SaleRecordModal({
     queryFn: () => getSaleView(saleId!, tenantId!),
     enabled: Boolean(tenantId && saleId) && !isHq6,
     staleTime: MODAL_RECORD_STALE_MS,
+    placeholderData: (prev) => prev,
   });
   const sale = bundle?.sale;
 
@@ -65,6 +69,7 @@ export function SaleRecordModal({
     queryFn: getInvoiceSettings,
     enabled: Boolean(tenantId),
     staleTime: MODAL_REF_STALE_MS,
+    placeholderData: (prev) => prev,
   });
 
   const documentKind = useMemo(
@@ -164,6 +169,7 @@ export function SaleRecordModal({
         <Hq6SaleViewModal
           open={Boolean(saleId)}
           saleId={saleId}
+          initialSale={initialSale}
           onClose={onClose}
           onPrintInvoice={() => setDocPreviewOpen(true)}
           onPackingSlip={() => setDocPreviewOpen(true)}
@@ -383,6 +389,7 @@ function Hq6SaleInvoicePreview({ saleId }: { saleId: string }) {
     queryFn: () => getSaleView(saleId, tenantId!),
     enabled: Boolean(tenantId && saleId),
     staleTime: MODAL_RECORD_STALE_MS,
+    placeholderData: (prev) => prev,
   });
   const sale = bundle?.sale;
   const { data: invoiceSettings } = useQuery({
@@ -390,6 +397,7 @@ function Hq6SaleInvoicePreview({ saleId }: { saleId: string }) {
     queryFn: getInvoiceSettings,
     enabled: Boolean(tenantId),
     staleTime: MODAL_REF_STALE_MS,
+    placeholderData: (prev) => prev,
   });
 
   if (!sale) {

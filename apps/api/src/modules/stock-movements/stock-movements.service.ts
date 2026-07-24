@@ -34,6 +34,10 @@ import {
 import { toIso, toNumber } from '../../common/utils/serializers';
 import { adjustItemLocationStock } from '../../common/utils/itemLocationStock';
 import {
+  relationStringOr,
+  tokenizedSearchWhere,
+} from '../../common/utils/listSearch';
+import {
   serializeMovement,
   toMovementListRow,
   toTransferRow,
@@ -111,9 +115,11 @@ export class StockMovementsService {
     const tenantId = this.tenantDb.requireTenantId();
     // Sort by computed totals isn't a DB column — fall back to date.
     const sortBy =
-      filters.sortBy === 'grandTotal' || filters.sortBy === 'paymentDue'
-        ? 'date'
-        : filters.sortBy;
+      filters.sortBy === 'paymentDue'
+        ? 'grandTotal'
+        : filters.sortBy === 'supplierOrDest'
+          ? 'supplierId'
+          : filters.sortBy;
     const filterKey = listPageFilterKey({
       type: filters.type,
       status: filters.status,
@@ -155,6 +161,11 @@ export class StockMovementsService {
             reference: { field: 'reference', type: 'string' },
             status: { field: 'status', type: 'string' },
             createdAt: { field: 'createdAt', type: 'date' },
+            locationCode: { field: 'locationCode', type: 'string' },
+            paymentStatus: { field: 'paymentStatus', type: 'string' },
+            paymentMethod: { field: 'paymentMethod', type: 'string' },
+            grandTotal: { field: 'grandTotal', type: 'number' },
+            supplierId: { field: 'supplierId', type: 'string' },
           },
           {
             sortField: 'date',
@@ -193,32 +204,16 @@ export class StockMovementsService {
           ...(filters.paymentMethod
             ? { paymentMethod: filters.paymentMethod }
             : {}),
-          ...(filters.search
-            ? {
-                OR: [
-                  {
-                    reference: {
-                      contains: filters.search,
-                      mode: 'insensitive' as const,
-                    },
-                  },
-                  {
-                    supplier: {
-                      name: {
-                        contains: filters.search,
-                        mode: 'insensitive' as const,
-                      },
-                    },
-                  },
-                  {
-                    notes: {
-                      contains: filters.search,
-                      mode: 'insensitive' as const,
-                    },
-                  },
-                ],
-              }
-            : {}),
+          ...(tokenizedSearchWhere(filters.search, (_token, contains) => [
+            { reference: contains },
+            { notes: contains },
+            { paymentMethod: contains },
+            { locationCode: contains },
+            { createdByName: contains },
+            relationStringOr('supplier', 'name', contains),
+            relationStringOr('supplier', 'contactName', contains),
+            relationStringOr('supplier', 'phone', contains),
+          ]) ?? {}),
           ...dateFilter,
         };
         // Skip lines JSON on list — use denormalized itemCount / grandTotal.
@@ -790,19 +785,12 @@ export class StockMovementsService {
               },
             }
           : {}),
-        ...(filters.search
-          ? {
-              OR: [
-                {
-                  reference: {
-                    contains: filters.search,
-                    mode: 'insensitive',
-                  },
-                },
-                { notes: { contains: filters.search, mode: 'insensitive' } },
-              ],
-            }
-          : {}),
+        ...(tokenizedSearchWhere(filters.search, (_token, contains) => [
+          { reference: contains },
+          { notes: contains },
+          { locationCode: contains },
+          { createdByName: contains },
+        ]) ?? {}),
         ...(pagination.where ?? {}),
       },
       orderBy: [{ date: 'desc' }, { id: 'desc' }],

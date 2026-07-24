@@ -1,5 +1,6 @@
 "use client";
 
+import { createPortal } from "react-dom";
 import type { ReactNode } from "react";
 import { Printer, X } from "lucide-react";
 
@@ -18,18 +19,18 @@ export function DocumentPreviewModal({
   onClose,
   children,
 }: DocumentPreviewModalProps) {
-  if (!open) return null;
+  if (!open || typeof document === "undefined") return null;
 
-  return (
+  return createPortal(
     <div className="invoice-print-overlay fixed inset-0 z-50 overflow-y-auto">
       <button
         type="button"
-        className="motion-backdrop-in fixed inset-0 bg-black/50"
+        className="no-print motion-backdrop-in fixed inset-0 bg-black/50"
         aria-label="Close preview"
         onClick={onClose}
       />
-      <div className="relative flex min-h-full items-start justify-center p-4">
-        <div className="invoice-print-dialog motion-dialog-in my-4 w-full max-w-4xl rounded-lg border border-border bg-card shadow-xl">
+      <div className="relative flex min-h-full items-start justify-center p-4 print:p-0">
+        <div className="invoice-print-dialog motion-dialog-in my-4 w-full max-w-4xl rounded-lg border border-border bg-card shadow-xl print:my-0 print:max-w-none print:rounded-none print:border-0 print:shadow-none">
           <div className="no-print flex items-center justify-between gap-2 border-b border-border px-4 py-3">
             <p
               className={
@@ -58,9 +59,10 @@ export function DocumentPreviewModal({
               </button>
             </div>
           </div>
-          <div className="p-4">{children}</div>
+          <div className="invoice-print-root p-4 print:p-0">{children}</div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

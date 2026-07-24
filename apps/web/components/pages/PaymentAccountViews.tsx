@@ -369,7 +369,7 @@ export function PaymentAccountReportView({ slug }: { slug: PaymentAccountPageSlu
   const { config } = useRouteTenant();
   const openExportModal = useUiStore((state) => state.openExportModal);
   const { tabs, activeTab, onTabChange } = usePaymentAccountPageTabs(slug);
-  const { dateRange, setDateRange, bounds } = useListPageFilters();
+  const { dateRange, setDateRange, bounds } = useListPageFilters({ unboundedAllTime: false });
   const periodLabel = ledgerChartSubtitle(dateRange);
   const entry = reportEntryBySlug(slug);
   const [locationCode, setLocationCode] = useState("");

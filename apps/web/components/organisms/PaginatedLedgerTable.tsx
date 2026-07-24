@@ -1,7 +1,5 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
 import type { LedgerEntry, LedgerEntryType, LedgerListRow } from "@vonos/types";
 import { DataTable, type ColumnConfig } from "@/components/organisms/DataTable";
 import { CursorPaginationBar } from "@/components/molecules/CursorPaginationBar";
@@ -11,8 +9,10 @@ import {
   LEDGER_TABLE_PAGE_SIZE,
   type LedgerQueryFilters,
 } from "@/lib/api/ledger";
-import { useDebouncedValue } from "@/lib/hooks/useDebouncedValue";
-import { useCursorPage } from "@/lib/hooks/useCursorPage";
+import {
+  hq6ListPaginationProps,
+  useServerListPage,
+} from "@/lib/hooks/useServerListPage";
 import { ledgerListCursor } from "@/lib/utils/pagination";
 
 export interface PaginatedLedgerTableProps<T extends { id: string }> {
@@ -42,94 +42,70 @@ export function PaginatedLedgerTable<T extends LedgerEntry | LedgerListRow>({
   emptyState,
   defaultPageSize = LEDGER_TABLE_PAGE_SIZE,
 }: PaginatedLedgerTableProps<T>) {
-  const debouncedSearch = useDebouncedValue(search?.trim() ?? "", 400);
-  const { cursor, pageIndex, canGoPrev, goNext, goPrev, goToPage, maxReachablePageIndex, reset } =
-    useCursorPage();
-  const [pageSize, setPageSize] = useState(defaultPageSize);
-
-  const filters = useMemo((): LedgerQueryFilters => {
-    const next: LedgerQueryFilters = { limit: pageSize };
-    if (type) next.type = type;
-    if (category) next.category = category;
-    if (from) next.from = from;
-    if (to) next.to = to;
-    if (search?.trim()) next.search = debouncedSearch;
-    return next;
-  }, [category, debouncedSearch, from, pageSize, search, to, type]);
-
-  const filterKey = useMemo(
-    () => JSON.stringify({ groupMode, tenantId, ...filters }),
-    [filters, groupMode, tenantId],
-  );
-
-  useEffect(() => {
-    reset();
-  }, [filterKey, reset]);
-
-  const pageQuery = useQuery({
-    queryKey: [
-      "ledgerTablePage",
-      groupMode ? "group" : tenantId,
-      filterKey,
-      cursor,
-    ],
-    queryFn: async () => {
+  const page = useServerListPage<T>({
+    queryKey: ["ledgerTablePage", groupMode ? "group" : tenantId ?? "none"],
+    enabled: groupMode || Boolean(tenantId),
+    defaultPageSize,
+    filters: {
+      type: type ?? null,
+      category: category ?? null,
+      from: from ?? null,
+      to: to ?? null,
+    },
+    search: search ?? "",
+    prefetchPagesAhead: 5,
+    deferSummary: false,
+    fetchPage: async (cursor, limit) => {
+      const filters: LedgerQueryFilters = { limit };
+      if (type) filters.type = type;
+      if (category) filters.category = category;
+      if (from) filters.from = from;
+      if (to) filters.to = to;
+      if (search?.trim()) filters.search = search.trim();
       if (groupMode) {
-        return getGroupLedgerEntriesPage(filters, cursor, pageSize);
+        const result = await getGroupLedgerEntriesPage(filters, cursor, limit);
+        return result as { items: T[]; hasMore: boolean; pageSize: number };
       }
       if (!tenantId) {
-        return { items: [], hasMore: false, pageSize };
+        return { items: [], hasMore: false, pageSize: limit };
       }
-      return getLedgerEntriesPage(tenantId, filters, cursor, pageSize);
+      const result = await getLedgerEntriesPage(tenantId, filters, cursor, limit);
+      return result as { items: T[]; hasMore: boolean; pageSize: number };
     },
-    enabled: groupMode || Boolean(tenantId),
-    placeholderData: (prev) => prev,
-    staleTime: 10 * 60_000,
+    getCursor: (row) => ledgerListCursor(row),
   });
 
-  const items = (pageQuery.data?.items ?? []) as T[];
-  const hasMore = pageQuery.data?.hasMore ?? false;
-  const isLoading = pageQuery.isLoading && items.length === 0;
-  const isFetching = pageQuery.isFetching && !isLoading;
-
-  const handleNext = () => {
-    const last = items[items.length - 1];
-    if (last && hasMore) goNext(ledgerListCursor(last));
-  };
-
-  const handlePageSizeChange = (size: number) => {
-    setPageSize(size);
-    reset();
-  };
+  const pagination = hq6ListPaginationProps(page);
 
   return (
     <div className="overflow-hidden rounded-xl border border-border bg-card shadow-card">
       <DataTable
-        data={items}
+        data={page.items}
         columns={columns}
         displayMode="table"
         embedded
         virtualized
         disablePagination
-        isLoading={isLoading}
-        isFetching={isFetching}
-        error={pageQuery.error ? "Failed to load ledger entries" : null}
+        isLoading={page.isLoading}
+        isFetching={page.isFetching}
+        error={page.error ? "Failed to load ledger entries" : null}
         onRowClick={onRowClick}
         emptyState={emptyState}
       />
-      {!isLoading && (items.length > 0 || canGoPrev) ? (
+      {!page.isLoading && (page.items.length > 0 || page.canGoPrev) ? (
         <CursorPaginationBar
-          pageIndex={pageIndex}
-          pageSize={pageSize}
-          itemCount={items.length}
-          hasMore={hasMore}
-          canGoPrev={canGoPrev}
-          onPrev={goPrev}
-          onNext={handleNext}
-          onPageSizeChange={handlePageSizeChange}
-          onPageSelect={goToPage}
-          canSelectPage={(index) => index <= maxReachablePageIndex}
-          isBusy={isFetching}
+          pageIndex={pagination.pageIndex}
+          pageSize={pagination.pageSize}
+          itemCount={pagination.itemCount}
+          hasMore={pagination.hasMore}
+          canGoPrev={pagination.canGoPrev}
+          onPrev={pagination.onPrev}
+          onNext={pagination.onNext}
+          onPageSizeChange={pagination.onPageSizeChange}
+          onPageSelect={pagination.onPageSelect}
+          canSelectPage={pagination.canSelectPage}
+          totalItems={pagination.totalItems}
+          isBusy={pagination.isBusy}
         />
       ) : null}
     </div>

@@ -18,6 +18,7 @@ type ServerPaginatedTableBaseProps<T extends { id: string }> = {
   isLoading?: boolean;
   error?: string | null;
   onRowClick?: (row: T) => void;
+  onRowPointerEnter?: (row: T) => void;
   emptyState?: { message: string; ctaLabel?: string; onCta?: () => void };
   filters?: FilterConfig[];
   virtualized?: boolean;
@@ -31,6 +32,16 @@ type ServerPaginatedTableBaseProps<T extends { id: string }> = {
   enableColumnVisibility?: boolean;
   tableId?: string;
   bulkActions?: DataTableBulkAction[];
+  /**
+   * Table overlay. From `useServerListPage`, pass `isFetching` (empty-only).
+   * Do not pass true on cache-hit page flips.
+   */
+  isFetching?: boolean;
+  /**
+   * Pagination-bar busy. From `useServerListPage`, pass `isPaging`.
+   * Falls back to `isFetching` when omitted.
+   */
+  isPaging?: boolean;
 };
 
 export type ServerPaginatedTableProps<T extends { id: string }> =
@@ -56,7 +67,7 @@ function resolvePagination<T extends { id: string }>(
     onPageSizeChange: props.onPageSizeChange,
     onPageSelect: props.onPageSelect,
     canSelectPage: props.canSelectPage,
-    isFetching: props.isFetching,
+    isFetching: props.isPaging ?? props.isFetching,
     totalCount: props.totalCount,
   };
 }
@@ -71,21 +82,25 @@ export function ServerPaginatedTable<T extends { id: string }>(
     isLoading = false,
     error = null,
     onRowClick,
+    onRowPointerEnter,
     emptyState,
     filters,
     virtualized = false,
     toolbar,
     serverSort,
     selectable = false,
-    stickyHeader = true,
+    stickyHeader = false,
     stickyFirstColumn = false,
     density,
     onDensityChange,
     enableColumnVisibility = false,
     tableId,
     bulkActions,
+    isFetching: overlayFetching = false,
+    isPaging,
   } = props;
 
+  const pagination = resolvePagination(props);
   const {
     pageIndex,
     pageSize,
@@ -96,12 +111,16 @@ export function ServerPaginatedTable<T extends { id: string }>(
     onPageSizeChange,
     onPageSelect,
     canSelectPage,
-    isFetching = false,
+    isFetching: paginationFetching = false,
     totalCount,
-  } = resolvePagination(props);
+  } = pagination;
 
   const showPagination = items.length > 0 || canGoPrev || isLoading;
-  const busy = isFetching && !isLoading;
+  // Overlay: only what the caller marked as table-fetch (empty loads).
+  const showOverlay = overlayFetching && !isLoading;
+  // Bar: prefer explicit isPaging, else pagination.isFetching from helpers.
+  const barBusy =
+    (isPaging ?? paginationFetching ?? overlayFetching) && !isLoading;
 
   return (
     <div className="overflow-hidden rounded-xl border border-border bg-card shadow-card">
@@ -123,9 +142,10 @@ export function ServerPaginatedTable<T extends { id: string }>(
         toolbar={toolbar}
         bulkActions={bulkActions}
         isLoading={isLoading}
-        isFetching={busy}
+        isFetching={showOverlay}
         error={error}
         onRowClick={onRowClick}
+        onRowPointerEnter={onRowPointerEnter}
         emptyState={emptyState}
         serverSort={serverSort}
       />
@@ -142,7 +162,7 @@ export function ServerPaginatedTable<T extends { id: string }>(
           onPageSelect={onPageSelect}
           canSelectPage={canSelectPage}
           totalItems={totalCount}
-          isBusy={busy}
+          isBusy={barBusy}
         />
       ) : null}
     </div>

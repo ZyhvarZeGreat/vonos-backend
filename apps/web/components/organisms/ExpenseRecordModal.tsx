@@ -24,6 +24,7 @@ export function ExpenseRecordModal({
     queryFn: () => getExpense(tenantId!, expenseId!),
     enabled: Boolean(tenantId && expenseId),
     staleTime: MODAL_RECORD_STALE_MS,
+    placeholderData: (prev) => prev,
   });
 
   if (isLoading || error || !expense) {

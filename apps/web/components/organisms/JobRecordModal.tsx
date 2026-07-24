@@ -26,6 +26,7 @@ export function JobRecordModal({
     queryFn: () => getJobShell(jobId!),
     enabled: Boolean(tenantId && jobId),
     staleTime: MODAL_RECORD_STALE_MS,
+    placeholderData: (prev) => prev,
   });
 
   return (

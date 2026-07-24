@@ -71,6 +71,7 @@ export function Hq6PayPurchaseModal({
     queryFn: () => getPaymentAccounts(tenantId!),
     enabled: Boolean(open && tenantId),
     staleTime: MODAL_REF_STALE_MS,
+    placeholderData: (prev) => prev,
   });
 
   useEffect(() => {

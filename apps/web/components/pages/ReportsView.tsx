@@ -25,6 +25,9 @@ import { HqReportPageSkeleton } from "@/components/organisms/HqReportPageLayout"
 import { useReportRecordModals } from "@/lib/hooks/useReportRecordModals";
 import { REPORT_TABS } from "@/lib/registries/reportTabs";
 import { useUiStore } from "@/stores/uiStore";
+import { Spinner } from "@/components/atoms/Spinner";
+import { useIsVaHq6 } from "@/lib/hooks/useIsVaHq6";
+import { cn } from "@/lib/utils/cn";
 
 export { REPORT_TABS } from "@/lib/registries/reportTabs";
 
@@ -145,6 +148,7 @@ export function ReportsDashboardBody({
   tenantCode,
   dashboard,
   isLoading,
+  chartsLoading = false,
   error,
   dateRange,
   setDateRange,
@@ -153,6 +157,8 @@ export function ReportsDashboardBody({
   tenantCode?: TenantCode;
   dashboard: ReportsDashboard | undefined;
   isLoading: boolean;
+  /** True while full payload (charts) is still loading after core KPIs. */
+  chartsLoading?: boolean;
   error: Error | null;
   dateRange: ReturnType<typeof useListPageFilters>["dateRange"];
   setDateRange: ReturnType<typeof useListPageFilters>["setDateRange"];
@@ -161,6 +167,7 @@ export function ReportsDashboardBody({
 }) {
   const openExportModal = useUiStore((state) => state.openExportModal);
   const chartSubtitle = ledgerChartSubtitle(dateRange);
+  const isHq6 = useIsVaHq6();
   const {
     openReportRecord,
     modals: recordModals,
@@ -171,7 +178,7 @@ export function ReportsDashboardBody({
 
   if (error) {
     return (
-      <div className="rounded-xl border border-border bg-card p-8 text-center text-sm text-muted">
+      <div className="hq6-card p-8 text-center text-sm text-muted">
         Something went wrong loading reports. Try again or change the date range.
       </div>
     );
@@ -190,10 +197,32 @@ export function ReportsDashboardBody({
   if (isLoading && !dashboard) {
     return (
       <div className="space-y-6">
-        <KpiRow cards={loadingCards} values={{}} isLoading />
+        <KpiRow
+          cards={loadingCards}
+          values={Object.fromEntries(loadingCards.map((c) => [c.metricKey, "0"]))}
+          isLoading
+          loadingDisplay={isHq6 ? "zero-spinner" : "skeleton"}
+        />
         <div className="grid gap-6 lg:grid-cols-2">
-          <ChartPanelSkeleton withHeader={false} />
-          <ChartPanelSkeleton withHeader={false} />
+          {isHq6 ? (
+            <>
+              <div className="hq6-card flex min-h-[200px] flex-col items-center justify-center gap-2 p-6">
+                <p className="text-2xl font-semibold tabular-nums">0</p>
+                <Spinner size="md" className="text-muted" />
+                <p className="text-xs text-muted">Loading charts…</p>
+              </div>
+              <div className="hq6-card flex min-h-[200px] flex-col items-center justify-center gap-2 p-6">
+                <p className="text-2xl font-semibold tabular-nums">0</p>
+                <Spinner size="md" className="text-muted" />
+                <p className="text-xs text-muted">Loading charts…</p>
+              </div>
+            </>
+          ) : (
+            <>
+              <ChartPanelSkeleton withHeader={false} />
+              <ChartPanelSkeleton withHeader={false} />
+            </>
+          )}
         </div>
       </div>
     );
@@ -207,20 +236,42 @@ export function ReportsDashboardBody({
         deltas={deltas}
         deltaLabels={deltaLabels}
         deltaPercents={deltaPercents}
-        isLoading={isLoading && Boolean(dashboard)}
+        isLoading={false}
+        loadingDisplay={isHq6 ? "zero-spinner" : "skeleton"}
       />
 
-      {isLoading && dashboard ? (
+      {chartsLoading && !(dashboard?.charts.length) ? (
         <div className="grid gap-6 lg:grid-cols-2">
-          <ChartPanelSkeleton withHeader={false} />
-          <ChartPanelSkeleton withHeader={false} />
+          {isHq6 ? (
+            <>
+              <div className="hq6-card flex min-h-[200px] flex-col items-center justify-center gap-2 p-6">
+                <p className="text-2xl font-semibold tabular-nums">0</p>
+                <Spinner size="md" className="text-muted" />
+                <p className="text-xs text-muted">Loading charts…</p>
+              </div>
+              <div className="hq6-card flex min-h-[200px] flex-col items-center justify-center gap-2 p-6">
+                <p className="text-2xl font-semibold tabular-nums">0</p>
+                <Spinner size="md" className="text-muted" />
+                <p className="text-xs text-muted">Loading charts…</p>
+              </div>
+            </>
+          ) : (
+            <>
+              <ChartPanelSkeleton withHeader={false} />
+              <ChartPanelSkeleton withHeader={false} />
+            </>
+          )}
         </div>
       ) : dashboard?.charts.length ? (
         <div className="grid gap-6 lg:grid-cols-2">
           {dashboard.charts.map((chart) => (
             <div
               key={chart.id}
-              className="rounded-xl border border-border bg-card p-6 shadow-card sm:p-8"
+              className={
+                isHq6
+                  ? "hq6-card p-6 sm:p-8"
+                  : "rounded-xl border border-border bg-card p-6 shadow-card sm:p-8"
+              }
             >
               <ChartHeader
                 title={chart.title}
@@ -245,7 +296,13 @@ export function ReportsDashboardBody({
       ) : null}
 
       {dashboard?.byEntity && dashboard.byEntity.length > 0 ? (
-        <div className="rounded-xl border border-border bg-card p-6 shadow-card sm:p-8">
+        <div
+          className={
+            isHq6
+              ? "hq6-card p-6 sm:p-8"
+              : "rounded-xl border border-border bg-card p-6 shadow-card sm:p-8"
+          }
+        >
           <ChartHeader
             title="By entity"
             subtitle="Roll-up for the selected report across all operating entities"
@@ -292,7 +349,13 @@ export function ReportsDashboardBody({
       ) : null}
 
       {dashboard?.table && dashboard.table.rows.length > 0 ? (
-        <div className="rounded-xl border border-border bg-card p-6 shadow-card sm:p-8">
+        <div
+          className={
+            isHq6
+              ? "hq6-card p-6 sm:p-8"
+              : "rounded-xl border border-border bg-card p-6 shadow-card sm:p-8"
+          }
+        >
           <ChartHeader
             title={onEntityReportsClick ? "By entity" : "Detail"}
             subtitle={
@@ -359,39 +422,64 @@ export function ReportsDashboardBody({
 }
 
 export function ReportsView({ tenantCode }: { tenantCode: TenantCode }) {
+  const isHq6 = useIsVaHq6();
   const entry = getTenantByCode(tenantCode);
   const archetype = entry?.archetype ?? "stock";
   const tabs = REPORT_TABS[archetype] ?? REPORT_TABS.stock;
   const [activeTab, setActiveTab] = useState(tabs[0]?.id ?? "valuation");
-  const { dateRange, setDateRange, bounds } = useListPageFilters();
+  const { dateRange, setDateRange, bounds } = useListPageFilters({
+    defaultDateRange: "last_7_days",
+    unboundedAllTime: false,
+    isolateDateRange: true,
+  });
 
   const query = useQuery({
-    queryKey: ["reportsDashboard", tenantCode, activeTab, bounds?.from, bounds?.to],
+    queryKey: [
+      "reportsDashboard",
+      tenantCode,
+      entry?.tenantId,
+      activeTab,
+      bounds?.from,
+      bounds?.to,
+    ],
     queryFn: () =>
       getReportsDashboard({
         tab: activeTab,
         from: bounds?.from,
         to: bounds?.to,
+        tenantId: entry?.tenantId,
       }),
+    enabled: Boolean(entry?.tenantId),
     staleTime: ROUTE_PREFETCH_STALE_MS,
     placeholderData: (prev) => prev,
   });
 
   return (
     <div className="space-y-6">
-      <EntityContextBanner module="Reports" />
+      {!isHq6 ? <EntityContextBanner module="Reports" /> : null}
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex gap-1 rounded-lg border border-border bg-[var(--color-surface-muted)] p-1">
+        <div
+          className={
+            isHq6
+              ? "hq6-tab-row max-w-full overflow-x-auto"
+              : "flex gap-1 rounded-lg border border-border bg-[var(--color-surface-muted)] p-1"
+          }
+        >
           {tabs.map((tab) => (
             <button
               key={tab.id}
               type="button"
               onClick={() => setActiveTab(tab.id)}
-              className={`rounded-md px-4 py-2 text-sm font-medium transition-colors ${
-                activeTab === tab.id
-                  ? "bg-card text-foreground shadow-sm"
-                  : "text-muted hover:text-foreground"
-              }`}
+              className={
+                isHq6
+                  ? cn("hq6-tab shrink-0", activeTab === tab.id && "hq6-tab-active")
+                  : cn(
+                      "rounded-md px-4 py-2 text-sm font-medium transition-colors",
+                      activeTab === tab.id
+                        ? "bg-card text-foreground shadow-sm"
+                        : "text-muted hover:text-foreground",
+                    )
+              }
             >
               {tab.label}
             </button>
@@ -417,41 +505,71 @@ export function WarehouseReportsView() {
 
 export function VagGroupReportsView() {
   const router = useRouter();
-  const { dateRange, setDateRange, bounds } = useListPageFilters();
+  const { dateRange, setDateRange, bounds } = useListPageFilters({
+    defaultDateRange: "last_7_days",
+    unboundedAllTime: false,
+    isolateDateRange: true,
+  });
   const groupReports = useMemo(
     () => REPORT_REGISTRY.filter((entry) => entry.groupRollup),
     [],
   );
   const [activeReportId, setActiveReportId] = useState<string>("overview");
+  const from = bounds?.from;
+  const to = bounds?.to;
 
-  const overviewQuery = useQuery({
-    queryKey: ["groupReports", bounds?.from, bounds?.to],
+  const coreQuery = useQuery({
+    queryKey: ["groupReports", "core", from, to],
     queryFn: () =>
       getGroupReports({
-        from: bounds?.from,
-        to: bounds?.to,
+        from,
+        to,
+        mode: "core",
       }),
     enabled: activeReportId === "overview",
-    staleTime: 5 * 60_000,
+    staleTime: ROUTE_PREFETCH_STALE_MS,
+    placeholderData: (prev) => prev,
+  });
+
+  const overviewQuery = useQuery({
+    queryKey: ["groupReports", from, to],
+    queryFn: () =>
+      getGroupReports({
+        from,
+        to,
+      }),
+    enabled: activeReportId === "overview",
+    staleTime: ROUTE_PREFETCH_STALE_MS,
+    placeholderData: (prev) => prev,
   });
 
   const drillQuery = useQuery({
     queryKey: [
       "groupReportRun",
       activeReportId,
-      bounds?.from ?? "all",
-      bounds?.to ?? "all",
+      from ?? "all",
+      to ?? "all",
     ],
     queryFn: () =>
       runGroupReport({
         reportId: activeReportId,
-        from: bounds?.from,
-        to: bounds?.to,
+        from,
+        to,
       }),
     enabled: activeReportId !== "overview",
-    staleTime: 5 * 60_000,
+    staleTime: ROUTE_PREFETCH_STALE_MS,
     placeholderData: (prev) => prev,
   });
+
+  const overviewDashboard = overviewQuery.data ?? coreQuery.data;
+  const overviewLoading =
+    !overviewDashboard &&
+    (coreQuery.isLoading || overviewQuery.isLoading);
+  /** Core KPIs painted; full charts still in flight. */
+  const chartsLoading =
+    Boolean(overviewDashboard) &&
+    !overviewQuery.data &&
+    (overviewQuery.isFetching || overviewQuery.isLoading);
 
   const activeEntry =
     activeReportId === "overview"
@@ -459,24 +577,22 @@ export function VagGroupReportsView() {
       : groupReports.find((entry) => entry.id === activeReportId) ?? null;
 
   return (
-    <div className="space-y-6">
-      <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-100">
-        <p className="font-medium">Group roll-up</p>
-        <p className="mt-1 text-amber-900/90 dark:text-amber-100/90">
-          Switch report types with the tabs below — no page navigation. Charts
-          and tables stay on this screen.
+    <div className="space-y-4">
+      <div className="hq6-card px-4 py-3 text-sm">
+        <p className="font-semibold text-[#111827]">Group roll-up</p>
+        <p className="mt-1 text-[#6b7280]">
+          KPIs load first; charts fill in after. Pick an entity in the top-bar
+          switcher to open that location&apos;s reports (same as VA).
         </p>
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex max-w-full gap-1 overflow-x-auto rounded-lg border border-border bg-[var(--color-surface-muted)] p-1">
+        <div className="hq6-tab-row max-w-full overflow-x-auto">
           <button
             type="button"
             onClick={() => setActiveReportId("overview")}
-            className={`shrink-0 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
-              activeReportId === "overview"
-                ? "bg-card text-foreground shadow-sm"
-                : "text-muted hover:text-foreground"
+            className={`hq6-tab shrink-0 ${
+              activeReportId === "overview" ? "hq6-tab-active" : ""
             }`}
           >
             Overview
@@ -486,10 +602,8 @@ export function VagGroupReportsView() {
               key={entry.id}
               type="button"
               onClick={() => setActiveReportId(entry.id)}
-              className={`shrink-0 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
-                activeReportId === entry.id
-                  ? "bg-card text-foreground shadow-sm"
-                  : "text-muted hover:text-foreground"
+              className={`hq6-tab shrink-0 ${
+                activeReportId === entry.id ? "hq6-tab-active" : ""
               }`}
             >
               {entry.label}
@@ -501,16 +615,17 @@ export function VagGroupReportsView() {
 
       {activeReportId === "overview" ? (
         <ReportsDashboardBody
-          dashboard={overviewQuery.data}
-          isLoading={overviewQuery.isLoading}
-          error={overviewQuery.error}
+          dashboard={overviewDashboard}
+          isLoading={overviewLoading}
+          chartsLoading={chartsLoading}
+          error={overviewQuery.error ?? coreQuery.error}
           dateRange={dateRange}
           setDateRange={setDateRange}
           onEntityReportsClick={(code) => router.push(`/admin/reports/${code}`)}
         />
       ) : activeEntry ? (
         drillQuery.error ? (
-          <div className="rounded-xl border border-border bg-card p-8 text-center text-sm text-muted">
+          <div className="hq6-card p-8 text-center text-sm text-muted">
             Failed to load {activeEntry.label}. Try again or change the date range.
           </div>
         ) : drillQuery.isLoading && !drillQuery.data ? (

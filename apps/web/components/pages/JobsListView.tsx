@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { StatusPill } from "@/components/atoms/StatusPill";
 import { ServerPaginatedTable } from "@/components/organisms/ServerPaginatedTable";
 import { ListPageShell } from "@/components/organisms/ListPageShell";
@@ -8,6 +9,7 @@ import { getJobsPage } from "@/lib/api/jobs";
 import { useRecordNavigation } from "@/lib/hooks/useRecordNavigation";
 import { useListPageFilters } from "@/lib/hooks/useListPageFilters";
 import { useServerListPage } from "@/lib/hooks/useServerListPage";
+import { prefetchJobDetail } from "@/lib/query/prefetchListDetails";
 import { formatCurrency } from "@/lib/utils/formatCurrency";
 import type { Job } from "@vonos/types";
 import type { ColumnConfig } from "@/components/organisms/DataTable";
@@ -38,8 +40,9 @@ function tabStatusFilter(tab: string): string | undefined {
 }
 
 export function JobsListView() {
-  const { goToDetail } = useRecordNavigation("jobs");
+  const { goToDetail, prefetchDetail } = useRecordNavigation("jobs");
   const tenantId = useTenantId();
+  const queryClient = useQueryClient();
   const { dateRange, setDateRange, search, setSearch, bounds } = useListPageFilters({
     defaultDateRange: "all_time",
   });
@@ -80,6 +83,7 @@ export function JobsListView() {
     isLoading,
 
     isFetching,
+    isPaging,
     error,
     goToPage,
     canSelectPage,
@@ -90,6 +94,11 @@ export function JobsListView() {
     search,
     fetchPage: (cursor, limit, _sort, opts) => getJobsPage(tenantId!, { ...apiFilters, includeSummary: opts?.includeSummary }, cursor, limit),
   });
+
+  const warmJob = (row: Job) => {
+    prefetchDetail(row.id);
+    if (tenantId) prefetchJobDetail(queryClient, tenantId, row.id, row);
+  };
 
   const columns: ColumnConfig<Job>[] = [
     { key: "reference", header: "Job #", render: (r) => <span className="font-medium">{r.reference}</span> },
@@ -148,8 +157,13 @@ export function JobsListView() {
           canSelectPage={canSelectPage}
           isLoading={isLoading}
           isFetching={isFetching}
+          isPaging={isPaging}
           error={error ? "Failed to load jobs" : null}
-          onRowClick={(row) => goToDetail(row.id)}
+          onRowPointerEnter={warmJob}
+          onRowClick={(row) => {
+            warmJob(row);
+            goToDetail(row.id);
+          }}
         />
       </div>
     </ListPageShell>

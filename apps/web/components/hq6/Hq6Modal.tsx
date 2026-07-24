@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useSyncExternalStore, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
@@ -24,6 +24,19 @@ const SIZE_CLASS: Record<NonNullable<Hq6ModalProps["size"]>, string> = {
   "2xl": "max-w-6xl",
 };
 
+function subscribeNoop() {
+  return () => undefined;
+}
+
+/** True on client from the first paint — no useEffect frame delay before portal. */
+function useIsClient() {
+  return useSyncExternalStore(
+    subscribeNoop,
+    () => true,
+    () => false,
+  );
+}
+
 export function Hq6Modal({
   open,
   onClose,
@@ -35,11 +48,7 @@ export function Hq6Modal({
   bodyClassName,
 }: Hq6ModalProps) {
   const panelRef = useRef<HTMLDivElement>(null);
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
+  const isClient = useIsClient();
 
   useEffect(() => {
     if (!open) return;
@@ -54,12 +63,12 @@ export function Hq6Modal({
     };
   }, [open, onClose]);
 
-  if (!open || !mounted) return null;
+  if (!open || !isClient) return null;
 
   return createPortal(
     <div
       className={cn(
-        "fixed inset-0 z-[60] flex items-center justify-center overflow-y-auto p-4",
+        "hq6-modal-root fixed inset-0 z-[200] flex items-center justify-center overflow-y-auto p-4",
         className,
       )}
       role="dialog"
@@ -68,7 +77,7 @@ export function Hq6Modal({
     >
       <button
         type="button"
-        className="hq6-modal-backdrop absolute inset-0"
+        className="hq6-modal-backdrop fixed inset-0"
         aria-label="Close dialog"
         onClick={onClose}
       />

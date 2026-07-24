@@ -118,6 +118,7 @@ export function WarehouseTransfersView() {
     isLoading,
 
     isFetching,
+    isPaging,
     error,
     goToPage,
     canSelectPage,
@@ -194,6 +195,7 @@ export function WarehouseTransfersView() {
           canSelectPage={canSelectPage}
           isLoading={isLoading}
           isFetching={isFetching}
+          isPaging={isPaging}
           error={error ? "Failed to load transfers" : null}
         />
       </ListPageShell>

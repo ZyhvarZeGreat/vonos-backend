@@ -306,15 +306,21 @@ function Hq6InvoiceSettingsView() {
         {tab === "schemes" ? (
           <>
             <div className="hq6-dt-toolbar">
-              <label className="hq6-search ml-auto">
-                <span className="sr-only">Search</span>
-                <input
-                  type="text"
-                  placeholder="Search ..."
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                />
-              </label>
+              <div className="hq6-search">
+                <label className="hq6-search-field">
+                  <span className="sr-only">Search</span>
+                  <input
+                    type="search"
+                    placeholder="Search by name, prefix…"
+                    title="Search by name, prefix…"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                  />
+                </label>
+                <button type="button" className="hq6-search-btn" aria-label="Search">
+                  Search
+                </button>
+              </div>
             </div>
             <div className="hq6-table-wrap">
               <table className="w-full min-w-[640px] text-left">

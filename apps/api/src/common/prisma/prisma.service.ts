@@ -73,6 +73,12 @@ const tenantScopedModels = new Set([
   'Designation',
   'Employee',
   'CustomerGroup',
+  'LeaveType',
+  'Leave',
+  'Holiday',
+  'AttendanceShift',
+  'Attendance',
+  'SalesTarget',
 ]);
 
 const modelsWithoutSoftDelete = new Set([

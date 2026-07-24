@@ -18,6 +18,7 @@ import {
   updateCustomerGroup,
 } from "@/lib/api/customerGroups";
 import { useServerListPage } from "@/lib/hooks/useServerListPage";
+import { HQ6_TABLE_PAGE_SIZE } from "@/lib/api/fetchAllPages";
 import { useTenantId } from "@/lib/hooks/useRouteTenant";
 import { toast } from "@/stores/toastStore";
 
@@ -47,12 +48,14 @@ export function Hq6CustomerGroupsListView() {
     setPageSize,
     isLoading,
     isFetching,
+    isPaging,
     error,
     goToPage,
     canSelectPage,
   } = useServerListPage<CustomerGroup>({
     queryKey: ["customer-groups", tenantId, "hq6", search],
     enabled: Boolean(tenantId),
+    defaultPageSize: HQ6_TABLE_PAGE_SIZE,
     filters: { search: search.trim() || undefined },
     search,
     fetchPage: (cursor, limit, _sort, opts) =>
@@ -205,7 +208,7 @@ export function Hq6CustomerGroupsListView() {
         onPageSelect: goToPage,
         canSelectPage,
         totalItems: totalCount,
-        isBusy: isFetching && !isLoading,
+        isBusy: isPaging,
       }}
       modals={
         <>

@@ -63,10 +63,18 @@ export function CursorPaginationBar({
 
   const rangeLabel =
     itemCount === 0
-      ? "No entries"
+      ? isBusy
+        ? "Loading…"
+        : "No entries"
       : totalItems != null
         ? `Showing ${start} to ${end} of ${totalItems.toLocaleString()} entries`
         : `Showing ${start}–${hasMore ? `${end}+` : String(end)}`;
+
+  // Prefer totalItems for Next when present — avoids enabling Next on a full last page.
+  const canGoNext =
+    totalItems != null
+      ? end < totalItems
+      : hasMore;
 
   const pageButtonClass = (active: boolean, enabled: boolean) =>
     cn(
@@ -141,7 +149,7 @@ export function CursorPaginationBar({
 
         <button
           type="button"
-          disabled={!hasMore || isBusy}
+          disabled={!canGoNext || isBusy}
           onClick={onNext}
           className="flex h-8 w-8 items-center justify-center rounded-md text-muted hover:bg-[var(--color-surface-muted)] hover:text-foreground disabled:opacity-40"
           aria-label="Next page"

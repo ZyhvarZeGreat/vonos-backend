@@ -6,11 +6,12 @@ import { CreditCard, Plus, Receipt, ShoppingCart } from "lucide-react";
 import { Button } from "@/components/atoms/Button";
 import { Select } from "@/components/atoms/Select";
 import { useRouteTenant } from "@/lib/hooks/useRouteTenant";
+import { getTenantByCode, type TenantCode } from "@/lib/registries/tenants";
 import {
-  AUTOS_GROUP_ENTITIES,
-  getTenantByCode,
-  type TenantCode,
-} from "@/lib/registries/tenants";
+  getVagViewUnit,
+  isVagViewUnitId,
+  VAG_VIEW_UNITS,
+} from "@/lib/registries/vagViewUnits";
 import { useAdminEntityStore } from "@/stores/adminEntityStore";
 
 export interface FinanceActionBarProps {
@@ -21,9 +22,9 @@ export interface FinanceActionBarProps {
   className?: string;
 }
 
-const ENTITY_OPTIONS = AUTOS_GROUP_ENTITIES.map((entity) => ({
-  value: entity.code,
-  label: `${entity.code} — ${entity.name}`,
+const UNIT_OPTIONS = VAG_VIEW_UNITS.map((unit) => ({
+  value: unit.id,
+  label: `${unit.badge} — ${unit.name}`,
 }));
 
 /**
@@ -40,9 +41,13 @@ export function FinanceActionBar({
   const viewingCode = useAdminEntityStore((s) => s.viewingCode);
   const setViewingCode = useAdminEntityStore((s) => s.setViewingCode);
 
-  const resolvedCode =
-    fixedTenantCode ?? (groupMode ? viewingCode : routeTenantCode);
-  const activeTenant = resolvedCode ? getTenantByCode(resolvedCode) : null;
+  const workspaceCode: TenantCode | null = fixedTenantCode
+    ? fixedTenantCode
+    : viewingCode && isVagViewUnitId(viewingCode)
+      ? getVagViewUnit(viewingCode).enterCode
+      : routeTenantCode;
+
+  const activeTenant = workspaceCode ? getTenantByCode(workspaceCode) : null;
   const needsEntity = groupMode && !fixedTenantCode;
   const blocked = !activeTenant;
 
@@ -51,14 +56,14 @@ export function FinanceActionBar({
       return `Actions open in ${activeTenant.name}'s workspace (sales, purchases, expenses, payments).`;
     }
     if (groupMode) {
-      return "Pick an entity above (or here), then open that department's payments, expenses, sales, or purchases page.";
+      return "Pick an entity above (or here), then open that department's payments, expenses, sales, or purchases page. Spare Parts opens VISP.";
     }
     return null;
   }, [activeTenant, fixedTenantCode, groupMode]);
 
   const goToEntity = (suffix: string) => {
-    if (!resolvedCode) return;
-    router.push(`/${resolvedCode}/${suffix}`);
+    if (!workspaceCode) return;
+    router.push(`/${workspaceCode}/${suffix}`);
   };
 
   return (
@@ -74,10 +79,8 @@ export function FinanceActionBar({
             <Select
               label="Entity for actions"
               value={viewingCode ?? ""}
-              onChange={(e) =>
-                setViewingCode((e.target.value || null) as TenantCode | null)
-              }
-              options={[{ value: "", label: "Select entity…" }, ...ENTITY_OPTIONS]}
+              onChange={(e) => setViewingCode(e.target.value || null)}
+              options={[{ value: "", label: "Select entity…" }, ...UNIT_OPTIONS]}
             />
           </div>
         ) : null}

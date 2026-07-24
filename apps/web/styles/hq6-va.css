@@ -355,27 +355,89 @@
 }
 
 [data-hq6="true"] .hq6-show-entries select {
-  height: 1.85rem;
+  height: 2.35rem;
   border-radius: 0.25rem;
   border: 1px solid #d1d5db;
   padding: 0 0.35rem;
   background: #fff;
 }
 
-[data-hq6="true"] .hq6-search input {
-  height: 1.85rem;
-  min-width: 10rem;
-  border-radius: 0.25rem;
-  border: 1px solid #d1d5db;
-  padding: 0 0.6rem;
-  font-size: 0.8125rem;
-  background: #fff;
+/* Search sits first (LTR) — taller/wider field + dedicated Search button. */
+[data-hq6="true"] .hq6-search {
+  display: inline-flex;
+  align-items: stretch;
+  flex: 1 1 22rem;
+  min-width: min(100%, 18rem);
+  max-width: 36rem;
 }
 
+[data-hq6="true"] .hq6-search-field {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+[data-hq6="true"] .hq6-search input,
+[data-hq6="true"] .hq6-search-field input {
+  height: 2.5rem;
+  width: 100%;
+  min-width: 0;
+  border-radius: 0.25rem 0 0 0.25rem;
+  border: 1px solid #d1d5db;
+  border-right: none;
+  padding: 0 0.85rem;
+  font-size: 0.875rem;
+  line-height: 1.25;
+  background: #fff;
+  color: #111;
+}
+
+[data-hq6="true"] .hq6-search input::placeholder,
+[data-hq6="true"] .hq6-search-field input::placeholder {
+  color: #6b7280;
+  opacity: 1;
+}
+
+[data-hq6="true"] .hq6-search input:focus,
+[data-hq6="true"] .hq6-search-field input:focus {
+  outline: none;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15);
+  z-index: 1;
+  position: relative;
+}
+
+[data-hq6="true"] .hq6-search-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  flex: 0 0 auto;
+  height: 2.5rem;
+  padding: 0 0.95rem;
+  border-radius: 0 0.25rem 0.25rem 0;
+  border: 1px solid #2563eb;
+  background: #2563eb;
+  color: #fff;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+[data-hq6="true"] .hq6-search-btn:hover {
+  background: #1d4ed8;
+  border-color: #1d4ed8;
+}
+
+[data-hq6="true"] .hq6-search-btn:focus-visible {
+  outline: 2px solid #93c5fd;
+  outline-offset: 2px;
+}
+
+/* Horizontal scroll only — no max-height / sticky thead (matches shadcn data-table). */
 [data-hq6="true"] .hq6-table-wrap {
-  overflow: auto;
-  max-height: min(70vh, 720px);
-  /* Establish sticky containing block cleanly */
+  overflow-x: auto;
   position: relative;
   -webkit-overflow-scrolling: touch;
 }
@@ -394,10 +456,6 @@
   border-bottom: 1px solid #d1d5db !important;
   padding-top: 0.55rem !important;
   padding-bottom: 0.55rem !important;
-  position: sticky !important;
-  top: 0 !important;
-  z-index: 4;
-  box-shadow: 0 1px 0 0 #d1d5db;
 }
 
 [data-hq6="true"] .hq6-table-wrap tbody td {
@@ -418,14 +476,14 @@
 [data-hq6="true"] .hq6-table-wrap.hq6-table-freeze-first tbody td:first-child {
   position: sticky;
   left: 0;
-  z-index: 1;
+  z-index: 5;
   background: #fff;
   box-shadow: 2px 0 4px -2px rgba(0, 0, 0, 0.08);
 }
 
 [data-hq6="true"] .hq6-table-wrap.hq6-table-freeze-first thead th:first-child {
   background: #ecf0f5 !important;
-  z-index: 3;
+  z-index: 6;
 }
 
 [data-hq6="true"] .hq6-pay-badge {
@@ -449,9 +507,11 @@
   color: #fff;
 }
 
+/* Blue-400 with white text — distinct from paid (green) and due (orange). */
 [data-hq6="true"] .hq6-pay-partial {
-  background: var(--hq6-blue);
+  background: #60a5fa;
   color: #fff;
+  border: 1px solid #3b82f6;
 }
 
 [data-hq6="true"] .hq6-pay-overdue {
@@ -702,6 +762,13 @@
   background: rgba(0, 0, 0, 0.45);
   border: 0;
   cursor: default;
+}
+
+.hq6-modal-root {
+  /* Always viewport-centered above app chrome (sidebar, sticky headers, etc.). */
+  position: fixed;
+  inset: 0;
+  z-index: 200;
 }
 
 .hq6-modal-panel {
@@ -959,6 +1026,16 @@ textarea.hq6-modal-input {
   border: 1px solid #e5e7eb;
   border-radius: 0.25rem;
   box-shadow: 0 8px 20px rgba(0, 0, 0, 0.12);
+}
+
+/* Portal variant — escapes sticky first-column stacking + overflow:auto clips. */
+.hq6-actions-menu-portal {
+  position: static;
+  top: auto;
+  left: auto;
+  z-index: auto;
+  max-height: inherit;
+  overflow: auto;
 }
 
 .hq6-actions-menu-divider {

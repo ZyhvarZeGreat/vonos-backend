@@ -1,11 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { Printer, Upload } from "lucide-react";
-import { AdminEntityBanner } from "@/components/molecules/AdminEntityBanner";
 import { Button } from "@/components/atoms/Button";
 import { DateRangeDropdown } from "@/components/molecules/DateRangeDropdown";
+import { Hq6PageFrame } from "@/components/hq6/Hq6Chrome";
 import { HqReportPageLayout, HqReportPageSkeleton } from "@/components/organisms/HqReportPageLayout";
 import { ReportFilterShell } from "@/components/organisms/ReportFilterShell";
 import { runReport } from "@/lib/api/reports";
@@ -44,7 +45,7 @@ export function AdminEntityReportSheet({
 }: AdminEntityReportSheetProps) {
   const tenant = getTenantByCode(tenantCode);
   const entry = reportEntryBySlug(reportSlug);
-  const { dateRange, setDateRange, bounds } = useListPageFilters();
+  const { dateRange, setDateRange, bounds } = useListPageFilters({ unboundedAllTime: false });
   const openExportModal = useUiStore((state) => state.openExportModal);
   const periodLabel = ledgerChartSubtitle(dateRange);
   const [filters, setFilters] = useState<ReportRunOptions>(() => emptyReportFilters());
@@ -193,90 +194,92 @@ export function AdminEntityReportSheet({
   const searchPlaceholder = searchField?.placeholder ?? "Search …";
 
   return (
-    <div className="space-y-6">
-      <AdminEntityBanner
-        tenantCode={tenantCode}
-        tenantName={tenant.name}
-        backHref={`/admin/reports/${tenantCode}`}
-        backLabel="Back to entity reports"
-      />
-
-      <div className="flex flex-wrap items-center justify-between gap-3 print:hidden">
-        <DateRangeDropdown value={dateRange} onChange={setDateRange} />
-        <div className="flex gap-2">
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={handleExport}
-            disabled={!data?.table?.rows.length}
+    <Hq6PageFrame
+      title={entry.label}
+      subtitle={`${tenant.name} · printable report sheet`}
+    >
+      <div className="space-y-6">
+        <div className="hq6-card flex flex-wrap items-center justify-between gap-3 px-4 py-3 text-sm print:hidden">
+          <Link
+            href={`/admin/reports/${tenantCode}`}
+            className="font-medium text-info hover:underline"
           >
-            <Upload className="mr-2 h-4 w-4" />
-            Export
-          </Button>
-          <Button variant="secondary" size="sm" onClick={() => window.print()}>
-            <Printer className="mr-2 h-4 w-4" />
-            Print
-          </Button>
-        </div>
-      </div>
-
-      <div className="space-y-4 p-2 sm:p-4">
-        {tableUi && tableUi.filters.length > 0 ? (
-          <ReportFilterShell
-            fields={tableUi.filters}
-            values={filters}
-            optionSets={optionSets}
-            onChange={(patch) =>
-              setFilters((prev) => ({ ...prev, ...patch }))
-            }
-          />
-        ) : null}
-
-        {tableUi?.views ? (
-          <div className="flex flex-wrap gap-2 print:hidden">
-            {tableUi.views.map((view) => (
-              <button
-                key={view.id}
-                type="button"
-                className={cn(
-                  "rounded-md border px-3 py-1.5 text-sm font-medium transition-colors",
-                  activeView === view.id
-                    ? "border-brand bg-brand/10 text-brand"
-                    : "border-border bg-card text-muted hover:text-foreground",
-                )}
-                onClick={() =>
-                  setFilters((prev) => ({ ...prev, view: view.id }))
-                }
-              >
-                {view.label}
-              </button>
-            ))}
+            ← Back to {tenant.name} reports
+          </Link>
+          <div className="flex flex-wrap items-center gap-2">
+            <DateRangeDropdown value={dateRange} onChange={setDateRange} />
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={handleExport}
+              disabled={!data?.table?.rows.length}
+            >
+              <Upload className="mr-2 h-4 w-4" />
+              Export
+            </Button>
+            <Button variant="secondary" size="sm" onClick={() => window.print()}>
+              <Printer className="mr-2 h-4 w-4" />
+              Print
+            </Button>
           </div>
-        ) : null}
+        </div>
 
-        {isLoading || (isFetching && !data) ? (
-          <HqReportPageSkeleton reportId={entry.id} />
-        ) : error ? (
-          <p className="text-sm text-error">Failed to load report.</p>
-        ) : data ? (
-          <HqReportPageLayout
-            reportId={entry.id}
-            title={entry.label}
-            subtitle={periodLabel}
-            data={data}
-            tablePagination={tablePagination}
-            tableSearch={filters.search ?? ""}
-            onTableSearchChange={(search) =>
-              setFilters((prev) => ({ ...prev, search }))
-            }
-            searchPlaceholder={searchPlaceholder}
-            onRowClick={handleRowClick}
-            onRowAction={handleRowAction}
-          />
-        ) : null}
+        <div className="space-y-4">
+          {tableUi && tableUi.filters.length > 0 ? (
+            <ReportFilterShell
+              fields={tableUi.filters}
+              values={filters}
+              optionSets={optionSets}
+              onChange={(patch) =>
+                setFilters((prev) => ({ ...prev, ...patch }))
+              }
+            />
+          ) : null}
+
+          {tableUi?.views ? (
+            <div className="hq6-tab-row print:hidden">
+              {tableUi.views.map((view) => (
+                <button
+                  key={view.id}
+                  type="button"
+                  className={cn(
+                    "hq6-tab",
+                    activeView === view.id && "hq6-tab-active",
+                  )}
+                  onClick={() =>
+                    setFilters((prev) => ({ ...prev, view: view.id }))
+                  }
+                >
+                  {view.label}
+                </button>
+              ))}
+            </div>
+          ) : null}
+
+          {isLoading || (isFetching && !data) ? (
+            <HqReportPageSkeleton reportId={entry.id} />
+          ) : error ? (
+            <p className="text-sm text-error">Failed to load report.</p>
+          ) : data ? (
+            <HqReportPageLayout
+              reportId={entry.id}
+              title={entry.label}
+              subtitle={periodLabel}
+              data={data}
+              tablePagination={tablePagination}
+              tableSearch={filters.search ?? ""}
+              onTableSearchChange={(search) =>
+                setFilters((prev) => ({ ...prev, search }))
+              }
+              searchPlaceholder={searchPlaceholder}
+              onRowClick={handleRowClick}
+              onRowAction={handleRowAction}
+            />
+          ) : null}
+        </div>
+
+        {recordModals}
       </div>
-
-      {recordModals}
-    </div>
+    </Hq6PageFrame>
   );
 }

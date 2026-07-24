@@ -11,6 +11,15 @@ import type {
   CreatePayComponentRequest,
   CreateDesignationRequest,
   CreateEmployeeRequest,
+  UpdateDesignationRequest,
+  UpdatePayrollGroupRequest,
+  LeaveTypeRow,
+  LeaveRow,
+  HolidayRow,
+  AttendanceShiftRow,
+  AttendanceRow,
+  AttendanceByShiftRow,
+  SalesTargetRow,
 } from "@vonos/types";
 import { apiFetch, withTenantQuery } from "@/lib/api/client";
 import {
@@ -30,6 +39,12 @@ const PAY_COMPONENTS_PATH = "/hrm/pay-components";
 const WORKFORCE_PATH = "/hrm/workforce";
 const DESIGNATIONS_PATH = "/hrm/designations";
 const EMPLOYEES_PATH = "/hrm/employees";
+const LEAVE_TYPES_PATH = "/hrm/leave-types";
+const LEAVES_PATH = "/hrm/leaves";
+const HOLIDAYS_PATH = "/hrm/holidays";
+const ATTENDANCE_PATH = "/hrm/attendance";
+const ATTENDANCE_SHIFTS_PATH = "/hrm/attendance/shifts";
+const SALES_TARGETS_PATH = "/hrm/sales-targets";
 
 function asArray<T>(body: unknown): T[] {
   if (Array.isArray(body)) return body as T[];
@@ -51,13 +66,16 @@ async function fetchWorkforceRaw(
     search?: string;
     cursor?: string;
     limit?: number;
+    includeSummary?: boolean;
   },
-): Promise<WorkforceMember[]> {
+): Promise<ListPage<WorkforceMember>> {
   const params = new URLSearchParams();
   if (options.allTenants) params.set("allTenants", "true");
   if (options.search) params.set("search", options.search);
   if (options.cursor) params.set("cursor", options.cursor);
   if (options.limit != null) params.set("limit", String(options.limit));
+  if (options.includeSummary === false) params.set("includeSummary", "0");
+  else if (options.includeSummary === true) params.set("includeSummary", "1");
   const query = params.toString();
   const base = query ? `${WORKFORCE_PATH}?${query}` : WORKFORCE_PATH;
   const path = options.allTenants ? base : withTenantQuery(base, tenantId ?? undefined);
@@ -68,7 +86,20 @@ async function fetchWorkforceRaw(
     }
     throw new Error("Failed to fetch workforce");
   }
-  return res.json();
+  const body = await res.json();
+  if (Array.isArray(body)) {
+    return {
+      items: body as WorkforceMember[],
+      hasMore: body.length >= (options.limit ?? TYPEAHEAD_PAGE_SIZE),
+      pageSize: options.limit ?? TYPEAHEAD_PAGE_SIZE,
+    };
+  }
+  return {
+    items: (body.items ?? []) as WorkforceMember[],
+    hasMore: Boolean(body.hasMore),
+    pageSize: options.limit ?? TYPEAHEAD_PAGE_SIZE,
+    totalCount: body.totalCount,
+  };
 }
 
 export async function getWorkforce(
@@ -76,18 +107,31 @@ export async function getWorkforce(
   search?: string,
   limit = TYPEAHEAD_PAGE_SIZE,
 ): Promise<WorkforceMember[]> {
-  return fetchWorkforceRaw(tenantId, {
+  const page = await fetchWorkforceRaw(tenantId, {
     search,
     limit,
+    includeSummary: false,
   });
+  return page.items;
 }
 
 export async function getAllTenantsWorkforce(search?: string): Promise<WorkforceMember[]> {
-  return fetchWorkforceRaw(null, {
+  const page = await fetchWorkforceRaw(null, {
     allTenants: true,
     search,
     limit: TYPEAHEAD_PAGE_SIZE,
+    includeSummary: false,
   });
+  return page.items;
+}
+
+export async function getWorkforceStats(tenantId: string): Promise<{
+  totalCount: number;
+  byLocation: Array<{ locationCode: string | null; count: number }>;
+}> {
+  const res = await apiFetch(withTenantQuery(`${WORKFORCE_PATH}/stats`, tenantId));
+  if (!res.ok) throw new Error("Failed to fetch workforce stats");
+  return res.json();
 }
 
 export async function getWorkforcePage(
@@ -95,35 +139,29 @@ export async function getWorkforcePage(
   cursor: string | undefined,
   limit = DEFAULT_TABLE_PAGE_SIZE,
   search?: string,
+  opts?: { includeSummary?: boolean },
 ): Promise<ListPage<WorkforceMember>> {
-  return fetchListPage(
-    (pageCursor, pageLimit) =>
-      fetchWorkforceRaw(tenantId, {
-        search,
-        cursor: pageCursor,
-        limit: pageLimit,
-      }),
+  return fetchWorkforceRaw(tenantId, {
+    search,
     cursor,
     limit,
-  );
+    includeSummary: opts?.includeSummary,
+  });
 }
 
 export async function getAllTenantsWorkforcePage(
   cursor: string | undefined,
   limit = DEFAULT_TABLE_PAGE_SIZE,
   search?: string,
+  opts?: { includeSummary?: boolean },
 ): Promise<ListPage<WorkforceMember>> {
-  return fetchListPage(
-    (pageCursor, pageLimit) =>
-      fetchWorkforceRaw(null, {
-        allTenants: true,
-        search,
-        cursor: pageCursor,
-        limit: pageLimit,
-      }),
+  return fetchWorkforceRaw(null, {
+    allTenants: true,
+    search,
     cursor,
     limit,
-  );
+    includeSummary: opts?.includeSummary,
+  });
 }
 
 async function fetchPayrollsRaw(
@@ -132,10 +170,16 @@ async function fetchPayrollsRaw(
   limit?: number,
 ): Promise<Payroll[]> {
   const tenantPath = withTenantQuery(PAYROLL_PATH, tenantId);
-  const url = appendListQuery(tenantPath, { cursor, limit });
+  const url = appendListQuery(tenantPath, {
+    cursor,
+    limit,
+    includeSummary: false,
+  });
   const res = await apiFetch(url);
   if (!res.ok) throw new Error("Failed to fetch payrolls");
-  return res.json();
+  const body = await res.json();
+  if (Array.isArray(body)) return body as Payroll[];
+  return (body.items ?? []) as Payroll[];
 }
 
 async function fetchPayrollGroupsRaw(
@@ -203,10 +247,14 @@ export async function getDesignationsPage(
   tenantId: string,
   cursor: string | undefined,
   limit = DEFAULT_TABLE_PAGE_SIZE,
-  search?: string,
+  opts?: { search?: string; includeSummary?: boolean } | string,
 ): Promise<ListPage<Designation>> {
+  const search = typeof opts === "string" ? opts : opts?.search;
+  const includeSummary =
+    typeof opts === "string" ? false : (opts?.includeSummary ?? false);
   return fetchTenantListPage(DESIGNATIONS_PATH, tenantId, cursor, limit, {
     search,
+    includeSummary,
   });
 }
 
@@ -280,9 +328,10 @@ export async function getPayrollGroupsPage(
   tenantId: string,
   cursor: string | undefined,
   limit = DEFAULT_TABLE_PAGE_SIZE,
-  opts?: { includeSummary?: boolean },
+  opts?: { search?: string; includeSummary?: boolean },
 ): Promise<ListPage<PayrollGroup>> {
   return fetchTenantListPage(PAYROLL_GROUPS_PATH, tenantId, cursor, limit, {
+    search: opts?.search,
     includeSummary: opts?.includeSummary ?? false,
   });
 }
@@ -291,9 +340,10 @@ export async function getPayComponentsPage(
   tenantId: string,
   cursor: string | undefined,
   limit = DEFAULT_TABLE_PAGE_SIZE,
-  opts?: { includeSummary?: boolean },
+  opts?: { search?: string; includeSummary?: boolean },
 ): Promise<ListPage<PayComponent>> {
   return fetchTenantListPage(PAY_COMPONENTS_PATH, tenantId, cursor, limit, {
+    search: opts?.search,
     includeSummary: opts?.includeSummary ?? false,
   });
 }
@@ -426,5 +476,272 @@ export async function createPayComponent(
     body: JSON.stringify(dto),
   });
   if (!res.ok) throw new Error("Failed to create pay component");
+  return res.json();
+}
+
+export async function updateDesignation(
+  tenantId: string,
+  id: string,
+  dto: UpdateDesignationRequest,
+): Promise<Designation> {
+  const res = await apiFetch(
+    withTenantQuery(`${DESIGNATIONS_PATH}/${id}`, tenantId),
+    { method: "PATCH", body: JSON.stringify(dto) },
+  );
+  if (!res.ok) throw new Error("Failed to update designation");
+  return res.json();
+}
+
+export async function deleteDesignation(
+  tenantId: string,
+  id: string,
+): Promise<void> {
+  const res = await apiFetch(
+    withTenantQuery(`${DESIGNATIONS_PATH}/${id}`, tenantId),
+    { method: "DELETE" },
+  );
+  if (!res.ok) throw new Error("Failed to delete designation");
+}
+
+export async function updatePayrollGroup(
+  tenantId: string,
+  id: string,
+  dto: UpdatePayrollGroupRequest,
+): Promise<PayrollGroup> {
+  const res = await apiFetch(
+    withTenantQuery(`${PAYROLL_GROUPS_PATH}/${id}`, tenantId),
+    { method: "PATCH", body: JSON.stringify(dto) },
+  );
+  if (!res.ok) throw new Error("Failed to update department");
+  return res.json();
+}
+
+export async function deletePayrollGroup(
+  tenantId: string,
+  id: string,
+): Promise<void> {
+  const res = await apiFetch(
+    withTenantQuery(`${PAYROLL_GROUPS_PATH}/${id}`, tenantId),
+    { method: "DELETE" },
+  );
+  if (!res.ok) throw new Error("Failed to delete department");
+}
+
+export async function getLeaveTypesPage(
+  tenantId: string,
+  cursor: string | undefined,
+  limit = DEFAULT_TABLE_PAGE_SIZE,
+  opts?: { search?: string; includeSummary?: boolean },
+): Promise<ListPage<LeaveTypeRow>> {
+  return fetchTenantListPage(LEAVE_TYPES_PATH, tenantId, cursor, limit, {
+    search: opts?.search,
+    includeSummary: opts?.includeSummary ?? false,
+  });
+}
+
+export async function createLeaveType(
+  tenantId: string,
+  dto: { name: string; maxLeaveCount?: number },
+): Promise<LeaveTypeRow> {
+  const res = await apiFetch(withTenantQuery(LEAVE_TYPES_PATH, tenantId), {
+    method: "POST",
+    body: JSON.stringify(dto),
+  });
+  if (!res.ok) throw new Error("Failed to create leave type");
+  return res.json();
+}
+
+export async function updateLeaveType(
+  tenantId: string,
+  id: string,
+  dto: { name?: string; maxLeaveCount?: number },
+): Promise<LeaveTypeRow> {
+  const res = await apiFetch(
+    withTenantQuery(`${LEAVE_TYPES_PATH}/${id}`, tenantId),
+    { method: "PATCH", body: JSON.stringify(dto) },
+  );
+  if (!res.ok) throw new Error("Failed to update leave type");
+  return res.json();
+}
+
+export async function deleteLeaveType(
+  tenantId: string,
+  id: string,
+): Promise<void> {
+  const res = await apiFetch(
+    withTenantQuery(`${LEAVE_TYPES_PATH}/${id}`, tenantId),
+    { method: "DELETE" },
+  );
+  if (!res.ok) throw new Error("Failed to delete leave type");
+}
+
+export async function getLeavesPage(
+  tenantId: string,
+  cursor: string | undefined,
+  limit = DEFAULT_TABLE_PAGE_SIZE,
+  opts?: {
+    search?: string;
+    designationId?: string;
+    includeSummary?: boolean;
+  },
+): Promise<ListPage<LeaveRow>> {
+  return fetchTenantListPage(LEAVES_PATH, tenantId, cursor, limit, {
+    search: opts?.search,
+    designationId: opts?.designationId,
+    includeSummary: opts?.includeSummary ?? false,
+  });
+}
+
+export async function createLeave(
+  tenantId: string,
+  dto: {
+    referenceNo?: string;
+    leaveTypeId?: string;
+    employeeName: string;
+    employeeRecordId?: string;
+    designationId?: string;
+    leaveDate: string;
+    reason?: string;
+    status?: string;
+  },
+): Promise<LeaveRow> {
+  const res = await apiFetch(withTenantQuery(LEAVES_PATH, tenantId), {
+    method: "POST",
+    body: JSON.stringify(dto),
+  });
+  if (!res.ok) throw new Error("Failed to create leave");
+  return res.json();
+}
+
+export async function deleteLeave(tenantId: string, id: string): Promise<void> {
+  const res = await apiFetch(withTenantQuery(`${LEAVES_PATH}/${id}`, tenantId), {
+    method: "DELETE",
+  });
+  if (!res.ok) throw new Error("Failed to delete leave");
+}
+
+export async function getHolidaysPage(
+  tenantId: string,
+  cursor: string | undefined,
+  limit = DEFAULT_TABLE_PAGE_SIZE,
+  opts?: { search?: string; includeSummary?: boolean },
+): Promise<ListPage<HolidayRow>> {
+  return fetchTenantListPage(HOLIDAYS_PATH, tenantId, cursor, limit, {
+    search: opts?.search,
+    includeSummary: opts?.includeSummary ?? false,
+  });
+}
+
+export async function createHoliday(
+  tenantId: string,
+  dto: {
+    name: string;
+    date: string;
+    locationCode?: string;
+    note?: string;
+  },
+): Promise<HolidayRow> {
+  const res = await apiFetch(withTenantQuery(HOLIDAYS_PATH, tenantId), {
+    method: "POST",
+    body: JSON.stringify(dto),
+  });
+  if (!res.ok) throw new Error("Failed to create holiday");
+  return res.json();
+}
+
+export async function deleteHoliday(
+  tenantId: string,
+  id: string,
+): Promise<void> {
+  const res = await apiFetch(
+    withTenantQuery(`${HOLIDAYS_PATH}/${id}`, tenantId),
+    { method: "DELETE" },
+  );
+  if (!res.ok) throw new Error("Failed to delete holiday");
+}
+
+export async function getAttendanceShiftsPage(
+  tenantId: string,
+  cursor: string | undefined,
+  limit = DEFAULT_TABLE_PAGE_SIZE,
+  opts?: { search?: string; includeSummary?: boolean },
+): Promise<ListPage<AttendanceShiftRow>> {
+  return fetchTenantListPage(ATTENDANCE_SHIFTS_PATH, tenantId, cursor, limit, {
+    search: opts?.search,
+    includeSummary: opts?.includeSummary ?? false,
+  });
+}
+
+export async function createAttendanceShift(
+  tenantId: string,
+  dto: { name: string },
+): Promise<AttendanceShiftRow> {
+  const res = await apiFetch(
+    withTenantQuery(ATTENDANCE_SHIFTS_PATH, tenantId),
+    { method: "POST", body: JSON.stringify(dto) },
+  );
+  if (!res.ok) throw new Error("Failed to create shift");
+  return res.json();
+}
+
+export async function getAttendancesPage(
+  tenantId: string,
+  cursor: string | undefined,
+  limit = DEFAULT_TABLE_PAGE_SIZE,
+  opts?: { search?: string; date?: string; includeSummary?: boolean },
+): Promise<ListPage<AttendanceRow>> {
+  return fetchTenantListPage(ATTENDANCE_PATH, tenantId, cursor, limit, {
+    search: opts?.search,
+    date: opts?.date,
+    includeSummary: opts?.includeSummary ?? false,
+  });
+}
+
+export async function getAttendanceByShift(
+  tenantId: string,
+  date: string,
+): Promise<AttendanceByShiftRow[]> {
+  const url = appendListQuery(
+    withTenantQuery(`${ATTENDANCE_PATH}/by-shift`, tenantId),
+    { date },
+  );
+  const res = await apiFetch(url);
+  if (!res.ok) throw new Error("Failed to fetch attendance by shift");
+  return asArray<AttendanceByShiftRow>(await res.json());
+}
+
+export async function clockInAttendance(
+  tenantId: string,
+  dto: { employeeName: string; shiftId?: string; date?: string },
+): Promise<AttendanceRow> {
+  const res = await apiFetch(
+    withTenantQuery(`${ATTENDANCE_PATH}/clock-in`, tenantId),
+    { method: "POST", body: JSON.stringify(dto) },
+  );
+  if (!res.ok) throw new Error("Failed to clock in");
+  return res.json();
+}
+
+export async function getSalesTargetsPage(
+  tenantId: string,
+  cursor: string | undefined,
+  limit = DEFAULT_TABLE_PAGE_SIZE,
+  opts?: { search?: string; includeSummary?: boolean },
+): Promise<ListPage<SalesTargetRow>> {
+  return fetchTenantListPage(SALES_TARGETS_PATH, tenantId, cursor, limit, {
+    search: opts?.search,
+    includeSummary: opts?.includeSummary ?? false,
+  });
+}
+
+export async function upsertSalesTarget(
+  tenantId: string,
+  dto: { userName: string; userId?: string; note?: string },
+): Promise<SalesTargetRow> {
+  const res = await apiFetch(withTenantQuery(SALES_TARGETS_PATH, tenantId), {
+    method: "POST",
+    body: JSON.stringify(dto),
+  });
+  if (!res.ok) throw new Error("Failed to set sales target");
   return res.json();
 }

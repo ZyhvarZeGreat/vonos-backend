@@ -1,31 +1,40 @@
 "use client";
 
-import { useMemo } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Printer, Upload } from "lucide-react";
-import type { LedgerEntry } from "@vonos/types";
-import { AdminEntityBanner } from "@/components/molecules/AdminEntityBanner";
+import type { LedgerEntry, LedgerSummary } from "@vonos/types";
 import { FinanceActionBar } from "@/components/molecules/FinanceActionBar";
-import { Button } from "@/components/atoms/Button";
-import { DateRangeDropdown } from "@/components/molecules/DateRangeDropdown";
+import { Hq6PageFrame } from "@/components/hq6/Hq6Chrome";
 import { KpiRow } from "@/components/organisms/KpiRow";
+import { ListPageShell } from "@/components/organisms/ListPageShell";
 import { PaginatedLedgerTable } from "@/components/organisms/PaginatedLedgerTable";
 import { StatusPill } from "@/components/atoms/StatusPill";
-import { getAllLedgerEntries, getLedgerSummary } from "@/lib/api/ledger";
+import {
+  getAllLedgerEntries,
+  getLedgerCategories,
+  getLedgerSummary,
+} from "@/lib/api/ledger";
 import { ADMIN_ENTITY_STALE_MS } from "@/lib/admin/prefetchAdminEntity";
+import { hq6CopyForSlug } from "@/lib/registries/hq6PageCopy";
 import { getTenantByCode, type TenantCode } from "@/lib/registries/tenants";
+import {
+  getVagViewUnit,
+  type VagViewUnitId,
+} from "@/lib/registries/vagViewUnits";
 import { useAdminEntityStore } from "@/stores/adminEntityStore";
+import { useReportRecordModals } from "@/lib/hooks/useReportRecordModals";
 import { ledgerChartSubtitle } from "@/lib/utils/ledgerCharts";
 import {
   buildLedgerReportSections,
   flattenLedgerSectionsForExport,
 } from "@/lib/utils/ledgerReportSheet";
-import { recordDetailPath } from "@/lib/utils/recordDetailPath";
-import { useUiStore } from "@/stores/uiStore";
+import { useUiStore, type DateRangePreset } from "@/stores/uiStore";
 import { dateRangePresetToApiBounds } from "@/lib/utils/dateRange";
 import { formatCurrency, formatCurrencyCompact } from "@/lib/utils/formatCurrency";
 import type { ColumnConfig } from "@/components/organisms/DataTable";
+import { tenantOverviewPath } from "@/lib/utils/authRedirect";
+import { cn } from "@/lib/utils/cn";
 
 const adminLedgerColumns: ColumnConfig<LedgerEntry>[] = [
   {
@@ -81,52 +90,148 @@ const adminFinanceKpiCards = [
   { label: "Outstanding", icon: "clock" as const, metricKey: "outstanding", color: "#e11d48" },
 ];
 
-export interface AdminEntityFinanceSheetProps {
-  tenantCode: TenantCode;
+const LEDGER_TYPE_FILTERS = [
+  { value: "revenue", label: "Revenue" },
+  { value: "cost", label: "Cost" },
+  { value: "expense", label: "Expense" },
+];
+
+function sumSummaries(rows: LedgerSummary[]): LedgerSummary {
+  const currency = rows[0]?.currency ?? "NGN";
+  return {
+    revenue: rows.reduce((a, r) => a + r.revenue, 0),
+    costs: rows.reduce((a, r) => a + r.costs, 0),
+    net: rows.reduce((a, r) => a + r.net, 0),
+    outstanding: rows.reduce((a, r) => a + r.outstanding, 0),
+    currency,
+  };
 }
 
-export function AdminEntityFinanceSheet({ tenantCode }: AdminEntityFinanceSheetProps) {
-  const router = useRouter();
-  const tenant = getTenantByCode(tenantCode);
-  const tenantId = tenant?.tenantId;
+export interface AdminEntityFinanceSheetProps {
+  unitId: VagViewUnitId;
+}
+
+/**
+ * Entity (or combined SP) finance while staying on /admin/finance.
+ * Change entity via the Viewing switcher — no trip back to Group required.
+ */
+export function AdminEntityFinanceSheet({ unitId }: AdminEntityFinanceSheetProps) {
+  const unit = getVagViewUnit(unitId);
   const setViewingCode = useAdminEntityStore((s) => s.setViewingCode);
   const dateRange = useUiStore((state) => state.dateRange);
   const setDateRange = useUiStore((state) => state.setDateRange);
   const openExportModal = useUiStore((state) => state.openExportModal);
+  const {
+    openReportRecord,
+    modals: recordModals,
+  } = useReportRecordModals({
+    onBeforeOpen: () => setViewingCode(unitId),
+  });
 
+  const [ledgerCode, setLedgerCode] = useState<TenantCode>(unit.enterCode);
+  const [search, setSearch] = useState("");
+  const [typeFilter, setTypeFilter] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState("");
   const bounds = useMemo(() => dateRangePresetToApiBounds(dateRange), [dateRange]);
   const periodLabel = ledgerChartSubtitle(dateRange);
 
+  useEffect(() => {
+    setLedgerCode(unit.enterCode);
+    setSearch("");
+    setTypeFilter("");
+    setCategoryFilter("");
+  }, [unit.id, unit.enterCode]);
+
+  const tenantIds = useMemo(() => {
+    const ids: string[] = [];
+    for (const code of unit.tenantCodes) {
+      const id = getTenantByCode(code)?.tenantId;
+      if (id) ids.push(id);
+    }
+    return ids;
+  }, [unit.tenantCodes]);
+
   const summaryQuery = useQuery({
-    queryKey: ["adminFinanceSummary", tenantId, bounds?.from, bounds?.to],
-    queryFn: () => getLedgerSummary(tenantId!, bounds?.from, bounds?.to),
-    enabled: Boolean(tenantId),
+    queryKey: ["adminFinanceSummary", unitId, ...tenantIds, bounds?.from, bounds?.to],
+    queryFn: async () => {
+      const rows = await Promise.all(
+        tenantIds.map((id) => getLedgerSummary(id, bounds?.from, bounds?.to)),
+      );
+      return sumSummaries(rows);
+    },
+    enabled: tenantIds.length > 0,
     staleTime: ADMIN_ENTITY_STALE_MS,
     placeholderData: (prev) => prev,
   });
 
-  if (!tenant) {
-    return (
-      <p className="text-sm text-muted">Unknown entity code &quot;{tenantCode}&quot;.</p>
-    );
-  }
-
   const summary = summaryQuery.data;
+  const ledgerTenant = getTenantByCode(ledgerCode);
+  const ledgerTenantId = ledgerTenant?.tenantId;
+
+  const categoriesQuery = useQuery({
+    queryKey: [
+      "adminFinanceCategories",
+      ledgerTenantId,
+      bounds?.from,
+      bounds?.to,
+    ],
+    queryFn: () =>
+      getLedgerCategories(ledgerTenantId!, bounds?.from, bounds?.to),
+    enabled: Boolean(ledgerTenantId),
+    staleTime: ADMIN_ENTITY_STALE_MS,
+    placeholderData: (prev) => prev,
+  });
+
+  const categoryOptions = useMemo(
+    () => (categoriesQuery.data ?? []).map((c) => ({ value: c, label: c })),
+    [categoriesQuery.data],
+  );
+
+  const ledgerFilters = [
+    {
+      id: "type",
+      label: "Type",
+      value: typeFilter,
+      onChange: setTypeFilter,
+      options: LEDGER_TYPE_FILTERS,
+    },
+    {
+      id: "category",
+      label: "Category",
+      value: categoryFilter,
+      onChange: setCategoryFilter,
+      options: categoryOptions,
+    },
+  ];
+
+  const handleDateRangeChange = (preset: DateRangePreset) => {
+    setDateRange(preset);
+  };
 
   const handleExport = async () => {
-    if (!summary || !tenantId) return;
-    const entries = await getAllLedgerEntries(tenantId, {
-      from: bounds?.from,
-      to: bounds?.to,
-    });
+    if (!summary || tenantIds.length === 0) return;
+    const entryLists = await Promise.all(
+      tenantIds.map((id) =>
+        getAllLedgerEntries(id, {
+          from: bounds?.from,
+          to: bounds?.to,
+          type: typeFilter
+            ? (typeFilter as LedgerEntry["type"])
+            : undefined,
+          category: categoryFilter || undefined,
+          search: search.trim() || undefined,
+        }),
+      ),
+    );
+    const entries = entryLists.flat();
     const sections = buildLedgerReportSections(entries);
     openExportModal(
       {
-        title: `Export P&L — ${tenant.name}`,
+        title: `Export P&L — ${unit.name}`,
         subtitle: periodLabel,
       },
       {
-        filename: `finance-${tenantCode.toLowerCase()}`,
+        filename: `finance-${unitId.toLowerCase()}`,
         columns: [
           { key: "section", header: "Section" },
           { key: "category", header: "Category" },
@@ -142,76 +247,172 @@ export function AdminEntityFinanceSheet({ tenantCode }: AdminEntityFinanceSheetP
   };
 
   const handleLineClick = (entry: LedgerEntry) => {
-    const path = recordDetailPath(tenantCode, entry.linkedRecordType, entry.linkedRecordId);
-    if (path) router.push(path);
+    if (!entry.linkedRecordType || !entry.linkedRecordId) return;
+    setViewingCode(unitId);
+    const recordType = entry.linkedRecordType;
+    const recordId = entry.linkedRecordId;
+    openReportRecord({
+      id: recordId,
+      recordType,
+      ...(recordType === "sale" ? { saleId: recordId } : {}),
+      ...(recordType === "item" ? { itemId: recordId } : {}),
+      ...(recordType === "customer" ? { customerId: recordId } : {}),
+    });
   };
 
+  const financeCopy = hq6CopyForSlug("finance");
+
   return (
-    <div className="space-y-6">
-      <AdminEntityBanner
-        tenantCode={tenantCode}
-        tenantName={tenant.name}
-        backHref="/admin/finance"
-        backLabel="Back to group finance"
-        onBack={() => setViewingCode(null)}
-      />
+    <Hq6PageFrame
+      title={`${financeCopy.title} — ${unit.name}`}
+      subtitle={financeCopy.subtitle}
+    >
+      <div className="space-y-4">
+        <div className="hq6-card flex flex-wrap items-center justify-between gap-3 px-4 py-3 text-sm">
+          <div>
+            <p className="font-semibold text-[#111827]">
+              Viewing: {unit.name} ({unit.badge}) · as Admin
+            </p>
+            <p className="mt-0.5 text-[#6b7280]">
+              {unit.description
+                ? `${unit.description}. KPIs are combined.`
+                : "Scoped to this entity. Use Switch entity above to change — stay on Finance."}
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => setViewingCode(null)}
+              className="hq6-btn hq6-btn-outline"
+            >
+              All entities
+            </button>
+            {unit.tenantCodes.map((code) => (
+              <a
+                key={code}
+                href={tenantOverviewPath(code)}
+                className="hq6-btn hq6-btn-outline"
+              >
+                Open {code}
+              </a>
+            ))}
+          </div>
+        </div>
 
-      <FinanceActionBar fixedTenantCode={tenantCode} />
+        <FinanceActionBar fixedTenantCode={unit.enterCode} />
 
-      <div className="flex flex-wrap items-center justify-between gap-3 print:hidden">
-        <DateRangeDropdown value={dateRange} onChange={setDateRange} />
-        <div className="flex gap-2">
-          <Button variant="secondary" size="sm" onClick={() => void handleExport()} disabled={!summary}>
-            <Upload className="mr-2 h-4 w-4" />
+        <div className="flex flex-wrap justify-end gap-2 print:hidden">
+          <button
+            type="button"
+            className="hq6-btn hq6-btn-outline"
+            onClick={() => void handleExport()}
+            disabled={!summary}
+          >
+            <Upload className="mr-2 h-3.5 w-3.5" />
             Export
-          </Button>
-          <Button variant="secondary" size="sm" onClick={() => window.print()}>
-            <Printer className="mr-2 h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            className="hq6-btn hq6-btn-outline"
+            onClick={() => window.print()}
+          >
+            <Printer className="mr-2 h-3.5 w-3.5" />
             Print
-          </Button>
-        </div>
-      </div>
-
-      <div data-print-root className="space-y-6">
-        <div className="rounded-xl border border-border bg-card px-6 py-5 shadow-card print:border-0 print:shadow-none">
-          <h2 className="text-lg font-semibold text-foreground">
-            Profit & Loss — {tenant.name}
-          </h2>
-          <p className="mt-1 text-sm text-muted">{periodLabel}</p>
+          </button>
         </div>
 
-        <KpiRow
-          cards={adminFinanceKpiCards}
-          isLoading={summaryQuery.isLoading && !summary}
-          values={{
-            revenue: summary
-              ? formatCurrencyCompact(summary.revenue, summary.currency)
-              : "—",
-            costs: summary
-              ? formatCurrencyCompact(summary.costs, summary.currency)
-              : "—",
-            net: summary ? formatCurrencyCompact(summary.net, summary.currency) : "—",
-            outstanding: summary
-              ? formatCurrencyCompact(summary.outstanding, summary.currency)
-              : "—",
-          }}
-        />
+        <div data-print-root className="space-y-4">
+          <div className="hq6-card px-4 py-3 print:border-0 print:shadow-none">
+            <h2 className="text-base font-semibold text-[#111827]">
+              Profit & Loss — {unit.name}
+            </h2>
+            <p className="mt-0.5 text-sm text-[#6b7280]">{periodLabel}</p>
+          </div>
 
-        {summaryQuery.error ? (
-          <p className="text-sm text-error">Failed to load finance summary.</p>
-        ) : (
-          <PaginatedLedgerTable
-            tenantId={tenantId}
-            from={bounds?.from}
-            to={bounds?.to}
-            columns={adminLedgerColumns}
-            onRowClick={handleLineClick}
-            emptyState={{
-              message: "No ledger entries for this period. Entries appear when sales, jobs, or manual expenses are recorded.",
+          <KpiRow
+            cards={adminFinanceKpiCards}
+            isLoading={summaryQuery.isLoading && !summary}
+            loadingDisplay="zero-spinner"
+            values={{
+              revenue: summary
+                ? formatCurrencyCompact(summary.revenue, summary.currency)
+                : "0",
+              costs: summary
+                ? formatCurrencyCompact(summary.costs, summary.currency)
+                : "0",
+              net: summary
+                ? formatCurrencyCompact(summary.net, summary.currency)
+                : "0",
+              outstanding: summary
+                ? formatCurrencyCompact(summary.outstanding, summary.currency)
+                : "0",
             }}
           />
-        )}
+
+          {unit.tenantCodes.length > 1 ? (
+            <div className="hq6-tab-row">
+              {unit.tenantCodes.map((code) => {
+                const t = getTenantByCode(code);
+                return (
+                  <button
+                    key={code}
+                    type="button"
+                    onClick={() => {
+                      setLedgerCode(code);
+                      setCategoryFilter("");
+                    }}
+                    className={cn(
+                      "hq6-tab",
+                      ledgerCode === code && "hq6-tab-active",
+                    )}
+                  >
+                    {t?.name ?? code} ledger
+                  </button>
+                );
+              })}
+            </div>
+          ) : null}
+
+          {summaryQuery.error ? (
+            <p className="text-sm text-error">Failed to load finance summary.</p>
+          ) : (
+            <ListPageShell
+              tabs={[{ id: "all", label: "Ledger entries" }]}
+              activeTab="all"
+              onTabChange={() => {}}
+              searchValue={search}
+              onSearchChange={setSearch}
+              searchPlaceholder="Search description, category…"
+              showImport={false}
+              showExport={false}
+              dateRange={dateRange}
+              onDateRangeChange={handleDateRangeChange}
+              filterDropdowns={ledgerFilters}
+              hq6PageChrome={false}
+            >
+              <PaginatedLedgerTable
+                tenantId={ledgerTenantId}
+                type={
+                  typeFilter
+                    ? (typeFilter as LedgerEntry["type"])
+                    : undefined
+                }
+                category={categoryFilter || undefined}
+                from={bounds?.from}
+                to={bounds?.to}
+                search={search}
+                columns={adminLedgerColumns}
+                onRowClick={handleLineClick}
+                emptyState={{
+                  message:
+                    "No ledger entries for this period. Entries appear when sales, jobs, or manual expenses are recorded.",
+                }}
+              />
+            </ListPageShell>
+          )}
+        </div>
       </div>
-    </div>
+      {recordModals}
+    </Hq6PageFrame>
   );
 }

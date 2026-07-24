@@ -4,15 +4,24 @@ export function scheduleIdle(work: () => void, timeoutMs = 2000): void {
   if ("requestIdleCallback" in window) {
     window.requestIdleCallback(() => work(), { timeout: timeoutMs });
   } else {
-    globalThis.setTimeout(work, 0);
+    globalThis.setTimeout(work, Math.min(timeoutMs, 250));
   }
 }
 
-/** Stagger multiple prefetch tasks across idle slices. */
-export function scheduleIdleBatch(tasks: Array<() => void>, gapMs = 50): void {
-  tasks.forEach((task, index) => {
-    scheduleIdle(() => {
-      globalThis.setTimeout(task, index * gapMs);
-    });
-  });
+/**
+ * Run prefetch tasks one-at-a-time across idle slices.
+ * Wide gaps keep post-login overview / first paint from competing with nav warm.
+ */
+export function scheduleIdleBatch(tasks: Array<() => void>, gapMs = 400): void {
+  if (tasks.length === 0) return;
+  let index = 0;
+  const runNext = () => {
+    const task = tasks[index];
+    if (!task) return;
+    task();
+    index += 1;
+    if (index >= tasks.length) return;
+    globalThis.setTimeout(() => scheduleIdle(runNext, gapMs + 1500), gapMs);
+  };
+  scheduleIdle(runNext, 2500);
 }

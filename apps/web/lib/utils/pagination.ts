@@ -71,6 +71,37 @@ export function nameListCursor(row: { id: string; name: string }): string {
   return encodeCompositeCursor({ sortValue: row.name, id: row.id });
 }
 
+export function workforceListCursor(row: {
+  id: string;
+  employeeName: string;
+}): string {
+  return encodeCompositeCursor({ sortValue: row.employeeName, id: row.id });
+}
+
+export function userNameListCursor(row: {
+  id: string;
+  userName: string;
+}): string {
+  return encodeCompositeCursor({ sortValue: row.userName, id: row.id });
+}
+
+export function dateListCursor(row: { id: string; date: string }): string {
+  const sortValue = row.date.includes("T")
+    ? row.date
+    : new Date(row.date).toISOString();
+  return encodeCompositeCursor({ sortValue, id: row.id });
+}
+
+export function leaveListCursor(row: {
+  id: string;
+  leaveDate: string;
+}): string {
+  const sortValue = row.leaveDate.includes("T")
+    ? row.leaveDate
+    : new Date(row.leaveDate).toISOString();
+  return encodeCompositeCursor({ sortValue, id: row.id });
+}
+
 export function payrollListCursor(row: {
   id: string;
   payrollMonth: string;

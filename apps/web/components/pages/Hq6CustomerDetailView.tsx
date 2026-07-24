@@ -14,10 +14,18 @@ import {
 import {
   deleteCustomer,
   getCustomer,
+  getCustomerHistory,
   getCustomerLedger,
   getCustomers,
   getCustomerSummary,
 } from "@/lib/api/customers";
+import { TYPEAHEAD_PAGE_SIZE } from "@/lib/api/fetchAllPages";
+import type { Customer, CustomerProfile } from "@vonos/types";
+import {
+  collectCachedListRows,
+  DETAIL_RECORD_STALE_MS,
+  prefetchCustomerDetail,
+} from "@/lib/query/prefetchListDetails";
 import { useRecordNavigation } from "@/lib/hooks/useRecordNavigation";
 import { useRouteTenant, useTenantId } from "@/lib/hooks/useRouteTenant";
 import { formatHq6Currency, formatHq6Date } from "@/lib/utils/hq6Format";
@@ -44,12 +52,21 @@ export function Hq6CustomerDetailView({ recordId }: { recordId: string }) {
     queryKey: ["customer", tenantId, recordId],
     queryFn: () => getCustomer(recordId),
     enabled: Boolean(tenantId),
+    staleTime: DETAIL_RECORD_STALE_MS,
   });
 
   const { data: summary } = useQuery({
     queryKey: ["customer-summary", tenantId, recordId],
     queryFn: () => getCustomerSummary(tenantId!, recordId),
     enabled: Boolean(tenantId && recordId),
+    staleTime: DETAIL_RECORD_STALE_MS,
+  });
+
+  const { data: history = [] } = useQuery({
+    queryKey: ["customer-history", tenantId, recordId],
+    queryFn: () => getCustomerHistory(recordId),
+    enabled: Boolean(tenantId && recordId && activeTab === "sales"),
+    staleTime: DETAIL_RECORD_STALE_MS,
   });
 
   const { data: ledger = [], isLoading: ledgerLoading } = useQuery({
@@ -58,12 +75,26 @@ export function Hq6CustomerDetailView({ recordId }: { recordId: string }) {
     enabled: Boolean(tenantId && recordId && activeTab === "ledger"),
   });
 
-  const { data: switcherRows = [] } = useQuery({
+  const cachedSwitcherRows = useMemo(() => {
+    if (!tenantId) return [] as Customer[];
+    return collectCachedListRows<Customer>(queryClient, ["customers", tenantId]);
+  }, [queryClient, tenantId, customer?.id]);
+
+  const { data: fallbackSwitcherRows = [] } = useQuery({
     queryKey: ["customers", tenantId, "contact-switcher"],
-    queryFn: () => getCustomers(tenantId!),
-    enabled: Boolean(tenantId),
-    staleTime: 60_000,
+    queryFn: () => getCustomers(tenantId!, { limit: TYPEAHEAD_PAGE_SIZE }),
+    enabled: Boolean(tenantId) && cachedSwitcherRows.length === 0,
+    staleTime: 5 * 60_000,
   });
+
+  const switcherRows = useMemo(() => {
+    const byId = new Map<string, Customer>();
+    for (const row of cachedSwitcherRows.length > 0 ? cachedSwitcherRows : fallbackSwitcherRows) {
+      byId.set(row.id, row);
+    }
+    if (customer) byId.set(customer.id, customer);
+    return [...byId.values()];
+  }, [cachedSwitcherRows, fallbackSwitcherRows, customer]);
 
   const currency = summary?.currency ?? "NGN";
 
@@ -74,10 +105,10 @@ export function Hq6CustomerDetailView({ recordId }: { recordId: string }) {
 
   const sales = useMemo(
     () =>
-      (customer?.transactionHistory ?? []).filter(
+      (history as CustomerProfile["transactionHistory"]).filter(
         (e) => e.kind === "sale" || e.kind === "job",
       ),
-    [customer?.transactionHistory],
+    [history],
   );
 
   if (!tenantId || isLoading) return <DetailPageSkeleton />;
@@ -121,6 +152,7 @@ export function Hq6CustomerDetailView({ recordId }: { recordId: string }) {
           }`,
         }))}
         onSwitchContact={(id) => {
+          if (tenantId) prefetchCustomerDetail(queryClient, tenantId, id);
           const q = searchParams.toString();
           router.push(q ? `${detailPath(id)}?${q}` : detailPath(id));
         }}

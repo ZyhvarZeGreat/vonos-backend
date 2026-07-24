@@ -1,5 +1,6 @@
 "use client";
 
+import type { Sale, SaleDetail } from "@vonos/types";
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { FileText, Printer } from "lucide-react";
@@ -18,6 +19,8 @@ import {
   formatHq6PaymentStatus,
 } from "@/lib/utils/hq6Format";
 import { businessLocationName } from "@/lib/utils/locationLabels";
+import { hq6PaymentBadgeClass } from "@/lib/utils/hq6PaymentBadge";
+import { cn } from "@/lib/utils/cn";
 
 function saleStatusLabel(recordStatus?: string | null): string {
   if (recordStatus === "draft") return "Draft";
@@ -34,18 +37,26 @@ function actionLabel(action: string): string {
   return action.charAt(0).toUpperCase() + action.slice(1);
 }
 
+function seedToDetail(seed: Sale): SaleDetail {
+  return { ...seed, lines: [] };
+}
+
 /**
  * HQ6 Sell Details modal — matches Ultimate POS invoice view layout.
+ * Opens instantly from a list-row seed; lines/payments fill in when fetched.
  */
 export function Hq6SaleViewModal({
   open,
   saleId,
+  initialSale = null,
   onClose,
   onPrintInvoice,
   onPackingSlip,
 }: {
   open: boolean;
   saleId: string | null;
+  /** List row — paints the frame immediately (expenses-style). */
+  initialSale?: Sale | null;
   onClose: () => void;
   onPrintInvoice?: () => void;
   onPackingSlip?: () => void;
@@ -53,18 +64,29 @@ export function Hq6SaleViewModal({
   const tenantId = useTenantId();
   const { config } = useRouteTenant();
 
-  const { data: bundle, isLoading } = useQuery({
+  const seeded =
+    initialSale && saleId && initialSale.id === saleId
+      ? seedToDetail(initialSale)
+      : null;
+
+  const { data: bundle, isLoading, isFetching } = useQuery({
     queryKey: modalKeys.saleView(tenantId, saleId),
     queryFn: () => getSaleView(saleId!, tenantId!),
     enabled: Boolean(open && tenantId && saleId),
     staleTime: MODAL_RECORD_STALE_MS,
+    placeholderData: (prev) =>
+      prev?.sale?.id === saleId ? prev : undefined,
   });
 
-  const sale = bundle?.sale;
-  const payments = bundle?.payments ?? [];
-  const activities = bundle?.activities ?? [];
-  const paymentsLoading = isLoading && !bundle;
-  const activitiesLoading = isLoading && !bundle;
+  const sale =
+    bundle?.sale?.id === saleId ? bundle.sale : seeded;
+  const payments = bundle?.sale?.id === saleId ? (bundle.payments ?? []) : [];
+  const activities =
+    bundle?.sale?.id === saleId ? (bundle.activities ?? []) : [];
+  const detailPending = Boolean(open && saleId && !bundle?.sale);
+  const paymentsLoading = detailPending && (isLoading || isFetching);
+  const activitiesLoading = paymentsLoading;
+  const linesLoading = detailPending && (sale?.lines.length ?? 0) === 0;
 
   const currency = sale?.currency ?? "NGN";
   const locationLabel = businessLocationName(
@@ -81,7 +103,10 @@ export function Hq6SaleViewModal({
       const gross = unitPrice * qty;
       const discountPercent =
         gross > 0 ? Math.round((discountAmt / gross) * 10000) / 100 : 0;
-      const priceIncTax = Math.max(0, unitPrice - (qty > 0 ? discountAmt / qty : 0));
+      const priceIncTax = Math.max(
+        0,
+        unitPrice - (qty > 0 ? discountAmt / qty : 0),
+      );
       const subtotal = line.lineTotal;
       return {
         index: index + 1,
@@ -153,7 +178,7 @@ export function Hq6SaleViewModal({
         </div>
       }
     >
-      {isLoading || !sale ? (
+      {!sale ? (
         <p className="text-sm text-[#6b7280]">
           {isLoading ? "Loading sale…" : "Sale not found."}
         </p>
@@ -173,7 +198,14 @@ export function Hq6SaleViewModal({
               </div>
               <div>
                 <b>Payment Status:</b>{" "}
-                {formatHq6PaymentStatus(sale.paymentStatus) || "Due"}
+                <span
+                  className={cn(
+                    "hq6-pay-badge",
+                    hq6PaymentBadgeClass(sale.paymentStatus),
+                  )}
+                >
+                  {formatHq6PaymentStatus(sale.paymentStatus) || "Due"}
+                </span>
               </div>
               <div>
                 <b>Vehicle Time in (Date entered):</b>{" "}
@@ -233,7 +265,13 @@ export function Hq6SaleViewModal({
                 </tr>
               </thead>
               <tbody>
-                {lines.length === 0 ? (
+                {linesLoading ? (
+                  <tr>
+                    <td colSpan={8} className="text-center">
+                      Loading…
+                    </td>
+                  </tr>
+                ) : lines.length === 0 ? (
                   <tr>
                     <td colSpan={8} className="text-center">
                       No products
@@ -323,7 +361,10 @@ export function Hq6SaleViewModal({
                   <th>Total:</th>
                   <td />
                   <td className="text-right tabular-nums">
-                    {formatHq6Currency(lineTotal, currency)}
+                    {formatHq6Currency(
+                      linesLoading ? totalPayable : lineTotal || totalPayable,
+                      currency,
+                    )}
                   </td>
                 </tr>
                 <tr>

@@ -16,6 +16,10 @@ import { CacheService } from '../../common/cache/cache.service';
 import { invalidateTenantDashboardCache } from '../../common/cache/cacheInvalidation';
 import { AuditService } from '../audit/audit.service';
 import { buildCompositeCursorQuery } from '../../common/utils/pagination';
+import {
+  listPageFilterKey,
+  withListPageCache,
+} from '../../common/utils/listPageCache';
 import { resolveListSort } from '../../common/utils/listSort';
 import { parseCsv, pickCsvField } from '../../common/utils/csvImport';
 import {
@@ -29,6 +33,10 @@ import {
 import { parseOpeningStockCsvRow } from '../../common/utils/openingStockCsvImport';
 import { adjustItemLocationStock } from '../../common/utils/itemLocationStock';
 import { toNumber } from '../../common/utils/serializers';
+import { applyLastPurchasePrices } from '../../common/utils/lastPurchasePrices';
+import {
+  tokenizedSearchWhere,
+} from '../../common/utils/listSearch';
 import { serializeItem } from './items.mapper';
 import {
   breakdownFromOnHand,
@@ -125,6 +133,38 @@ export class ItemsService {
     filters: ItemFilters & { availableForRetail?: boolean },
   ): Promise<Item[]> {
     const tenantId = this.tenantDb.requireTenantId();
+    const filterKey = listPageFilterKey({
+      search: filters.search,
+      status: filters.status,
+      category: filters.category,
+      unit: filters.unit,
+      brandName: filters.brandName,
+      availableForRetail:
+        filters.availableForRetail === undefined
+          ? undefined
+          : filters.availableForRetail
+            ? 1
+            : 0,
+      locationCode: filters.locationCode,
+      cursor: filters.cursor,
+      limit: filters.limit ?? 10,
+      sortBy: filters.sortBy,
+      sortDir: filters.sortDir,
+      sum: filters.includeSummary === false ? 0 : 1,
+    });
+    return withListPageCache(
+      this.cache,
+      tenantId,
+      'items',
+      filterKey,
+      () => this.listUncached(filters, tenantId),
+    );
+  }
+
+  private async listUncached(
+    filters: ItemFilters & { availableForRetail?: boolean },
+    tenantId: string,
+  ): Promise<Item[]> {
     const db = this.tenantDb.db;
     const limit = filters.limit ?? 10;
 
@@ -133,7 +173,9 @@ export class ItemsService {
       sku: { field: 'sku', type: 'string' },
       quantity: { field: 'quantity', type: 'number' },
       costPrice: { field: 'costPrice', type: 'number' },
-      sellingPrice: { field: 'sellingPrice', type: 'number' },
+      sellPrice: { field: 'sellPrice', type: 'number' },
+      // Alias used by some list UIs / older clients
+      sellingPrice: { field: 'sellPrice', type: 'number' },
       createdAt: { field: 'createdAt', type: 'date' },
       category: { field: 'category', type: 'string' },
       status: { field: 'status', type: 'string' },
@@ -178,40 +220,12 @@ export class ItemsService {
               AND: [
                 ...(filters.search
                   ? [
-                      {
-                        OR: [
-                          {
-                            name: {
-                              contains: filters.search,
-                              mode: 'insensitive' as const,
-                            },
-                          },
-                          {
-                            sku: {
-                              contains: filters.search,
-                              mode: 'insensitive' as const,
-                            },
-                          },
-                          {
-                            category: {
-                              contains: filters.search,
-                              mode: 'insensitive' as const,
-                            },
-                          },
-                          {
-                            binLocation: {
-                              contains: filters.search,
-                              mode: 'insensitive' as const,
-                            },
-                          },
-                          {
-                            locationCode: {
-                              contains: filters.search,
-                              mode: 'insensitive' as const,
-                            },
-                          },
-                        ],
-                      },
+                      // Prefer trigram-backed name/sku + selective carModel.
+                      tokenizedSearchWhere(filters.search, (_token, contains) => [
+                        { name: contains },
+                        { sku: contains },
+                        { carModel: contains },
+                      ])!,
                     ]
                   : []),
                 ...(filters.locationCode
@@ -285,7 +299,11 @@ export class ItemsService {
       take: pagination.take,
     });
 
-    return rows.map(serializeItem);
+    return applyLastPurchasePrices(
+      this.tenantDb.db,
+      tenantId,
+      rows.map(serializeItem),
+    );
   }
 
   async getById(id: string): Promise<Item> {

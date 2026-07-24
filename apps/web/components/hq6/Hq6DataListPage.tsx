@@ -43,6 +43,7 @@ export interface Hq6DataListPageProps {
     searchValue: string;
     onSearchChange: (value: string) => void;
     onSearchCommit?: () => void;
+    searchPlaceholder?: string;
     onExportCsv?: () => void;
     onExportExcel?: () => void;
     onPrint?: () => void;
@@ -195,7 +196,11 @@ export function Hq6DataListPage({
         pagination.onPrev &&
         pagination.onNext &&
         pagination.onPageSizeChange &&
-        (pagination.itemCount > 0 || pagination.canGoPrev || pagination.isBusy) ? (
+        (pagination.itemCount > 0 ||
+          pagination.canGoPrev ||
+          pagination.hasMore ||
+          pagination.pageIndex > 0 ||
+          pagination.isBusy) ? (
           <CursorPaginationBar
             pageIndex={pagination.pageIndex}
             pageSize={pagination.pageSize}

@@ -30,6 +30,7 @@ export * from "./customerGroup";
 export * from "./invoice";
 export * from "./invoiceDocument";
 export * from "./payroll";
+export * from "./hrmEssentials";
 export * from "./retailCatalog";
 export * from "./discount";
 export * from "./variation";

@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import type { PayComponent, Payroll, PayrollGroup } from "@vonos/types";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import type { InvoiceListRow, PayComponent, Payroll, PayrollGroup } from "@vonos/types";
 import { Button } from "@/components/atoms/Button";
 import { Input } from "@/components/atoms/Input";
 import { Modal, ModalFooter, ModalHeader } from "@/components/atoms/Modal";
@@ -22,13 +22,21 @@ import {
   createPayroll,
   createPayrollGroup,
   getPayComponentsPage,
+  getPayrollGroups,
   getPayrollGroupsPage,
   getPayrollsPage,
+  getDesignations,
 } from "@/lib/api/hrm";
+import { findInvoiceForPayroll } from "@/lib/api/invoices";
+import { businessLocationOptions } from "@/lib/hooks/useBusinessLocationOptions";
 import { useServerListPage } from "@/lib/hooks/useServerListPage";
 import { useRouteTenant, useTenantId } from "@/lib/hooks/useRouteTenant";
 import { formatCurrency } from "@/lib/utils/formatCurrency";
 import { formatDate } from "@/lib/utils/formatDate";
+import {
+  nameListCursor,
+  payrollListCursor,
+} from "@/lib/utils/pagination";
 
 function listLoadError(error: unknown, fallback: string): string | null {
   if (!error) return null;
@@ -46,6 +54,33 @@ const PAYROLL_TABS = [
 ] as const;
 
 type PayrollTab = (typeof PAYROLL_TABS)[number]["id"];
+
+const PAYROLL_STATUS_OPTIONS = [
+  { value: "draft", label: "Draft" },
+  { value: "final", label: "Final" },
+  { value: "paid", label: "Paid" },
+];
+
+const PAYMENT_STATUS_OPTIONS = [
+  { value: "due", label: "Due" },
+  { value: "partial", label: "Partial" },
+  { value: "paid", label: "Paid" },
+];
+
+const MONTH_OPTIONS = [
+  { value: "1", label: "January" },
+  { value: "2", label: "February" },
+  { value: "3", label: "March" },
+  { value: "4", label: "April" },
+  { value: "5", label: "May" },
+  { value: "6", label: "June" },
+  { value: "7", label: "July" },
+  { value: "8", label: "August" },
+  { value: "9", label: "September" },
+  { value: "10", label: "October" },
+  { value: "11", label: "November" },
+  { value: "12", label: "December" },
+];
 
 const payrollColumns: ColumnConfig<Payroll>[] = [
   {
@@ -121,10 +156,17 @@ export function PayrollView({
   embedded?: boolean;
 }) {
   const tenantId = useTenantId();
-  const { tenantName } = useRouteTenant();
+  const { tenantName, config } = useRouteTenant();
   const qc = useQueryClient();
+  const currentYear = new Date().getFullYear();
   const [activeTab, setActiveTab] = useState<PayrollTab>(defaultTab);
   const [search, setSearch] = useState("");
+  const [groupFilter, setGroupFilter] = useState("");
+  const [designationFilter, setDesignationFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+  const [paymentStatusFilter, setPaymentStatusFilter] = useState("");
+  const [locationFilter, setLocationFilter] = useState("");
+  const [monthFilter, setMonthFilter] = useState("");
   const [selectedPayroll, setSelectedPayroll] = useState<Payroll | null>(null);
   const [deductionTarget, setDeductionTarget] = useState<Payroll | null>(null);
   const [deductionForm, setDeductionForm] = useState({
@@ -150,23 +192,101 @@ export function PayrollView({
     setActiveTab(defaultTab);
   }, [defaultTab]);
 
+  const payrollListFilters = useMemo(
+    () => ({
+      year: currentYear,
+      payrollGroupId: groupFilter || undefined,
+      designationId: designationFilter || undefined,
+      status: statusFilter || undefined,
+      paymentStatus: paymentStatusFilter || undefined,
+      locationCode: locationFilter || undefined,
+      month: monthFilter ? Number(monthFilter) : undefined,
+    }),
+    [
+      currentYear,
+      designationFilter,
+      groupFilter,
+      locationFilter,
+      monthFilter,
+      paymentStatusFilter,
+      statusFilter,
+    ],
+  );
+
+  const groupsForFilterQuery = useQuery({
+    queryKey: ["payroll-groups", tenantId, "filter-options"],
+    enabled: Boolean(tenantId) && activeTab === "payrolls",
+    queryFn: () => getPayrollGroups(tenantId!),
+    staleTime: 5 * 60_000,
+  });
+
+  const designationsForFilterQuery = useQuery({
+    queryKey: ["designations", tenantId, "filter-options"],
+    enabled: Boolean(tenantId) && activeTab === "payrolls",
+    queryFn: () => getDesignations(tenantId!),
+    staleTime: 5 * 60_000,
+  });
+
+  const locationOptions = useMemo(
+    () => businessLocationOptions(config?.businessLocations),
+    [config?.businessLocations],
+  );
+  const hasLocations = (config?.businessLocations?.length ?? 0) > 0;
+
+  const groupFilterOptions = useMemo(
+    () =>
+      (groupsForFilterQuery.data ?? []).map((g) => ({
+        value: g.id,
+        label: g.name,
+      })),
+    [groupsForFilterQuery.data],
+  );
+
+  const designationFilterOptions = useMemo(
+    () =>
+      (designationsForFilterQuery.data ?? []).map((d) => ({
+        value: d.id,
+        label: d.name,
+      })),
+    [designationsForFilterQuery.data],
+  );
+
   const payrollsPage = useServerListPage<Payroll>({
-    queryKey: ["payrolls", tenantId],
+    queryKey: ["payrolls", tenantId, "ytd", currentYear],
     enabled: Boolean(tenantId) && activeTab === "payrolls",
     search,
-    fetchPage: (cursor, limit, _sort, opts) => getPayrollsPage(tenantId!, cursor, limit, { includeSummary: opts?.includeSummary }),
+    filters: payrollListFilters,
+    fetchPage: (cursor, limit, _sort, opts) =>
+      getPayrollsPage(tenantId!, cursor, limit, {
+        ...payrollListFilters,
+        search: search.trim() || undefined,
+        includeSummary: opts?.includeSummary,
+      }),
+    getCursor: (row) => payrollListCursor(row),
   });
 
   const groupsPage = useServerListPage<PayrollGroup>({
     queryKey: ["payroll-groups", tenantId],
     enabled: Boolean(tenantId) && activeTab === "groups",
-    fetchPage: (cursor, limit, _sort, opts) => getPayrollGroupsPage(tenantId!, cursor, limit, { includeSummary: opts?.includeSummary }),
+    search,
+    fetchPage: (cursor, limit, _sort, opts) =>
+      getPayrollGroupsPage(tenantId!, cursor, limit, {
+        search: search.trim() || undefined,
+        includeSummary: opts?.includeSummary,
+      }),
+    getCursor: (row) => nameListCursor(row),
   });
 
   const componentsPage = useServerListPage<PayComponent>({
     queryKey: ["pay-components", tenantId],
     enabled: Boolean(tenantId) && activeTab === "components",
-    fetchPage: (cursor, limit, _sort, opts) => getPayComponentsPage(tenantId!, cursor, limit, { includeSummary: opts?.includeSummary }),
+    search,
+    fetchPage: (cursor, limit, _sort, opts) =>
+      getPayComponentsPage(tenantId!, cursor, limit, {
+        search: search.trim() || undefined,
+        includeSummary: opts?.includeSummary,
+      }),
+    getCursor: (row) => nameListCursor(row),
   });
 
   const createPayrollMutation = useMutation({
@@ -239,17 +359,6 @@ export function PayrollView({
     onError: (err: Error) => setDeductionError(err.message),
   });
 
-  const filteredPayrolls = useMemo(() => {
-    const rows = payrollsPage.items;
-    if (!search) return rows;
-    const q = search.toLowerCase();
-    return rows.filter(
-      (r) =>
-        r.employeeName.toLowerCase().includes(q) ||
-        (r.payrollGroupName ?? "").toLowerCase().includes(q),
-    );
-  }, [payrollsPage.items, search]);
-
   function openDeductionModal(payroll: Payroll) {
     setDeductionTarget(payroll);
     setDeductionForm({ amount: "", note: "", reason: "" });
@@ -261,6 +370,73 @@ export function PayrollView({
     setDeductionError(null);
     addDeductionMutation.reset();
   }
+
+  const payslipInvoiceQuery = useQuery({
+    queryKey: ["payroll-invoice", tenantId, selectedPayroll?.id],
+    enabled: Boolean(tenantId && selectedPayroll?.id),
+    queryFn: () => findInvoiceForPayroll(tenantId!, selectedPayroll!.id),
+    staleTime: 60_000,
+  });
+  const payslipInvoice: InvoiceListRow | null = payslipInvoiceQuery.data ?? null;
+
+  const searchPlaceholder =
+    activeTab === "payrolls"
+      ? "Search employee, ID, group, location…"
+      : activeTab === "groups"
+        ? "Search payroll groups…"
+        : "Search pay components…";
+
+  const payrollFilterDropdowns =
+    activeTab === "payrolls"
+      ? [
+          {
+            id: "group",
+            label: "Group",
+            value: groupFilter,
+            onChange: setGroupFilter,
+            options: groupFilterOptions,
+          },
+          {
+            id: "designation",
+            label: "Designation",
+            value: designationFilter,
+            onChange: setDesignationFilter,
+            options: designationFilterOptions,
+          },
+          {
+            id: "month",
+            label: "Month",
+            value: monthFilter,
+            onChange: setMonthFilter,
+            options: MONTH_OPTIONS,
+          },
+          {
+            id: "status",
+            label: "Status",
+            value: statusFilter,
+            onChange: setStatusFilter,
+            options: PAYROLL_STATUS_OPTIONS,
+          },
+          {
+            id: "payment",
+            label: "Payment",
+            value: paymentStatusFilter,
+            onChange: setPaymentStatusFilter,
+            options: PAYMENT_STATUS_OPTIONS,
+          },
+          ...(hasLocations
+            ? [
+                {
+                  id: "location",
+                  label: "Location",
+                  value: locationFilter,
+                  onChange: setLocationFilter,
+                  options: locationOptions,
+                },
+              ]
+            : []),
+        ]
+      : undefined;
 
   const deductionModals = (
     <>
@@ -275,10 +451,12 @@ export function PayrollView({
               payroll={selectedPayroll}
               tenantName={tenantName ?? "Vonos"}
               locationLabel={selectedPayroll.locationCode}
+              invoice={payslipInvoice}
             />
             <div className="no-print mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4">
               <p className="text-sm text-muted">
                 Gross stays fixed. Deductions reduce take-home (net) for the month.
+                Payroll list shows {currentYear} year-to-date from imported SQL.
               </p>
               <Button
                 type="button"
@@ -299,22 +477,15 @@ export function PayrollView({
         className="z-[60]"
       >
         <ModalHeader
-          title="Add deduction"
-          subtitle={
-            deductionTarget
-              ? `${deductionTarget.employeeName} · remaining take-home ${formatCurrency(maxDeduction, "NGN")}`
-              : undefined
-          }
+          title="Add payroll deduction"
           onClose={closeDeductionModal}
         />
-        <div className="space-y-3.5 px-4 pb-2">
-          {deductionTarget ? (
-            <p className="rounded-md bg-[var(--color-surface-muted)] px-3 py-2 text-xs text-muted">
-              Gross {formatCurrency(deductionTarget.grossPay, "NGN")} is unchanged.
-              Current deductions {formatCurrency(deductionTarget.totalDeduction, "NGN")} ·
-              net {formatCurrency(deductionTarget.netPay, "NGN")}.
-            </p>
-          ) : null}
+        <div className="space-y-3 px-1 py-2">
+          <p className="text-sm text-muted">
+            {deductionTarget
+              ? `${deductionTarget.employeeName} · remaining take-home ${formatCurrency(maxDeduction, "NGN")}`
+              : null}
+          </p>
           <Input
             label="Amount"
             type="number"
@@ -324,22 +495,23 @@ export function PayrollView({
             onChange={(e) =>
               setDeductionForm((prev) => ({ ...prev, amount: e.target.value }))
             }
+            placeholder="0.00"
           />
           <Input
-            label="Type / label (optional)"
-            placeholder="e.g. WELFARE, PAYE, I.O.U"
+            label="Label (optional)"
             value={deductionForm.note}
             onChange={(e) =>
               setDeductionForm((prev) => ({ ...prev, note: e.target.value }))
             }
+            placeholder="e.g. PAYE, Loan"
           />
           <Input
             label="Reason (optional)"
-            placeholder="Shown on payslip"
             value={deductionForm.reason}
             onChange={(e) =>
               setDeductionForm((prev) => ({ ...prev, reason: e.target.value }))
             }
+            placeholder="Shown on payslip"
           />
           {deductionError ? (
             <p className="text-sm text-[var(--color-error-text)]">{deductionError}</p>
@@ -372,177 +544,209 @@ export function PayrollView({
       {activeTab === "payrolls" ? (
         <>
           <div className="mb-4 flex flex-wrap items-end gap-2 rounded-lg border border-border bg-card p-4">
-              <div className="min-w-[10rem] flex-1">
-                <label className="mb-1 block text-xs font-medium text-muted">Employee</label>
-                <input
-                  className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm"
-                  value={newPayroll.employeeName}
-                  onChange={(e) => setNewPayroll({ ...newPayroll, employeeName: e.target.value })}
-                />
-              </div>
-              <div className="w-36">
-                <label className="mb-1 block text-xs font-medium text-muted">Gross pay</label>
-                <input
-                  type="number"
-                  className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm"
-                  value={newPayroll.grossPay}
-                  onChange={(e) => setNewPayroll({ ...newPayroll, grossPay: e.target.value })}
-                />
-              </div>
-              <div className="w-40">
-                <label className="mb-1 block text-xs font-medium text-muted">Month</label>
-                <input
-                  type="month"
-                  className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm"
-                  value={newPayroll.payrollMonth.slice(0, 7)}
-                  onChange={(e) =>
-                    setNewPayroll({ ...newPayroll, payrollMonth: `${e.target.value}-01` })
-                  }
-                />
-              </div>
-              <Button
-                onClick={() => createPayrollMutation.mutate()}
-                disabled={
-                  !newPayroll.employeeName ||
-                  !newPayroll.grossPay ||
-                  createPayrollMutation.isPending
+            <div className="min-w-[12rem] flex-1">
+              <label className="mb-1 block text-xs font-medium text-muted">Employee name</label>
+              <input
+                className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm"
+                value={newPayroll.employeeName}
+                onChange={(e) =>
+                  setNewPayroll({ ...newPayroll, employeeName: e.target.value })
+                }
+              />
+            </div>
+            <div className="w-36">
+              <label className="mb-1 block text-xs font-medium text-muted">Gross pay</label>
+              <input
+                type="number"
+                className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm"
+                value={newPayroll.grossPay}
+                onChange={(e) => setNewPayroll({ ...newPayroll, grossPay: e.target.value })}
+              />
+            </div>
+            <div className="w-40">
+              <label className="mb-1 block text-xs font-medium text-muted">Month</label>
+              <input
+                type="month"
+                className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm"
+                value={newPayroll.payrollMonth.slice(0, 7)}
+                onChange={(e) =>
+                  setNewPayroll({ ...newPayroll, payrollMonth: `${e.target.value}-01` })
+                }
+              />
+            </div>
+            <Button
+              onClick={() => createPayrollMutation.mutate()}
+              disabled={
+                !newPayroll.employeeName ||
+                !newPayroll.grossPay ||
+                createPayrollMutation.isPending
+              }
+            >
+              Add Payroll
+            </Button>
+          </div>
+          <ServerPaginatedTable
+            items={payrollsPage.items}
+            columns={payrollColumns}
+            pageIndex={payrollsPage.pageIndex}
+            pageSize={payrollsPage.pageSize}
+            hasMore={payrollsPage.hasMore}
+            canGoPrev={payrollsPage.canGoPrev}
+            onNext={payrollsPage.goNext}
+            onPrev={payrollsPage.goPrev}
+            onPageSizeChange={payrollsPage.setPageSize}
+            onPageSelect={payrollsPage.goToPage}
+            canSelectPage={payrollsPage.canSelectPage}
+            isLoading={payrollsPage.isLoading}
+            isFetching={payrollsPage.isFetching}
+            isPaging={payrollsPage.isPaging}
+            error={listLoadError(payrollsPage.error, "Failed to load payrolls.")}
+            emptyState={{ message: "No payroll records yet." }}
+            onRowClick={(row) => setSelectedPayroll(row)}
+          />
+        </>
+      ) : null}
+
+      {activeTab === "groups" ? (
+        <>
+          <div className="mb-4 flex flex-wrap items-end gap-2 rounded-lg border border-border bg-card p-4">
+            <div className="min-w-[12rem] flex-1">
+              <label className="mb-1 block text-xs font-medium text-muted">Group name</label>
+              <input
+                className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm"
+                value={newGroupName}
+                onChange={(e) => setNewGroupName(e.target.value)}
+              />
+            </div>
+            <Button
+              onClick={() => createGroupMutation.mutate()}
+              disabled={!newGroupName || createGroupMutation.isPending}
+            >
+              Add Group
+            </Button>
+          </div>
+          <ServerPaginatedTable
+            items={groupsPage.items}
+            columns={groupColumns}
+            pageIndex={groupsPage.pageIndex}
+            pageSize={groupsPage.pageSize}
+            hasMore={groupsPage.hasMore}
+            canGoPrev={groupsPage.canGoPrev}
+            onNext={groupsPage.goNext}
+            onPrev={groupsPage.goPrev}
+            onPageSizeChange={groupsPage.setPageSize}
+            onPageSelect={groupsPage.goToPage}
+            canSelectPage={groupsPage.canSelectPage}
+            isLoading={groupsPage.isLoading}
+            isFetching={groupsPage.isFetching}
+            isPaging={groupsPage.isPaging}
+            error={listLoadError(groupsPage.error, "Failed to load payroll groups.")}
+            emptyState={{ message: "No payroll groups yet." }}
+          />
+        </>
+      ) : null}
+
+      {activeTab === "components" ? (
+        <>
+          <div className="mb-4 flex flex-wrap items-end gap-2 rounded-lg border border-border bg-card p-4">
+            <div className="min-w-[10rem] flex-1">
+              <label className="mb-1 block text-xs font-medium text-muted">Name</label>
+              <input
+                className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm"
+                value={newComponent.name}
+                onChange={(e) => setNewComponent({ ...newComponent, name: e.target.value })}
+              />
+            </div>
+            <div className="w-36">
+              <label className="mb-1 block text-xs font-medium text-muted">Type</label>
+              <select
+                className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm"
+                value={newComponent.type}
+                onChange={(e) =>
+                  setNewComponent({
+                    ...newComponent,
+                    type: e.target.value as PayComponent["type"],
+                  })
                 }
               >
-                Add Payroll
-              </Button>
+                <option value="allowance">Allowance</option>
+                <option value="deduction">Deduction</option>
+              </select>
             </div>
-            <ServerPaginatedTable
-              items={filteredPayrolls}
-              columns={payrollColumns}
-              pageIndex={payrollsPage.pageIndex}
-              pageSize={payrollsPage.pageSize}
-              hasMore={payrollsPage.hasMore}
-              canGoPrev={payrollsPage.canGoPrev}
-              onNext={payrollsPage.goNext}
-              onPrev={payrollsPage.goPrev}
-              onPageSizeChange={payrollsPage.setPageSize}
-              onPageSelect={payrollsPage.goToPage}
-              canSelectPage={payrollsPage.canSelectPage}
-              isLoading={payrollsPage.isLoading}
-              isFetching={payrollsPage.isFetching}
-              error={listLoadError(payrollsPage.error, "Failed to load payrolls.")}
-              emptyState={{ message: "No payroll records yet." }}
-              onRowClick={(row) => setSelectedPayroll(row)}
-            />
-          </>
-        ) : null}
-
-        {activeTab === "groups" ? (
-          <>
-            <div className="mb-4 flex flex-wrap items-end gap-2 rounded-lg border border-border bg-card p-4">
-              <div className="min-w-[12rem] flex-1">
-                <label className="mb-1 block text-xs font-medium text-muted">Group name</label>
-                <input
-                  className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm"
-                  value={newGroupName}
-                  onChange={(e) => setNewGroupName(e.target.value)}
-                />
-              </div>
-              <Button
-                onClick={() => createGroupMutation.mutate()}
-                disabled={!newGroupName || createGroupMutation.isPending}
-              >
-                Add Group
-              </Button>
+            <div className="w-32">
+              <label className="mb-1 block text-xs font-medium text-muted">Amount</label>
+              <input
+                type="number"
+                className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm"
+                value={newComponent.amount}
+                onChange={(e) => setNewComponent({ ...newComponent, amount: e.target.value })}
+              />
             </div>
-            <ServerPaginatedTable
-              items={groupsPage.items}
-              columns={groupColumns}
-              pageIndex={groupsPage.pageIndex}
-              pageSize={groupsPage.pageSize}
-              hasMore={groupsPage.hasMore}
-              canGoPrev={groupsPage.canGoPrev}
-              onNext={groupsPage.goNext}
-              onPrev={groupsPage.goPrev}
-              onPageSizeChange={groupsPage.setPageSize}
-              onPageSelect={groupsPage.goToPage}
-              canSelectPage={groupsPage.canSelectPage}
-              isLoading={groupsPage.isLoading}
-              isFetching={groupsPage.isFetching}
-              error={listLoadError(groupsPage.error, "Failed to load payroll groups.")}
-              emptyState={{ message: "No payroll groups yet." }}
-            />
-          </>
-        ) : null}
-
-        {activeTab === "components" ? (
-          <>
-            <div className="mb-4 flex flex-wrap items-end gap-2 rounded-lg border border-border bg-card p-4">
-              <div className="min-w-[10rem] flex-1">
-                <label className="mb-1 block text-xs font-medium text-muted">Name</label>
-                <input
-                  className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm"
-                  value={newComponent.name}
-                  onChange={(e) => setNewComponent({ ...newComponent, name: e.target.value })}
-                />
-              </div>
-              <div className="w-36">
-                <label className="mb-1 block text-xs font-medium text-muted">Type</label>
-                <select
-                  className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm"
-                  value={newComponent.type}
-                  onChange={(e) =>
-                    setNewComponent({
-                      ...newComponent,
-                      type: e.target.value as PayComponent["type"],
-                    })
-                  }
-                >
-                  <option value="allowance">Allowance</option>
-                  <option value="deduction">Deduction</option>
-                </select>
-              </div>
-              <div className="w-32">
-                <label className="mb-1 block text-xs font-medium text-muted">Amount</label>
-                <input
-                  type="number"
-                  className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm"
-                  value={newComponent.amount}
-                  onChange={(e) => setNewComponent({ ...newComponent, amount: e.target.value })}
-                />
-              </div>
-              <Button
-                onClick={() => createComponentMutation.mutate()}
-                disabled={
-                  !newComponent.name ||
-                  !newComponent.amount ||
-                  createComponentMutation.isPending
-                }
-              >
-                Add Component
-              </Button>
-            </div>
-            <ServerPaginatedTable
-              items={componentsPage.items}
-              columns={componentColumns}
-              pageIndex={componentsPage.pageIndex}
-              pageSize={componentsPage.pageSize}
-              hasMore={componentsPage.hasMore}
-              canGoPrev={componentsPage.canGoPrev}
-              onNext={componentsPage.goNext}
-              onPrev={componentsPage.goPrev}
-              onPageSizeChange={componentsPage.setPageSize}
-              onPageSelect={componentsPage.goToPage}
-              canSelectPage={componentsPage.canSelectPage}
-              isLoading={componentsPage.isLoading}
-              isFetching={componentsPage.isFetching}
-              error={listLoadError(componentsPage.error, "Failed to load pay components.")}
-              emptyState={{ message: "No pay components yet." }}
-            />
-          </>
-        ) : null}
+            <Button
+              onClick={() => createComponentMutation.mutate()}
+              disabled={
+                !newComponent.name ||
+                !newComponent.amount ||
+                createComponentMutation.isPending
+              }
+            >
+              Add Component
+            </Button>
+          </div>
+          <ServerPaginatedTable
+            items={componentsPage.items}
+            columns={componentColumns}
+            pageIndex={componentsPage.pageIndex}
+            pageSize={componentsPage.pageSize}
+            hasMore={componentsPage.hasMore}
+            canGoPrev={componentsPage.canGoPrev}
+            onNext={componentsPage.goNext}
+            onPrev={componentsPage.goPrev}
+            onPageSizeChange={componentsPage.setPageSize}
+            onPageSelect={componentsPage.goToPage}
+            canSelectPage={componentsPage.canSelectPage}
+            isLoading={componentsPage.isLoading}
+            isFetching={componentsPage.isFetching}
+            isPaging={componentsPage.isPaging}
+            error={listLoadError(componentsPage.error, "Failed to load pay components.")}
+            emptyState={{ message: "No pay components yet." }}
+          />
+        </>
+      ) : null}
 
       {deductionModals}
     </>
   );
 
+  const shell = (
+    <ListPageShell
+      tabs={
+        embedded
+          ? PAYROLL_TABS.filter((t) => t.id === activeTab).map((t) => ({
+              id: t.id,
+              label: t.label,
+            }))
+          : PAYROLL_TABS.map((t) => ({ id: t.id, label: t.label }))
+      }
+      activeTab={activeTab}
+      onTabChange={(id) => setActiveTab(id as PayrollTab)}
+      searchValue={search}
+      onSearchChange={setSearch}
+      searchPlaceholder={searchPlaceholder}
+      showImport={false}
+      showDateRange={false}
+      filterDropdowns={payrollFilterDropdowns}
+      className={embedded ? "border-0 shadow-none" : undefined}
+      hq6Title="HRM"
+      hq6Subtitle="Payroll"
+      hq6PageChrome={!embedded}
+    >
+      {panelBody}
+    </ListPageShell>
+  );
+
   if (embedded) {
-    return <div className="p-4">{panelBody}</div>;
+    return <div className="p-1">{shell}</div>;
   }
 
   return (
@@ -551,18 +755,7 @@ export function PayrollView({
         module="HRM — Payroll"
         description="Manage payroll runs, groups, and allowance/deduction components."
       />
-      <ListPageShell
-        tabs={PAYROLL_TABS.map((t) => ({ id: t.id, label: t.label }))}
-        activeTab={activeTab}
-        onTabChange={(id) => setActiveTab(id as PayrollTab)}
-        searchValue={activeTab === "payrolls" ? search : undefined}
-        onSearchChange={activeTab === "payrolls" ? setSearch : undefined}
-        searchPlaceholder="Search payrolls…"
-        showImport={false}
-        showDateRange={false}
-      >
-        {panelBody}
-      </ListPageShell>
+      {shell}
     </div>
   );
 }

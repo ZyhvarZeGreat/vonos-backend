@@ -1,9 +1,19 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import type { AppointmentListRow } from '@vonos/types';
 import { TenantDbService } from '../../common/prisma/tenant-db.service';
+import { CacheService } from '../../common/cache/cache.service';
+import { invalidateTenantDashboardCache } from '../../common/cache/cacheInvalidation';
 import { AuditService } from '../audit/audit.service';
 import { buildCompositeCursorQuery } from '../../common/utils/pagination';
+import {
+  listPageFilterKey,
+  withListPageCache,
+} from '../../common/utils/listPageCache';
 import { toIso, toNumber } from '../../common/utils/serializers';
+import {
+  relationStringOr,
+  tokenizedSearchWhere,
+} from '../../common/utils/listSearch';
 
 function serializeAppointment(row: {
   id: string;
@@ -42,6 +52,7 @@ export class AppointmentsService {
   constructor(
     private readonly tenantDb: TenantDbService,
     private readonly auditService: AuditService,
+    private readonly cache: CacheService,
   ) {}
 
   async list(filters: {
@@ -53,6 +64,34 @@ export class AppointmentsService {
     status?: string;
   } = {}): Promise<AppointmentListRow[]> {
     const tenantId = this.tenantDb.requireTenantId();
+    const filterKey = listPageFilterKey({
+      search: filters.search,
+      from: filters.from,
+      to: filters.to,
+      status: filters.status,
+      cursor: filters.cursor,
+      limit: filters.limit ?? 10,
+    });
+    return withListPageCache(
+      this.cache,
+      tenantId,
+      'appointments',
+      filterKey,
+      () => this.listUncached(filters, tenantId),
+    );
+  }
+
+  private async listUncached(
+    filters: {
+      cursor?: string;
+      limit?: number;
+      search?: string;
+      from?: string;
+      to?: string;
+      status?: string;
+    },
+    tenantId: string,
+  ): Promise<AppointmentListRow[]> {
     const pagination = buildCompositeCursorQuery({
       sortField: 'startTime',
       sortDir: 'desc',
@@ -73,29 +112,15 @@ export class AppointmentsService {
               },
             }
           : {}),
-        ...(filters.search
-          ? {
-              OR: [
-                {
-                  customer: {
-                    name: { contains: filters.search, mode: 'insensitive' },
-                  },
-                },
-                {
-                  stylistName: {
-                    contains: filters.search,
-                    mode: 'insensitive',
-                  },
-                },
-                {
-                  serviceName: {
-                    contains: filters.search,
-                    mode: 'insensitive',
-                  },
-                },
-              ],
-            }
-          : {}),
+        ...(tokenizedSearchWhere(filters.search, (_token, contains) => [
+          { stylistName: contains },
+          { serviceName: contains },
+          { notes: contains },
+          { status: contains },
+          { locationCode: contains },
+          relationStringOr('customer', 'name', contains),
+          relationStringOr('customer', 'phone', contains),
+        ]) ?? {}),
         ...(pagination.where ?? {}),
       },
       include: { customer: { select: { name: true } } },
@@ -180,6 +205,7 @@ export class AppointmentsService {
       summary: `Booked ${body.serviceName} for ${body.stylistName}`,
     });
 
+    void invalidateTenantDashboardCache(this.cache, tenantId);
     return serializeAppointment(row);
   }
 }

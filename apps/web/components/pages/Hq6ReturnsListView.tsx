@@ -1,9 +1,9 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { SaleReturnRow } from "@/lib/types/entityRows";
-import type { SaleReturnStatus } from "@vonos/types";
+import type { Sale, SaleReturnStatus } from "@vonos/types";
 import { DataTable, type ColumnConfig } from "@/components/organisms/DataTable";
 import { SaleRecordModal } from "@/components/organisms/SaleRecordModal";
 import { StatusPill } from "@/components/atoms/StatusPill";
@@ -17,16 +17,25 @@ import { Hq6StandardListShell, useHq6ListChrome } from "@/components/hq6/Hq6Stan
 import { getCustomers } from "@/lib/api/customers";
 import { getReturnsPage } from "@/lib/api/returns";
 import { useServerListPage } from "@/lib/hooks/useServerListPage";
+import { HQ6_TABLE_PAGE_SIZE } from "@/lib/api/fetchAllPages";
 import { useListPageFilters } from "@/lib/hooks/useListPageFilters";
 import { useListRecordModal } from "@/lib/hooks/useListRecordModal";
 import { useRouteTenant, useTenantId } from "@/lib/hooks/useRouteTenant";
+import { prefetchSaleListModals } from "@/lib/query/prefetchListModals";
 import { formatCurrency } from "@/lib/utils/formatCurrency";
 import { formatDate } from "@/lib/utils/formatDate";
+import { saleSeedFromReturnRow } from "@/lib/utils/listModalSeeds";
 
 /** HQ6 Sell Return list — ui-audit/32_sell-return/screenshot.png */
 export function Hq6ReturnsListView() {
-  const { recordId, openRecord, closeRecord } = useListRecordModal();
   const tenantId = useTenantId();
+  const queryClient = useQueryClient();
+  const { recordId, recordSeed, openRecord, closeRecord } = useListRecordModal<Sale>({
+    onPrefetchRecord: (id) => {
+      if (!tenantId) return;
+      prefetchSaleListModals(queryClient, tenantId, id);
+    },
+  });
   const { config } = useRouteTenant();
   const {
     dateRange,
@@ -52,7 +61,7 @@ export function Hq6ReturnsListView() {
 
   const apiFilters = useMemo(
     () => ({
-      search: (localSearch || search).trim() || undefined,
+      search: (search).trim() || undefined,
       status: (statusFilter || undefined) as SaleReturnStatus | undefined,
       locationCode: locationFilter || undefined,
       customerId: customerFilter || undefined,
@@ -63,7 +72,6 @@ export function Hq6ReturnsListView() {
       bounds?.from,
       bounds?.to,
       customerFilter,
-      localSearch,
       locationFilter,
       search,
       statusFilter,
@@ -81,6 +89,7 @@ export function Hq6ReturnsListView() {
     setPageSize,
     isLoading,
     isFetching,
+    isPaging,
     error,
     goToPage,
     canSelectPage,
@@ -89,7 +98,8 @@ export function Hq6ReturnsListView() {
     queryKey: ["returns", tenantId, "hq6"],
     enabled: Boolean(tenantId),
     filters: apiFilters,
-    search: localSearch || search,
+    search: search,
+    defaultPageSize: HQ6_TABLE_PAGE_SIZE,
     fetchPage: (cursor, limit, _sort, opts) => getReturnsPage(tenantId!, { ...apiFilters, includeSummary: opts?.includeSummary }, cursor, limit),
   });
 
@@ -104,12 +114,16 @@ export function Hq6ReturnsListView() {
         render: (row) => (
           <Hq6ActionsMenu
             items={[
-              { id: "view", label: "View", onClick: () => openRecord(row.id) },
+              {
+                id: "view",
+                label: "View",
+                onClick: () => openRecord(row.id, saleSeedFromReturnRow(row)),
+              },
               {
                 id: "print",
                 label: "Print",
                 onClick: () => {
-                  openRecord(row.id);
+                  openRecord(row.id, saleSeedFromReturnRow(row));
                   window.setTimeout(() => window.print(), 400);
                 },
               },
@@ -214,9 +228,16 @@ export function Hq6ReturnsListView() {
         onPageSelect: goToPage,
         canSelectPage,
         totalItems: totalCount,
-        isBusy: isFetching && !isLoading,
+        isBusy: isPaging,
       }}
-      modals={<SaleRecordModal saleId={recordId} listSlug="returns" onClose={closeRecord} />}
+      modals={
+        <SaleRecordModal
+          saleId={recordId}
+          initialSale={recordSeed}
+          listSlug="returns"
+          onClose={closeRecord}
+        />
+      }
     >
       <DataTable
         data={returns}
@@ -227,7 +248,7 @@ export function Hq6ReturnsListView() {
         isLoading={isLoading}
         isFetching={isFetching && !isLoading}
         error={error ? "Failed to load returns." : null}
-        onRowClick={(row) => openRecord(row.id)}
+        onRowClick={(row) => openRecord(row.id, saleSeedFromReturnRow(row))}
         emptyState={{ message: "No sell returns found." }}
       />
     </Hq6StandardListShell>

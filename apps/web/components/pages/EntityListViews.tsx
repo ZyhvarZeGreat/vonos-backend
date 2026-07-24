@@ -47,6 +47,16 @@ import { useRouteTenant, useTenantId } from "@/lib/hooks/useRouteTenant";
 import { useListPageFilters } from "@/lib/hooks/useListPageFilters";
 import { useAppMutation } from "@/lib/hooks/useAppMutation";
 import { useQueryClient } from "@tanstack/react-query";
+import {
+  prefetchCustomerListModals,
+  prefetchRequisitionListModals,
+  prefetchSaleListModals,
+} from "@/lib/query/prefetchListModals";
+import { prefetchVehicleDetail } from "@/lib/query/prefetchListDetails";
+import {
+  saleSeedFromOrder,
+  saleSeedFromReturnRow,
+} from "@/lib/utils/listModalSeeds";
 import { Input } from "@/components/atoms/Input";
 import { Modal, ModalFooter, ModalHeader } from "@/components/atoms/Modal";
 import {
@@ -104,8 +114,14 @@ function SalesListViewBody({
   hidePrimaryAction = false,
   slug = "sales",
 }: SalesListViewProps) {
-  const { recordId, openRecord, closeRecord } = useListRecordModal();
   const tenantId = useTenantId();
+  const queryClient = useQueryClient();
+  const { recordId, recordSeed, openRecord, closeRecord } = useListRecordModal<Sale>({
+    onPrefetchRecord: (id) => {
+      if (!tenantId) return;
+      prefetchSaleListModals(queryClient, tenantId, id);
+    },
+  });
   const openAddSaleModal = useUiStore((state) => state.openAddSaleModal);
   const exportList = useListExport();
   const { dateRange, setDateRange, search, setSearch, bounds } = useListPageFilters();
@@ -136,6 +152,7 @@ function SalesListViewBody({
     isLoading,
 
     isFetching,
+    isPaging,
     error,
     goToPage,
     canSelectPage,
@@ -263,11 +280,17 @@ function SalesListViewBody({
           totalCount={totalCount}
           isLoading={isLoading}
           isFetching={isFetching}
+          isPaging={isPaging}
           error={error ? "Failed to load sales" : null}
-          onRowClick={(row) => openRecord(row.id)}
+          onRowClick={(row) => openRecord(row.id, row)}
         />
       </div>
-      <SaleRecordModal saleId={recordId} listSlug="sales" onClose={closeRecord} />
+      <SaleRecordModal
+        saleId={recordId}
+        initialSale={recordSeed}
+        listSlug="sales"
+        onClose={closeRecord}
+      />
     </ListPageShell>
   );
 }
@@ -295,8 +318,14 @@ export function QuotationsListView() {
 }
 
 export function OrdersListView() {
-  const { recordId, openRecord, closeRecord } = useListRecordModal();
   const tenantId = useTenantId();
+  const queryClient = useQueryClient();
+  const { recordId, recordSeed, openRecord, closeRecord } = useListRecordModal<Sale>({
+    onPrefetchRecord: (id) => {
+      if (!tenantId) return;
+      prefetchSaleListModals(queryClient, tenantId, id);
+    },
+  });
   const { dateRange, setDateRange, search, setSearch, bounds } = useListPageFilters();
   const [statusFilter, setStatusFilter] = useState("");
 
@@ -322,6 +351,7 @@ export function OrdersListView() {
     isLoading,
 
     isFetching,
+    isPaging,
     error,
     goToPage,
     canSelectPage,
@@ -396,10 +426,16 @@ export function OrdersListView() {
         totalCount={totalCount}
         isLoading={isLoading}
         isFetching={isFetching}
+          isPaging={isPaging}
         error={error ? "Failed to load orders" : null}
-        onRowClick={(row) => openRecord(row.id)}
+        onRowClick={(row) => openRecord(row.id, saleSeedFromOrder(row))}
       />
-      <SaleRecordModal saleId={recordId} listSlug="orders" onClose={closeRecord} />
+      <SaleRecordModal
+        saleId={recordId}
+        initialSale={recordSeed}
+        listSlug="orders"
+        onClose={closeRecord}
+      />
     </ListPageShell>
   );
 }
@@ -411,10 +447,16 @@ export function CustomersListView() {
 }
 
 function CustomersListViewBody() {
-  const { recordId, openRecord, closeRecord } = useListRecordModal();
+  const tenantId = useTenantId();
+  const queryClient = useQueryClient();
+  const { recordId, recordSeed, openRecord, closeRecord } = useListRecordModal<Customer>({
+    onPrefetchRecord: (id) => {
+      if (!tenantId) return;
+      prefetchCustomerListModals(queryClient, tenantId, id);
+    },
+  });
   const { tenantCode } = useRouteTenant();
   const router = useRouter();
-  const tenantId = useTenantId();
   const openCreateModal = useUiStore((state) => state.openCreateModal);
   const tenantConfig = useTenantStore((state) => state.tenantConfig);
   const bulkImportEnabled = tenantConfig?.enabledModules.includes("bulkImport") ?? false;
@@ -453,6 +495,7 @@ function CustomersListViewBody() {
     isLoading,
 
     isFetching,
+    isPaging,
     error,
     goToPage,
     canSelectPage,
@@ -487,7 +530,7 @@ function CustomersListViewBody() {
       render: (row) => (
         <RowActionsMenu
           actions={[
-            { id: "view", label: "View", onClick: () => openRecord(row.id) },
+            { id: "view", label: "View", onClick: () => openRecord(row.id, row) },
             { id: "pay", label: "Pay", onClick: () => router.push(`/${tenantCode}/payments?customerId=${row.id}`) },
             {
               id: "ledger",
@@ -562,10 +605,15 @@ function CustomersListViewBody() {
         totalCount={totalCount}
         isLoading={isLoading}
         isFetching={isFetching}
+          isPaging={isPaging}
         error={error ? "Failed to load customers" : null}
-        onRowClick={(row) => openRecord(row.id)}
+        onRowClick={(row) => openRecord(row.id, row)}
       />
-      <CustomerRecordModal customerId={recordId} onClose={closeRecord} />
+      <CustomerRecordModal
+        customerId={recordId}
+        initialCustomer={recordSeed}
+        onClose={closeRecord}
+      />
       <ContactLedgerModal
         open={Boolean(ledgerCustomerId)}
         onClose={() => setLedgerCustomerId(null)}
@@ -585,8 +633,14 @@ export function ReturnsListView() {
 }
 
 function ReturnsListViewBody() {
-  const { recordId, openRecord, closeRecord } = useListRecordModal();
   const tenantId = useTenantId();
+  const queryClient = useQueryClient();
+  const { recordId, recordSeed, openRecord, closeRecord } = useListRecordModal<Sale>({
+    onPrefetchRecord: (id) => {
+      if (!tenantId) return;
+      prefetchSaleListModals(queryClient, tenantId, id);
+    },
+  });
   const { dateRange, setDateRange, search, setSearch, bounds } = useListPageFilters();
   const [statusFilter, setStatusFilter] = useState("");
 
@@ -612,6 +666,7 @@ function ReturnsListViewBody() {
     isLoading,
 
     isFetching,
+    isPaging,
     error,
     goToPage,
     canSelectPage,
@@ -680,16 +735,22 @@ function ReturnsListViewBody() {
         canSelectPage={canSelectPage}
         isLoading={isLoading}
         isFetching={isFetching}
+          isPaging={isPaging}
         error={error ? "Failed to load returns" : null}
-        onRowClick={(row) => openRecord(row.id)}
+        onRowClick={(row) => openRecord(row.id, saleSeedFromReturnRow(row))}
       />
-      <SaleRecordModal saleId={recordId} listSlug="returns" onClose={closeRecord} />
+      <SaleRecordModal
+        saleId={recordId}
+        initialSale={recordSeed}
+        listSlug="returns"
+        onClose={closeRecord}
+      />
     </ListPageShell>
   );
 }
 
 export function VehiclesListView() {
-  const { goToDetail } = useRecordNavigation("vehicles");
+  const { goToDetail, prefetchDetail } = useRecordNavigation("vehicles");
   const tenantId = useTenantId();
   const queryClient = useQueryClient();
   const exportList = useListExport();
@@ -751,6 +812,7 @@ export function VehiclesListView() {
     isLoading,
 
     isFetching,
+    isPaging,
     error,
     goToPage,
     canSelectPage,
@@ -831,8 +893,17 @@ export function VehiclesListView() {
         canSelectPage={canSelectPage}
         isLoading={isLoading}
         isFetching={isFetching}
+          isPaging={isPaging}
         error={error ? "Failed to load vehicles" : null}
-        onRowClick={(row) => goToDetail(row.id)}
+        onRowPointerEnter={(row) => {
+          prefetchDetail(row.id);
+          if (tenantId) prefetchVehicleDetail(queryClient, tenantId, row.id, row);
+        }}
+        onRowClick={(row) => {
+          prefetchDetail(row.id);
+          if (tenantId) prefetchVehicleDetail(queryClient, tenantId, row.id, row);
+          goToDetail(row.id);
+        }}
         emptyState={{
           message: "No vehicles in the registry yet. Create a vehicle to track repair history.",
         }}
@@ -894,8 +965,15 @@ export function VehiclesListView() {
 }
 
 export function RequisitionsListView() {
-  const { recordId, openRecord, closeRecord } = useListRecordModal();
   const tenantId = useTenantId();
+  const queryClient = useQueryClient();
+  const { recordId, recordSeed, openRecord, closeRecord } =
+    useListRecordModal<Requisition>({
+    onPrefetchRecord: (id) => {
+      if (!tenantId) return;
+      prefetchRequisitionListModals(queryClient, tenantId, id);
+    },
+  });
   const exportList = useListExport();
   const { search, setSearch } = useListPageFilters();
 
@@ -912,6 +990,7 @@ export function RequisitionsListView() {
     isLoading,
 
     isFetching,
+    isPaging,
     error,
     goToPage,
     canSelectPage,
@@ -989,8 +1068,9 @@ export function RequisitionsListView() {
           totalCount={totalCount}
           isLoading={isLoading}
           isFetching={isFetching}
+          isPaging={isPaging}
           error={error ? "Failed to load requisitions" : null}
-          onRowClick={(row) => openRecord(row.id)}
+          onRowClick={(row) => openRecord(row.id, row)}
           emptyState={{
             message: "No material requisitions yet. Request parts from a job detail page.",
           }}
@@ -998,6 +1078,7 @@ export function RequisitionsListView() {
       </ListPageShell>
       <RequisitionRecordModal
         requisitionId={recordId}
+        initialRecord={recordSeed}
         mode="outgoing"
         onClose={closeRecord}
       />
@@ -1007,11 +1088,17 @@ export function RequisitionsListView() {
 
 /** Warehouse inbox — requisitions fulfilled from this tenant's stock. */
 export function IncomingRequisitionsListView() {
-  const { recordId, openRecord, closeRecord } = useListRecordModal();
   const tenantId = useTenantId();
+  const queryClient = useQueryClient();
+  const { recordId, recordSeed, openRecord, closeRecord } =
+    useListRecordModal<Requisition>({
+    onPrefetchRecord: (id) => {
+      if (!tenantId) return;
+      prefetchRequisitionListModals(queryClient, tenantId, id);
+    },
+  });
   const exportList = useListExport();
   const { search, setSearch } = useListPageFilters();
-  const [selectedRow, setSelectedRow] = useState<Requisition | null>(null);
 
   const {
     items: requisitions,
@@ -1025,6 +1112,7 @@ export function IncomingRequisitionsListView() {
     setPageSize,
     isLoading,
     isFetching,
+    isPaging,
     error,
     goToPage,
     canSelectPage,
@@ -1102,11 +1190,9 @@ export function IncomingRequisitionsListView() {
           totalCount={totalCount}
           isLoading={isLoading}
           isFetching={isFetching}
+          isPaging={isPaging}
           error={error ? "Failed to load incoming requisitions" : null}
-          onRowClick={(row) => {
-            setSelectedRow(row);
-            openRecord(row.id);
-          }}
+          onRowClick={(row) => openRecord(row.id, row)}
           emptyState={{
             message: "No incoming requisition requests from other entities.",
           }}
@@ -1114,12 +1200,9 @@ export function IncomingRequisitionsListView() {
       </ListPageShell>
       <RequisitionRecordModal
         requisitionId={recordId}
-        initialRecord={selectedRow}
+        initialRecord={recordSeed}
         mode="incoming"
-        onClose={() => {
-          setSelectedRow(null);
-          closeRecord();
-        }}
+        onClose={closeRecord}
       />
     </>
   );
@@ -1152,6 +1235,7 @@ export function MenuItemsListView() {
     isLoading,
 
     isFetching,
+    isPaging,
     error,
     goToPage,
     canSelectPage,
@@ -1232,6 +1316,7 @@ export function MenuItemsListView() {
           totalCount={totalCount}
           isLoading={isLoading}
           isFetching={isFetching}
+          isPaging={isPaging}
           error={error ? "Failed to load menu items" : null}
           onRowClick={(row) => goToDetail(row.id)}
         />
@@ -1257,6 +1342,7 @@ export function ServicesListView() {
     isLoading,
 
     isFetching,
+    isPaging,
     error,
     goToPage,
     canSelectPage,
@@ -1329,6 +1415,7 @@ export function ServicesListView() {
         canSelectPage={canSelectPage}
         isLoading={isLoading}
         isFetching={isFetching}
+          isPaging={isPaging}
         error={error ? "Failed to load services" : null}
         emptyState={{
           message: "No salon services configured yet.",
@@ -1388,6 +1475,7 @@ export function CatalogListView() {
     isLoading,
 
     isFetching,
+    isPaging,
     error,
     goToPage,
     canSelectPage,
@@ -1530,6 +1618,7 @@ export function CatalogListView() {
             canSelectPage={canSelectPage}
             isLoading={isLoading}
             isFetching={isFetching}
+          isPaging={isPaging}
             error={error ? "Could not load catalog items." : null}
             onRowClick={(row) => goToDetail(row.id)}
             emptyState={{

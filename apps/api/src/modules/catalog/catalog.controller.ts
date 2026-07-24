@@ -21,8 +21,11 @@ export class CatalogController {
     @Query('unit') unit?: string,
     @Query('brandName') brandName?: string,
     @Query('availableForRetail') availableForRetail?: string,
+    @Query('sortBy') sortBy?: string,
+    @Query('sortDir') sortDir?: string,
     @Query('cursor') cursor?: string,
     @Query('limit') limit?: string,
+    @Query('includeSummary') includeSummary?: string,
   ) {
     const filters: ItemFilters = {
       status,
@@ -31,8 +34,16 @@ export class CatalogController {
       locationCode,
       unit,
       brandName,
+      sortBy,
+      sortDir: sortDir === 'asc' || sortDir === 'desc' ? sortDir : undefined,
       cursor,
       limit: limit ? Number(limit) : undefined,
+      includeSummary:
+        includeSummary === '0' || includeSummary === 'false'
+          ? false
+          : includeSummary === '1' || includeSummary === 'true'
+            ? true
+            : undefined,
     };
     if (availableForRetail === 'true') {
       filters.availableForRetail = true;

@@ -30,7 +30,9 @@ export function dateRangePresetToBounds(
   custom?: CustomDateRange | null,
 ): DateRangeBounds | null {
   if (preset === "all_time") {
-    return cappedAllTimeBounds(now);
+    // Lists/reports that need a hard window should call dateRangePresetToApiBounds.
+    // Pure "all time" means no date filter for operational lists.
+    return null;
   }
 
   if (preset === "custom") {
@@ -85,15 +87,35 @@ export function stabilizeApiBounds(bounds: DateRangeBounds): DateRangeBounds {
   return { from: floorIso(bounds.from), to: floorIso(bounds.to) };
 }
 
-/** Bounds for API calls — never returns null; caps wide custom/all-time ranges. */
+/**
+ * Bounds for report/finance APIs that always need a window.
+ * `all_time` is capped to MAX_API_RANGE_DAYS.
+ */
 export function dateRangePresetToApiBounds(
   preset: DateRangePreset,
   now = new Date(),
   custom?: CustomDateRange | null,
 ): DateRangeBounds {
+  if (preset === "all_time") {
+    return stabilizeApiBounds(cappedAllTimeBounds(now));
+  }
   return stabilizeApiBounds(
     dateRangePresetToBounds(preset, now, custom) ?? cappedAllTimeBounds(now),
   );
+}
+
+/**
+ * Bounds for operational list pages.
+ * `all_time` → null (no from/to) so migrated history is not truncated.
+ */
+export function dateRangePresetToListBounds(
+  preset: DateRangePreset,
+  now = new Date(),
+  custom?: CustomDateRange | null,
+): DateRangeBounds | null {
+  if (preset === "all_time") return null;
+  const bounds = dateRangePresetToBounds(preset, now, custom);
+  return bounds ? stabilizeApiBounds(bounds) : null;
 }
 
 /** True when entry date falls within bounds (inclusive). Null bounds = no filter. */

@@ -9,6 +9,7 @@ import type {
   UpdatePaymentAccountRequest,
 } from "@vonos/types";
 import { Button } from "@/components/atoms/Button";
+import { Modal } from "@/components/atoms/Modal";
 import { MenuSelect } from "@/components/molecules/MenuSelect";
 
 export function PaymentAccountFormModal({
@@ -72,8 +73,7 @@ export function PaymentAccountFormModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl border border-border bg-card p-6 shadow-lg">
+    <Modal open onClose={onClose} panelClassName="max-h-[90vh] max-w-lg overflow-y-auto rounded-xl border border-border p-6">
         <h3 className="text-lg font-semibold text-foreground">
           {account ? "Edit payment account" : "Add payment account"}
         </h3>
@@ -149,8 +149,7 @@ export function PaymentAccountFormModal({
             </Button>
           </div>
         </form>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -203,8 +202,7 @@ export function PaymentAccountDepositModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="w-full max-w-md rounded-xl border border-border bg-card p-6 shadow-lg">
+    <Modal open onClose={onClose} panelClassName="max-w-md rounded-xl border border-border p-6">
         <h3 className="text-lg font-semibold text-foreground">Deposit</h3>
         <p className="mt-1 text-sm text-muted">{account.name}</p>
         <form onSubmit={handleSubmit} className="mt-4 space-y-4">
@@ -257,8 +255,7 @@ export function PaymentAccountDepositModal({
             </Button>
           </div>
         </form>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -318,8 +315,7 @@ export function PaymentAccountTransferModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="w-full max-w-md rounded-xl border border-border bg-card p-6 shadow-lg">
+    <Modal open onClose={onClose} panelClassName="max-w-md rounded-xl border border-border p-6">
         <h3 className="text-lg font-semibold text-foreground">Fund transfer</h3>
         <p className="mt-1 text-sm text-muted">From {fromAccount.name}</p>
         <form onSubmit={handleSubmit} className="mt-4 space-y-4">
@@ -384,7 +380,6 @@ export function PaymentAccountTransferModal({
             </Button>
           </div>
         </form>
-      </div>
-    </div>
+    </Modal>
   );
 }

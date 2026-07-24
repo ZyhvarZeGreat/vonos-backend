@@ -49,7 +49,7 @@ export function ReportRunView({ slug }: ReportRunViewProps) {
   const { tenantId } = useRouteTenant();
   const openExportModal = useUiStore((state) => state.openExportModal);
   const entry = reportEntryBySlug(slug);
-  const { dateRange, setDateRange, bounds } = useListPageFilters();
+  const { dateRange, setDateRange, bounds } = useListPageFilters({ unboundedAllTime: false });
   const periodLabel = ledgerChartSubtitle(dateRange);
 
   const [expiryEdit, setExpiryEdit] = useState<ExpiryEditPayload | null>(null);

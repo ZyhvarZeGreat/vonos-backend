@@ -123,6 +123,8 @@ export function DataTableSkeleton({
   withFilters = false,
   withPagination = false,
   embedded = false,
+  /** When false (default), thead shows empty/static labels — not shimmer bars. */
+  skeletonHeaders = false,
 }: {
   rows?: number;
   columns?: number;
@@ -131,6 +133,7 @@ export function DataTableSkeleton({
   withFilters?: boolean;
   withPagination?: boolean;
   embedded?: boolean;
+  skeletonHeaders?: boolean;
 }) {
   const columnCount = columnHeaders?.length ?? columns;
 
@@ -153,7 +156,7 @@ export function DataTableSkeleton({
             <tr>
               {selectable ? (
                 <th className="px-4 py-3 text-left">
-                  <Skeleton className="h-4 w-4 rounded" />
+                  <span className="sr-only">Select</span>
                 </th>
               ) : null}
               {columnHeaders
@@ -166,7 +169,11 @@ export function DataTableSkeleton({
                   ))
                 : Array.from({ length: columnCount }).map((_, index) => (
                     <th key={index} className="px-4 py-3 text-left">
-                      <Skeleton className="h-3 w-20" />
+                      {skeletonHeaders ? (
+                        <Skeleton className="h-3 w-20" />
+                      ) : (
+                        <span className="inline-block h-3 w-20" aria-hidden />
+                      )}
                     </th>
                   ))}
             </tr>
@@ -192,6 +199,45 @@ export function DataTableSkeleton({
         </table>
       </div>
       {withPagination ? <CursorPaginationBarSkeleton /> : null}
+    </div>
+  );
+}
+
+/**
+ * Route-level list placeholder: keep title / filter / toolbar chrome as
+ * empty structure (no shimmer). Only the table body rows use skeletons.
+ */
+export function Hq6ListRouteSkeleton({
+  rows = 10,
+  columns = 6,
+}: {
+  rows?: number;
+  columns?: number;
+}) {
+  return (
+    <div className="hq6-page" aria-busy aria-label="Loading list">
+      <section className="hq6-content-header">
+        <h1>
+          <span className="invisible select-none">Products</span>
+        </h1>
+      </section>
+
+      <div className="hq6-card mb-4 min-h-[4.5rem] border border-[var(--hq6-border)] bg-white p-3" />
+
+      <div className="hq6-card hq6-products-box overflow-x-clip">
+        <div className="hq6-tab-row min-h-[2.75rem] border-b border-[var(--hq6-border)]" />
+        <div className="min-h-[3rem] border-b border-[var(--hq6-border)] px-3 py-2" />
+        <div className="hq6-table-wrap relative">
+          <DataTableSkeleton
+            rows={rows}
+            columns={columns}
+            embedded
+            skeletonHeaders={false}
+            withFilters={false}
+            withPagination={false}
+          />
+        </div>
+      </div>
     </div>
   );
 }

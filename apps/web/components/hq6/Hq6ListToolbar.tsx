@@ -8,6 +8,7 @@ import {
   Rows2,
   Rows3,
   Rows4,
+  Search,
 } from "lucide-react";
 import type { TableDensity } from "@/lib/utils/tableColumnAlign";
 import { cn } from "@/lib/utils/cn";
@@ -18,6 +19,7 @@ export interface Hq6ListToolbarProps {
   searchValue: string;
   onSearchChange: (value: string) => void;
   onSearchCommit?: () => void;
+  searchPlaceholder?: string;
   onExportCsv?: () => void;
   onExportExcel?: () => void;
   onPrint?: () => void;
@@ -34,6 +36,7 @@ export function Hq6ListToolbar({
   searchValue,
   onSearchChange,
   onSearchCommit,
+  searchPlaceholder = "Search by name, SKU, reference…",
   onExportCsv,
   onExportExcel,
   onPrint,
@@ -46,6 +49,34 @@ export function Hq6ListToolbar({
 
   return (
     <div className="hq6-dt-toolbar">
+      <div className="hq6-search">
+        <label className="hq6-search-field">
+          <span className="sr-only">Search</span>
+          <input
+            type="search"
+            value={searchValue}
+            onChange={(e) => onSearchChange(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                commit();
+              }
+            }}
+            placeholder={searchPlaceholder}
+            title={searchPlaceholder}
+          />
+        </label>
+        <button
+          type="button"
+          className="hq6-search-btn"
+          onClick={commit}
+          aria-label="Search"
+        >
+          <Search className="h-4 w-4" aria-hidden />
+          Search
+        </button>
+      </div>
+
       <label className="hq6-show-entries">
         Show{" "}
         <select
@@ -61,7 +92,7 @@ export function Hq6ListToolbar({
         entries
       </label>
 
-      <div className="flex flex-wrap items-center gap-1.5">
+      <div className="hq6-dt-toolbar-actions ml-auto flex flex-wrap items-center gap-1.5">
         {onDensityChange && density ? (
           <div
             className="inline-flex items-center rounded border border-[var(--hq6-border)] bg-white p-0.5"
@@ -127,19 +158,6 @@ export function Hq6ListToolbar({
           </button>
         ) : null}
       </div>
-
-      <label className="hq6-search ml-auto">
-        <span className="sr-only">Search</span>
-        <input
-          value={searchValue}
-          onChange={(e) => onSearchChange(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") commit();
-          }}
-          onBlur={commit}
-          placeholder="Search ..."
-        />
-      </label>
     </div>
   );
 }

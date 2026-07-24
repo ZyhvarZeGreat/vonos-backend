@@ -52,7 +52,10 @@ interface AccountBookRow {
 
 export function AccountBookView({ accountId }: { accountId?: string }) {
   const openExportModal = useUiStore((state) => state.openExportModal);
-  const { dateRange, setDateRange, search, setSearch, bounds } = useListPageFilters();
+  const { tenantId } = useRouteTenant();
+  const { dateRange, setDateRange, search, setSearch, bounds } = useListPageFilters({
+    defaultDateRange: "all_time",
+  });
   const [typeFilter, setTypeFilter] = useState("");
 
   const apiFilters = useMemo(
@@ -66,7 +69,7 @@ export function AccountBookView({ accountId }: { accountId?: string }) {
   );
 
   const listPage = useServerListPage<AccountTransaction>({
-    queryKey: ["account-book", accountId],
+    queryKey: ["account-book", tenantId, accountId],
     enabled: Boolean(accountId),
     search,
     filters: apiFilters,

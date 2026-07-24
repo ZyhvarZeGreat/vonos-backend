@@ -4,7 +4,6 @@ import { useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { refreshAccessToken } from "@/lib/api/auth";
 import { useAuthStore } from "@/stores/authStore";
-import { getPostLoginPath } from "@/lib/utils/authRedirect";
 import { decodeAccessToken } from "@/lib/utils/jwt";
 import { isAuthSkipped } from "@/lib/utils/devAccess";
 import { PageShellSkeleton } from "@/components/organisms/skeletons";
@@ -24,8 +23,6 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const hydrated = useAuthStore((state) => state.hydrated);
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
-  const role = useAuthStore((state) => state.role);
-  const tenantId = useAuthStore((state) => state.tenantId);
 
   useEffect(() => {
     if (skipAuth) return;
@@ -55,9 +52,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     }
 
     if (isPublicPath(pathname)) {
-      if (isAuthenticated && pathname === "/login") {
-        router.replace(getPostLoginPath(role!, tenantId));
-      }
+      // LoginForm already replaces after setAuth — avoid a second navigation race.
       return;
     }
 
@@ -65,7 +60,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
       const redirect = encodeURIComponent(pathname);
       router.replace(`/login?redirect=${redirect}`);
     }
-  }, [hydrated, isAuthenticated, pathname, role, tenantId, router]);
+  }, [hydrated, isAuthenticated, pathname, router]);
 
   if (skipAuth) {
     return <>{children}</>;

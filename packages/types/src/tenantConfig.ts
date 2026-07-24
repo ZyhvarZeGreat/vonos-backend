@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { ARCHETYPES } from "./role";
 import { Hq6BusinessSettingsSchema } from "./businessSettings";
+import { HrmSettingsSchema } from "./hrmEssentials";
 
 export const NavItemSchema = z.object({
   label: z.string(),
@@ -38,6 +39,8 @@ export const TenantConfigSchema = z.object({
   storageLocations: z.array(z.string()).optional(),
   /** HQ6 Business Settings form bag (tabs + custom labels). */
   businessSettings: Hq6BusinessSettingsSchema.optional(),
+  /** Essentials / HRM Settings (Leave, Payroll, Attendance, …). */
+  hrmSettings: HrmSettingsSchema.optional(),
 });
 
 export type NavItem = z.infer<typeof NavItemSchema>;
@@ -60,6 +63,7 @@ export type UpdateTenantConfigRequest = Partial<
     | "businessLocations"
     | "storageLocations"
     | "businessSettings"
+    | "hrmSettings"
   >
 > & {
   accentColor?: string;

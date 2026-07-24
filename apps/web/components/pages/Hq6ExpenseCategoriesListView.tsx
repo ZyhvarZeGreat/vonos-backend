@@ -16,7 +16,8 @@ import {
   updateExpenseCategory,
 } from "@/lib/api/expenses";
 import { useExpensePageTabs } from "@/lib/hooks/useExpensePageTabs";
-import { useServerListPage } from "@/lib/hooks/useServerListPage";
+import { useServerListPage, serverPaginationBarProps } from "@/lib/hooks/useServerListPage";
+import { HQ6_TABLE_PAGE_SIZE } from "@/lib/api/fetchAllPages";
 import { useTenantId } from "@/lib/hooks/useRouteTenant";
 
 export function Hq6ExpenseCategoriesListView() {
@@ -42,12 +43,15 @@ export function Hq6ExpenseCategoriesListView() {
     setPageSize,
     isLoading,
     isFetching,
+    isPaging,
     error,
     goToPage,
     canSelectPage,
+    totalCount,
   } = useServerListPage<ExpenseCategory>({
     queryKey: ["expense-categories", tenantId],
     enabled: Boolean(tenantId),
+    defaultPageSize: HQ6_TABLE_PAGE_SIZE,
     fetchPage: (cursor, limit, _sort, opts) => getExpenseCategoriesPage(tenantId!, cursor, limit, { includeSummary: opts?.includeSummary }),
   });
 
@@ -167,15 +171,20 @@ export function Hq6ExpenseCategoriesListView() {
         <ServerPaginatedTable
           items={data}
           columns={columns}
-          pageIndex={pageIndex}
-          pageSize={pageSize}
-          hasMore={hasMore}
-          canGoPrev={canGoPrev}
-          onNext={goNext}
-          onPrev={goPrev}
-          onPageSizeChange={setPageSize}
-          onPageSelect={goToPage}
-          canSelectPage={canSelectPage}
+          {...serverPaginationBarProps({
+            pageIndex,
+            pageSize,
+            hasMore,
+            canGoPrev,
+            goNext,
+            goPrev,
+            setPageSize,
+            goToPage,
+            canSelectPage,
+            isFetching,
+            isPaging,
+            totalCount,
+          })}
           isLoading={isLoading}
           isFetching={isFetching}
           error={error ? "Failed to load expense categories" : null}

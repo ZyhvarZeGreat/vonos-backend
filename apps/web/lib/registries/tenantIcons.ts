@@ -27,6 +27,7 @@ export const VAG_ICON: TenantIcon = Building2;
 
 export function iconForTenantCode(code: string): TenantIcon {
   if (code === "VAG" || code === "admin") return VAG_ICON;
+  if (code === "SP") return TENANT_ICON.VISP;
   if (code in TENANT_ICON) return TENANT_ICON[code as TenantCode];
   return Building2;
 }

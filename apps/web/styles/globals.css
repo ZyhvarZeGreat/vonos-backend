@@ -162,9 +162,16 @@ h6,
 
 @media print {
   aside,
-  header,
   nav,
   .no-print {
+    display: none !important;
+  }
+
+  /*
+   * Hide app TopBar when printing page content (reports, etc.).
+   * Do NOT blank-hide every <header> — payslip/invoice documents use <header>.
+   */
+  body:not(:has(.invoice-print-overlay)) header {
     display: none !important;
   }
 
@@ -179,16 +186,47 @@ h6,
     box-shadow: none !important;
   }
 
+  /*
+   * Document preview (payslip / invoice) is portaled to body.
+   * Hide the app chrome so only the slip prints — not the page behind.
+   */
+  body:has(.invoice-print-overlay) > *:not(.invoice-print-overlay) {
+    display: none !important;
+  }
+
+  body:has(.invoice-print-overlay) {
+    background: #fff !important;
+  }
+
   .invoice-print-overlay {
     position: static !important;
+    inset: auto !important;
+    display: block !important;
+    overflow: visible !important;
     background: transparent !important;
+    padding: 0 !important;
+    z-index: auto !important;
+  }
+
+  .invoice-print-overlay > .relative {
+    display: block !important;
+    min-height: 0 !important;
     padding: 0 !important;
   }
 
   .invoice-print-dialog {
     max-width: none !important;
+    width: 100% !important;
+    margin: 0 !important;
     box-shadow: none !important;
     border: none !important;
+    border-radius: 0 !important;
+    background: #fff !important;
+  }
+
+  .invoice-print-root .invoice-document {
+    max-width: none !important;
+    margin: 0 !important;
   }
 }
 
@@ -273,18 +311,25 @@ h6,
   transform-origin: top center;
 }
 
-/* Sidebar section dropdown — snappier than motion-pop-in */
-@keyframes sidebar-nav-expand {
+/* Sidebar section dropdown — height + staggered link reveal */
+@keyframes sidebar-nav-link-in {
   from {
-    opacity: 0.35;
+    opacity: 0;
+    transform: translateX(-6px);
   }
   to {
     opacity: 1;
+    transform: translateX(0);
   }
 }
 
 .sidebar-nav-expand {
-  animation: sidebar-nav-expand 60ms var(--motion-ease-out) both;
+  padding-bottom: 2px;
+}
+
+.sidebar-nav-expand-open .sidebar-nav-link-wrap {
+  animation: sidebar-nav-link-in 180ms var(--motion-ease-out) both;
+  animation-delay: calc(var(--nav-i, 0) * 28ms);
 }
 
 .motion-page-in {
@@ -317,8 +362,12 @@ h6,
   .motion-dialog-in,
   .motion-pop-in,
   .motion-page-in,
-  .sidebar-nav-expand {
+  .sidebar-nav-expand-open .sidebar-nav-link-wrap {
     animation: none !important;
+  }
+
+  .sidebar-nav-group [class*="grid-rows"] {
+    transition: none !important;
   }
 
   .motion-press,

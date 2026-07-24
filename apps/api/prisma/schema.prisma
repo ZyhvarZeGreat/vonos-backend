@@ -150,6 +150,12 @@ model Tenant {
   payComponents       PayComponent[]
   designations        Designation[]
   employees           Employee[]
+  leaveTypes          LeaveType[]
+  leaves              Leave[]
+  holidays            Holiday[]
+  attendanceShifts    AttendanceShift[]
+  attendances         Attendance[]
+  salesTargets        SalesTarget[]
   invoiceLayouts      InvoiceLayout[]
   invoiceSchemes      InvoiceScheme[]
   receiptPrinters     ReceiptPrinter[]
@@ -275,6 +281,8 @@ model Item {
   @@index([tenantId, carModel])
   @@index([tenantId, category])
   @@index([tenantId, deletedAt])
+  /// Partial (SQL): Item_tenantId_updatedAt_id_active_idx
+  /// ON ("tenantId", "updatedAt" DESC, id DESC) WHERE "deletedAt" IS NULL
 }
 
 /// Per-location quantity for an item (mirrors Ultimate POS variation_location_details).
@@ -377,6 +385,8 @@ model Supplier {
   @@index([tenantId, totalPurchaseDue])
   @@index([tenantId, lastPurchaseAt])
   @@index([tenantId, status])
+  /// Partial (SQL): Supplier_tenantId_name_id_active_idx
+  /// ON ("tenantId", name, id) WHERE "deletedAt" IS NULL
 }
 
 model Job {
@@ -523,6 +533,8 @@ model Customer {
   @@index([tenantId, status])
   @@index([tenantId, totalSellDue])
   @@index([tenantId, createdAt])
+  /// Partial (SQL): Customer_tenantId_name_id_active_idx
+  /// ON ("tenantId", name, id) WHERE "deletedAt" IS NULL
 }
 
 model TenantDailyFinance {
@@ -1007,6 +1019,8 @@ model Invoice {
   @@index([supplierId])
   @@index([employeeRecordId])
   @@index([jobId])
+  /// Partial (SQL): Invoice_tenantId_documentDate_id_active_idx
+  /// ON ("tenantId", "documentDate" DESC, id DESC) WHERE "deletedAt" IS NULL
 }
 
 model InvoiceLayout {
@@ -1119,6 +1133,8 @@ model Expense {
   @@index([categoryId])
   @@index([expenseForCustomerId])
   @@index([contactCustomerId])
+  /// Partial (SQL): Expense_tenantId_expenseDate_id_active_idx
+  /// ON ("tenantId", "expenseDate" DESC, id DESC) WHERE "deletedAt" IS NULL
 }
 
 model CustomerGroup {
@@ -1137,13 +1153,16 @@ model CustomerGroup {
 }
 
 model PayrollGroup {
-  id        String    @id @default(cuid())
-  tenantId  String
-  tenant    Tenant    @relation(fields: [tenantId], references: [id])
-  name      String
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  deletedAt DateTime?
+  id          String    @id @default(cuid())
+  tenantId    String
+  tenant      Tenant    @relation(fields: [tenantId], references: [id])
+  name        String
+  /** HQ6 department short code (e.g. MC, BWP). */
+  code        String?
+  description String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
 
   payrolls  Payroll[]
   employees Employee[]
@@ -1153,6 +1172,77 @@ model PayrollGroup {
 }
 
 model Designation {
+  id          String    @id @default(cuid())
+  tenantId    String
+  tenant      Tenant    @relation(fields: [tenantId], references: [id])
+  name        String
+  description String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  employees Employee[]
+  payrolls  Payroll[]
+
+  @@index([tenantId])
+}
+
+/** HQ6 Essentials — leave type catalog. */
+model LeaveType {
+  id            String    @id @default(cuid())
+  tenantId      String
+  tenant        Tenant    @relation(fields: [tenantId], references: [id])
+  name          String
+  maxLeaveCount Int       @default(0)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  deletedAt     DateTime?
+
+  leaves Leave[]
+
+  @@index([tenantId])
+  @@index([tenantId, name])
+}
+
+model Leave {
+  id               String     @id @default(cuid())
+  tenantId         String
+  tenant           Tenant     @relation(fields: [tenantId], references: [id])
+  referenceNo      String?
+  leaveTypeId      String?
+  leaveType        LeaveType? @relation(fields: [leaveTypeId], references: [id])
+  employeeName     String
+  employeeRecordId String?
+  designationId    String?
+  leaveDate        DateTime   @db.Date
+  reason           String?
+  status           String     @default("pending")
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+  deletedAt        DateTime?
+
+  @@index([tenantId])
+  @@index([tenantId, leaveDate])
+  @@index([tenantId, status])
+}
+
+model Holiday {
+  id           String    @id @default(cuid())
+  tenantId     String
+  tenant       Tenant    @relation(fields: [tenantId], references: [id])
+  name         String
+  date         DateTime  @db.Date
+  locationCode String?
+  note         String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  deletedAt    DateTime?
+
+  @@index([tenantId])
+  @@index([tenantId, date])
+}
+
+model AttendanceShift {
   id        String    @id @default(cuid())
   tenantId  String
   tenant    Tenant    @relation(fields: [tenantId], references: [id])
@@ -1161,10 +1251,44 @@ model Designation {
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
-  employees Employee[]
-  payrolls  Payroll[]
+  attendances Attendance[]
 
   @@index([tenantId])
+}
+
+model Attendance {
+  id           String           @id @default(cuid())
+  tenantId     String
+  tenant       Tenant           @relation(fields: [tenantId], references: [id])
+  employeeName String
+  shiftId      String?
+  shift        AttendanceShift? @relation(fields: [shiftId], references: [id])
+  date         DateTime         @db.Date
+  clockIn      DateTime?
+  clockOut     DateTime?
+  status       String           @default("present")
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+  deletedAt    DateTime?
+
+  @@index([tenantId])
+  @@index([tenantId, date])
+  @@index([tenantId, shiftId, date])
+}
+
+model SalesTarget {
+  id        String    @id @default(cuid())
+  tenantId  String
+  tenant    Tenant    @relation(fields: [tenantId], references: [id])
+  userName  String
+  userId    String?
+  note      String?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@index([tenantId])
+  @@index([tenantId, userName])
 }
 
 model Employee {
@@ -1181,6 +1305,13 @@ model Employee {
   userId          String?
   user            User?         @relation("EmployeeUser", fields: [userId], references: [id])
   isServiceStaff  Boolean       @default(false)
+  /** Ultimate POS users.bank_details JSON fields (payslip). */
+  accountHolderName String?
+  bankName          String?
+  bankBranch        String?
+  bankCode          String?
+  bankAccountNo     String?
+  taxPayerId        String?
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
   deletedAt       DateTime?
@@ -1191,6 +1322,7 @@ model Employee {
 
   @@index([tenantId])
   @@index([tenantId, isServiceStaff])
+  @@index([tenantId, employeeCode])
   @@index([designationId])
   @@index([payrollGroupId])
   @@index([userId])

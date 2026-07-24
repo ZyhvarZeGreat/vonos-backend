@@ -6,6 +6,10 @@ import { Hq6Modal } from "@/components/hq6/Hq6Modal";
 import { getSalePayments } from "@/lib/api/sales";
 import { getStockMovementPayments } from "@/lib/api/stockMovements";
 import {
+  MODAL_RECORD_STALE_MS,
+  modalKeys,
+} from "@/lib/query/modalQueryKeys";
+import {
   formatHq6Currency,
   formatHq6Date,
   formatHq6DateTime,
@@ -14,6 +18,7 @@ import {
 } from "@/lib/utils/hq6Format";
 import { toast } from "@/stores/toastStore";
 import { cn } from "@/lib/utils/cn";
+import { hq6PaymentBadgeClass } from "@/lib/utils/hq6PaymentBadge";
 
 export type Hq6PaymentRow = {
   id: string;
@@ -40,10 +45,7 @@ export type Hq6ViewPaymentsContext = {
 };
 
 function paymentBadgeClass(status: string | null | undefined): string {
-  if (status === "paid") return "hq6-pay-paid";
-  if (status === "partial") return "hq6-pay-partial";
-  if (status === "due" || status === "overdue") return "hq6-pay-due";
-  return "";
+  return hq6PaymentBadgeClass(status);
 }
 
 /** HQ6 “View Payments” modal for sales or purchases. */
@@ -65,13 +67,20 @@ export function Hq6ViewPaymentsModal({
   onClose: () => void;
 }) {
   const { data: payments = [], isLoading } = useQuery({
-    queryKey: ["hq6-view-payments", kind, tenantId, recordId],
+    queryKey:
+      kind === "sale"
+        ? modalKeys.salePayments(tenantId, recordId)
+        : (["purchase-view-payments", tenantId, recordId] as const),
     queryFn: () =>
       kind === "sale"
         ? getSalePayments(tenantId!, recordId!)
         : getStockMovementPayments(tenantId!, recordId!),
     enabled: Boolean(open && tenantId && recordId),
+    staleTime: MODAL_RECORD_STALE_MS,
+    placeholderData: (prev) => prev,
   });
+
+  const showLoading = isLoading && payments.length === 0;
 
   return (
     <Hq6Modal
@@ -178,7 +187,7 @@ export function Hq6ViewPaymentsModal({
         </div>
       ) : null}
 
-      {isLoading ? (
+      {showLoading ? (
         <p className="text-sm text-[#6b7280]">Loading payments…</p>
       ) : payments.length === 0 ? (
         <p className="text-sm text-[#6b7280]">No payments recorded yet.</p>

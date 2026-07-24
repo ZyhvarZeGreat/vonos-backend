@@ -91,6 +91,7 @@ export function WarehouseInventoryView() {
     isLoading,
 
     isFetching,
+    isPaging,
     error,
     goToPage,
     canSelectPage,
@@ -300,6 +301,7 @@ export function WarehouseInventoryView() {
               onRowClick={(row) => goToDetail(row.id)}
               isLoading={isLoading}
               isFetching={isFetching}
+          isPaging={isPaging}
               error={error ? "Failed to load inventory" : null}
             />
           </div>

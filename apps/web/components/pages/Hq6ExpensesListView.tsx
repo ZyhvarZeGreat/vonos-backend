@@ -17,6 +17,7 @@ import {
   Hq6FilterSelect,
 } from "@/components/hq6/Hq6FilterFields";
 import { Hq6ListToolbar } from "@/components/hq6/Hq6ListToolbar";
+import { hq6CopyForSlug } from "@/lib/registries/hq6PageCopy";
 import { Hq6ListAmountFooter } from "@/components/hq6/Hq6ListAmountFooter";
 import { Hq6Modal, Hq6ModalSaveClose } from "@/components/hq6/Hq6Modal";
 import { Hq6PrintModal } from "@/components/hq6/Hq6PrintModal";
@@ -28,6 +29,7 @@ import {
 import { getCustomers } from "@/lib/api/customers";
 import { getUsers } from "@/lib/api/users";
 import { useServerListPage } from "@/lib/hooks/useServerListPage";
+import { HQ6_TABLE_PAGE_SIZE } from "@/lib/api/fetchAllPages";
 import { useListExport } from "@/lib/hooks/useListExport";
 import { useListPageFilters } from "@/lib/hooks/useListPageFilters";
 import { useTableViewPrefs } from "@/lib/hooks/useTableViewPrefs";
@@ -41,11 +43,10 @@ import {
 import { businessLocationName } from "@/lib/utils/locationLabels";
 import { cn } from "@/lib/utils/cn";
 import { toast } from "@/stores/toastStore";
+import { hq6PaymentBadgeClass } from "@/lib/utils/hq6PaymentBadge";
 
 function paymentBadgeClass(status: string | null | undefined): string {
-  if (status === "paid") return "hq6-pay-paid";
-  if (status === "partial") return "hq6-pay-partial";
-  return "hq6-pay-due";
+  return hq6PaymentBadgeClass(status);
 }
 
 /** HQ6 Expenses list — ui-audit/36_expenses/screenshot.png */
@@ -102,7 +103,7 @@ export function Hq6ExpensesListView() {
       expenseForCustomerId: expenseForFilter || undefined,
       createdById: addedByFilter || undefined,
       contactCustomerId: contactFilter || undefined,
-      search: (localSearch || search).trim() || undefined,
+      search: (search).trim() || undefined,
     }),
     [
       addedByFilter,
@@ -110,7 +111,6 @@ export function Hq6ExpensesListView() {
       bounds?.to,
       contactFilter,
       expenseForFilter,
-      localSearch,
       locationFilter,
       search,
     ],
@@ -129,6 +129,7 @@ export function Hq6ExpensesListView() {
     setPageSize,
     isLoading,
     isFetching,
+    isPaging,
     error,
     goToPage,
     canSelectPage,
@@ -137,10 +138,11 @@ export function Hq6ExpensesListView() {
     enabled: Boolean(tenantId),
     search,
     filters: listFilters,
+    defaultPageSize: HQ6_TABLE_PAGE_SIZE,
     fetchPage: (cursor, limit, _sort, opts) =>
       getExpensesPage(tenantId!, cursor, limit, {
         ...listFilters,
-        search: (localSearch || search).trim() || undefined,
+        search: (search).trim() || undefined,
         includeSummary: opts?.includeSummary,
       }),
   });
@@ -158,7 +160,7 @@ export function Hq6ExpensesListView() {
     if (!tenantId) return;
     const rows = await getAllExpenses(tenantId, {
       ...listFilters,
-      search: (localSearch || search).trim() || undefined,
+      search: (search).trim() || undefined,
     });
     exportList(
       "expenses",
@@ -432,6 +434,7 @@ export function Hq6ExpensesListView() {
             searchValue={localSearch}
             onSearchChange={setLocalSearch}
             onSearchCommit={commitSearch}
+            searchPlaceholder={hq6CopyForSlug("expenses").searchPlaceholder}
             onExportCsv={() => void handleExport()}
             onExportExcel={() => void handleExport()}
             onPrint={() => setPrintOpen(true)}
@@ -448,7 +451,6 @@ export function Hq6ExpensesListView() {
               displayMode="table"
               embedded
               disablePagination
-              stickyHeader
               stickyFirstColumn
               density={density}
               onDensityChange={setDensity}
@@ -496,7 +498,12 @@ export function Hq6ExpensesListView() {
             ) : null}
           </div>
 
-          {(items.length > 0 || canGoPrev || isLoading) && !isLoading ? (
+          {(items.length > 0 ||
+            canGoPrev ||
+            hasMore ||
+            pageIndex > 0 ||
+            isFetching ||
+            isLoading) && (
             <CursorPaginationBar
               pageIndex={pageIndex}
               pageSize={pageSize}
@@ -509,10 +516,10 @@ export function Hq6ExpensesListView() {
               onPageSelect={goToPage}
               canSelectPage={canSelectPage}
               totalItems={totalCount}
-              isBusy={isFetching && !isLoading}
+              isBusy={isFetching || isLoading}
               className="border-t border-[var(--hq6-border)] px-3 py-2"
             />
-          ) : null}
+          )}
         </div>
 
         <p className="hq6-footer">
@@ -568,10 +575,17 @@ export function Hq6ExpensesListView() {
         footer={<Hq6ModalSaveClose onClose={() => setPaymentsExpense(null)} closeLabel="Close" />}
       >
         {paymentsExpense ? (
-          <div className="space-y-2 text-sm text-[#374151]">
-            <div>
-              <span className="font-semibold">Payment status:</span>{" "}
-              {formatHq6PaymentStatus(paymentsExpense.paymentStatus)}
+          <div className="space-y-3 text-sm text-[#374151]">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="font-semibold">Payment status:</span>
+              <span
+                className={cn(
+                  "hq6-pay-badge",
+                  paymentBadgeClass(paymentsExpense.paymentStatus),
+                )}
+              >
+                {formatHq6PaymentStatus(paymentsExpense.paymentStatus)}
+              </span>
             </div>
             <div>
               <span className="font-semibold">Total:</span>{" "}

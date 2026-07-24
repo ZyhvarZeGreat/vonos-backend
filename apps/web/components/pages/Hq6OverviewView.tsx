@@ -83,6 +83,15 @@ function Hq6OverviewPanelTable({ panel }: { panel: OverviewPanel }) {
         <h3>{panel.title}</h3>
       </div>
       <div className="hq6-dt-toolbar">
+        <div className="hq6-search">
+          <label className="hq6-search-field">
+            <span className="sr-only">Search</span>
+            <input placeholder="Search by product, date, amount…" />
+          </label>
+          <button type="button" className="hq6-search-btn" aria-label="Search">
+            Search
+          </button>
+        </div>
         <label className="hq6-show-entries">
           Show{" "}
           <select defaultValue={10}>
@@ -90,7 +99,7 @@ function Hq6OverviewPanelTable({ panel }: { panel: OverviewPanel }) {
           </select>{" "}
           entries
         </label>
-        <div className="flex flex-wrap items-center gap-1.5">
+        <div className="ml-auto flex flex-wrap items-center gap-1.5">
           <button type="button" className="hq6-btn hq6-btn-outline">
             Export CSV
           </button>
@@ -107,9 +116,6 @@ function Hq6OverviewPanelTable({ panel }: { panel: OverviewPanel }) {
             Export PDF
           </button>
         </div>
-        <label className="hq6-search ml-auto">
-          <input placeholder="Search ..." />
-        </label>
       </div>
       <div className="hq6-table-wrap overflow-x-auto">
         <table className="w-full text-sm">
@@ -154,7 +160,7 @@ function Hq6OverviewPanelTable({ panel }: { panel: OverviewPanel }) {
 export function Hq6OverviewView() {
   const { tenantId, config } = useRouteTenant();
   const userName = useAuthStore((s) => s.name ?? s.email ?? "Admin");
-  const { dateRange, setDateRange, bounds } = useListPageFilters();
+  const { dateRange, setDateRange, bounds } = useListPageFilters({ unboundedAllTime: false });
   const [locationCode, setLocationCode] = useState("");
 
   const overviewQuery = useQuery({

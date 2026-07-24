@@ -29,6 +29,9 @@ import { buildCompositeCursorQuery } from '../../common/utils/pagination';
 import type { PaginatedList } from '../../common/utils/paginatedList';
 import { parseCsv, pickCsvField } from '../../common/utils/csvImport';
 import {
+  tokenizedSearchWhere,
+} from '../../common/utils/listSearch';
+import {
   parseMovementLines,
   toIso,
   toNumber,
@@ -178,20 +181,16 @@ export class SuppliersService {
       ...(filters.status === 'active' || filters.status === 'inactive'
         ? { status: filters.status }
         : {}),
-      ...(filters.search
-        ? {
-            OR: [
-              { name: { contains: filters.search, mode: 'insensitive' as const } },
-              {
-                contactName: {
-                  contains: filters.search,
-                  mode: 'insensitive' as const,
-                },
-              },
-              { email: { contains: filters.search, mode: 'insensitive' as const } },
-            ],
-          }
-        : {}),
+      ...(tokenizedSearchWhere(filters.search, (_token, contains) => [
+        { name: contains },
+        { contactName: contains },
+        { email: contains },
+        { phone: contains },
+        { address: contains },
+        { taxNumber: contains },
+        { notes: contains },
+        { locationCode: contains },
+      ]) ?? {}),
     };
 
     // Rows first; legacy IDs from warm map (0 RTT) or page-scoped IN (1 RTT).
@@ -266,12 +265,8 @@ export class SuppliersService {
 
   async getById(id: string): Promise<SupplierListRow> {
     const tenantId = this.tenantDb.requireTenantId();
-    const existing = await this.tenantDb.db.supplier.findFirst({
-      where: { id, tenantId, deletedAt: null },
-      select: { id: true },
-    });
-    if (!existing) throw new NotFoundException('Supplier not found');
-    await refreshSupplierPurchaseRollups(this.tenantDb.db, id);
+    // Trust denormalized rollups (refreshed on purchase/payment writes) —
+    // never recompute the full movement scan on every detail open.
     const row = await this.tenantDb.db.supplier.findFirst({
       where: { id, tenantId, deletedAt: null },
       include: { assignedToUser: { select: { name: true } } },
@@ -384,12 +379,6 @@ export class SuppliersService {
 
   async getSummary(id: string): Promise<ContactDueSummary> {
     const tenantId = this.tenantDb.requireTenantId();
-    const existing = await this.tenantDb.db.supplier.findFirst({
-      where: { id, tenantId, deletedAt: null },
-      select: { id: true },
-    });
-    if (!existing) throw new NotFoundException('Supplier not found');
-    await refreshSupplierPurchaseRollups(this.tenantDb.db, id);
     const row = await this.tenantDb.db.supplier.findFirst({
       where: { id, tenantId, deletedAt: null },
       select: {

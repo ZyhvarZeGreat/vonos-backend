@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter, useSearchParams } from "next/navigation";
 import { EmptyState } from "@/components/atoms/EmptyState";
@@ -18,11 +18,18 @@ import {
   getSupplierStockReport,
   getSuppliers,
   getSupplierSummary,
+  type SupplierListRow,
 } from "@/lib/api/suppliers";
+import { TYPEAHEAD_PAGE_SIZE } from "@/lib/api/fetchAllPages";
 import { getStockMovements } from "@/lib/api/stockMovements";
 import { useRecordNavigation } from "@/lib/hooks/useRecordNavigation";
 import { useRouteTenant, useTenantId } from "@/lib/hooks/useRouteTenant";
 import { formatHq6Currency, formatHq6Date } from "@/lib/utils/hq6Format";
+import {
+  collectCachedListRows,
+  DETAIL_RECORD_STALE_MS,
+  prefetchSupplierDetail,
+} from "@/lib/query/prefetchListDetails";
 import { DetailPageSkeleton } from "@/components/organisms/skeletons";
 import { toast } from "@/stores/toastStore";
 
@@ -46,12 +53,14 @@ export function Hq6SupplierDetailView({ recordId }: { recordId: string }) {
     queryKey: ["supplier", tenantId, recordId],
     queryFn: () => getSupplier(recordId),
     enabled: Boolean(tenantId),
+    staleTime: DETAIL_RECORD_STALE_MS,
   });
 
   const { data: summary } = useQuery({
     queryKey: ["supplier-summary", tenantId, recordId],
     queryFn: () => getSupplierSummary(tenantId!, recordId),
     enabled: Boolean(tenantId && recordId),
+    staleTime: DETAIL_RECORD_STALE_MS,
   });
 
   const { data: ledger = [], isLoading: ledgerLoading } = useQuery({
@@ -77,12 +86,26 @@ export function Hq6SupplierDetailView({ recordId }: { recordId: string }) {
     enabled: Boolean(tenantId && recordId && activeTab === "stock_report"),
   });
 
-  const { data: switcherRows = [] } = useQuery({
+  const cachedSwitcherRows = useMemo(() => {
+    if (!tenantId) return [] as SupplierListRow[];
+    return collectCachedListRows<SupplierListRow>(queryClient, ["suppliers", tenantId]);
+  }, [queryClient, tenantId, supplier?.id]);
+
+  const { data: fallbackSwitcherRows = [] } = useQuery({
     queryKey: ["suppliers", tenantId, "contact-switcher"],
-    queryFn: () => getSuppliers(tenantId!),
-    enabled: Boolean(tenantId),
-    staleTime: 60_000,
+    queryFn: () => getSuppliers(tenantId!, { limit: TYPEAHEAD_PAGE_SIZE }),
+    enabled: Boolean(tenantId) && cachedSwitcherRows.length === 0,
+    staleTime: 5 * 60_000,
   });
+
+  const switcherRows = useMemo(() => {
+    const byId = new Map<string, SupplierListRow>();
+    for (const row of cachedSwitcherRows.length > 0 ? cachedSwitcherRows : fallbackSwitcherRows) {
+      byId.set(row.id, row);
+    }
+    if (supplier) byId.set(supplier.id, supplier);
+    return [...byId.values()];
+  }, [cachedSwitcherRows, fallbackSwitcherRows, supplier]);
 
   const currency = summary?.currency ?? "NGN";
 
@@ -132,6 +155,7 @@ export function Hq6SupplierDetailView({ recordId }: { recordId: string }) {
           }`,
         }))}
         onSwitchContact={(id) => {
+          if (tenantId) prefetchSupplierDetail(queryClient, tenantId, id);
           const q = searchParams.toString();
           router.push(q ? `${detailPath(id)}?${q}` : detailPath(id));
         }}

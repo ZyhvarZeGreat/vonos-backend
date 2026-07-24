@@ -2,6 +2,8 @@ import {
   Body,
   Controller,
   Get,
+  NotFoundException,
+  Param,
   Post,
   Query,
   Req,
@@ -46,6 +48,14 @@ export class UsersController {
       return this.usersService.listAllTenants(request.user.role, filters);
     }
     return this.usersService.listForTenant(filters);
+  }
+
+  @Get(':id')
+  getById(@Param('id') id: string) {
+    if (id === 'invite') {
+      throw new NotFoundException();
+    }
+    return this.usersService.getById(id);
   }
 
   @Post('invite')

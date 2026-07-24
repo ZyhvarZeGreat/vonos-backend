@@ -1,12 +1,24 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import type { AccountTransaction, PaymentRecord } from '@vonos/types';
 import { TenantDbService } from '../../common/prisma/tenant-db.service';
+import { CacheService } from '../../common/cache/cache.service';
 import { buildCompositeCursorQuery } from '../../common/utils/pagination';
+import {
+  listPageFilterKey,
+  withListPageCache,
+} from '../../common/utils/listPageCache';
 import { toIso, toNumber } from '../../common/utils/serializers';
+import {
+  relationStringOr,
+  tokenizedSearchWhere,
+} from '../../common/utils/listSearch';
 
 @Injectable()
 export class PaymentsService {
-  constructor(private readonly tenantDb: TenantDbService) {}
+  constructor(
+    private readonly tenantDb: TenantDbService,
+    private readonly cache: CacheService,
+  ) {}
 
   async listPayments(filters: {
     accountId?: string;
@@ -17,6 +29,34 @@ export class PaymentsService {
     search?: string;
   }): Promise<PaymentRecord[]> {
     const tenantId = this.tenantDb.requireTenantId();
+    const filterKey = listPageFilterKey({
+      accountId: filters.accountId,
+      from: filters.from,
+      to: filters.to,
+      search: filters.search,
+      cursor: filters.cursor,
+      limit: filters.limit ?? 10,
+    });
+    return withListPageCache(
+      this.cache,
+      tenantId,
+      'payments',
+      filterKey,
+      () => this.listPaymentsUncached(filters, tenantId),
+    );
+  }
+
+  private async listPaymentsUncached(
+    filters: {
+      accountId?: string;
+      cursor?: string;
+      limit?: number;
+      from?: string;
+      to?: string;
+      search?: string;
+    },
+    tenantId: string,
+  ): Promise<PaymentRecord[]> {
     const pagination = buildCompositeCursorQuery({
       sortField: 'createdAt',
       sortDir: 'desc',
@@ -37,20 +77,15 @@ export class PaymentsService {
               },
             }
           : {}),
-        ...(filters.search
-          ? {
-              OR: [
-                {
-                  paymentRefNo: {
-                    contains: filters.search,
-                    mode: 'insensitive',
-                  },
-                },
-                { note: { contains: filters.search, mode: 'insensitive' } },
-                { method: { contains: filters.search, mode: 'insensitive' } },
-              ],
-            }
-          : {}),
+        ...(tokenizedSearchWhere(filters.search, (_token, contains) => [
+          { paymentRefNo: contains },
+          { note: contains },
+          { method: contains },
+          { paymentFor: contains },
+          { createdByName: contains },
+          relationStringOr('account', 'name', contains),
+          relationStringOr('sale', 'reference', contains),
+        ]) ?? {}),
         ...(pagination.where ?? {}),
       },
       include: {
@@ -93,6 +128,36 @@ export class PaymentsService {
     } = {},
   ): Promise<AccountTransaction[]> {
     const tenantId = this.tenantDb.requireTenantId();
+    const filterKey = listPageFilterKey({
+      accountId,
+      from: filters.from,
+      to: filters.to,
+      search: filters.search,
+      type: filters.type,
+      cursor: filters.cursor,
+      limit: filters.limit ?? 10,
+    });
+    return withListPageCache(
+      this.cache,
+      tenantId,
+      'payment-account-book',
+      filterKey,
+      () => this.listAccountBookUncached(accountId, filters, tenantId),
+    );
+  }
+
+  private async listAccountBookUncached(
+    accountId: string,
+    filters: {
+      cursor?: string;
+      limit?: number;
+      from?: string;
+      to?: string;
+      search?: string;
+      type?: string;
+    },
+    tenantId: string,
+  ): Promise<AccountTransaction[]> {
     const account = await this.tenantDb.db.paymentAccount.findFirst({
       where: { id: accountId, tenantId, deletedAt: null },
     });
@@ -123,20 +188,11 @@ export class PaymentsService {
               },
             }
           : {}),
-        ...(filters.search
-          ? {
-              OR: [
-                { note: { contains: filters.search, mode: 'insensitive' } },
-                { refNo: { contains: filters.search, mode: 'insensitive' } },
-                {
-                  paymentMethod: {
-                    contains: filters.search,
-                    mode: 'insensitive',
-                  },
-                },
-              ],
-            }
-          : {}),
+        ...(tokenizedSearchWhere(filters.search, (_token, contains) => [
+          { note: contains },
+          { refNo: contains },
+          { paymentMethod: contains },
+        ]) ?? {}),
         ...(pagination.where ?? {}),
       },
       orderBy: [{ operationDate: 'desc' }, { id: 'desc' }],

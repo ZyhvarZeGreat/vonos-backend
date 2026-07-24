@@ -21,12 +21,22 @@ export interface Payroll {
   payrollMonth: string;
   note: string | null;
   createdAt: string;
+  /** From linked Employee / Ultimate POS users.bank_details. */
+  accountHolderName?: string | null;
+  bankName?: string | null;
+  bankBranch?: string | null;
+  bankCode?: string | null;
+  bankAccountNo?: string | null;
+  taxPayerId?: string | null;
 }
 
 export interface PayrollGroup {
   id: string;
   tenantId: string;
   name: string;
+  /** Department ID / short code (HQ6 Manage Departments). */
+  code?: string | null;
+  description?: string | null;
   payrollCount: number;
   createdAt: string;
 }
@@ -35,6 +45,7 @@ export interface Designation {
   id: string;
   tenantId: string;
   name: string;
+  description?: string | null;
   employeeCount: number;
   createdAt: string;
 }
@@ -51,6 +62,12 @@ export interface Employee {
   designationName: string;
   userId: string | null;
   isServiceStaff: boolean;
+  accountHolderName: string | null;
+  bankName: string | null;
+  bankBranch: string | null;
+  bankCode: string | null;
+  bankAccountNo: string | null;
+  taxPayerId: string | null;
   createdAt: string;
 }
 
@@ -92,10 +109,24 @@ export interface UpdatePayrollDeductionRequest {
 
 export interface CreatePayrollGroupRequest {
   name: string;
+  code?: string;
+  description?: string;
+}
+
+export interface UpdatePayrollGroupRequest {
+  name?: string;
+  code?: string | null;
+  description?: string | null;
 }
 
 export interface CreateDesignationRequest {
   name: string;
+  description?: string;
+}
+
+export interface UpdateDesignationRequest {
+  name?: string;
+  description?: string | null;
 }
 
 export interface CreateEmployeeRequest {
@@ -128,6 +159,7 @@ export interface PayrollFilters {
   paymentStatus?: string;
   sortBy?: string;
   sortDir?: "asc" | "desc";
+  includeSummary?: boolean;
 }
 
 /** Distinct employee roster derived from imported payroll history / Employee table. */
@@ -146,4 +178,9 @@ export interface WorkforceMember {
   payrollCount: number;
   lastPayrollMonth: string;
   totalNetPay: number;
+}
+
+export interface WorkforceStats {
+  totalCount: number;
+  byLocation: Array<{ locationCode: string | null; count: number }>;
 }

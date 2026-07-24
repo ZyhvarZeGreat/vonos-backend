@@ -5,8 +5,9 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { Boxes, Hourglass, ImageIcon } from "lucide-react";
 import { DataTable, type ColumnConfig } from "@/components/organisms/DataTable";
-import { useServerListPage } from "@/lib/hooks/useServerListPage";
-import { getCatalogPage } from "@/lib/api/catalog";
+import { useServerListPage, serverSortProps, withListSort, hq6ListPaginationProps } from "@/lib/hooks/useServerListPage";
+import { HQ6_TABLE_PAGE_SIZE } from "@/lib/api/fetchAllPages";
+import { getCatalogPage, getCatalogListSummary } from "@/lib/api/catalog";
 import { deleteItem as deleteItemApi, getAllItems } from "@/lib/api/items";
 import { getCatalogMeta } from "@/lib/api/catalogMeta";
 import { useListExport } from "@/lib/hooks/useListExport";
@@ -19,6 +20,7 @@ import { ItemLocationCell } from "@/components/molecules/ItemLocationCell";
 import { locationFilterOptions } from "@/lib/utils/locationLabels";
 import { toast } from "@/stores/toastStore";
 import { cn } from "@/lib/utils/cn";
+import { compositeListCursorFrom } from "@/lib/utils/pagination";
 import { Hq6ActionsMenu } from "@/components/hq6/Hq6ActionsMenu";
 import {
   Hq6ViewProductModal,
@@ -34,13 +36,14 @@ import {
   Hq6FilterStack,
 } from "@/components/hq6/Hq6FilterFields";
 import { Hq6StandardListShell, useHq6ListChrome } from "@/components/hq6/Hq6StandardListShell";
+import { prefetchCatalogDetail } from "@/lib/query/prefetchListDetails";
 
 /**
  * HQ6 Products list — rebuilt from ui-audit/08_products/screenshot.png.
  * Route: /VA/catalog
  */
 export function Hq6ProductsListView() {
-  const { goToDetail } = useRecordNavigation("catalog");
+  const { goToDetail, prefetchDetail } = useRecordNavigation("catalog");
   const tenantId = useTenantId();
   const { config, tenantCode } = useRouteTenant();
   const router = useRouter();
@@ -67,7 +70,6 @@ export function Hq6ProductsListView() {
       status?: StockStatus;
       category?: string;
       locationCode?: string;
-      search?: string;
       unit?: string;
       brandName?: string;
       availableForRetail?: boolean;
@@ -78,16 +80,12 @@ export function Hq6ProductsListView() {
     if (unitFilter) next.unit = unitFilter;
     if (brandFilter) next.brandName = brandFilter;
     if (notForSelling) next.availableForRetail = false;
-    const q = (localSearch || search).trim();
-    if (q) next.search = q;
     return next;
   }, [
     brandFilter,
     categoryFilter,
     locationFilter,
-    localSearch,
     notForSelling,
-    search,
     statusFilter,
     unitFilter,
   ]);
@@ -103,16 +101,49 @@ export function Hq6ProductsListView() {
     setPageSize,
     isLoading,
     isFetching,
+    isPaging,
     error,
     goToPage,
     canSelectPage,
     totalCount,
+    sort,
+    setSort,
   } = useServerListPage({
     queryKey: ["catalog", tenantId, "hq6-v2"],
     enabled: Boolean(tenantId) && listTab === "products",
     filters: apiFilters,
-    defaultPageSize: 50,
-    fetchPage: (cursor, limit, _sort, opts) => getCatalogPage(tenantId!, { ...apiFilters, includeSummary: opts?.includeSummary }, cursor, limit),
+    search: search,
+    defaultPageSize: HQ6_TABLE_PAGE_SIZE,
+    defaultSort: { sortBy: "name", sortDir: "asc" },
+    fetchPage: (cursor, limit, listSort, opts) =>
+      getCatalogPage(
+        tenantId!,
+        withListSort(
+          {
+            ...apiFilters,
+            search: (search).trim() || undefined,
+            includeSummary: opts?.includeSummary,
+          },
+          listSort,
+        ),
+        cursor,
+        limit,
+      ),
+    fetchSummary: () =>
+      getCatalogListSummary(tenantId!, {
+        ...apiFilters,
+        search: (search).trim() || undefined,
+      }),
+    getCursor: (row, listSort) => {
+      const sortBy = listSort?.sortBy ?? "name";
+      const type =
+        sortBy === "quantity" || sortBy === "costPrice" || sortBy === "sellPrice"
+          ? "number"
+          : sortBy === "createdAt"
+            ? "date"
+            : "string";
+      return compositeListCursorFrom(row, sortBy, type);
+    },
   });
 
   const categoryOptions = useMemo(
@@ -293,6 +324,7 @@ export function Hq6ProductsListView() {
       {
         key: "binLocation",
         header: "Business Location",
+        sortable: false,
         render: (row) => (
           <span className="inline-flex items-center gap-1">
             <ItemLocationCell item={row} locations={config?.businessLocations} />
@@ -301,7 +333,7 @@ export function Hq6ProductsListView() {
       },
       {
         key: "costPrice",
-        header: "Unit Purchase Price",
+        header: "Last purchase price",
         numeric: true,
         sortValue: (row) => row.costPrice,
         render: (row) => formatCurrency(row.costPrice, row.currency),
@@ -339,6 +371,7 @@ export function Hq6ProductsListView() {
       {
         key: "brandName",
         header: "Brand",
+        sortable: false,
         render: (row) => row.brandName ?? "",
       },
       {
@@ -492,20 +525,22 @@ export function Hq6ProductsListView() {
       hideToolbar={listTab === "stock-report"}
       pagination={
         listTab === "products"
-          ? {
+          ? hq6ListPaginationProps({
+              items,
               pageIndex,
               pageSize,
-              itemCount: items.length,
               hasMore,
               canGoPrev,
-              onPrev: goPrev,
-              onNext: goNext,
-              onPageSizeChange: setPageSize,
-              onPageSelect: goToPage,
+              goPrev,
+              goNext,
+              setPageSize,
+              goToPage,
               canSelectPage,
-              totalItems: totalCount,
-              isBusy: isFetching && !isLoading,
-            }
+              totalCount,
+              isFetching,
+              isPaging,
+              isLoading,
+            })
           : { show: false }
       }
       modals={
@@ -563,7 +598,6 @@ export function Hq6ProductsListView() {
           displayMode="table"
           embedded
           selectable
-          stickyHeader
           stickyFirstColumn
           density={chrome.density}
           onDensityChange={chrome.setDensity}
@@ -572,8 +606,16 @@ export function Hq6ProductsListView() {
           isLoading={isLoading}
           isFetching={isFetching && !isLoading}
           error={error ? "Could not load products." : null}
-          onRowClick={(row) => goToDetail(row.id)}
+          onRowPointerEnter={(row) => {
+            prefetchDetail(row.id);
+            if (tenantId) prefetchCatalogDetail(queryClient, tenantId, row.id, row);
+          }}
+          onRowClick={(row) => {
+            if (tenantId) prefetchCatalogDetail(queryClient, tenantId, row.id, row);
+            goToDetail(row.id);
+          }}
           emptyState={{ message: "No products found." }}
+          serverSort={serverSortProps({ sort, setSort })}
           bulkActions={[
             {
               id: "export",

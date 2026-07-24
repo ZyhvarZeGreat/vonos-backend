@@ -1,8 +1,14 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import type { CafeTable, CafeTableStatus } from '@vonos/types';
 import { TenantDbService } from '../../common/prisma/tenant-db.service';
+import { CacheService } from '../../common/cache/cache.service';
+import { invalidateTenantDashboardCache } from '../../common/cache/cacheInvalidation';
 import { AuditService } from '../audit/audit.service';
 import { buildCompositeCursorQuery } from '../../common/utils/pagination';
+import {
+  listPageFilterKey,
+  withListPageCache,
+} from '../../common/utils/listPageCache';
 import { toIso } from '../../common/utils/serializers';
 
 function serialize(row: {
@@ -30,6 +36,7 @@ export class CafeTablesService {
   constructor(
     private readonly tenantDb: TenantDbService,
     private readonly auditService: AuditService,
+    private readonly cache: CacheService,
   ) {}
 
   async list(filters: {
@@ -38,6 +45,28 @@ export class CafeTablesService {
     search?: string;
   } = {}): Promise<CafeTable[]> {
     const tenantId = this.tenantDb.requireTenantId();
+    const filterKey = listPageFilterKey({
+      search: filters.search,
+      cursor: filters.cursor,
+      limit: filters.limit ?? 10,
+    });
+    return withListPageCache(
+      this.cache,
+      tenantId,
+      'cafe-tables',
+      filterKey,
+      () => this.listUncached(filters, tenantId),
+    );
+  }
+
+  private async listUncached(
+    filters: {
+      cursor?: string;
+      limit?: number;
+      search?: string;
+    },
+    tenantId: string,
+  ): Promise<CafeTable[]> {
     const pagination = buildCompositeCursorQuery({
       sortField: 'label',
       sortDir: 'asc',
@@ -89,6 +118,7 @@ export class CafeTablesService {
       entityId: row.id,
       summary: `Added table ${row.label}`,
     });
+    void invalidateTenantDashboardCache(this.cache, tenantId);
     return serialize(row);
   }
 
@@ -109,6 +139,7 @@ export class CafeTablesService {
       entityId: id,
       summary: `Table ${row.label} → ${status}`,
     });
+    void invalidateTenantDashboardCache(this.cache, tenantId);
     return serialize(row);
   }
 }

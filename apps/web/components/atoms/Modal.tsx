@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
@@ -13,6 +13,18 @@ export interface ModalProps {
   panelClassName?: string;
 }
 
+function subscribeNoop() {
+  return () => undefined;
+}
+
+function useIsClient() {
+  return useSyncExternalStore(
+    subscribeNoop,
+    () => true,
+    () => false,
+  );
+}
+
 export function Modal({
   open,
   onClose,
@@ -21,11 +33,7 @@ export function Modal({
   panelClassName,
 }: ModalProps) {
   const panelRef = useRef<HTMLDivElement>(null);
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
+  const isClient = useIsClient();
 
   useEffect(() => {
     if (!open) return;
@@ -40,12 +48,12 @@ export function Modal({
     };
   }, [open, onClose]);
 
-  if (!open || !mounted) return null;
+  if (!open || !isClient) return null;
 
   return createPortal(
     <div
       className={cn(
-        "fixed inset-0 z-50 flex items-center justify-center p-4",
+        "fixed inset-0 z-[200] flex items-center justify-center p-4",
         className,
       )}
       role="dialog"
@@ -53,14 +61,14 @@ export function Modal({
     >
       <button
         type="button"
-        className="motion-backdrop-in absolute inset-0 bg-black/40"
+        className="motion-backdrop-in fixed inset-0 bg-black/40"
         aria-label="Close dialog"
         onClick={onClose}
       />
       <div
         ref={panelRef}
         className={cn(
-          "motion-dialog-in relative z-10 w-full max-w-md overflow-hidden rounded-lg bg-card shadow-lg",
+          "motion-dialog-in relative z-10 my-auto w-full max-w-md overflow-hidden rounded-lg bg-card shadow-lg",
           panelClassName,
         )}
       >

@@ -28,6 +28,7 @@ export function ItemRecordModal({ itemId, onClose }: ItemRecordModalProps) {
     queryFn: () => getItem(itemId!),
     enabled: Boolean(tenantId && itemId),
     staleTime: MODAL_RECORD_STALE_MS,
+    placeholderData: (prev) => prev,
   });
 
   if (isHq6) {

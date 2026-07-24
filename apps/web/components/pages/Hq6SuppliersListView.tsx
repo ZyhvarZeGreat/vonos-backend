@@ -22,12 +22,17 @@ import {
   type SupplierListRow,
 } from "@/lib/api/suppliers";
 import { getUsers } from "@/lib/api/users";
-import { TYPEAHEAD_PAGE_SIZE } from "@/lib/api/fetchAllPages";
+import { TYPEAHEAD_PAGE_SIZE, HQ6_TABLE_PAGE_SIZE } from "@/lib/api/fetchAllPages";
 import { useServerListPage } from "@/lib/hooks/useServerListPage";
 import { useListPageFilters } from "@/lib/hooks/useListPageFilters";
 import { useRecordNavigation } from "@/lib/hooks/useRecordNavigation";
 import { useTenantId } from "@/lib/hooks/useRouteTenant";
 import { HQ6_SUPPLIER_FILTERS } from "@/lib/registries/hq6Filters";
+import {
+  prefetchContactModalRefs,
+  prefetchPaymentAccountsRef,
+} from "@/lib/query/prefetchListModals";
+import { prefetchSupplierDetail } from "@/lib/query/prefetchListDetails";
 import {
   HQ6_SUPPLIER_COLUMNS,
   hq6DefaultColumnKeys,
@@ -45,7 +50,7 @@ import { nameListCursor } from "@/lib/utils/pagination";
 export function Hq6SuppliersListView() {
   const router = useRouter();
   const queryClient = useQueryClient();
-  const { goToDetail, detailPath } = useRecordNavigation("suppliers");
+  const { goToDetail, detailPath, prefetchDetail } = useRecordNavigation("suppliers");
   const tenantId = useTenantId();
   const openCreateModal = useUiStore((state) => state.openCreateModal);
   const { search, setSearch } = useListPageFilters();
@@ -70,7 +75,7 @@ export function Hq6SuppliersListView() {
 
   const apiFilters = useMemo(
     () => ({
-      search: (localSearch || search).trim() || undefined,
+      search: (search).trim() || undefined,
       purchaseDue: purchaseDue || undefined,
       purchaseReturn: purchaseReturn || undefined,
       advanceBalance: advanceBalance || undefined,
@@ -81,7 +86,6 @@ export function Hq6SuppliersListView() {
     [
       advanceBalance,
       assignedToUserId,
-      localSearch,
       openingBalance,
       purchaseDue,
       purchaseReturn,
@@ -103,6 +107,7 @@ export function Hq6SuppliersListView() {
     setPageSize,
     isLoading,
     isFetching,
+    isPaging,
     error,
     goToPage,
     canSelectPage,
@@ -110,7 +115,8 @@ export function Hq6SuppliersListView() {
     queryKey: ["suppliers", tenantId, "hq6"],
     enabled: Boolean(tenantId),
     filters: apiFilters,
-    search: localSearch || search,
+    search: search,
+    defaultPageSize: HQ6_TABLE_PAGE_SIZE,
     fetchPage: (cursor, limit, _sort, opts) => getSuppliersPage(tenantId!, cursor, limit, { ...apiFilters, includeSummary: opts?.includeSummary }),
     getCursor: (row) => nameListCursor(row),
   });
@@ -137,10 +143,20 @@ export function Hq6SuppliersListView() {
               {
                 id: "pay",
                 label: "Pay",
-                onClick: () => setPayTarget(row),
+                onClick: () => {
+                  if (tenantId) prefetchPaymentAccountsRef(queryClient, tenantId);
+                  setPayTarget(row);
+                },
               },
               { id: "view", label: "View", onClick: () => goToDetail(row.id) },
-              { id: "edit", label: "Edit", onClick: () => openEdit(row) },
+              {
+                id: "edit",
+                label: "Edit",
+                onClick: () => {
+                  if (tenantId) prefetchContactModalRefs(queryClient, tenantId);
+                  openEdit(row);
+                },
+              },
               {
                 id: "delete",
                 label: "Delete",
@@ -286,7 +302,7 @@ export function Hq6SuppliersListView() {
         render: (r) => formatHq6Currency(r.totalPurchaseReturn ?? 0),
       },
     ],
-    [detailPath, goToDetail, openEdit, router],
+    [detailPath, goToDetail, openEdit, queryClient, router, tenantId],
   );
 
   const defaultKeys = useMemo(() => hq6DefaultColumnKeys(HQ6_SUPPLIER_COLUMNS), []);
@@ -411,7 +427,7 @@ export function Hq6SuppliersListView() {
           onPageSelect: goToPage,
           canSelectPage,
           totalItems: totalCount,
-          isBusy: isFetching && !isLoading,
+          isBusy: isPaging || isLoading,
         }}
       >
         <DataTable
@@ -420,7 +436,6 @@ export function Hq6SuppliersListView() {
           displayMode="table"
           embedded
           disablePagination
-          stickyHeader
           stickyFirstColumn
           density={chrome.density}
           onDensityChange={chrome.setDensity}
@@ -428,7 +443,14 @@ export function Hq6SuppliersListView() {
           isLoading={isLoading}
           isFetching={isFetching && !isLoading}
           error={error ? "Failed to load suppliers." : null}
-          onRowClick={(row) => goToDetail(row.id)}
+          onRowPointerEnter={(row) => {
+            prefetchDetail(row.id);
+            if (tenantId) prefetchSupplierDetail(queryClient, tenantId, row.id, row);
+          }}
+          onRowClick={(row) => {
+            if (tenantId) prefetchSupplierDetail(queryClient, tenantId, row.id, row);
+            goToDetail(row.id);
+          }}
           emptyState={{ message: "No suppliers found." }}
         />
       </Hq6StandardListShell>

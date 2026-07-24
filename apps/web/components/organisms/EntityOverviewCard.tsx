@@ -2,17 +2,20 @@
 
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
+import { Spinner } from "@/components/atoms/Spinner";
 import { accentForTenantCode } from "@/lib/registries/tenantAccents";
 import { iconForTenantCode } from "@/lib/registries/tenantIcons";
-import type { TenantCode } from "@/lib/registries/tenants";
 import { cn } from "@/lib/utils/cn";
 
 export interface EntityOverviewCardProps {
-  code: TenantCode;
+  code: string;
   name: string;
   stats: [string, string, string];
   href: string;
   className?: string;
+  description?: string;
+  /** When true, show 0 + spinner instead of empty/placeholder stats. */
+  isLoading?: boolean;
 }
 
 export function EntityOverviewCard({
@@ -21,9 +24,14 @@ export function EntityOverviewCard({
   stats,
   href,
   className,
+  description,
+  isLoading = false,
 }: EntityOverviewCardProps) {
   const accent = accentForTenantCode(code);
   const Icon = iconForTenantCode(code);
+  const displayStats = isLoading
+    ? (["0", "0", "0"] as [string, string, string])
+    : stats;
 
   return (
     <Link
@@ -32,6 +40,7 @@ export function EntityOverviewCard({
         "group relative flex flex-col overflow-hidden rounded-xl border border-border bg-card shadow-sm transition-shadow hover:shadow-md",
         className,
       )}
+      aria-busy={isLoading || undefined}
     >
       <div
         className="absolute left-0 top-0 h-full w-1.5"
@@ -54,13 +63,19 @@ export function EntityOverviewCard({
               >
                 {code}
               </span>
+              {isLoading ? (
+                <Spinner size="sm" className="text-muted" />
+              ) : null}
             </div>
             <h4 className="mt-2 font-semibold text-foreground">{name}</h4>
+            {description ? (
+              <p className="mt-0.5 text-xs text-muted">{description}</p>
+            ) : null}
           </div>
         </div>
         <ul className="mb-4 space-y-1 text-sm text-muted">
-          {stats.map((stat) => (
-            <li key={stat}>{stat}</li>
+          {displayStats.map((stat, index) => (
+            <li key={`${stat}-${index}`}>{stat}</li>
           ))}
         </ul>
         <span className="mt-auto inline-flex items-center gap-1 text-sm font-medium text-foreground group-hover:text-[var(--color-brand-accent)]">

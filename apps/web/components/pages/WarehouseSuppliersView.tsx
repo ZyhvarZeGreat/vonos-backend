@@ -174,6 +174,7 @@ function WarehouseSuppliersViewBody() {
     isLoading,
 
     isFetching,
+    isPaging,
     error,
     goToPage,
     canSelectPage,
@@ -338,6 +339,7 @@ function WarehouseSuppliersViewBody() {
           totalCount={totalCount}
           isLoading={isLoading}
           isFetching={isFetching}
+          isPaging={isPaging}
           error={error ? "Failed to load suppliers" : null}
           onRowClick={(row) => goToDetail(row.id)}
           emptyState={{ message: "No suppliers yet. Add your first supplier to get started." }}

@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   Patch,
@@ -18,6 +19,7 @@ import {
   TenantGuard,
 } from '../../common/guards/auth.guards';
 import { HrmService } from './hrm.service';
+import { HrmEssentialsService } from './hrm-essentials.service';
 import type {
   CreatePayrollRequest,
   CreatePayrollGroupRequest,
@@ -25,6 +27,8 @@ import type {
   CreateDesignationRequest,
   CreateEmployeeRequest,
   UpdatePayrollDeductionRequest,
+  UpdateDesignationRequest,
+  UpdatePayrollGroupRequest,
 } from '@vonos/types';
 
 type AuthedRequest = Request & { user: AuthenticatedUser };
@@ -32,7 +36,10 @@ type AuthedRequest = Request & { user: AuthenticatedUser };
 @Controller('hrm')
 @UseGuards(JwtAuthGuard, TenantGuard, RolesGuard)
 export class HrmController {
-  constructor(private readonly service: HrmService) {}
+  constructor(
+    private readonly service: HrmService,
+    private readonly essentials: HrmEssentialsService,
+  ) {}
 
   @Get('workforce')
   listWorkforce(
@@ -41,11 +48,13 @@ export class HrmController {
     @Query('search') search?: string,
     @Query('cursor') cursor?: string,
     @Query('limit') limit?: string,
+    @Query('includeSummary') includeSummary?: string,
   ) {
     const filters = {
       search,
       cursor,
       limit: limit ? Number(limit) : undefined,
+      includeSummary: includeSummary !== '0' && includeSummary !== 'false',
     };
     if (allTenants === 'true') {
       return this.service.listWorkforceAllTenants(request.user.role, filters);
@@ -53,16 +62,23 @@ export class HrmController {
     return this.service.listWorkforce(filters);
   }
 
+  @Get('workforce/stats')
+  workforceStats() {
+    return this.service.getWorkforceStats();
+  }
+
   @Get('designations')
   listDesignations(
     @Query('cursor') cursor?: string,
     @Query('limit') limit?: string,
     @Query('search') search?: string,
+    @Query('includeSummary') includeSummary?: string,
   ) {
     return this.service.listDesignations({
       cursor,
       limit: limit ? Number(limit) : undefined,
       search,
+      includeSummary: includeSummary !== '0' && includeSummary !== 'false',
     });
   }
 
@@ -70,6 +86,21 @@ export class HrmController {
   @Roles('admin', 'manager')
   createDesignation(@Body() dto: CreateDesignationRequest) {
     return this.service.createDesignation(dto);
+  }
+
+  @Patch('designations/:id')
+  @Roles('admin', 'manager')
+  updateDesignation(
+    @Param('id') id: string,
+    @Body() dto: UpdateDesignationRequest,
+  ) {
+    return this.service.updateDesignation(id, dto);
+  }
+
+  @Delete('designations/:id')
+  @Roles('admin', 'manager')
+  deleteDesignation(@Param('id') id: string) {
+    return this.service.deleteDesignation(id);
   }
 
   @Get('employees')
@@ -108,6 +139,9 @@ export class HrmController {
     @Query('designationId') designationId?: string,
     @Query('month') month?: string,
     @Query('year') year?: string,
+    @Query('status') status?: string,
+    @Query('paymentStatus') paymentStatus?: string,
+    @Query('includeSummary') includeSummary?: string,
     @Query('sortBy') sortBy?: string,
     @Query('sortDir') sortDir?: string,
   ) {
@@ -121,6 +155,9 @@ export class HrmController {
       designationId,
       month: month ? Number(month) : undefined,
       year: year ? Number(year) : undefined,
+      status,
+      paymentStatus,
+      includeSummary: includeSummary !== '0' && includeSummary !== 'false',
       sortBy,
       sortDir: sortDir === 'asc' || sortDir === 'desc' ? sortDir : undefined,
     });
@@ -146,11 +183,13 @@ export class HrmController {
     @Query('cursor') cursor?: string,
     @Query('limit') limit?: string,
     @Query('search') search?: string,
+    @Query('includeSummary') includeSummary?: string,
   ) {
     return this.service.listPayrollGroups({
       cursor,
       limit: limit ? Number(limit) : undefined,
       search,
+      includeSummary: includeSummary !== '0' && includeSummary !== 'false',
     });
   }
 
@@ -160,16 +199,33 @@ export class HrmController {
     return this.service.createPayrollGroup(dto);
   }
 
+  @Patch('payroll-groups/:id')
+  @Roles('admin', 'manager')
+  updatePayrollGroup(
+    @Param('id') id: string,
+    @Body() dto: UpdatePayrollGroupRequest,
+  ) {
+    return this.service.updatePayrollGroup(id, dto);
+  }
+
+  @Delete('payroll-groups/:id')
+  @Roles('admin', 'manager')
+  deletePayrollGroup(@Param('id') id: string) {
+    return this.service.deletePayrollGroup(id);
+  }
+
   @Get('pay-components')
   listPayComponents(
     @Query('cursor') cursor?: string,
     @Query('limit') limit?: string,
     @Query('search') search?: string,
+    @Query('includeSummary') includeSummary?: string,
   ) {
     return this.service.listPayComponents({
       cursor,
       limit: limit ? Number(limit) : undefined,
       search,
+      includeSummary: includeSummary !== '0' && includeSummary !== 'false',
     });
   }
 
@@ -177,5 +233,195 @@ export class HrmController {
   @Roles('admin', 'manager')
   createPayComponent(@Body() dto: CreatePayComponentRequest) {
     return this.service.createPayComponent(dto);
+  }
+
+  /* —— Essentials / HQ6 HRM screens —— */
+
+  @Get('leave-types')
+  listLeaveTypes(
+    @Query('cursor') cursor?: string,
+    @Query('limit') limit?: string,
+    @Query('search') search?: string,
+    @Query('includeSummary') includeSummary?: string,
+  ) {
+    return this.essentials.listLeaveTypes({
+      cursor,
+      limit: limit ? Number(limit) : undefined,
+      search,
+      includeSummary: includeSummary !== '0' && includeSummary !== 'false',
+    });
+  }
+
+  @Post('leave-types')
+  @Roles('admin', 'manager')
+  createLeaveType(
+    @Body() dto: { name: string; maxLeaveCount?: number },
+  ) {
+    return this.essentials.createLeaveType(dto);
+  }
+
+  @Patch('leave-types/:id')
+  @Roles('admin', 'manager')
+  updateLeaveType(
+    @Param('id') id: string,
+    @Body() dto: { name?: string; maxLeaveCount?: number },
+  ) {
+    return this.essentials.updateLeaveType(id, dto);
+  }
+
+  @Delete('leave-types/:id')
+  @Roles('admin', 'manager')
+  deleteLeaveType(@Param('id') id: string) {
+    return this.essentials.deleteLeaveType(id);
+  }
+
+  @Get('leaves')
+  listLeaves(
+    @Query('cursor') cursor?: string,
+    @Query('limit') limit?: string,
+    @Query('search') search?: string,
+    @Query('designationId') designationId?: string,
+    @Query('includeSummary') includeSummary?: string,
+  ) {
+    return this.essentials.listLeaves({
+      cursor,
+      limit: limit ? Number(limit) : undefined,
+      search,
+      designationId,
+      includeSummary: includeSummary !== '0' && includeSummary !== 'false',
+    });
+  }
+
+  @Post('leaves')
+  @Roles('admin', 'manager')
+  createLeave(
+    @Body()
+    dto: {
+      referenceNo?: string;
+      leaveTypeId?: string;
+      employeeName: string;
+      employeeRecordId?: string;
+      designationId?: string;
+      leaveDate: string;
+      reason?: string;
+      status?: string;
+    },
+  ) {
+    return this.essentials.createLeave(dto);
+  }
+
+  @Delete('leaves/:id')
+  @Roles('admin', 'manager')
+  deleteLeave(@Param('id') id: string) {
+    return this.essentials.deleteLeave(id);
+  }
+
+  @Get('holidays')
+  listHolidays(
+    @Query('cursor') cursor?: string,
+    @Query('limit') limit?: string,
+    @Query('search') search?: string,
+    @Query('includeSummary') includeSummary?: string,
+  ) {
+    return this.essentials.listHolidays({
+      cursor,
+      limit: limit ? Number(limit) : undefined,
+      search,
+      includeSummary: includeSummary !== '0' && includeSummary !== 'false',
+    });
+  }
+
+  @Post('holidays')
+  @Roles('admin', 'manager')
+  createHoliday(
+    @Body()
+    dto: {
+      name: string;
+      date: string;
+      locationCode?: string;
+      note?: string;
+    },
+  ) {
+    return this.essentials.createHoliday(dto);
+  }
+
+  @Delete('holidays/:id')
+  @Roles('admin', 'manager')
+  deleteHoliday(@Param('id') id: string) {
+    return this.essentials.deleteHoliday(id);
+  }
+
+  @Get('attendance/shifts')
+  listShifts(
+    @Query('cursor') cursor?: string,
+    @Query('limit') limit?: string,
+    @Query('search') search?: string,
+    @Query('includeSummary') includeSummary?: string,
+  ) {
+    return this.essentials.listShifts({
+      cursor,
+      limit: limit ? Number(limit) : undefined,
+      search,
+      includeSummary: includeSummary !== '0' && includeSummary !== 'false',
+    });
+  }
+
+  @Post('attendance/shifts')
+  @Roles('admin', 'manager')
+  createShift(@Body() dto: { name: string }) {
+    return this.essentials.createShift(dto);
+  }
+
+  @Get('attendance')
+  listAttendances(
+    @Query('cursor') cursor?: string,
+    @Query('limit') limit?: string,
+    @Query('search') search?: string,
+    @Query('date') date?: string,
+    @Query('includeSummary') includeSummary?: string,
+  ) {
+    return this.essentials.listAttendances({
+      cursor,
+      limit: limit ? Number(limit) : undefined,
+      search,
+      date,
+      includeSummary: includeSummary !== '0' && includeSummary !== 'false',
+    });
+  }
+
+  @Get('attendance/by-shift')
+  attendanceByShift(@Query('date') date?: string) {
+    return this.essentials.attendanceByShift(date ?? new Date().toISOString().slice(0, 10));
+  }
+
+  @Post('attendance/clock-in')
+  @Roles('admin', 'manager', 'staff')
+  clockIn(
+    @Body() dto: { employeeName: string; shiftId?: string; date?: string },
+  ) {
+    return this.essentials.clockIn(dto);
+  }
+
+  @Get('sales-targets')
+  listSalesTargets(
+    @Query('cursor') cursor?: string,
+    @Query('limit') limit?: string,
+    @Query('search') search?: string,
+    @Query('includeSummary') includeSummary?: string,
+  ) {
+    return this.essentials.listSalesTargets({
+      cursor,
+      limit: limit ? Number(limit) : undefined,
+      search,
+      includeSummary: includeSummary !== '0' && includeSummary !== 'false',
+    });
+  }
+
+  @Post('sales-targets')
+  @Roles('admin', 'manager')
+  upsertSalesTarget(
+    @Body() dto: { userName: string; userId?: string; note?: string },
+  ) {
+    return this.essentials.upsertSalesTarget(dto);
   }
 }

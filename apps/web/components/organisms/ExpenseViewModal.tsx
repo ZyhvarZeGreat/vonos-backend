@@ -1,20 +1,21 @@
 "use client";
 
 import type { Expense } from "@vonos/types";
-import { Button } from "@/components/atoms/Button";
-import { StatusPill } from "@/components/atoms/StatusPill";
-import { formatCurrency } from "@/lib/utils/formatCurrency";
-import { formatDate } from "@/lib/utils/formatDate";
+import { Hq6Modal } from "@/components/hq6/Hq6Modal";
+import {
+  formatHq6Currency,
+  formatHq6Date,
+  formatHq6PaymentStatus,
+} from "@/lib/utils/hq6Format";
+import { hq6PaymentBadgeClass } from "@/lib/utils/hq6PaymentBadge";
+import { businessLocationName } from "@/lib/utils/locationLabels";
+import { useRouteTenant } from "@/lib/hooks/useRouteTenant";
+import { cn } from "@/lib/utils/cn";
 
-function DetailRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="grid gap-1 sm:grid-cols-[10rem_1fr]">
-      <dt className="text-sm text-muted">{label}</dt>
-      <dd className="text-sm text-foreground">{value}</dd>
-    </div>
-  );
-}
-
+/**
+ * HQ6 Expense details — same document frame as sell/purchase view modals.
+ * Opens instantly from the list row (no fetch).
+ */
 export function ExpenseViewModal({
   expense,
   onClose,
@@ -24,62 +25,221 @@ export function ExpenseViewModal({
   onClose: () => void;
   onEdit?: (expense: Expense) => void;
 }) {
-  if (!expense) return null;
+  const { config, tenantName } = useRouteTenant();
 
   const recurring =
-    expense.isRecurring && expense.recurInterval && expense.recurIntervalType
+    expense?.isRecurring && expense.recurInterval && expense.recurIntervalType
       ? `Every ${expense.recurInterval} ${expense.recurIntervalType}`
-      : "—";
+      : "No";
+
+  const locationLabel = businessLocationName(
+    expense?.locationCode ?? null,
+    config?.businessLocations,
+  );
+
+  const title = expense
+    ? `Expense Details ( Ref: ${expense.refNo ?? expense.id} )`
+    : "Expense Details";
+
+  const total = expense?.totalAmount ?? 0;
+  const tax = expense?.taxAmount ?? 0;
+  const due = expense?.paymentDue ?? 0;
+  const paid = Math.max(0, total - due);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 print:hidden">
-      <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl border border-border bg-card p-6 shadow-lg">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <h3 className="text-lg font-semibold text-foreground">
-              {expense.refNo ?? "Expense"}
-            </h3>
-            <p className="mt-1 text-sm text-muted">
-              {formatDate(expense.expenseDate)}
-            </p>
-          </div>
-          <StatusPill status={expense.paymentStatus} vocabulary="movementStatus" />
-        </div>
-
-        <dl className="mt-6 space-y-3">
-          <DetailRow label="Category" value={expense.categoryName ?? "—"} />
-          <DetailRow label="Sub category" value={expense.subCategory ?? "—"} />
-          <DetailRow label="Location" value={expense.locationCode ?? "—"} />
-          <DetailRow label="Expense for" value={expense.expenseFor ?? "—"} />
-          <DetailRow label="Contact" value={expense.contactName ?? "—"} />
-          <DetailRow
-            label="Total"
-            value={formatCurrency(expense.totalAmount, "NGN")}
-          />
-          <DetailRow
-            label="Tax"
-            value={formatCurrency(expense.taxAmount, "NGN")}
-          />
-          <DetailRow
-            label="Payment due"
-            value={formatCurrency(expense.paymentDue, "NGN")}
-          />
-          <DetailRow label="Recurring" value={recurring} />
-          <DetailRow label="Added by" value={expense.createdByName ?? "—"} />
-          <DetailRow label="Note" value={expense.note ?? "—"} />
-        </dl>
-
-        <div className="mt-6 flex justify-end gap-2">
-          <Button type="button" variant="ghost" onClick={onClose}>
-            Close
-          </Button>
-          {onEdit ? (
-            <Button type="button" onClick={() => onEdit(expense)}>
+    <Hq6Modal
+      open={Boolean(expense)}
+      onClose={onClose}
+      title={title}
+      size="2xl"
+      bodyClassName="hq6-purchase-view-body"
+      footer={
+        <div className="flex flex-wrap justify-end gap-2">
+          {expense && onEdit ? (
+            <button
+              type="button"
+              className="hq6-modal-btn hq6-modal-btn-print"
+              onClick={() => onEdit(expense)}
+            >
               Edit
-            </Button>
+            </button>
           ) : null}
+          <button
+            type="button"
+            className="hq6-modal-btn hq6-modal-btn-close"
+            onClick={onClose}
+          >
+            Close
+          </button>
         </div>
-      </div>
-    </div>
+      }
+    >
+      {expense ? (
+        <div className="hq6-purchase-view hq6-expense-view">
+          <p className="hq6-purchase-view-date">
+            <b>Date:</b> {formatHq6Date(expense.expenseDate)}
+          </p>
+
+          <div className="hq6-purchase-view-meta">
+            <div>
+              <div className="hq6-purchase-view-meta-label">
+                {tenantName || "Business"}:
+              </div>
+              <address className="hq6-purchase-view-address">
+                {locationLabel || expense.locationCode || "—"}
+              </address>
+            </div>
+            <div>
+              <div>
+                <b>Reference No:</b> {expense.refNo ?? "—"}
+              </div>
+              <div>
+                <b>Payment Status:</b>{" "}
+                <span
+                  className={cn(
+                    "hq6-pay-badge",
+                    hq6PaymentBadgeClass(expense.paymentStatus),
+                  )}
+                >
+                  {formatHq6PaymentStatus(expense.paymentStatus) || "Due"}
+                </span>
+              </div>
+              <div>
+                <b>Category:</b> {expense.categoryName ?? "—"}
+              </div>
+              <div>
+                <b>Sub category:</b> {expense.subCategory ?? "—"}
+              </div>
+            </div>
+            <div>
+              <div>
+                <b>Expense for:</b> {expense.expenseFor ?? "—"}
+              </div>
+              <div>
+                <b>Contact:</b> {expense.contactName ?? "—"}
+              </div>
+              <div>
+                <b>Added by:</b> {expense.createdByName ?? "—"}
+              </div>
+              <div>
+                <b>Recurring:</b> {recurring}
+              </div>
+            </div>
+          </div>
+
+          <h4 className="hq6-purchase-view-section-title">Summary:</h4>
+          <div className="hq6-product-view-table-wrap">
+            <table className="hq6-product-view-table">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Description</th>
+                  <th className="text-right">Tax</th>
+                  <th className="text-right">Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>1</td>
+                  <td className="font-semibold">
+                    {[expense.categoryName, expense.subCategory]
+                      .filter(Boolean)
+                      .join(" · ") || "Expense"}
+                  </td>
+                  <td className="text-right tabular-nums">
+                    {formatHq6Currency(tax, "NGN")}
+                  </td>
+                  <td className="text-right tabular-nums">
+                    {formatHq6Currency(total, "NGN")}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div className="hq6-purchase-view-bottom">
+            <div>
+              <h4 className="hq6-purchase-view-section-title">Payment info:</h4>
+              <div className="hq6-product-view-table-wrap">
+                <table className="hq6-product-view-table">
+                  <thead>
+                    <tr>
+                      <th>Date</th>
+                      <th>Status</th>
+                      <th>Amount paid</th>
+                      <th>Amount due</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td>{formatHq6Date(expense.expenseDate)}</td>
+                      <td>
+                        <span
+                          className={cn(
+                            "hq6-pay-badge",
+                            hq6PaymentBadgeClass(expense.paymentStatus),
+                          )}
+                        >
+                          {formatHq6PaymentStatus(expense.paymentStatus) ||
+                            "Due"}
+                        </span>
+                      </td>
+                      <td className="tabular-nums">
+                        {formatHq6Currency(paid, "NGN")}
+                      </td>
+                      <td className="tabular-nums">
+                        {formatHq6Currency(due, "NGN")}
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <table className="hq6-purchase-totals hq6-sale-view-totals">
+              <tbody>
+                <tr>
+                  <th>Total:</th>
+                  <td />
+                  <td className="text-right tabular-nums">
+                    {formatHq6Currency(total, "NGN")}
+                  </td>
+                </tr>
+                <tr>
+                  <th>Tax:(+)</th>
+                  <td />
+                  <td className="text-right tabular-nums">
+                    {formatHq6Currency(tax, "NGN")}
+                  </td>
+                </tr>
+                <tr>
+                  <th>Total paid:</th>
+                  <td />
+                  <td className="text-right tabular-nums">
+                    {formatHq6Currency(paid, "NGN")}
+                  </td>
+                </tr>
+                <tr>
+                  <th>Total remaining:</th>
+                  <td />
+                  <td className="text-right tabular-nums font-semibold">
+                    {formatHq6Currency(due, "NGN")}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div className="hq6-purchase-view-notes hq6-sale-view-notes">
+            <div>
+              <strong>Note:</strong>
+              <p className="hq6-purchase-note-well">
+                {expense.note?.trim() || "--"}
+              </p>
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </Hq6Modal>
   );
 }

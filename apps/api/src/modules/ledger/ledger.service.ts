@@ -31,6 +31,11 @@ import {
   buildTenantLedgerCharts,
 } from './ledgerCharts';
 import { CacheService } from '../../common/cache/cache.service';
+import { tokenizedSearchWhere } from '../../common/utils/listSearch';
+import {
+  listPageFilterKey,
+  withListPageCache,
+} from '../../common/utils/listPageCache';
 
 const LEDGER_CACHE_TTL_S = 900;
 
@@ -64,6 +69,36 @@ export class LedgerService {
     limit?: number;
   }): Promise<LedgerEntry[]> {
     const tenantId = this.tenantDb.requireTenantId();
+    const filterKey = listPageFilterKey({
+      type: filters.type,
+      category: filters.category,
+      from: filters.from,
+      to: filters.to,
+      search: filters.search,
+      cursor: filters.cursor,
+      limit: filters.limit ?? 10,
+    });
+    return withListPageCache(
+      this.cache,
+      tenantId,
+      'ledger',
+      filterKey,
+      () => this.listUncached(filters, tenantId),
+    );
+  }
+
+  private async listUncached(
+    filters: {
+      type?: LedgerEntryType;
+      category?: string;
+      from?: string;
+      to?: string;
+      search?: string;
+      cursor?: string;
+      limit?: number;
+    },
+    tenantId: string,
+  ): Promise<LedgerEntry[]> {
     const pagination = buildCompositeCursorQuery({
       sortField: 'date',
       sortDir: 'desc',
@@ -77,24 +112,12 @@ export class LedgerService {
         deletedAt: null,
         ...(filters.type ? { type: filters.type } : {}),
         ...(filters.category ? { category: filters.category } : {}),
-        ...(filters.search
-          ? {
-              OR: [
-                {
-                  description: {
-                    contains: filters.search,
-                    mode: 'insensitive',
-                  },
-                },
-                {
-                  category: {
-                    contains: filters.search,
-                    mode: 'insensitive',
-                  },
-                },
-              ],
-            }
-          : {}),
+        ...(tokenizedSearchWhere(filters.search, (_token, contains) => [
+          { description: contains },
+          { category: contains },
+          { currency: contains },
+          { linkedRecordType: contains },
+        ]) ?? {}),
         ...ledgerDateFilter(filters.from, filters.to),
         ...(pagination.where ?? {}),
       },

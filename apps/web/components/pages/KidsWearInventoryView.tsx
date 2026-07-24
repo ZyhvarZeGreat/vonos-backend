@@ -75,6 +75,7 @@ export function KidsWearInventoryView() {
     isLoading,
 
     isFetching,
+    isPaging,
     error,
     goToPage,
     canSelectPage,
@@ -146,6 +147,7 @@ export function KidsWearInventoryView() {
           canSelectPage={canSelectPage}
           isLoading={isLoading}
           isFetching={isFetching}
+          isPaging={isPaging}
           error={error ? "Failed to load inventory" : null}
           onRowClick={(row) => goToDetail(row.id)}
         />

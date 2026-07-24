@@ -5,12 +5,21 @@ import type {
   InvoiceListRow,
 } from '@vonos/types';
 import { TenantDbService } from '../../common/prisma/tenant-db.service';
+import { CacheService } from '../../common/cache/cache.service';
 import { buildCompositeCursorQuery } from '../../common/utils/pagination';
+import {
+  listPageFilterKey,
+  withListPageCache,
+} from '../../common/utils/listPageCache';
 import { toIso, toNumber } from '../../common/utils/serializers';
+import { tokenizedSearchWhere } from '../../common/utils/listSearch';
 
 @Injectable()
 export class InvoicesService {
-  constructor(private readonly tenantDb: TenantDbService) {}
+  constructor(
+    private readonly tenantDb: TenantDbService,
+    private readonly cache: CacheService,
+  ) {}
 
   async list(filters: {
     kind?: InvoiceKind;
@@ -31,6 +40,54 @@ export class InvoicesService {
     limit?: number;
   }): Promise<InvoiceListRow[]> {
     const tenantId = this.tenantDb.requireTenantId();
+    const filterKey = listPageFilterKey({
+      kind: filters.kind,
+      paymentStatus: filters.paymentStatus,
+      from: filters.from,
+      to: filters.to,
+      search: filters.search,
+      customerId: filters.customerId,
+      supplierId: filters.supplierId,
+      employeeRecordId: filters.employeeRecordId,
+      saleId: filters.saleId,
+      stockMovementId: filters.stockMovementId,
+      expenseId: filters.expenseId,
+      payrollId: filters.payrollId,
+      payrollGroupId: filters.payrollGroupId,
+      jobId: filters.jobId,
+      cursor: filters.cursor,
+      limit: filters.limit ?? 10,
+    });
+    return withListPageCache(
+      this.cache,
+      tenantId,
+      'invoices',
+      filterKey,
+      () => this.listUncached(filters, tenantId),
+    );
+  }
+
+  private async listUncached(
+    filters: {
+      kind?: InvoiceKind;
+      paymentStatus?: string;
+      from?: string;
+      to?: string;
+      search?: string;
+      customerId?: string;
+      supplierId?: string;
+      employeeRecordId?: string;
+      saleId?: string;
+      stockMovementId?: string;
+      expenseId?: string;
+      payrollId?: string;
+      payrollGroupId?: string;
+      jobId?: string;
+      cursor?: string;
+      limit?: number;
+    },
+    tenantId: string,
+  ): Promise<InvoiceListRow[]> {
     const pagination = buildCompositeCursorQuery({
       sortField: 'documentDate',
       sortDir: 'desc',
@@ -69,24 +126,11 @@ export class InvoicesService {
               },
             }
           : {}),
-        ...(filters.search
-          ? {
-              OR: [
-                {
-                  reference: {
-                    contains: filters.search,
-                    mode: 'insensitive',
-                  },
-                },
-                {
-                  contactName: {
-                    contains: filters.search,
-                    mode: 'insensitive',
-                  },
-                },
-              ],
-            }
-          : {}),
+        // Trigram-backed only (Invoice_reference/contactName_trgm_idx).
+        ...(tokenizedSearchWhere(filters.search, (_token, contains) => [
+          { reference: contains },
+          { contactName: contains },
+        ]) ?? {}),
         ...(pagination.where ?? {}),
       },
       orderBy: [{ documentDate: 'desc' }, { id: 'desc' }],

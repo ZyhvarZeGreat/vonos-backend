@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { ChevronDown } from "lucide-react";
+import { FloatingMenuPanel } from "@/components/molecules/FloatingMenuPanel";
 import { hq6ActionIcon } from "@/lib/utils/hq6ActionIcon";
 import { cn } from "@/lib/utils/cn";
 
@@ -27,13 +28,21 @@ export function Hq6ActionsMenu({
   className?: string;
 }) {
   const [open, setOpen] = useState(false);
-  const rootRef = useRef<HTMLDivElement>(null);
+  const anchorRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
   const menuId = useId();
 
   useEffect(() => {
     if (!open) return;
     const onDoc = (event: MouseEvent) => {
-      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+      const target = event.target as Node;
+      if (
+        anchorRef.current?.contains(target) ||
+        menuRef.current?.contains(target)
+      ) {
+        return;
+      }
+      setOpen(false);
     };
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") setOpen(false);
@@ -47,7 +56,7 @@ export function Hq6ActionsMenu({
   }, [open]);
 
   return (
-    <div ref={rootRef} className={cn("relative inline-block", className)}>
+    <div ref={anchorRef} className={cn("relative inline-block", className)}>
       <button
         type="button"
         className="hq6-actions-pill"
@@ -62,11 +71,17 @@ export function Hq6ActionsMenu({
         {label}
         <ChevronDown className="h-3 w-3" />
       </button>
-      {open ? (
+      <FloatingMenuPanel
+        open={open}
+        anchorRef={anchorRef}
+        menuRef={menuRef}
+        align="start"
+        className="hq6-actions-menu hq6-actions-menu-portal overflow-auto"
+      >
         <ul
           id={menuId}
           role="menu"
-          className="hq6-actions-menu"
+          className="m-0 list-none p-0"
           onClick={(e) => e.stopPropagation()}
         >
           {items.map((item) => {
@@ -100,7 +115,7 @@ export function Hq6ActionsMenu({
             );
           })}
         </ul>
-      ) : null}
+      </FloatingMenuPanel>
     </div>
   );
 }

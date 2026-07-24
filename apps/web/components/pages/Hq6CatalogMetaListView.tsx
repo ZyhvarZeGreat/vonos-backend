@@ -26,6 +26,7 @@ import {
   type CatalogMetaRow,
 } from "@/lib/api/catalogMeta";
 import { useServerListPage } from "@/lib/hooks/useServerListPage";
+import { HQ6_TABLE_PAGE_SIZE } from "@/lib/api/fetchAllPages";
 import { useTenantId } from "@/lib/hooks/useRouteTenant";
 import { hq6CopyForSlug } from "@/lib/registries/hq6PageCopy";
 import { toast } from "@/stores/toastStore";
@@ -128,6 +129,7 @@ export function Hq6CatalogMetaListView({ kind }: { kind: CatalogMetaKind }) {
     setPageSize,
     isLoading,
     isFetching,
+    isPaging,
     error,
     goToPage,
     canSelectPage,
@@ -135,6 +137,7 @@ export function Hq6CatalogMetaListView({ kind }: { kind: CatalogMetaKind }) {
   } = useServerListPage<CatalogMetaRow>({
     queryKey: ["catalog-meta", tenantId, kind, "hq6"],
     enabled: Boolean(tenantId),
+    defaultPageSize: HQ6_TABLE_PAGE_SIZE,
     fetchPage: (cursor, limit, _sort, opts) =>
       getCatalogMetaPage(tenantId!, kind, cursor, limit, { includeSummary: opts?.includeSummary }),
   });
@@ -340,7 +343,7 @@ export function Hq6CatalogMetaListView({ kind }: { kind: CatalogMetaKind }) {
         onPageSelect: goToPage,
         canSelectPage,
         totalItems: totalCount,
-        isBusy: isFetching && !isLoading,
+        isBusy: isPaging,
       }}
       modals={
         <>

@@ -19,10 +19,14 @@ import {
 import { movementToPurchaseLines } from "@/lib/utils/invoiceBuilders";
 import { formatCurrency } from "@/lib/utils/formatCurrency";
 import { formatDate } from "@/lib/utils/formatDate";
+import { stockMovementSeedFromListRow } from "@/lib/utils/listModalSeeds";
 import { invoiceDocumentLayoutProps } from "@/lib/utils/resolveInvoiceLayout";
+import type { StockMovementListRow } from "@vonos/types";
 
 export interface MovementRecordModalProps {
   movementId: string | null;
+  /** List row — paints title/meta immediately while detail loads. */
+  initialRow?: StockMovementListRow | null;
   listSlug?: string;
   onClose: () => void;
   /** When false, hide the "Open full page" link (e.g. reports stay on-page). */
@@ -36,6 +40,7 @@ function partyFromNotes(notes: string | null): string {
 
 export function MovementRecordModal({
   movementId,
+  initialRow = null,
   listSlug = "inbound",
   onClose,
   showFullPageLink = true,
@@ -43,28 +48,48 @@ export function MovementRecordModal({
   const { tenantId, tenantName, tenantCode } = useRouteTenant();
   const [docOpen, setDocOpen] = useState(false);
 
-  const { data: movement, isLoading, error } = useQuery({
+  const seeded =
+    initialRow && movementId && initialRow.id === movementId
+      ? stockMovementSeedFromListRow(
+          initialRow,
+          listSlug === "outbound" ? "outbound" : "inbound",
+        )
+      : null;
+
+  const { data: fetched, isLoading, isFetching, error } = useQuery({
     queryKey: modalKeys.movement(tenantId, movementId),
     queryFn: () => getStockMovement(movementId!),
     enabled: Boolean(tenantId && movementId),
     staleTime: MODAL_RECORD_STALE_MS,
+    placeholderData: (prev) =>
+      prev?.id === movementId ? prev : undefined,
   });
+
+  const movement =
+    fetched?.id === movementId ? fetched : seeded;
+  const linesPending = Boolean(
+    movement && movement.lines.length === 0 && (isLoading || isFetching),
+  );
 
   const { data: invoiceSettings } = useQuery({
     queryKey: modalKeys.invoiceSettings(tenantId),
     queryFn: getInvoiceSettings,
     enabled: Boolean(tenantId && docOpen),
     staleTime: MODAL_REF_STALE_MS,
+    placeholderData: (prev) => prev,
   });
 
   const lineItems = useMemo(
-    () => (movement ? movementToPurchaseLines(movement) : []),
+    () => (movement && movement.lines.length > 0 ? movementToPurchaseLines(movement) : []),
     [movement],
   );
 
   const subtotal = useMemo(
-    () => lineItems.reduce((sum, line) => sum + line.total, 0),
-    [lineItems],
+    () =>
+      lineItems.length > 0
+        ? lineItems.reduce((sum, line) => sum + line.total, 0)
+        : (initialRow?.grandTotal ?? 0),
+    [initialRow?.grandTotal, lineItems],
   );
 
   const total = subtotal;
@@ -72,7 +97,7 @@ export function MovementRecordModal({
 
   const layoutProps = invoiceDocumentLayoutProps(invoiceSettings);
 
-  const purchaseDoc = movement ? (
+  const purchaseDoc = movement && lineItems.length > 0 ? (
     <InvoiceDocument
       kind="purchase"
       tenantName={tenantName}
@@ -113,8 +138,8 @@ export function MovementRecordModal({
             ? `/${tenantCode}/${listSlug}/${movementId}`
             : undefined
         }
-        isLoading={isLoading}
-        error={error ? "Could not load this movement." : null}
+        isLoading={isLoading && !movement}
+        error={error && !movement ? "Could not load this movement." : null}
         footer={
           movement ? (
             <div className="flex flex-wrap items-center justify-end gap-2 px-4 pb-4">
@@ -144,7 +169,11 @@ export function MovementRecordModal({
               </div>
               <div>
                 <dt className="text-xs text-muted">Lines</dt>
-                <dd className="text-sm">{movement.lines.length}</dd>
+                <dd className="text-sm">
+                  {linesPending
+                    ? "Loading…"
+                    : movement.lines.length || initialRow?.itemCount || 0}
+                </dd>
               </div>
               <div>
                 <dt className="text-xs text-muted">Value</dt>
@@ -155,26 +184,30 @@ export function MovementRecordModal({
                 <dd className="text-sm capitalize">{movement.source ?? "standard"}</dd>
               </div>
             </dl>
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border text-left text-xs text-muted">
-                  <th className="pb-2 font-medium">SKU</th>
-                  <th className="pb-2 font-medium">Qty</th>
-                  <th className="pb-2 text-right font-medium">Cost</th>
-                </tr>
-              </thead>
-              <tbody>
-                {movement.lines.map((line, index) => (
-                  <tr key={`${line.sku}-${index}`} className="border-b border-border">
-                    <td className="py-2">{line.name ?? line.sku}</td>
-                    <td className="py-2">{line.quantity}</td>
-                    <td className="py-2 text-right tabular-nums">
-                      {formatCurrency((line.unitCost ?? 0) * line.quantity, currency)}
-                    </td>
+            {linesPending ? (
+              <p className="text-sm text-muted">Loading line items…</p>
+            ) : (
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border text-left text-xs text-muted">
+                    <th className="pb-2 font-medium">SKU</th>
+                    <th className="pb-2 font-medium">Qty</th>
+                    <th className="pb-2 text-right font-medium">Cost</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {movement.lines.map((line, index) => (
+                    <tr key={`${line.sku}-${index}`} className="border-b border-border">
+                      <td className="py-2">{line.name ?? line.sku}</td>
+                      <td className="py-2">{line.quantity}</td>
+                      <td className="py-2 text-right tabular-nums">
+                        {formatCurrency((line.unitCost ?? 0) * line.quantity, currency)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
           </div>
         ) : null}
       </RecordViewModal>

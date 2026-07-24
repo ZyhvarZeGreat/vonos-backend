@@ -1,15 +1,16 @@
 "use client";
 
-import { useMemo, useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useRouter, useSearchParams } from "next/navigation";
 import type { User } from "@vonos/types";
 import { EmptyState } from "@/components/atoms/EmptyState";
 import { Hq6ConfirmModal } from "@/components/hq6/Hq6ConfirmModal";
 import { Hq6PageFrame } from "@/components/hq6/Hq6Chrome";
-import { getUsers, type UserListRow } from "@/lib/api/users";
+import { getUser } from "@/lib/api/users";
 import { useRecordNavigation } from "@/lib/hooks/useRecordNavigation";
 import { useTenantId } from "@/lib/hooks/useRouteTenant";
+import { DETAIL_RECORD_STALE_MS } from "@/lib/query/prefetchListDetails";
 import { formatDate } from "@/lib/utils/formatDate";
 import { DetailPageSkeleton } from "@/components/organisms/skeletons";
 import { cn } from "@/lib/utils/cn";
@@ -57,20 +58,20 @@ export function Hq6UserDetailView({
     }
   }, [searchParams]);
 
-  const { data: users = [], isLoading } = useQuery({
-    queryKey: ["users", tenantId, "detail-lookup"],
-    queryFn: () => getUsers(tenantId!),
-    enabled: Boolean(tenantId),
+  const {
+    data: user,
+    isLoading,
+    isError,
+  } = useQuery({
+    queryKey: ["user", tenantId, recordId],
+    queryFn: () => getUser(recordId, tenantId),
+    enabled: Boolean(tenantId && recordId),
+    staleTime: DETAIL_RECORD_STALE_MS,
   });
-
-  const user = useMemo(
-    () => users.find((row: UserListRow) => row.id === recordId) ?? null,
-    [users, recordId],
-  );
 
   if (!tenantId || isLoading) return <DetailPageSkeleton />;
 
-  if (!user) {
+  if (isError || !user) {
     return (
       <EmptyState
         title="User not found"

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import type { ReportRowAction, ReportsTableRow } from "@vonos/types";
 import { CustomerRecordModal } from "@/components/organisms/CustomerRecordModal";
 import { ExpenseRecordModal } from "@/components/organisms/ExpenseRecordModal";
@@ -11,6 +12,16 @@ import { ReportRowDetailModal } from "@/components/organisms/ReportRowDetailModa
 import { SaleRecordModal } from "@/components/organisms/SaleRecordModal";
 import { Hq6PurchaseViewModal } from "@/components/hq6/Hq6PurchaseViewModal";
 import { useIsVaHq6 } from "@/lib/hooks/useIsVaHq6";
+import { useTenantId } from "@/lib/hooks/useRouteTenant";
+import {
+  prefetchCustomerListModals,
+  prefetchExpenseListModals,
+  prefetchItemListModals,
+  prefetchJobListModals,
+  prefetchMovementListModals,
+  prefetchPurchaseListModals,
+  prefetchSaleListModals,
+} from "@/lib/query/prefetchListModals";
 import { reportRowRecordId } from "@/lib/utils/recordDetailPath";
 
 type ReportRecordRow = ReportsTableRow & {
@@ -21,7 +32,12 @@ type ReportRecordRow = ReportsTableRow & {
   recordType?: string;
 };
 
-const PURCHASE_TYPES = new Set(["purchase", "movement", "stockMovement"]);
+const PURCHASE_TYPES = new Set([
+  "purchase",
+  "movement",
+  "stockMovement",
+  "stock_movement",
+]);
 
 /**
  * Opens report row details as modals — never navigates away to list/detail pages.
@@ -33,6 +49,8 @@ export function useReportRecordModals(options?: {
   onBeforeOpen?: () => void;
 }) {
   const isHq6 = useIsVaHq6();
+  const tenantId = useTenantId();
+  const queryClient = useQueryClient();
   const [saleModalId, setSaleModalId] = useState<string | null>(null);
   const [customerModalId, setCustomerModalId] = useState<string | null>(null);
   const [itemModalId, setItemModalId] = useState<string | null>(null);
@@ -52,6 +70,7 @@ export function useReportRecordModals(options?: {
           : recordId;
       if (!itemId) return;
       options?.onBeforeOpen?.();
+      if (tenantId) prefetchItemListModals(queryClient, tenantId, itemId);
       setItemModalId(itemId);
       return;
     }
@@ -59,6 +78,7 @@ export function useReportRecordModals(options?: {
     if (recordType === "sale") {
       if (!recordId) return;
       options?.onBeforeOpen?.();
+      if (tenantId) prefetchSaleListModals(queryClient, tenantId, recordId);
       setSaleModalId(recordId);
       return;
     }
@@ -66,6 +86,7 @@ export function useReportRecordModals(options?: {
     if (recordType === "customer") {
       if (!recordId) return;
       options?.onBeforeOpen?.();
+      if (tenantId) prefetchCustomerListModals(queryClient, tenantId, recordId);
       setCustomerModalId(recordId);
       return;
     }
@@ -73,6 +94,13 @@ export function useReportRecordModals(options?: {
     if (PURCHASE_TYPES.has(recordType)) {
       if (!recordId) return;
       options?.onBeforeOpen?.();
+      if (tenantId) {
+        if (isHq6) {
+          prefetchPurchaseListModals(queryClient, tenantId, recordId);
+        } else {
+          prefetchMovementListModals(queryClient, tenantId, recordId);
+        }
+      }
       setMovementModalId(recordId);
       return;
     }
@@ -80,6 +108,7 @@ export function useReportRecordModals(options?: {
     if (recordType === "job") {
       if (!recordId) return;
       options?.onBeforeOpen?.();
+      if (tenantId) prefetchJobListModals(queryClient, tenantId, recordId);
       setJobModalId(recordId);
       return;
     }
@@ -87,6 +116,7 @@ export function useReportRecordModals(options?: {
     if (recordType === "expense") {
       if (!recordId) return;
       options?.onBeforeOpen?.();
+      if (tenantId) prefetchExpenseListModals(queryClient, tenantId, recordId);
       setExpenseModalId(recordId);
       return;
     }
@@ -97,6 +127,7 @@ export function useReportRecordModals(options?: {
         row.saleId != null && row.saleId !== "" ? String(row.saleId) : "";
       options?.onBeforeOpen?.();
       if (saleId) {
+        if (tenantId) prefetchSaleListModals(queryClient, tenantId, saleId);
         setSaleModalId(saleId);
         return;
       }
@@ -155,6 +186,7 @@ export function useReportRecordModals(options?: {
         const saleId =
           action.payload.saleId != null ? String(action.payload.saleId) : "";
         if (saleId) {
+          if (tenantId) prefetchSaleListModals(queryClient, tenantId, saleId);
           setSaleModalId(saleId);
           return;
         }

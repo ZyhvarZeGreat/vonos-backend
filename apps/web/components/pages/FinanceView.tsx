@@ -28,20 +28,26 @@ import {
 } from "@/lib/api/ledger";
 import { useRouteTenant } from "@/lib/hooks/useRouteTenant";
 import { useIsVaHq6 } from "@/lib/hooks/useIsVaHq6";
-import { isTenantCode, type TenantCode } from "@/lib/registries/tenants";
+import { useReportRecordModals } from "@/lib/hooks/useReportRecordModals";
+import {
+  getVagViewUnit,
+  isVagViewUnitId,
+  VAG_VIEW_UNITS,
+  vagViewUnitIdForTenantCode,
+} from "@/lib/registries/vagViewUnits";
 import { formatCurrency, formatCurrencyCompact } from "@/lib/utils/formatCurrency";
 import {
   ledgerChartSubtitle,
 } from "@/lib/utils/ledgerCharts";
 import { dateRangePresetToApiBounds } from "@/lib/utils/dateRange";
 import { DateRangeDropdown } from "@/components/molecules/DateRangeDropdown";
-import { recordDetailPath } from "@/lib/utils/recordDetailPath";
 import { useUiStore, type DateRangePreset } from "@/stores/uiStore";
 import { useAdminEntityStore } from "@/stores/adminEntityStore";
 import type { CsvExportPayload } from "@/lib/utils/exportCsv";
 import { Hq6PageFrame } from "@/components/hq6/Hq6Chrome";
 import { hq6CopyForSlug } from "@/lib/registries/hq6PageCopy";
 import { AdminEntityFinanceSheet } from "@/components/pages/AdminEntityFinanceSheet";
+import { isTenantCode } from "@/lib/registries/tenants";
 
 import { ROUTE_PREFETCH_STALE_MS } from "@/lib/prefetch/routePrefetchRegistry";
 
@@ -184,14 +190,19 @@ export function FinanceView({ groupMode = false }: FinanceViewProps) {
     adminFallback: null,
   });
   const viewingCode = useAdminEntityStore((s) => s.viewingCode);
+  const setViewingCode = useAdminEntityStore((s) => s.setViewingCode);
   const [activeTab, setActiveTab] = useState("overview");
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("");
+  const {
+    openReportRecord,
+    modals: recordModals,
+  } = useReportRecordModals();
 
   const bounds = useMemo(() => dateRangePresetToApiBounds(dateRange), [dateRange]);
 
-  const viewingEntity = Boolean(groupMode && viewingCode && isTenantCode(viewingCode));
+  const viewingEntity = Boolean(groupMode && viewingCode);
 
   const summaryQuery = useQuery({
     queryKey: ["ledgerSummary", groupMode ? "group" : tenantId, bounds.from, bounds.to],
@@ -248,11 +259,41 @@ export function FinanceView({ groupMode = false }: FinanceViewProps) {
   });
 
   const entityRows = useMemo(
-    (): Array<LedgerEntitySummary & { id: string }> =>
-      (entitySummaryQuery.data ?? []).map((row) => ({
-        ...row,
-        id: row.tenantId,
-      })),
+    (): Array<LedgerEntitySummary & { id: string }> => {
+      const raw = entitySummaryQuery.data ?? [];
+      const byUnit = new Map<
+        string,
+        LedgerEntitySummary & { id: string }
+      >();
+
+      for (const row of raw) {
+        const unitId = vagViewUnitIdForTenantCode(row.tenantCode);
+        if (!unitId) continue;
+        const unit = getVagViewUnit(unitId);
+        const existing = byUnit.get(unitId);
+        if (!existing) {
+          byUnit.set(unitId, {
+            ...row,
+            id: unitId,
+            tenantCode: unit.badge,
+            tenantName: unit.name,
+            tenantId: row.tenantId,
+          });
+        } else {
+          byUnit.set(unitId, {
+            ...existing,
+            revenue: existing.revenue + row.revenue,
+            costs: existing.costs + row.costs,
+            net: existing.net + row.net,
+            outstanding: existing.outstanding + row.outstanding,
+          });
+        }
+      }
+
+      return VAG_VIEW_UNITS.map((u) => byUnit.get(u.id)).filter(
+        (row): row is LedgerEntitySummary & { id: string } => Boolean(row),
+      );
+    },
     [entitySummaryQuery.data],
   );
 
@@ -368,16 +409,32 @@ export function FinanceView({ groupMode = false }: FinanceViewProps) {
   };
 
   const handleLedgerRowClick = (row: LedgerEntry | LedgerListRow) => {
+    if (!row.linkedRecordType || !row.linkedRecordId) return;
     const code =
       "tenantCode" in row && row.tenantCode ? row.tenantCode : tenantCode;
-    if (!code) return;
-    const path = recordDetailPath(code, row.linkedRecordType, row.linkedRecordId);
-    if (path) router.push(path);
+    if (code && isTenantCode(code)) {
+      const unitId = vagViewUnitIdForTenantCode(code);
+      if (unitId) setViewingCode(unitId);
+    }
+    const recordType = row.linkedRecordType;
+    const recordId = row.linkedRecordId;
+    openReportRecord({
+      id: recordId,
+      recordType,
+      ...(recordType === "sale" ? { saleId: recordId } : {}),
+      ...(recordType === "item" ? { itemId: recordId } : {}),
+      ...(recordType === "customer" ? { customerId: recordId } : {}),
+    });
   };
 
   const handleEntityFinanceClick = (row: LedgerEntitySummary & { id: string }) => {
     if (groupMode) {
-      useAdminEntityStore.getState().setViewingCode(row.tenantCode as TenantCode);
+      const unitId = isVagViewUnitId(row.id)
+        ? row.id
+        : vagViewUnitIdForTenantCode(row.tenantCode);
+      if (unitId) {
+        useAdminEntityStore.getState().setViewingCode(unitId);
+      }
       return;
     }
     router.push(`/${row.tenantCode}/finance`);
@@ -404,16 +461,30 @@ export function FinanceView({ groupMode = false }: FinanceViewProps) {
     },
   ];
 
-  if (groupMode && viewingCode && isTenantCode(viewingCode)) {
-    return <AdminEntityFinanceSheet tenantCode={viewingCode} />;
+  if (groupMode && viewingCode && isVagViewUnitId(viewingCode)) {
+    return <AdminEntityFinanceSheet unitId={viewingCode} />;
   }
 
   const body = (
     <div className="space-y-6">
       {groupMode ? (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-100">
-          <p className="font-medium">Group roll-up</p>
-          <p className="mt-1 text-amber-900/90 dark:text-amber-100/90">
+        <div
+          className={
+            isHq6
+              ? "hq6-card px-4 py-3 text-sm"
+              : "rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-100"
+          }
+        >
+          <p className={isHq6 ? "font-semibold text-[#111827]" : "font-medium"}>
+            Group roll-up
+          </p>
+          <p
+            className={
+              isHq6
+                ? "mt-1 text-[#6b7280]"
+                : "mt-1 text-amber-900/90 dark:text-amber-100/90"
+            }
+          >
             Ledger totals and entries are summed across entity books. Rows tagged
             as internal transfers are excluded; stock requisitions do not post
             money, so fulfilment does not double-count group P&L.
@@ -462,17 +533,28 @@ export function FinanceView({ groupMode = false }: FinanceViewProps) {
           <KpiRow
             cards={financeKpiCards}
             isLoading={summaryQuery.isLoading && !summary}
+            loadingDisplay={isHq6 ? "zero-spinner" : "skeleton"}
             values={{
               revenue: summary
                 ? formatCurrencyCompact(summary.revenue, summary.currency)
-                : "—",
+                : isHq6
+                  ? "0"
+                  : "—",
               costs: summary
                 ? formatCurrencyCompact(summary.costs, summary.currency)
-                : "—",
-              net: summary ? formatCurrencyCompact(summary.net, summary.currency) : "—",
+                : isHq6
+                  ? "0"
+                  : "—",
+              net: summary
+                ? formatCurrencyCompact(summary.net, summary.currency)
+                : isHq6
+                  ? "0"
+                  : "—",
               outstanding: summary
                 ? formatCurrencyCompact(summary.outstanding, summary.currency)
-                : "—",
+                : isHq6
+                  ? "0"
+                  : "—",
             }}
           />
           <ChartPanel
@@ -498,7 +580,7 @@ export function FinanceView({ groupMode = false }: FinanceViewProps) {
                 </h3>
                 <p className="text-sm text-muted">
                   Revenue, costs, and net for each entity. Click a row to view
-                  that department&apos;s books here (use the viewing switcher
+                  that department&apos;s books here (use the top-bar switcher
                   to return to the group roll-up).
                 </p>
               </div>
@@ -687,9 +769,15 @@ export function FinanceView({ groupMode = false }: FinanceViewProps) {
     return (
       <Hq6PageFrame title={financeCopy.title} subtitle={financeCopy.subtitle}>
         {body}
+        {recordModals}
       </Hq6PageFrame>
     );
   }
 
-  return body;
+  return (
+    <>
+      {body}
+      {recordModals}
+    </>
+  );
 }

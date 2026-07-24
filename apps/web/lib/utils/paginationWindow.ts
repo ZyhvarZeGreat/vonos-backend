@@ -7,12 +7,23 @@ export function visiblePageNumbers(
     maxButtons?: number;
   } = {},
 ): number[] {
-  const maxButtons = options.maxButtons ?? 5;
+  const maxButtons = Math.max(1, options.maxButtons ?? 5);
   const current = pageIndex + 1;
 
   let total = options.totalPages;
   if (total == null) {
-    total = current + (options.hasMore ? 1 : 0);
+    // Cursor lists without a count: still show a full button window (default 5)
+    // so users can jump ahead; disabled/busy state is handled by the bar.
+    if (options.hasMore) {
+      let start = Math.max(1, current - Math.floor(maxButtons / 2));
+      let end = start + maxButtons - 1;
+      if (current > end) {
+        end = current;
+        start = Math.max(1, end - maxButtons + 1);
+      }
+      return Array.from({ length: end - start + 1 }, (_, index) => start + index);
+    }
+    total = current;
   }
 
   if (total <= 0) return [1];

@@ -7,6 +7,7 @@ import {
   isTenantCode,
   type TenantCode,
 } from "@/lib/registries/tenants";
+import { getVagViewUnit, isVagViewUnitId } from "@/lib/registries/vagViewUnits";
 import {
   ADMIN_DEFAULT_ENTITY,
   useAdminEntityStore,
@@ -17,6 +18,7 @@ import { useTenantStore } from "@/stores/tenantStore";
  * Route tenant = source of truth from the URL (`/VW/...`, `/VISP/...`).
  * On `/admin/*`, falls back to the admin viewing entity (or VA when a
  * concrete tenant is required and Group is selected).
+ * Combined SP → primary VISP for single-tenant modules.
  */
 export function useRouteTenant(options?: { adminFallback?: TenantCode | null }) {
   const params = useParams<{ tenant: string }>();
@@ -43,15 +45,25 @@ export function useRouteTenant(options?: { adminFallback?: TenantCode | null }) 
       options && "adminFallback" in options
         ? options.adminFallback
         : ADMIN_DEFAULT_ENTITY;
-    const code = adminViewing ?? fallback ?? null;
+    const unitOrTenant = adminViewing ?? fallback ?? null;
+    const code =
+      unitOrTenant && isVagViewUnitId(unitOrTenant)
+        ? getVagViewUnit(unitOrTenant).enterCode
+        : unitOrTenant && isTenantCode(unitOrTenant)
+          ? unitOrTenant
+          : null;
     if (code && isTenantCode(code)) {
       const registry = getTenantByCode(code);
+      const unitName =
+        adminViewing && isVagViewUnitId(adminViewing)
+          ? getVagViewUnit(adminViewing).name
+          : null;
       return {
         tenantCode: code,
         tenantId: registry?.tenantId ?? null,
         registry,
         config: null as TenantConfig | null,
-        tenantName: registry?.name ?? code,
+        tenantName: unitName ?? registry?.name ?? code,
       };
     }
   }

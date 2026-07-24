@@ -71,14 +71,14 @@ export function NavCollapsibleGroup({
   }
 
   return (
-    <div>
+    <div className="sidebar-nav-group">
       <button
         type="button"
         aria-expanded={open}
         aria-controls={panelId}
         onClick={() => setOpen((value) => !value)}
         className={cn(
-          "flex w-full items-center gap-3 rounded-md px-2 py-1.5 text-left transition-[background-color,color] duration-75 ease-out",
+          "flex w-full items-center gap-3 rounded-md px-2 py-1.5 text-left transition-[background-color,color,transform] duration-150 ease-out active:scale-[0.99]",
           childActive
             ? "font-medium text-[var(--color-text-nav-active)]"
             : "text-[var(--color-text-nav)] hover:bg-[var(--color-surface-nav-hover)] hover:text-[var(--color-text-nav-active)]",
@@ -89,38 +89,56 @@ export function NavCollapsibleGroup({
         <span className="flex-1">{label}</span>
         <ChevronDown
           className={cn(
-            "h-4 w-4 shrink-0 text-[var(--color-text-nav)] transition-transform duration-75 ease-out",
+            "h-4 w-4 shrink-0 text-[var(--color-text-nav)] transition-transform duration-200 ease-[var(--motion-ease-out)]",
             open ? "rotate-0" : "-rotate-90",
           )}
         />
       </button>
-      {open ? (
-        <nav
-          id={panelId}
-          className="sidebar-nav-expand ml-3 flex flex-col gap-0.5 border-l border-[var(--color-border)] pl-2"
-        >
-          {items.map((item) => {
-            const Icon = iconMap[item.icon] ?? GroupIcon;
-            return (
-              <NavItem
-                key={item.route}
-                label={item.label}
-                icon={Icon ?? (() => null)}
-                href={item.route}
-                active={
-                  isNavActive && activeRoute
-                    ? isNavActive(activeRoute, item.route)
-                    : activeRoute === item.route
-                }
-                collapsed={false}
-                onPrefetch={
-                  onItemPrefetch ? () => onItemPrefetch(item.route) : undefined
-                }
-              />
-            );
-          })}
-        </nav>
-      ) : null}
+      <div
+        id={panelId}
+        className={cn(
+          "grid transition-[grid-template-rows] duration-200 ease-[var(--motion-ease-out)]",
+          open ? "grid-rows-[1fr]" : "grid-rows-[0fr]",
+        )}
+        aria-hidden={!open}
+      >
+        <div className="min-h-0 overflow-hidden">
+          <nav
+            className={cn(
+              "sidebar-nav-expand ml-3 flex flex-col gap-0.5 border-l border-[var(--color-border)] pl-2",
+              open && "sidebar-nav-expand-open",
+            )}
+          >
+            {items.map((item, index) => {
+              const Icon = iconMap[item.icon] ?? GroupIcon;
+              return (
+                <div
+                  key={item.route}
+                  className="sidebar-nav-link-wrap"
+                  style={{ ["--nav-i" as string]: index }}
+                >
+                  <NavItem
+                    label={item.label}
+                    icon={Icon ?? (() => null)}
+                    href={item.route}
+                    active={
+                      isNavActive && activeRoute
+                        ? isNavActive(activeRoute, item.route)
+                        : activeRoute === item.route
+                    }
+                    collapsed={false}
+                    onPrefetch={
+                      onItemPrefetch
+                        ? () => onItemPrefetch(item.route)
+                        : undefined
+                    }
+                  />
+                </div>
+              );
+            })}
+          </nav>
+        </div>
+      </div>
     </div>
   );
 }

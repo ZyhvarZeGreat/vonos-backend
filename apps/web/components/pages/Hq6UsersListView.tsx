@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { ChevronDown, CloudDownload, Filter, Plus } from "lucide-react";
 import type { User } from "@vonos/types";
@@ -10,12 +11,15 @@ import { InviteUserModal } from "@/components/organisms/InviteUserModal";
 import { Hq6ActionsMenu } from "@/components/hq6/Hq6ActionsMenu";
 import { Hq6ColumnVisibilityModal } from "@/components/hq6/Hq6ColumnVisibilityModal";
 import { Hq6ListToolbar } from "@/components/hq6/Hq6ListToolbar";
+import { hq6CopyForSlug } from "@/lib/registries/hq6PageCopy";
 import { Hq6PrintModal } from "@/components/hq6/Hq6PrintModal";
 import { getUsersPage, type UserListRow } from "@/lib/api/users";
 import { useServerListPage } from "@/lib/hooks/useServerListPage";
+import { HQ6_TABLE_PAGE_SIZE } from "@/lib/api/fetchAllPages";
 import { useListPageFilters } from "@/lib/hooks/useListPageFilters";
 import { useRecordNavigation } from "@/lib/hooks/useRecordNavigation";
 import { useTenantId } from "@/lib/hooks/useRouteTenant";
+import { prefetchUserDetail } from "@/lib/query/prefetchListDetails";
 import { hasPermission } from "@/lib/utils/permissions";
 import { useAuthStore } from "@/stores/authStore";
 import { formatDate } from "@/lib/utils/formatDate";
@@ -43,7 +47,8 @@ function statusBadgeClass(status: User["status"]): string {
 export function Hq6UsersListView() {
   const tenantId = useTenantId();
   const router = useRouter();
-  const { detailPath } = useRecordNavigation("users");
+  const queryClient = useQueryClient();
+  const { detailPath, prefetchDetail } = useRecordNavigation("users");
   const authRole = useAuthStore((state) => state.role);
   const { search, setSearch } = useListPageFilters();
   const [filtersOpen, setFiltersOpen] = useState(true);
@@ -69,17 +74,19 @@ export function Hq6UsersListView() {
     setPageSize,
     isLoading,
     isFetching,
+    isPaging,
     error,
     goToPage,
     canSelectPage,
   } = useServerListPage<UserListRow>({
     queryKey: ["users", tenantId, "hq6"],
     enabled: Boolean(tenantId),
+    defaultPageSize: HQ6_TABLE_PAGE_SIZE,
     search,
     filters: { role: roleFilter || undefined, status: statusFilter || undefined },
     fetchPage: (cursor, limit, _sort, opts) =>
       getUsersPage(tenantId!, cursor, limit, {
-        search: (localSearch || search).trim() || undefined,
+        search: (search).trim() || undefined,
         role: roleFilter || undefined,
         status: statusFilter || undefined,
         includeSummary: opts?.includeSummary,
@@ -87,6 +94,11 @@ export function Hq6UsersListView() {
   });
 
   const commitSearch = () => setSearch(localSearch);
+
+  const warmUser = (row: UserListRow) => {
+    prefetchDetail(row.id);
+    if (tenantId) prefetchUserDetail(queryClient, tenantId, row.id, row);
+  };
 
   const columns: ColumnConfig<UserListRow>[] = useMemo(
     () => [
@@ -100,18 +112,27 @@ export function Hq6UsersListView() {
               {
                 id: "view",
                 label: "View",
-                onClick: () => router.push(detailPath(row.id)),
+                onClick: () => {
+                  warmUser(row);
+                  router.push(detailPath(row.id));
+                },
               },
               {
                 id: "edit",
                 label: "Edit",
-                onClick: () => router.push(`${detailPath(row.id)}/edit`),
+                onClick: () => {
+                  warmUser(row);
+                  router.push(`${detailPath(row.id)}/edit`);
+                },
               },
               {
                 id: "delete",
                 label: "Delete",
                 danger: true,
-                onClick: () => router.push(`${detailPath(row.id)}?action=delete`),
+                onClick: () => {
+                  warmUser(row);
+                  router.push(`${detailPath(row.id)}?action=delete`);
+                },
               },
             ]}
           />
@@ -155,7 +176,7 @@ export function Hq6UsersListView() {
           row.lastLoginAt ? formatDate(row.lastLoginAt) : "Never",
       },
     ],
-    [detailPath, router],
+    [detailPath, prefetchDetail, queryClient, router, tenantId],
   );
 
   const columnOptions = useMemo(
@@ -260,6 +281,7 @@ export function Hq6UsersListView() {
           searchValue={localSearch}
           onSearchChange={setLocalSearch}
           onSearchCommit={commitSearch}
+          searchPlaceholder={hq6CopyForSlug("users").searchPlaceholder}
           onPrint={() => setPrintOpen(true)}
           onColumnVisibility={() => setColumnsOpen(true)}
         />
@@ -275,6 +297,11 @@ export function Hq6UsersListView() {
             isFetching={isFetching && !isLoading}
             error={error ? "Could not load users." : null}
             emptyState={{ message: "No users found." }}
+            onRowPointerEnter={warmUser}
+            onRowClick={(row) => {
+              warmUser(row);
+              router.push(detailPath(row.id));
+            }}
           />
         </div>
 

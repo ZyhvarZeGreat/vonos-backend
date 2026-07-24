@@ -32,6 +32,7 @@ export function AppointmentsCalendarView() {
     setPageSize,
     isLoading,
     isFetching,
+    isPaging,
     error,
     goToPage,
     canSelectPage,

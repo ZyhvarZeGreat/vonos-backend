@@ -8,6 +8,8 @@ export interface TableRowProps {
   cellClassNames?: Array<string | undefined>;
   density?: TableDensity;
   onClick?: () => void;
+  /** Prefetch / warm detail when the pointer enters the row. */
+  onPointerEnter?: () => void;
   selected?: boolean;
   className?: string;
 }
@@ -17,6 +19,7 @@ export function TableRow({
   cellClassNames,
   density = "regular",
   onClick,
+  onPointerEnter,
   selected = false,
   className,
 }: TableRowProps) {
@@ -24,6 +27,7 @@ export function TableRow({
   return (
     <tr
       onClick={onClick}
+      onPointerEnter={onPointerEnter}
       className={cn(
         "border-b border-border transition-colors",
         onClick && "cursor-pointer hover:bg-[var(--color-surface-muted)]",

@@ -10,7 +10,7 @@ export const VAG_NAV_SECTIONS: NavSection[] = [
         route: "/admin/overview",
         pageType: "dashboard",
       },
-      { label: "HR", icon: "users", route: "/admin/users", pageType: "form" },
+      { label: "HRM", icon: "briefcase", route: "/admin/hrm", pageType: "dashboard" },
       { label: "Stock", icon: "package", route: "/admin/stock", pageType: "list" },
       { label: "Finance", icon: "wallet", route: "/admin/finance", pageType: "dashboard" },
       { label: "Reports", icon: "pie-chart", route: "/admin/reports", pageType: "dashboard" },

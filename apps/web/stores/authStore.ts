@@ -50,6 +50,7 @@ export const useAuthStore = create<AuthState>()(
             role: null,
             token: null,
             isAuthenticated: false,
+            hydrated: true,
           });
           return;
         }
@@ -61,6 +62,7 @@ export const useAuthStore = create<AuthState>()(
           role,
           token,
           isAuthenticated: true,
+          hydrated: true,
         });
       },
       clearAuth: () =>

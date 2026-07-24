@@ -5,12 +5,21 @@ import type {
   UpdateDiscountRequest,
 } from '@vonos/types';
 import { TenantDbService } from '../../common/prisma/tenant-db.service';
+import { CacheService } from '../../common/cache/cache.service';
+import { invalidateTenantDashboardCache } from '../../common/cache/cacheInvalidation';
 import { buildCompositeCursorQuery } from '../../common/utils/pagination';
+import {
+  listPageFilterKey,
+  withListPageCache,
+} from '../../common/utils/listPageCache';
 import { toIso, toNumber } from '../../common/utils/serializers';
 
 @Injectable()
 export class DiscountsService {
-  constructor(private readonly tenantDb: TenantDbService) {}
+  constructor(
+    private readonly tenantDb: TenantDbService,
+    private readonly cache: CacheService,
+  ) {}
 
   private mapRow(row: {
     id: string;
@@ -43,6 +52,29 @@ export class DiscountsService {
     limit?: number;
     search?: string;
   } = {}): Promise<Discount[]> {
+    const tenantId = this.tenantDb.requireTenantId();
+    const filterKey = listPageFilterKey({
+      search: filters.search,
+      cursor: filters.cursor,
+      limit: filters.limit ?? 10,
+    });
+    return withListPageCache(
+      this.cache,
+      tenantId,
+      'discounts',
+      filterKey,
+      () => this.listUncached(filters, tenantId),
+    );
+  }
+
+  private async listUncached(
+    filters: {
+      cursor?: string;
+      limit?: number;
+      search?: string;
+    },
+    tenantId: string,
+  ): Promise<Discount[]> {
     const pagination = buildCompositeCursorQuery({
       sortField: 'name',
       sortDir: 'asc',
@@ -52,7 +84,7 @@ export class DiscountsService {
     });
     const rows = await this.tenantDb.db.discount.findMany({
       where: {
-        tenantId: this.tenantDb.requireTenantId(),
+        tenantId,
         deletedAt: null,
         ...(filters.search
           ? { name: { contains: filters.search, mode: 'insensitive' } }
@@ -78,6 +110,7 @@ export class DiscountsService {
         endsAt: dto.endsAt ? new Date(dto.endsAt) : null,
       },
     });
+    void invalidateTenantDashboardCache(this.cache, tenantId);
     return this.mapRow(row);
   }
 
@@ -105,6 +138,7 @@ export class DiscountsService {
           : {}),
       },
     });
+    void invalidateTenantDashboardCache(this.cache, tenantId);
     return this.mapRow(row);
   }
 
@@ -118,5 +152,6 @@ export class DiscountsService {
       where: { id },
       data: { deletedAt: new Date() },
     });
+    void invalidateTenantDashboardCache(this.cache, tenantId);
   }
 }

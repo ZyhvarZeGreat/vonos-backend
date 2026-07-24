@@ -50,11 +50,21 @@ export function RequisitionRecordModal({
     queryKey: modalKeys.requisition(tenantId, requisitionId),
     queryFn: () => getRequisition(tenantId!, requisitionId!),
     enabled: Boolean(tenantId && requisitionId),
-    initialData: initialRecord ?? undefined,
+    initialData:
+      initialRecord && requisitionId && initialRecord.id === requisitionId
+        ? initialRecord
+        : undefined,
     staleTime: MODAL_RECORD_STALE_MS,
+    placeholderData: (prev) =>
+      prev?.id === requisitionId ? prev : undefined,
   });
 
-  const requisition = fetched ?? initialRecord;
+  const requisition =
+    fetched?.id === requisitionId
+      ? fetched
+      : initialRecord?.id === requisitionId
+        ? initialRecord
+        : null;
 
   const invalidate = () => {
     void queryClient.invalidateQueries({ queryKey: ["requisitions", tenantId] });

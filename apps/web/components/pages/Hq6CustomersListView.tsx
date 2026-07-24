@@ -28,10 +28,13 @@ import {
 import { getCustomerGroups } from "@/lib/api/customerGroups";
 import { getUsers } from "@/lib/api/users";
 import { useServerListPage } from "@/lib/hooks/useServerListPage";
+import { HQ6_TABLE_PAGE_SIZE } from "@/lib/api/fetchAllPages";
 import { useListPageFilters } from "@/lib/hooks/useListPageFilters";
 import { useRecordNavigation } from "@/lib/hooks/useRecordNavigation";
 import { useTenantId } from "@/lib/hooks/useRouteTenant";
 import { HQ6_CUSTOMER_FILTERS } from "@/lib/registries/hq6Filters";
+import { prefetchContactModalRefs } from "@/lib/query/prefetchListModals";
+import { prefetchCustomerDetail } from "@/lib/query/prefetchListDetails";
 import {
   HQ6_CUSTOMER_COLUMNS,
   hq6DefaultColumnKeys,
@@ -49,7 +52,7 @@ import { customerListCursor } from "@/lib/utils/pagination";
 export function Hq6CustomersListView() {
   const router = useRouter();
   const queryClient = useQueryClient();
-  const { goToDetail, detailPath } = useRecordNavigation("customers");
+  const { goToDetail, detailPath, prefetchDetail } = useRecordNavigation("customers");
   const tenantId = useTenantId();
   const openCreateModal = useUiStore((state) => state.openCreateModal);
   const {
@@ -94,7 +97,7 @@ export function Hq6CustomersListView() {
   const apiFilters = useMemo(() => {
     const months = Number(hasNoSellFrom);
     return {
-      search: (localSearch || search).trim() || undefined,
+      search: (search).trim() || undefined,
       sellDue: sellDue || undefined,
       sellReturn: sellReturn || undefined,
       advanceBalance: advanceBalance || undefined,
@@ -116,7 +119,6 @@ export function Hq6CustomersListView() {
     bounds?.to,
     customerGroupId,
     hasNoSellFrom,
-    localSearch,
     openingBalance,
     search,
     sellDue,
@@ -137,6 +139,7 @@ export function Hq6CustomersListView() {
     setPageSize,
     isLoading,
     isFetching,
+    isPaging,
     error,
     goToPage,
     canSelectPage,
@@ -144,7 +147,8 @@ export function Hq6CustomersListView() {
     queryKey: ["customers", tenantId, "hq6"],
     enabled: Boolean(tenantId),
     filters: apiFilters,
-    search: localSearch || search,
+    search: search,
+    defaultPageSize: HQ6_TABLE_PAGE_SIZE,
     fetchPage: (cursor, limit, _sort, opts) => getCustomersPage(tenantId!, { ...apiFilters, includeSummary: opts?.includeSummary }, cursor, limit),
     getCursor: (row) => customerListCursor(row),
   });
@@ -183,9 +187,15 @@ export function Hq6CustomersListView() {
           return (
             <Hq6ActionsMenu
               items={[
-                { id: "pay", label: "Pay", onClick: () => setPayTarget(row) },
+                { id: "pay", label: "Pay", onClick: () => {
+                  if (tenantId) prefetchContactModalRefs(queryClient, tenantId);
+                  setPayTarget(row);
+                } },
                 { id: "view", label: "View", onClick: () => goToDetail(row.id) },
-                { id: "edit", label: "Edit", onClick: () => setEditTarget(row) },
+                { id: "edit", label: "Edit", onClick: () => {
+                  if (tenantId) prefetchContactModalRefs(queryClient, tenantId);
+                  setEditTarget(row);
+                } },
                 {
                   id: "delete",
                   label: "Delete",
@@ -324,7 +334,7 @@ export function Hq6CustomersListView() {
         render: (r) => formatHq6Currency(r.totalSellReturn ?? 0),
       },
     ],
-    [detailPath, goToDetail, router],
+    [detailPath, goToDetail, queryClient, router, tenantId],
   );
 
   const defaultKeys = useMemo(() => hq6DefaultColumnKeys(HQ6_CUSTOMER_COLUMNS), []);
@@ -466,7 +476,7 @@ export function Hq6CustomersListView() {
           onPageSelect: goToPage,
           canSelectPage,
           totalItems: totalCount,
-          isBusy: isFetching && !isLoading,
+          isBusy: isPaging || isLoading,
         }}
       >
         <DataTable
@@ -475,7 +485,6 @@ export function Hq6CustomersListView() {
           displayMode="table"
           embedded
           disablePagination
-          stickyHeader
           stickyFirstColumn
           density={chrome.density}
           onDensityChange={chrome.setDensity}
@@ -483,7 +492,14 @@ export function Hq6CustomersListView() {
           isLoading={isLoading}
           isFetching={isFetching && !isLoading}
           error={error ? "Failed to load customers." : null}
-          onRowClick={(row) => goToDetail(row.id)}
+          onRowPointerEnter={(row) => {
+            prefetchDetail(row.id);
+            if (tenantId) prefetchCustomerDetail(queryClient, tenantId, row.id, row);
+          }}
+          onRowClick={(row) => {
+            if (tenantId) prefetchCustomerDetail(queryClient, tenantId, row.id, row);
+            goToDetail(row.id);
+          }}
           emptyState={{ message: "No customers found." }}
         />
       </Hq6StandardListShell>

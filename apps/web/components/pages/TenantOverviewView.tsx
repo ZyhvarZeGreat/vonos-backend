@@ -33,7 +33,7 @@ function EntityOverviewViewBody({ tenantCode }: OverviewProps) {
   const { tenantId } = useRouteTenant();
   const { items: activityItems, isLoading: activityLoading } =
     useRecentActivityFeed(tenantId);
-  const { dateRange, setDateRange, bounds } = useListPageFilters();
+  const { dateRange, setDateRange, bounds } = useListPageFilters({ unboundedAllTime: false });
   const entry = getTenantConfigByCode(tenantCode);
   const archetype = entry?.archetype ?? "stock";
   const isCafe = tenantCode === "VC";

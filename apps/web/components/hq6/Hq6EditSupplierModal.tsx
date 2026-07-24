@@ -77,6 +77,7 @@ export function Hq6EditSupplierModal({
     queryFn: () => getUsers(tenantId!, { limit: TYPEAHEAD_PAGE_SIZE }),
     enabled: Boolean(open && tenantId),
     staleTime: MODAL_REF_STALE_MS,
+    placeholderData: (prev) => prev,
   });
 
   useEffect(() => {

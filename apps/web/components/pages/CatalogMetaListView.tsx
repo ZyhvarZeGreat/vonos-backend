@@ -92,6 +92,7 @@ function CatalogMetaListViewBody({ kind }: { kind: CatalogMetaKind }) {
     isLoading,
 
     isFetching,
+    isPaging,
     error,
     goToPage,
     canSelectPage,
@@ -143,6 +144,7 @@ function CatalogMetaListViewBody({ kind }: { kind: CatalogMetaKind }) {
         canSelectPage={canSelectPage}
         isLoading={isLoading}
         isFetching={isFetching}
+          isPaging={isPaging}
         error={error ? `Failed to load ${label.toLowerCase()}` : null}
         emptyState={{ message: `No ${label.toLowerCase()} yet. Add one above.` }}
       />

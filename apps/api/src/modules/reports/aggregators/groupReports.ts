@@ -218,6 +218,50 @@ export async function buildGroupCharts(
   ];
 }
 
+/** Fast path: KPIs + entity table only (no charts / secondary aggregates). */
+export async function buildGroupReportsCore(
+  prisma: PrismaClient,
+  from?: string,
+  to?: string,
+): Promise<ReportsDashboard> {
+  const window = resolveDateWindow(from, to);
+  const tenants = await loadGroupTenants(prisma);
+  const tenantIds = tenants.map((t) => t.id);
+  const useRollup = await resolveGroupFinanceSource(
+    prisma,
+    tenantIds,
+    window.from,
+    window.to,
+  );
+  const core = await buildGroupCoreKpis(prisma, from, to, tenants, {
+    useRollup,
+  });
+  const entityTableRows = tenants
+    .map((t) => ({
+      id: t.code,
+      tenantCode: t.code,
+      tenantName: t.name,
+      revenue: Math.round(core.revenueByTenant.get(t.id) ?? 0),
+      jobs: core.jobsByTenant.get(t.id) ?? 0,
+      currency: 'NGN',
+    }))
+    .sort((a, b) => b.revenue - a.revenue);
+
+  return {
+    kpis: core.kpis,
+    charts: [],
+    table: {
+      columns: [
+        { key: 'tenantCode', header: 'Entity' },
+        { key: 'tenantName', header: 'Department' },
+        { key: 'revenue', header: 'Revenue' },
+        { key: 'jobs', header: 'Jobs' },
+      ],
+      rows: entityTableRows,
+    },
+  };
+}
+
 export async function buildGroupReports(
   prisma: PrismaClient,
   from?: string,

@@ -62,6 +62,7 @@ function CustomerGroupsListViewBody() {
     isLoading,
 
     isFetching,
+    isPaging,
     error,
     goToPage,
     canSelectPage,
@@ -93,6 +94,7 @@ function CustomerGroupsListViewBody() {
         canSelectPage={canSelectPage}
         isLoading={isLoading}
         isFetching={isFetching}
+          isPaging={isPaging}
         error={error ? "Failed to load customer groups" : null}
         emptyState={{ message: "No customer groups defined yet. Create groups to apply bulk discounts." }}
       />

@@ -1,6 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import type { InvoiceKind, Prisma } from '@prisma/client';
 import { TenantDbService } from '../../common/prisma/tenant-db.service';
+import { CacheService } from '../../common/cache/cache.service';
+import { invalidateTenantDashboardCache } from '../../common/cache/cacheInvalidation';
 import { toNumber } from '../../common/utils/serializers';
 
 type DbClient = Prisma.TransactionClient | TenantDbService['db'];
@@ -33,7 +35,14 @@ export interface CreateInvoiceInput {
 
 @Injectable()
 export class InvoiceHubService {
-  constructor(private readonly tenantDb: TenantDbService) {}
+  constructor(
+    private readonly tenantDb: TenantDbService,
+    private readonly cache: CacheService,
+  ) {}
+
+  private bustInvoiceCaches(tenantId: string): void {
+    void invalidateTenantDashboardCache(this.cache, tenantId);
+  }
 
   async createInvoice(
     db: DbClient,
@@ -41,7 +50,7 @@ export class InvoiceHubService {
     tenantId?: string,
   ) {
     const tid = tenantId ?? this.tenantDb.requireTenantId();
-    return db.invoice.create({
+    const row = await db.invoice.create({
       data: {
         tenantId: tid,
         reference: input.reference,
@@ -69,6 +78,8 @@ export class InvoiceHubService {
         jobId: input.jobId ?? null,
       },
     });
+    this.bustInvoiceCaches(tid);
+    return row;
   }
 
   async findBySaleId(db: DbClient, saleId: string) {
@@ -351,7 +362,7 @@ export class InvoiceHubService {
     const reference = isQuote ? `${job.reference}-Q` : `${job.reference}-INV`;
 
     if (existing) {
-      return db.invoice.update({
+      const updated = await db.invoice.update({
         where: { id: existing.id },
         data: {
           total,
@@ -360,6 +371,8 @@ export class InvoiceHubService {
           notes: isQuote ? job.quoteNotes : job.invoiceNotes,
         },
       });
+      this.bustInvoiceCaches(job.tenantId);
+      return updated;
     }
 
     return this.createInvoice(

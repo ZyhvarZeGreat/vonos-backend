@@ -3,19 +3,33 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  NotFoundException,
 } from '@nestjs/common';
 import type { InviteUserResponse, User } from '@vonos/types';
 import { ROLES } from '@vonos/types';
 import type { AuthenticatedUser } from '../../common/decorators/roles.decorator';
 import { generateOpaqueToken } from '../../common/utils/auth-token';
 import { buildCompositeCursorQuery } from '../../common/utils/pagination';
+import {
+  listPageFilterKey,
+  withListPageCache,
+} from '../../common/utils/listPageCache';
 import { devPasswordHash, hashPassword } from '../../common/utils/password';
 import { TenantDbService } from '../../common/prisma/tenant-db.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { CacheService } from '../../common/cache/cache.service';
+import { invalidateTenantDashboardCache } from '../../common/cache/cacheInvalidation';
 import { toIso } from '../../common/utils/serializers';
 import { resolvePrimaryWebOrigin } from '../../common/utils/webOrigin';
 import { AuthMailService } from '../auth/auth-mail.service';
 import { INVITE_DAYS } from '../auth/auth.constants';
+import {
+  relationStringOr,
+  tokenizedSearchWhere,
+} from '../../common/utils/listSearch';
+
+/** Synthetic scope for unscoped VAG all-tenants user list cache. */
+const VAG_USERS_CACHE_SCOPE = '__vag__';
 
 export interface UserListRow extends User {
   tenantCode?: string | null;
@@ -28,7 +42,15 @@ export class UsersService {
     private readonly tenantDb: TenantDbService,
     private readonly prisma: PrismaService,
     private readonly mail: AuthMailService,
+    private readonly cache: CacheService,
   ) {}
+
+  private invalidateUserCaches(tenantId: string | null): void {
+    void invalidateTenantDashboardCache(this.cache, VAG_USERS_CACHE_SCOPE);
+    if (tenantId) {
+      void invalidateTenantDashboardCache(this.cache, tenantId);
+    }
+  }
 
   async listForTenant(filters: {
     cursor?: string;
@@ -38,7 +60,32 @@ export class UsersService {
     status?: string;
   } = {}): Promise<User[]> {
     const tenantId = this.tenantDb.requireTenantId();
+    const filterKey = listPageFilterKey({
+      search: filters.search,
+      role: filters.role,
+      status: filters.status,
+      cursor: filters.cursor,
+      limit: filters.limit ?? 10,
+    });
+    return withListPageCache(
+      this.cache,
+      tenantId,
+      'users',
+      filterKey,
+      () => this.listForTenantUncached(filters, tenantId),
+    );
+  }
 
+  private async listForTenantUncached(
+    filters: {
+      cursor?: string;
+      limit?: number;
+      search?: string;
+      role?: string;
+      status?: string;
+    },
+    tenantId: string,
+  ): Promise<User[]> {
     const legacyLinks = await this.prisma.migrationLegacyId.findMany({
       where: { tenantId, entityType: 'user' },
       select: { newId: true },
@@ -68,14 +115,10 @@ export class UsersService {
           },
           ...(filters.search
             ? [
-                {
-                  OR: [
-                    { name: { contains: filters.search, mode: 'insensitive' as const } },
-                    {
-                      email: { contains: filters.search, mode: 'insensitive' as const },
-                    },
-                  ],
-                },
+                tokenizedSearchWhere(filters.search, (_token, contains) => [
+                  { name: contains },
+                  { email: contains },
+                ])!,
               ]
             : []),
         ],
@@ -86,6 +129,33 @@ export class UsersService {
     });
 
     return rows.map((row) => this.toUser(row));
+  }
+
+  /**
+   * Single user for detail pages — tenant-scoped, including legacy-linked users.
+   */
+  async getById(id: string): Promise<User> {
+    const tenantId = this.tenantDb.requireTenantId();
+    const legacyLink = await this.prisma.migrationLegacyId.findFirst({
+      where: { tenantId, entityType: 'user', newId: id },
+      select: { newId: true },
+    });
+
+    const row = await this.prisma.user.findFirst({
+      where: {
+        id,
+        deletedAt: null,
+        OR: [
+          { tenantId },
+          ...(legacyLink ? [{ id }] : []),
+        ],
+      },
+    });
+    if (!row) throw new NotFoundException('User not found');
+    if (row.tenantId !== tenantId && !legacyLink) {
+      throw new NotFoundException('User not found');
+    }
+    return this.toUser(row);
   }
 
   async listAllTenants(
@@ -102,6 +172,29 @@ export class UsersService {
       throw new ForbiddenException('Super admin access required');
     }
 
+    const filterKey = listPageFilterKey({
+      search: filters.search,
+      role: filters.role,
+      status: filters.status,
+      cursor: filters.cursor,
+      limit: filters.limit ?? 10,
+    });
+    return withListPageCache(
+      this.cache,
+      VAG_USERS_CACHE_SCOPE,
+      'users-all',
+      filterKey,
+      () => this.listAllTenantsUncached(filters),
+    );
+  }
+
+  private async listAllTenantsUncached(filters: {
+    cursor?: string;
+    limit?: number;
+    search?: string;
+    role?: string;
+    status?: string;
+  }): Promise<UserListRow[]> {
     const pagination = buildCompositeCursorQuery({
       sortField: 'name',
       sortDir: 'asc',
@@ -115,12 +208,12 @@ export class UsersService {
         ...(filters.role ? { role: filters.role as User['role'] } : {}),
         ...(filters.status ? { status: filters.status as User['status'] } : {}),
         ...(filters.search
-          ? {
-              OR: [
-                { name: { contains: filters.search, mode: 'insensitive' as const } },
-                { email: { contains: filters.search, mode: 'insensitive' as const } },
-              ],
-            }
+          ? tokenizedSearchWhere(filters.search, (_token, contains) => [
+              { name: contains },
+              { email: contains },
+              relationStringOr('tenant', 'name', contains),
+              relationStringOr('tenant', 'code', contains),
+            ])
           : {}),
         ...(pagination.where ?? {}),
       },
@@ -203,6 +296,8 @@ export class UsersService {
     const inviteUrl = `${webOrigin}/invite/${raw}`;
     this.mail.sendInvite(assignment.email, inviteUrl);
 
+    this.invalidateUserCaches(assignment.targetTenantId);
+
     const response: InviteUserResponse = { user: this.toUser(user) };
     if (process.env.NODE_ENV !== 'production') {
       response.devInviteUrl = inviteUrl;
@@ -248,6 +343,7 @@ export class UsersService {
       },
     });
 
+    this.invalidateUserCaches(assignment.targetTenantId);
     return { user: this.toUser(user) };
   }
 

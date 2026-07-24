@@ -29,6 +29,7 @@ import {
   Hq6FilterSelect,
 } from "@/components/hq6/Hq6FilterFields";
 import { Hq6ListToolbar } from "@/components/hq6/Hq6ListToolbar";
+import { hq6CopyForSlug } from "@/lib/registries/hq6PageCopy";
 import { Hq6PayPurchaseModal } from "@/components/hq6/Hq6PayPurchaseModal";
 import { Hq6PrintModal } from "@/components/hq6/Hq6PrintModal";
 import { Hq6PurchaseViewModal } from "@/components/hq6/Hq6PurchaseViewModal";
@@ -36,26 +37,25 @@ import { Hq6ViewPaymentsModal } from "@/components/hq6/Hq6ViewPaymentsModal";
 import {
   deleteStockMovement,
   getAllStockMovements,
-  getPurchaseView,
   getStockMovementsListSummary,
   getStockMovementsPage,
   updateStockMovementStatus,
   type StockMovementListRow,
 } from "@/lib/api/stockMovements";
 import { getSuppliers } from "@/lib/api/suppliers";
-import { useServerListPage } from "@/lib/hooks/useServerListPage";
+import { useServerListPage, serverSortProps, withListSort } from "@/lib/hooks/useServerListPage";
+import { HQ6_TABLE_PAGE_SIZE } from "@/lib/api/fetchAllPages";
 import { useListExport } from "@/lib/hooks/useListExport";
 import { useListRecordModal } from "@/lib/hooks/useListRecordModal";
 import { useListPageFilters } from "@/lib/hooks/useListPageFilters";
 import { useTableViewPrefs } from "@/lib/hooks/useTableViewPrefs";
 import { useRouteTenant, useTenantId } from "@/lib/hooks/useRouteTenant";
 import {
-  MODAL_RECORD_STALE_MS,
-  modalKeys,
-  prefetchModalQuery,
-} from "@/lib/query/modalQueryKeys";
+  prefetchPaymentAccountsRef,
+  prefetchPurchaseListModals,
+} from "@/lib/query/prefetchListModals";
 import { HQ6_PURCHASE_FILTERS } from "@/lib/registries/hq6Filters";
-import { movementListCursor } from "@/lib/utils/pagination";
+import { compositeListCursorFrom } from "@/lib/utils/pagination";
 import {
   formatHq6Currency,
   formatHq6DateTime,
@@ -64,12 +64,11 @@ import {
 import { businessLocationName } from "@/lib/utils/locationLabels";
 import { cn } from "@/lib/utils/cn";
 import { toast } from "@/stores/toastStore";
+import { hq6PaymentBadgeClass } from "@/lib/utils/hq6PaymentBadge";
 import type { MovementStatus, PurchasePaymentStatus } from "@vonos/types";
 
 function purchaseBadgeClass(status: string | null | undefined): string {
-  if (status === "paid") return "hq6-pay-paid";
-  if (status === "partial") return "hq6-pay-partial";
-  return "hq6-pay-due";
+  return hq6PaymentBadgeClass(status);
 }
 
 /** HQ6 Purchases list — ui-audit/21_purchases/screenshot.png */
@@ -78,14 +77,11 @@ export function Hq6PurchasesListView() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const { tenantCode, config } = useRouteTenant();
-  const { recordId, openRecord, closeRecord } = useListRecordModal({
+  const { recordId, recordSeed, openRecord, closeRecord } =
+    useListRecordModal<StockMovementListRow>({
     onPrefetchRecord: (id) => {
       if (!tenantId) return;
-      prefetchModalQuery(queryClient, {
-        queryKey: modalKeys.purchaseView(tenantId, id),
-        queryFn: () => getPurchaseView(tenantId, id),
-        staleTime: MODAL_RECORD_STALE_MS,
-      });
+      prefetchPurchaseListModals(queryClient, tenantId, id);
     },
   });
   const exportList = useListExport();
@@ -126,7 +122,7 @@ export function Hq6PurchasesListView() {
   const apiFilters = useMemo(
     () => ({
       type: "inbound" as const,
-      search: (localSearch || search).trim() || undefined,
+      search: (search).trim() || undefined,
       status: (statusFilter || undefined) as MovementStatus | undefined,
       paymentStatus: (paymentStatusFilter || undefined) as
         | PurchasePaymentStatus
@@ -139,7 +135,6 @@ export function Hq6PurchasesListView() {
     [
       bounds?.from,
       bounds?.to,
-      localSearch,
       locationFilter,
       paymentStatusFilter,
       search,
@@ -160,19 +155,46 @@ export function Hq6PurchasesListView() {
     setPageSize,
     isLoading,
     isFetching,
+    isPaging,
     error,
     goToPage,
     canSelectPage,
+    sort,
+    setSort,
   } = useServerListPage<StockMovementListRow>({
     queryKey: ["stock-movements", tenantId, "inbound", "hq6"],
     enabled: Boolean(tenantId),
     filters: apiFilters,
-    search: localSearch || search,
-    defaultPageSize: 50,
-    fetchPage: (cursor, limit, _sort, opts) =>
-      getStockMovementsPage(tenantId!, { ...apiFilters, includeSummary: opts?.includeSummary }, cursor, limit),
+    search: search,
+    defaultPageSize: HQ6_TABLE_PAGE_SIZE,
+    defaultSort: { sortBy: "date", sortDir: "desc" },
+    fetchPage: (cursor, limit, listSort, opts) =>
+      getStockMovementsPage(
+        tenantId!,
+        withListSort(
+          { ...apiFilters, includeSummary: opts?.includeSummary },
+          listSort,
+        ),
+        cursor,
+        limit,
+      ),
     fetchSummary: () => getStockMovementsListSummary(tenantId!, apiFilters),
-    getCursor: (row) => movementListCursor(row),
+    getCursor: (row, listSort) => {
+      const requested = listSort?.sortBy ?? "date";
+      const sortBy =
+        requested === "paymentDue"
+          ? "grandTotal"
+          : requested === "supplierOrDest"
+            ? "supplierId"
+            : requested;
+      const type =
+        sortBy === "grandTotal"
+          ? "number"
+          : sortBy === "date"
+            ? "date"
+            : "string";
+      return compositeListCursorFrom(row, sortBy, type);
+    },
   });
 
   const commitSearch = () => setSearch(localSearch);
@@ -219,13 +241,13 @@ export function Hq6PurchasesListView() {
                 id: "view",
                 label: "View",
                 icon: <Eye className="h-3.5 w-3.5" />,
-                onClick: () => openRecord(row.id),
+                onClick: () => openRecord(row.id, row),
               },
               {
                 id: "print",
                 label: "Print",
                 icon: <Printer className="h-3.5 w-3.5" />,
-                onClick: () => openRecord(row.id),
+                onClick: () => openRecord(row.id, row),
               },
               {
                 id: "edit",
@@ -253,13 +275,23 @@ export function Hq6PurchasesListView() {
                 label: "View Payments",
                 dividerBefore: true,
                 icon: <Wallet className="h-3.5 w-3.5" />,
-                onClick: () => setPaymentsTarget(row),
+                onClick: () => {
+                  if (tenantId) {
+                    prefetchPurchaseListModals(queryClient, tenantId, row.id);
+                  }
+                  setPaymentsTarget(row);
+                },
               },
               {
                 id: "add_payment",
                 label: "Add payment",
                 icon: <Wallet className="h-3.5 w-3.5" />,
-                onClick: () => setPayTarget(row),
+                onClick: () => {
+                  if (tenantId) {
+                    prefetchPaymentAccountsRef(queryClient, tenantId);
+                  }
+                  setPayTarget(row);
+                },
               },
               {
                 id: "purchase_return",
@@ -301,7 +333,7 @@ export function Hq6PurchasesListView() {
                 id: "items_received",
                 label: "Items Received Notification",
                 icon: <Mail className="h-3.5 w-3.5" />,
-                onClick: () => openRecord(row.id),
+                onClick: () => openRecord(row.id, row),
               },
             ]}
           />
@@ -490,6 +522,7 @@ export function Hq6PurchasesListView() {
           searchValue={localSearch}
           onSearchChange={setLocalSearch}
           onSearchCommit={commitSearch}
+          searchPlaceholder={hq6CopyForSlug("inbound").searchPlaceholder}
           onExportCsv={() => void handleExport()}
           onExportExcel={() => void handleExport()}
           onPrint={() => setPrintOpen(true)}
@@ -506,7 +539,6 @@ export function Hq6PurchasesListView() {
             displayMode="table"
             embedded
             disablePagination
-            stickyHeader
             stickyFirstColumn
             density={density}
             onDensityChange={setDensity}
@@ -514,8 +546,9 @@ export function Hq6PurchasesListView() {
             isLoading={isLoading}
             isFetching={isFetching && !isLoading}
             error={error ? "Could not load purchases." : null}
-            onRowClick={(row) => openRecord(row.id)}
+            onRowClick={(row) => openRecord(row.id, row)}
             emptyState={{ message: "No purchases found." }}
+            serverSort={serverSortProps({ sort, setSort })}
           />
           {purchases.length > 0 ? (
             <div className="flex border-t border-[var(--hq6-border)] bg-[#f9fafb] text-xs font-bold text-[#374151]">
@@ -530,7 +563,12 @@ export function Hq6PurchasesListView() {
           ) : null}
         </div>
 
-        {(purchases.length > 0 || canGoPrev || isLoading) && !isLoading ? (
+        {(purchases.length > 0 ||
+          canGoPrev ||
+          hasMore ||
+          pageIndex > 0 ||
+          isFetching ||
+          isLoading) && (
           <CursorPaginationBar
             pageIndex={pageIndex}
             pageSize={pageSize}
@@ -543,10 +581,10 @@ export function Hq6PurchasesListView() {
             onPageSelect={goToPage}
             canSelectPage={canSelectPage}
             totalItems={totalCount}
-            isBusy={isFetching && !isLoading}
+            isBusy={isFetching || isLoading}
             className="border-t border-[var(--hq6-border)] px-3 py-2"
           />
-        ) : null}
+        )}
       </div>
 
       <p className="hq6-footer">
@@ -557,6 +595,7 @@ export function Hq6PurchasesListView() {
       <Hq6PurchaseViewModal
         open={Boolean(recordId)}
         purchaseId={recordId}
+        initialPurchase={recordSeed}
         onClose={closeRecord}
       />
       <Hq6PayPurchaseModal

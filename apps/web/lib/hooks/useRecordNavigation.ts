@@ -7,9 +7,18 @@ export function useRecordNavigation(listSlug: string) {
   const router = useRouter();
   const tenant = params.tenant;
 
+  const detailPath = (recordId: string) => `/${tenant}/${listSlug}/${recordId}`;
+
   return {
-    detailPath: (recordId: string) => `/${tenant}/${listSlug}/${recordId}`,
-    goToDetail: (recordId: string) => router.push(`/${tenant}/${listSlug}/${recordId}`),
+    detailPath,
+    /** Prefetch the Next.js route chunk so the first navigation isn't a compile wait. */
+    prefetchDetail: (recordId: string) => {
+      router.prefetch(detailPath(recordId));
+    },
+    goToDetail: (recordId: string) => {
+      router.prefetch(detailPath(recordId));
+      router.push(detailPath(recordId));
+    },
     listPath: `/${tenant}/${listSlug}`,
     goToList: () => router.push(`/${tenant}/${listSlug}`),
   };

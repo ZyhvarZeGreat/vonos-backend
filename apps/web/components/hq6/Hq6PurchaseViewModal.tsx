@@ -3,6 +3,7 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Printer } from "lucide-react";
+import type { StockMovement, StockMovementListRow } from "@vonos/types";
 import { Hq6Modal } from "@/components/hq6/Hq6Modal";
 import { getPurchaseView } from "@/lib/api/stockMovements";
 import { useRouteTenant, useTenantId } from "@/lib/hooks/useRouteTenant";
@@ -11,7 +12,10 @@ import {
   modalKeys,
 } from "@/lib/query/modalQueryKeys";
 import { formatHq6Currency, formatHq6Date, formatHq6PaymentStatus } from "@/lib/utils/hq6Format";
+import { hq6PaymentBadgeClass } from "@/lib/utils/hq6PaymentBadge";
+import { stockMovementSeedFromListRow } from "@/lib/utils/listModalSeeds";
 import { businessLocationName } from "@/lib/utils/locationLabels";
+import { cn } from "@/lib/utils/cn";
 
 function partyFromNotes(notes: string | null): string {
   if (!notes) return "—";
@@ -26,30 +30,45 @@ function purchaseStatusLabel(status: string): string {
 
 /**
  * HQ6 Purchase Details modal — ui-implement-bundle/modal/21-purchases/view.
+ * Opens instantly from a list-row seed; lines/payments fill in when fetched.
  */
 export function Hq6PurchaseViewModal({
   open,
   purchaseId,
+  initialPurchase = null,
   onClose,
 }: {
   open: boolean;
   purchaseId: string | null;
+  initialPurchase?: StockMovementListRow | null;
   onClose: () => void;
 }) {
   const tenantId = useTenantId();
   const { config, tenantName } = useRouteTenant();
 
-  const { data: bundle, isLoading } = useQuery({
+  const seeded: StockMovement | null =
+    initialPurchase && purchaseId && initialPurchase.id === purchaseId
+      ? stockMovementSeedFromListRow(initialPurchase, "inbound")
+      : null;
+
+  const { data: bundle, isLoading, isFetching } = useQuery({
     queryKey: modalKeys.purchaseView(tenantId, purchaseId),
     queryFn: () => getPurchaseView(tenantId!, purchaseId!),
     enabled: Boolean(open && tenantId && purchaseId),
     staleTime: MODAL_RECORD_STALE_MS,
+    placeholderData: (prev) =>
+      prev?.movement?.id === purchaseId ? prev : undefined,
   });
 
-  const movement = bundle?.movement;
-  const payments = bundle?.payments ?? [];
-  const supplier = bundle?.supplier ?? null;
-  const paymentsLoading = isLoading && !bundle;
+  const movement =
+    bundle?.movement?.id === purchaseId ? bundle.movement : seeded;
+  const payments =
+    bundle?.movement?.id === purchaseId ? (bundle.payments ?? []) : [];
+  const supplier =
+    bundle?.movement?.id === purchaseId ? (bundle.supplier ?? null) : null;
+  const detailPending = Boolean(open && purchaseId && !bundle?.movement);
+  const paymentsLoading = detailPending && (isLoading || isFetching);
+  const linesLoading = detailPending && (movement?.lines.length ?? 0) === 0;
 
   const currency = "NGN";
   const locationLabel = businessLocationName(
@@ -85,15 +104,20 @@ export function Hq6PurchaseViewModal({
     });
   }, [movement]);
 
+  const listTotal = initialPurchase?.grandTotal ?? 0;
   const netTotal = lines.reduce((sum, line) => sum + line.subtotalBeforeTax, 0);
   const discountTotal = 0;
   const taxTotal = 0;
-  const purchaseTotal = netTotal - discountTotal + taxTotal;
+  const purchaseTotal = linesLoading
+    ? listTotal
+    : netTotal - discountTotal + taxTotal;
 
   const supplierName =
     supplier?.businessName ??
     supplier?.name ??
-    partyFromNotes(movement?.notes ?? null);
+    partyFromNotes(movement?.notes ?? null) ??
+    initialPurchase?.supplierOrDest ??
+    "—";
   const supplierMobile = supplier?.phone ?? null;
   const supplierAddress = supplier?.address ?? null;
 
@@ -128,7 +152,7 @@ export function Hq6PurchaseViewModal({
         </div>
       }
     >
-      {isLoading || !movement ? (
+      {!movement ? (
         <p className="text-sm text-[#6b7280]">
           {isLoading ? "Loading purchase…" : "Purchase not found."}
         </p>
@@ -185,9 +209,20 @@ export function Hq6PurchaseViewModal({
               </div>
               <div>
                 <b>Payment Status:</b>{" "}
-                {movement.paymentStatus
-                  ? formatHq6PaymentStatus(movement.paymentStatus)
-                  : "Due"}
+                {movement.paymentStatus ? (
+                  <span
+                    className={cn(
+                      "hq6-pay-badge",
+                      hq6PaymentBadgeClass(movement.paymentStatus),
+                    )}
+                  >
+                    {formatHq6PaymentStatus(movement.paymentStatus)}
+                  </span>
+                ) : (
+                  <span className={cn("hq6-pay-badge", hq6PaymentBadgeClass("due"))}>
+                    Due
+                  </span>
+                )}
               </div>
             </div>
           </div>
@@ -210,37 +245,51 @@ export function Hq6PurchaseViewModal({
                 </tr>
               </thead>
               <tbody>
-                {lines.map((line) => (
-                  <tr key={`${line.sku}-${line.index}`}>
-                    <td>{line.index}</td>
-                    <td className="font-semibold">{line.name}</td>
-                    <td>{line.sku}</td>
-                    <td className="text-right tabular-nums">
-                      {line.qty.toFixed(2)} {line.unit}
-                    </td>
-                    <td className="text-right tabular-nums">
-                      {formatHq6Currency(line.unitBeforeDiscount, currency)}
-                    </td>
-                    <td className="text-right tabular-nums">
-                      {line.discountPercent.toFixed(2)} %
-                    </td>
-                    <td className="text-right tabular-nums">
-                      {formatHq6Currency(line.unitBeforeTax, currency)}
-                    </td>
-                    <td className="text-right tabular-nums">
-                      {formatHq6Currency(line.subtotalBeforeTax, currency)}
-                    </td>
-                    <td className="text-right tabular-nums">
-                      {formatHq6Currency(line.tax, currency)}
-                    </td>
-                    <td className="text-right tabular-nums">
-                      {formatHq6Currency(line.unitAfterTax, currency)}
-                    </td>
-                    <td className="text-right tabular-nums">
-                      {formatHq6Currency(line.subtotal, currency)}
+                {linesLoading ? (
+                  <tr>
+                    <td colSpan={11} className="text-center">
+                      Loading…
                     </td>
                   </tr>
-                ))}
+                ) : lines.length === 0 ? (
+                  <tr>
+                    <td colSpan={11} className="text-center">
+                      No products
+                    </td>
+                  </tr>
+                ) : (
+                  lines.map((line) => (
+                    <tr key={`${line.sku}-${line.index}`}>
+                      <td>{line.index}</td>
+                      <td className="font-semibold">{line.name}</td>
+                      <td>{line.sku}</td>
+                      <td className="text-right tabular-nums">
+                        {line.qty.toFixed(2)} {line.unit}
+                      </td>
+                      <td className="text-right tabular-nums">
+                        {formatHq6Currency(line.unitBeforeDiscount, currency)}
+                      </td>
+                      <td className="text-right tabular-nums">
+                        {line.discountPercent.toFixed(2)} %
+                      </td>
+                      <td className="text-right tabular-nums">
+                        {formatHq6Currency(line.unitBeforeTax, currency)}
+                      </td>
+                      <td className="text-right tabular-nums">
+                        {formatHq6Currency(line.subtotalBeforeTax, currency)}
+                      </td>
+                      <td className="text-right tabular-nums">
+                        {formatHq6Currency(line.tax, currency)}
+                      </td>
+                      <td className="text-right tabular-nums">
+                        {formatHq6Currency(line.unitAfterTax, currency)}
+                      </td>
+                      <td className="text-right tabular-nums">
+                        {formatHq6Currency(line.subtotal, currency)}
+                      </td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>
@@ -298,7 +347,10 @@ export function Hq6PurchaseViewModal({
                   <th>Net Total Amount:</th>
                   <td />
                   <td className="text-right tabular-nums">
-                    {formatHq6Currency(netTotal, currency)}
+                    {formatHq6Currency(
+                      linesLoading ? purchaseTotal : netTotal,
+                      currency,
+                    )}
                   </td>
                 </tr>
                 <tr>

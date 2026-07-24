@@ -34,7 +34,7 @@ export function resolveDateWindow(from?: string, to?: string): DateWindow {
   return capWindow(fromDate, toDate);
 }
 
-/** Matches web default (last_7_days) + 5-minute bucket keys for cache alignment. */
+/** Matches web VAG home default (last_7_days) + 5-minute bucket keys. */
 export function defaultVagOverviewApiBounds(now = new Date()): {
   from: string;
   to: string;

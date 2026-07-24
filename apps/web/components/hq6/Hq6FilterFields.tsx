@@ -40,14 +40,20 @@ export function Hq6FilterSelect({
   /** Used when options omit a blank row. */
   emptyLabel?: string;
 }) {
-  const hasBlank = options.some((o) => o.value === "");
+  // Dedupe by value — presets/imports can repeat the same code with the same label
+  // (React warns on duplicate keys like `VONOS-VONOS`).
+  const uniqueOptions = options.filter(
+    (option, index, all) =>
+      all.findIndex((row) => row.value === option.value) === index,
+  );
+  const hasBlank = uniqueOptions.some((o) => o.value === "");
   return (
     <label className="hq6-field">
       <span>{label}:</span>
       <select value={value} onChange={(e) => onChange(e.target.value)}>
         {!hasBlank ? <option value="">{emptyLabel}</option> : null}
-        {options.map((o) => (
-          <option key={`${o.value}-${o.label}`} value={o.value}>
+        {uniqueOptions.map((o, index) => (
+          <option key={`${o.value || "blank"}-${index}`} value={o.value}>
             {o.label}
           </option>
         ))}

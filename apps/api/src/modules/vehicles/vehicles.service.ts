@@ -1,9 +1,16 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import type { Vehicle, VehicleJobHistoryEntry } from '@vonos/types';
 import { TenantDbService } from '../../common/prisma/tenant-db.service';
+import { CacheService } from '../../common/cache/cache.service';
+import { invalidateTenantDashboardCache } from '../../common/cache/cacheInvalidation';
 import { AuditService } from '../audit/audit.service';
 import { buildCompositeCursorQuery } from '../../common/utils/pagination';
+import {
+  listPageFilterKey,
+  withListPageCache,
+} from '../../common/utils/listPageCache';
 import { toIso } from '../../common/utils/serializers';
+import { tokenizedSearchWhere } from '../../common/utils/listSearch';
 
 function serialize(row: {
   id: string;
@@ -38,6 +45,7 @@ export class VehiclesService {
   constructor(
     private readonly tenantDb: TenantDbService,
     private readonly auditService: AuditService,
+    private readonly cache: CacheService,
   ) {}
 
   async list(filters: {
@@ -47,6 +55,30 @@ export class VehiclesService {
     make?: string;
   } = {}): Promise<Vehicle[]> {
     const tenantId = this.tenantDb.requireTenantId();
+    const filterKey = listPageFilterKey({
+      search: filters.search,
+      make: filters.make,
+      cursor: filters.cursor,
+      limit: filters.limit ?? 10,
+    });
+    return withListPageCache(
+      this.cache,
+      tenantId,
+      'vehicles',
+      filterKey,
+      () => this.listUncached(filters, tenantId),
+    );
+  }
+
+  private async listUncached(
+    filters: {
+      cursor?: string;
+      limit?: number;
+      search?: string;
+      make?: string;
+    },
+    tenantId: string,
+  ): Promise<Vehicle[]> {
     const pagination = buildCompositeCursorQuery({
       sortField: 'plateNumber',
       sortDir: 'asc',
@@ -58,23 +90,14 @@ export class VehiclesService {
       where: {
         tenantId,
         deletedAt: null,
-        ...(filters.search
-          ? {
-              OR: [
-                {
-                  plateNumber: {
-                    contains: filters.search,
-                    mode: 'insensitive',
-                  },
-                },
-                { make: { contains: filters.search, mode: 'insensitive' } },
-                { model: { contains: filters.search, mode: 'insensitive' } },
-                {
-                  ownerName: { contains: filters.search, mode: 'insensitive' },
-                },
-              ],
-            }
-          : {}),
+        ...(tokenizedSearchWhere(filters.search, (_token, contains) => [
+          { plateNumber: contains },
+          { vin: contains },
+          { make: contains },
+          { model: contains },
+          { ownerName: contains },
+          { ownerPhone: contains },
+        ]) ?? {}),
         ...(filters.make ? { make: filters.make } : {}),
         ...(pagination.where ?? {}),
       },
@@ -155,6 +178,7 @@ export class VehiclesService {
       entityId: row.id,
       summary: `Registered vehicle ${row.plateNumber}`,
     });
+    void invalidateTenantDashboardCache(this.cache, tenantId);
     return serialize(row);
   }
 
@@ -198,6 +222,7 @@ export class VehiclesService {
       summary: `Updated vehicle ${row.plateNumber}`,
     });
 
+    void invalidateTenantDashboardCache(this.cache, tenantId);
     return serialize(row);
   }
 }

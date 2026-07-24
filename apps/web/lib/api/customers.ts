@@ -124,9 +124,19 @@ export async function getCustomers(
   );
 }
 
+/** Profile shell — denormalized totals, empty transactionHistory (fast). */
 export async function getCustomer(id: string): Promise<CustomerProfile> {
   const response = await apiFetch(`/customers/${id}`);
   if (!response.ok) throw new Error("Failed to fetch customer");
+  return response.json();
+}
+
+/** Sales / jobs / appointments feed — load only when the sales tab needs it. */
+export async function getCustomerHistory(
+  id: string,
+): Promise<CustomerProfile["transactionHistory"]> {
+  const response = await apiFetch(`/customers/${id}/history`);
+  if (!response.ok) throw new Error("Failed to fetch customer history");
   return response.json();
 }
 

@@ -90,16 +90,24 @@ export function ListPageShell(props: ListPageShellProps) {
   return <DefaultListPageShell {...props} />;
 }
 
-function useDebouncedSearch(
+function useCommittedSearch(
   searchValue: string,
-  onSearchChange: ((value: string) => void) | undefined,
-  searchDebounceMs: number,
 ) {
   const [localSearch, setLocalSearch] = useState(searchValue);
 
   useEffect(() => {
     setLocalSearch(searchValue);
   }, [searchValue]);
+
+  return { localSearch, setLocalSearch };
+}
+
+function useDebouncedSearch(
+  searchValue: string,
+  onSearchChange: ((value: string) => void) | undefined,
+  searchDebounceMs: number,
+) {
+  const { localSearch, setLocalSearch } = useCommittedSearch(searchValue);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -115,7 +123,7 @@ function Hq6ListPageShell({
   tabs,
   activeTab,
   onTabChange,
-  searchPlaceholder = "Search ...",
+  searchPlaceholder = "Search by name, reference…",
   searchValue = "",
   onSearchChange,
   showImport = true,
@@ -134,7 +142,7 @@ function Hq6ListPageShell({
   primaryAction,
   children,
   contentClassName,
-  searchDebounceMs = 300,
+  searchDebounceMs: _searchDebounceMs = 300,
   hq6Title,
   hq6Subtitle,
   hq6PageChrome = true,
@@ -148,11 +156,11 @@ function Hq6ListPageShell({
   const copy = useMemo(() => hq6CopyForSlug(section), [section]);
   const title = hq6Title ?? copy.title;
   const subtitle = hq6Subtitle ?? copy.subtitle;
-  const { localSearch, setLocalSearch } = useDebouncedSearch(
-    searchValue,
-    onSearchChange,
-    searchDebounceMs,
-  );
+  const resolvedSearchPlaceholder =
+    searchPlaceholder === "Search ..." || searchPlaceholder === "Search …"
+      ? copy.searchPlaceholder
+      : searchPlaceholder;
+  const { localSearch, setLocalSearch } = useCommittedSearch(searchValue);
   const [printOpen, setPrintOpen] = useState(false);
   const [columnsOpen, setColumnsOpen] = useState(false);
   const defaultColumnKeys = useMemo(
@@ -244,6 +252,35 @@ function Hq6ListPageShell({
       </div>
 
       <div className="hq6-dt-toolbar">
+        {showSearch ? (
+          <div className="hq6-search">
+            <label className="hq6-search-field">
+              <span className="sr-only">Search</span>
+              <input
+                type="search"
+                placeholder={resolvedSearchPlaceholder}
+                title={resolvedSearchPlaceholder}
+                value={localSearch}
+                onChange={(e) => setLocalSearch(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    onSearchChange?.(localSearch);
+                  }
+                }}
+              />
+            </label>
+            <button
+              type="button"
+              className="hq6-search-btn"
+              onClick={() => onSearchChange?.(localSearch)}
+              aria-label="Search"
+            >
+              <Search className="h-4 w-4" aria-hidden />
+              Search
+            </button>
+          </div>
+        ) : null}
         <label className="hq6-show-entries">
           Show{" "}
           <select defaultValue={25}>
@@ -254,7 +291,7 @@ function Hq6ListPageShell({
           </select>{" "}
           entries
         </label>
-        <div className="flex flex-wrap items-center gap-1.5">
+        <div className="ml-auto flex flex-wrap items-center gap-1.5">
           {showImport ? (
             onImport ? (
               <>
@@ -333,17 +370,6 @@ function Hq6ListPageShell({
             </>
           ) : null}
         </div>
-        {showSearch ? (
-          <label className="hq6-search ml-auto">
-            <span className="sr-only">Search</span>
-            <input
-              type="text"
-              placeholder={searchPlaceholder}
-              value={localSearch}
-              onChange={(e) => setLocalSearch(e.target.value)}
-            />
-          </label>
-        ) : null}
       </div>
 
       <div className={cn("hq6-table-wrap", contentClassName)}>{children}</div>

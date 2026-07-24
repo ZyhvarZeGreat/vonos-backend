@@ -1,5 +1,8 @@
 import { getTenantByCode, isTenantCode } from "@/lib/registries/tenants";
-import { useAdminEntityStore } from "@/stores/adminEntityStore";
+import {
+  adminViewingTenantId,
+  useAdminEntityStore,
+} from "@/stores/adminEntityStore";
 import { useAuthStore } from "@/stores/authStore";
 import { useTenantStore } from "@/stores/tenantStore";
 
@@ -23,11 +26,8 @@ export function resolveViewingTenantId(): string | null {
 
     if (segment === "admin") {
       const viewingCode = useAdminEntityStore.getState().viewingCode;
-      if (viewingCode) {
-        return getTenantByCode(viewingCode)?.tenantId ?? null;
-      }
-      // Group consolidated view — no X-Viewing-Tenant (group endpoints).
-      return null;
+      // SP combined → primary VISP for single-tenant headers
+      return adminViewingTenantId(viewingCode);
     }
 
     if (segment && isTenantCode(segment)) {

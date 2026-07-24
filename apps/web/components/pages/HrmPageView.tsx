@@ -7,8 +7,17 @@ import { Button } from "@/components/atoms/Button";
 import { ListPageShell } from "@/components/organisms/ListPageShell";
 import { HrView } from "@/components/pages/HrView";
 import { PayrollView } from "@/components/pages/PayrollView";
-import { createPosPlaceholderView } from "@/components/pages/PosNavViews";
-import { getWorkforce } from "@/lib/api/hrm";
+import { HrmSettingsView } from "@/components/pages/HrmSettingsView";
+import {
+  HrmAttendanceView,
+  HrmDepartmentsView,
+  HrmDesignationsView,
+  HrmHolidayView,
+  HrmLeaveTypeView,
+  HrmLeaveView,
+  HrmSalesTargetsView,
+} from "@/components/pages/HrmEssentialsViews";
+import { getWorkforceStats } from "@/lib/api/hrm";
 import { useIsVaHq6 } from "@/lib/hooks/useIsVaHq6";
 import { useRouteTenant } from "@/lib/hooks/useRouteTenant";
 import { ADMIN_ENTITY_STALE_MS } from "@/lib/admin/prefetchAdminEntity";
@@ -22,32 +31,22 @@ import { formatCurrency } from "@/lib/utils/formatCurrency";
 
 export { HRM_TABS, HRM_SLUG_TO_TAB, type HrmTab } from "@/lib/registries/hrmTabs";
 
-const Placeholder = createPosPlaceholderView;
-
-function HrmPlaceholder({ title, message }: { title: string; message?: string }) {
-  const View = Placeholder(title, message);
-  return <View />;
-}
-
 function HrmDashboardPanel({ onOpenPayroll }: { onOpenPayroll: () => void }) {
   const { tenantId } = useRouteTenant();
   const isHq6 = useIsVaHq6();
-  const workforceQuery = useQuery({
-    queryKey: ["workforce", tenantId, "dashboard"],
+  const statsQuery = useQuery({
+    queryKey: ["workforce", tenantId, "stats"],
     enabled: Boolean(tenantId),
-    queryFn: () => getWorkforce(tenantId!),
+    queryFn: () => getWorkforceStats(tenantId!),
     staleTime: ADMIN_ENTITY_STALE_MS,
     placeholderData: (prev) => prev,
   });
 
-  const workforce = workforceQuery.data ?? [];
-  const byLocation = Object.entries(
-    workforce.reduce<Record<string, number>>((acc, row) => {
-      const key = row.locationCode ?? "Unassigned";
-      acc[key] = (acc[key] ?? 0) + 1;
-      return acc;
-    }, {}),
-  );
+  const totalCount = statsQuery.data?.totalCount ?? 0;
+  const byLocation = (statsQuery.data?.byLocation ?? []).map((row) => [
+    row.locationCode ?? "Unassigned",
+    row.count,
+  ] as const);
 
   const card = isHq6
     ? "hq6-card overflow-hidden"
@@ -114,11 +113,11 @@ function HrmDashboardPanel({ onOpenPayroll }: { onOpenPayroll: () => void }) {
             </div>
             <div>
               <p className="text-xs uppercase text-[#777]">Users</p>
-              <p className="text-lg font-semibold">{workforce.length}</p>
+              <p className="text-lg font-semibold">{totalCount}</p>
             </div>
           </div>
           <div className={cardPad}>
-            {workforceQuery.isLoading ? (
+            {statsQuery.isLoading ? (
               <p className="text-sm text-[#777]">Loading…</p>
             ) : byLocation.length === 0 ? (
               <p className="text-sm text-[#777]">No data</p>
@@ -213,16 +212,24 @@ function HrmDashboardPanel({ onOpenPayroll }: { onOpenPayroll: () => void }) {
     </div>
   );
 }
-export function HrmPageView({ defaultTab = "dashboard" }: { defaultTab?: HrmTab }) {
+export function HrmPageView({
+  defaultTab = "dashboard",
+  forceFullTabs = false,
+}: {
+  defaultTab?: HrmTab;
+  /** Admin / VAG: always show the full VA HRM tab set. */
+  forceFullTabs?: boolean;
+}) {
   const [activeTab, setActiveTab] = useState<HrmTab>(defaultTab);
   const tenantConfig = useTenantStore((state) => state.tenantConfig);
   const isHq6 = useIsVaHq6();
   const essentialsEnabled = tenantConfig?.enabledModules.includes("hrmEssentials") ?? false;
+  const fullTabs = forceFullTabs || isHq6 || essentialsEnabled;
 
   const visibleTabs = useMemo(
     () =>
       HRM_TABS.filter((tab) => {
-        if (isHq6 || essentialsEnabled) return true;
+        if (fullTabs) return true;
         return ![
           "leave-type",
           "leave",
@@ -234,13 +241,11 @@ export function HrmPageView({ defaultTab = "dashboard" }: { defaultTab?: HrmTab 
           "settings",
         ].includes(tab.id);
       }).map((tab) =>
-        isHq6 && tab.id === "dashboard"
+        (forceFullTabs || isHq6) && tab.id === "dashboard"
           ? { ...tab, label: "HRM" }
-          : isHq6 && tab.id === "pay-components"
-            ? { ...tab, label: "Payroll" }
-            : tab,
+          : tab,
       ),
-    [essentialsEnabled, isHq6],
+    [forceFullTabs, fullTabs, isHq6],
   );
 
   useEffect(() => {
@@ -258,27 +263,27 @@ export function HrmPageView({ defaultTab = "dashboard" }: { defaultTab?: HrmTab 
       case "dashboard":
         return <HrmDashboardPanel onOpenPayroll={() => setActiveTab("payroll")} />;
       case "leave-type":
-        return <HrmPlaceholder title="Leave Type" message="Configure leave types for employee requests." />;
+        return <HrmLeaveTypeView />;
       case "leave":
-        return <HrmPlaceholder title="Leave" message="Manage employee leave requests." />;
+        return <HrmLeaveView />;
       case "attendance":
-        return <HrmPlaceholder title="Attendance" message="Track employee clock-in and attendance." />;
+        return <HrmAttendanceView />;
       case "pay-components":
         return <PayrollView embedded defaultTab="components" />;
       case "payroll":
         return <PayrollView embedded defaultTab="payrolls" />;
       case "holiday":
-        return <HrmPlaceholder title="Holiday" message="Manage company holidays." />;
+        return <HrmHolidayView />;
       case "departments":
-        return <HrmPlaceholder title="Departments" message="Manage employee departments." />;
+        return <HrmDepartmentsView />;
       case "designations":
-        return <HrmPlaceholder title="Designations" message="Manage job designations and titles." />;
+        return <HrmDesignationsView />;
       case "sales-targets":
-        return <HrmPlaceholder title="Sales Targets" message="Set and track staff sales targets." />;
+        return <HrmSalesTargetsView />;
       case "hr-people":
         return <HrView embedded />;
       case "settings":
-        return <HrmPlaceholder title="HRM Settings" message="Essentials and HRM configuration." />;
+        return <HrmSettingsView />;
       default: {
         const _exhaustive: never = activeTab;
         return _exhaustive;
@@ -286,7 +291,12 @@ export function HrmPageView({ defaultTab = "dashboard" }: { defaultTab?: HrmTab 
     }
   })();
 
-  const showToolbar = activeTab !== "dashboard" && activeTab !== "hr-people" && activeTab !== "payroll";
+  const showToolbar =
+    activeTab !== "dashboard" &&
+    activeTab !== "hr-people" &&
+    activeTab !== "payroll" &&
+    activeTab !== "settings" &&
+    activeTab !== "attendance";
 
   return (
     <ListPageShell
@@ -297,6 +307,8 @@ export function HrmPageView({ defaultTab = "dashboard" }: { defaultTab?: HrmTab 
       showExport={showToolbar}
       showDateRange={false}
       showSearch={false}
+      hq6Title="HRM"
+      hq6Subtitle="Human resource management"
     >
       {tabContent}
     </ListPageShell>

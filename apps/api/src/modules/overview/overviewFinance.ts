@@ -1,5 +1,6 @@
 import type { ReportsChart, ReportsKpi } from '@vonos/types';
 import type { TenantScopedPrisma } from '../../common/prisma/prisma.service';
+import { EXCLUDE_MIRRORED_JOB_SALE_REVENUE_SQL } from '../../common/utils/ledgerRevenueDedupe';
 import {
   computeDelta,
   priorWindow,
@@ -445,6 +446,7 @@ export async function buildVaHq6HomeBundle(
           AND "deletedAt" IS NULL
           AND date >= ${kpiWindow.from}
           AND date <= ${kpiWindow.to}
+          ${EXCLUDE_MIRRORED_JOB_SALE_REVENUE_SQL}
       ), 0) AS ledger_revenue,
       COALESCE((
         SELECT SUM(s.total)

@@ -7,6 +7,8 @@ import { Prisma } from '@prisma/client';
 import type { Job, JobLabour, JobMaterial } from '@vonos/types';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { TenantDbService } from '../../common/prisma/tenant-db.service';
+import { CacheService } from '../../common/cache/cache.service';
+import { invalidateTenantDashboardCache } from '../../common/cache/cacheInvalidation';
 import { AuditService } from '../audit/audit.service';
 import { InvoiceHubService } from '../invoices/invoice-hub.service';
 import {
@@ -14,8 +16,13 @@ import {
   coerceJobStatus,
 } from '../../common/utils/jobStages';
 import { buildCompositeCursorQuery } from '../../common/utils/pagination';
+import {
+  listPageFilterKey,
+  withListPageCache,
+} from '../../common/utils/listPageCache';
 import { toIso, toNumber } from '../../common/utils/serializers';
 import { computeStockStatus, movementLineRollups } from '../../common/utils/stockQuantity';
+import { tokenizedSearchWhere } from '../../common/utils/listSearch';
 
 export interface JobDetail extends Job {
   customer?: {
@@ -43,6 +50,7 @@ export class JobsService {
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
     private readonly invoiceHub: InvoiceHubService,
+    private readonly cache: CacheService,
   ) {}
 
   async list(filters: {
@@ -55,6 +63,36 @@ export class JobsService {
     limit?: number;
   }): Promise<Job[]> {
     const tenantId = this.tenantDb.requireTenantId();
+    const filterKey = listPageFilterKey({
+      status: filters.status,
+      statuses: filters.statuses?.slice().sort().join(',') ?? '',
+      search: filters.search,
+      from: filters.from,
+      to: filters.to,
+      cursor: filters.cursor,
+      limit: filters.limit ?? 10,
+    });
+    return withListPageCache(
+      this.cache,
+      tenantId,
+      'jobs',
+      filterKey,
+      () => this.listUncached(filters, tenantId),
+    );
+  }
+
+  private async listUncached(
+    filters: {
+      status?: string;
+      statuses?: string[];
+      search?: string;
+      from?: string;
+      to?: string;
+      cursor?: string;
+      limit?: number;
+    },
+    tenantId: string,
+  ): Promise<Job[]> {
     const pagination = buildCompositeCursorQuery({
       sortField: 'createdAt',
       sortDir: 'desc',
@@ -81,27 +119,12 @@ export class JobsService {
               },
             }
           : {}),
-        ...(filters.search
-          ? {
-              OR: [
-                {
-                  reference: { contains: filters.search, mode: 'insensitive' },
-                },
-                {
-                  description: {
-                    contains: filters.search,
-                    mode: 'insensitive',
-                  },
-                },
-                {
-                  customerName: {
-                    contains: filters.search,
-                    mode: 'insensitive',
-                  },
-                },
-              ],
-            }
-          : {}),
+        // Denormalized + trigram-backed (Job_reference/customerName_trgm_idx).
+        // Avoid Customer/Vehicle joins so the planner can use GIN indexes.
+        ...(tokenizedSearchWhere(filters.search, (_token, contains) => [
+          { reference: contains },
+          { customerName: contains },
+        ]) ?? {}),
         ...(pagination.where ?? {}),
       },
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
@@ -399,6 +422,7 @@ export class JobsService {
       entityId: row.id,
       summary: `Created job ${row.reference}`,
     });
+    void invalidateTenantDashboardCache(this.cache, tenantId);
     return this.serializeJob(row);
   }
 
@@ -434,6 +458,7 @@ export class JobsService {
       metadata: { vehicleId },
     });
 
+    void invalidateTenantDashboardCache(this.cache, tenantId);
     return this.getById(jobId);
   }
 
@@ -483,6 +508,7 @@ export class JobsService {
         status: next,
       },
     });
+    void invalidateTenantDashboardCache(this.cache, tenantId);
     return this.serializeJob(row);
   }
 
@@ -560,6 +586,7 @@ export class JobsService {
       }
     }
 
+    void invalidateTenantDashboardCache(this.cache, tenantId);
     return this.getById(id);
   }
 

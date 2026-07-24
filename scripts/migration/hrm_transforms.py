@@ -117,7 +117,8 @@ def _append_payroll_from_txn(
         str(txn.get("staff_note") or "").strip(),
         str(txn.get("ref_no") or "").strip(),
     ]
-    note = " — ".join(p for p in note_parts if p) or None
+    note_parts.extend(_bank_note_parts(users.get(employee_id) if employee_id > 0 else None))
+    note = " · ".join(p for p in note_parts if p) or None
 
     new_id = new_cuid()
     tx_date = parse_tx_date(txn.get("transaction_date"))
@@ -145,6 +146,38 @@ def _append_payroll_from_txn(
         "legacyId": legacy_id,
         "newId": new_id,
     })
+
+
+def _parse_bank_details(user: dict[str, Any] | None) -> dict[str, str]:
+    if not user:
+        return {}
+    raw = user.get("bank_details")
+    if raw is None or raw == "" or raw == "NULL":
+        return {}
+    try:
+        data = json.loads(raw) if isinstance(raw, str) else raw
+    except (json.JSONDecodeError, TypeError, ValueError):
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    out: dict[str, str] = {}
+    mapping = {
+        "account_holder_name": "Account Holder",
+        "bank_name": "Bank Name",
+        "branch": "Branch",
+        "bank_code": "Bank Identifier Code",
+        "account_number": "Bank Account No",
+        "tax_payer_id": "Tax Payer ID",
+    }
+    for key, label in mapping.items():
+        value = str(data.get(key) or "").strip()
+        if value:
+            out[label] = value
+    return out
+
+
+def _bank_note_parts(user: dict[str, Any] | None) -> list[str]:
+    return [f"{label}: {value}" for label, value in _parse_bank_details(user).items()]
 
 
 def _location_code(

@@ -5,12 +5,21 @@ import type {
   UpdateCustomerGroupRequest,
 } from '@vonos/types';
 import { TenantDbService } from '../../common/prisma/tenant-db.service';
+import { CacheService } from '../../common/cache/cache.service';
+import { invalidateTenantDashboardCache } from '../../common/cache/cacheInvalidation';
 import { buildCompositeCursorQuery } from '../../common/utils/pagination';
+import {
+  listPageFilterKey,
+  withListPageCache,
+} from '../../common/utils/listPageCache';
 import { toIso, toNumber } from '../../common/utils/serializers';
 
 @Injectable()
 export class CustomerGroupsService {
-  constructor(private readonly tenantDb: TenantDbService) {}
+  constructor(
+    private readonly tenantDb: TenantDbService,
+    private readonly cache: CacheService,
+  ) {}
 
   async list(filters: {
     cursor?: string;
@@ -18,6 +27,31 @@ export class CustomerGroupsService {
     search?: string;
     discount?: 'has' | 'none';
   } = {}): Promise<CustomerGroup[]> {
+    const tenantId = this.tenantDb.requireTenantId();
+    const filterKey = listPageFilterKey({
+      search: filters.search,
+      discount: filters.discount,
+      cursor: filters.cursor,
+      limit: filters.limit ?? 10,
+    });
+    return withListPageCache(
+      this.cache,
+      tenantId,
+      'customer-groups',
+      filterKey,
+      () => this.listUncached(filters, tenantId),
+    );
+  }
+
+  private async listUncached(
+    filters: {
+      cursor?: string;
+      limit?: number;
+      search?: string;
+      discount?: 'has' | 'none';
+    },
+    tenantId: string,
+  ): Promise<CustomerGroup[]> {
     const pagination = buildCompositeCursorQuery({
       sortField: 'name',
       sortDir: 'asc',
@@ -27,7 +61,7 @@ export class CustomerGroupsService {
     });
     const rows = await this.tenantDb.db.customerGroup.findMany({
       where: {
-        tenantId: this.tenantDb.requireTenantId(),
+        tenantId,
         deletedAt: null,
         ...(filters.search
           ? { name: { contains: filters.search, mode: 'insensitive' } }
@@ -61,6 +95,7 @@ export class CustomerGroupsService {
         discountPercent: dto.discountPercent ?? 0,
       },
     });
+    void invalidateTenantDashboardCache(this.cache, tenantId);
     return {
       id: row.id,
       tenantId: row.tenantId,
@@ -89,6 +124,7 @@ export class CustomerGroupsService {
           : {}),
       },
     });
+    void invalidateTenantDashboardCache(this.cache, tenantId);
     return {
       id: row.id,
       tenantId: row.tenantId,
@@ -109,5 +145,6 @@ export class CustomerGroupsService {
       where: { id },
       data: { deletedAt: new Date() },
     });
+    void invalidateTenantDashboardCache(this.cache, tenantId);
   }
 }

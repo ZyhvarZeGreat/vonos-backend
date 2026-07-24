@@ -8,7 +8,6 @@ import {
 } from "@/lib/api/ledger";
 import { getCustomersPage } from "@/lib/api/customers";
 import { getItemsPage, getStockAvailability } from "@/lib/api/items";
-import { getWorkforce } from "@/lib/api/hrm";
 import { getJobsPage } from "@/lib/api/jobs";
 import { getOverviewDashboard, getVaHq6Home } from "@/lib/api/overview";
 import { getRequisitionsPage } from "@/lib/api/requisitions";
@@ -17,7 +16,7 @@ import { getSalesPage } from "@/lib/api/sales";
 import { getStockMovementsPage, getStockMovementsListSummary } from "@/lib/api/stockMovements";
 import { getSuppliersPage } from "@/lib/api/suppliers";
 import { getVehiclesPage } from "@/lib/api/vehicles";
-import { DEFAULT_TABLE_PAGE_SIZE } from "@/lib/api/fetchAllPages";
+import { DEFAULT_TABLE_PAGE_SIZE, HQ6_TABLE_PAGE_SIZE } from "@/lib/api/fetchAllPages";
 import { ADMIN_ENTITY_STALE_MS } from "@/lib/admin/prefetchAdminEntity";
 import { ADMIN_DEFAULT_ENTITY } from "@/stores/adminEntityStore";
 import { getTenantByCode, type TenantCode } from "@/lib/registries/tenants";
@@ -80,6 +79,11 @@ function prefetchGroupReports(
   from: string,
   to: string,
 ): void {
+  // Core KPIs first so Reports paints quickly; full payload fills charts after.
+  prefetchQuery(queryClient, {
+    queryKey: ["groupReports", "core", from, to],
+    queryFn: () => getGroupReports({ from, to, mode: "core" }),
+  });
   prefetchQuery(queryClient, {
     queryKey: ["groupReports", from, to],
     queryFn: () => getGroupReports({ from, to }),
@@ -100,10 +104,7 @@ function prefetchAdminStock(queryClient: QueryClient): void {
 function prefetchAdminUsers(queryClient: QueryClient): void {
   const tenant = getTenantByCode(ADMIN_DEFAULT_ENTITY);
   if (!tenant) return;
-  prefetchQuery(queryClient, {
-    queryKey: ["workforce", tenant.tenantId, "dashboard"],
-    queryFn: () => getWorkforce(tenant.tenantId),
-  });
+  prefetchEntityHrm(queryClient, tenant.tenantId);
 }
 
 function prefetchTenantOverview(
@@ -217,7 +218,7 @@ function prefetchTenantListSection(
     case "inbound":
     case "outbound": {
       const type = slug as "inbound" | "outbound";
-      // HQ6 purchases list (inbound) uses a dedicated query key + page size 50.
+      // HQ6 purchases list (inbound) uses HQ6_TABLE_PAGE_SIZE.
       if (type === "inbound") {
         const hq6Filters = { type: "inbound" as const };
         const hq6FilterKey = emptyListFilterKey(hq6Filters);
@@ -230,7 +231,7 @@ function prefetchTenantListSection(
             hq6FilterKey,
             0,
             undefined,
-            50,
+            HQ6_TABLE_PAGE_SIZE,
             null,
           ],
           queryFn: () =>
@@ -238,7 +239,7 @@ function prefetchTenantListSection(
               tenantId,
               { ...hq6Filters, includeSummary: false },
               undefined,
-              50,
+              HQ6_TABLE_PAGE_SIZE,
             ),
         });
         prefetchQuery(queryClient, {
@@ -353,7 +354,8 @@ export function prefetchRoute(
       prefetchAdminStock(queryClient);
       return;
     }
-    if (pathname === "/admin/users" || pathname.startsWith("/admin/users/")) {
+    if (pathname === "/admin/hrm" || pathname.startsWith("/admin/hrm/") ||
+        pathname === "/admin/users" || pathname.startsWith("/admin/users/")) {
       prefetchAdminUsers(queryClient);
       return;
     }
@@ -388,7 +390,7 @@ export function prefetchRoute(
   }
 }
 
-/** Prefetch every sidebar route for the tenant (staggered idle). */
+/** Prefetch sidebar routes (staggered). Prefer hover / priority shell instead. */
 export function prefetchTenantNavRoutes(
   queryClient: QueryClient,
   tenantCode: TenantCode,
@@ -421,22 +423,34 @@ const VAG_ADMIN_ROUTES = [
   "/admin/finance",
   "/admin/reports",
   "/admin/stock",
-  "/admin/users",
+  "/admin/hrm",
 ] as const;
 
-/** Warm all VAG admin nav routes after login. */
+/** Warm VAG admin overview first; other admin tabs on idle stagger. */
 export function prefetchVagAdminShell(queryClient: QueryClient): void {
-  for (const route of VAG_ADMIN_ROUTES) {
-    prefetchRoute(queryClient, { pathname: route });
-  }
+  prefetchRoute(queryClient, { pathname: "/admin/overview" });
+  scheduleIdleBatch(
+    VAG_ADMIN_ROUTES.filter((route) => route !== "/admin/overview").map(
+      (pathname) => () => prefetchRoute(queryClient, { pathname }),
+    ),
+  );
 }
 
-/** Warm all tenant sidebar routes after login / entity entry. */
+/**
+ * After login / entity entry: warm Home only.
+ * Full nav warm (~40 HQ6 routes × shell+sidebar) starved the overview request.
+ * Other routes prefetch on sidebar hover.
+ */
 export function prefetchTenantShell(
   queryClient: QueryClient,
   tenantCode: TenantCode,
   tenantId: string,
   dateBounds?: DateRangeBounds | null,
 ): void {
-  prefetchTenantNavRoutes(queryClient, tenantCode, tenantId, dateBounds);
+  prefetchRoute(queryClient, {
+    pathname: `/${tenantCode}/overview`,
+    tenantCode,
+    tenantId,
+    dateBounds,
+  });
 }
