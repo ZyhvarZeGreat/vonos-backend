@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { Trash2 } from "lucide-react";
 import { Button } from "@/components/atoms/Button";
@@ -46,7 +45,6 @@ function PosTerminalViewBody() {
   const { tenantId, tenantCode, config } = useRouteTenant();
   const { options: businessLocationOptions, required: locationRequired } =
     useBusinessLocationOptions(config);
-  const queryClient = useQueryClient();
 
   const [customerName, setCustomerName] = useState("");
   const [locationCode, setLocationCode] = useState("");
@@ -121,12 +119,14 @@ function PosTerminalViewBody() {
       });
     },
     successMessage: "Sale completed",
-    onSuccess: async (sale) => {
-      await queryClient.invalidateQueries({ queryKey: ["sales"] });
-      await queryClient.invalidateQueries({ queryKey: ["items"] });
-      await queryClient.invalidateQueries({ queryKey: ["catalog"] });
-      await queryClient.invalidateQueries({ queryKey: ["ledgerTablePage"] });
-      await queryClient.invalidateQueries({ queryKey: ["ledgerSummary"] });
+    invalidateKeys: [
+      ["sales"],
+      ["items"],
+      ["catalog"],
+      ["ledgerTablePage"],
+      ["ledgerSummary"],
+    ],
+    onSuccess: (sale) => {
       resetCart();
       router.push(`/${tenantCode}/sales/${sale.id}`);
     },

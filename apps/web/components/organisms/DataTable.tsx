@@ -95,6 +95,11 @@ export interface DataTableProps<T extends { id: string }> {
   virtualRowHeight?: number;
   maxBodyHeight?: number;
   embedded?: boolean;
+  /**
+   * Ultimate POS AdminLTE/DataTables table skin.
+   * Defaults to `"upos"` when `embedded` (HQ6 list shells).
+   */
+  variant?: "default" | "upos";
   onRowClick?: (row: T) => void;
   /** Fire when pointer enters a row — use to prefetch detail / modal data. */
   onRowPointerEnter?: (row: T) => void;
@@ -177,6 +182,7 @@ export function DataTable<T extends { id: string }>({
   virtualRowHeight,
   maxBodyHeight = 720,
   embedded = false,
+  variant,
   onRowClick,
   onRowPointerEnter,
   emptyState,
@@ -200,6 +206,24 @@ export function DataTable<T extends { id: string }>({
   const setDensity = onDensityChange ?? prefs.setDensity;
   const showDensity = showDensityControl ?? Boolean(tableId || onDensityChange);
   const rowHeight = virtualRowHeight ?? TABLE_DENSITY_PX[density];
+  const upos = (variant ?? (embedded ? "upos" : "default")) === "upos";
+  const tableClassName = upos
+    ? "table table-bordered table-striped dataTable w-full"
+    : "min-w-full";
+  const theadClassName = upos ? undefined : "bg-[var(--color-surface-muted)]";
+  const thBase = cn(
+    upos
+      ? "px-2 py-2 text-left text-sm font-semibold text-[#111827] whitespace-nowrap"
+      : cn(
+          headerPad(density),
+          "text-xs font-semibold uppercase tracking-wide text-muted",
+          stickyHeader &&
+            "sticky top-0 z-[2] bg-[var(--color-surface-muted)] shadow-[0_1px_0_0_var(--color-border)]",
+        ),
+    !upos &&
+      stickyHeader &&
+      "sticky top-0 z-[2] bg-[var(--color-surface-muted)] shadow-[0_1px_0_0_var(--color-border)]",
+  );
 
   const [filterValues, setFilterValues] = useState<Record<string, string>>({});
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -510,13 +534,6 @@ export function DataTable<T extends { id: string }>({
     offsetPagination ||
     (useInternalPagination && sortedData.length > 0);
 
-  const thBase = cn(
-    headerPad(density),
-    "text-xs font-semibold uppercase tracking-wide text-muted",
-    stickyHeader &&
-      "sticky top-0 z-[2] bg-[var(--color-surface-muted)] shadow-[0_1px_0_0_var(--color-border)]",
-  );
-
   const selectedList = Array.from(selectedIds);
   const showBulkBar = selectable && selectedList.length > 0 && (bulkActions?.length ?? 0) > 0;
   const showChrome = Boolean(toolbar) || showDensity || enableColumnVisibility;
@@ -674,8 +691,8 @@ export function DataTable<T extends { id: string }>({
           aria-busy
           aria-label="Loading table"
         >
-          <table className="min-w-full">
-            <thead className="bg-[var(--color-surface-muted)]">
+          <table className={tableClassName}>
+            <thead className={theadClassName}>
               <tr>
                 {selectable ? (
                   <th className={cn(thBase, "text-left")}>Select</th>
@@ -685,7 +702,7 @@ export function DataTable<T extends { id: string }>({
                     key={String(column.key)}
                     className={cn(
                       thBase,
-                      columnCellClassName(column),
+                      !upos && columnCellClassName(column),
                       colIndex === 0 ? freezeDataColClass(true) : null,
                     )}
                   >
@@ -736,8 +753,8 @@ export function DataTable<T extends { id: string }>({
               : undefined
           }
         >
-          <table className="min-w-full">
-            <thead className="bg-[var(--color-surface-muted)]">
+          <table className={tableClassName}>
+            <thead className={theadClassName}>
               <tr>
                 {selectable ? (
                   <th
@@ -745,7 +762,9 @@ export function DataTable<T extends { id: string }>({
                       thBase,
                       "text-left",
                       stickyFirstColumn &&
-                        "sticky left-0 z-[3] bg-[var(--color-surface-muted)]",
+                        (upos
+                          ? "sticky left-0 z-[3] bg-white"
+                          : "sticky left-0 z-[3] bg-[var(--color-surface-muted)]"),
                     )}
                   >
                     <span className="sr-only">Select</span>
@@ -761,7 +780,7 @@ export function DataTable<T extends { id: string }>({
                       key={key}
                       className={cn(
                         thBase,
-                        columnCellClassName(column),
+                        !upos && columnCellClassName(column),
                         colIndex === 0 ? freezeDataColClass(true) : null,
                         stickyFirstColumn && colIndex === 0 && "z-[3]",
                       )}

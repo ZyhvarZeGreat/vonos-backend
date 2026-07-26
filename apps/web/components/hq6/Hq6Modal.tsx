@@ -71,6 +71,7 @@ export function Hq6Modal({
         "hq6-modal-root fixed inset-0 z-[200] flex items-center justify-center overflow-y-auto p-4",
         className,
       )}
+      data-hq6="true"
       role="dialog"
       aria-modal="true"
       aria-label={title}

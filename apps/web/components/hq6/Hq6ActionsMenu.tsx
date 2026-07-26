@@ -59,7 +59,7 @@ export function Hq6ActionsMenu({
     <div ref={anchorRef} className={cn("relative inline-block", className)}>
       <button
         type="button"
-        className="hq6-actions-pill"
+        className="tw-dw-btn tw-dw-btn-xs tw-dw-btn-outline tw-dw-btn-info hq6-actions-toggle"
         aria-haspopup="menu"
         aria-expanded={open}
         aria-controls={menuId}
@@ -69,7 +69,7 @@ export function Hq6ActionsMenu({
         }}
       >
         {label}
-        <ChevronDown className="h-3 w-3" />
+        <ChevronDown className="h-3 w-3 shrink-0 opacity-80" aria-hidden />
       </button>
       <FloatingMenuPanel
         open={open}

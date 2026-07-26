@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { Car, Search, X } from "lucide-react";
 import type { Vehicle } from "@vonos/types";
 import { Button } from "@/components/atoms/Button";
@@ -27,17 +27,22 @@ export function JobVehiclePanel({
   tenantCode,
   onJobChange,
 }: JobVehiclePanelProps) {
-  const queryClient = useQueryClient();
   const [pickerOpen, setPickerOpen] = useState(false);
 
   const linkMutation = useAppMutation({
     mutationFn: (vehicleId: string | null) => linkJobVehicle(job.id, vehicleId),
     successMessage: (updated) =>
       updated.vehicle ? "Vehicle linked" : "Vehicle unlinked",
+    optimistic: {
+      keys: [["job", job.id], ["jobs"]],
+      update: (_qc, vehicleId) => {
+        if (vehicleId === null) {
+          onJobChange({ ...job, vehicleId: null, vehicle: null });
+        }
+      },
+    },
     onSuccess: (updated) => {
       onJobChange(updated);
-      void queryClient.invalidateQueries({ queryKey: ["job", job.id] });
-      void queryClient.invalidateQueries({ queryKey: ["jobs"] });
     },
   });
 
@@ -112,7 +117,6 @@ interface VehiclePickerModalProps {
 }
 
 function VehiclePickerModal({ tenantId, onClose, onPick }: VehiclePickerModalProps) {
-  const queryClient = useQueryClient();
   const [query, setQuery] = useState("");
   const [debounced, setDebounced] = useState("");
   const [showCreate, setShowCreate] = useState(false);
@@ -167,8 +171,8 @@ function VehiclePickerModal({ tenantId, onClose, onPick }: VehiclePickerModalPro
         vin: null,
       }),
     successMessage: "Vehicle registered",
+    invalidateKeys: [["vehicles", tenantId]],
     onSuccess: (vehicle: Vehicle) => {
-      void queryClient.invalidateQueries({ queryKey: ["vehicles", tenantId] });
       onPick(vehicle.id);
     },
   });
@@ -223,15 +227,25 @@ function VehiclePickerModal({ tenantId, onClose, onPick }: VehiclePickerModalPro
           </div>
         ) : (
           <>
-            <div className="relative">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
-              <input
-                type="search"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search plate, make, model, owner…"
-                className="w-full rounded-lg border border-border bg-card py-2.5 pl-9 pr-3 text-sm outline-none focus:border-[var(--color-brand-primary)] focus:ring-1"
-              />
+            <div className="relative flex items-stretch">
+              <div className="relative min-w-0 flex-1">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
+                <input
+                  type="search"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="Search plate, make, model, owner…"
+                  className="w-full rounded-l-lg rounded-r-none border border-r-0 border-border bg-card py-2.5 pl-9 pr-3 text-sm outline-none focus:border-[var(--color-brand-primary)] focus:ring-1"
+                />
+              </div>
+              <button
+                type="button"
+                className="inline-flex shrink-0 items-center justify-center rounded-r-lg border border-[#2563eb] bg-[#2563eb] px-3 text-sm font-semibold text-white hover:border-[#1d4ed8] hover:bg-[#1d4ed8]"
+                aria-label="Search"
+                onClick={() => setQuery((prev) => prev.trim())}
+              >
+                Search
+              </button>
             </div>
             <ul className="max-h-64 space-y-1 overflow-y-auto">
               {isFetching ? (

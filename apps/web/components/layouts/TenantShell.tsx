@@ -13,8 +13,9 @@ import { useAuthStore } from "@/stores/authStore";
 import { useTenantStore } from "@/stores/tenantStore";
 import { useUiStore } from "@/stores/uiStore";
 import { dateRangePresetToApiBounds } from "@/lib/utils/dateRange";
-import { isHq6Tenant } from "@/lib/utils/isHq6Tenant";
+import { isHq6Tenant, isUposShellTenant } from "@/lib/utils/isHq6Tenant";
 import { Spinner } from "@/components/atoms/Spinner";
+import { Hq6UposStyles } from "@/components/hq6/Hq6UposStyles";
 import { prefetchTenantShell } from "@/lib/prefetch/routePrefetchRegistry";
 
 export function TenantShell({ children }: { children: React.ReactNode }) {
@@ -138,12 +139,17 @@ export function TenantShell({ children }: { children: React.ReactNode }) {
 
   // While tenant config fetches, keep the real sidebar/top bar; page content
   // uses its own skeletons. Static registry config already drives nav.
+  const hq6 = isHq6Tenant(tenantCode);
+  const uposShell = isUposShellTenant(tenantCode);
   return (
     <div
       data-tenant={tenantCode}
-      data-hq6={isHq6Tenant(tenantCode) ? "true" : undefined}
+      data-hq6={hq6 ? "true" : undefined}
+      data-upos-shell={uposShell ? "true" : undefined}
       style={tenantAccentStyle(tenantCode)}
     >
+      {/* UposAppShell loads its own styles; other HQ6 tenants keep skin CSS. */}
+      {hq6 && !uposShell ? <Hq6UposStyles /> : null}
       {children}
     </div>
   );

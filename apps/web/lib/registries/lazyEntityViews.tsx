@@ -104,6 +104,14 @@ export const OrdersListView = lazyNamed(
   () => import("@/components/pages/EntityListViews"),
   "OrdersListView",
 );
+export const Hq6OrdersModuleView = lazyNamed(
+  () => import("@/components/pages/Hq6OrdersModuleView"),
+  "Hq6OrdersModuleView",
+);
+export const Hq6NotificationTemplatesView = lazyNamed(
+  () => import("@/components/pages/Hq6NotificationTemplatesView"),
+  "Hq6NotificationTemplatesView",
+);
 export const CustomersListView = lazyNamed(
   () => import("@/components/pages/EntityListViews"),
   "CustomersListView",

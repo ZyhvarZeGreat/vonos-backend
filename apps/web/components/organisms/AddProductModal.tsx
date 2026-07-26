@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { Modal, ModalHeader } from "@/components/atoms/Modal";
 import { AddProductForm } from "@/components/organisms/AddProductForm";
 import { getItem } from "@/lib/api/items";
@@ -19,7 +19,6 @@ export function AddProductModal() {
   const tenantId = useTenantId();
   const { config: tenantConfig, tenantCode } = useRouteTenant();
   const isHq6 = useIsVaHq6();
-  const queryClient = useQueryClient();
   const open = activeModal === "addProduct";
   const [formKey, setFormKey] = useState(0);
 
@@ -57,9 +56,6 @@ export function AddProductModal() {
       duplicateFrom={duplicateFromId ? duplicateFrom ?? null : null}
       onCancel={handleClose}
       onSuccess={async (_item, mode) => {
-        await queryClient.invalidateQueries({ queryKey: ["items"] });
-        await queryClient.invalidateQueries({ queryKey: ["catalog"] });
-        await queryClient.invalidateQueries({ queryKey: ["catalog-meta"] });
         if (mode !== "saveAnother") {
           handleClose();
         }

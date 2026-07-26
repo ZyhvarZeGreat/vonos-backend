@@ -73,11 +73,20 @@ export function useListPageFilters(options?: {
     return dateRangePresetToApiBounds(dateRange, new Date(), customDateRange);
   }, [customDateRange, dateRange, unboundedAllTime]);
 
+  /** Spread onto `<DateRangeDropdown />` so custom ranges stay in sync with bounds. */
+  const dateRangeDropdownProps = {
+    value: dateRange,
+    onChange: setDateRange,
+    customValue: customDateRange,
+    onCustomChange: setCustomDateRange,
+  };
+
   return {
     dateRange,
     setDateRange,
     customDateRange,
     setCustomDateRange,
+    dateRangeDropdownProps,
     search,
     setSearch,
     bounds,

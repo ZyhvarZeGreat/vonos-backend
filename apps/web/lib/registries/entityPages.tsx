@@ -23,6 +23,8 @@ import {
   FinanceView,
   Hq6ChecklistView,
   Hq6EssentialsTodoView,
+  Hq6NotificationTemplatesView,
+  Hq6OrdersModuleView,
   Hq6ProductsListView,
   HrView,
   HrmPageView,
@@ -229,6 +231,10 @@ const posProductPages: SlugMap = {
 
 const procurementPages: SlugMap = {
   inbound,
+  purchases: {
+    title: "Purchases",
+    View: () => <MovementListView type="inbound" />,
+  },
   "purchase-orders": { title: "Purchase Orders", View: PurchaseOrdersView },
   "purchase-returns": { title: "Purchase Returns", View: PurchaseReturnsView },
   "add-purchase": { title: "Add Purchase", View: AddPurchaseView },
@@ -293,6 +299,8 @@ const legacyReportPages: SlugMap = {
 
 const posPaymentPages: SlugMap = {
   "payment-accounts": { title: "Payment Accounts", View: PaymentAccountsListView },
+  // HQ6 / UPOS URL alias
+  accounts: { title: "Payment Accounts", View: PaymentAccountsListView },
   payments: { title: "Payments", View: PaymentsListView },
   "account-book": { title: "Account Book", View: AccountBookView },
   "balance-sheet": {
@@ -316,10 +324,10 @@ const posPaymentPages: SlugMap = {
 /** HQ6 nav entries shared across all operating tenants. */
 const hq6SharedShellPages: SlugMap = {
   "essentials-todo": { title: "To Do", View: Hq6EssentialsTodoView },
-  orders: { title: "Orders", View: OrdersListView },
+  orders: { title: "Orders", View: Hq6OrdersModuleView },
   "notification-templates": {
     title: "Notification Templates",
-    View: sharedSettings.View,
+    View: Hq6NotificationTemplatesView,
   },
 };
 
@@ -536,6 +544,8 @@ const ENTITY_PAGES: Record<TenantCode, SlugMap> = {
     ...settingsPages,
     ...legacyReportPages,
     ...hq6SharedShellPages,
+    // VA: Ultimate POS service-staff Orders module (ui-audit/61_modules__orders).
+    orders: { title: "Orders", View: Hq6OrdersModuleView },
     "hq6-checklist": { title: "HQ6 Checklist", View: Hq6ChecklistView },
   },
   VS: {

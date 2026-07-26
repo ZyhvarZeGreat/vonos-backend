@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState, type ReactNode } from "react";
-import { useQueryClient } from "@tanstack/react-query";
 import { Info } from "lucide-react";
 import type { HrmSettings } from "@vonos/types";
 import { defaultHrmSettings, mergeHrmSettings } from "@vonos/types";
@@ -81,7 +80,6 @@ export function HrmSettingsView() {
   const { tenantId } = useRouteTenant();
   const config = useTenantStore((s) => s.tenantConfig);
   const setTenantConfig = useTenantStore((s) => s.setTenantConfig);
-  const queryClient = useQueryClient();
   const [nav, setNav] = useState<HrmSettingsNavId>("leave");
   const [draft, setDraft] = useState<HrmSettings>(() =>
     mergeHrmSettings(undefined, config?.hrmSettings),
@@ -97,9 +95,9 @@ export function HrmSettingsView() {
       return updateTenantConfig(tenantId, { hrmSettings: draft });
     },
     successMessage: "HRM settings updated",
+    invalidateKeys: [["tenantConfig", tenantId]],
     onSuccess: (updated) => {
       setTenantConfig(updated);
-      void queryClient.invalidateQueries({ queryKey: ["tenantConfig", tenantId] });
     },
   });
 

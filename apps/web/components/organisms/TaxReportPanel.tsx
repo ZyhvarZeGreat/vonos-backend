@@ -22,6 +22,8 @@ import { useCursorPage } from "@/lib/hooks/useCursorPage";
 import { useDebouncedValue } from "@/lib/hooks/useDebouncedValue";
 import { TABLE_REPORT_PAGE_SIZE } from "@/lib/registries/reportTableUi";
 import { runReport } from "@/lib/api/reports";
+import { useIsVaHq6 } from "@/lib/hooks/useIsVaHq6";
+import { Hq6ReportDataTable } from "@/components/hq6/Hq6ReportDataTable";
 
 function rowMatchesSearch(row: ReportsTableRow, query: string): boolean {
   const q = query.trim().toLowerCase();
@@ -54,19 +56,84 @@ function InfoTip({ label }: { label: string }) {
   );
 }
 
+function SummaryCard({
+  title,
+  titleTip,
+  children,
+  hq6 = false,
+}: {
+  title: string;
+  titleTip?: string;
+  children: ReactNode;
+  hq6?: boolean;
+}) {
+  if (hq6) {
+    return (
+      <div className="tw-mb-4 tw-transition-all tw-duration-200 tw-bg-white tw-shadow-sm tw-rounded-xl tw-ring-1 hover:tw-shadow-md tw-ring-gray-200">
+        <div className="tw-p-2 sm:tw-p-3">
+          <div className="box-header">
+            <h3 className="box-title">
+              {title}
+              {titleTip ? <InfoTip label={titleTip} /> : null}
+            </h3>
+          </div>
+          <div className="tw-flow-root tw-border-gray-200">
+            <div className="tw-py-2 tw-align-middle sm:tw-px-5">
+              <table className="table table-striped">
+                <tbody>{children}</tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+  return (
+    <section className="overflow-hidden rounded-xl border border-border bg-card shadow-card">
+      <header className="flex items-center gap-1.5 border-b border-border px-4 py-3">
+        <h3 className="text-base font-semibold text-foreground">{title}</h3>
+        {titleTip ? <InfoTip label={titleTip} /> : null}
+      </header>
+      <div className="divide-y divide-border/60">{children}</div>
+    </section>
+  );
+}
+
 function MetricRow({
   label,
   value,
   currency,
   muted,
   tip,
+  hq6 = false,
 }: {
   label: string;
   value: number;
   currency: string;
   muted?: boolean;
   tip?: string;
+  hq6?: boolean;
 }) {
+  if (hq6) {
+    return (
+      <tr className={muted ? "bg-gray" : undefined}>
+        <th>
+          {label}
+          {tip ? (
+            <>
+              {" "}
+              <InfoTip label={tip} />
+            </>
+          ) : null}
+        </th>
+        <td>
+          <span className="display_currency">
+            {formatTaxAmount(value, currency)}
+          </span>
+        </td>
+      </tr>
+    );
+  }
   return (
     <div
       className={cn(
@@ -82,26 +149,6 @@ function MetricRow({
         {formatTaxAmount(value, currency)}
       </span>
     </div>
-  );
-}
-
-function SummaryCard({
-  title,
-  titleTip,
-  children,
-}: {
-  title: string;
-  titleTip?: string;
-  children: ReactNode;
-}) {
-  return (
-    <section className="overflow-hidden rounded-xl border border-border bg-card shadow-card">
-      <header className="flex items-center gap-1.5 border-b border-border px-4 py-3">
-        <h3 className="text-base font-semibold text-foreground">{title}</h3>
-        {titleTip ? <InfoTip label={titleTip} /> : null}
-      </header>
-      <div className="divide-y divide-border/60">{children}</div>
-    </section>
   );
 }
 
@@ -243,6 +290,73 @@ function InvoiceTableSection({
     rows: filteredRows,
   };
   const isBusy = pageQuery.isFetching && !pageQuery.isLoading;
+  const isHq6 = useIsVaHq6();
+
+  if (isHq6) {
+    return (
+      <Hq6ReportDataTable
+        table={displayTable}
+        currency={currency}
+        tableId={`tax_${side}_table`}
+        title={
+          <>
+            {title}
+            <small className="text-muted tw-ml-2 tw-text-xs tw-font-normal">
+              {subtitle}
+            </small>
+          </>
+        }
+        searchValue={search}
+        onSearchChange={setSearch}
+        searchPlaceholder={
+          detailed
+            ? "Search invoices, tax number, parties…"
+            : "Search invoices, parties, payment…"
+        }
+        pageIndex={pageIndex}
+        pageSize={pageSize}
+        hasMore={Boolean(table.hasMore)}
+        canGoPrev={canGoPrev}
+        isBusy={isBusy}
+        onPrev={goPrev}
+        onNext={() => {
+          if (table.nextCursor) goNext(table.nextCursor);
+        }}
+        onPageSizeChange={(size) => {
+          setPageSize(size);
+          reset();
+        }}
+        onPageSelect={goToPage}
+        canSelectPage={(index) => index <= maxReachablePageIndex}
+        renderCell={(colKey, raw) => {
+          if (colKey === "reference") {
+            return (
+              <span className="label bg-info">
+                {String(raw ?? "—")}
+              </span>
+            );
+          }
+          if (colKey === "type") {
+            const label = String(raw ?? "—");
+            const isSale =
+              label.toLowerCase().includes("sale") ||
+              label.toLowerCase().includes("job");
+            return (
+              <span
+                className={cn(
+                  "label",
+                  isSale ? "bg-green" : "bg-aqua",
+                )}
+              >
+                {label}
+              </span>
+            );
+          }
+          return undefined;
+        }}
+      />
+    );
+  }
 
   return (
     <section className="overflow-hidden rounded-xl border border-border bg-card shadow-card">
@@ -399,6 +513,7 @@ export function TaxReportPanel({
   to?: string;
   onPrint?: () => void;
 }) {
+  const isHq6 = useIsVaHq6();
   const tax: TaxReportSummary = report.taxReport ?? {
     currency: "NGN",
     purchases: { total: 0, includingTax: 0, returnIncludingTax: 0, due: 0 },
@@ -411,10 +526,11 @@ export function TaxReportPanel({
   const salesTable = report.taxTables?.sales;
   const hasSplit = Boolean(purchasesTable || salesTable);
   const legacyTable = !hasSplit ? report.table : null;
+  const showTables = !(isHq6 && reportId === "purchase-sale");
 
   return (
     <div className="space-y-6" data-print-root>
-      {onPrint ? (
+      {onPrint && !isHq6 ? (
         <div className="flex justify-end print:hidden">
           <button
             type="button"
@@ -426,81 +542,111 @@ export function TaxReportPanel({
         </div>
       ) : null}
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <SummaryCard title="Purchases">
-          <MetricRow
-            label="Total Purchase:"
-            value={tax.purchases.total}
-            currency={currency}
-            muted
-          />
-          <MetricRow
-            label="Purchase Including tax:"
-            value={tax.purchases.includingTax}
-            currency={currency}
-          />
-          <MetricRow
-            label="Total Purchase Return Including Tax:"
-            value={tax.purchases.returnIncludingTax}
-            currency={currency}
-            muted
-          />
-          <MetricRow
-            label="Purchase Due:"
-            value={tax.purchases.due}
-            currency={currency}
-            tip="Unpaid purchase balances in the selected period"
-          />
-        </SummaryCard>
+      <div className={isHq6 ? "row" : "grid gap-4 lg:grid-cols-2"}>
+        <div className={isHq6 ? "col-xs-6" : undefined}>
+          <SummaryCard title="Purchases" hq6={isHq6}>
+            <MetricRow
+              label="Total Purchase:"
+              value={tax.purchases.total}
+              currency={currency}
+              muted
+              hq6={isHq6}
+            />
+            <MetricRow
+              label="Purchase Including tax:"
+              value={tax.purchases.includingTax}
+              currency={currency}
+              hq6={isHq6}
+            />
+            <MetricRow
+              label="Total Purchase Return Including Tax:"
+              value={tax.purchases.returnIncludingTax}
+              currency={currency}
+              muted
+              hq6={isHq6}
+            />
+            <MetricRow
+              label="Purchase Due:"
+              value={tax.purchases.due}
+              currency={currency}
+              tip="Total unpaid amount for purchases."
+              hq6={isHq6}
+            />
+          </SummaryCard>
+        </div>
 
-        <SummaryCard title="Sales">
-          <MetricRow
-            label="Total Sale:"
-            value={tax.sales.total}
-            currency={currency}
-            muted
-          />
-          <MetricRow
-            label="Sale Including tax:"
-            value={tax.sales.includingTax}
-            currency={currency}
-          />
-          <MetricRow
-            label="Total Sell Return Including Tax:"
-            value={tax.sales.returnIncludingTax}
-            currency={currency}
-            muted
-          />
-          <MetricRow
-            label="Sale Due:"
-            value={tax.sales.due}
-            currency={currency}
-            tip="Uncollected sale balances in the selected period"
-          />
-        </SummaryCard>
+        <div className={isHq6 ? "col-xs-6" : undefined}>
+          <SummaryCard title="Sales" hq6={isHq6}>
+            <MetricRow
+              label="Total Sale:"
+              value={tax.sales.total}
+              currency={currency}
+              muted
+              hq6={isHq6}
+            />
+            <MetricRow
+              label="Sale Including tax:"
+              value={tax.sales.includingTax}
+              currency={currency}
+              hq6={isHq6}
+            />
+            <MetricRow
+              label="Total Sell Return Including Tax:"
+              value={tax.sales.returnIncludingTax}
+              currency={currency}
+              muted
+              hq6={isHq6}
+            />
+            <MetricRow
+              label="Sale Due:"
+              value={tax.sales.due}
+              currency={currency}
+              tip="Total unpaid amount for sales."
+              hq6={isHq6}
+            />
+          </SummaryCard>
+        </div>
       </div>
 
       <SummaryCard
-        title="Overall ((Sale - Sell Return) - (Purchase - Purchase Return))"
+        title="Overall ((Sale - Sell Return) - (Purchase - Purchase Return) )"
         titleTip="Net of returns: (sales − sell returns) − (purchases − purchase returns)"
+        hq6={isHq6}
       >
-        <div className="space-y-3 px-4 py-5">
-          <p className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-base">
-            <span className="font-medium text-muted">Sale - Purchase:</span>
-            <span className="text-xl font-semibold tabular-nums text-teal-700">
-              {formatTaxAmount(tax.overall.saleMinusPurchase, currency)}
-            </span>
-          </p>
-          <p className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-base">
-            <span className="font-medium text-muted">Due amount:</span>
-            <span className="text-xl font-semibold tabular-nums text-teal-700">
-              {formatTaxAmount(tax.overall.dueAmount, currency)}
-            </span>
-          </p>
-        </div>
+        {isHq6 ? (
+          <>
+            <MetricRow
+              label="Sale - Purchase:"
+              value={tax.overall.saleMinusPurchase}
+              currency={currency}
+              hq6
+            />
+            <MetricRow
+              label="Due amount:"
+              value={tax.overall.dueAmount}
+              currency={currency}
+              tip="Sale due - Purchase due"
+              hq6
+            />
+          </>
+        ) : (
+          <div className="space-y-3 px-4 py-5">
+            <MetricRow
+              label="Sale - Purchase:"
+              value={tax.overall.saleMinusPurchase}
+              currency={currency}
+            />
+            <MetricRow
+              label="Due amount:"
+              value={tax.overall.dueAmount}
+              currency={currency}
+              tip="Sale due - Purchase due"
+            />
+          </div>
+        )}
       </SummaryCard>
 
-      {hasSplit ? (
+      {showTables && hasSplit ? (
         <div className="space-y-6">
           <InvoiceTableSection
             title="Input tax — purchases"
@@ -527,7 +673,7 @@ export function TaxReportPanel({
             detailed={detailed}
           />
         </div>
-      ) : legacyTable?.rows.length ? (
+      ) : showTables && legacyTable?.rows.length ? (
         <InvoiceTableSection
           title="Period invoices — purchases & sales"
           subtitle="Invoice / reference numbers, parties, tax, and payment for the selected period"
@@ -540,11 +686,11 @@ export function TaxReportPanel({
           currency={currency}
           detailed={detailed}
         />
-      ) : (
+      ) : showTables ? (
         <section className="rounded-xl border border-dashed border-border bg-card px-4 py-8 text-center text-sm text-muted shadow-card">
           No sale or purchase documents in this period yet.
         </section>
-      )}
+      ) : null}
     </div>
   );
 }

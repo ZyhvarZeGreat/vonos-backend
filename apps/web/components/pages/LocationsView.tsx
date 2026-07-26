@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
 import { Plus, Trash2 } from "lucide-react";
 import { useAppMutation } from "@/lib/hooks/useAppMutation";
 import { Button } from "@/components/atoms/Button";
@@ -15,12 +14,19 @@ import { hasPermission } from "@/lib/utils/permissions";
 import { useAuthStore } from "@/stores/authStore";
 import { accentForTenantCode } from "@/lib/registries/tenantAccents";
 import type { BusinessLocation } from "@vonos/types";
+import { useIsVaHq6 } from "@/lib/hooks/useIsVaHq6";
+import { Hq6BusinessLocationsView } from "@/components/pages/Hq6BusinessLocationsView";
 
 export function LocationsView() {
+  const isHq6 = useIsVaHq6();
+  if (isHq6) return <Hq6BusinessLocationsView />;
+  return <DefaultLocationsView />;
+}
+
+function DefaultLocationsView() {
   const { tenantId, tenantCode, tenantName, config } = useRouteTenant();
   const authRole = useAuthStore((state) => state.role);
   const setTenantConfig = useTenantStore((state) => state.setTenantConfig);
-  const queryClient = useQueryClient();
   const canEdit = authRole
     ? hasPermission(authRole, "editSettings") || hasPermission(authRole, "createRecord")
     : false;
@@ -51,10 +57,10 @@ export function LocationsView() {
       });
     },
     successMessage: "Locations saved",
+    invalidateKeys: [["tenantConfig", tenantId]],
     onSuccess: (updated) => {
       setTenantConfig(updated);
       setSaveError(null);
-      void queryClient.invalidateQueries({ queryKey: ["tenantConfig", tenantId] });
     },
     onError: (err: Error) => setSaveError(err.message),
   });

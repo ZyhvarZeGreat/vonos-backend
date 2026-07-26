@@ -183,8 +183,8 @@ export function emptyReportFilters(): ReportRunOptions {
   };
 }
 
-/** Default rows-per-page for report tables (server + client). */
-export const TABLE_REPORT_PAGE_SIZE = 10;
+/** Default rows-per-page for report tables (server + client). HQ6 DataTables uses 25. */
+export const TABLE_REPORT_PAGE_SIZE = 25;
 
 /** Strip empty filter values before sending to the API. */
 export function compactReportFilters(

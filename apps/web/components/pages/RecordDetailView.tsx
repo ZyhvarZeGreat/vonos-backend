@@ -13,6 +13,7 @@ import { getAppointment } from "@/lib/api/appointments";
 import { getReturn } from "@/lib/api/returns";
 import { saleToOrder } from "@/lib/api/orders";
 import { getVehicle, getVehicleHistory } from "@/lib/api/vehicles";
+import { patchEntityInQueries } from "@/lib/query/optimistic";
 import { getStockMovement, updateStockMovementStatus, type StockMovementListRow } from "@/lib/api/stockMovements";
 import { getSupplier } from "@/lib/api/suppliers";
 import { useRecordNavigation } from "@/lib/hooks/useRecordNavigation";
@@ -523,7 +524,6 @@ function MovementDetailView({
   type: "inbound" | "outbound";
 }) {
   const router = useRouter();
-  const queryClient = useQueryClient();
   const tenantId = useTenantId();
   const { listPath } = useRecordNavigation(type);
   const { entries: auditEntries } = useAuditHistoryFeed("stockMovement", recordId, tenantId);
@@ -539,9 +539,16 @@ function MovementDetailView({
   const statusMutation = useAppMutation({
     mutationFn: (status: MovementStatus) => updateStockMovementStatus(recordId, status),
     successMessage: (_data, status) => `Movement marked as ${status}`,
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["stock-movement", tenantId, recordId] });
-      await queryClient.invalidateQueries({ queryKey: ["stock-movements"] });
+    optimistic: {
+      keys: [["stock-movement", tenantId, recordId], ["stock-movements"]],
+      update: (qc, status) => {
+        patchEntityInQueries(qc, ["stock-movements"], recordId, { status });
+        qc.setQueryData(
+          ["stock-movement", tenantId, recordId],
+          (prev: { status?: string } | undefined) =>
+            prev ? { ...prev, status } : prev,
+        );
+      },
     },
   });
 
@@ -668,15 +675,28 @@ function MovementDetailView({
 function Hq6SaleDetailRedirect({ recordId }: { recordId: string }) {
   const router = useRouter();
   const queryClient = useQueryClient();
+  const searchParams = useSearchParams();
   const tenantId = useTenantId();
   const tenantCode = useTenantStore((s) => s.tenantConfig?.code ?? "VA");
 
   useLayoutEffect(() => {
+    // `/sales/new` is a create alias (HQ6 / Ultimate POS), not a detail id.
+    if (recordId === "new" || recordId === "create") {
+      const status = searchParams.get("status");
+      const createPath =
+        status === "draft"
+          ? `/${tenantCode}/add-draft`
+          : status === "quotation"
+            ? `/${tenantCode}/add-quotation`
+            : `/${tenantCode}/add-sale`;
+      router.replace(createPath);
+      return;
+    }
     if (tenantId) {
       prefetchSaleListModals(queryClient, tenantId, recordId);
     }
     router.replace(saleRecordPath(tenantCode, recordId));
-  }, [queryClient, recordId, router, tenantCode, tenantId]);
+  }, [queryClient, recordId, router, searchParams, tenantCode, tenantId]);
 
   return null;
 }
@@ -1119,6 +1139,18 @@ export function RecordDetailView({
   const tenantCode = params.tenant;
   const tenantId = useTenantId();
   const { listPath } = useRecordNavigation(listSlug);
+
+  // Create aliases: `/purchases/new`, `/expenses/new` → dedicated add pages.
+  useLayoutEffect(() => {
+    if (recordId !== "new" && recordId !== "create") return;
+    if (listSlug === "purchases" || listSlug === "inbound") {
+      router.replace(`/${tenantCode}/add-purchase`);
+      return;
+    }
+    if (listSlug === "expenses") {
+      router.replace(`/${tenantCode}/add-expense`);
+    }
+  }, [listSlug, recordId, router, tenantCode]);
 
   const view = useMemo(() => {
     if (!tenantId) return null;

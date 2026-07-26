@@ -148,7 +148,6 @@ function CheckRow({
 export function Hq6BusinessSettingsView() {
   const { tenantId, tenantName, tenantCode, config } = useRouteTenant();
   const setTenantConfig = useTenantStore((state) => state.setTenantConfig);
-  const queryClient = useQueryClient();
   const [nav, setNav] = useState<Hq6SettingsNavId>("business");
   const [search, setSearch] = useState("");
   const [displayName, setDisplayName] = useState(
@@ -252,9 +251,9 @@ export function Hq6BusinessSettingsView() {
       });
     },
     successMessage: "Settings updated",
+    invalidateKeys: [["tenantConfig", tenantId]],
     onSuccess: (updated) => {
       setTenantConfig(updated);
-      void queryClient.invalidateQueries({ queryKey: ["tenantConfig", tenantId] });
     },
   });
 
@@ -265,8 +264,10 @@ export function Hq6BusinessSettingsView() {
 
   return (
     <div className="hq6-page hq6-business-settings space-y-3">
-      <section className="hq6-content-header">
-        <h1>Business Settings</h1>
+      <section className="content-header hq6-content-header">
+        <h1 className="tw-text-xl md:tw-text-3xl tw-font-bold tw-text-black">
+          Business Settings
+        </h1>
       </section>
 
       {/*
@@ -305,14 +306,30 @@ export function Hq6BusinessSettingsView() {
           </nav>
 
           <div className="hq6-biz-settings-main flex min-w-0 flex-1 flex-col">
-            <div className="hq6-biz-settings-search m-3 mb-0 flex items-center gap-2 rounded border border-[#d2d6de] bg-white px-3 py-2">
-              <Search className="h-4 w-4 shrink-0 text-[#9ca3af]" />
-              <input
-                className="min-w-0 flex-1 border-0 bg-transparent text-sm outline-none"
-                placeholder="Search"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-              />
+            <div className="hq6-biz-settings-search m-3 mb-0 flex items-stretch overflow-hidden rounded border border-[#d2d6de] bg-white">
+              <div className="flex min-w-0 flex-1 items-center gap-2 px-3 py-2">
+                <Search className="h-4 w-4 shrink-0 text-[#9ca3af]" />
+                <input
+                  className="min-w-0 flex-1 border-0 bg-transparent text-sm outline-none"
+                  placeholder="Search"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      setSearch((prev) => prev.trim());
+                    }
+                  }}
+                />
+              </div>
+              <button
+                type="button"
+                className="hq6-search-btn"
+                aria-label="Search"
+                onClick={() => setSearch((prev) => prev.trim())}
+              >
+                Search
+              </button>
             </div>
 
             <div className="hq6-biz-settings-content flex-1 p-4 pt-3 md:p-5 md:pt-4">
@@ -343,7 +360,7 @@ export function Hq6BusinessSettingsView() {
                     value={t("business", "currency", "NGN")}
                     onChange={(e) => setTab("business", "currency", e.target.value)}
                   >
-                    <option value="NGN">Nigeria - Nairas(NGN) 🇳🇬</option>
+                    <option value="NGN">Nigeria - Nairas(NGN)</option>
                   </select>
                 </Field>
                 <Field label="Currency Symbol Placement:">
@@ -366,8 +383,14 @@ export function Hq6BusinessSettingsView() {
                   </select>
                 </Field>
                 <Field label="Business logo:">
-                  <div className="flex items-center gap-2">
-                    <input type="file" accept="image/*" className="text-sm" />
+                  <div className="hq6-file-browse">
+                    <label className="hq6-file-browse-btn">
+                      <i className="fa fa-cloud-upload" aria-hidden /> Browse..
+                      <input type="file" accept="image/*" className="sr-only" />
+                    </label>
+                    <p className="help-block">
+                      Previous logo (if exists) will be replaced
+                    </p>
                   </div>
                 </Field>
                 <Field label="Financial year start month:">
@@ -1223,7 +1246,7 @@ export function Hq6BusinessSettingsView() {
       </div>
 
       <p className="hq6-footer">
-        Vonos Autos Head Office - V6.8 | Copyright © {new Date().getFullYear()} All rights
+        Vonos Autos Head Office - V8.1 | Copyright © {new Date().getFullYear()} All rights
         reserved.
       </p>
     </div>

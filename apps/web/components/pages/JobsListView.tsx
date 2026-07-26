@@ -3,16 +3,21 @@
 import { useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { StatusPill } from "@/components/atoms/StatusPill";
+import { DataTable, type ColumnConfig } from "@/components/organisms/DataTable";
 import { ServerPaginatedTable } from "@/components/organisms/ServerPaginatedTable";
 import { ListPageShell } from "@/components/organisms/ListPageShell";
+import {
+  Hq6StandardListShell,
+  useHq6ListChrome,
+} from "@/components/hq6/Hq6StandardListShell";
 import { getJobsPage } from "@/lib/api/jobs";
 import { useRecordNavigation } from "@/lib/hooks/useRecordNavigation";
 import { useListPageFilters } from "@/lib/hooks/useListPageFilters";
 import { useServerListPage } from "@/lib/hooks/useServerListPage";
+import { useIsVaHq6 } from "@/lib/hooks/useIsVaHq6";
 import { prefetchJobDetail } from "@/lib/query/prefetchListDetails";
 import { formatCurrency } from "@/lib/utils/formatCurrency";
 import type { Job } from "@vonos/types";
-import type { ColumnConfig } from "@/components/organisms/DataTable";
 import { useTenantId } from "@/lib/hooks/useRouteTenant";
 
 const JOB_TABS = [
@@ -40,14 +45,17 @@ function tabStatusFilter(tab: string): string | undefined {
 }
 
 export function JobsListView() {
+  const isHq6 = useIsVaHq6();
   const { goToDetail, prefetchDetail } = useRecordNavigation("jobs");
   const tenantId = useTenantId();
   const queryClient = useQueryClient();
+  const chrome = useHq6ListChrome("jobs");
   const { dateRange, setDateRange, search, setSearch, bounds } = useListPageFilters({
     defaultDateRange: "all_time",
   });
   const [activeTab, setActiveTab] = useState("all");
   const [statusFilter, setStatusFilter] = useState("");
+  const [localSearch, setLocalSearch] = useState(search);
 
   const apiFilters = useMemo(() => {
     const next: {
@@ -74,6 +82,7 @@ export function JobsListView() {
   const {
     items: jobs,
     hasMore,
+    totalCount,
     pageIndex,
     pageSize,
     canGoPrev,
@@ -81,7 +90,6 @@ export function JobsListView() {
     goPrev,
     setPageSize,
     isLoading,
-
     isFetching,
     isPaging,
     error,
@@ -92,7 +100,13 @@ export function JobsListView() {
     enabled: Boolean(tenantId),
     filters: apiFilters,
     search,
-    fetchPage: (cursor, limit, _sort, opts) => getJobsPage(tenantId!, { ...apiFilters, includeSummary: opts?.includeSummary }, cursor, limit),
+    fetchPage: (cursor, limit, _sort, opts) =>
+      getJobsPage(
+        tenantId!,
+        { ...apiFilters, includeSummary: opts?.includeSummary },
+        cursor,
+        limit,
+      ),
   });
 
   const warmJob = (row: Job) => {
@@ -101,7 +115,11 @@ export function JobsListView() {
   };
 
   const columns: ColumnConfig<Job>[] = [
-    { key: "reference", header: "Job #", render: (r) => <span className="font-medium">{r.reference}</span> },
+    {
+      key: "reference",
+      header: "Job #",
+      render: (r) => <span className="font-medium">{r.reference}</span>,
+    },
     { key: "description", header: "Description" },
     { key: "customerName", header: "Customer" },
     {
@@ -113,7 +131,8 @@ export function JobsListView() {
       key: "quoteAmount",
       header: "Quote",
       sortValue: (r) => r.quoteAmount ?? 0,
-      render: (r) => (r.quoteAmount ? formatCurrency(r.quoteAmount, "NGN") : "—"),
+      render: (r) =>
+        r.quoteAmount ? formatCurrency(r.quoteAmount, "NGN") : "—",
     },
     {
       key: "dueDate",
@@ -121,6 +140,87 @@ export function JobsListView() {
       sortValue: (r) => (r.dueDate ? new Date(r.dueDate).getTime() : 0),
     },
   ];
+
+  const columnOptions = columns.map((c) => ({
+    key: c.key,
+    label: String(c.header || c.key),
+  }));
+
+  const effectiveColumns = useMemo(() => {
+    if (!chrome.visibleColumnKeys) return columns;
+    const allowed = new Set(chrome.visibleColumnKeys);
+    return columns.filter((c) => allowed.has(c.key));
+  }, [chrome.visibleColumnKeys, columns]);
+
+  if (isHq6) {
+    return (
+      <Hq6StandardListShell
+        slug="jobs"
+        tabLabel="All Jobs"
+        pageSize={pageSize}
+        onPageSizeChange={setPageSize}
+        searchValue={localSearch}
+        onSearchChange={setLocalSearch}
+        onSearchCommit={() => setSearch(localSearch)}
+        columnOptions={columnOptions}
+        chrome={chrome}
+        tabs={JOB_TABS.map((tab) => ({
+          ...tab,
+          active: activeTab === tab.id,
+          onClick: () => setActiveTab(tab.id),
+        }))}
+        filters={
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <label className="hq6-field">
+              <span>Status:</span>
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+              >
+                <option value="">All</option>
+                {JOB_STATUS_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+        }
+        pagination={{
+          pageIndex,
+          pageSize,
+          itemCount: jobs.length,
+          hasMore,
+          canGoPrev,
+          onPrev: goPrev,
+          onNext: goNext,
+          onPageSizeChange: setPageSize,
+          onPageSelect: goToPage,
+          canSelectPage,
+          totalItems: totalCount,
+          isBusy: isFetching && !isLoading,
+        }}
+      >
+        <DataTable
+          data={jobs}
+          columns={effectiveColumns}
+          displayMode="table"
+          embedded
+          disablePagination
+          isLoading={isLoading}
+          isFetching={isFetching && !isLoading}
+          error={error ? "Failed to load jobs" : null}
+          emptyState={{ message: "No jobs found." }}
+          onRowPointerEnter={warmJob}
+          onRowClick={(row) => {
+            warmJob(row);
+            goToDetail(row.id);
+          }}
+        />
+      </Hq6StandardListShell>
+    );
+  }
 
   return (
     <ListPageShell

@@ -39,6 +39,11 @@ import { Button } from "@/components/atoms/Button";
 import { Printer } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
 import type { ReportsTableRow } from "@vonos/types";
+import { useIsVaHq6 } from "@/lib/hooks/useIsVaHq6";
+import { Hq6PageHeader } from "@/components/hq6/Hq6Chrome";
+import { Hq6ReportFiltersPanel } from "@/components/hq6/Hq6ReportFiltersPanel";
+import { DateRangeDropdown } from "@/components/molecules/DateRangeDropdown";
+import { UposNavTabs } from "@/components/upos/UposNavTabs";
 
 interface ReportRunViewProps {
   slug: string;
@@ -47,9 +52,17 @@ interface ReportRunViewProps {
 export function ReportRunView({ slug }: ReportRunViewProps) {
   const queryClient = useQueryClient();
   const { tenantId } = useRouteTenant();
+  const isHq6 = useIsVaHq6();
   const openExportModal = useUiStore((state) => state.openExportModal);
   const entry = reportEntryBySlug(slug);
-  const { dateRange, setDateRange, bounds } = useListPageFilters({ unboundedAllTime: false });
+  // Isolate from the global uiStore preset (defaults to last_7_days) so migrated
+  // history (expenses, payments, etc.) is visible. Cap still applies via API bounds.
+  const { dateRange, setDateRange, customDateRange, setCustomDateRange, bounds } =
+    useListPageFilters({
+      unboundedAllTime: false,
+      defaultDateRange: "all_time",
+      isolateDateRange: true,
+    });
   const periodLabel = ledgerChartSubtitle(dateRange);
 
   const [expiryEdit, setExpiryEdit] = useState<ExpiryEditPayload | null>(null);
@@ -92,10 +105,30 @@ export function ReportRunView({ slug }: ReportRunViewProps) {
     resetTablePage();
   }, [periodFrom, periodTo, pageSize, filterKey, resetTablePage]);
 
-  const optionSets = useReportFilterOptions(tenantId, tableUi?.filters);
+  const optionSets = useReportFilterOptions(
+    tenantId,
+    isProfitLoss
+      ? [
+          {
+            key: "locationCode",
+            kind: "select",
+            label: "Business Location",
+            optionsSource: "locations",
+          },
+        ]
+      : tableUi?.filters,
+  );
 
   const plCoreQuery = useQuery({
-    queryKey: ["report-run", tenantId, entry?.id, "pl-core", periodFrom, periodTo],
+    queryKey: [
+      "report-run",
+      tenantId,
+      entry?.id,
+      "pl-core",
+      periodFrom,
+      periodTo,
+      filters.locationCode || "",
+    ],
     queryFn: async () => {
       if (!tenantId || !entry) return null;
       return runReport({
@@ -104,6 +137,9 @@ export function ReportRunView({ slug }: ReportRunViewProps) {
         to: bounds?.to,
         tenantId,
         mode: "pl-core",
+        ...(filters.locationCode
+          ? { locationCode: filters.locationCode }
+          : {}),
       });
     },
     enabled: Boolean(tenantId && entry && isProfitLoss),
@@ -268,101 +304,202 @@ export function ReportRunView({ slug }: ReportRunViewProps) {
   const searchField = tableUi?.filters.find((field) => field.kind === "search");
   const searchPlaceholder = searchField?.placeholder ?? "Search …";
 
+  const reportBody = (
+    <div className="space-y-4">
+      {isHq6 && tableUi?.views ? (
+        <div className="row no-print">
+          <div className="col-md-12">
+            <UposNavTabs
+              tabs={tableUi.views.map((view) => ({
+                id: view.id,
+                label: view.label,
+                active: activeView === view.id,
+                onClick: () =>
+                  setFilters((prev) => ({ ...prev, view: view.id })),
+              }))}
+            >
+              <div className="tab-pane active" />
+            </UposNavTabs>
+          </div>
+        </div>
+      ) : null}
+
+      {isHq6 && isProfitLoss ? (
+        <div className="row no-print hq6-pl-toolbar">
+          <div className="col-md-4 col-xs-12">
+            <div className="input-group">
+              <span className="input-group-addon bg-light-blue">
+                <i className="fa fa-map-marker" aria-hidden />
+              </span>
+              <select
+                className="form-control"
+                id="profit_loss_location_filter"
+                value={filters.locationCode ?? ""}
+                onChange={(e) =>
+                  setFilters((prev) => ({
+                    ...prev,
+                    locationCode: e.target.value,
+                  }))
+                }
+              >
+                <option value="">All locations</option>
+                {optionSets.locations.map((loc) => (
+                  <option key={loc.value} value={loc.value}>
+                    {loc.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <div className="col-md-4 col-xs-12">
+            <div className="form-group hq6-pl-date-filter">
+              <label className="sr-only" htmlFor="profit_loss_date_filter">
+                Filter by date
+              </label>
+              <DateRangeDropdown
+                value={dateRange}
+                onChange={setDateRange}
+                customValue={customDateRange}
+                onCustomChange={setCustomDateRange}
+                className="hq6-pl-date-dropdown"
+              />
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {isHq6 && !isProfitLoss ? (
+        <Hq6ReportFiltersPanel
+          fields={tableUi?.filters ?? []}
+          values={filters}
+          optionSets={optionSets}
+          onChange={(patch) => setFilters((prev) => ({ ...prev, ...patch }))}
+          dateFrom={bounds?.from?.slice(0, 10) ?? ""}
+          dateTo={bounds?.to?.slice(0, 10) ?? ""}
+          onDateFromChange={(from) => {
+            setCustomDateRange({
+              from: from || "",
+              to: bounds?.to?.slice(0, 10) || from || "",
+            });
+          }}
+          onDateToChange={(to) => {
+            setCustomDateRange({
+              from: bounds?.from?.slice(0, 10) || to || "",
+              to: to || "",
+            });
+          }}
+          defaultOpen
+        />
+      ) : null}
+
+      {!isHq6 && tableUi && tableUi.filters.length > 0 ? (
+        <ReportFilterShell
+          fields={tableUi.filters}
+          values={filters}
+          optionSets={optionSets}
+          onChange={(patch) => setFilters((prev) => ({ ...prev, ...patch }))}
+        />
+      ) : null}
+
+      {!isHq6 && tableUi?.views ? (
+        <div className="flex flex-wrap gap-2 print:hidden">
+          {tableUi.views.map((view) => (
+            <button
+              key={view.id}
+              type="button"
+              className={cn(
+                "rounded-md border px-3 py-1.5 text-sm font-medium transition-colors",
+                activeView === view.id
+                  ? "border-brand bg-brand/10 text-brand"
+                  : "border-border bg-card text-muted hover:text-foreground",
+              )}
+              onClick={() =>
+                setFilters((prev) => ({ ...prev, view: view.id }))
+              }
+            >
+              {view.label}
+            </button>
+          ))}
+        </div>
+      ) : null}
+
+      {isLoading || (isFetching && !data) ? (
+        <HqReportPageSkeleton reportId={entry.id} />
+      ) : error ? (
+        <p className="text-sm text-red-600">Failed to load report.</p>
+      ) : data ? (
+        <HqReportPageLayout
+          reportId={entry.id}
+          title={entry.label}
+          subtitle={isHq6 ? "" : periodLabel}
+          bare={isHq6}
+          data={data}
+          tenantId={tenantId ?? undefined}
+          from={bounds?.from}
+          to={bounds?.to}
+          locationCode={filters.locationCode || undefined}
+          summaryLoading={summaryLoading}
+          tablePagination={tablePagination}
+          tableSearch={filters.search ?? ""}
+          onTableSearchChange={(search) =>
+            setFilters((prev) => ({ ...prev, search }))
+          }
+          searchPlaceholder={searchPlaceholder}
+          onRowClick={handleRowClick}
+          onRowAction={handleRowAction}
+        />
+      ) : null}
+    </div>
+  );
+
   return (
     <>
-      <ListPageShell
-        tabs={[{ id: "report", label: entry.label }]}
-        activeTab="report"
-        onTabChange={() => {}}
-        showImport={false}
-        dateRange={dateRange}
-        onDateRangeChange={setDateRange}
-        contentClassName="p-6 sm:p-8"
-        primaryAction={
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            className="gap-2 print:hidden"
-            onClick={() => window.print()}
-          >
-            <Printer className="h-4 w-4" />
-            Print
-          </Button>
-        }
-        onExport={
-          entry.exportable && exportPayload
-            ? () =>
-                openExportModal(
-                  {
-                    title: `Export ${entry.label}`,
-                    subtitle: "Download report data as CSV",
-                  },
-                  exportPayload,
-                )
-            : undefined
-        }
-      >
-        <div className="space-y-4">
-          {tableUi && tableUi.filters.length > 0 ? (
-            <ReportFilterShell
-              fields={tableUi.filters}
-              values={filters}
-              optionSets={optionSets}
-              onChange={(patch) =>
-                setFilters((prev) => ({ ...prev, ...patch }))
-              }
-            />
-          ) : null}
-
-          {tableUi?.views ? (
-            <div className="flex flex-wrap gap-2 print:hidden">
-              {tableUi.views.map((view) => (
-                <button
-                  key={view.id}
-                  type="button"
-                  className={cn(
-                    "rounded-md border px-3 py-1.5 text-sm font-medium transition-colors",
-                    activeView === view.id
-                      ? "border-brand bg-brand/10 text-brand"
-                      : "border-border bg-card text-muted hover:text-foreground",
-                  )}
-                  onClick={() =>
-                    setFilters((prev) => ({ ...prev, view: view.id }))
-                  }
-                >
-                  {view.label}
-                </button>
-              ))}
-            </div>
-          ) : null}
-
-          {isLoading || (isFetching && !data) ? (
-            <HqReportPageSkeleton reportId={entry.id} />
-          ) : error ? (
-            <p className="text-sm text-red-600">Failed to load report.</p>
-          ) : data ? (
-            <HqReportPageLayout
-              reportId={entry.id}
-              title={entry.label}
-              subtitle={periodLabel}
-              data={data}
-              tenantId={tenantId ?? undefined}
-              from={bounds?.from}
-              to={bounds?.to}
-              summaryLoading={summaryLoading}
-              tablePagination={tablePagination}
-              tableSearch={filters.search ?? ""}
-              onTableSearchChange={(search) =>
-                setFilters((prev) => ({ ...prev, search }))
-              }
-              searchPlaceholder={searchPlaceholder}
-              onRowClick={handleRowClick}
-              onRowAction={handleRowAction}
-            />
-          ) : null}
+      {isHq6 ? (
+        <div className="hq6-page">
+          <Hq6PageHeader title={entry.label} />
+          <section className="content">{reportBody}</section>
+          <p className="hq6-footer">
+            Vonos Autos Head Office - V8.1 | Copyright ©{" "}
+            {new Date().getFullYear()} All rights reserved.
+          </p>
         </div>
-      </ListPageShell>
+      ) : (
+        <ListPageShell
+          tabs={[{ id: "report", label: entry.label }]}
+          activeTab="report"
+          onTabChange={() => {}}
+          showImport={false}
+          dateRange={dateRange}
+          onDateRangeChange={setDateRange}
+          contentClassName="p-6 sm:p-8"
+          primaryAction={
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              className="gap-2 print:hidden"
+              onClick={() => window.print()}
+            >
+              <Printer className="h-4 w-4" />
+              Print
+            </Button>
+          }
+          onExport={
+            entry.exportable && exportPayload
+              ? () =>
+                  openExportModal(
+                    {
+                      title: `Export ${entry.label}`,
+                      subtitle: "Download report data as CSV",
+                    },
+                    exportPayload,
+                  )
+              : undefined
+          }
+        >
+          {reportBody}
+        </ListPageShell>
+      )}
 
       {recordModals}
 

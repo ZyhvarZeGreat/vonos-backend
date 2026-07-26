@@ -1,0 +1,1126 @@
+/**
+ * Bridge: real Ultimate POS CSS (vendor/app) + our React shell.
+ * Loaded last so HQ6 lists use UPOS DataTables/AdminLTE table chrome
+ * without fully nuking the Next sidebar/topbar.
+ */
+
+/* Keep our React shell above AdminLTE layout hacks */
+html.upos-hq6 [data-hq6="true"] {
+  --theme-700: #067647;
+  --theme-800: #085d3a;
+  --theme-900: #074d31;
+}
+
+/* UPOS filters.blade.php @once styles (pf-* collapse) */
+html.upos-hq6 .pf-body {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+html.upos-hq6 .pf-body--open {
+  grid-template-rows: 1fr;
+}
+html.upos-hq6 .pf-inner {
+  overflow: hidden;
+}
+html.upos-hq6 .pf-btn {
+  position: relative;
+}
+/*
+ * Tailwind's `.collapse { visibility: collapse }` fights Bootstrap's
+ * `.collapse` class name. Filter panels must not use that class — see
+ * `.upos-filters-body` in UposFiltersPanel / list views.
+ */
+html.upos-hq6 .upos-filters-body {
+  visibility: visible;
+}
+html.upos-hq6 .pf-btn::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--theme-700, #004eeb);
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+html.upos-hq6 .pf-open .pf-btn::before {
+  transform: scaleX(1);
+}
+html.upos-hq6 .pf-open .pf-btn {
+  border-bottom-color: #e5e7eb !important;
+}
+
+/* Content area: let UPOS AdminLTE content styles apply inside hq6-page */
+html.upos-hq6 [data-hq6="true"] .hq6-page .content {
+  padding: 0 15px 15px;
+}
+html.upos-hq6 [data-hq6="true"] .hq6-page .nav-tabs-custom {
+  margin-bottom: 20px;
+  background: #fff;
+  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.1);
+  border-radius: 3px;
+}
+html.upos-hq6 [data-hq6="true"] .hq6-page .nav-tabs-custom > .nav-tabs {
+  margin: 0;
+  border-bottom-color: #f4f4f4;
+  border-top-right-radius: 3px;
+  border-top-left-radius: 3px;
+}
+html.upos-hq6 [data-hq6="true"] .hq6-page .nav-tabs-custom > .nav-tabs > li.active > a {
+  border-top-color: var(--theme-700, #067647);
+}
+html.upos-hq6 [data-hq6="true"] .hq6-page .product-thumbnail-small {
+  max-height: 50px;
+  width: auto;
+}
+html.upos-hq6 [data-hq6="true"] .hq6-page .dataTables_wrapper .row {
+  display: flex;
+  flex-wrap: wrap;
+  margin-left: -15px;
+  margin-right: -15px;
+}
+html.upos-hq6 [data-hq6="true"] .hq6-page .dataTables_wrapper .col-sm-5,
+html.upos-hq6 [data-hq6="true"] .hq6-page .dataTables_wrapper .col-sm-6,
+html.upos-hq6 [data-hq6="true"] .hq6-page .dataTables_wrapper .col-sm-7,
+html.upos-hq6 [data-hq6="true"] .hq6-page .dataTables_wrapper .col-sm-1,
+html.upos-hq6 [data-hq6="true"] .hq6-page .dataTables_wrapper .col-sm-3,
+html.upos-hq6 [data-hq6="true"] .hq6-page .dataTables_wrapper .col-sm-8 {
+  position: relative;
+  min-height: 1px;
+  padding-left: 15px;
+  padding-right: 15px;
+  box-sizing: border-box;
+}
+html.upos-hq6 [data-hq6="true"] .hq6-page .dataTables_wrapper .col-sm-1 {
+  width: 8.33333333%;
+}
+html.upos-hq6 [data-hq6="true"] .hq6-page .dataTables_wrapper .col-sm-3 {
+  width: 25%;
+}
+html.upos-hq6 [data-hq6="true"] .hq6-page .dataTables_wrapper .col-sm-5 {
+  width: 41.66666667%;
+}
+html.upos-hq6 [data-hq6="true"] .hq6-page .dataTables_wrapper .col-sm-6 {
+  width: 50%;
+}
+html.upos-hq6 [data-hq6="true"] .hq6-page .dataTables_wrapper .col-sm-7 {
+  width: 58.33333333%;
+}
+html.upos-hq6 [data-hq6="true"] .hq6-page .dataTables_wrapper .col-sm-8 {
+  width: 66.66666667%;
+}
+html.upos-hq6 [data-hq6="true"] .hq6-page .dataTables_wrapper .margin-bottom-20 {
+  margin-bottom: 20px;
+}
+html.upos-hq6 [data-hq6="true"] .hq6-page .dataTables_wrapper .text-center {
+  text-align: center;
+}
+/* HQ6 users toolbar: one row (Bootstrap col widths overflow; flex must not wrap) */
+html.upos-hq6 [data-hq6="true"] .hq6-page .dataTables_wrapper .row.margin-bottom-20 {
+  display: flex !important;
+  flex-wrap: nowrap !important;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+html.upos-hq6 [data-hq6="true"] .hq6-page .dataTables_wrapper .row.margin-bottom-20 > .col-sm-1 {
+  width: auto !important;
+  flex: 0 0 auto;
+  white-space: nowrap;
+  text-align: left;
+  padding-left: 0;
+}
+html.upos-hq6 [data-hq6="true"] .hq6-page .dataTables_wrapper .row.margin-bottom-20 > .col-sm-8 {
+  width: auto !important;
+  flex: 1 1 auto;
+  text-align: center;
+  min-width: 0;
+}
+html.upos-hq6 [data-hq6="true"] .hq6-page .dataTables_wrapper .row.margin-bottom-20 > .col-sm-3 {
+  width: auto !important;
+  flex: 0 0 auto;
+  text-align: right;
+  padding-right: 0;
+}
+html.upos-hq6 [data-hq6="true"] .hq6-page .dataTables_wrapper .row.margin-bottom-20 .dt-buttons .tw-my-2 {
+  margin-top: 0.25rem;
+  margin-bottom: 0.25rem;
+}
+html.upos-hq6 [data-hq6="true"] .hq6-page .dataTables_filter,
+html.upos-hq6 [data-hq6="true"] .hq6-page .hq6-dt-search-filter {
+  display: inline-flex;
+  align-items: stretch;
+  text-align: right;
+  gap: 0;
+}
+html.upos-hq6 [data-hq6="true"] .hq6-page .dataTables_filter label,
+html.upos-hq6 [data-hq6="true"] .hq6-page .hq6-dt-search-filter label {
+  margin: 0;
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+html.upos-hq6 [data-hq6="true"] .hq6-page .dataTables_filter input,
+html.upos-hq6 [data-hq6="true"] .hq6-page .hq6-dt-search-filter input {
+  border-radius: 0.25rem 0 0 0.25rem !important;
+  border-right: none !important;
+  margin-left: 0 !important;
+}
+html.upos-hq6 [data-hq6="true"] .hq6-page .dataTables_filter .hq6-search-btn,
+html.upos-hq6 [data-hq6="true"] .hq6-page .hq6-dt-search-filter .hq6-search-btn {
+  height: 1.85rem;
+  padding: 0 0.65rem;
+  font-size: 0.75rem;
+  border-radius: 0 0.25rem 0.25rem 0;
+}
+html.upos-hq6 [data-hq6="true"] .hq6-page .pagination {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0;
+  padding-left: 0;
+  margin: 12px 0;
+  border-radius: 4px;
+  float: right;
+  list-style: none;
+}
+html.upos-hq6 [data-hq6="true"] .hq6-page .pagination > li {
+  display: inline;
+}
+html.upos-hq6 [data-hq6="true"] .hq6-page .pagination > li > a,
+html.upos-hq6 [data-hq6="true"] .hq6-page .pagination > li > span,
+html.upos-hq6 [data-hq6="true"] .hq6-page .paginate_button > a,
+html.upos-hq6 [data-hq6="true"] .hq6-page .paginate_button > span {
+  position: relative;
+  float: left;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2.25rem;
+  height: 2.125rem;
+  padding: 0.35rem 0.75rem;
+  margin-left: -1px;
+  line-height: 1.2;
+  font-size: 13px;
+  color: #337ab7;
+  text-decoration: none;
+  background-color: #fff;
+  border: 1px solid #ddd !important;
+  box-sizing: border-box;
+  cursor: pointer;
+}
+html.upos-hq6 [data-hq6="true"] .hq6-page .pagination > li:first-child > a,
+html.upos-hq6 [data-hq6="true"] .hq6-page .pagination > li:first-child > span {
+  margin-left: 0;
+  border-top-left-radius: 4px;
+  border-bottom-left-radius: 4px;
+}
+html.upos-hq6 [data-hq6="true"] .hq6-page .pagination > li:last-child > a,
+html.upos-hq6 [data-hq6="true"] .hq6-page .pagination > li:last-child > span {
+  border-top-right-radius: 4px;
+  border-bottom-right-radius: 4px;
+}
+html.upos-hq6 [data-hq6="true"] .hq6-page .pagination > li > a:hover,
+html.upos-hq6 [data-hq6="true"] .hq6-page .paginate_button > a:hover {
+  z-index: 2;
+  background-color: #eee;
+  border-color: #ddd !important;
+  color: #23527c;
+}
+html.upos-hq6 [data-hq6="true"] .hq6-page .pagination > .active > a,
+html.upos-hq6 [data-hq6="true"] .hq6-page .pagination > .active > span,
+html.upos-hq6 [data-hq6="true"] .hq6-page .paginate_button.active > a {
+  z-index: 3;
+  color: #fff;
+  cursor: default;
+  background-color: #337ab7;
+  border-color: #337ab7 !important;
+}
+html.upos-hq6 [data-hq6="true"] .hq6-page .pagination > .disabled > a,
+html.upos-hq6 [data-hq6="true"] .hq6-page .pagination > .disabled > span,
+html.upos-hq6 [data-hq6="true"] .hq6-page .paginate_button.disabled > a {
+  color: #777;
+  cursor: not-allowed;
+  background-color: #fff;
+  border-color: #ddd !important;
+  pointer-events: none;
+}
+
+/* Export / filter toolbar outline buttons — readable UPOS chips */
+html.upos-hq6 [data-hq6="true"] .hq6-page .dt-buttons .tw-dw-btn,
+html.upos-hq6 [data-hq6="true"] .hq6-page .hq6-dt-toolbar-actions .tw-dw-btn,
+html.upos-shell [data-hq6="true"] .hq6-page .dt-buttons .tw-dw-btn {
+  display: inline-flex !important;
+  align-items: center;
+  gap: 0.3rem;
+  height: auto !important;
+  min-height: 1.85rem;
+  padding: 0.3rem 0.65rem !important;
+  margin: 0.15rem !important;
+  border: 1px solid #cdd5df !important;
+  border-radius: 0.35rem !important;
+  background: #fff !important;
+  color: #364152 !important;
+  font-size: 0.75rem !important;
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+  box-shadow: none !important;
+  text-decoration: none !important;
+}
+html.upos-hq6 [data-hq6="true"] .hq6-page .dt-buttons .tw-dw-btn:hover,
+html.upos-hq6 [data-hq6="true"] .hq6-page .hq6-dt-toolbar-actions .tw-dw-btn:hover {
+  background: #f8fafc !important;
+  border-color: #98a2b3 !important;
+}
+
+/* Bootstrap-ish grid used by UPOS Blade (filters + DataTables rows) */
+html.upos-hq6 [data-hq6="true"] .hq6-page .row {
+  display: flex;
+  flex-wrap: wrap;
+  margin-left: -15px;
+  margin-right: -15px;
+}
+html.upos-hq6 [data-hq6="true"] .hq6-page .col-md-3,
+html.upos-hq6 [data-hq6="true"] .hq6-page .col-md-4,
+html.upos-hq6 [data-hq6="true"] .hq6-page .col-md-6,
+html.upos-hq6 [data-hq6="true"] .hq6-page .col-md-12,
+html.upos-hq6 [data-hq6="true"] .hq6-page .col-sm-1,
+html.upos-hq6 [data-hq6="true"] .hq6-page .col-sm-3,
+html.upos-hq6 [data-hq6="true"] .hq6-page .col-sm-5,
+html.upos-hq6 [data-hq6="true"] .hq6-page .col-sm-7,
+html.upos-hq6 [data-hq6="true"] .hq6-page .col-sm-8,
+html.upos-hq6 [data-hq6="true"] .hq6-page .col-xs-12 {
+  position: relative;
+  min-height: 1px;
+  padding-left: 15px;
+  padding-right: 15px;
+  width: 100%;
+  box-sizing: border-box;
+}
+@media (min-width: 768px) {
+  html.upos-hq6 [data-hq6="true"] .hq6-page .col-sm-1 {
+    width: 8.33333333%;
+  }
+  html.upos-hq6 [data-hq6="true"] .hq6-page .col-sm-3 {
+    width: 25%;
+  }
+  html.upos-hq6 [data-hq6="true"] .hq6-page .col-sm-5 {
+    width: 41.66666667%;
+  }
+  html.upos-hq6 [data-hq6="true"] .hq6-page .col-sm-7 {
+    width: 58.33333333%;
+  }
+  html.upos-hq6 [data-hq6="true"] .hq6-page .col-sm-8 {
+    width: 66.66666667%;
+  }
+}
+@media (min-width: 992px) {
+  html.upos-hq6 [data-hq6="true"] .hq6-page .col-md-3 {
+    width: 25%;
+  }
+  html.upos-hq6 [data-hq6="true"] .hq6-page .col-md-4 {
+    width: 33.33333333%;
+  }
+  html.upos-hq6 [data-hq6="true"] .hq6-page .col-md-6 {
+    width: 50%;
+  }
+  html.upos-hq6 [data-hq6="true"] .hq6-page .col-md-12 {
+    width: 100%;
+  }
+}
+html.upos-hq6 [data-hq6="true"] .hq6-page .form-group {
+  margin-bottom: 15px;
+}
+html.upos-hq6 [data-hq6="true"] .hq6-page .form-control {
+  display: block;
+  width: 100%;
+  height: 34px;
+  padding: 6px 12px;
+  font-size: 14px;
+  line-height: 1.42857143;
+  color: #555;
+  background-color: #fff;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+}
+html.upos-hq6 [data-hq6="true"] .hq6-page .pull-right {
+  float: right !important;
+}
+html.upos-hq6 [data-hq6="true"] .hq6-page .clearfix::after {
+  content: "";
+  display: table;
+  clear: both;
+}
+
+/* Tab-pane Add / Download Excel — flex instead of float (float escaped viewport). */
+html.upos-shell .upos-tab-pane-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 0;
+  width: 100%;
+  margin: 0 0 0.75rem;
+  clear: both;
+}
+html.upos-shell .upos-gradient-action.tw-dw-btn {
+  float: none !important;
+  color: #fff !important;
+  background-image: linear-gradient(to right, #4f46e5, #3b82f6) !important;
+  background-color: #4f46e5 !important;
+  border: none !important;
+  border-radius: 9999px !important;
+}
+
+html.upos-hq6 [data-hq6="true"] .hq6-page .table.table-bordered {
+  width: 100% !important;
+  margin: 0 !important;
+  border-collapse: collapse !important;
+  background: #fff;
+  border: none !important;
+}
+
+html.upos-hq6 [data-hq6="true"] .hq6-page .table.table-bordered > thead > tr > th,
+html.upos-hq6 [data-hq6="true"] .hq6-page .table.table-bordered > tbody > tr > td {
+  border-left: none !important;
+  border-right: none !important;
+  border-top: none !important;
+  border-bottom: none !important;
+  vertical-align: middle !important;
+  padding: 8px !important;
+  font-size: 13px !important;
+  text-transform: none !important;
+  letter-spacing: normal !important;
+  font-weight: 600;
+}
+
+html.upos-hq6 [data-hq6="true"] .hq6-page .table.table-bordered > tbody > tr > td {
+  font-weight: 400 !important;
+  color: #333;
+}
+
+html.upos-hq6 [data-hq6="true"] .hq6-page .table.table-striped > tbody > tr:nth-of-type(odd) {
+  background-color: #f9f9f9 !important;
+}
+
+html.upos-hq6 [data-hq6="true"] .hq6-page .table.table-bordered tbody tr {
+  border-bottom: none !important;
+}
+
+html.upos-hq6 [data-hq6="true"] .hq6-page .dataTables_wrapper {
+  padding: 0 8px 8px;
+}
+
+html.upos-hq6 [data-hq6="true"] .hq6-page .dt-buttons .tw-dw-btn {
+  margin: 0.25rem 0.15rem;
+}
+
+/* Don't let Bootstrap/AdminLTE collapse our app chrome */
+html.upos-hq6 [data-hq6="true"] > .flex {
+  display: flex !important;
+}
+
+/* ——— Full UPOS shell (VA trial) ——— */
+html.upos-shell,
+html.upos-shell body {
+  height: 100%;
+}
+html.upos-shell .thetop {
+  min-height: 100vh;
+  height: 100vh;
+  overflow: hidden;
+}
+html.upos-shell .theme-header-bg,
+html.upos-shell .theme-logo-bg,
+html.upos-shell .theme-btn-bg {
+  background-color: var(--theme-700, #067647) !important;
+}
+html.upos-shell .theme-header-bg {
+  border-color: rgba(6, 118, 71, 0.3);
+}
+html.upos-shell aside.side-bar.small-view-side-active {
+  display: flex !important;
+  position: fixed;
+  inset: 0 auto 0 0;
+  z-index: 50;
+  height: 100vh;
+  box-shadow: 4px 0 24px rgba(0, 0, 0, 0.2);
+}
+html.upos-shell body.sidebar-collapse aside.side-bar {
+  width: 0 !important;
+  min-width: 0 !important;
+  overflow: hidden;
+  border: none;
+}
+html.upos-shell .scrolltop {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 40;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s;
+}
+html.upos-shell .scrolltop.active {
+  opacity: 1;
+  pointer-events: auto;
+  cursor: pointer;
+}
+html.upos-shell .scrolltop .scroll.icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 9999px;
+  background: var(--theme-700, #067647);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+html.upos-shell details > summary {
+  list-style: none;
+}
+html.upos-shell details > summary::-webkit-details-marker {
+  display: none;
+}
+
+/* Notification badge on header bell */
+html.upos-shell .notifications_count {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 9999px;
+  background: #f59e0b;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 16px;
+  text-align: center;
+}
+html.upos-shell #show_unread_notifications {
+  position: relative;
+}
+
+/* Sidebar icons when hq6-va skin is off (data-upos-shell) */
+html.upos-shell .side-bar .hq6-sb-icon-wrap {
+  display: inline-flex;
+  width: 1.25rem;
+  height: 1.25rem;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  color: inherit;
+}
+html.upos-shell .side-bar .hq6-sb-icon-wrap svg {
+  width: 1.25rem;
+  height: 1.25rem;
+  display: block;
+}
+html.upos-shell .side-bar .tw-size-5 {
+  width: 1.25rem;
+  height: 1.25rem;
+}
+html.upos-shell .side-bar .tw-size-4 {
+  width: 1rem;
+  height: 1rem;
+}
+html.upos-shell .side-bar .tw-h-15 {
+  height: 60px;
+}
+html.upos-shell .side-bar .tw-text-primary-700 {
+  color: #1d4ed8;
+}
+html.upos-shell .side-bar a.tw-bg-gray-200 {
+  background-color: #e3e8ef;
+  color: #1d4ed8;
+}
+html.upos-shell .theme-logo-bg {
+  background-color: #085d3a !important;
+}
+html.upos-shell .lg\:tw-h-15 {
+  min-height: 60px;
+}
+
+/* Page canvas under UPOS shell (match HQ6 gray content bg) */
+html.upos-shell #scrollable-container {
+  background: #eef2f6;
+}
+html.upos-shell #scrollable-container .hq6-page:not(.hq6-home) {
+  padding: 15px 15px 24px !important;
+  max-width: none !important;
+  width: 100% !important;
+  margin: 0 !important;
+  box-sizing: border-box;
+}
+html.upos-shell #scrollable-container .hq6-page.hq6-home {
+  padding: 0 !important;
+  max-width: none !important;
+  width: 100% !important;
+}
+html.upos-shell #scrollable-container .hq6-page .hq6-footer {
+  display: none; /* shell footer already renders */
+}
+
+/* Full-width content — kill Vonos narrow caps inside UPOS scrollport */
+html.upos-shell #scrollable-container .box,
+html.upos-shell #scrollable-container .box-primary,
+html.upos-shell #scrollable-container .content,
+html.upos-shell #scrollable-container .dataTables_wrapper,
+html.upos-shell #scrollable-container .nav-tabs-custom,
+html.upos-shell #scrollable-container .hq6-form-card,
+html.upos-shell #scrollable-container .hq6-card {
+  max-width: none !important;
+  width: 100% !important;
+}
+html.upos-shell #scrollable-container .max-w-xl,
+html.upos-shell #scrollable-container .max-w-2xl,
+html.upos-shell #scrollable-container .max-w-3xl,
+html.upos-shell #scrollable-container .max-w-4xl,
+html.upos-shell #scrollable-container .max-w-5xl,
+html.upos-shell #scrollable-container .max-w-\[var\(--space-content-max\)\] {
+  max-width: none !important;
+  width: 100% !important;
+}
+html.upos-shell #scrollable-container .mx-auto {
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+}
+
+/* ——— Tables: no heavy row rules (HQ6 AdminLTE — zebra only) ——— */
+html.upos-shell .hq6-page .table.table-bordered,
+html.upos-shell .hq6-page .table.table-bordered > thead > tr > th,
+html.upos-shell .hq6-page .table.table-bordered > tbody > tr > td,
+html.upos-shell .hq6-page .table.table-bordered > tfoot > tr > td,
+html.upos-shell .hq6-page .hq6-roles-table,
+html.upos-shell .hq6-page .hq6-roles-table thead th,
+html.upos-shell .hq6-page .hq6-roles-table tbody td,
+html.upos-shell .hq6-page .hq6-product-view-table,
+html.upos-shell .hq6-page .hq6-product-view-table th,
+html.upos-shell .hq6-page .hq6-product-view-table td {
+  border-left: none !important;
+  border-right: none !important;
+  border-top: none !important;
+  border-bottom: none !important;
+}
+html.upos-shell .hq6-page .table.table-bordered {
+  border: none !important;
+}
+html.upos-shell .hq6-page .table.table-bordered > thead > tr > th {
+  border-bottom: 1px solid #f4f4f4 !important;
+  vertical-align: middle !important;
+  padding: 8px !important;
+  font-size: 13px !important;
+  font-weight: 600;
+}
+html.upos-shell .hq6-page .table.table-bordered > tbody > tr > td {
+  vertical-align: middle !important;
+  padding: 8px !important;
+  font-size: 13px !important;
+  font-weight: 400 !important;
+  color: #333;
+}
+html.upos-shell .hq6-page .table.table-striped > tbody > tr:nth-of-type(odd) {
+  background-color: #f9f9f9 !important;
+}
+
+/* ——— Payment status badges (UPOS label colors) ——— */
+html.upos-shell .hq6-pay-badge {
+  display: inline-flex !important;
+  align-items: center;
+  border-radius: 3px !important;
+  padding: 0.2em 0.6em 0.3em !important;
+  font-size: 75% !important;
+  font-weight: 700 !important;
+  line-height: 1;
+  text-transform: capitalize;
+  white-space: nowrap;
+  color: #fff !important;
+}
+html.upos-shell .hq6-actions-toggle.tw-dw-btn {
+  flex-wrap: nowrap !important;
+  flex-direction: row !important;
+  white-space: nowrap !important;
+  align-items: center !important;
+  gap: 0.25rem !important;
+}
+html.upos-shell .hq6-actions-toggle.tw-dw-btn svg {
+  width: 0.75rem !important;
+  height: 0.75rem !important;
+  flex-shrink: 0 !important;
+}
+html.upos-shell .hq6-pay-paid,
+html.upos-shell .label-success.hq6-pay-badge {
+  background-color: #00a65a !important;
+  background: #00a65a !important;
+  border: none !important;
+}
+html.upos-shell .hq6-pay-partial {
+  background-color: #3c8dbc !important;
+  background: #3c8dbc !important;
+  border: none !important;
+}
+html.upos-shell .hq6-pay-due,
+html.upos-shell .hq6-pay-overdue,
+html.upos-shell .label-warning.hq6-pay-badge {
+  background-color: #f39c12 !important;
+  background: #f39c12 !important;
+  border: none !important;
+}
+html.upos-shell .hq6-pay-overdue {
+  background-color: #dd4b39 !important;
+  background: #dd4b39 !important;
+}
+html.upos-shell .label-success {
+  background-color: #00a65a !important;
+  color: #fff !important;
+}
+html.upos-shell .label-warning {
+  background-color: #f39c12 !important;
+  color: #fff !important;
+}
+html.upos-shell .label-danger {
+  background-color: #dd4b39 !important;
+  color: #fff !important;
+}
+html.upos-shell .label-info {
+  background-color: #3c8dbc !important;
+  color: #fff !important;
+}
+
+/* ——— UPOS form-control selects / inputs ——— */
+html.upos-shell .hq6-page select,
+html.upos-shell .hq6-page select.hq6-form-input,
+html.upos-shell .hq6-page select.form-control,
+html.upos-shell .hq6-page .dataTables_length select,
+html.upos-shell .hq6-page .hq6-filter-field select,
+html.upos-shell .hq6-page .hq6-roles-show-entries select {
+  display: block;
+  width: auto;
+  min-width: 5rem;
+  max-width: 100%;
+  height: 34px;
+  padding: 6px 12px;
+  font-size: 14px;
+  line-height: 1.42857143;
+  color: #555;
+  background-color: #fff;
+  background-image: none;
+  border: 1px solid #ccc !important;
+  border-radius: 4px !important;
+  box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.075);
+  transition: border-color ease-in-out 0.15s, box-shadow ease-in-out 0.15s;
+  appearance: auto;
+}
+/* DataTables length: keep select inline with “Show … entries” (HQ6) */
+html.upos-shell .hq6-page .dataTables_length select,
+html.upos-hq6 [data-hq6="true"] .hq6-page .dataTables_length select.form-control {
+  display: inline-block !important;
+  width: auto !important;
+  max-width: none;
+  vertical-align: middle;
+  margin: 0 4px;
+}
+html.upos-shell .hq6-page input[type="text"],
+html.upos-shell .hq6-page input[type="search"],
+html.upos-shell .hq6-page input[type="number"],
+html.upos-shell .hq6-page input[type="email"],
+html.upos-shell .hq6-page input[type="password"],
+html.upos-shell .hq6-page input[type="tel"],
+html.upos-shell .hq6-page input[type="url"],
+html.upos-shell .hq6-page input[type="date"],
+html.upos-shell .hq6-page input[type="datetime-local"],
+html.upos-shell .hq6-page input[type="month"],
+html.upos-shell .hq6-page input[type="time"],
+html.upos-shell .hq6-page input[type="week"],
+html.upos-shell .hq6-page input.hq6-form-input,
+html.upos-shell .hq6-page input.form-control,
+html.upos-shell .hq6-page .dataTables_filter input,
+html.upos-shell .hq6-page textarea.hq6-form-input,
+html.upos-shell .hq6-page textarea.form-control,
+html.upos-shell .hq6-page textarea {
+  height: 34px;
+  padding: 6px 12px;
+  font-size: 14px;
+  line-height: 1.42857143;
+  color: #555;
+  background-color: #fff;
+  border: 1px solid #ccc !important;
+  border-radius: 4px !important;
+  box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.075);
+}
+html.upos-shell .hq6-page textarea.hq6-form-input,
+html.upos-shell .hq6-page textarea.form-control,
+html.upos-shell .hq6-page textarea {
+  height: auto;
+  min-height: 74px;
+}
+html.upos-shell .hq6-page select:focus,
+html.upos-shell .hq6-page input:focus,
+html.upos-shell .hq6-page textarea:focus {
+  border-color: #3c8dbc !important;
+  outline: 0;
+  box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.075), 0 0 8px rgba(60, 141, 188, 0.6);
+}
+
+/*
+ * UPOS tailwind-app.css ships an unlayered `* { border: 0 solid … }` reset.
+ * That beats Tailwind v4 `@layer utilities` (`.border`, `.border-border`, …),
+ * so React inputs/selects that only use Tailwind border classes look borderless.
+ * Restore borders for the shell, portaled dialogs, and HQ6 form classes.
+ */
+html.upos-hq6 .border,
+html.upos-shell .border,
+.hq6-modal-root .border,
+[role="dialog"] .border,
+.vonos-floating-menu.border,
+[data-vonos-floating-menu].border {
+  border-width: 1px !important;
+  border-style: solid !important;
+}
+
+html.upos-hq6 .border-2,
+html.upos-shell .border-2,
+.hq6-modal-root .border-2,
+[role="dialog"] .border-2 {
+  border-width: 2px !important;
+  border-style: solid !important;
+}
+
+html.upos-hq6 .border-border,
+html.upos-shell .border-border,
+.hq6-modal-root .border-border,
+[role="dialog"] .border-border,
+[data-vonos-floating-menu].border-border,
+.vonos-floating-menu.border-border {
+  border-color: var(--color-border-default, #e5e7eb) !important;
+}
+
+/*
+ * Portaled dropdown panels (MenuSelect, date range, row Actions, etc.).
+ * UPOS overflow:hidden shells + low z-index previously hid / clipped these.
+ */
+.vonos-floating-menu,
+[data-vonos-floating-menu] {
+  box-sizing: border-box;
+  background-color: #ffffff;
+  color: #111827;
+  z-index: 1100;
+}
+
+html.upos-hq6 .vonos-floating-menu.border,
+html.upos-shell .vonos-floating-menu.border,
+.vonos-floating-menu.border,
+[data-vonos-floating-menu].border {
+  border-width: 1px !important;
+  border-style: solid !important;
+  border-color: #e5e7eb !important;
+}
+
+.vonos-floating-menu.bg-card,
+[data-vonos-floating-menu].bg-card {
+  background-color: #ffffff !important;
+}
+
+.vonos-floating-menu input,
+[data-vonos-floating-menu] input {
+  box-sizing: border-box;
+  background-color: #fff;
+  color: #111827;
+  border: 1px solid #d1d5db !important;
+  border-radius: 0.375rem;
+}
+
+.vonos-floating-menu button,
+[data-vonos-floating-menu] button {
+  color: inherit;
+}
+
+html.upos-hq6 .border-none,
+html.upos-hq6 .border-0,
+html.upos-shell .border-none,
+html.upos-shell .border-0,
+.hq6-modal-root .border-none,
+.hq6-modal-root .border-0,
+[role="dialog"] .border-none,
+[role="dialog"] .border-0 {
+  border-width: 0 !important;
+}
+
+html.upos-hq6 .hq6-modal-input,
+html.upos-hq6 .hq6-form-input,
+html.upos-shell .hq6-modal-input,
+html.upos-shell .hq6-form-input,
+.hq6-modal-root .hq6-modal-input,
+.hq6-modal-root .hq6-form-input,
+.hq6-modal-root input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="hidden"]):not([type="range"]):not([type="image"]):not([type="submit"]):not([type="button"]):not([type="reset"]),
+.hq6-modal-root select,
+.hq6-modal-root textarea,
+[role="dialog"] input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="hidden"]):not([type="range"]):not([type="image"]):not([type="submit"]):not([type="button"]):not([type="reset"]),
+[role="dialog"] select,
+[role="dialog"] textarea {
+  box-sizing: border-box;
+  height: 34px;
+  padding: 6px 12px !important;
+  font-size: 14px;
+  line-height: 1.42857143;
+  border-width: 1px !important;
+  border-style: solid !important;
+  border-color: #d1d5db;
+  border-radius: 4px;
+  background-color: #fff;
+  color: #555;
+}
+
+.hq6-modal-root textarea,
+.hq6-modal-root textarea.hq6-modal-input,
+.hq6-modal-root textarea.hq6-form-input,
+[role="dialog"] textarea,
+[role="dialog"] textarea.hq6-modal-input,
+[role="dialog"] textarea.hq6-form-input,
+html.upos-hq6 textarea.hq6-modal-input,
+html.upos-hq6 textarea.hq6-form-input,
+html.upos-shell textarea.hq6-modal-input,
+html.upos-shell textarea.hq6-form-input {
+  height: auto !important;
+  min-height: 74px;
+  padding: 8px 12px !important;
+  line-height: 1.45;
+}
+
+.hq6-modal-root input.border-none,
+.hq6-modal-root input.border-0,
+.hq6-modal-root textarea.border-none,
+.hq6-modal-root textarea.border-0,
+[role="dialog"] input.border-none,
+[role="dialog"] input.border-0,
+[role="dialog"] textarea.border-none,
+[role="dialog"] textarea.border-0 {
+  border-width: 0 !important;
+  background-color: transparent;
+}
+
+/*
+ * DaisyUI (tailwind-app.css) flips :root to color-scheme:dark when the OS is
+ * dark — native checkboxes/radios then paint with a black fill. Force light
+ * controls for the UPOS shell regardless of system preference.
+ */
+html.upos-hq6,
+html.upos-shell {
+  color-scheme: light !important;
+}
+
+html.upos-hq6 input[type="checkbox"],
+html.upos-hq6 input[type="radio"],
+html.upos-shell input[type="checkbox"],
+html.upos-shell input[type="radio"],
+[data-hq6="true"] input[type="checkbox"],
+[data-hq6="true"] input[type="radio"] {
+  color-scheme: light;
+  accent-color: #3c8dbc;
+  background-color: #fff;
+  border: 1px solid #c0c4cc;
+  width: 1rem;
+  height: 1rem;
+  vertical-align: middle;
+  cursor: pointer;
+}
+
+html.upos-hq6 input[type="checkbox"]:checked,
+html.upos-shell input[type="checkbox"]:checked,
+[data-hq6="true"] input[type="checkbox"]:checked {
+  accent-color: #3c8dbc;
+}
+
+/* DaisyUI checkbox component tokens stay light in this shell */
+html.upos-hq6,
+html.upos-shell {
+  --fallback-b1: #fff;
+  --fallback-b2: #e5e6e6;
+  --fallback-b3: #e5e6e6;
+  --fallback-bc: #1f2937;
+  --chkbg: #3c8dbc;
+  --chkfg: #fff;
+}
+
+/* ——— Responsive content + tables (HQ6 / UPOS shell) ——— */
+html.upos-hq6 [data-hq6="true"] .hq6-page,
+html.upos-shell [data-hq6="true"] .hq6-page {
+  max-width: 100%;
+  overflow-x: clip;
+}
+
+html.upos-hq6 [data-hq6="true"] .hq6-page .content,
+html.upos-shell [data-hq6="true"] .hq6-page .content {
+  max-width: 100%;
+  min-width: 0;
+}
+
+html.upos-hq6 [data-hq6="true"] .hq6-dt-scroll,
+html.upos-hq6 [data-hq6="true"] .dataTables_scrollBody,
+html.upos-hq6 [data-hq6="true"] .hq6-table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  max-width: 100%;
+}
+
+html.upos-hq6 [data-hq6="true"] .hq6-page .dataTables_wrapper .row.margin-bottom-20 {
+  align-items: center;
+}
+
+html.upos-hq6 [data-hq6="true"] .hq6-report-kpi-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+html.upos-hq6 [data-hq6="true"] .hq6-report-kpi-table {
+  min-width: 28rem;
+  width: 100%;
+  margin: 0;
+}
+
+html.upos-hq6 [data-hq6="true"] .hq6-report-kpi-table td {
+  vertical-align: top;
+  padding: 0.35rem 0.75rem 0.35rem 0;
+  white-space: nowrap;
+}
+
+html.upos-hq6 [data-hq6="true"] .hq6-report-kpi-table h3 {
+  margin: 0;
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: #111827;
+}
+
+html.upos-hq6 [data-hq6="true"] .hq6-report-tabs {
+  display: flex;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  gap: 0;
+}
+
+html.upos-hq6 [data-hq6="true"] .hq6-report-tabs > li {
+  flex: 0 0 auto;
+}
+
+html.upos-hq6 [data-hq6="true"] .hq6-pl-toolbar {
+  margin-bottom: 0.75rem;
+}
+
+html.upos-hq6 [data-hq6="true"] .hq6-pl-toolbar .input-group {
+  display: flex;
+  width: 100%;
+  margin-bottom: 0.75rem;
+}
+
+html.upos-hq6 [data-hq6="true"] .hq6-pl-toolbar .input-group-addon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 12px;
+  background: #3c8dbc;
+  color: #fff;
+  border: 1px solid #3c8dbc;
+  border-radius: 4px 0 0 4px;
+}
+
+html.upos-hq6 [data-hq6="true"] .hq6-pl-toolbar .input-group .form-control {
+  border-radius: 0 4px 4px 0;
+}
+
+html.upos-hq6 [data-hq6="true"] .hq6-pl-date-dropdown > div > button,
+html.upos-hq6 [data-hq6="true"] .hq6-pl-date-filter button {
+  background: #3c8dbc !important;
+  border-color: #367fa9 !important;
+  color: #fff !important;
+}
+
+@media (max-width: 767px) {
+  html.upos-hq6 [data-hq6="true"] .hq6-page .content-header h1 {
+    font-size: 1.35rem;
+    line-height: 1.25;
+  }
+
+  html.upos-hq6 [data-hq6="true"] .hq6-page .content-header h1 small {
+    display: block;
+    margin: 0.25rem 0 0;
+  }
+
+  html.upos-hq6 [data-hq6="true"] .hq6-page .dataTables_wrapper .row.margin-bottom-20 {
+    flex-direction: column;
+    align-items: stretch;
+    text-align: left !important;
+    gap: 0.5rem;
+  }
+
+  html.upos-hq6 [data-hq6="true"] .hq6-page .dataTables_wrapper .row.margin-bottom-20 > [class*="col-"] {
+    width: 100% !important;
+  }
+
+  html.upos-hq6 [data-hq6="true"] .hq6-page .dataTables_filter {
+    text-align: left;
+  }
+
+  html.upos-hq6 [data-hq6="true"] .hq6-page .dataTables_filter input {
+    width: 100% !important;
+    max-width: none;
+  }
+
+  html.upos-hq6 [data-hq6="true"] .hq6-page .dt-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+
+  html.upos-hq6 [data-hq6="true"] .hq6-page .dataTables_wrapper > .row:last-child {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  html.upos-hq6 [data-hq6="true"] .hq6-page .dataTables_info,
+  html.upos-hq6 [data-hq6="true"] .hq6-page .dataTables_paginate {
+    text-align: left !important;
+    float: none !important;
+    width: 100%;
+  }
+
+  html.upos-hq6 [data-hq6="true"] .hq6-page .pagination {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+
+  html.upos-hq6 [data-hq6="true"] .hq6-table-wrap.hq6-table-freeze-first thead th:first-child,
+  html.upos-hq6 [data-hq6="true"] .hq6-table-wrap.hq6-table-freeze-first tbody td:first-child {
+    position: static;
+    box-shadow: none;
+  }
+
+  html.upos-hq6 [data-hq6="true"] .hq6-report-kpi-table {
+    min-width: 22rem;
+  }
+
+  html.upos-hq6 [data-hq6="true"] .hq6-report-kpi-table h3 {
+    font-size: 1.1rem;
+  }
+
+  html.upos-hq6 [data-hq6="true"] .upos-filters-body .col-md-3,
+  html.upos-hq6 [data-hq6="true"] .upos-filters-body .form-group {
+    width: 100%;
+  }
+
+  html.upos-hq6 [data-hq6="true"] .box-tools {
+    float: none !important;
+    margin: 0.5rem 0 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+  }
+}
+

@@ -4,7 +4,6 @@ import { useEffect, useMemo, useState } from "react";
 import { usePathname } from "next/navigation";
 import {
   ChevronDown,
-  CloudDownload,
   Columns3,
   Download,
   FileSpreadsheet,
@@ -172,6 +171,10 @@ function Hq6ListPageShell({
   const hasFilters =
     showDateRange || filterDropdowns.length > 0 || filterCheckboxes.length > 0;
 
+  const multiTabs = tabs.length > 1;
+  const activeLabel =
+    tabs.find((t) => t.id === activeTab)?.label ?? tabs[0]?.label;
+
   const filters = hasFilters ? (
     <div className="space-y-4">
       {filterCheckboxes.length > 0 ? (
@@ -183,7 +186,7 @@ function Hq6ListPageShell({
             >
               <input
                 type="checkbox"
-                className="h-4 w-4 rounded border-[#d1d5db]"
+                className="h-4 w-4 rounded border border-[#d1d5db]"
                 checked={box.checked}
                 onChange={(e) => box.onChange(e.target.checked)}
               />
@@ -226,8 +229,12 @@ function Hq6ListPageShell({
     </div>
   ) : undefined;
 
+  const showToolbar = showImport || showExport || showSearch;
+
   const box = (
-    <div className="hq6-card hq6-products-box overflow-x-clip">
+    <div className="box-primary tw-mb-4 tw-transition-all tw-duration-200 tw-bg-white tw-shadow-sm tw-rounded-xl tw-ring-1 hover:tw-shadow-md tw-ring-gray-200 overflow-x-clip">
+      <div className="tw-p-2 sm:tw-p-3">
+      {multiTabs ? (
       <div className="hq6-tab-row">
         <div className="flex min-w-0 flex-1 overflow-x-auto">
           {tabs.map((tab) => (
@@ -245,53 +252,34 @@ function Hq6ListPageShell({
           ))}
         </div>
         {primaryAction ? (
-          <div className="flex shrink-0 items-center gap-2 px-3 py-2">
-            {primaryAction}
-          </div>
+          <div className="box-tools">{primaryAction}</div>
         ) : null}
       </div>
-
-      <div className="hq6-dt-toolbar">
-        {showSearch ? (
-          <div className="hq6-search">
-            <label className="hq6-search-field">
-              <span className="sr-only">Search</span>
-              <input
-                type="search"
-                placeholder={resolvedSearchPlaceholder}
-                title={resolvedSearchPlaceholder}
-                value={localSearch}
-                onChange={(e) => setLocalSearch(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    onSearchChange?.(localSearch);
-                  }
-                }}
-              />
-            </label>
-            <button
-              type="button"
-              className="hq6-search-btn"
-              onClick={() => onSearchChange?.(localSearch)}
-              aria-label="Search"
-            >
-              <Search className="h-4 w-4" aria-hidden />
-              Search
-            </button>
-          </div>
+      ) : (
+      <div className="box-header">
+        <h3 className="box-title">{activeLabel}</h3>
+        {primaryAction ? (
+          <div className="box-tools">{primaryAction}</div>
         ) : null}
+      </div>
+      )}
+
+      {showToolbar ? (
+      <div className="hq6-dt-toolbar">
         <label className="hq6-show-entries">
           Show{" "}
           <select defaultValue={25}>
-            <option value={10}>10</option>
             <option value={25}>25</option>
             <option value={50}>50</option>
             <option value={100}>100</option>
+            <option value={200}>200</option>
+            <option value={500}>500</option>
+            <option value={1000}>1,000</option>
+            <option value={-1}>All</option>
           </select>{" "}
           entries
         </label>
-        <div className="ml-auto flex flex-wrap items-center gap-1.5">
+        <div className="hq6-dt-toolbar-actions">
           {showImport ? (
             onImport ? (
               <>
@@ -309,7 +297,7 @@ function Hq6ListPageShell({
                 <label
                   htmlFor="hq6-list-import"
                   className={cn(
-                    "hq6-btn hq6-btn-outline",
+                    "tw-dw-btn tw-dw-btn-xs tw-dw-btn-outline tw-my-2",
                     importDisabled && "pointer-events-none opacity-50",
                   )}
                 >
@@ -318,7 +306,11 @@ function Hq6ListPageShell({
                 </label>
               </>
             ) : (
-              <button type="button" className="hq6-btn hq6-btn-outline" disabled>
+              <button
+                type="button"
+                className="tw-dw-btn tw-dw-btn-xs tw-dw-btn-outline tw-my-2"
+                disabled
+              >
                 <Download className="h-3.5 w-3.5" />
                 Import CSV
               </button>
@@ -328,7 +320,7 @@ function Hq6ListPageShell({
             <>
               <button
                 type="button"
-                className="hq6-btn hq6-btn-outline"
+                className="tw-dw-btn tw-dw-btn-xs tw-dw-btn-outline tw-my-2"
                 onClick={onExport ?? (() => openExportModal())}
               >
                 <FileText className="h-3.5 w-3.5" />
@@ -336,7 +328,7 @@ function Hq6ListPageShell({
               </button>
               <button
                 type="button"
-                className="hq6-btn hq6-btn-outline"
+                className="tw-dw-btn tw-dw-btn-xs tw-dw-btn-outline tw-my-2"
                 onClick={onExport ?? (() => openExportModal())}
               >
                 <FileSpreadsheet className="h-3.5 w-3.5" />
@@ -344,7 +336,7 @@ function Hq6ListPageShell({
               </button>
               <button
                 type="button"
-                className="hq6-btn hq6-btn-outline"
+                className="tw-dw-btn tw-dw-btn-xs tw-dw-btn-outline tw-my-2"
                 onClick={() => setPrintOpen(true)}
               >
                 <Printer className="h-3.5 w-3.5" />
@@ -352,7 +344,7 @@ function Hq6ListPageShell({
               </button>
               <button
                 type="button"
-                className="hq6-btn hq6-btn-outline"
+                className="tw-dw-btn tw-dw-btn-xs tw-dw-btn-outline tw-my-2"
                 onClick={() => setColumnsOpen(true)}
                 disabled={hq6Columns.length === 0}
               >
@@ -361,18 +353,46 @@ function Hq6ListPageShell({
               </button>
               <button
                 type="button"
-                className="hq6-btn hq6-btn-blue"
+                className="tw-dw-btn tw-dw-btn-xs tw-dw-btn-outline tw-my-2"
                 onClick={onExport ?? (() => openExportModal())}
               >
-                <CloudDownload className="h-3.5 w-3.5" />
-                Download Excel
+                <FileText className="h-3.5 w-3.5" />
+                Export PDF
               </button>
             </>
           ) : null}
         </div>
+        {showSearch ? (
+          <div className="hq6-dt-search">
+            <span className="hq6-dt-search-label">Search:</span>
+            <input
+              type="search"
+              placeholder={resolvedSearchPlaceholder}
+              title={resolvedSearchPlaceholder}
+              value={localSearch}
+              onChange={(e) => setLocalSearch(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  onSearchChange?.(localSearch);
+                }
+              }}
+            />
+            <button
+              type="button"
+              className="hq6-search-btn"
+              aria-label="Search"
+              onClick={() => onSearchChange?.(localSearch)}
+            >
+              Search
+            </button>
+          </div>
+        ) : null}
       </div>
+      ) : null}
 
-      <div className={cn("hq6-table-wrap", contentClassName)}>{children}</div>
+      <div className={cn("hq6-table-wrap tw-py-2 sm:tw-px-5", contentClassName)}>{children}</div>
+      </div>
     </div>
   );
 
@@ -569,7 +589,7 @@ function DefaultListPageShell({
                     type="checkbox"
                     checked={box.checked}
                     onChange={(e) => box.onChange(e.target.checked)}
-                    className="rounded border-border"
+                    className="rounded border border-border"
                   />
                   {box.label}
                 </label>
@@ -579,15 +599,31 @@ function DefaultListPageShell({
         </div>
         <div className="flex flex-wrap items-center gap-3">
           {showSearch ? (
-            <div className="relative flex h-9 w-full items-center rounded-lg border border-border bg-card px-3 md:w-64">
-              <Search className="mr-2 h-4 w-4 shrink-0 text-muted" />
-              <input
-                type="text"
-                placeholder={searchPlaceholder}
-                value={localSearch}
-                onChange={(event) => setLocalSearch(event.target.value)}
-                className="flex-1 border-none bg-transparent text-sm text-foreground outline-none placeholder:text-muted"
-              />
+            <div className="flex h-9 w-full items-stretch overflow-hidden rounded-lg border border-border bg-card md:w-auto md:min-w-[16rem]">
+              <div className="relative flex min-w-0 flex-1 items-center px-3">
+                <Search className="mr-2 h-4 w-4 shrink-0 text-muted" />
+                <input
+                  type="search"
+                  placeholder={searchPlaceholder}
+                  value={localSearch}
+                  onChange={(event) => setLocalSearch(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      onSearchChange?.(localSearch);
+                    }
+                  }}
+                  className="min-w-0 flex-1 border-none bg-transparent text-sm text-foreground outline-none placeholder:text-muted"
+                />
+              </div>
+              <button
+                type="button"
+                className="inline-flex shrink-0 items-center justify-center border-l border-border bg-[#2563eb] px-3 text-sm font-semibold text-white hover:bg-[#1d4ed8]"
+                aria-label="Search"
+                onClick={() => onSearchChange?.(localSearch)}
+              >
+                Search
+              </button>
             </div>
           ) : null}
         </div>

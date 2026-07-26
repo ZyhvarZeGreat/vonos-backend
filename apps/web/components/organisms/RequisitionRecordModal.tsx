@@ -20,6 +20,7 @@ import {
   MODAL_RECORD_STALE_MS,
   modalKeys,
 } from "@/lib/query/modalQueryKeys";
+import { patchEntityInQueries } from "@/lib/query/optimistic";
 import { formatDate } from "@/lib/utils/formatDate";
 import { formatNumber } from "@/lib/utils/formatCurrency";
 import { hasPermission } from "@/lib/utils/permissions";
@@ -66,40 +67,66 @@ export function RequisitionRecordModal({
         ? initialRecord
         : null;
 
-  const invalidate = () => {
-    void queryClient.invalidateQueries({ queryKey: ["requisitions", tenantId] });
-    void queryClient.invalidateQueries({
-      queryKey: ["incoming-requisitions", tenantId],
+  const invalidateKeys = [
+    ["requisitions", tenantId],
+    ["incoming-requisitions", tenantId],
+    ...(requisitionId
+      ? [["requisition-modal", tenantId, requisitionId] as const]
+      : []),
+  ] as const;
+
+  const patchStatus = (status: Requisition["status"]) => {
+    if (!requisitionId) return;
+    queryClient.setQueryData(
+      modalKeys.requisition(tenantId, requisitionId),
+      (current: Requisition | undefined) =>
+        current ? { ...current, status } : current,
+    );
+    patchEntityInQueries(queryClient, ["requisitions", tenantId], requisitionId, {
+      status,
     });
-    if (requisitionId) {
-      void queryClient.invalidateQueries({
-        queryKey: ["requisition-modal", tenantId, requisitionId],
-      });
-    }
+    patchEntityInQueries(
+      queryClient,
+      ["incoming-requisitions", tenantId],
+      requisitionId,
+      { status },
+    );
   };
 
   const approveMutation = useAppMutation({
     mutationFn: () => approveRequisition(tenantId!, requisitionId!),
     successMessage: "Requisition approved",
-    onSuccess: invalidate,
+    optimistic: {
+      keys: invalidateKeys,
+      update: () => patchStatus("Approved"),
+    },
   });
 
   const rejectMutation = useAppMutation({
     mutationFn: () => rejectRequisition(tenantId!, requisitionId!),
     successMessage: "Requisition rejected",
-    onSuccess: invalidate,
+    optimistic: {
+      keys: invalidateKeys,
+      update: () => patchStatus("Rejected"),
+    },
   });
 
   const fulfillMutation = useAppMutation({
     mutationFn: () => fulfillRequisition(tenantId!, requisitionId!),
     successMessage: "Requisition fulfilled — stock transferred",
-    onSuccess: invalidate,
+    optimistic: {
+      keys: invalidateKeys,
+      update: () => patchStatus("Fulfilled"),
+    },
   });
 
   const cancelMutation = useAppMutation({
     mutationFn: () => cancelRequisition(tenantId!, requisitionId!),
     successMessage: "Requisition cancelled",
-    onSuccess: invalidate,
+    optimistic: {
+      keys: invalidateKeys,
+      update: () => patchStatus("Cancelled"),
+    },
   });
 
   const isPending =

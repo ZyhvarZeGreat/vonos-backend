@@ -33,7 +33,13 @@ function EntityOverviewViewBody({ tenantCode }: OverviewProps) {
   const { tenantId } = useRouteTenant();
   const { items: activityItems, isLoading: activityLoading } =
     useRecentActivityFeed(tenantId);
-  const { dateRange, setDateRange, bounds } = useListPageFilters({ unboundedAllTime: false });
+  const {
+    dateRange,
+    setDateRange,
+    customDateRange,
+    setCustomDateRange,
+    bounds,
+  } = useListPageFilters({ unboundedAllTime: false });
   const entry = getTenantConfigByCode(tenantCode);
   const archetype = entry?.archetype ?? "stock";
   const isCafe = tenantCode === "VC";
@@ -67,7 +73,12 @@ function EntityOverviewViewBody({ tenantCode }: OverviewProps) {
     <DashboardTemplate
       beforeContent={
         <div className="flex flex-wrap items-center justify-end gap-3">
-          <DateRangeDropdown value={dateRange} onChange={setDateRange} />
+          <DateRangeDropdown
+            value={dateRange}
+            onChange={setDateRange}
+            customValue={customDateRange}
+            onCustomChange={setCustomDateRange}
+          />
         </div>
       }
       kpiRow={

@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import { useParams, usePathname } from "next/navigation";
 import { Sidebar } from "@/components/organisms/Sidebar";
 import { TopBar } from "@/components/organisms/TopBar";
@@ -11,6 +12,8 @@ import { useRecordTitle } from "@/lib/hooks/useRecordTitle";
 import { TenantShell } from "@/components/layouts/TenantShell";
 import { AdminViewingBanner } from "@/components/molecules/AdminViewingBanner";
 import { PageTransition } from "@/components/atoms/PageTransition";
+import { UposAppShell } from "@/components/upos/UposAppShell";
+import { isUposShellTenant } from "@/lib/utils/isHq6Tenant";
 import { useAuthStore } from "@/stores/authStore";
 import { useUiStore } from "@/stores/uiStore";
 
@@ -26,6 +29,8 @@ function TenantLayoutInner({ children }: { children: React.ReactNode }) {
   const params = useParams<{ tenant: string }>();
   const pathname = usePathname();
   const sidebarCollapsed = useUiStore((state) => state.sidebarCollapsed);
+  const mobileNavOpen = useUiStore((state) => state.mobileNavOpen);
+  const setMobileNavOpen = useUiStore((state) => state.setMobileNavOpen);
   const openCreateModal = useUiStore((state) => state.openCreateModal);
   const openExportModal = useUiStore((state) => state.openExportModal);
   const { tenantId, config, tenantName } = useRouteTenant();
@@ -33,6 +38,7 @@ function TenantLayoutInner({ children }: { children: React.ReactNode }) {
   const authEmail = useAuthStore((state) => state.email);
   const authRole = useAuthStore((state) => state.role);
   const navSections = navSectionsForTenant(params.tenant, config);
+  const useUposShell = isUposShellTenant(params.tenant);
 
   const { section, recordId } = parseTenantPath(pathname);
   const detailTitle = useRecordTitle(
@@ -54,8 +60,35 @@ function TenantLayoutInner({ children }: { children: React.ReactNode }) {
         ? "Finance"
         : section.charAt(0).toUpperCase() + section.slice(1).replace(/-/g, " "));
 
+  useEffect(() => {
+    setMobileNavOpen(false);
+  }, [pathname, setMobileNavOpen]);
+
+  if (useUposShell) {
+    return (
+      <UposAppShell
+        sections={navSections}
+        tenantCode={params.tenant}
+        tenantName={tenantName ?? params.tenant}
+        activeRoute={pathname}
+        isNavActive={isNavRouteActive}
+        userName={authName ?? authEmail ?? undefined}
+      >
+        {children}
+      </UposAppShell>
+    );
+  }
+
   return (
     <div className="flex h-screen overflow-hidden bg-background">
+      {mobileNavOpen ? (
+        <button
+          type="button"
+          className="fixed inset-0 z-40 bg-black/40 md:hidden"
+          aria-label="Close menu"
+          onClick={() => setMobileNavOpen(false)}
+        />
+      ) : null}
       <Sidebar
         sections={navSections}
         tenantName={tenantName ?? params.tenant}
@@ -65,6 +98,8 @@ function TenantLayoutInner({ children }: { children: React.ReactNode }) {
         activeRoute={pathname}
         isNavActive={isNavRouteActive}
         collapsed={sidebarCollapsed}
+        mobileOpen={mobileNavOpen}
+        onMobileClose={() => setMobileNavOpen(false)}
       />
       <div className="flex min-w-0 flex-1 flex-col">
         {authRole === "super_admin" ? (
@@ -100,7 +135,7 @@ function TenantLayoutInner({ children }: { children: React.ReactNode }) {
                   : undefined
           }
         />
-        <main className="flex-1 overflow-y-auto p-6 lg:p-10">
+        <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-10">
           <PageTransition className="mx-auto max-w-[var(--space-content-max)]">
             {children}
           </PageTransition>

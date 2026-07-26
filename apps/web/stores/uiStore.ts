@@ -57,6 +57,8 @@ export interface EntitySwitchTarget {
 
 interface UiState {
   sidebarCollapsed: boolean;
+  /** Off-canvas nav drawer on small screens (< md). */
+  mobileNavOpen: boolean;
   activeNav: string | null;
   notifications: Notification[];
   notificationsOpen: boolean;
@@ -77,6 +79,8 @@ interface UiState {
   customDateRange: CustomDateRange | null;
   entitySwitch: EntitySwitchTarget | null;
   toggleSidebar: () => void;
+  toggleMobileNav: () => void;
+  setMobileNavOpen: (open: boolean) => void;
   setActiveNav: (route: string) => void;
   setNotifications: (notifications: Notification[]) => void;
   setNotificationsOpen: (open: boolean) => void;
@@ -105,6 +109,7 @@ interface UiState {
 
 export const useUiStore = create<UiState>((set) => ({
   sidebarCollapsed: false,
+  mobileNavOpen: false,
   activeNav: null,
   notifications: [],
   notificationsOpen: false,
@@ -123,6 +128,9 @@ export const useUiStore = create<UiState>((set) => ({
   entitySwitch: null,
   toggleSidebar: () =>
     set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),
+  toggleMobileNav: () =>
+    set((state) => ({ mobileNavOpen: !state.mobileNavOpen })),
+  setMobileNavOpen: (open) => set({ mobileNavOpen: open }),
   setActiveNav: (route) => set({ activeNav: route }),
   setNotifications: (notifications) => set({ notifications }),
   setNotificationsOpen: (open) => set({ notificationsOpen: open }),

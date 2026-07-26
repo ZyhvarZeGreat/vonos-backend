@@ -71,7 +71,7 @@ export function TopBar({
   const queryClient = useQueryClient();
   const clearAuth = useAuthStore((state) => state.clearAuth);
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
-  const toggleSidebar = useUiStore((state) => state.toggleSidebar);
+  const toggleMobileNav = useUiStore((state) => state.toggleMobileNav);
   const notificationsOpen = useUiStore((state) => state.notificationsOpen);
   const toggleNotifications = useUiStore((state) => state.toggleNotifications);
   const setNotificationsOpen = useUiStore((state) => state.setNotificationsOpen);
@@ -148,12 +148,12 @@ export function TopBar({
       <header
         style={topbarAccentStyle(tenantCode)}
         className={cn(
-          "relative flex h-[var(--space-topbar-height)] flex-shrink-0 items-center justify-between border-b border-[var(--color-topbar-border)] bg-[var(--color-surface-topbar)] px-6 text-[var(--color-topbar-text)] lg:px-10",
+          "relative flex h-[var(--space-topbar-height)] flex-shrink-0 items-center justify-between border-b border-[var(--color-topbar-border)] bg-[var(--color-surface-topbar)] px-3 text-[var(--color-topbar-text)] sm:px-6 lg:px-10",
           className,
         )}
       >
         <div className="flex min-w-0 items-center gap-3">
-          <IconButton label="Toggle sidebar" className="md:hidden" onClick={toggleSidebar}>
+          <IconButton label="Open menu" className="md:hidden" onClick={toggleMobileNav}>
             <Menu className="h-5 w-5" />
           </IconButton>
           {isAdminChrome ? (

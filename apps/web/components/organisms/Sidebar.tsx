@@ -75,6 +75,7 @@ import { NavCollapsibleGroup } from "@/components/molecules/NavCollapsibleGroup"
 import { TenantSwitcher } from "@/components/molecules/TenantSwitcher";
 import { IconButton } from "@/components/atoms/IconButton";
 import { SearchBar } from "@/components/atoms/SearchBar";
+import { Hq6Sidebar } from "@/components/hq6/Hq6Sidebar";
 import { typographyRoles } from "@/lib/registries/typography";
 import { sidebarAccentStyle, sidebarHeaderStyle } from "@/lib/registries/tenantAccents";
 import { cn } from "@/lib/utils/cn";
@@ -186,6 +187,9 @@ export interface SidebarProps {
   activeRoute?: string;
   isNavActive?: (pathname: string, route: string) => boolean;
   collapsed?: boolean;
+  /** Controls off-canvas drawer on viewports below `md`. */
+  mobileOpen?: boolean;
+  onMobileClose?: () => void;
   showPromo?: boolean;
   className?: string;
 }
@@ -200,6 +204,8 @@ export function Sidebar({
   activeRoute,
   isNavActive,
   collapsed = false,
+  mobileOpen = false,
+  onMobileClose,
   showPromo = true,
   className,
 }: SidebarProps) {
@@ -217,6 +223,31 @@ export function Sidebar({
     [customDateRange, dateRange],
   );
   const isHq6 = isHq6Tenant(tenantCode);
+  const [isDesktop, setIsDesktop] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const mq = window.matchMedia("(min-width: 768px)");
+    const sync = () => setIsDesktop(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
+
+  // Icon-rail collapse is desktop-only; mobile drawer always shows full labels.
+  const effectiveCollapsed = isDesktop && collapsed;
+
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    if (mobileOpen && !isDesktop) {
+      const prev = document.body.style.overflow;
+      document.body.style.overflow = "hidden";
+      return () => {
+        document.body.style.overflow = prev;
+      };
+    }
+    return undefined;
+  }, [isDesktop, mobileOpen]);
 
   const prefetchNavRoute = (route: string) => {
     prefetchRoute(queryClient, {
@@ -269,41 +300,70 @@ export function Sidebar({
   // Nav data is warmed on hover (and a small priority set from TenantShell /
   // AdminShell). Full sidebar prefetch here raced Home after login.
 
+  // Ultimate POS v7.1 sidebar — 1:1 chrome + interactions for HQ6 tenants
+  if (isHq6) {
+    return (
+      <Hq6Sidebar
+        sections={groupedSections}
+        tenantName={tenantName}
+        activeRoute={activeRoute}
+        isNavActive={isNavActive}
+        mobileOpen={mobileOpen}
+        onMobileClose={onMobileClose}
+        collapsed={effectiveCollapsed}
+        onItemPrefetch={
+          tenantId || tenantCode === "VAG"
+            ? (route) => prefetchNavRoute(route)
+            : undefined
+        }
+        className={className}
+      />
+    );
+  }
+
   return (
     <aside
       style={sidebarAccentStyle(tenantCode ?? "")}
       className={cn(
         "flex h-full flex-shrink-0 flex-col border-r border-[var(--color-border)] bg-[var(--color-surface-sidebar)] text-[var(--color-text-primary)]",
-        collapsed ? "w-20" : "w-[var(--space-sidebar-width)]",
+        // Mobile: off-canvas drawer. Desktop: static column (optionally icon-rail).
+        "fixed inset-y-0 left-0 z-50 w-[min(100%,var(--space-sidebar-width))] transition-transform duration-200 ease-out",
+        mobileOpen ? "translate-x-0" : "-translate-x-full",
+        "md:static md:z-auto md:translate-x-0",
+        collapsed ? "md:w-20" : "md:w-[var(--space-sidebar-width)]",
         className,
       )}
     >
       {/* Accent-colored header — height matches the top bar */}
-      {!collapsed ? (
+      {!collapsed || mobileOpen ? (
         <div
-          style={isHq6 ? undefined : sidebarHeaderStyle(tenantCode ?? "")}
+          style={sidebarHeaderStyle(tenantCode ?? "")}
           className={cn(
-            "flex h-12 shrink-0 items-center px-3",
-            isHq6 ? "border-b border-[var(--hq6-border)] bg-white" : "",
+            "flex h-12 shrink-0 items-center gap-2 px-3",
+            collapsed && "md:hidden",
           )}
         >
-          {isHq6 ? (
-            <div className="hq6-sidebar-brand">
-              <span className="hq6-sidebar-dot" aria-hidden />
-              {tenantName ?? "Vonos"}
-            </div>
-          ) : (
+          <div className="min-w-0 flex-1">
             <TenantSwitcher
               tenantCode={tenantCode ?? ""}
               tenantName={tenantName}
               variant="sidebar"
             />
-          )}
+          </div>
+          {onMobileClose ? (
+            <IconButton
+              label="Close menu"
+              className="md:hidden"
+              onClick={onMobileClose}
+            >
+              <X className="h-5 w-5" />
+            </IconButton>
+          ) : null}
         </div>
       ) : null}
 
       <div className="flex flex-1 flex-col gap-1 overflow-y-auto px-3 pb-6">
-        {!collapsed && !isHq6 ? (
+        {!effectiveCollapsed ? (
           <div className="px-2 pb-2 pt-3">
             <SearchBar placeholder="Search" showShortcut />
           </div>
@@ -327,7 +387,7 @@ export function Sidebar({
                 iconMap={iconMap}
                 activeRoute={activeRoute}
                 isNavActive={isNavActive}
-                collapsed={collapsed}
+                collapsed={effectiveCollapsed}
                 onItemPrefetch={
                   tenantId || tenantCode === "VAG"
                     ? (route) => prefetchNavRoute(route)
@@ -345,7 +405,7 @@ export function Sidebar({
                       ? isNavActive(activeRoute, flatItem.route)
                       : activeRoute === flatItem.route
                   }
-                  collapsed={collapsed}
+                  collapsed={effectiveCollapsed}
                   onPrefetch={
                     tenantId || tenantCode === "VAG"
                       ? () => prefetchNavRoute(flatItem.route)
@@ -355,7 +415,7 @@ export function Sidebar({
               </nav>
             ) : (
               <>
-                {!collapsed ? (
+                {!effectiveCollapsed ? (
                   <p
                     className={cn(
                       "mb-1 flex items-center gap-2 px-2",
@@ -385,7 +445,7 @@ export function Sidebar({
                             ? isNavActive(activeRoute, item.route)
                             : activeRoute === item.route
                         }
-                        collapsed={collapsed}
+                        collapsed={effectiveCollapsed}
                         onPrefetch={
                           tenantId || tenantCode === "VAG"
                             ? () => prefetchNavRoute(item.route)
@@ -402,7 +462,7 @@ export function Sidebar({
         })}
 
         {/* 2FA promo card — not on VA HQ6 sidebar */}
-        {showPromo && !collapsed && !promoDismissed && tenantCode !== "VA" ? (
+        {showPromo && !effectiveCollapsed && !promoDismissed && tenantCode !== "VA" ? (
           <div className="relative mx-2 mt-auto rounded-xl border border-border bg-card p-4 shadow-sm">
             <button
               type="button"
@@ -437,7 +497,7 @@ export function Sidebar({
         ) : null}
 
         {/* Bottom links — not on VA HQ6 sidebar */}
-        {!collapsed && tenantCode !== "VA" ? (
+        {!effectiveCollapsed && tenantCode !== "VA" ? (
           <div className="mt-2 flex flex-col gap-0.5">
             <Link
               href="#"
@@ -467,10 +527,10 @@ export function Sidebar({
         <div
           className={cn(
             "shrink-0 border-t border-[var(--color-border)] bg-[var(--color-surface-sidebar)]",
-            collapsed ? "p-3" : "px-5 py-4",
+            effectiveCollapsed ? "p-3" : "px-5 py-4",
           )}
         >
-          {collapsed ? (
+          {effectiveCollapsed ? (
             <IconButton
               label="Sign out"
               onClick={handleLogout}

@@ -1,6 +1,5 @@
 "use client";
 
-import { useQueryClient } from "@tanstack/react-query";
 import { useAppMutation } from "@/lib/hooks/useAppMutation";
 import { useEffect, useState } from "react";
 import Link from "next/link";
@@ -31,7 +30,6 @@ function DefaultSettingsView() {
   const [activeTab, setActiveTab] = useState("branding");
   const { tenantId, tenantName, tenantCode, config } = useRouteTenant();
   const setTenantConfig = useTenantStore((state) => state.setTenantConfig);
-  const queryClient = useQueryClient();
   const terminology = config?.terminology ?? {};
   const [displayName, setDisplayName] = useState(config?.name ?? tenantName ?? "");
   const [itemLabel, setItemLabel] = useState(terminology.item ?? "Item");
@@ -72,10 +70,10 @@ function DefaultSettingsView() {
       });
     },
     successMessage: activeTab === "catalog" ? "Catalog saved" : "Settings saved",
+    invalidateKeys: [["tenantConfig", tenantId]],
     onSuccess: (updated) => {
       setTenantConfig(updated);
       setSaveError(null);
-      void queryClient.invalidateQueries({ queryKey: ["tenantConfig", tenantId] });
     },
     onError: (err: Error) => setSaveError(err.message),
   });

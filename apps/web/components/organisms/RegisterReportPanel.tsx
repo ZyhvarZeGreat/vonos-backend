@@ -12,6 +12,9 @@ import { CursorPaginationBar } from "@/components/molecules/CursorPaginationBar"
 import { ReportTableSearchBar } from "@/components/molecules/ReportTableSearchBar";
 import { useOffsetPage } from "@/lib/hooks/useOffsetPage";
 import { TABLE_REPORT_PAGE_SIZE } from "@/lib/registries/reportTableUi";
+import { useIsVaHq6 } from "@/lib/hooks/useIsVaHq6";
+import { Hq6ReportDataTable } from "@/components/hq6/Hq6ReportDataTable";
+import { Hq6ReportKpiSummary } from "@/components/hq6/Hq6ReportKpiSummary";
 
 function rowMatchesSearch(row: ReportsTableRow, query: string): boolean {
   const q = query.trim().toLowerCase();
@@ -22,15 +25,6 @@ function rowMatchesSearch(row: ReportsTableRow, query: string): boolean {
   });
 }
 
-function kpiValue(
-  report: ReportsDashboard,
-  metricKey: string,
-): { value: number; currency?: string } | null {
-  const kpi = report.kpis.find((row) => row.metricKey === metricKey);
-  if (!kpi) return null;
-  return { value: kpi.value, currency: kpi.currency };
-}
-
 export function RegisterReportPanel({
   report,
   onPrint,
@@ -38,11 +32,9 @@ export function RegisterReportPanel({
   report: ReportsDashboard;
   onPrint?: () => void;
 }) {
-  const revenue = kpiValue(report, "revenue");
-  const currency = revenue?.currency ?? "NGN";
-  const tradingDays = kpiValue(report, "days");
-  const transactions = kpiValue(report, "transactionCount");
-  const avgDaily = kpiValue(report, "avgDaily");
+  const isHq6 = useIsVaHq6();
+  const currency =
+    report.kpis.find((k) => k.currency)?.currency ?? "NGN";
   const table = report.table;
   const [search, setSearch] = useState("");
   const filteredRows = useMemo(
@@ -66,6 +58,26 @@ export function RegisterReportPanel({
     ? table.columns.findIndex((col) => !(col.key in totals))
     : -1;
 
+  if (isHq6) {
+    return (
+      <div className="space-y-4" data-print-root>
+        {report.kpis.length > 0 ? (
+          <Hq6ReportKpiSummary kpis={report.kpis} />
+        ) : null}
+        {table ? (
+          <Hq6ReportDataTable
+            table={table}
+            currency={currency}
+            tableId="register_report_table"
+            emptyMessage="No register activity for this period."
+          />
+        ) : (
+          <p className="text-sm text-muted">No register activity for this period.</p>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6" data-print-root>
       {onPrint ? (
@@ -81,38 +93,21 @@ export function RegisterReportPanel({
       ) : null}
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <div className="rounded-xl border border-border bg-card px-5 py-4 shadow-card sm:px-6 sm:py-5">
-          <p className="text-xs font-semibold uppercase tracking-wide text-muted">
-            Register Revenue
-          </p>
-          <p className="mt-1 text-lg font-semibold tabular-nums text-foreground">
-            {formatCurrency(revenue?.value ?? 0, currency)}
-          </p>
-        </div>
-        <div className="rounded-xl border border-border bg-card px-5 py-4 shadow-card sm:px-6 sm:py-5">
-          <p className="text-xs font-semibold uppercase tracking-wide text-muted">
-            Trading Days
-          </p>
-          <p className="mt-1 text-lg font-semibold tabular-nums text-foreground">
-            {tradingDays?.value ?? 0}
-          </p>
-        </div>
-        <div className="rounded-xl border border-border bg-card px-5 py-4 shadow-card sm:px-6 sm:py-5">
-          <p className="text-xs font-semibold uppercase tracking-wide text-muted">
-            Transactions
-          </p>
-          <p className="mt-1 text-lg font-semibold tabular-nums text-foreground">
-            {transactions?.value ?? 0}
-          </p>
-        </div>
-        <div className="rounded-xl border border-border bg-card px-5 py-4 shadow-card sm:px-6 sm:py-5">
-          <p className="text-xs font-semibold uppercase tracking-wide text-muted">
-            Avg Daily Revenue
-          </p>
-          <p className="mt-1 text-lg font-semibold tabular-nums text-foreground">
-            {formatCurrency(avgDaily?.value ?? 0, currency)}
-          </p>
-        </div>
+        {report.kpis.map((kpi) => (
+          <div
+            key={kpi.metricKey}
+            className="rounded-xl border border-border bg-card px-5 py-4 shadow-card sm:px-6 sm:py-5"
+          >
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted">
+              {kpi.label}
+            </p>
+            <p className="mt-1 text-lg font-semibold tabular-nums text-foreground">
+              {kpi.currency
+                ? formatCurrency(kpi.value, kpi.currency)
+                : formatNumber(kpi.value)}
+            </p>
+          </div>
+        ))}
       </div>
 
       {table?.rows.length ? (
@@ -149,7 +144,10 @@ export function RegisterReportPanel({
               </thead>
               <tbody>
                 {pageRows.map((row, index) => (
-                  <tr key={String(row.id ?? index)} className="border-b border-border/60">
+                  <tr
+                    key={String(row.id ?? index)}
+                    className="border-b border-border/60"
+                  >
                     {table.columns.map((col) => {
                       const raw = row[col.key];
                       const kind = reportColumnTotalKind(col);
@@ -165,7 +163,9 @@ export function RegisterReportPanel({
                           key={col.key}
                           className={cn(
                             "px-4 py-2 text-foreground",
-                            kind || col.key === "revenue" || col.key === "avgTicket"
+                            kind ||
+                              col.key === "revenue" ||
+                              col.key === "avgTicket"
                               ? "text-right tabular-nums"
                               : undefined,
                           )}
@@ -184,7 +184,10 @@ export function RegisterReportPanel({
                       const total = totals[col.key];
                       if (total) {
                         return (
-                          <td key={col.key} className="px-4 py-3 text-right tabular-nums">
+                          <td
+                            key={col.key}
+                            className="px-4 py-3 text-right tabular-nums"
+                          >
                             {total.kind === "currency"
                               ? formatCurrency(total.value, currency)
                               : formatNumber(total.value)}
@@ -192,7 +195,8 @@ export function RegisterReportPanel({
                         );
                       }
                       const showLabel =
-                        index === (totalLabelColIndex >= 0 ? totalLabelColIndex : 0);
+                        index ===
+                        (totalLabelColIndex >= 0 ? totalLabelColIndex : 0);
                       return (
                         <td key={col.key} className="px-4 py-3">
                           {showLabel ? "Total:" : null}

@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
 import { useAppMutation } from "@/lib/hooks/useAppMutation";
 import { updateItem } from "@/lib/api/items";
+import { patchEntityInQueries } from "@/lib/query/optimistic";
 import { formatCurrency } from "@/lib/utils/formatCurrency";
 import type { Item } from "@vonos/types";
 
@@ -13,7 +13,6 @@ export interface InlinePriceCellProps {
 }
 
 export function InlinePriceCell({ item, label = "Price" }: InlinePriceCellProps) {
-  const queryClient = useQueryClient();
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState(String(item.costPrice));
 
@@ -22,10 +21,16 @@ export function InlinePriceCell({ item, label = "Price" }: InlinePriceCellProps)
   }, [item.costPrice]);
 
   const mutation = useAppMutation({
-    mutationFn: async (nextPrice: number) => updateItem(item.id, { costPrice: nextPrice }),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["items"] });
-      await queryClient.invalidateQueries({ queryKey: ["catalog"] });
+    mutationFn: async (nextPrice: number) =>
+      updateItem(item.id, { costPrice: nextPrice }),
+    optimistic: {
+      keys: [["items"], ["catalog"]],
+      update: (qc, nextPrice) => {
+        patchEntityInQueries(qc, ["items"], item.id, { costPrice: nextPrice });
+        patchEntityInQueries(qc, ["catalog"], item.id, { costPrice: nextPrice });
+      },
+    },
+    onSuccess: () => {
       setEditing(false);
     },
   });

@@ -1,9 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
 import { useAppMutation } from "@/lib/hooks/useAppMutation";
-import type { Role } from "@vonos/types";
+import type { Role, User } from "@vonos/types";
 import { Button } from "@/components/atoms/Button";
 import { Input } from "@/components/atoms/Input";
 import { Modal, ModalFooter, ModalHeader } from "@/components/atoms/Modal";
@@ -11,6 +10,10 @@ import { Select } from "@/components/atoms/Select";
 import { Hq6Modal, Hq6ModalSaveClose } from "@/components/hq6/Hq6Modal";
 import { createUser, inviteUser } from "@/lib/api/users";
 import { useIsVaHq6 } from "@/lib/hooks/useIsVaHq6";
+import {
+  optimisticTempId,
+  prependEntityInQueries,
+} from "@/lib/query/optimistic";
 import { AUTOS_GROUP_ENTITIES } from "@/lib/registries/tenants";
 import { cn } from "@/lib/utils/cn";
 import { useAuthStore } from "@/stores/authStore";
@@ -40,7 +43,6 @@ export function InviteUserModal({
   allTenants = false,
   defaultTenantId,
 }: InviteUserModalProps) {
-  const queryClient = useQueryClient();
   const isHq6 = useIsVaHq6();
   const actorRole = useAuthStore((state) => state.role);
   const isSuperAdmin = actorRole === "super_admin";
@@ -56,6 +58,7 @@ export function InviteUserModal({
   const [role, setRole] = useState<Role>(isSuperAdmin ? "manager" : "staff");
   const [inviteLink, setInviteLink] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [dismissed, setDismissed] = useState(false);
 
   const entityOptions = useMemo(() => {
     const options = [{ value: "", label: "Select entity…" }];
@@ -109,8 +112,50 @@ export function InviteUserModal({
         tenantId: allTenants ? undefined : defaultTenantId ?? undefined,
       }),
     successMessage: "Invitation sent",
+    optimistic: {
+      keys: [["users"]],
+      update: (qc) => {
+        const now = new Date().toISOString();
+        prependEntityInQueries(qc, ["users"], {
+          id: optimisticTempId("user"),
+          email: email.trim(),
+          name: name.trim(),
+          role: resolvedRole,
+          status: "invited",
+          tenantId: allTenants
+            ? entityValue === VAG_ENTITY_VALUE
+              ? null
+              : entityValue || null
+            : (defaultTenantId ?? null),
+          createdAt: now,
+          lastLoginAt: null,
+        } satisfies User);
+      },
+      commit: (qc, data) => {
+        if (!data?.user) return;
+        const entries = qc.getQueriesData({ queryKey: ["users"] });
+        for (const [queryKey, cached] of entries) {
+          if (Array.isArray(cached)) {
+            qc.setQueryData(
+              queryKey,
+              (cached as User[]).filter((row) => !row.id.startsWith("user-")),
+            );
+          } else if (
+            cached &&
+            typeof cached === "object" &&
+            Array.isArray((cached as { items?: User[] }).items)
+          ) {
+            const list = cached as { items: User[] };
+            qc.setQueryData(queryKey, {
+              ...list,
+              items: list.items.filter((row) => !row.id.startsWith("user-")),
+            });
+          }
+        }
+        prependEntityInQueries(qc, ["users"], data.user);
+      },
+    },
     onSuccess: (data) => {
-      void queryClient.invalidateQueries({ queryKey: ["users"] });
       setInviteLink(data.devInviteUrl ?? null);
       setError(null);
       if (!data.devInviteUrl) {
@@ -127,11 +172,58 @@ export function InviteUserModal({
         { tenantId: allTenants ? undefined : defaultTenantId ?? undefined },
       ),
     successMessage: "User created",
+    optimistic: {
+      keys: [["users"]],
+      update: (qc) => {
+        const now = new Date().toISOString();
+        prependEntityInQueries(qc, ["users"], {
+          id: optimisticTempId("user"),
+          email: email.trim(),
+          name: name.trim(),
+          role: resolvedRole,
+          status: "active",
+          tenantId: allTenants
+            ? entityValue === VAG_ENTITY_VALUE
+              ? null
+              : entityValue || null
+            : (defaultTenantId ?? null),
+          createdAt: now,
+          lastLoginAt: null,
+        } satisfies User);
+        setDismissed(true);
+      },
+      commit: (qc, data) => {
+        if (!data?.user) return;
+        const entries = qc.getQueriesData({ queryKey: ["users"] });
+        for (const [queryKey, cached] of entries) {
+          if (Array.isArray(cached)) {
+            qc.setQueryData(
+              queryKey,
+              (cached as User[]).filter((row) => !row.id.startsWith("user-")),
+            );
+          } else if (
+            cached &&
+            typeof cached === "object" &&
+            Array.isArray((cached as { items?: User[] }).items)
+          ) {
+            const list = cached as { items: User[] };
+            qc.setQueryData(queryKey, {
+              ...list,
+              items: list.items.filter((row) => !row.id.startsWith("user-")),
+            });
+          }
+        }
+        prependEntityInQueries(qc, ["users"], data.user);
+      },
+    },
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["users"] });
+      setDismissed(false);
       handleClose();
     },
-    onError: (err: Error) => setError(err.message),
+    onError: (err: Error) => {
+      setDismissed(false);
+      setError(err.message);
+    },
   });
 
   const isPending = inviteMutation.isPending || createMutation.isPending;
@@ -160,6 +252,7 @@ export function InviteUserModal({
     setRole(isSuperAdmin ? "manager" : "staff");
     setInviteLink(null);
     setError(null);
+    setDismissed(false);
     onClose();
   };
 
@@ -282,7 +375,7 @@ export function InviteUserModal({
   if (isHq6) {
     return (
       <Hq6Modal
-        open={open}
+        open={open && !dismissed}
         onClose={handleClose}
         title="Add user"
         footer={
@@ -302,7 +395,7 @@ export function InviteUserModal({
   }
 
   return (
-    <Modal open={open} onClose={handleClose} panelClassName="max-w-lg">
+    <Modal open={open && !dismissed} onClose={handleClose} panelClassName="max-w-lg">
       <ModalHeader
         title="Add user"
         subtitle={

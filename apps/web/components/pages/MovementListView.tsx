@@ -21,6 +21,10 @@ import { useListPageFilters } from "@/lib/hooks/useListPageFilters";
 import { useListExport } from "@/lib/hooks/useListExport";
 import { useIsVaHq6 } from "@/lib/hooks/useIsVaHq6";
 import { Hq6PurchasesListView } from "@/components/pages/Hq6PurchasesListView";
+import {
+  Hq6PurchaseOrdersListView,
+  Hq6PurchaseReturnsListView,
+} from "@/components/pages/Hq6PurchaseOrdersListView";
 import { prefetchMovementListModals } from "@/lib/query/prefetchListModals";
 import { prefetchMovementDetail } from "@/lib/query/prefetchListDetails";
 import { formatCurrency } from "@/lib/utils/formatCurrency";
@@ -325,11 +329,19 @@ function MovementListViewBody({
 }
 
 export function PurchaseOrdersView() {
-  return <MovementListView type="inbound" title="Purchase Orders" />;
+  const isHq6 = useIsVaHq6();
+  if (isHq6) return <Hq6PurchaseOrdersListView />;
+  return <MovementListViewBody type="inbound" title="Purchase Orders" />;
 }
 
 export function PurchaseReturnsView() {
+  const isHq6 = useIsVaHq6();
+  if (isHq6) return <Hq6PurchaseReturnsListView />;
   return (
-    <MovementListView type="outbound" title="Purchase Returns" source="purchase_return" />
+    <MovementListViewBody
+      type="outbound"
+      title="Purchase Returns"
+      source="purchase_return"
+    />
   );
 }

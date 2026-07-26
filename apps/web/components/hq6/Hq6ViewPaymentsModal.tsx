@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { Mail, Pencil, Printer, Trash2 } from "lucide-react";
+import { Mail, Printer } from "lucide-react";
 import { Hq6Modal } from "@/components/hq6/Hq6Modal";
 import { getSalePayments } from "@/lib/api/sales";
 import { getStockMovementPayments } from "@/lib/api/stockMovements";
@@ -223,28 +223,7 @@ export function Hq6ViewPaymentsModal({
                   <td className="py-2 pr-3">{row.note ?? ""}</td>
                   <td className="py-2 pr-3">{row.accountName ?? "—"}</td>
                   <td className="py-2">
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        className="text-[#2563eb] hover:text-[#1d4ed8]"
-                        aria-label="Edit payment"
-                        onClick={() =>
-                          toast.info("Edit payment is not available yet")
-                        }
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </button>
-                      <button
-                        type="button"
-                        className="text-[#dc2626] hover:text-[#b91c1c]"
-                        aria-label="Delete payment"
-                        onClick={() =>
-                          toast.info("Delete payment is not available yet")
-                        }
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </div>
+                    <span className="text-xs text-[#9ca3af]">—</span>
                   </td>
                 </tr>
               ))}

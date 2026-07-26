@@ -201,22 +201,42 @@ export function ProductItemSearch({
 
   return (
     <div ref={wrapRef} className={cn("relative", className)}>
-      <div className="relative">
-        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
-        <input
-          type="search"
-          role="combobox"
-          aria-expanded={showDropdown}
-          aria-controls={listId}
-          value={query}
-          onChange={(e) => {
-            setQuery(e.target.value);
+      <div className="relative flex items-stretch">
+        <div className="relative min-w-0 flex-1">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
+          <input
+            type="search"
+            role="combobox"
+            aria-expanded={showDropdown}
+            aria-controls={listId}
+            value={query}
+            onChange={(e) => {
+              setQuery(e.target.value);
+              setOpen(true);
+            }}
+            onFocus={() => setOpen(true)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                setDebounced(query.trim());
+                setOpen(true);
+              }
+            }}
+            placeholder={placeholder}
+            className="w-full rounded-l-lg rounded-r-none border border-r-0 border-border bg-card py-2.5 pl-9 pr-3 text-sm text-foreground outline-none ring-[var(--color-brand-primary)] focus:border-[var(--color-brand-primary)] focus:ring-1"
+          />
+        </div>
+        <button
+          type="button"
+          className="inline-flex shrink-0 items-center justify-center rounded-r-lg border border-[#2563eb] bg-[#2563eb] px-3 text-sm font-semibold text-white hover:border-[#1d4ed8] hover:bg-[#1d4ed8]"
+          aria-label="Search"
+          onClick={() => {
+            setDebounced(query.trim());
             setOpen(true);
           }}
-          onFocus={() => setOpen(true)}
-          placeholder={placeholder}
-          className="w-full rounded-lg border border-border bg-card py-2.5 pl-9 pr-3 text-sm text-foreground outline-none ring-[var(--color-brand-primary)] focus:border-[var(--color-brand-primary)] focus:ring-1"
-        />
+        >
+          Search
+        </button>
       </div>
       {showDropdown ? (
         <ul

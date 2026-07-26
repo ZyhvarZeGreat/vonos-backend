@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
 import { Printer } from "lucide-react";
 import type { Discount, DiscountType, Item, VariationTemplate } from "@vonos/types";
 import { Button } from "@/components/atoms/Button";
@@ -13,7 +12,10 @@ import { ListPageShell } from "@/components/organisms/ListPageShell";
 import { SalesListView } from "@/components/pages/EntityListViews";
 import { useIsVaHq6 } from "@/lib/hooks/useIsVaHq6";
 import { Hq6DiscountsListView } from "@/components/pages/Hq6DiscountsListView";
+import { Hq6PrintLabelsView } from "@/components/pages/Hq6PrintLabelsView";
 import { Hq6SalesListView } from "@/components/pages/Hq6SalesListView";
+import { Hq6UpdatePriceView } from "@/components/pages/Hq6UpdatePriceView";
+import { Hq6VariationsListView } from "@/components/pages/Hq6VariationsListView";
 import {
   createDiscount,
   deleteDiscount,
@@ -28,22 +30,21 @@ import {
 import { useAppMutation } from "@/lib/hooks/useAppMutation";
 import { useRouteTenant, useTenantId } from "@/lib/hooks/useRouteTenant";
 import { useServerListPage } from "@/lib/hooks/useServerListPage";
+import { removeEntityFromQueries } from "@/lib/query/optimistic";
 import { formatCurrency } from "@/lib/utils/formatCurrency";
 
 export function ListPosView() {
   const isHq6 = useIsVaHq6();
   if (isHq6) {
-    // HQ6 “List POS” is a sales list (invoice columns), not cash registers.
     return (
       <Hq6SalesListView
         saleStatus="completed"
         tabLabel="List POS"
-        hidePrimaryAction
         slug="pos"
       />
     );
   }
-  return <SalesListView saleStatus="completed" tabLabel="POS Sales" hidePrimaryAction />;
+  return <SalesListView saleStatus="completed" tabLabel="POS Sales" />;
 }
 
 export function ShipmentsListView() {
@@ -53,9 +54,14 @@ export function ShipmentsListView() {
 }
 
 export function UpdatePriceView() {
+  const isHq6 = useIsVaHq6();
+  if (isHq6) return <Hq6UpdatePriceView />;
+  return <UpdatePriceViewBody />;
+}
+
+function UpdatePriceViewBody() {
   const tenantId = useTenantId();
   const { config } = useRouteTenant();
-  const queryClient = useQueryClient();
   const [category, setCategory] = useState("");
   const [adjustmentType, setAdjustmentType] = useState<"fixed" | "percentage">("percentage");
   const [adjustmentValue, setAdjustmentValue] = useState("10");
@@ -78,11 +84,10 @@ export function UpdatePriceView() {
         adjustmentValue: value,
       });
     },
-    onSuccess: async (data) => {
+    invalidateKeys: [["items"], ["catalog"]],
+    onSuccess: (data) => {
       setResult(`Updated ${data.updated} product price(s).`);
       setError(null);
-      await queryClient.invalidateQueries({ queryKey: ["items"] });
-      await queryClient.invalidateQueries({ queryKey: ["catalog"] });
     },
     onError: (err: Error) => {
       setError(err.message);
@@ -98,7 +103,6 @@ export function UpdatePriceView() {
           Bulk-adjust selling prices for all products or a single category.
         </p>
       </div>
-
       <div className="space-y-4 rounded-xl border border-border bg-card p-6 shadow-card">
         <Select
           label="Category (optional)"
@@ -132,7 +136,10 @@ export function UpdatePriceView() {
         {result ? <p className="text-sm text-success">{result}</p> : null}
         {error ? <p className="text-sm text-error">{error}</p> : null}
         <div className="flex justify-end">
-          <Button disabled={mutation.isPending} onClick={() => mutation.mutate()}>
+          <Button
+            disabled={mutation.isPending}
+            onClick={() => mutation.mutate()}
+          >
             {mutation.isPending ? "Updating…" : "Apply to products"}
           </Button>
         </div>
@@ -149,7 +156,6 @@ export function DiscountsListView() {
 
 function DiscountsListViewBody() {
   const tenantId = useTenantId();
-  const queryClient = useQueryClient();
   const [formOpen, setFormOpen] = useState(false);
   const [name, setName] = useState("");
   const [discountType, setDiscountType] = useState<DiscountType>("percentage");
@@ -186,10 +192,24 @@ function DiscountsListViewBody() {
       });
     },
     successMessage: "Discount created",
-    onSuccess: async () => {
+    invalidateKeys: [["discounts"]],
+    onSuccess: () => {
       setFormOpen(false);
       setName("");
-      await queryClient.invalidateQueries({ queryKey: ["discounts"] });
+    },
+  });
+
+  const deleteMutation = useAppMutation({
+    mutationFn: async (id: string) => {
+      if (!tenantId) throw new Error("No tenant selected");
+      await deleteDiscount(tenantId, id);
+    },
+    successMessage: "Discount deleted",
+    optimistic: {
+      keys: [["discounts"]],
+      update: (qc, id) => {
+        removeEntityFromQueries(qc, ["discounts"], id);
+      },
     },
   });
 
@@ -224,18 +244,15 @@ function DiscountsListViewBody() {
           <Button
             size="sm"
             variant="secondary"
-            onClick={async () => {
-              if (!tenantId) return;
-              await deleteDiscount(tenantId, row.id);
-              await queryClient.invalidateQueries({ queryKey: ["discounts"] });
-            }}
+            disabled={deleteMutation.isPending}
+            onClick={() => deleteMutation.mutate(row.id)}
           >
             Delete
           </Button>
         ),
       },
     ],
-    [queryClient, tenantId],
+    [deleteMutation],
   );
 
   return (
@@ -307,8 +324,13 @@ function DiscountsListViewBody() {
 }
 
 export function VariationsListView() {
+  const isHq6 = useIsVaHq6();
+  if (isHq6) return <Hq6VariationsListView />;
+  return <VariationsListViewBody />;
+}
+
+function VariationsListViewBody() {
   const tenantId = useTenantId();
-  const queryClient = useQueryClient();
   const [formOpen, setFormOpen] = useState(false);
   const [name, setName] = useState("");
   const [valuesText, setValuesText] = useState("");
@@ -345,11 +367,25 @@ export function VariationsListView() {
       return createVariation(tenantId, { name: name.trim(), values });
     },
     successMessage: "Variation template saved",
-    onSuccess: async () => {
+    invalidateKeys: [["variations"]],
+    onSuccess: () => {
       setFormOpen(false);
       setName("");
       setValuesText("");
-      await queryClient.invalidateQueries({ queryKey: ["variations"] });
+    },
+  });
+
+  const deleteMutation = useAppMutation({
+    mutationFn: async (id: string) => {
+      if (!tenantId) throw new Error("No tenant selected");
+      await deleteVariation(tenantId, id);
+    },
+    successMessage: "Variation deleted",
+    optimistic: {
+      keys: [["variations"]],
+      update: (qc, id) => {
+        removeEntityFromQueries(qc, ["variations"], id);
+      },
     },
   });
 
@@ -369,18 +405,15 @@ export function VariationsListView() {
           <Button
             size="sm"
             variant="secondary"
-            onClick={async () => {
-              if (!tenantId) return;
-              await deleteVariation(tenantId, row.id);
-              await queryClient.invalidateQueries({ queryKey: ["variations"] });
-            }}
+            disabled={deleteMutation.isPending}
+            onClick={() => deleteMutation.mutate(row.id)}
           >
             Delete
           </Button>
         ),
       },
     ],
-    [queryClient, tenantId],
+    [deleteMutation],
   );
 
   return (
@@ -446,6 +479,12 @@ export function VariationsListView() {
 }
 
 export function PrintLabelsView() {
+  const isHq6 = useIsVaHq6();
+  if (isHq6) return <Hq6PrintLabelsView />;
+  return <PrintLabelsViewBody />;
+}
+
+function PrintLabelsViewBody() {
   const tenantId = useTenantId();
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<Item[]>([]);
@@ -462,12 +501,8 @@ export function PrintLabelsView() {
     }
   }
 
-  function handlePrint() {
-    window.print();
-  }
-
   return (
-    <div className="space-y-6 py-6 print:py-0">
+    <div className="space-y-6 py-2 print:py-0">
       <div className="print:hidden">
         <h2 className="text-lg font-semibold text-foreground">Print Labels</h2>
         <p className="mt-1 text-sm text-muted">
@@ -484,7 +519,11 @@ export function PrintLabelsView() {
             <Button disabled={loading} onClick={loadProducts}>
               {loading ? "Loading…" : "Load products"}
             </Button>
-            <Button variant="secondary" disabled={selected.length === 0} onClick={handlePrint}>
+            <Button
+              variant="secondary"
+              disabled={selected.length === 0}
+              onClick={() => window.print()}
+            >
               <Printer className="mr-2 h-4 w-4" />
               Print
             </Button>
@@ -498,15 +537,23 @@ export function PrintLabelsView() {
             key={item.id}
             className="rounded-lg border border-border bg-card p-3 text-center print:break-inside-avoid"
           >
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted">{item.sku}</p>
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted">
+              {item.sku}
+            </p>
             <p className="mt-1 text-sm font-medium text-foreground">{item.name}</p>
-            <p className="mt-2 font-mono text-lg tracking-widest">{item.sku.replace(/-/g, "")}</p>
-            <p className="mt-1 text-sm font-semibold">{formatCurrency(item.costPrice, item.currency)}</p>
+            <p className="mt-2 font-mono text-lg tracking-widest">
+              {item.sku.replace(/-/g, "")}
+            </p>
+            <p className="mt-1 text-sm font-semibold">
+              {formatCurrency(item.costPrice, item.currency)}
+            </p>
           </div>
         ))}
       </div>
       {selected.length === 0 ? (
-        <p className="text-sm text-muted print:hidden">Load products to preview labels.</p>
+        <p className="text-sm text-muted print:hidden">
+          Load products to preview labels.
+        </p>
       ) : null}
     </div>
   );

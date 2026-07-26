@@ -26,7 +26,13 @@ export function AdminEntityReportsHub({ tenantCode }: AdminEntityReportsHubProps
   const archetype = tenant?.archetype ?? "stock";
   const tabs = REPORT_TABS[archetype] ?? REPORT_TABS.stock;
   const [activeTab, setActiveTab] = useState(tabs[0]?.id ?? "valuation");
-  const { dateRange, setDateRange, bounds } = useListPageFilters({
+  const {
+    dateRange,
+    setDateRange,
+    customDateRange,
+    setCustomDateRange,
+    bounds,
+  } = useListPageFilters({
     defaultDateRange: "last_7_days",
     unboundedAllTime: false,
     isolateDateRange: true,
@@ -72,7 +78,12 @@ export function AdminEntityReportsHub({ tenantCode }: AdminEntityReportsHubProps
               Back to group reports
             </Link>
           </p>
-          <DateRangeDropdown value={dateRange} onChange={setDateRange} />
+          <DateRangeDropdown
+            value={dateRange}
+            onChange={setDateRange}
+            customValue={customDateRange}
+            onCustomChange={setCustomDateRange}
+          />
         </div>
 
         <section className="space-y-4">
@@ -104,6 +115,8 @@ export function AdminEntityReportsHub({ tenantCode }: AdminEntityReportsHubProps
             error={query.error}
             dateRange={dateRange}
             setDateRange={setDateRange}
+            customDateRange={customDateRange}
+            setCustomDateRange={setCustomDateRange}
           />
         </section>
 

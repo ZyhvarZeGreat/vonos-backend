@@ -323,8 +323,8 @@ export function AddPurchaseView() {
     return (
       <Hq6FormShell
         multiCard
+        className="hq6-add-purchase-page"
         title={editId ? "Edit Purchase" : copy.title}
-        subtitle={editId ? `Updating ${existing?.reference ?? "purchase"}` : copy.subtitle}
       >
         {editId && existing ? (
           <div className="hq6-form-card text-sm text-[#555]">
@@ -343,18 +343,28 @@ export function AddPurchaseView() {
               <span>
                 Supplier <span className="req">*</span>
               </span>
-              <select
-                className="hq6-form-input"
-                value={form.supplierId}
-                onChange={(e) => patchForm({ supplierId: e.target.value })}
-              >
-                <option value="">Please Select</option>
-                {suppliers.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.businessName ?? s.name}
-                  </option>
-                ))}
-              </select>
+              <div className="hq6-form-inline-control">
+                <select
+                  className="hq6-form-input"
+                  value={form.supplierId}
+                  onChange={(e) => patchForm({ supplierId: e.target.value })}
+                >
+                  <option value="">Please Select</option>
+                  {suppliers.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.businessName ?? s.name}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  className="hq6-btn hq6-btn-blue shrink-0"
+                  title="Add supplier"
+                  onClick={() => router.push(`/${tenantCode}/suppliers`)}
+                >
+                  <Plus className="h-4 w-4" />
+                </button>
+              </div>
             </label>
             <label className="hq6-form-label">
               <span>Reference No</span>

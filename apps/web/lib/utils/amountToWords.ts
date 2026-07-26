@@ -1,7 +1,17 @@
 /** Convert a non-negative amount to English words (for payslip "In words"). */
-export function amountToWords(amount: number): string {
-  const n = Math.round(Math.abs(amount));
-  if (n === 0) return "Zero";
+export function amountToWords(
+  amount: number,
+  options?: { currencyLabel?: string; subunitLabel?: string },
+): string {
+  const currencyLabel = options?.currencyLabel ?? "Naira";
+  const subunitLabel = options?.subunitLabel ?? "Kobo";
+  const absolute = Math.abs(amount);
+  const major = Math.floor(absolute + 1e-9);
+  const minor = Math.round((absolute - major) * 100);
+
+  if (major === 0 && minor === 0) {
+    return `Zero ${currencyLabel} Only`;
+  }
 
   const ones = [
     "",
@@ -50,22 +60,30 @@ export function amountToWords(amount: number): string {
     return `${ones[h]} Hundred${rest ? ` and ${underThousand(rest)}` : ""}`;
   }
 
-  const parts: string[] = [];
-  let remaining = n;
-  const scales: Array<{ div: number; label: string }> = [
-    { div: 1_000_000_000, label: "Billion" },
-    { div: 1_000_000, label: "Million" },
-    { div: 1_000, label: "Thousand" },
-  ];
+  function integerToWords(n: number): string {
+    if (n === 0) return "Zero";
+    const parts: string[] = [];
+    let remaining = n;
+    const scales: Array<{ div: number; label: string }> = [
+      { div: 1_000_000_000, label: "Billion" },
+      { div: 1_000_000, label: "Million" },
+      { div: 1_000, label: "Thousand" },
+    ];
 
-  for (const scale of scales) {
-    if (remaining >= scale.div) {
-      const chunk = Math.floor(remaining / scale.div);
-      parts.push(`${underThousand(chunk)} ${scale.label}`);
-      remaining %= scale.div;
+    for (const scale of scales) {
+      if (remaining >= scale.div) {
+        const chunk = Math.floor(remaining / scale.div);
+        parts.push(`${underThousand(chunk)} ${scale.label}`);
+        remaining %= scale.div;
+      }
     }
+    if (remaining > 0) parts.push(underThousand(remaining));
+    return parts.join(" ");
   }
-  if (remaining > 0) parts.push(underThousand(remaining));
 
-  return parts.join(" ");
+  const majorWords = integerToWords(major);
+  if (minor <= 0) {
+    return `${majorWords} ${currencyLabel} Only`;
+  }
+  return `${majorWords} ${currencyLabel} and ${integerToWords(minor)} ${subunitLabel} Only`;
 }

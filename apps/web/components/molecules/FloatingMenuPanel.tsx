@@ -1,7 +1,7 @@
 "use client";
 
 import {
-  useEffect,
+  useLayoutEffect,
   useState,
   type CSSProperties,
   type ReactNode,
@@ -12,6 +12,9 @@ import { cn } from "@/lib/utils/cn";
 
 type Align = "start" | "end";
 
+/** Above HQ6 sidebar (1000); stay below modal roots that use z-index 2000+. */
+const FLOATING_MENU_Z = 1100;
+
 function menuPosition(anchor: HTMLElement, align: Align): CSSProperties {
   const rect = anchor.getBoundingClientRect();
   const gap = 4;
@@ -19,6 +22,10 @@ function menuPosition(anchor: HTMLElement, align: Align): CSSProperties {
   const spaceBelow = window.innerHeight - rect.bottom - gap;
   const openUpward =
     spaceBelow < Math.min(160, estimatedMenuHeight) && rect.top > spaceBelow;
+
+  const maxHeight = openUpward
+    ? Math.max(120, rect.top - gap - 8)
+    : Math.max(120, window.innerHeight - rect.bottom - gap - 8);
 
   const vertical = openUpward
     ? { bottom: window.innerHeight - rect.top + gap }
@@ -30,11 +37,10 @@ function menuPosition(anchor: HTMLElement, align: Align): CSSProperties {
       ...vertical,
       left: rect.right,
       transform: "translateX(-100%)",
-      zIndex: 100,
+      zIndex: FLOATING_MENU_Z,
       visibility: "visible" as const,
-      maxHeight: openUpward
-        ? Math.max(120, rect.top - gap - 8)
-        : Math.max(120, window.innerHeight - rect.bottom - gap - 8),
+      maxHeight,
+      ["--vonos-floating-max-h" as string]: `${maxHeight}px`,
     };
   }
 
@@ -42,11 +48,10 @@ function menuPosition(anchor: HTMLElement, align: Align): CSSProperties {
     position: "fixed",
     ...vertical,
     left: Math.min(rect.left, window.innerWidth - 16),
-    zIndex: 100,
+    zIndex: FLOATING_MENU_Z,
     visibility: "visible" as const,
-    maxHeight: openUpward
-      ? Math.max(120, rect.top - gap - 8)
-      : Math.max(120, window.innerHeight - rect.bottom - gap - 8),
+    maxHeight,
+    ["--vonos-floating-max-h" as string]: `${maxHeight}px`,
   };
 }
 
@@ -68,9 +73,15 @@ export function FloatingMenuPanel({
   className,
   children,
 }: FloatingMenuPanelProps) {
-  const [style, setStyle] = useState<CSSProperties>({ visibility: "hidden" });
+  const [style, setStyle] = useState<CSSProperties>({
+    position: "fixed",
+    zIndex: FLOATING_MENU_Z,
+    visibility: "hidden",
+    top: 0,
+    left: 0,
+  });
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!open || !anchorRef.current) return;
 
     const update = () => {
@@ -92,12 +103,11 @@ export function FloatingMenuPanel({
   return createPortal(
     <div
       ref={menuRef}
+      data-vonos-floating-menu=""
       style={style}
-      className={cn("flex flex-col overflow-hidden", className)}
+      className={cn("vonos-floating-menu", className)}
     >
-      <div className="motion-pop-in flex min-h-0 flex-1 flex-col overflow-hidden">
-        {children}
-      </div>
+      <div className="motion-pop-in">{children}</div>
     </div>,
     document.body,
   );

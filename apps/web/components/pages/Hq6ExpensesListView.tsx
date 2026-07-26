@@ -2,38 +2,39 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronDown, CloudDownload, Filter, Plus } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 import type { Expense } from "@vonos/types";
 import { DataTable, type ColumnConfig } from "@/components/organisms/DataTable";
-import { CursorPaginationBar } from "@/components/molecules/CursorPaginationBar";
 import { ExpenseViewModal } from "@/components/organisms/ExpenseViewModal";
 import { Hq6ActionsMenu } from "@/components/hq6/Hq6ActionsMenu";
-import { Hq6ColumnVisibilityModal } from "@/components/hq6/Hq6ColumnVisibilityModal";
-import { Hq6ConfirmModal } from "@/components/hq6/Hq6ConfirmModal";
 import {
   Hq6FilterDateRange,
   Hq6FilterGrid,
   Hq6FilterSelect,
 } from "@/components/hq6/Hq6FilterFields";
-import { Hq6ListToolbar } from "@/components/hq6/Hq6ListToolbar";
-import { hq6CopyForSlug } from "@/lib/registries/hq6PageCopy";
 import { Hq6ListAmountFooter } from "@/components/hq6/Hq6ListAmountFooter";
 import { Hq6Modal, Hq6ModalSaveClose } from "@/components/hq6/Hq6Modal";
-import { Hq6PrintModal } from "@/components/hq6/Hq6PrintModal";
+import { Hq6ConfirmModal } from "@/components/hq6/Hq6ConfirmModal";
+import {
+  Hq6StandardListShell,
+  useHq6ListChrome,
+} from "@/components/hq6/Hq6StandardListShell";
+import { UposGradientActionButton } from "@/components/upos/UposNavTabs";
 import {
   deleteExpense,
   getAllExpenses,
+  getExpenseCategories,
   getExpensesPage,
 } from "@/lib/api/expenses";
 import { getCustomers } from "@/lib/api/customers";
 import { getUsers } from "@/lib/api/users";
+import { useAppMutation } from "@/lib/hooks/useAppMutation";
 import { useServerListPage } from "@/lib/hooks/useServerListPage";
 import { HQ6_TABLE_PAGE_SIZE } from "@/lib/api/fetchAllPages";
 import { useListExport } from "@/lib/hooks/useListExport";
 import { useListPageFilters } from "@/lib/hooks/useListPageFilters";
-import { useTableViewPrefs } from "@/lib/hooks/useTableViewPrefs";
 import { useRouteTenant, useTenantId } from "@/lib/hooks/useRouteTenant";
+import { removeEntityFromQueries } from "@/lib/query/optimistic";
 import { expensePageRoute } from "@/lib/registries/expenseNav";
 import {
   formatHq6Currency,
@@ -45,17 +46,13 @@ import { cn } from "@/lib/utils/cn";
 import { toast } from "@/stores/toastStore";
 import { hq6PaymentBadgeClass } from "@/lib/utils/hq6PaymentBadge";
 
-function paymentBadgeClass(status: string | null | undefined): string {
-  return hq6PaymentBadgeClass(status);
-}
-
-/** HQ6 Expenses list — ui-audit/36_expenses/screenshot.png */
+/** HQ6 Expenses list — ui-audit/36_expenses */
 export function Hq6ExpensesListView() {
   const tenantId = useTenantId();
   const { tenantCode, config } = useRouteTenant();
   const router = useRouter();
-  const qc = useQueryClient();
   const exportList = useListExport();
+  const chrome = useHq6ListChrome("expenses");
   const {
     dateRange,
     setDateRange,
@@ -65,22 +62,16 @@ export function Hq6ExpensesListView() {
     setSearch,
     bounds,
   } = useListPageFilters({ defaultDateRange: "all_time" });
-  const [filtersOpen, setFiltersOpen] = useState(true);
   const [localSearch, setLocalSearch] = useState(search);
   const [locationFilter, setLocationFilter] = useState("");
   const [expenseForFilter, setExpenseForFilter] = useState("");
   const [addedByFilter, setAddedByFilter] = useState("");
   const [contactFilter, setContactFilter] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState("");
+  const [paymentStatusFilter, setPaymentStatusFilter] = useState("");
   const [viewExpense, setViewExpense] = useState<Expense | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Expense | null>(null);
   const [paymentsExpense, setPaymentsExpense] = useState<Expense | null>(null);
-  const [printOpen, setPrintOpen] = useState(false);
-  const [columnsOpen, setColumnsOpen] = useState(false);
-  const tablePrefs = useTableViewPrefs(
-    tenantCode ? `${tenantCode}.expenses` : undefined,
-  );
-  const { visibleColumnKeys, setVisibleColumnKeys, density, setDensity, resetColumnVisibility } =
-    tablePrefs;
 
   const customersQuery = useQuery({
     queryKey: ["customers", tenantId, "expense-filter"],
@@ -94,6 +85,12 @@ export function Hq6ExpensesListView() {
     enabled: Boolean(tenantId),
     staleTime: 5 * 60_000,
   });
+  const categoriesQuery = useQuery({
+    queryKey: ["expense-categories", tenantId, "expense-filter"],
+    queryFn: () => getExpenseCategories(tenantId!),
+    enabled: Boolean(tenantId),
+    staleTime: 5 * 60_000,
+  });
 
   const listFilters = useMemo(
     () => ({
@@ -103,15 +100,19 @@ export function Hq6ExpensesListView() {
       expenseForCustomerId: expenseForFilter || undefined,
       createdById: addedByFilter || undefined,
       contactCustomerId: contactFilter || undefined,
-      search: (search).trim() || undefined,
+      categoryId: categoryFilter || undefined,
+      paymentStatus: paymentStatusFilter || undefined,
+      search: search.trim() || undefined,
     }),
     [
       addedByFilter,
       bounds?.from,
       bounds?.to,
+      categoryFilter,
       contactFilter,
       expenseForFilter,
       locationFilter,
+      paymentStatusFilter,
       search,
     ],
   );
@@ -142,15 +143,19 @@ export function Hq6ExpensesListView() {
     fetchPage: (cursor, limit, _sort, opts) =>
       getExpensesPage(tenantId!, cursor, limit, {
         ...listFilters,
-        search: (search).trim() || undefined,
+        search: search.trim() || undefined,
         includeSummary: opts?.includeSummary,
       }),
   });
 
-  const deleteMutation = useMutation({
+  const deleteMutation = useAppMutation({
     mutationFn: (id: string) => deleteExpense(tenantId!, id),
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ["expenses", tenantId] });
+    successMessage: "Expense deleted",
+    optimistic: {
+      keys: [["expenses", tenantId]],
+      update: (qc, id) => {
+        removeEntityFromQueries(qc, ["expenses", tenantId], id);
+      },
     },
   });
 
@@ -160,7 +165,7 @@ export function Hq6ExpensesListView() {
     if (!tenantId) return;
     const rows = await getAllExpenses(tenantId, {
       ...listFilters,
-      search: (search).trim() || undefined,
+      search: search.trim() || undefined,
     });
     exportList(
       "expenses",
@@ -168,19 +173,31 @@ export function Hq6ExpensesListView() {
         { key: "date", header: "Date" },
         { key: "refNo", header: "Reference No" },
         { key: "category", header: "Expense Category" },
+        { key: "subCategory", header: "Sub category" },
         { key: "location", header: "Location" },
         { key: "paymentStatus", header: "Payment Status" },
-        { key: "total", header: "Total Amount" },
-        { key: "due", header: "Payment Due" },
+        { key: "tax", header: "Tax" },
+        { key: "total", header: "Total amount" },
+        { key: "due", header: "Payment due" },
+        { key: "expenseFor", header: "Expense for" },
+        { key: "contact", header: "Contact" },
+        { key: "note", header: "Expense note" },
+        { key: "addedBy", header: "Added By" },
       ],
       rows.map((row) => ({
         date: formatHq6DateTime(row.expenseDate),
         refNo: row.refNo ?? "",
         category: row.categoryName ?? "",
+        subCategory: row.subCategory ?? "",
         location: row.locationCode ?? "",
         paymentStatus: formatHq6PaymentStatus(row.paymentStatus),
+        tax: row.taxAmount,
         total: row.totalAmount,
         due: row.paymentDue,
+        expenseFor: row.expenseFor ?? "",
+        contact: row.contactName ?? "",
+        note: row.note ?? "",
+        addedBy: row.createdByName ?? "",
       })),
       "Export Expenses Spreadsheet",
     );
@@ -230,7 +247,7 @@ export function Hq6ExpensesListView() {
       {
         key: "refNo",
         header: "Reference No",
-        render: (row) => row.refNo ?? "—",
+        render: (row) => row.refNo ?? "",
       },
       {
         key: "isRecurring",
@@ -238,17 +255,17 @@ export function Hq6ExpensesListView() {
         render: (row) =>
           row.isRecurring
             ? `Every ${row.recurInterval ?? ""} ${row.recurIntervalType ?? ""}`.trim()
-            : "—",
+            : "",
       },
       {
         key: "categoryName",
         header: "Expense Category",
-        render: (row) => row.categoryName ?? "—",
+        render: (row) => row.categoryName ?? "",
       },
       {
         key: "subCategory",
-        header: "Sub Category",
-        render: (row) => row.subCategory ?? "—",
+        header: "Sub category",
+        render: (row) => row.subCategory ?? "",
       },
       {
         key: "locationCode",
@@ -256,17 +273,14 @@ export function Hq6ExpensesListView() {
         render: (row) =>
           businessLocationName(row.locationCode, config?.businessLocations) ??
           row.locationCode ??
-          "—",
+          "",
       },
       {
         key: "paymentStatus",
         header: "Payment Status",
         render: (row) => (
           <span
-            className={cn(
-              "hq6-pay-badge",
-              paymentBadgeClass(row.paymentStatus),
-            )}
+            className={cn("hq6-pay-badge", hq6PaymentBadgeClass(row.paymentStatus))}
           >
             {formatHq6PaymentStatus(row.paymentStatus)}
           </span>
@@ -281,20 +295,41 @@ export function Hq6ExpensesListView() {
       },
       {
         key: "totalAmount",
-        header: "Total Amount",
+        header: "Total amount",
         numeric: true,
         sortValue: (row) => row.totalAmount,
         render: (row) => formatHq6Currency(row.totalAmount, "NGN"),
       },
       {
         key: "paymentDue",
-        header: "Payment Due",
+        header: "Payment due",
         numeric: true,
         sortValue: (row) => row.paymentDue,
         render: (row) => formatHq6Currency(row.paymentDue, "NGN"),
       },
+      {
+        key: "expenseFor",
+        header: "Expense for",
+        render: (row) => row.expenseFor ?? "",
+      },
+      {
+        key: "contactName",
+        header: "Contact",
+        render: (row) => row.contactName ?? "",
+      },
+      {
+        key: "note",
+        header: "Expense note",
+        render: (row) => row.note ?? "",
+      },
+      {
+        key: "addedBy",
+        header: "Added By",
+        sortable: false,
+        render: (row) => row.createdByName ?? "",
+      },
     ],
-    [config?.businessLocations, deleteMutation, router, tenantCode],
+    [config?.businessLocations, router, tenantCode],
   );
 
   const columnOptions = useMemo(
@@ -305,11 +340,11 @@ export function Hq6ExpensesListView() {
     [columns],
   );
 
-  const effectiveColumns = useMemo(() => {
-    if (!visibleColumnKeys) return columns;
-    const allowed = new Set(["actions", ...visibleColumnKeys]);
+  const visibleColumns = useMemo(() => {
+    if (!chrome.visibleColumnKeys) return columns;
+    const allowed = new Set(["actions", ...chrome.visibleColumnKeys]);
     return columns.filter((c) => allowed.has(c.key));
-  }, [columns, visibleColumnKeys]);
+  }, [chrome.visibleColumnKeys, columns]);
 
   const totals = useMemo(() => {
     let totalAmount = 0;
@@ -322,297 +357,245 @@ export function Hq6ExpensesListView() {
   }, [items]);
 
   return (
-    <>
-      <div className="hq6-page">
-        <section className="hq6-content-header">
-          <h1>Expenses</h1>
-        </section>
-
-        <div className="hq6-card hq6-filters-card">
-          <button
-            type="button"
-            className="hq6-filters-summary"
-            onClick={() => setFiltersOpen((o) => !o)}
-          >
-            <Filter className="h-4 w-4" />
-            Filters
-            <ChevronDown
-              className={cn(
-                "ml-auto h-4 w-4 opacity-60 transition-transform",
-                filtersOpen && "rotate-180",
-              )}
+    <Hq6StandardListShell
+      slug="expenses"
+      title="Expenses"
+      tabLabel="All expenses"
+      boxTitle="All expenses"
+      chrome={chrome}
+      pageSize={pageSize}
+      onPageSizeChange={setPageSize}
+      searchValue={localSearch}
+      onSearchChange={setLocalSearch}
+      onSearchCommit={commitSearch}
+      searchPlaceholder="Search ..."
+      columnOptions={columnOptions}
+      onExport={() => void handleExport()}
+      hidePrimaryAction
+      tabActions={
+        tenantCode ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <UposGradientActionButton
+              label="Import expense"
+              href={`/${tenantCode}/import-expense`}
             />
-          </button>
-          {filtersOpen ? (
-            <div className="hq6-filters-body">
-              <Hq6FilterGrid>
-                <Hq6FilterDateRange
-                  value={dateRange}
-                  onChange={setDateRange}
-                  customValue={customDateRange}
-                  onCustomChange={setCustomDateRange}
-                />
-                <Hq6FilterSelect
-                  label="Business Location"
-                  value={locationFilter}
-                  onChange={setLocationFilter}
-                  emptyLabel="All locations"
-                  options={(config?.businessLocations ?? []).map((loc) => ({
-                    value: loc.code,
-                    label: loc.name,
-                  }))}
-                />
-                <Hq6FilterSelect
-                  label="Expense for"
-                  value={expenseForFilter}
-                  onChange={setExpenseForFilter}
-                  emptyLabel="All"
-                  options={(customersQuery.data ?? []).map((c) => ({
-                    value: c.id,
-                    label: c.businessName || c.name,
-                  }))}
-                />
-                <Hq6FilterSelect
-                  label="Added By"
-                  value={addedByFilter}
-                  onChange={setAddedByFilter}
-                  emptyLabel="All"
-                  options={(usersQuery.data ?? []).map((u) => ({
-                    value: u.id,
-                    label: u.name || u.email,
-                  }))}
-                />
-                <Hq6FilterSelect
-                  label="Contact"
-                  value={contactFilter}
-                  onChange={setContactFilter}
-                  emptyLabel="All"
-                  options={(customersQuery.data ?? []).map((c) => ({
-                    value: c.id,
-                    label: c.businessName || c.name,
-                  }))}
-                />
-              </Hq6FilterGrid>
-            </div>
-          ) : null}
-        </div>
-
-        <div className="hq6-card hq6-products-box overflow-x-clip">
-          <div className="hq6-tab-row">
-            <div className="flex min-w-0 flex-1">
-              <button type="button" className="hq6-tab hq6-tab-active">
-                All expenses
-              </button>
-            </div>
-            {tenantCode ? (
-              <div className="flex shrink-0 items-center gap-2 px-3">
-                <button
-                  type="button"
-                  className="hq6-btn hq6-btn-purple"
-                  onClick={() =>
-                    router.push(expensePageRoute(tenantCode, "add-expense"))
+            <UposGradientActionButton
+              label="Add"
+              href={expensePageRoute(tenantCode, "add-expense")}
+            />
+          </div>
+        ) : null
+      }
+      filters={
+        <Hq6FilterGrid>
+            <Hq6FilterDateRange
+              value={dateRange}
+              onChange={setDateRange}
+              customValue={customDateRange}
+              onCustomChange={setCustomDateRange}
+            />
+            <Hq6FilterSelect
+              label="Business Location"
+              value={locationFilter}
+              onChange={setLocationFilter}
+              emptyLabel="All locations"
+              options={(config?.businessLocations ?? []).map((loc) => ({
+                value: loc.code,
+                label: loc.name,
+              }))}
+            />
+            <Hq6FilterSelect
+              label="Expense for"
+              value={expenseForFilter}
+              onChange={setExpenseForFilter}
+              emptyLabel="All"
+              options={(customersQuery.data ?? []).map((c) => ({
+                value: c.id,
+                label: c.businessName || c.name,
+              }))}
+            />
+            <Hq6FilterSelect
+              label="Added By"
+              value={addedByFilter}
+              onChange={setAddedByFilter}
+              emptyLabel="All"
+              options={(usersQuery.data ?? []).map((u) => ({
+                value: u.id,
+                label: u.name || u.email,
+              }))}
+            />
+            <Hq6FilterSelect
+              label="Contact"
+              value={contactFilter}
+              onChange={setContactFilter}
+              emptyLabel="All"
+              options={(customersQuery.data ?? []).map((c) => ({
+                value: c.id,
+                label: c.businessName || c.name,
+              }))}
+            />
+            <Hq6FilterSelect
+              label="Expense Category"
+              value={categoryFilter}
+              onChange={setCategoryFilter}
+              emptyLabel="All"
+              options={(categoriesQuery.data ?? []).map((c) => ({
+                value: c.id,
+                label: c.name,
+              }))}
+            />
+            <Hq6FilterSelect
+              label="Payment Status"
+              value={paymentStatusFilter}
+              onChange={setPaymentStatusFilter}
+              emptyLabel="All"
+              options={[
+                { value: "paid", label: "Paid" },
+                { value: "due", label: "Due" },
+                { value: "partial", label: "Partial" },
+              ]}
+            />
+          </Hq6FilterGrid>
+      }
+      tableFooter={
+        items.length > 0 ? (
+          <div className="space-y-0">
+            {amountSummary ? (
+              <Hq6ListAmountFooter
+                title="All matching"
+                cells={[
+                  {
+                    label: "Total",
+                    amount: amountSummary.totalAmount ?? 0,
+                    currency: "NGN",
+                  },
+                  {
+                    label: "Due",
+                    amount: amountSummary.totalDue ?? 0,
+                    currency: "NGN",
+                  },
+                ]}
+              />
+            ) : null}
+            <Hq6ListAmountFooter
+              title="Page total"
+              cells={[
+                { label: "Total", amount: totals.totalAmount, currency: "NGN" },
+                { label: "Due", amount: totals.paymentDue, currency: "NGN" },
+              ]}
+            />
+          </div>
+        ) : null
+      }
+      pagination={{
+        pageIndex,
+        pageSize,
+        itemCount: items.length,
+        hasMore,
+        canGoPrev,
+        onPrev: goPrev,
+        onNext: goNext,
+        onPageSizeChange: setPageSize,
+        onPageSelect: goToPage,
+        canSelectPage,
+        totalItems: totalCount,
+        isBusy: isPaging,
+      }}
+      modals={
+        <>
+          <ExpenseViewModal
+            expense={viewExpense}
+            onClose={() => setViewExpense(null)}
+            onEdit={
+              tenantCode
+                ? (expense) => {
+                    setViewExpense(null);
+                    router.push(
+                      `${expensePageRoute(tenantCode, "add-expense")}?edit=${expense.id}`,
+                    );
                   }
-                >
-                  <Plus className="h-3.5 w-3.5" />
-                  Add
-                </button>
-                <button
-                  type="button"
-                  className="hq6-btn hq6-btn-download"
-                  onClick={() => void handleExport()}
-                >
-                  <CloudDownload className="h-3.5 w-3.5" />
-                  Download Excel
-                </button>
-              </div>
-            ) : null}
-          </div>
-
-          <Hq6ListToolbar
-            pageSize={pageSize}
-            onPageSizeChange={setPageSize}
-            searchValue={localSearch}
-            onSearchChange={setLocalSearch}
-            onSearchCommit={commitSearch}
-            searchPlaceholder={hq6CopyForSlug("expenses").searchPlaceholder}
-            onExportCsv={() => void handleExport()}
-            onExportExcel={() => void handleExport()}
-            onPrint={() => setPrintOpen(true)}
-            onColumnVisibility={() => setColumnsOpen(true)}
-            density={density}
-            onDensityChange={setDensity}
+                : undefined
+            }
           />
-
-          <div className="hq6-table-wrap hq6-table-freeze-first relative">
-            <DataTable
-              data={items}
-              columns={effectiveColumns}
-              displayMode="table"
-              embedded
-              disablePagination
-              stickyFirstColumn
-              density={density}
-              onDensityChange={setDensity}
-              showDensityControl={false}
-              isLoading={isLoading}
-              isFetching={isFetching && !isLoading}
-              error={error ? "Could not load expenses." : null}
-              emptyState={{ message: "No expenses found." }}
-            />
-            {items.length > 0 ? (
-              <div className="space-y-0">
-                {amountSummary ? (
-                  <Hq6ListAmountFooter
-                    title="All matching"
-                    cells={[
-                      {
-                        label: "Total",
-                        amount: amountSummary.totalAmount ?? 0,
-                        currency: "NGN",
-                      },
-                      {
-                        label: "Due",
-                        amount: amountSummary.totalDue ?? 0,
-                        currency: "NGN",
-                      },
-                    ]}
-                  />
-                ) : null}
-                <Hq6ListAmountFooter
-                  title="Page total"
-                  cells={[
-                    {
-                      label: "Total",
-                      amount: totals.totalAmount,
-                      currency: "NGN",
-                    },
-                    {
-                      label: "Due",
-                      amount: totals.paymentDue,
-                      currency: "NGN",
-                    },
-                  ]}
-                />
+          <Hq6ConfirmModal
+            open={Boolean(deleteTarget)}
+            onClose={() => setDeleteTarget(null)}
+            title="Are you sure ?"
+            message={
+              deleteTarget
+                ? `Delete expense ${deleteTarget.refNo ?? deleteTarget.id}?`
+                : "Are you sure ?"
+            }
+            confirmLabel="Delete"
+            danger
+            onConfirm={() => {
+              if (!deleteTarget) return;
+              deleteMutation.mutate(deleteTarget.id, {
+                onSuccess: () => {
+                  toast.success("Expense deleted");
+                  setDeleteTarget(null);
+                },
+                onError: () => toast.error("Failed to delete expense"),
+              });
+            }}
+          />
+          <Hq6Modal
+            open={Boolean(paymentsExpense)}
+            onClose={() => setPaymentsExpense(null)}
+            title={
+              paymentsExpense
+                ? `View Payments ( Reference No: ${paymentsExpense.refNo ?? paymentsExpense.id} )`
+                : "View Payments"
+            }
+            footer={
+              <Hq6ModalSaveClose
+                onClose={() => setPaymentsExpense(null)}
+                closeLabel="Close"
+              />
+            }
+          >
+            {paymentsExpense ? (
+              <div className="space-y-3 text-sm text-[#374151]">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-semibold">Payment status:</span>
+                  <span
+                    className={cn(
+                      "hq6-pay-badge",
+                      hq6PaymentBadgeClass(paymentsExpense.paymentStatus),
+                    )}
+                  >
+                    {formatHq6PaymentStatus(paymentsExpense.paymentStatus)}
+                  </span>
+                </div>
+                <div>
+                  <span className="font-semibold">Total:</span>{" "}
+                  {formatHq6Currency(paymentsExpense.totalAmount)}
+                </div>
+                <div>
+                  <span className="font-semibold">Payment due:</span>{" "}
+                  {formatHq6Currency(paymentsExpense.paymentDue)}
+                </div>
               </div>
             ) : null}
-          </div>
-
-          {(items.length > 0 ||
-            canGoPrev ||
-            hasMore ||
-            pageIndex > 0 ||
-            isFetching ||
-            isLoading) && (
-            <CursorPaginationBar
-              pageIndex={pageIndex}
-              pageSize={pageSize}
-              itemCount={items.length}
-              hasMore={hasMore}
-              canGoPrev={canGoPrev}
-              onPrev={goPrev}
-              onNext={goNext}
-              onPageSizeChange={setPageSize}
-              onPageSelect={goToPage}
-              canSelectPage={canSelectPage}
-              totalItems={totalCount}
-              isBusy={isFetching || isLoading}
-              className="border-t border-[var(--hq6-border)] px-3 py-2"
-            />
-          )}
-        </div>
-
-        <p className="hq6-footer">
-          Vonos Autos Head Office - V6.8 | Copyright © {new Date().getFullYear()} All
-          rights reserved.
-        </p>
-      </div>
-
-      <ExpenseViewModal
-        expense={viewExpense}
-        onClose={() => setViewExpense(null)}
-        onEdit={
-          tenantCode
-            ? (expense) => {
-                setViewExpense(null);
-                router.push(
-                  `${expensePageRoute(tenantCode, "add-expense")}?edit=${expense.id}`,
-                );
-              }
-            : undefined
-        }
+          </Hq6Modal>
+        </>
+      }
+    >
+      <DataTable
+        data={items}
+        columns={visibleColumns}
+        displayMode="table"
+        embedded
+        disablePagination
+        stickyFirstColumn
+        density={chrome.density}
+        onDensityChange={chrome.setDensity}
+        showDensityControl={false}
+        isLoading={isLoading}
+        isFetching={isFetching && !isLoading}
+        error={error ? "Could not load expenses." : null}
+        emptyState={{ message: "No data available in table" }}
       />
-      <Hq6ConfirmModal
-        open={Boolean(deleteTarget)}
-        onClose={() => setDeleteTarget(null)}
-        title="Are you sure ?"
-        message={
-          deleteTarget
-            ? `Delete expense ${deleteTarget.refNo ?? deleteTarget.id}?`
-            : "Are you sure ?"
-        }
-        confirmLabel="Delete"
-        danger
-        onConfirm={() => {
-          if (!deleteTarget) return;
-          deleteMutation.mutate(deleteTarget.id, {
-            onSuccess: () => {
-              toast.success("Expense deleted");
-              setDeleteTarget(null);
-            },
-            onError: () => toast.error("Failed to delete expense"),
-          });
-        }}
-      />
-      <Hq6Modal
-        open={Boolean(paymentsExpense)}
-        onClose={() => setPaymentsExpense(null)}
-        title={
-          paymentsExpense
-            ? `View Payments (Ref: ${paymentsExpense.refNo ?? paymentsExpense.id})`
-            : "View Payments"
-        }
-        footer={<Hq6ModalSaveClose onClose={() => setPaymentsExpense(null)} closeLabel="Close" />}
-      >
-        {paymentsExpense ? (
-          <div className="space-y-3 text-sm text-[#374151]">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="font-semibold">Payment status:</span>
-              <span
-                className={cn(
-                  "hq6-pay-badge",
-                  paymentBadgeClass(paymentsExpense.paymentStatus),
-                )}
-              >
-                {formatHq6PaymentStatus(paymentsExpense.paymentStatus)}
-              </span>
-            </div>
-            <div>
-              <span className="font-semibold">Total:</span>{" "}
-              {formatHq6Currency(paymentsExpense.totalAmount)}
-            </div>
-            <div>
-              <span className="font-semibold">Payment due:</span>{" "}
-              {formatHq6Currency(paymentsExpense.paymentDue)}
-            </div>
-            <p className="pt-2 text-xs text-[#9ca3af]">
-              Expense payments are tracked on the expense record (no separate payment ledger
-              lines yet).
-            </p>
-          </div>
-        ) : null}
-      </Hq6Modal>
-      <Hq6PrintModal open={printOpen} onClose={() => setPrintOpen(false)} />
-      <Hq6ColumnVisibilityModal
-        open={columnsOpen}
-        onClose={() => setColumnsOpen(false)}
-        columns={columnOptions}
-        visibleKeys={visibleColumnKeys ?? columnOptions.map((c) => c.key)}
-        onChange={setVisibleColumnKeys}
-        onReset={() => {
-          resetColumnVisibility();
-          setColumnsOpen(false);
-        }}
-      />
-    </>
+    </Hq6StandardListShell>
   );
 }

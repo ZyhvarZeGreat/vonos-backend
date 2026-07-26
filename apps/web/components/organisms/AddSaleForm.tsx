@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Calendar, Info, Minus, Plus, Trash2, X } from "lucide-react";
 import type { Customer, Sale, TenantConfig } from "@vonos/types";
 import { Button } from "@/components/atoms/Button";
@@ -64,7 +65,7 @@ function emptyForm(presetStatus: SaleFormPresetStatus = "final") {
     serviceStaffUserId: "",
     serviceStaffName: "",
     payTermValue: "",
-    payTermUnit: "days",
+    payTermUnit: "",
     registerId: "",
     saleDate: new Date().toISOString().slice(0, 16),
     status: presetStatus,
@@ -91,7 +92,10 @@ function emptyForm(presetStatus: SaleFormPresetStatus = "final") {
   };
 }
 
-function buildNotes(form: ReturnType<typeof emptyForm>): string | undefined {
+function buildNotes(
+  form: ReturnType<typeof emptyForm>,
+  additionalExpenses: Array<{ name: string; amount: string }> = [],
+): string | undefined {
   const parts: string[] = [];
   if (form.sellNote.trim()) parts.push(form.sellNote.trim());
   if (form.customerLocation.trim()) {
@@ -118,6 +122,14 @@ function buildNotes(form: ReturnType<typeof emptyForm>): string | undefined {
   const charges = Number(form.shippingCharges) || 0;
   if (charges > 0) {
     parts.push(`Shipping charges: ${charges.toFixed(2)}`);
+  }
+  for (const expense of additionalExpenses) {
+    const amount = Number(expense.amount) || 0;
+    const name = expense.name.trim();
+    if (!name && amount <= 0) continue;
+    parts.push(
+      `Additional expense: ${name || "Untitled"} (${amount.toFixed(2)})`,
+    );
   }
   const redeemed = Number(form.redeemedPoints) || 0;
   if (redeemed > 0) {
@@ -153,6 +165,7 @@ export function AddSaleForm({
   onSuccess,
   onCancel,
 }: AddSaleFormProps) {
+  const router = useRouter();
   const { options: businessLocationOptions, required: locationRequired } =
     useBusinessLocationOptions(tenantConfig);
   const isProvisional = presetStatus === "draft" || presetStatus === "quotation";
@@ -161,6 +174,13 @@ export function AddSaleForm({
 
   const [form, setForm] = useState(() => emptyForm(presetStatus));
   const [lines, setLines] = useState<SaleLineDraft[]>([]);
+  const [additionalExpenses, setAdditionalExpenses] = useState<
+    Array<{ key: string; name: string; amount: string }>
+  >([
+    { key: "exp-0", name: "", amount: "" },
+    { key: "exp-1", name: "", amount: "" },
+    { key: "exp-2", name: "", amount: "" },
+  ]);
   const [error, setError] = useState<string | null>(null);
   const printAfterSaveRef = useRef(false);
   const [quickCustomerOpen, setQuickCustomerOpen] = useState(false);
@@ -234,9 +254,21 @@ export function AddSaleForm({
 
   const orderTax = Number(form.orderTax) || 0;
   const shippingCharges = Number(form.shippingCharges) || 0;
+  const additionalExpenseTotal = useMemo(
+    () =>
+      additionalExpenses.reduce(
+        (sum, row) => sum + (Number(row.amount) || 0),
+        0,
+      ),
+    [additionalExpenses],
+  );
   const totalPayable = Math.max(
     0,
-    lineTotal - orderDiscount + orderTax + shippingCharges,
+    lineTotal -
+      orderDiscount +
+      orderTax +
+      shippingCharges +
+      additionalExpenseTotal,
   );
   const paidAmount = Number(form.paymentAmount) || (isProvisional ? 0 : totalPayable);
   const balance = Math.max(0, totalPayable - paidAmount);
@@ -436,9 +468,6 @@ export function AddSaleForm({
   const mutation = useAppMutation({
     mutationFn: async () => {
       assertBusinessLocationSelected(locationRequired, form.locationCode);
-      if (requiresJob && !form.jobId.trim()) {
-        throw new Error("Select a job — sales are linked to jobs for this entity");
-      }
       if (lines.length === 0) throw new Error("Add at least one product");
       const reference =
         form.invoiceNo.trim() ||
@@ -458,7 +487,7 @@ export function AddSaleForm({
         status: form.status as "final" | "draft" | "quotation",
         discountAmount: orderDiscount,
         taxAmount: orderTax,
-        notes: buildNotes(form),
+        notes: buildNotes(form, additionalExpenses),
         serviceStaffEmployeeId: form.serviceStaffId || undefined,
         cleanerUserId: form.serviceStaffUserId || undefined,
         cleanerName: form.serviceStaffName.trim() || undefined,
@@ -509,6 +538,15 @@ export function AddSaleForm({
           : presetStatus === "quotation"
             ? "Quotation saved"
             : "Sale recorded",
+    invalidateKeys: [
+      ["sales"],
+      ["items"],
+      ["catalog"],
+      ["jobs"],
+      ["job"],
+      ["ledgerTablePage"],
+      ["ledgerSummary"],
+    ],
     onSuccess: (sale) => {
       if (printAfterSaveRef.current) {
         window.print();
@@ -529,6 +567,7 @@ export function AddSaleForm({
       return createCustomer(tenantId, { name });
     },
     successMessage: "Customer created",
+    invalidateKeys: [["customers"]],
     onSuccess: (customer) => {
       applyCustomer(customer);
       setQuickCustomerOpen(false);
@@ -557,45 +596,38 @@ export function AddSaleForm({
 
     return (
       <div className="space-y-4" aria-busy={mutation.isPending || undefined}>
-        {showLocationField ? (
-          <div className="hq6-form-location-bar">
-            <select
-              className="hq6-form-input"
-              value={form.locationCode}
-              onChange={(e) => patchForm({ locationCode: e.target.value })}
-              aria-label="Business location"
-            >
-              {businessLocationOptions.map((opt) => (
-                <option key={opt.value || "none"} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
+        {/* Location — sell/create.blade.php input-group with map-marker */}
+        <div className="row" style={{ marginBottom: 12 }}>
+          <div className="col-sm-3">
+            <div className="form-group" style={{ marginBottom: 0 }}>
+              <div className="input-group">
+                <span className="input-group-addon">
+                  <i className="fa fa-map-marker" aria-hidden />
+                </span>
+                <select
+                  className="form-control input-sm"
+                  id="select_location_id"
+                  value={form.locationCode}
+                  onChange={(e) => patchForm({ locationCode: e.target.value })}
+                  aria-label="Business location"
+                >
+                  {businessLocationOptions.length > 0 ? (
+                    businessLocationOptions.map((opt) => (
+                      <option key={opt.value || "none"} value={opt.value}>
+                        {opt.label}
+                      </option>
+                    ))
+                  ) : (
+                    <option value="">Select location</option>
+                  )}
+                </select>
+                <span className="input-group-addon">
+                  <i className="fa fa-info-circle text-info" aria-hidden />
+                </span>
+              </div>
+            </div>
           </div>
-        ) : null}
-
-        {requiresJob ? (
-          <section className="hq6-form-card">
-            <label className="hq6-form-label">
-              <span>
-                Job <span className="req">*</span>
-              </span>
-              <AsyncMenuSelect
-                value={form.jobId}
-                selectedLabel={
-                  form.jobReference
-                    ? `${form.jobReference}${form.customerName ? ` · ${form.customerName}` : ""}`
-                    : "Select job…"
-                }
-                placeholder="Search job reference or customer…"
-                loadOptions={loadJobOptions}
-                onChange={(id) => {
-                  void applyJob(id || null).catch((err: Error) => setError(err.message));
-                }}
-              />
-            </label>
-          </section>
-        ) : null}
+        </div>
 
         <section className="hq6-form-card">
           <div className="hq6-form-grid hq6-form-grid-3">
@@ -604,7 +636,10 @@ export function AddSaleForm({
                 <span>
                   Customer <span className="req">*</span>:
                 </span>
-                <div className="flex gap-1.5">
+                <div className="input-group" style={{ display: "flex", width: "100%" }}>
+                  <span className="input-group-addon" style={{ display: "flex", alignItems: "center" }}>
+                    <i className="fa fa-user" aria-hidden />
+                  </span>
                   <div className="min-w-0 flex-1">
                     <AsyncMenuSelect
                       value={form.customerId}
@@ -637,21 +672,24 @@ export function AddSaleForm({
                       }}
                     />
                   </div>
+                  <span className="input-group-btn">
+                    <button
+                      type="button"
+                      className="btn btn-default bg-white btn-flat"
+                      title="Add customer"
+                      onClick={() => setQuickCustomerOpen((open) => !open)}
+                    >
+                      <i className="fa fa-plus-circle text-primary fa-lg" aria-hidden />
+                    </button>
+                  </span>
                   <button
                     type="button"
                     className="hq6-btn hq6-btn-blue shrink-0"
                     title="Customer info"
                     onClick={() => setCustomerInfoOpen((open) => !open)}
+                    style={{ marginLeft: 4 }}
                   >
                     <Info className="h-4 w-4" />
-                  </button>
-                  <button
-                    type="button"
-                    className="hq6-btn hq6-btn-blue shrink-0"
-                    title="Add customer"
-                    onClick={() => setQuickCustomerOpen((open) => !open)}
-                  >
-                    <Plus className="h-4 w-4" />
                   </button>
                 </div>
               </label>
@@ -718,6 +756,7 @@ export function AddSaleForm({
                   value={form.payTermUnit}
                   onChange={(e) => patchForm({ payTermUnit: e.target.value })}
                 >
+                  <option value="">Please Select</option>
                   <option value="days">Days</option>
                   <option value="months">Months</option>
                 </select>
@@ -819,11 +858,22 @@ export function AddSaleForm({
 
             <label className="hq6-form-label">
               <span>Attach Document:</span>
-              <div className="hq6-form-file">
-                <input
-                  type="file"
-                  accept=".pdf,.csv,.zip,.doc,.docx,.jpeg,.jpg,.png"
-                />
+              <div className="input-group file-caption-main" style={{ width: "100%" }}>
+                <div className="form-control file-caption kv-fileinput-caption">
+                  <span className="file-caption-name" />
+                </div>
+                <div className="input-group-btn">
+                  <div className="btn btn-primary btn-file">
+                    <i className="glyphicon glyphicon-folder-open" aria-hidden />
+                    &nbsp; <span className="hidden-xs">Browse..</span>
+                    <input
+                      id="upload_document"
+                      accept=".pdf,.csv,.zip,.doc,.docx,.jpeg,.jpg,.png"
+                      name="sell_document"
+                      type="file"
+                    />
+                  </div>
+                </div>
               </div>
               <p className="hq6-form-hint">
                 Max File size: 5MB
@@ -866,29 +916,35 @@ export function AddSaleForm({
             <table className="hq6-product-view-table hq6-sale-lines-table">
               <thead>
                 <tr>
+                  <th style={{ width: "2rem" }}>#</th>
                   <th>Product</th>
                   <th>Quantity</th>
                   <th>Unit Price</th>
                   <th>Discount</th>
                   <th>Tax</th>
                   <th className="text-right">Price inc. tax</th>
-                  <th aria-label="Remove" />
+                  <th className="text-right">Subtotal</th>
+                  <th aria-label="Remove">
+                    <i className="fa fa-times" aria-hidden />
+                  </th>
                 </tr>
               </thead>
               <tbody>
                 {lines.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="text-center text-[#9ca3af]">
-                      Search and add products below
+                    <td colSpan={9} className="text-center text-[#9ca3af]">
+                      &nbsp;
                     </td>
                   </tr>
                 ) : (
-                  lines.map((line) => {
+                  lines.map((line, index) => {
                     const taxPct = line.taxPercent ?? 0;
                     const pretax = lineSubtotal(line);
                     const taxAmt = (pretax * taxPct) / 100;
+                    const withTax = pretax + taxAmt;
                     return (
                       <tr key={line.key}>
+                        <td>{index + 1}</td>
                         <td className="hq6-sale-line-product">
                           <div className="font-medium">{line.name}</div>
                           <div className="text-xs text-[#6b7280]">{line.sku}</div>
@@ -994,7 +1050,10 @@ export function AddSaleForm({
                           </div>
                         </td>
                         <td className="text-right tabular-nums">
-                          {formatHq6Currency(pretax + taxAmt)}
+                          {formatHq6Currency(withTax)}
+                        </td>
+                        <td className="text-right tabular-nums font-semibold">
+                          {formatHq6Currency(withTax)}
                         </td>
                         <td>
                           <button
@@ -1013,8 +1072,18 @@ export function AddSaleForm({
               </tbody>
             </table>
           </div>
+          <div className="hq6-form-table-footer !border-0 mt-2 pt-1">
+            <span>
+              <b>Items:</b> {lines.length.toFixed(2)}
+              &nbsp;&nbsp;&nbsp;&nbsp;
+              <b>Total:</b> {formatHq6Currency(lineTotal)}
+            </span>
+          </div>
           <div className="hq6-form-products-toolbar mt-3">
-            <div className="hq6-form-products-search">
+            <div className="hq6-form-products-search input-group" style={{ width: "100%" }}>
+              <span className="input-group-addon">
+                <i className="fa fa-search" aria-hidden />
+              </span>
               <ProductItemSearch
                 tenantId={tenantId}
                 tenantCode={tenantConfig?.code}
@@ -1025,13 +1094,19 @@ export function AddSaleForm({
                 onSelect={addLineFromPick}
                 placeholder="Enter Product name / SKU / Scan bar code"
               />
-            </div>
-            <div className="hq6-form-table-footer !border-0 !mt-0 !pt-0 shrink-0">
-              <span>
-                Items: <strong>{lines.length.toFixed(2)}</strong>
-              </span>
-              <span>
-                Total: <strong>{formatHq6Currency(lineTotal)}</strong>
+              <span className="input-group-btn">
+                <button
+                  type="button"
+                  className="btn btn-default bg-white btn-flat"
+                  title="Add new product"
+                  onClick={() =>
+                    tenantConfig?.code
+                      ? router.push(`/${tenantConfig.code}/add-product`)
+                      : undefined
+                  }
+                >
+                  <i className="fa fa-plus-circle text-primary fa-lg" aria-hidden />
+                </button>
               </span>
             </div>
           </div>
@@ -1196,7 +1271,20 @@ export function AddSaleForm({
             </label>
           </div>
           <div className="mt-3 flex flex-col gap-2">
-            <button type="button" className="hq6-form-expenses-link self-start">
+            <button
+              type="button"
+              className="hq6-form-expenses-link self-start"
+              onClick={() =>
+                setAdditionalExpenses((prev) => [
+                  ...prev,
+                  {
+                    key: `exp-${Date.now().toString(36)}`,
+                    name: "",
+                    amount: "",
+                  },
+                ])
+              }
+            >
               <Plus className="h-3.5 w-3.5" />
               Add additional expenses
             </button>
@@ -1209,13 +1297,24 @@ export function AddSaleForm({
                   </tr>
                 </thead>
                 <tbody>
-                  {[0, 1, 2].map((index) => (
-                    <tr key={index}>
+                  {additionalExpenses.map((row, index) => (
+                    <tr key={row.key}>
                       <td>
                         <input
                           className="hq6-form-input"
                           placeholder="Additional expense name"
                           aria-label={`Additional expense name ${index + 1}`}
+                          value={row.name}
+                          onChange={(e) => {
+                            const value = e.target.value;
+                            setAdditionalExpenses((prev) =>
+                              prev.map((item) =>
+                                item.key === row.key
+                                  ? { ...item, name: value }
+                                  : item,
+                              ),
+                            );
+                          }}
                         />
                       </td>
                       <td>
@@ -1226,6 +1325,17 @@ export function AddSaleForm({
                           className="hq6-form-input"
                           placeholder="0.00"
                           aria-label={`Additional expense amount ${index + 1}`}
+                          value={row.amount}
+                          onChange={(e) => {
+                            const value = e.target.value;
+                            setAdditionalExpenses((prev) =>
+                              prev.map((item) =>
+                                item.key === row.key
+                                  ? { ...item, amount: value }
+                                  : item,
+                              ),
+                            );
+                          }}
                         />
                       </td>
                     </tr>

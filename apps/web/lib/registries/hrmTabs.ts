@@ -32,4 +32,6 @@ export const HRM_SLUG_TO_TAB: Record<string, HrmTab> = {
   "hr-people": "hr-people",
   /** HRM settings tab only — must NOT use bare `settings` (that is Business Settings). */
   "hrm-settings": "settings",
+  /** HQ6 /hrm/my-payrolls — same payroll tab as sidebar Payroll. */
+  "my-payrolls": "payroll",
 };

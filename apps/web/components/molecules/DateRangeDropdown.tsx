@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ChevronDown } from "lucide-react";
 import { DateRangeCalendar } from "@/components/molecules/DateRangeCalendar";
 import { DropdownMenu } from "@/components/molecules/DropdownMenu";
+import { FloatingMenuPanel } from "@/components/molecules/FloatingMenuPanel";
 import { toDateInputValue } from "@/lib/utils/dateRange";
 import {
   useUiStore,
@@ -39,6 +40,9 @@ export interface DateRangeDropdownProps {
   customValue?: CustomDateRange | null;
   onCustomChange?: (range: CustomDateRange | null) => void;
   className?: string;
+  /** Optional trigger label override (defaults to the selected range). */
+  triggerLabel?: string;
+  align?: "start" | "end";
 }
 
 export function DateRangeDropdown({
@@ -47,32 +51,70 @@ export function DateRangeDropdown({
   customValue: controlledCustom,
   onCustomChange,
   className,
+  triggerLabel,
+  align = "start",
 }: DateRangeDropdownProps) {
   const storeValue = useUiStore((state) => state.dateRange);
   const storeCustom = useUiStore((state) => state.customDateRange);
-  const setDateRange = useUiStore((state) => state.setDateRange);
-  const setCustomDateRange = useUiStore((state) => state.setCustomDateRange);
+  const setStoreDateRange = useUiStore((state) => state.setDateRange);
+  const setStoreCustomDateRange = useUiStore((state) => state.setCustomDateRange);
+
+  const isPresetControlled = controlledValue !== undefined;
+  // Controlled preset pages (esp. isolateDateRange) must own custom too —
+  // otherwise Apply writes the global store while bounds read local null.
+  const isCustomControlled =
+    onCustomChange != null || controlledCustom !== undefined;
+
   const value = controlledValue ?? storeValue;
-  const custom = controlledCustom ?? storeCustom;
-  const [calendarOpen, setCalendarOpen] = useState(value === "custom");
+  const custom = isCustomControlled
+    ? (controlledCustom ?? null)
+    : storeCustom;
+  const [calendarOpen, setCalendarOpen] = useState(false);
+  const anchorRef = useRef<HTMLDivElement>(null);
+  const calendarMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!calendarOpen) return;
+    const onPointerDown = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (
+        anchorRef.current?.contains(target) ||
+        calendarMenuRef.current?.contains(target)
+      ) {
+        return;
+      }
+      setCalendarOpen(false);
+    };
+    document.addEventListener("mousedown", onPointerDown);
+    return () => document.removeEventListener("mousedown", onPointerDown);
+  }, [calendarOpen]);
+
+  const applyPreset = (preset: DateRangePreset) => {
+    if (!isPresetControlled) setStoreDateRange(preset);
+    onChange?.(preset);
+  };
+
+  const applyCustom = (range: CustomDateRange | null) => {
+    if (!isCustomControlled) setStoreCustomDateRange(range);
+    onCustomChange?.(range);
+  };
 
   return (
-    <div className={cn("flex flex-col gap-2", className)}>
+    <div ref={anchorRef} className={cn("relative inline-flex", className)}>
       <DropdownMenu
         value={value}
         options={DATE_RANGE_OPTIONS}
+        align={align}
         onSelect={(next) => {
           const preset = next as DateRangePreset;
           if (preset === "custom") {
             setCalendarOpen(true);
-            setDateRange("custom");
-            onChange?.("custom");
+            applyPreset("custom");
             return;
           }
           setCalendarOpen(false);
-          setDateRange(preset);
-          onChange?.(preset);
-          onCustomChange?.(null);
+          applyPreset(preset);
+          applyCustom(null);
         }}
         trigger={
           <button
@@ -81,29 +123,33 @@ export function DateRangeDropdown({
               "inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-card px-3 text-sm text-[var(--color-text-secondary)] shadow-sm transition-colors hover:bg-[var(--color-surface-muted)]",
             )}
           >
-            {getDateRangeLabel(value, custom)}
+            {triggerLabel ?? getDateRangeLabel(value, custom)}
             <ChevronDown className="h-4 w-4 text-muted" />
           </button>
         }
       />
-      {calendarOpen || value === "custom" ? (
+      <FloatingMenuPanel
+        open={calendarOpen}
+        anchorRef={anchorRef}
+        menuRef={calendarMenuRef}
+        align={align}
+        className="overflow-visible rounded-lg border border-border bg-card p-0 shadow-lg"
+      >
         <DateRangeCalendar
+          className="border-0 shadow-none"
           value={custom}
           onApply={(range) => {
-            setCustomDateRange(range);
-            onCustomChange?.(range);
-            onChange?.("custom");
-            setCalendarOpen(true);
+            applyCustom(range);
+            applyPreset("custom");
+            setCalendarOpen(false);
           }}
           onClear={() => {
-            setCustomDateRange(null);
-            setDateRange("all_time");
-            onCustomChange?.(null);
-            onChange?.("all_time");
+            applyCustom(null);
+            applyPreset("all_time");
             setCalendarOpen(false);
           }}
         />
-      ) : null}
+      </FloatingMenuPanel>
     </div>
   );
 }

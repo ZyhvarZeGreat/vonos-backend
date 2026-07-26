@@ -368,15 +368,6 @@ function num(value: unknown): number {
   return Number(value ?? 0);
 }
 
-function last30DayWindow(): { from: Date; to: Date } {
-  const to = new Date();
-  const from = new Date();
-  from.setDate(from.getDate() - 30);
-  from.setHours(0, 0, 0, 0);
-  to.setHours(23, 59, 59, 999);
-  return { from, to };
-}
-
 function parseJsonArray<T>(value: unknown): T[] {
   if (Array.isArray(value)) return value as T[];
   if (typeof value === 'string') {
@@ -398,8 +389,8 @@ export interface VaHq6HomeBundle {
 }
 
 /**
- * VA HQ6 home — one SQL round trip for finance KPIs + last-30-day charts.
- * Uses Sale / Invoice totals (indexed) instead of StockMovement JSON line scans.
+ * VA HQ6 home — one SQL round trip for finance KPIs + sales/purchase charts
+ * over the selected date window.
  */
 export async function buildVaHq6HomeBundle(
   db: TenantScopedPrisma,
@@ -408,7 +399,9 @@ export async function buildVaHq6HomeBundle(
   to?: string,
 ): Promise<VaHq6HomeBundle> {
   const kpiWindow = resolveDateWindow(from, to);
-  const chartWindow = last30DayWindow();
+  // Charts follow the selected KPI window (not a hardcoded last-30) so the
+  // home "Filter by date" control visibly changes the dashboard.
+  const chartWindow = kpiWindow;
 
   const rows = await db.$queryRaw<
     Array<{
@@ -656,8 +649,8 @@ export async function buildVaHq6HomeBundle(
     ],
     charts: [
       {
-        id: 'hq6-sales-last-30',
-        title: 'Sales Last 30 Days',
+        id: 'hq6-sales-trend',
+        title: 'Sales',
         subtitle: 'Total sales value',
         type: 'line',
         series: [{ name: 'Total Sales', dataKey: 'sales', color: '#3b82f6' }],
@@ -666,8 +659,8 @@ export async function buildVaHq6HomeBundle(
         ),
       },
       {
-        id: 'hq6-purchase-last-30',
-        title: 'Purchase Last 30 Days',
+        id: 'hq6-purchase-trend',
+        title: 'Purchases',
         subtitle: 'Total purchase value',
         type: 'line',
         series: [

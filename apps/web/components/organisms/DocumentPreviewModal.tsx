@@ -30,11 +30,11 @@ export function DocumentPreviewModal({
         onClick={onClose}
       />
       <div className="relative flex min-h-full items-start justify-center p-4 print:p-0">
-        <div className="invoice-print-dialog motion-dialog-in my-4 w-full max-w-4xl rounded-lg border border-border bg-card shadow-xl print:my-0 print:max-w-none print:rounded-none print:border-0 print:shadow-none">
-          <div className="no-print flex items-center justify-between gap-2 border-b border-border px-4 py-3">
+        <div className="invoice-print-dialog motion-dialog-in my-4 w-full max-w-4xl rounded-lg border border-neutral-200 bg-white text-neutral-900 shadow-xl print:my-0 print:max-w-none print:rounded-none print:border-0 print:shadow-none">
+          <div className="no-print flex items-center justify-between gap-2 border-b border-neutral-200 bg-white px-4 py-3">
             <p
               className={
-                titleClassName ?? "text-sm font-medium text-foreground"
+                titleClassName ?? "text-sm font-medium text-neutral-900"
               }
             >
               {title}
@@ -43,7 +43,7 @@ export function DocumentPreviewModal({
               <button
                 type="button"
                 onClick={() => window.print()}
-                className="motion-press inline-flex items-center gap-1.5 rounded-lg bg-[var(--color-brand-primary)] px-3 py-1.5 text-sm font-medium text-white"
+                className="motion-press inline-flex items-center gap-1.5 rounded-lg bg-[var(--color-brand-primary,#16a34a)] px-3 py-1.5 text-sm font-medium text-white"
               >
                 <Printer className="h-4 w-4" />
                 Print
@@ -51,7 +51,7 @@ export function DocumentPreviewModal({
               <button
                 type="button"
                 onClick={onClose}
-                className="motion-press inline-flex items-center gap-1 rounded-lg border border-border px-3 py-1.5 text-sm font-medium"
+                className="motion-press inline-flex items-center gap-1 rounded-lg border border-neutral-300 bg-white px-3 py-1.5 text-sm font-medium text-neutral-800"
                 aria-label="Close preview"
               >
                 <X className="h-4 w-4" />
@@ -59,7 +59,9 @@ export function DocumentPreviewModal({
               </button>
             </div>
           </div>
-          <div className="invoice-print-root p-4 print:p-0">{children}</div>
+          <div className="invoice-print-root bg-white p-4 print:p-0">
+            {children}
+          </div>
         </div>
       </div>
     </div>,

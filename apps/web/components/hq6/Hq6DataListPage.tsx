@@ -1,11 +1,12 @@
 "use client";
 
 import { type ReactNode } from "react";
-import { CloudDownload, Plus } from "lucide-react";
-import Link from "next/link";
-import { CursorPaginationBar } from "@/components/molecules/CursorPaginationBar";
-import { Hq6ListToolbar } from "@/components/hq6/Hq6ListToolbar";
-import { Hq6FiltersCard } from "@/components/hq6/Hq6Chrome";
+import { UposDataTablesShell } from "@/components/upos/UposDataTablesShell";
+import { UposFiltersPanel } from "@/components/upos/UposFiltersPanel";
+import {
+  UposGradientActionButton,
+  UposNavTabs,
+} from "@/components/upos/UposNavTabs";
 import { cn } from "@/lib/utils/cn";
 
 export type Hq6PrimaryButtonVariant = "blue" | "purple" | "download";
@@ -15,6 +16,7 @@ export interface Hq6TabConfig {
   label: string;
   active?: boolean;
   icon?: ReactNode;
+  iconClass?: string;
   onClick?: () => void;
 }
 
@@ -29,31 +31,35 @@ export interface Hq6PrimaryAction {
 export interface Hq6DataListPageProps {
   title: string;
   subtitle?: string;
-  /** HQ6 list pages usually show title only (no subtitle in header). */
+  /** HQ6 list pages show title + small subtitle in content-header. */
   showSubtitle?: boolean;
+  /** Box header title when using single-pane lists (e.g. "All users"). */
+  boxTitle?: string;
   filters?: ReactNode;
   tabs?: Hq6TabConfig[];
   /** Extra tab-row actions (overrides primaryActions when set). */
   tabActions?: ReactNode;
   primaryActions?: Hq6PrimaryAction[];
   /** Toolbar — pass false to hide. */
-  toolbar?: false | {
-    pageSize: number;
-    onPageSizeChange: (size: number) => void;
-    searchValue: string;
-    onSearchChange: (value: string) => void;
-    onSearchCommit?: () => void;
-    searchPlaceholder?: string;
-    onExportCsv?: () => void;
-    onExportExcel?: () => void;
-    onPrint?: () => void;
-    onColumnVisibility?: () => void;
-    onExportPdf?: () => void;
-    density?: import("@/lib/utils/tableColumnAlign").TableDensity;
-    onDensityChange?: (
-      density: import("@/lib/utils/tableColumnAlign").TableDensity,
-    ) => void;
-  };
+  toolbar?:
+    | false
+    | {
+        pageSize: number;
+        onPageSizeChange: (size: number) => void;
+        searchValue: string;
+        onSearchChange: (value: string) => void;
+        onSearchCommit?: () => void;
+        searchPlaceholder?: string;
+        onExportCsv?: () => void;
+        onExportExcel?: () => void;
+        onPrint?: () => void;
+        onColumnVisibility?: () => void;
+        onExportPdf?: () => void;
+        density?: import("@/lib/utils/tableColumnAlign").TableDensity;
+        onDensityChange?: (
+          density: import("@/lib/utils/tableColumnAlign").TableDensity,
+        ) => void;
+      };
   children: ReactNode;
   tableFooter?: ReactNode;
   summaryStrip?: ReactNode;
@@ -79,48 +85,12 @@ export interface Hq6DataListPageProps {
   freezeFirstColumn?: boolean;
 }
 
-function PrimaryActionButton({ action }: { action: Hq6PrimaryAction }) {
-  const label = action.label ?? (action.variant === "download" ? "Download Excel" : "Add");
-  const className = cn(
-    "hq6-btn",
-    action.variant === "purple" && "hq6-btn-purple",
-    action.variant === "blue" && "hq6-btn-blue",
-    action.variant === "download" && "hq6-btn-download",
-  );
-  const icon =
-    action.variant === "download" ? (
-      <CloudDownload className="h-3.5 w-3.5" />
-    ) : (
-      <Plus className="h-3.5 w-3.5" />
-    );
-
-  if (action.href) {
-    return (
-      <Link href={action.href} className={className}>
-        {icon}
-        {label}
-      </Link>
-    );
-  }
-
-  return (
-    <button
-      type="button"
-      className={className}
-      onClick={action.onClick}
-      disabled={!action.onClick && !action.href}
-    >
-      {icon}
-      {label}
-    </button>
-  );
-}
-
-/** Shared HQ6 list page shell — ui-audit list pages (products, sales, purchases, etc.). */
+/** Shared HQ6 list page shell — UPOS content-header + filters + nav-tabs + DataTables. */
 export function Hq6DataListPage({
   title,
   subtitle,
-  showSubtitle = false,
+  showSubtitle = true,
+  boxTitle,
   filters,
   tabs,
   tabActions,
@@ -138,97 +108,174 @@ export function Hq6DataListPage({
   const visibleActions = primaryActions.filter(
     (a) => !a.hidden && (a.onClick || a.href),
   );
+  const multiTabs = Boolean(tabs && tabs.length > 1);
+  const resolvedBoxTitle =
+    boxTitle ??
+    (!multiTabs && tabs?.[0]?.label ? tabs[0].label : undefined);
+
+  const gradientActions = (
+    <>
+      {visibleActions.map((action, index) => (
+        <UposGradientActionButton
+          key={`${action.variant}-${index}`}
+          label={
+            action.label ??
+            (action.variant === "download" ? "Download Excel" : "Add")
+          }
+          icon={action.variant === "download" ? "download" : "plus"}
+          onClick={action.onClick}
+          href={action.href}
+        />
+      ))}
+    </>
+  );
+
+  /** HQ6 widget tool slot — no `pull-right` float (breaks flex box-header). */
+  const actionsNode = tabActions ? (
+    <div className="box-tools">{tabActions}</div>
+  ) : visibleActions.length > 0 ? (
+    <div className="box-tools">{gradientActions}</div>
+  ) : null;
+
+  const tableBody = (
+    <>
+      <div
+        className={cn(
+          "hq6-table-wrap relative",
+          freezeFirstColumn && "hq6-table-freeze-first",
+        )}
+      >
+        {children}
+        {tableFooter}
+        {summaryStrip}
+      </div>
+    </>
+  );
+
+  const listBody =
+    toolbar !== false && toolbar ? (
+      <UposDataTablesShell
+        tableId="hq6_list_table"
+        pageSize={toolbar.pageSize}
+        onPageSizeChange={toolbar.onPageSizeChange}
+        searchValue={toolbar.searchValue}
+        onSearchChange={toolbar.onSearchChange}
+        onSearchCommit={toolbar.onSearchCommit}
+        searchPlaceholder={toolbar.searchPlaceholder ?? "Search ..."}
+        onExportCsv={toolbar.onExportCsv}
+        onExportExcel={toolbar.onExportExcel}
+        onPrint={toolbar.onPrint}
+        onColumnVisibility={toolbar.onColumnVisibility}
+        onExportPdf={toolbar.onExportPdf}
+        hideExports={
+          !toolbar.onExportCsv &&
+          !toolbar.onExportExcel &&
+          !toolbar.onPrint &&
+          !toolbar.onColumnVisibility &&
+          !toolbar.onExportPdf
+        }
+        pageIndex={pagination?.pageIndex ?? 0}
+        itemCount={pagination?.itemCount ?? 0}
+        totalItems={pagination?.totalItems}
+        hasMore={pagination?.hasMore}
+        canGoPrev={pagination?.canGoPrev}
+        onPrev={pagination?.onPrev}
+        onNext={pagination?.onNext}
+        onPageSelect={pagination?.onPageSelect}
+        canSelectPage={pagination?.canSelectPage}
+        isBusy={pagination?.isBusy}
+        showPagination={pagination?.show !== false}
+        bulkActions={bulkActions}
+      >
+        {tableBody}
+      </UposDataTablesShell>
+    ) : (
+      <>
+        {tableBody}
+        {bulkActions}
+      </>
+    );
 
   return (
     <div className={cn("hq6-page", className)}>
-      <section className="hq6-content-header">
-        <h1>
+      {title ? (
+      <section className="content-header">
+        <h1 className="tw-text-xl md:tw-text-3xl tw-font-bold tw-text-black">
           {title}
-          {showSubtitle && subtitle ? <small>{subtitle}</small> : null}
+          {showSubtitle && subtitle ? (
+            <small className="tw-text-sm md:tw-text-base tw-text-gray-700 tw-font-semibold">
+              {subtitle}
+            </small>
+          ) : null}
         </h1>
       </section>
+      ) : null}
 
-      {filters ? <Hq6FiltersCard>{filters}</Hq6FiltersCard> : null}
-
-      <div className="hq6-card hq6-products-box overflow-x-clip">
-        {tabs && tabs.length > 0 ? (
-          <div className="hq6-tab-row">
-            <div className="flex min-w-0 flex-1">
-              {tabs.map((tab) => (
-                <button
-                  key={tab.id}
-                  type="button"
-                  className={cn("hq6-tab", tab.active && "hq6-tab-active")}
-                  onClick={tab.onClick}
-                >
-                  {tab.icon}
-                  {tab.label}
-                </button>
-              ))}
+      <section className="content">
+        {filters ? (
+          <div className="row">
+            <div className="col-md-12">
+              <UposFiltersPanel title="Filters" defaultOpen>
+                {filters}
+              </UposFiltersPanel>
             </div>
-            {tabActions ? (
-              <div className="flex shrink-0 items-center gap-2 px-3">{tabActions}</div>
-            ) : visibleActions.length > 0 ? (
-              <div className="flex shrink-0 items-center gap-2 px-3">
-                {visibleActions.map((action, index) => (
-                  <PrimaryActionButton key={`${action.variant}-${index}`} action={action} />
-                ))}
-              </div>
-            ) : null}
           </div>
         ) : null}
 
-        {toolbar !== false && toolbar ? <Hq6ListToolbar {...toolbar} /> : null}
-
-        <div
-          className={cn(
-            "hq6-table-wrap relative",
-            freezeFirstColumn && "hq6-table-freeze-first",
-          )}
-        >
-          {children}
-          {tableFooter}
-          {summaryStrip}
+        <div className="row">
+          <div className="col-md-12">
+            {multiTabs ? (
+              <UposNavTabs
+                tabs={tabs!.map((tab) => ({
+                  id: tab.id,
+                  label: tab.label,
+                  active: tab.active,
+                  onClick: tab.onClick,
+                  iconClass: tab.iconClass,
+                }))}
+              >
+                <div className="tab-pane active">
+                  {visibleActions.length > 0 ? (
+                    <>
+                      {gradientActions}
+                      <br />
+                      <br />
+                    </>
+                  ) : tabActions ? (
+                    <div className="clearfix">{tabActions}</div>
+                  ) : null}
+                  {listBody}
+                </div>
+              </UposNavTabs>
+            ) : (
+              /* components/widget.blade.php — box-primary card + box-header + slot */
+              <div className="box-primary tw-mb-4 tw-transition-all tw-duration-200 tw-bg-white tw-shadow-sm tw-rounded-xl tw-ring-1 hover:tw-shadow-md tw-ring-gray-200">
+                <div className="tw-p-2 sm:tw-p-3">
+                  {resolvedBoxTitle || actionsNode ? (
+                    <div className="box-header">
+                      {resolvedBoxTitle ? (
+                        <h3 className="box-title">{resolvedBoxTitle}</h3>
+                      ) : (
+                        <span />
+                      )}
+                      {actionsNode}
+                    </div>
+                  ) : null}
+                  <div className="tw-flow-root tw-border-gray-200">
+                    <div className="tw-py-2 tw-align-middle sm:tw-px-5">
+                      {listBody}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
-
-        {bulkActions}
-
-        {pagination?.show !== false &&
-        pagination &&
-        pagination.pageIndex !== undefined &&
-        pagination.pageSize !== undefined &&
-        pagination.itemCount !== undefined &&
-        pagination.hasMore !== undefined &&
-        pagination.canGoPrev !== undefined &&
-        pagination.onPrev &&
-        pagination.onNext &&
-        pagination.onPageSizeChange &&
-        (pagination.itemCount > 0 ||
-          pagination.canGoPrev ||
-          pagination.hasMore ||
-          pagination.pageIndex > 0 ||
-          pagination.isBusy) ? (
-          <CursorPaginationBar
-            pageIndex={pagination.pageIndex}
-            pageSize={pagination.pageSize}
-            itemCount={pagination.itemCount}
-            hasMore={pagination.hasMore}
-            canGoPrev={pagination.canGoPrev}
-            onPrev={pagination.onPrev}
-            onNext={pagination.onNext}
-            onPageSizeChange={pagination.onPageSizeChange}
-            onPageSelect={pagination.onPageSelect}
-            canSelectPage={pagination.canSelectPage}
-            totalItems={pagination.totalItems}
-            isBusy={pagination.isBusy}
-            className="border-t border-[var(--hq6-border)] px-3 py-2"
-          />
-        ) : null}
-      </div>
+      </section>
 
       <p className="hq6-footer">
-        Vonos Autos Head Office - V6.8 | Copyright © {new Date().getFullYear()} All
-        rights reserved.
+        Vonos Autos Head Office - V8.1 | Copyright © {new Date().getFullYear()}{" "}
+        All rights reserved.
       </p>
 
       {modals}

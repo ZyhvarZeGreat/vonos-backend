@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { SaleReturnRow } from "@/lib/types/entityRows";
 import type { Sale, SaleReturnStatus } from "@vonos/types";
@@ -23,14 +22,12 @@ import { useListPageFilters } from "@/lib/hooks/useListPageFilters";
 import { useListRecordModal } from "@/lib/hooks/useListRecordModal";
 import { useRouteTenant, useTenantId } from "@/lib/hooks/useRouteTenant";
 import { prefetchSaleListModals } from "@/lib/query/prefetchListModals";
-import { formatCurrency } from "@/lib/utils/formatCurrency";
-import { formatDate } from "@/lib/utils/formatDate";
 import { saleSeedFromReturnRow } from "@/lib/utils/listModalSeeds";
-import { toast } from "@/stores/toastStore";
+import { formatHq6Currency, formatHq6DateTime } from "@/lib/utils/hq6Format";
+import { useListExport } from "@/lib/hooks/useListExport";
 
 /** HQ6 Sell Return list — ui-audit/32_sell-return/screenshot.png */
 export function Hq6ReturnsListView() {
-  const router = useRouter();
   const tenantId = useTenantId();
   const queryClient = useQueryClient();
   const { recordId, recordSeed, openRecord, closeRecord } = useListRecordModal<Sale>({
@@ -39,7 +36,7 @@ export function Hq6ReturnsListView() {
       prefetchSaleListModals(queryClient, tenantId, id);
     },
   });
-  const { config, tenantCode } = useRouteTenant();
+  const { config } = useRouteTenant();
   const {
     dateRange,
     setDateRange,
@@ -108,8 +105,74 @@ export function Hq6ReturnsListView() {
 
   const commitSearch = useCallback(() => setSearch(localSearch), [localSearch, setSearch]);
 
+  const exportList = useListExport();
+  const handleExport = useCallback(() => {
+    exportList(
+      "sell-returns",
+      [
+        { key: "date", header: "Date" },
+        { key: "reference", header: "Invoice No." },
+        { key: "saleReference", header: "Parent Sale" },
+        { key: "customerName", header: "Customer name" },
+        { key: "location", header: "Location" },
+        { key: "paymentStatus", header: "Payment Status" },
+        { key: "amount", header: "Total amount" },
+        { key: "paymentDue", header: "Payment due" },
+      ],
+      returns.map((r) => ({
+        date: formatHq6DateTime(r.date),
+        reference: r.reference,
+        saleReference: r.saleReference ?? "",
+        customerName: r.customerName,
+        location: "",
+        paymentStatus: r.status,
+        amount: formatHq6Currency(r.amount),
+        paymentDue: formatHq6Currency(0),
+      })),
+    );
+  }, [exportList, returns]);
+
   const columns: ColumnConfig<SaleReturnRow>[] = useMemo(
     () => [
+      {
+        key: "date",
+        header: "Date",
+        sortValue: (r) => new Date(r.date).getTime(),
+        render: (r) => formatHq6DateTime(r.date),
+      },
+      {
+        key: "reference",
+        header: "Invoice No.",
+        render: (r) => <span className="font-medium">{r.reference}</span>,
+      },
+      { key: "saleReference", header: "Parent Sale" },
+      { key: "customerName", header: "Customer name" },
+      {
+        key: "location",
+        header: "Location",
+        sortable: false,
+        render: () => "",
+      },
+      {
+        key: "paymentStatus",
+        header: "Payment Status",
+        sortable: false,
+        render: (r) => (
+          <StatusPill status={r.status} vocabulary="saleReturnStatus" />
+        ),
+      },
+      {
+        key: "amount",
+        header: "Total amount",
+        sortValue: (r) => r.amount,
+        render: (r) => formatHq6Currency(r.amount),
+      },
+      {
+        key: "paymentDue",
+        header: "Payment due",
+        sortable: false,
+        render: () => formatHq6Currency(0),
+      },
       {
         key: "actions",
         header: "Action",
@@ -133,30 +196,6 @@ export function Hq6ReturnsListView() {
             ]}
           />
         ),
-      },
-      {
-        key: "reference",
-        header: "Return #",
-        render: (r) => <span className="font-medium">{r.reference}</span>,
-      },
-      { key: "saleReference", header: "Original Sale" },
-      { key: "customerName", header: "Customer" },
-      {
-        key: "amount",
-        header: "Amount",
-        sortValue: (r) => r.amount,
-        render: (r) => formatCurrency(r.amount, "NGN"),
-      },
-      {
-        key: "status",
-        header: "Status",
-        render: (r) => <StatusPill status={r.status} vocabulary="saleReturnStatus" />,
-      },
-      {
-        key: "date",
-        header: "Date",
-        sortValue: (r) => new Date(r.date).getTime(),
-        render: (r) => formatDate(r.date),
       },
     ],
     [openRecord],
@@ -210,7 +249,9 @@ export function Hq6ReturnsListView() {
   return (
     <Hq6StandardListShell
       slug="returns"
-      tabLabel="All sell returns"
+      title="Sell Return"
+      tabLabel="Sell Return"
+      boxTitle="Sell Return"
       filters={filters}
       columnOptions={columnOptions}
       chrome={chrome}
@@ -219,11 +260,8 @@ export function Hq6ReturnsListView() {
       searchValue={localSearch}
       onSearchChange={setLocalSearch}
       onSearchCommit={commitSearch}
-      onAdd={() => {
-        if (!tenantCode) return;
-        toast.info("Open a sale, then use Actions → Sell return.");
-        router.push(`/${tenantCode}/sales`);
-      }}
+      hidePrimaryAction
+      onExport={handleExport}
       pagination={{
         pageIndex,
         pageSize,
@@ -257,7 +295,7 @@ export function Hq6ReturnsListView() {
         isFetching={isFetching && !isLoading}
         error={error ? "Failed to load returns." : null}
         onRowClick={(row) => openRecord(row.id, saleSeedFromReturnRow(row))}
-        emptyState={{ message: "No sell returns found." }}
+        emptyState={{ message: "No data available in table" }}
       />
     </Hq6StandardListShell>
   );

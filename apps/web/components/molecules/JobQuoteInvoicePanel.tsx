@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { Eye, FileText, Receipt, Printer, ShoppingBag } from "lucide-react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useAppMutation } from "@/lib/hooks/useAppMutation";
 import { useRouteTenant } from "@/lib/hooks/useRouteTenant";
@@ -63,7 +63,6 @@ function toInvoiceLines(
 }
 
 export function JobQuoteInvoicePanel({ job, onJobChange }: JobQuoteInvoicePanelProps) {
-  const queryClient = useQueryClient();
   const router = useRouter();
   const { tenantName, tenantId, tenantCode } = useRouteTenant();
   const openAddSaleModal = useUiStore((state) => state.openAddSaleModal);
@@ -114,9 +113,9 @@ export function JobQuoteInvoicePanel({ job, onJobChange }: JobQuoteInvoicePanelP
       }),
     successMessage: () =>
       tab === "quotation" ? "Quotation draft saved" : "Invoice draft saved",
+    invalidateKeys: [["job", job.id], ["jobs"]],
     onSuccess: (updated) => {
       onJobChange(updated);
-      void queryClient.invalidateQueries({ queryKey: ["job", job.id] });
     },
   });
 

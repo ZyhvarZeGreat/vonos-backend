@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useQueryClient } from "@tanstack/react-query";
 import { useAppMutation } from "@/lib/hooks/useAppMutation";
 import { useParams } from "next/navigation";
 import {
@@ -25,6 +24,7 @@ import {
 import { JobWarehouseRequestPanel } from "@/components/organisms/JobWarehouseRequestPanel";
 import { JobVehiclePanel } from "@/components/organisms/JobVehiclePanel";
 import { useTenantId } from "@/lib/hooks/useRouteTenant";
+import { patchEntityInQueries } from "@/lib/query/optimistic";
 
 const QC_ITEMS = ["Welds inspected", "Finish quality checked", "Road test completed"];
 
@@ -35,7 +35,6 @@ function QcPanel({
   job: JobDetail;
   onJobChange: (job: JobDetail) => void;
 }) {
-  const queryClient = useQueryClient();
   const [checked, setChecked] = useState<Record<string, boolean>>(
     () => job.qcChecklist ?? {},
   );
@@ -53,9 +52,18 @@ function QcPanel({
         qcNotes: notes.trim() || null,
       }),
     successMessage: "QC checklist saved",
+    optimistic: {
+      keys: [["job"], ["jobs"]],
+      update: () => {
+        onJobChange({
+          ...job,
+          qcChecklist: checked,
+          qcNotes: notes.trim() || null,
+        });
+      },
+    },
     onSuccess: (updated) => {
       onJobChange(updated);
-      void queryClient.invalidateQueries({ queryKey: ["job"] });
     },
   });
 
@@ -112,7 +120,6 @@ export interface JobDetailViewProps {
 export function JobDetailView({ job, listPath, onJobChange }: JobDetailViewProps) {
   const params = useParams<{ tenant: string }>();
   const tenantId = useTenantId();
-  const queryClient = useQueryClient();
   const isMechanics = params.tenant === "VA";
 
   const stages = buildAdaptiveJobStages(job.hasQuote);
@@ -125,10 +132,20 @@ export function JobDetailView({ job, listPath, onJobChange }: JobDetailViewProps
     mutationFn: () => advanceJobStatus(job.id),
     successMessage: () =>
       nextStage ? `Job marked as ${nextStage}` : "Job status updated",
+    optimistic: {
+      keys: [["job"], ["jobs"]],
+      update: (qc) => {
+        if (!nextStage) return;
+        onJobChange({ ...job, status: nextStage });
+        qc.setQueryData(["job", tenantId, job.id, "shell"], {
+          ...job,
+          status: nextStage,
+        });
+        patchEntityInQueries(qc, ["jobs"], job.id, { status: nextStage });
+      },
+    },
     onSuccess: (updated) => {
       onJobChange({ ...job, status: updated.status });
-      void queryClient.invalidateQueries({ queryKey: ["job"] });
-      void queryClient.invalidateQueries({ queryKey: ["jobs"] });
     },
   });
 

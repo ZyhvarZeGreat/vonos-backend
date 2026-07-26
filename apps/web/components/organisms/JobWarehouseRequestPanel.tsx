@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
 import { Package } from "lucide-react";
 import type { RequisitionLine } from "@vonos/types";
 import { Button } from "@/components/atoms/Button";
@@ -29,7 +28,6 @@ export function JobWarehouseRequestPanel({
   job,
   tenantId,
 }: JobWarehouseRequestPanelProps) {
-  const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [notes, setNotes] = useState("");
   const [department, setDepartment] = useState(REQUEST_DEPARTMENTS[0]!.code);
@@ -125,10 +123,8 @@ export function JobWarehouseRequestPanel({
       });
     },
     successMessage: "Internal requisition created",
+    invalidateKeys: [["requisitions", tenantId]],
     onSuccess: () => {
-      void queryClient.invalidateQueries({
-        queryKey: ["requisitions", tenantId],
-      });
       setOpen(false);
     },
   });

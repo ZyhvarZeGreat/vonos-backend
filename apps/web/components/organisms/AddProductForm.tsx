@@ -1,17 +1,21 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Info } from "lucide-react";
+import { useQuery} from "@tanstack/react-query";
 import type { Item, ItemLocationStockInput, ProductUnit, TenantConfig } from "@vonos/types";
 import { Button } from "@/components/atoms/Button";
 import { Input } from "@/components/atoms/Input";
 import { Select } from "@/components/atoms/Select";
+import { Hq6AddProductFormBody } from "@/components/organisms/Hq6AddProductFormBody";
 import { createItem, updateItem } from "@/lib/api/items";
 import { getCatalogMeta } from "@/lib/api/catalogMeta";
 import { useAppMutation } from "@/lib/hooks/useAppMutation";
+import {
+  optimisticTempId,
+  patchEntityInQueries,
+  prependEntityInQueries,
+} from "@/lib/query/optimistic";
 import { useIsVaHq6 } from "@/lib/hooks/useIsVaHq6";
-import { cn } from "@/lib/utils/cn";
 
 export type ProductSaveMode = "save" | "saveAnother" | "saveOpeningStock";
 
@@ -84,7 +88,6 @@ export function AddProductForm({
   onSuccess,
   onCancel,
 }: AddProductFormProps) {
-  const queryClient = useQueryClient();
   const isHq6 = useIsVaHq6();
   const locations = tenantConfig?.businessLocations ?? [];
 
@@ -95,6 +98,8 @@ export function AddProductForm({
   );
   const [error, setError] = useState<string | null>(null);
   const [saveMode, setSaveMode] = useState<ProductSaveMode>("save");
+  const [imageName, setImageName] = useState("");
+  const [brochureName, setBrochureName] = useState("");
 
   useEffect(() => {
     const source = editFrom ?? duplicateFrom;
@@ -318,10 +323,92 @@ export function AddProductForm({
       return createItem(tenantId, payload);
     },
     successMessage: editFrom ? "Product updated" : "Product created",
-    onSuccess: async (item) => {
-      await queryClient.invalidateQueries({ queryKey: ["items"] });
-      await queryClient.invalidateQueries({ queryKey: ["catalog"] });
-      await queryClient.invalidateQueries({ queryKey: ["catalog-meta"] });
+    optimistic: {
+      keys: [["items"], ["catalog"], ["catalog-meta"]],
+      update: (qc, mode) => {
+        const now = new Date().toISOString();
+        const sku =
+          form.sku.trim() ||
+          `PRD-${Date.now().toString(36).toUpperCase()}`;
+        const costPrice = Number(form.purchaseExcTax || form.sellingExcTax || 0);
+        const sellPrice = Number(form.sellingExcTax || form.purchaseExcTax || 0);
+        const name = form.name.trim();
+        if (editFrom) {
+          patchEntityInQueries(qc, ["items"], editFrom.id, {
+            name,
+            sku,
+            category: form.category.trim() || null,
+            subCategory: form.subCategory.trim() || null,
+            description: form.description.trim() || null,
+            unit: form.unit.trim() || null,
+            costPrice: Number.isFinite(costPrice) ? costPrice : editFrom.costPrice,
+            sellPrice: Number.isFinite(sellPrice) ? sellPrice : editFrom.sellPrice,
+            brandName: form.brand.trim() || null,
+            availableForRetail: retailMode ? true : !form.notForSelling,
+            updatedAt: now,
+          });
+        } else {
+          prependEntityInQueries(qc, ["items"], {
+            id: optimisticTempId("item"),
+            tenantId,
+            sku,
+            name,
+            category: form.category.trim() || null,
+            subCategory: form.subCategory.trim() || null,
+            description: form.description.trim() || null,
+            barcodeType: form.barcodeType || null,
+            unit: form.unit.trim() || null,
+            weight: form.weight.trim() || null,
+            carModel: form.carModel.trim() || null,
+            enableImei: form.enableImei,
+            preparationMinutes: form.preparationMinutes
+              ? Number(form.preparationMinutes)
+              : null,
+            quantity: 0,
+            binLocation: null,
+            locationCode: null,
+            reorderPoint: null,
+            costPrice: Number.isFinite(costPrice) ? costPrice : 0,
+            sellPrice: Number.isFinite(sellPrice) ? sellPrice : null,
+            currency: "NGN",
+            status: "in_stock",
+            availableForRetail: retailMode ? true : !form.notForSelling,
+            brandId: null,
+            brandName: form.brand.trim() || null,
+            locationStock: [],
+            createdAt: now,
+            updatedAt: now,
+          } satisfies Item);
+        }
+        if (variant === "modal" && mode !== "saveAnother") {
+          onCancel?.();
+        }
+      },
+      commit: (qc, data) => {
+        if (!data || editFrom) return;
+        const entries = qc.getQueriesData({ queryKey: ["items"] });
+        for (const [queryKey, cached] of entries) {
+          if (Array.isArray(cached)) {
+            qc.setQueryData(
+              queryKey,
+              (cached as Item[]).filter((row) => !row.id.startsWith("item-")),
+            );
+          } else if (
+            cached &&
+            typeof cached === "object" &&
+            Array.isArray((cached as { items?: Item[] }).items)
+          ) {
+            const list = cached as { items: Item[] };
+            qc.setQueryData(queryKey, {
+              ...list,
+              items: list.items.filter((row) => !row.id.startsWith("item-")),
+            });
+          }
+        }
+        prependEntityInQueries(qc, ["items"], data);
+      },
+    },
+    onSuccess: (item) => {
       const mode = saveMode;
       if (mode === "saveAnother" && !editFrom) {
         reset();
@@ -334,11 +421,52 @@ export function AddProductForm({
   const submit = (mode: ProductSaveMode) => {
     setSaveMode(mode);
     setError(null);
+    if (!form.name.trim()) {
+      setError("Product name is required");
+      return;
+    }
+    if (!form.unit.trim()) {
+      setError("Unit is required");
+      return;
+    }
+    const costPrice = Number(form.purchaseExcTax || form.sellingExcTax || 0);
+    if (!Number.isFinite(costPrice) || costPrice < 0) {
+      setError("Enter a valid purchase / selling price");
+      return;
+    }
     mutation.mutate(mode);
   };
 
   const shellClass =
     variant === "page" ? "space-y-4" : "flex-1 space-y-4 overflow-y-auto px-1 pb-2";
+
+  if (isHq6) {
+    return (
+      <Hq6AddProductFormBody
+        form={form}
+        setField={setField}
+        locationDetails={locationDetails}
+        selectedLocationCodes={selectedLocationCodes}
+        toggleLocation={toggleLocation}
+        updateLocationDetail={updateLocationDetail}
+        applyMarginToSelling={applyMarginToSelling}
+        unitOptions={unitOptions}
+        brandOptions={brandOptions}
+        categoryOptions={categoryOptions}
+        locations={locations}
+        error={error}
+        isPending={mutation.isPending}
+        saveMode={saveMode}
+        isEdit={Boolean(editFrom)}
+        onCancel={onCancel}
+        onSubmit={submit}
+        imageName={imageName}
+        brochureName={brochureName}
+        onImageChange={setImageName}
+        onBrochureChange={setBrochureName}
+      />
+    );
+  }
 
   return (
     <div className={shellClass} aria-busy={mutation.isPending || undefined}>
@@ -349,12 +477,7 @@ export function AddProductForm({
       ) : null}
 
       <section
-        className={cn(
-          "space-y-3",
-          isHq6
-            ? "hq6-form-card"
-            : "rounded-lg border border-border bg-card p-4",
-        )}
+        className="space-y-3 rounded-lg border border-border bg-card p-4"
       >
         <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
           <Input
@@ -485,239 +608,103 @@ export function AddProductForm({
         </div>
       </section>
 
-      <section
-        className={cn(
-          "space-y-3",
-          isHq6
-            ? "hq6-form-card"
-            : "rounded-lg border border-border bg-card p-4",
-        )}
-      >
-        <div
-          className={cn(
-            "flex flex-wrap",
-            isHq6 ? "gap-x-10 gap-y-3" : "gap-4",
-          )}
-        >
-          <label
-            className={cn(
-              "flex items-start gap-2 text-sm text-foreground",
-              isHq6 && "hq6-product-check",
-            )}
-          >
+      <section className="space-y-3 rounded-lg border border-border bg-card p-4">
+        <div className="flex flex-wrap gap-4">
+          <label className="flex items-start gap-2 text-sm text-foreground">
             <input
               type="checkbox"
               checked={form.enableImei}
               onChange={(e) => setField("enableImei", e.target.checked)}
               className="mt-0.5"
             />
-            <span>
-              Enable Product description, IMEI or Serial Number
-              {isHq6 ? (
-                <Info className="hq6-product-info-icon mt-0.5" aria-hidden />
-              ) : null}
-            </span>
+            <span>Enable Product description, IMEI or Serial Number</span>
           </label>
-          <label
-            className={cn(
-              "flex items-center gap-2 text-sm text-foreground",
-              isHq6 && "hq6-product-check",
-            )}
-          >
+          <label className="flex items-center gap-2 text-sm text-foreground">
             <input
               type="checkbox"
               checked={form.notForSelling}
               onChange={(e) => setField("notForSelling", e.target.checked)}
             />
-            <span className="inline-flex items-center gap-1.5">
-              Not for selling
-              {isHq6 ? (
-                <Info className="hq6-product-info-icon" aria-hidden />
-              ) : null}
-            </span>
+            <span>Not for selling</span>
           </label>
         </div>
 
-        {isHq6 ? (
-          <>
-            <h3 className="hq6-product-rack-title">
-              Rack/Row/Position Details:
-              <Info className="hq6-product-info-icon" aria-hidden />
-            </h3>
-            <div className="hq6-product-rack-grid">
-              {locationDetails
-                .filter((row) =>
-                  selectedLocationCodes.includes(row.locationCode),
-                )
-                .map((row) => (
-                  <div key={row.locationCode} className="hq6-product-rack-col">
-                    <div className="hq6-product-rack-loc">
-                      {row.locationName} ({row.locationCode}):
-                    </div>
-                    <div className="hq6-product-rack-stack">
-                      <input
-                        className="hq6-form-input"
-                        placeholder="Rack"
-                        value={row.rack}
-                        onChange={(e) =>
-                          updateLocationDetail(row.locationCode, {
-                            rack: e.target.value,
-                          })
-                        }
-                        aria-label={`${row.locationName} rack`}
-                      />
-                      <input
-                        className="hq6-form-input"
-                        placeholder="Row"
-                        value={row.row}
-                        onChange={(e) =>
-                          updateLocationDetail(row.locationCode, {
-                            row: e.target.value,
-                          })
-                        }
-                        aria-label={`${row.locationName} row`}
-                      />
-                      <input
-                        className="hq6-form-input"
-                        placeholder="Position"
-                        value={row.position}
-                        onChange={(e) =>
-                          updateLocationDetail(row.locationCode, {
-                            position: e.target.value,
-                          })
-                        }
-                        aria-label={`${row.locationName} position`}
-                      />
-                    </div>
-                  </div>
-                ))}
-              <label className="hq6-form-label hq6-product-rack-col">
-                <span>Weight:</span>
-                <input
-                  className="hq6-form-input"
-                  placeholder="Weight"
-                  value={form.weight}
-                  onChange={(e) => setField("weight", e.target.value)}
-                />
-              </label>
-              <label className="hq6-form-label hq6-product-rack-col">
-                <span>Car Model:</span>
-                <input
-                  className="hq6-form-input"
-                  placeholder="Car Model"
-                  value={form.carModel}
-                  onChange={(e) => setField("carModel", e.target.value)}
-                />
-              </label>
-              <label className="hq6-form-label hq6-product-rack-col">
-                <span>
-                  Service staff timer/Preparation time (In minutes):
-                </span>
-                <input
-                  className="hq6-form-input"
-                  type="number"
-                  min={0}
-                  placeholder="Service staff timer/Preparation time"
-                  value={form.preparationMinutes}
+        {locationDetails
+          .filter((row) => selectedLocationCodes.includes(row.locationCode))
+          .map((row) => (
+            <div
+              key={row.locationCode}
+              className="rounded-lg border border-border p-3"
+            >
+              <p className="mb-2 text-sm font-medium text-foreground">
+                {row.locationName} ({row.locationCode}) — Rack / Row / Position
+              </p>
+              <div className="grid gap-2 sm:grid-cols-4">
+                <Input
+                  label="Rack"
+                  value={row.rack}
                   onChange={(e) =>
-                    setField("preparationMinutes", e.target.value)
+                    updateLocationDetail(row.locationCode, {
+                      rack: e.target.value,
+                    })
                   }
                 />
-              </label>
+                <Input
+                  label="Row"
+                  value={row.row}
+                  onChange={(e) =>
+                    updateLocationDetail(row.locationCode, {
+                      row: e.target.value,
+                    })
+                  }
+                />
+                <Input
+                  label="Position"
+                  value={row.position}
+                  onChange={(e) =>
+                    updateLocationDetail(row.locationCode, {
+                      position: e.target.value,
+                    })
+                  }
+                />
+                <Input
+                  label="Opening qty"
+                  type="number"
+                  min="0"
+                  value={row.quantity}
+                  onChange={(e) =>
+                    updateLocationDetail(row.locationCode, {
+                      quantity: e.target.value,
+                    })
+                  }
+                />
+              </div>
             </div>
-          </>
-        ) : (
-          <>
-            {locationDetails
-              .filter((row) =>
-                selectedLocationCodes.includes(row.locationCode),
-              )
-              .map((row) => (
-                <div
-                  key={row.locationCode}
-                  className="rounded-lg border border-border p-3"
-                >
-                  <p className="mb-2 text-sm font-medium text-foreground">
-                    {row.locationName} ({row.locationCode}) — Rack / Row /
-                    Position
-                  </p>
-                  <div className="grid gap-2 sm:grid-cols-4">
-                    <Input
-                      label="Rack"
-                      value={row.rack}
-                      onChange={(e) =>
-                        updateLocationDetail(row.locationCode, {
-                          rack: e.target.value,
-                        })
-                      }
-                    />
-                    <Input
-                      label="Row"
-                      value={row.row}
-                      onChange={(e) =>
-                        updateLocationDetail(row.locationCode, {
-                          row: e.target.value,
-                        })
-                      }
-                    />
-                    <Input
-                      label="Position"
-                      value={row.position}
-                      onChange={(e) =>
-                        updateLocationDetail(row.locationCode, {
-                          position: e.target.value,
-                        })
-                      }
-                    />
-                    <Input
-                      label="Opening qty"
-                      type="number"
-                      min="0"
-                      value={row.quantity}
-                      onChange={(e) =>
-                        updateLocationDetail(row.locationCode, {
-                          quantity: e.target.value,
-                        })
-                      }
-                    />
-                  </div>
-                </div>
-              ))}
+          ))}
 
-            <div className="grid gap-3 md:grid-cols-3">
-              <Input
-                label="Weight"
-                value={form.weight}
-                onChange={(e) => setField("weight", e.target.value)}
-              />
-              <Input
-                label="Car Model"
-                value={form.carModel}
-                onChange={(e) => setField("carModel", e.target.value)}
-                placeholder="e.g. Toyota Camry 2018"
-              />
-              <Input
-                label="Service staff timer / Preparation time (minutes)"
-                type="number"
-                min="0"
-                value={form.preparationMinutes}
-                onChange={(e) =>
-                  setField("preparationMinutes", e.target.value)
-                }
-              />
-            </div>
-          </>
-        )}
+        <div className="grid gap-3 md:grid-cols-3">
+          <Input
+            label="Weight"
+            value={form.weight}
+            onChange={(e) => setField("weight", e.target.value)}
+          />
+          <Input
+            label="Car Model"
+            value={form.carModel}
+            onChange={(e) => setField("carModel", e.target.value)}
+            placeholder="e.g. Toyota Camry 2018"
+          />
+          <Input
+            label="Service staff timer / Preparation time (minutes)"
+            type="number"
+            min="0"
+            value={form.preparationMinutes}
+            onChange={(e) => setField("preparationMinutes", e.target.value)}
+          />
+        </div>
       </section>
 
-      <section
-        className={cn(
-          "space-y-3",
-          isHq6
-            ? "hq6-form-card"
-            : "rounded-lg border border-border bg-card p-4",
-        )}
-      >
+      <section className="space-y-3 rounded-lg border border-border bg-card p-4">
         <div className="grid gap-3 md:grid-cols-3">
           <Select
             label="Applicable Tax"

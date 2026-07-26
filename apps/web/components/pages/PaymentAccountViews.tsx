@@ -2,7 +2,14 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useAppMutation, withOptimistic } from "@/lib/hooks/useAppMutation";
+import {
+  optimisticTempId,
+  patchEntityInQueries,
+  prependEntityInQueries,
+  removeEntityFromQueries,
+} from "@/lib/query/optimistic";
 import { Printer } from "lucide-react";
 import type { PaymentAccount } from "@vonos/types";
 import { Button } from "@/components/atoms/Button";
@@ -34,6 +41,12 @@ import { useListExport } from "@/lib/hooks/useListExport";
 import { reportEntryBySlug } from "@/lib/registries/reportRegistry";
 import type { PaymentAccountPageSlug } from "@/lib/registries/paymentAccountNav";
 import { ledgerChartSubtitle } from "@/lib/utils/ledgerCharts";
+import { useIsVaHq6 } from "@/lib/hooks/useIsVaHq6";
+import { Hq6PaymentAccountsListView } from "@/components/pages/Hq6PaymentAccountsListView";
+import { Hq6BalanceSheetView } from "@/components/pages/Hq6BalanceSheetView";
+import { Hq6TrialBalanceView } from "@/components/pages/Hq6TrialBalanceView";
+import { Hq6CashFlowView } from "@/components/pages/Hq6CashFlowView";
+import { Hq6PaymentAccountReportView } from "@/components/pages/Hq6PaymentAccountReportView";
 import { formatCurrency } from "@/lib/utils/formatCurrency";
 import { uniqueFieldOptions } from "@/lib/utils/listFilters";
 import { useUiStore } from "@/stores/uiStore";
@@ -51,8 +64,13 @@ const EXPORT_COLUMNS = [
 ] as const;
 
 export function PaymentAccountsListView() {
+  const isHq6 = useIsVaHq6();
+  if (isHq6) return <Hq6PaymentAccountsListView />;
+  return <PaymentAccountsListViewBody />;
+}
+
+function PaymentAccountsListViewBody() {
   const router = useRouter();
-  const queryClient = useQueryClient();
   const tenantId = useTenantId();
   const { tenantCode } = useRouteTenant();
   const exportList = useListExport();
@@ -101,11 +119,9 @@ export function PaymentAccountsListView() {
     return rows;
   }, [items, statusFilter, typeFilter]);
 
-  const invalidate = () => {
-    void queryClient.invalidateQueries({ queryKey: ["payment-accounts", tenantId] });
-  };
+  const queryClient = useQueryClient();
 
-  const depositMutation = useMutation({
+  const depositMutation = useAppMutation({
     mutationFn: (vars: { id: string; amount: number; note?: string; operationDate?: string; paymentMethod?: string }) =>
       depositPaymentAccount(tenantId!, vars.id, {
         amount: vars.amount,
@@ -113,22 +129,62 @@ export function PaymentAccountsListView() {
         operationDate: vars.operationDate,
         paymentMethod: vars.paymentMethod,
       }),
-    onSuccess: invalidate,
+    invalidateKeys: [["payment-accounts", tenantId]],
   });
 
-  const transferMutation = useMutation({
+  const transferMutation = useAppMutation({
     mutationFn: (payload: Parameters<typeof transferPaymentAccounts>[1]) =>
       transferPaymentAccounts(tenantId!, payload),
-    onSuccess: invalidate,
+    invalidateKeys: [["payment-accounts", tenantId]],
   });
 
-  const closeMutation = useMutation({
+  const closeMutation = useAppMutation({
     mutationFn: (id: string) => closePaymentAccount(tenantId!, id),
-    onSuccess: invalidate,
+    optimistic: {
+      keys: [["payment-accounts", tenantId]],
+      update: (qc, id) => {
+        patchEntityInQueries(qc, ["payment-accounts", tenantId], id, {
+          isClosed: true,
+        });
+      },
+    },
   });
 
   const columns: ColumnConfig<PaymentAccount>[] = useMemo(
     () => [
+      {
+        key: "name",
+        header: "Name",
+        render: (row) => (
+          <span className="font-medium text-foreground">{row.name}</span>
+        ),
+      },
+      { key: "accountType", header: "Account Type", render: (r) => r.accountType ?? "—" },
+      {
+        key: "accountSubType",
+        header: "Account Sub Type",
+        render: (r) => r.accountSubType ?? "—",
+      },
+      { key: "accountNumber", header: "Account Number" },
+      { key: "note", header: "Note", render: (r) => r.note ?? "—" },
+      {
+        key: "balance",
+        header: "Balance",
+        sortValue: (r) => r.balance,
+        render: (r) => formatCurrency(r.balance, r.currency ?? "NGN"),
+      },
+      {
+        key: "accountDetails",
+        header: "Account details",
+        sortable: false,
+        render: (r) =>
+          r.isClosed ? <span className="hq6-label-gray">Closed</span> : "",
+      },
+      {
+        key: "addedBy",
+        header: "Added By",
+        render: (r) => r.createdByName ?? "—",
+      },
       {
         key: "actions",
         header: "Action",
@@ -183,42 +239,6 @@ export function PaymentAccountsListView() {
             ]}
           />
         ),
-      },
-      {
-        key: "name",
-        header: "Name",
-        render: (row) => (
-          <span className="font-medium text-foreground">{row.name}</span>
-        ),
-      },
-      { key: "accountType", header: "Account Type", render: (r) => r.accountType ?? "—" },
-      {
-        key: "accountSubType",
-        header: "Account Sub Type",
-        render: (r) => r.accountSubType ?? "—",
-      },
-      { key: "accountNumber", header: "Account Number" },
-      { key: "note", header: "Note", render: (r) => r.note ?? "—" },
-      {
-        key: "balance",
-        header: "Balance",
-        sortValue: (r) => r.balance,
-        render: (r) => formatCurrency(r.balance, r.currency ?? "NGN"),
-      },
-      {
-        key: "status",
-        header: "Status",
-        render: (r) =>
-          r.isClosed ? (
-            <span className="text-xs font-medium text-red-600">Closed</span>
-          ) : (
-            <span className="text-xs font-medium text-green-600">Open</span>
-          ),
-      },
-      {
-        key: "addedBy",
-        header: "Added By",
-        render: (r) => r.createdByName ?? "—",
       },
     ],
     [closeMutation, router, tenantCode],
@@ -328,15 +348,69 @@ export function PaymentAccountsListView() {
           setEditAccount(null);
         }}
         onSave={async (payload) => {
+          if (!tenantId) return;
+          const now = new Date().toISOString();
           if (editAccount) {
-            await updatePaymentAccount(tenantId!, editAccount.id, payload);
-          } else {
-            await createPaymentAccount(
-              tenantId!,
-              payload as Parameters<typeof createPaymentAccount>[1],
-            );
+            const opt = withOptimistic(queryClient, {
+              keys: [["payment-accounts", tenantId]],
+              update: (qc) => {
+                patchEntityInQueries(
+                  qc,
+                  ["payment-accounts", tenantId],
+                  editAccount.id,
+                  { ...payload } as Record<string, unknown>,
+                );
+              },
+            });
+            const ctx = await opt.onMutate(undefined);
+            try {
+              await updatePaymentAccount(tenantId, editAccount.id, payload);
+              opt.onSuccess(undefined, undefined);
+            } catch (err) {
+              opt.onError(err, undefined, ctx);
+              throw err;
+            } finally {
+              await opt.onSettled();
+            }
+            return;
           }
-          invalidate();
+          const createPayload =
+            payload as Parameters<typeof createPaymentAccount>[1];
+          const tempId = optimisticTempId("payment-account");
+          const opt = withOptimistic<PaymentAccount, void>(queryClient, {
+            keys: [["payment-accounts", tenantId]],
+            update: (qc) => {
+              prependEntityInQueries(qc, ["payment-accounts", tenantId], {
+                id: tempId,
+                tenantId,
+                name: createPayload.name,
+                accountNumber: createPayload.accountNumber ?? "",
+                accountType: createPayload.accountType ?? null,
+                accountSubType: createPayload.accountSubType ?? null,
+                accountDetails: createPayload.accountDetails ?? null,
+                note: createPayload.note ?? null,
+                isClosed: false,
+                balance: 0,
+                currency: "NGN",
+                createdAt: now,
+                updatedAt: now,
+              } satisfies PaymentAccount);
+            },
+            commit: (qc, data) => {
+              removeEntityFromQueries(qc, ["payment-accounts", tenantId], tempId);
+              prependEntityInQueries(qc, ["payment-accounts", tenantId], data);
+            },
+          });
+          const ctx = await opt.onMutate(undefined);
+          try {
+            const created = await createPaymentAccount(tenantId, createPayload);
+            opt.onSuccess(created, undefined);
+          } catch (err) {
+            opt.onError(err, undefined, ctx);
+            throw err;
+          } finally {
+            await opt.onSettled();
+          }
         }}
       />
 
@@ -365,6 +439,23 @@ export function PaymentAccountsListView() {
 }
 
 export function PaymentAccountReportView({ slug }: { slug: PaymentAccountPageSlug }) {
+  const isHq6 = useIsVaHq6();
+  if (isHq6 && slug === "balance-sheet") {
+    return <Hq6BalanceSheetView />;
+  }
+  if (isHq6 && slug === "trial-balance") {
+    return <Hq6TrialBalanceView />;
+  }
+  if (isHq6 && slug === "cash-flow") {
+    return <Hq6CashFlowView />;
+  }
+  if (isHq6 && slug === "payment-account-report") {
+    return <Hq6PaymentAccountReportView />;
+  }
+  return <PaymentAccountReportViewBody slug={slug} />;
+}
+
+function PaymentAccountReportViewBody({ slug }: { slug: PaymentAccountPageSlug }) {
   const tenantId = useTenantId();
   const { config } = useRouteTenant();
   const openExportModal = useUiStore((state) => state.openExportModal);

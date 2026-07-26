@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery} from "@tanstack/react-query";
 import { useAppMutation } from "@/lib/hooks/useAppMutation";
 import { createFlowSuccessMessage } from "@/lib/utils/createFlowToasts";
 import { Button } from "@/components/atoms/Button";
@@ -85,11 +85,11 @@ export function CreateRecordModal() {
   const createFlow = useUiStore((state) => state.createFlow);
   const createCopy = useUiStore((state) => state.createCopy);
   const closeModal = useUiStore((state) => state.closeModal);
+  const openCreateModal = useUiStore((state) => state.openCreateModal);
   const tenantId = useTenantId();
   const { config: tenantConfig, tenantCode } = useRouteTenant();
   const { options: businessLocationOptions, required: locationRequired } =
     useBusinessLocationOptions(tenantConfig);
-  const queryClient = useQueryClient();
   const open = activeModal === "create" && createFlow !== null;
 
   // HQ6: product/sale creates are full pages; contact/job creates stay modals.
@@ -329,30 +329,31 @@ export function CreateRecordModal() {
       throw new Error("Unsupported create flow");
     },
     successMessage: (_data, flow) => createFlowSuccessMessage(flow),
-    onSuccess: async (_data, flow) => {
-      if (isItemFlow(flow)) {
-        await queryClient.invalidateQueries({ queryKey: ["items"] });
-        await queryClient.invalidateQueries({ queryKey: ["catalog"] });
-      } else if (movementTypeForFlow(flow)) {
-        await queryClient.invalidateQueries({ queryKey: ["stock-movements"] });
-      } else if (flow === "job") {
-        await queryClient.invalidateQueries({ queryKey: ["jobs"] });
-      } else if (flow === "sale") {
-        await queryClient.invalidateQueries({ queryKey: ["sales"] });
-        await queryClient.invalidateQueries({ queryKey: ["orders"] });
-      } else if (flow === "supplier") {
-        await queryClient.invalidateQueries({ queryKey: ["suppliers"] });
-      } else if (flow === "customer") {
-        await queryClient.invalidateQueries({ queryKey: ["customers"] });
-      } else if (flow === "appointment") {
-        await queryClient.invalidateQueries({ queryKey: ["appointments"] });
-      }
+    optimistic: {
+      keys: [
+        ["items"],
+        ["catalog"],
+        ["stock-movements"],
+        ["jobs"],
+        ["sales"],
+        ["orders"],
+        ["suppliers"],
+        ["customers"],
+        ["appointments"],
+      ],
+      update: () => {
+        closeModal();
+      },
+    },
+    onSuccess: () => {
       setForm(resetOnClose());
       resetMovementLines();
       setError(null);
-      closeModal();
     },
-    onError: (err: Error) => setError(err.message),
+    onError: (err: Error, flow) => {
+      setError(err.message);
+      openCreateModal(flow);
+    },
   });
 
   const handleClose = () => {

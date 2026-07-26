@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
+import { useAppMutation } from "@/lib/hooks/useAppMutation";
 import type { InvoiceListRow, PayComponent, Payroll, PayrollGroup } from "@vonos/types";
 import { Button } from "@/components/atoms/Button";
 import { Input } from "@/components/atoms/Input";
@@ -157,7 +158,6 @@ export function PayrollView({
 }) {
   const tenantId = useTenantId();
   const { tenantName, config } = useRouteTenant();
-  const qc = useQueryClient();
   const currentYear = new Date().getFullYear();
   const [activeTab, setActiveTab] = useState<PayrollTab>(defaultTab);
   const [search, setSearch] = useState("");
@@ -289,36 +289,36 @@ export function PayrollView({
     getCursor: (row) => nameListCursor(row),
   });
 
-  const createPayrollMutation = useMutation({
+  const createPayrollMutation = useAppMutation({
     mutationFn: () =>
       createPayroll(tenantId!, {
         employeeName: newPayroll.employeeName,
         grossPay: Number(newPayroll.grossPay),
         payrollMonth: newPayroll.payrollMonth,
       }),
+    invalidateKeys: [["payrolls", tenantId]],
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["payrolls", tenantId] });
       setNewPayroll({ employeeName: "", grossPay: "", payrollMonth: newPayroll.payrollMonth });
     },
   });
 
-  const createGroupMutation = useMutation({
+  const createGroupMutation = useAppMutation({
     mutationFn: () => createPayrollGroup(tenantId!, { name: newGroupName }),
+    invalidateKeys: [["payroll-groups", tenantId]],
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["payroll-groups", tenantId] });
       setNewGroupName("");
     },
   });
 
-  const createComponentMutation = useMutation({
+  const createComponentMutation = useAppMutation({
     mutationFn: () =>
       createPayComponent(tenantId!, {
         name: newComponent.name,
         type: newComponent.type,
         amount: Number(newComponent.amount),
       }),
+    invalidateKeys: [["pay-components", tenantId]],
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["pay-components", tenantId] });
       setNewComponent({ name: "", type: "allowance", amount: "" });
     },
   });
@@ -329,7 +329,7 @@ export function PayrollView({
       deductionTarget.totalDeduction
     : 0;
 
-  const addDeductionMutation = useMutation({
+  const addDeductionMutation = useAppMutation({
     mutationFn: () => {
       if (!tenantId || !deductionTarget) {
         throw new Error("No payroll selected");
@@ -349,8 +349,8 @@ export function PayrollView({
         reason: deductionForm.reason.trim() || undefined,
       });
     },
+    invalidateKeys: [["payrolls", tenantId]],
     onSuccess: (updated) => {
-      qc.invalidateQueries({ queryKey: ["payrolls", tenantId] });
       setSelectedPayroll(updated);
       setDeductionTarget(null);
       setDeductionForm({ amount: "", note: "", reason: "" });
@@ -378,6 +378,15 @@ export function PayrollView({
     staleTime: 60_000,
   });
   const payslipInvoice: InvoiceListRow | null = payslipInvoiceQuery.data ?? null;
+
+  const payslipAddress = useMemo(() => {
+    const biz = config?.businessSettings?.business;
+    if (!biz || typeof biz !== "object") return null;
+    const parts = [biz.landmark, biz.city, biz.state, biz.country]
+      .map((v) => (typeof v === "string" ? v.trim() : ""))
+      .filter(Boolean);
+    return parts.length > 0 ? parts.join(", ") : null;
+  }, [config?.businessSettings?.business]);
 
   const searchPlaceholder =
     activeTab === "payrolls"
@@ -450,6 +459,7 @@ export function PayrollView({
             <PayrollPayslipDocument
               payroll={selectedPayroll}
               tenantName={tenantName ?? "Vonos"}
+              tenantAddress={payslipAddress}
               locationLabel={selectedPayroll.locationCode}
               invoice={payslipInvoice}
             />

@@ -1,21 +1,30 @@
 "use client";
 
 import { useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
 import type {
+  Brand,
   CreateBrandInput,
   CreateProductCategoryInput,
   CreateProductUnitInput,
   CreateSellingPriceGroupInput,
   CreateWarrantyInput,
+  ProductCategory,
+  ProductUnit,
+  SellingPriceGroup,
+  Warranty,
 } from "@vonos/types";
 import { Button } from "@/components/atoms/Button";
 import { Select } from "@/components/atoms/Select";
 import {
   createCatalogMeta,
   type CatalogMetaKind,
+  type CatalogMetaRow,
 } from "@/lib/api/catalogMeta";
 import { useAppMutation } from "@/lib/hooks/useAppMutation";
+import {
+  optimisticTempId,
+  prependEntityInQueries,
+} from "@/lib/query/optimistic";
 import { useTenantId } from "@/lib/hooks/useRouteTenant";
 
 const KIND_SINGULAR: Record<CatalogMetaKind, string> = {
@@ -26,9 +35,126 @@ const KIND_SINGULAR: Record<CatalogMetaKind, string> = {
   "price-groups": "Price group",
 };
 
+function buildOptimisticRow(
+  tenantId: string,
+  kind: CatalogMetaKind,
+  values: {
+    name: string;
+    shortCode: string;
+    description: string;
+    shortName: string;
+    allowDecimal: boolean;
+    duration: string;
+    durationType: "days" | "months" | "years";
+  },
+): CatalogMetaRow {
+  const now = new Date().toISOString();
+  const id = optimisticTempId(`catalog-${kind}`);
+  const name = values.name.trim();
+  switch (kind) {
+    case "categories":
+      return {
+        id,
+        tenantId,
+        name,
+        shortCode: values.shortCode.trim() || null,
+        parentId: null,
+        categoryType: null,
+        description: values.description.trim() || null,
+        slug: null,
+        createdAt: now,
+        updatedAt: now,
+      } satisfies ProductCategory;
+    case "brands":
+      return {
+        id,
+        tenantId,
+        name,
+        description: values.description.trim() || null,
+        createdAt: now,
+        updatedAt: now,
+      } satisfies Brand;
+    case "units":
+      return {
+        id,
+        tenantId,
+        name,
+        shortName: values.shortName.trim() || name.slice(0, 8),
+        allowDecimal: values.allowDecimal,
+        createdAt: now,
+        updatedAt: now,
+      } satisfies ProductUnit;
+    case "warranties":
+      return {
+        id,
+        tenantId,
+        name,
+        description: values.description.trim() || null,
+        duration: Number(values.duration) || 1,
+        durationType: values.durationType,
+        createdAt: now,
+        updatedAt: now,
+      } satisfies Warranty;
+    case "price-groups":
+      return {
+        id,
+        tenantId,
+        name,
+        description: values.description.trim() || null,
+        isActive: true,
+        createdAt: now,
+        updatedAt: now,
+      } satisfies SellingPriceGroup;
+    default: {
+      const _exhaustive: never = kind;
+      return _exhaustive;
+    }
+  }
+}
+
+function stripTempCatalogRows(
+  qc: Parameters<typeof prependEntityInQueries>[0],
+  tenantId: string,
+  kind: CatalogMetaKind,
+): void {
+  const tempPrefix = `catalog-${kind}-`;
+  const entries = qc.getQueriesData({ queryKey: ["catalog-meta", tenantId] });
+  for (const [queryKey, cached] of entries) {
+    if (Array.isArray(cached)) {
+      qc.setQueryData(
+        queryKey,
+        (cached as CatalogMetaRow[]).filter(
+          (row) => !row.id.startsWith(tempPrefix),
+        ),
+      );
+      continue;
+    }
+    if (
+      cached &&
+      typeof cached === "object" &&
+      Array.isArray((cached as { items?: CatalogMetaRow[] }).items)
+    ) {
+      const list = cached as {
+        items: CatalogMetaRow[];
+        totalCount?: number;
+      };
+      const nextItems = list.items.filter(
+        (row) => !row.id.startsWith(tempPrefix),
+      );
+      const removed = list.items.length - nextItems.length;
+      qc.setQueryData(queryKey, {
+        ...list,
+        items: nextItems,
+        ...(typeof list.totalCount === "number" && removed > 0
+          ? { totalCount: Math.max(0, list.totalCount - removed) }
+          : {}),
+      });
+    }
+  }
+}
+
 export function CatalogMetaCreateBar({ kind }: { kind: CatalogMetaKind }) {
   const tenantId = useTenantId();
-  const queryClient = useQueryClient();
   const [name, setName] = useState("");
   const [shortCode, setShortCode] = useState("");
   const [description, setDescription] = useState("");
@@ -86,8 +212,31 @@ export function CatalogMetaCreateBar({ kind }: { kind: CatalogMetaKind }) {
       };
       return createCatalogMeta(tenantId, kind, body);
     },
+    optimistic: {
+      keys: [["catalog-meta", tenantId]],
+      update: (qc) => {
+        if (!tenantId) return;
+        prependEntityInQueries(
+          qc,
+          ["catalog-meta", tenantId],
+          buildOptimisticRow(tenantId, kind, {
+            name,
+            shortCode,
+            description,
+            shortName,
+            allowDecimal,
+            duration,
+            durationType,
+          }),
+        );
+      },
+      commit: (qc, data) => {
+        if (!data || !tenantId) return;
+        stripTempCatalogRows(qc, tenantId, kind);
+        prependEntityInQueries(qc, ["catalog-meta", tenantId], data);
+      },
+    },
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["catalog-meta", tenantId] });
       setName("");
       setShortCode("");
       setDescription("");

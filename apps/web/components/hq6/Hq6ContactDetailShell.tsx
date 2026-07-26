@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState, type ReactNode } from "react";
+import { useRouter } from "next/navigation";
 import {
   ArrowDownCircle,
   ArrowUpCircle,
@@ -13,6 +14,7 @@ import {
   MapPin,
   Paperclip,
   Phone,
+  Printer,
   ScrollText,
   Smartphone,
   UserRound,
@@ -21,6 +23,8 @@ import {
 import type { ContactLedgerEntry } from "@vonos/types";
 import { cn } from "@/lib/utils/cn";
 import { formatHq6Currency, formatHq6Date } from "@/lib/utils/hq6Format";
+import { useRouteTenant } from "@/lib/hooks/useRouteTenant";
+import { downloadCsv } from "@/lib/utils/exportCsv";
 import { toast } from "@/stores/toastStore";
 
 export type Hq6ContactTab =
@@ -127,6 +131,8 @@ export function Hq6ContactDetailShell({
   stockReportPanel?: ReactNode;
   documentsPanel?: ReactNode;
 }) {
+  const router = useRouter();
+  const { tenantCode } = useRouteTenant();
   const [ledgerFormat, setLedgerFormat] =
     useState<(typeof LEDGER_FORMATS)[number]>("Format 1");
   const [locationFilter, setLocationFilter] = useState("");
@@ -197,7 +203,14 @@ export function Hq6ContactDetailShell({
           <button
             type="button"
             className="hq6-btn hq6-btn-purple"
-            onClick={() => toast.info("Add Discount will use the discounts API next.")}
+            onClick={() => {
+              if (!tenantCode) {
+                toast.error("Select a business first.");
+                return;
+              }
+              toast.info("Create a discount, then assign it on the next sale.");
+              router.push(`/${tenantCode}/discounts`);
+            }}
           >
             Add Discount
           </button>
@@ -340,16 +353,51 @@ function LedgerPanel({
           <button
             type="button"
             className="hq6-contact-icon-btn"
-            title="Export PDF"
-            onClick={() => toast.info("PDF export coming soon")}
+            title="Export ledger"
+            onClick={() => {
+              downloadCsv({
+                filename: `ledger-${contact.displayName.replace(/\s+/g, "-").toLowerCase()}`,
+                columns: [
+                  { key: "date", header: "Date" },
+                  { key: "type", header: "Type" },
+                  { key: "description", header: "Description" },
+                  { key: "amount", header: "Amount" },
+                  { key: "reference", header: "Reference" },
+                ],
+                rows: ledger.map((entry) => ({
+                  date: formatHq6Date(entry.date),
+                  type: entry.type,
+                  description: entry.description,
+                  amount: entry.amount,
+                  reference: entry.reference ?? "",
+                })),
+              });
+              toast.success("Ledger exported");
+            }}
           >
             <FileText className="h-4 w-4" />
           </button>
           <button
             type="button"
             className="hq6-contact-icon-btn"
+            title="Print ledger"
+            onClick={() => window.print()}
+          >
+            <Printer className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            className="hq6-contact-icon-btn"
             title="Email ledger"
-            onClick={() => toast.info("Email ledger coming soon")}
+            onClick={() => {
+              const subject = encodeURIComponent(
+                `Ledger — ${contact.displayName}`,
+              );
+              const body = encodeURIComponent(
+                `Please find the ledger summary for ${contact.displayName}.\nBalance due: ${money(contact.balanceDue)}\n\n(Exported from Vonos)`,
+              );
+              window.location.href = `mailto:?subject=${subject}&body=${body}`;
+            }}
           >
             <Mail className="h-4 w-4" />
           </button>

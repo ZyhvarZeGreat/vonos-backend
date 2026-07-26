@@ -12,6 +12,9 @@ import { CursorPaginationBar } from "@/components/molecules/CursorPaginationBar"
 import { ReportTableSearchBar } from "@/components/molecules/ReportTableSearchBar";
 import { useOffsetPage } from "@/lib/hooks/useOffsetPage";
 import { TABLE_REPORT_PAGE_SIZE } from "@/lib/registries/reportTableUi";
+import { useIsVaHq6 } from "@/lib/hooks/useIsVaHq6";
+import { Hq6ReportDataTable } from "@/components/hq6/Hq6ReportDataTable";
+import { Hq6ReportKpiSummary } from "@/components/hq6/Hq6ReportKpiSummary";
 
 function rowMatchesSearch(row: ReportsTableRow, query: string): boolean {
   const q = query.trim().toLowerCase();
@@ -38,6 +41,7 @@ export function ServiceStaffReportPanel({
   report: ReportsDashboard;
   onPrint?: () => void;
 }) {
+  const isHq6 = useIsVaHq6();
   const revenue = kpiValue(report, "revenue");
   const currency = revenue?.currency ?? "NGN";
   const staffCount = kpiValue(report, "staff");
@@ -66,6 +70,24 @@ export function ServiceStaffReportPanel({
   const totalLabelColIndex = table
     ? table.columns.findIndex((col) => !(col.key in totals))
     : -1;
+
+  if (isHq6) {
+    return (
+      <div className="space-y-4" data-print-root>
+        {report.kpis.length > 0 ? (
+          <Hq6ReportKpiSummary kpis={report.kpis} />
+        ) : null}
+        {table ? (
+          <Hq6ReportDataTable
+            table={table}
+            currency={currency}
+            tableId="service_staff_report_table"
+            searchPlaceholder="Search staff…"
+          />
+        ) : null}
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6" data-print-root>
@@ -150,7 +172,10 @@ export function ServiceStaffReportPanel({
               </thead>
               <tbody>
                 {pageRows.map((row, index) => (
-                  <tr key={String(row.id ?? index)} className="border-b border-border/60">
+                  <tr
+                    key={String(row.id ?? index)}
+                    className="border-b border-border/60"
+                  >
                     {table.columns.map((col) => {
                       const raw = row[col.key];
                       const kind = reportColumnTotalKind(col);
@@ -193,7 +218,8 @@ export function ServiceStaffReportPanel({
                         );
                       }
                       const showLabel =
-                        index === (totalLabelColIndex >= 0 ? totalLabelColIndex : 0);
+                        index ===
+                        (totalLabelColIndex >= 0 ? totalLabelColIndex : 0);
                       return (
                         <td key={col.key} className="px-4 py-3">
                           {showLabel ? "Total:" : null}

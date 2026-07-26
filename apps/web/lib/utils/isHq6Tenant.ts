@@ -7,3 +7,13 @@ import { isTenantCode } from "@/lib/registries/tenants";
 export function isHq6Tenant(tenantCode: string | null | undefined): boolean {
   return Boolean(tenantCode && isTenantCode(tenantCode));
 }
+
+/**
+ * VA trial: full Ultimate POS app shell (sidebar + header + content wrapper)
+ * replaces Vonos Sidebar/TopBar. Other tenants keep the existing shell.
+ */
+export function isUposShellTenant(
+  tenantCode: string | null | undefined,
+): boolean {
+  return tenantCode === "VA";
+}

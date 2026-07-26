@@ -282,10 +282,10 @@ export function ChartPanel({
                 {series.map((item) => (
                   <Line
                     key={item.dataKey}
-                    type="monotone"
+                    type="linear"
                     dataKey={item.dataKey}
                     stroke={item.color}
-                    strokeWidth={3}
+                    strokeWidth={2}
                     dot={false}
                   />
                 ))}

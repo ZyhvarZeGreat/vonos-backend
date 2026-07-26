@@ -22,7 +22,7 @@ import {
 } from '../../common/utils/auth-token';
 import {
   hashPassword,
-  isDevPasswordHash,
+  needsPasswordRehash,
   verifyPassword,
 } from '../../common/utils/password';
 import { resolvePrimaryWebOrigin } from '../../common/utils/webOrigin';
@@ -81,7 +81,8 @@ export class AuthService {
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    await this.upgradePasswordHashIfNeeded(
+    // Rehash off the critical path — verify already succeeded with the old hash.
+    void this.upgradePasswordHashIfNeeded(
       user.id,
       body.password,
       user.passwordHash,
@@ -380,30 +381,31 @@ export class AuthService {
 
   private async issueSession(user: User): Promise<SessionResult> {
     const { raw, hash } = generateOpaqueToken();
-    const [updated] = await this.prisma.$transaction([
-      this.prisma.user.update({
+    // One Neon write on the critical path. lastLoginAt is best-effort.
+    await this.prisma.authToken.create({
+      data: {
+        userId: user.id,
+        type: 'refresh',
+        tokenHash: hash,
+        expiresAt: this.daysFromNow(REFRESH_TOKEN_DAYS),
+      },
+    });
+    void this.prisma.user
+      .update({
         where: { id: user.id },
         data: { lastLoginAt: new Date() },
-      }),
-      this.prisma.authToken.create({
-        data: {
-          userId: user.id,
-          type: 'refresh',
-          tokenHash: hash,
-          expiresAt: this.daysFromNow(REFRESH_TOKEN_DAYS),
-        },
-      }),
-    ]);
+      })
+      .catch(() => undefined);
 
     return {
-      accessToken: this.signAccessToken(updated),
+      accessToken: this.signAccessToken(user),
       refreshTokenRaw: raw,
       user: {
-        id: updated.id,
-        email: updated.email,
-        name: updated.name,
-        role: updated.role,
-        tenantId: updated.tenantId,
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role,
+        tenantId: user.tenantId,
       },
     };
   }
@@ -439,13 +441,12 @@ export class AuthService {
   }
 
   private async findActiveUserByEmail(email: string) {
-    return this.prisma.user.findFirst({
-      where: {
-        email: { equals: email.trim(), mode: 'insensitive' },
-        deletedAt: null,
-        status: 'active',
-      },
+    const normalized = email.trim().toLowerCase();
+    const user = await this.prisma.user.findUnique({
+      where: { email: normalized },
     });
+    if (!user || user.deletedAt || user.status !== 'active') return null;
+    return user;
   }
 
   private async upgradePasswordHashIfNeeded(
@@ -453,12 +454,16 @@ export class AuthService {
     password: string,
     passwordHash: string,
   ): Promise<void> {
-    if (!isDevPasswordHash(passwordHash)) return;
-    const nextHash = await hashPassword(password);
-    await this.prisma.user.update({
-      where: { id: userId },
-      data: { passwordHash: nextHash },
-    });
+    if (!needsPasswordRehash(passwordHash)) return;
+    try {
+      const nextHash = await hashPassword(password);
+      await this.prisma.user.update({
+        where: { id: userId },
+        data: { passwordHash: nextHash },
+      });
+    } catch {
+      // Best-effort; next login will retry.
+    }
   }
 
   private async findValidToken(rawToken: string, type: AuthTokenType) {

@@ -71,6 +71,7 @@ export function Hq6EssentialsTodoView() {
   const [priorityFilter, setPriorityFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [addOpen, setAddOpen] = useState(false);
+  const [docsTarget, setDocsTarget] = useState<TodoRow | null>(null);
   const [statusTarget, setStatusTarget] = useState<TodoRow | null>(null);
   const [statusValue, setStatusValue] = useState<TodoRow["status"]>("Pending");
   const [deleteTarget, setDeleteTarget] = useState<TodoRow | null>(null);
@@ -212,6 +213,11 @@ export function Hq6EssentialsTodoView() {
                 },
               },
               {
+                id: "docs",
+                label: "Docs",
+                onClick: () => setDocsTarget(row),
+              },
+              {
                 id: "delete",
                 label: "Delete",
                 danger: true,
@@ -226,14 +232,62 @@ export function Hq6EssentialsTodoView() {
   );
 
   return (
+    <div className="hq6-page hq6-essentials-todo">
+      <nav className="navbar navbar-default hq6-essentials-module-nav" role="navigation">
+        <div className="container-fluid">
+          <div className="navbar-header">
+            <span className="navbar-brand">
+              <i className="fas fa-check-circle" aria-hidden /> Essentials
+            </span>
+          </div>
+          <ul className="nav navbar-nav">
+            <li className="active">
+              <a href="#todo">To Do</a>
+            </li>
+            <li>
+              <a href="#document" onClick={(e) => e.preventDefault()}>
+                Document
+              </a>
+            </li>
+            <li>
+              <a href="#memos" onClick={(e) => e.preventDefault()}>
+                Memos
+              </a>
+            </li>
+            <li>
+              <a href="#reminders" onClick={(e) => e.preventDefault()}>
+                Reminders
+              </a>
+            </li>
+            <li>
+              <a href="#messages" onClick={(e) => e.preventDefault()}>
+                Messages
+              </a>
+            </li>
+            <li>
+              <a href="#knowledge" onClick={(e) => e.preventDefault()}>
+                Knowledge Base
+              </a>
+            </li>
+            <li>
+              <a href="#settings" onClick={(e) => e.preventDefault()}>
+                Settings
+              </a>
+            </li>
+          </ul>
+        </div>
+      </nav>
     <Hq6StandardListShell
       slug="essentials-todo"
-      tabLabel="To Do"
+      title=""
+      tabLabel="To Do List"
+      boxTitle="To Do List"
       chrome={chrome}
       searchValue={localSearch}
       onSearchChange={setLocalSearch}
+      searchPlaceholder="Search..."
       onAdd={() => setAddOpen(true)}
-      pageSize={25}
+      pageSize={50}
       onPageSizeChange={() => undefined}
       columnOptions={columns
         .filter((c) => c.key !== "actions")
@@ -270,14 +324,14 @@ export function Hq6EssentialsTodoView() {
       tabs={[
         {
           id: "todo",
-          label: "To Do",
+          label: "To Do List",
           active: true,
           icon: <CheckSquare className="h-4 w-4" />,
         },
       ]}
       pagination={{
         pageIndex: 0,
-        pageSize: 25,
+        pageSize: 50,
         itemCount: rows.length,
         hasMore: false,
         canGoPrev: false,
@@ -377,6 +431,34 @@ export function Hq6EssentialsTodoView() {
               </select>
             </Hq6Field>
           </Hq6Modal>
+          <Hq6Modal
+            open={Boolean(docsTarget)}
+            onClose={() => setDocsTarget(null)}
+            title="View shared documents"
+            size="lg"
+            footer={
+              <Hq6ModalSaveClose onClose={() => setDocsTarget(null)} />
+            }
+          >
+            <div className="hq6-table-wrap overflow-x-auto">
+              <table className="w-full min-w-[320px] text-left text-sm">
+                <thead>
+                  <tr>
+                    <th className="px-2 py-2">#</th>
+                    <th className="px-2 py-2">Name</th>
+                    <th className="px-2 py-2">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td colSpan={3} className="px-2 py-6 text-center text-[#777]">
+                      No documents shared for this task
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </Hq6Modal>
           <Hq6ConfirmModal
             open={Boolean(deleteTarget)}
             onClose={() => setDeleteTarget(null)}
@@ -400,8 +482,9 @@ export function Hq6EssentialsTodoView() {
         displayMode="table"
         embedded
         disablePagination
-        emptyState={{ message: "No to-dos yet. Add a task to get started." }}
+        emptyState={{ message: "No data available in table" }}
       />
     </Hq6StandardListShell>
+    </div>
   );
 }

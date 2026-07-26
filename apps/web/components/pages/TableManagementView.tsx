@@ -1,10 +1,11 @@
 "use client";
 
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useAppMutation } from "@/lib/hooks/useAppMutation";
 import { EmptyState } from "@/components/atoms/EmptyState";
 import { getCafeTables, updateCafeTableStatus } from "@/lib/api/cafeTables";
 import { useTenantId } from "@/lib/hooks/useRouteTenant";
+import { patchEntityInQueries } from "@/lib/query/optimistic";
 import type { CafeTable, CafeTableStatus } from "@vonos/types";
 import { cn } from "@/lib/utils/cn";
 
@@ -16,12 +17,14 @@ function nextTableStatus(current: CafeTableStatus): CafeTableStatus {
 }
 
 function TableCard({ table }: { table: CafeTable }) {
-  const queryClient = useQueryClient();
   const mutation = useAppMutation({
     mutationFn: (status: CafeTableStatus) => updateCafeTableStatus(table.id, status),
     successMessage: (_data, status) => `Table ${table.label} is now ${status}`,
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["cafe-tables"] });
+    optimistic: {
+      keys: [["cafe-tables"]],
+      update: (qc, status) => {
+        patchEntityInQueries(qc, ["cafe-tables"], table.id, { status });
+      },
     },
   });
 

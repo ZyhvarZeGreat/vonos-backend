@@ -6,7 +6,7 @@ import type {
 } from '@vonos/types';
 import { Prisma } from '@prisma/client';
 import type { TenantScopedPrisma } from '../../../common/prisma/prisma.service';
-import { buildLedgerSummaryFromGroups, ledgerDateFilter } from '../../../common/utils/ledgerAggregates';
+import { buildLedgerSummaryFromGroups } from '../../../common/utils/ledgerAggregates';
 import { runPool } from '../../../common/utils/mapPool';
 import { computeOutstandingReceivables } from '../../../common/utils/outstandingReceivables';
 import { computeSalesRevenueTotal } from '../../../common/utils/salesRevenue';
@@ -300,7 +300,6 @@ export async function buildExpenseReport(
   to?: string,
   options?: ReportRunOptions,
 ): Promise<ReportsDashboard> {
-  const dateFilter = ledgerDateFilter(from, to);
   const pageSize = Math.min(Math.max(options?.limit ?? 25, 1), 100);
   const search = options?.search?.trim();
   const expenseDateFilter =
@@ -337,27 +336,21 @@ export async function buildExpenseReport(
       : {}),
   };
 
-  const ledgerWhere: Prisma.LedgerEntryWhereInput = {
-    deletedAt: null,
-    type: 'expense',
-    ...dateFilter,
-  };
-
-  const [expenseGroups, currencyRow, entryCount, expenseRowsRaw] =
+  // KPIs + chart + table all use Expense (not LedgerEntry) so totals match rows.
+  const [expenseGroups, amountAgg, entryCount, expenseRowsRaw] =
     await runPool(
       [
         () =>
-          db.ledgerEntry.groupBy({
-            by: ['category'],
-            where: ledgerWhere,
-            _sum: { amount: true },
-            orderBy: { category: 'asc' },
+          db.expense.groupBy({
+            by: ['categoryId'],
+            where: expenseWhere,
+            _sum: { totalAmount: true },
+            orderBy: { categoryId: 'asc' },
           }),
         () =>
-          db.ledgerEntry.findFirst({
-            where: ledgerWhere,
-            select: { currency: true },
-            orderBy: { date: 'desc' },
+          db.expense.aggregate({
+            where: expenseWhere,
+            _sum: { totalAmount: true },
           }),
         () =>
           db.expense.count({
@@ -389,6 +382,20 @@ export async function buildExpenseReport(
       NEON_QUERY_CONCURRENCY,
     );
 
+  const categoryIds = expenseGroups
+    .map((g) => g.categoryId)
+    .filter((id): id is string => Boolean(id));
+  const categoryNames =
+    categoryIds.length > 0
+      ? await db.expenseCategory.findMany({
+          where: { id: { in: categoryIds }, deletedAt: null },
+          select: { id: true, name: true },
+        })
+      : [];
+  const categoryNameById = new Map(
+    categoryNames.map((c) => [c.id, c.name] as const),
+  );
+
   const hasMore = expenseRowsRaw.length > pageSize;
   const expenseRows = hasMore
     ? expenseRowsRaw.slice(0, pageSize)
@@ -396,15 +403,14 @@ export async function buildExpenseReport(
   const lastRow = expenseRows[expenseRows.length - 1];
   const nextCursor = hasMore && lastRow ? lastRow.id : null;
 
-  const currency = currencyRow?.currency ?? 'NGN';
-  const totalExpenses = expenseGroups.reduce(
-    (sum, g) => sum + toNumber(g._sum.amount ?? 0),
-    0,
-  );
+  const currency = 'NGN';
+  const totalExpenses = toNumber(amountAgg._sum.totalAmount ?? 0);
 
   const chartData = expenseGroups.map((g) => ({
-    label: g.category,
-    value: Math.round(toNumber(g._sum.amount ?? 0)),
+    label: g.categoryId
+      ? (categoryNameById.get(g.categoryId) ?? 'Uncategorized')
+      : 'Uncategorized',
+    value: Math.round(toNumber(g._sum.totalAmount ?? 0)),
   }));
 
   return {

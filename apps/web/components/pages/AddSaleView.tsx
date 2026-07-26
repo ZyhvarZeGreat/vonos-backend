@@ -71,8 +71,8 @@ function AddSalePage({
     return (
       <Hq6FormShell
         multiCard
+        className="hq6-add-sale-page"
         title={pageTitle}
-        subtitle={editSaleId ? undefined : copy.subtitle}
       >
         {form}
       </Hq6FormShell>

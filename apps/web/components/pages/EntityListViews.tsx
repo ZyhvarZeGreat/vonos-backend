@@ -8,7 +8,7 @@ import { RowActionsMenu } from "@/components/molecules/RowActionsMenu";
 import { StatusPill } from "@/components/atoms/StatusPill";
 import { InlinePriceCell } from "@/components/molecules/InlinePriceCell";
 import { ProductItemSearch } from "@/components/molecules/ProductItemSearch";
-import { type ColumnConfig } from "@/components/organisms/DataTable";
+import { DataTable, type ColumnConfig } from "@/components/organisms/DataTable";
 import { ServerPaginatedTable } from "@/components/organisms/ServerPaginatedTable";
 import { useServerListPage } from "@/lib/hooks/useServerListPage";
 import { ListPageShell } from "@/components/organisms/ListPageShell";
@@ -33,6 +33,8 @@ import { useIsVaHq6 } from "@/lib/hooks/useIsVaHq6";
 import { Hq6SalesListView } from "@/components/pages/Hq6SalesListView";
 import { Hq6CustomersListView } from "@/components/pages/Hq6CustomersListView";
 import { Hq6ReturnsListView } from "@/components/pages/Hq6ReturnsListView";
+import { Hq6VehiclesListView } from "@/components/pages/Hq6VehiclesListView";
+import { Hq6RequisitionsListView } from "@/components/pages/Hq6RequisitionsListView";
 import type { Order, MenuItemRow, SaleReturnRow } from "@/lib/types/entityRows";
 import type { Customer, Item, Requisition, Sale, SaleReturnStatus, SaleStatus, SalonService, StockStatus, Vehicle } from "@vonos/types";
 import { ContactLedgerModal, useContactLedgerQuery } from "@/components/organisms/ContactLedgerModal";
@@ -300,7 +302,6 @@ export function DraftsListView() {
     <SalesListView
       saleStatus="draft"
       tabLabel="All Drafts"
-      hidePrimaryAction
       slug="drafts"
     />
   );
@@ -310,8 +311,7 @@ export function QuotationsListView() {
   return (
     <SalesListView
       saleStatus="quotation"
-      tabLabel="All Quotations"
-      hidePrimaryAction
+      tabLabel="All quotations"
       slug="quotations"
     />
   );
@@ -750,6 +750,12 @@ function ReturnsListViewBody() {
 }
 
 export function VehiclesListView() {
+  const isHq6 = useIsVaHq6();
+  if (isHq6) return <Hq6VehiclesListView />;
+  return <VehiclesListViewBody />;
+}
+
+function VehiclesListViewBody() {
   const { goToDetail, prefetchDetail } = useRecordNavigation("vehicles");
   const tenantId = useTenantId();
   const queryClient = useQueryClient();
@@ -779,7 +785,8 @@ export function VehiclesListView() {
       });
     },
     successMessage: "Vehicle registered",
-    onSuccess: async (vehicle) => {
+    invalidateKeys: [["vehicles", tenantId]],
+    onSuccess: (vehicle) => {
       setCreateOpen(false);
       setForm({
         plateNumber: "",
@@ -789,7 +796,6 @@ export function VehiclesListView() {
         ownerName: "",
         ownerPhone: "",
       });
-      await queryClient.invalidateQueries({ queryKey: ["vehicles", tenantId] });
       goToDetail(vehicle.id);
     },
   });
@@ -965,6 +971,12 @@ export function VehiclesListView() {
 }
 
 export function RequisitionsListView() {
+  const isHq6 = useIsVaHq6();
+  if (isHq6) return <Hq6RequisitionsListView />;
+  return <RequisitionsListViewBody />;
+}
+
+function RequisitionsListViewBody() {
   const tenantId = useTenantId();
   const queryClient = useQueryClient();
   const { recordId, recordSeed, openRecord, closeRecord } =

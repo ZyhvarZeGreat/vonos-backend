@@ -130,7 +130,7 @@ export function AsyncMenuSelect({
         className="overflow-hidden rounded-lg border border-border bg-card shadow-lg"
       >
         <div
-          className="flex min-h-0 max-h-full flex-col"
+          className="flex max-h-[min(20rem,var(--vonos-floating-max-h,20rem))] flex-col"
           style={{ width: menuWidth ? `${menuWidth}px` : "16rem" }}
         >
           <div className="shrink-0 border-b border-border p-2">

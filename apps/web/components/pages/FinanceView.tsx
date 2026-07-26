@@ -186,6 +186,8 @@ export function FinanceView({ groupMode = false }: FinanceViewProps) {
   const openAddExpenseModal = useUiStore((state) => state.openAddExpenseModal);
   const dateRange = useUiStore((state) => state.dateRange);
   const setDateRange = useUiStore((state) => state.setDateRange);
+  const customDateRange = useUiStore((state) => state.customDateRange);
+  const setCustomDateRange = useUiStore((state) => state.setCustomDateRange);
   const { tenantId, tenantName, tenantCode } = useRouteTenant({
     adminFallback: null,
   });
@@ -200,7 +202,10 @@ export function FinanceView({ groupMode = false }: FinanceViewProps) {
     modals: recordModals,
   } = useReportRecordModals();
 
-  const bounds = useMemo(() => dateRangePresetToApiBounds(dateRange), [dateRange]);
+  const bounds = useMemo(
+    () => dateRangePresetToApiBounds(dateRange, new Date(), customDateRange),
+    [customDateRange, dateRange],
+  );
 
   const viewingEntity = Boolean(groupMode && viewingCode);
 
@@ -529,7 +534,12 @@ export function FinanceView({ groupMode = false }: FinanceViewProps) {
 
       {activeTab === "overview" && (
         <div className="space-y-6">
-          <DateRangeDropdown value={dateRange} onChange={handleDateRangeChange} />
+          <DateRangeDropdown
+            value={dateRange}
+            onChange={handleDateRangeChange}
+            customValue={customDateRange}
+            onCustomChange={setCustomDateRange}
+          />
           <KpiRow
             cards={financeKpiCards}
             isLoading={summaryQuery.isLoading && !summary}
@@ -613,6 +623,8 @@ export function FinanceView({ groupMode = false }: FinanceViewProps) {
           showImport={false}
           dateRange={dateRange}
           onDateRangeChange={handleDateRangeChange}
+          customDateRange={customDateRange}
+          onCustomDateRangeChange={setCustomDateRange}
           filterDropdowns={ledgerFilters}
           hq6PageChrome={false}
         >
@@ -644,7 +656,12 @@ export function FinanceView({ groupMode = false }: FinanceViewProps) {
 
       {activeTab === "analysis" && (
         <div className="space-y-6">
-          <DateRangeDropdown value={dateRange} onChange={handleDateRangeChange} />
+          <DateRangeDropdown
+            value={dateRange}
+            onChange={handleDateRangeChange}
+            customValue={customDateRange}
+            onCustomChange={setCustomDateRange}
+          />
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
             <ChartPanel
               title="Revenue vs Cost Over Time"
@@ -711,6 +728,8 @@ export function FinanceView({ groupMode = false }: FinanceViewProps) {
             showExport={false}
             dateRange={dateRange}
             onDateRangeChange={handleDateRangeChange}
+            customDateRange={customDateRange}
+            onCustomDateRangeChange={setCustomDateRange}
             hq6PageChrome={false}
             filterDropdowns={[
               {

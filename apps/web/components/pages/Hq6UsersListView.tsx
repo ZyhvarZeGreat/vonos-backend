@@ -1,21 +1,19 @@
 "use client";
 
+/**
+ * Direct lift from HQ6 ui-audit/01_users/page.html
+ * Source Blade: manage_user/index.blade.php + components/widget.blade.php
+ * + ManageUserController DataTables action HTML.
+ *
+ * Markup/classes match the scraped page — not our generic list shell.
+ */
 import { useCallback, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
-import { ChevronDown, CloudDownload, Filter, Plus } from "lucide-react";
-import type { User } from "@vonos/types";
-import { DataTable, type ColumnConfig } from "@/components/organisms/DataTable";
-import { CursorPaginationBar } from "@/components/molecules/CursorPaginationBar";
-import { InviteUserModal } from "@/components/organisms/InviteUserModal";
-import { Hq6ActionsMenu } from "@/components/hq6/Hq6ActionsMenu";
-import { Hq6ColumnVisibilityModal } from "@/components/hq6/Hq6ColumnVisibilityModal";
-import { Hq6ListToolbar } from "@/components/hq6/Hq6ListToolbar";
-import { hq6CopyForSlug } from "@/lib/registries/hq6PageCopy";
-import { Hq6PrintModal } from "@/components/hq6/Hq6PrintModal";
+import { Hq6ConfirmModal } from "@/components/hq6/Hq6ConfirmModal";
+import { Hq6DtSearchFilter } from "@/components/hq6/Hq6DtSearchFilter";
 import { getUsersPage, getAllUsers, type UserListRow } from "@/lib/api/users";
 import { useServerListPage } from "@/lib/hooks/useServerListPage";
-import { HQ6_TABLE_PAGE_SIZE } from "@/lib/api/fetchAllPages";
 import { useListExport } from "@/lib/hooks/useListExport";
 import { useListPageFilters } from "@/lib/hooks/useListPageFilters";
 import { useRecordNavigation } from "@/lib/hooks/useRecordNavigation";
@@ -23,28 +21,66 @@ import { useTenantId } from "@/lib/hooks/useRouteTenant";
 import { prefetchUserDetail } from "@/lib/query/prefetchListDetails";
 import { hasPermission } from "@/lib/utils/permissions";
 import { useAuthStore } from "@/stores/authStore";
-import { formatDate } from "@/lib/utils/formatDate";
-import { cn } from "@/lib/utils/cn";
+import { toast } from "@/stores/toastStore";
+import type { User } from "@vonos/types";
+
+const PAGE_SIZE_OPTIONS = [25, 50, 100, 200, 500, 1000, -1] as const;
+const USERS_PAGE_SIZE = 50;
+
 function formatRole(role: User["role"]): string {
   return role
     .split("_")
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ");
+    .join(" ")
+    .toUpperCase();
 }
 
-function formatStatus(status: User["status"]): string {
-  if (status === "active") return "Active";
-  if (status === "invited") return "Invited";
-  return "Suspended";
+function usernameOf(row: UserListRow): string {
+  return row.email.split("@")[0] ?? "";
 }
 
-function statusBadgeClass(status: User["status"]): string {
-  if (status === "active") return "hq6-pay-paid";
-  if (status === "invited") return "hq6-pay-partial";
-  return "hq6-pay-due";
+/** HQ6: `{{$username}} @if(empty($allow_login)) <span class="label bg-gray">…` */
+function UsernameCell({ row }: { row: UserListRow }) {
+  const username = usernameOf(row);
+  const loginBlocked = row.status === "suspended" || row.status === "invited";
+  if (loginBlocked && !username) {
+    return <span className="label bg-gray">Login not allowed</span>;
+  }
+  return (
+    <>
+      {username}
+      {loginBlocked ? (
+        <>
+          {" "}
+          <span className="label bg-gray">
+            {row.status === "invited" ? "Invited" : "Login not allowed"}
+          </span>
+        </>
+      ) : null}
+    </>
+  );
 }
 
-/** HQ6 Users list — ui-audit/01_users/screenshot.png */
+const PlusIcon = (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width="24"
+    height="24"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className="icon icon-tabler icons-tabler-outline icon-tabler-plus"
+    aria-hidden
+  >
+    <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+    <path d="M12 5l0 14" />
+    <path d="M5 12l14 0" />
+  </svg>
+);
+
 export function Hq6UsersListView() {
   const tenantId = useTenantId();
   const router = useRouter();
@@ -52,14 +88,9 @@ export function Hq6UsersListView() {
   const { detailPath, prefetchDetail } = useRecordNavigation("users");
   const authRole = useAuthStore((state) => state.role);
   const { search, setSearch } = useListPageFilters();
-  const [filtersOpen, setFiltersOpen] = useState(true);
-  const [roleFilter, setRoleFilter] = useState("");
-  const [statusFilter, setStatusFilter] = useState("");
   const [localSearch, setLocalSearch] = useState(search);
-  const [inviteOpen, setInviteOpen] = useState(false);
-  const [printOpen, setPrintOpen] = useState(false);
   const [columnsOpen, setColumnsOpen] = useState(false);
-  const [visibleColumnKeys, setVisibleColumnKeys] = useState<string[] | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<UserListRow | null>(null);
 
   const canInvite = authRole ? hasPermission(authRole, "manageUsers") : false;
 
@@ -75,313 +106,478 @@ export function Hq6UsersListView() {
     setPageSize,
     isLoading,
     isFetching,
-    isPaging,
     error,
     goToPage,
-    canSelectPage,
   } = useServerListPage<UserListRow>({
     queryKey: ["users", tenantId, "hq6"],
     enabled: Boolean(tenantId),
-    defaultPageSize: HQ6_TABLE_PAGE_SIZE,
+    defaultPageSize: USERS_PAGE_SIZE,
     search,
-    filters: { role: roleFilter || undefined, status: statusFilter || undefined },
     fetchPage: (cursor, limit, _sort, opts) =>
       getUsersPage(tenantId!, cursor, limit, {
-        search: (search).trim() || undefined,
-        role: roleFilter || undefined,
-        status: statusFilter || undefined,
+        search: search.trim() || undefined,
         includeSummary: opts?.includeSummary,
       }),
   });
 
-  const commitSearch = () => setSearch(localSearch);
   const exportList = useListExport();
 
   const handleExport = useCallback(() => {
     if (!tenantId) return;
     void (async () => {
       const rows = await getAllUsers(tenantId);
-      const filtered = rows.filter((row) => {
-        if (roleFilter && row.role !== roleFilter) return false;
-        if (statusFilter && row.status !== statusFilter) return false;
-        const q = search.trim().toLowerCase();
-        if (!q) return true;
-        return (
-          row.name.toLowerCase().includes(q) ||
-          row.email.toLowerCase().includes(q)
-        );
-      });
+      const q = search.trim().toLowerCase();
+      const filtered = q
+        ? rows.filter(
+            (row) =>
+              row.name.toLowerCase().includes(q) ||
+              row.email.toLowerCase().includes(q),
+          )
+        : rows;
       exportList(
         "users",
         [
           { key: "username", header: "Username" },
           { key: "name", header: "Name" },
-          { key: "email", header: "Email" },
           { key: "role", header: "Role" },
-          { key: "status", header: "Status" },
+          { key: "email", header: "Email" },
         ],
         filtered.map((row) => ({
-          username: row.email.split("@")[0] ?? "",
+          username: usernameOf(row),
           name: row.name,
-          email: row.email,
           role: formatRole(row.role),
-          status: formatStatus(row.status),
+          email: row.email,
         })),
         "Export Users",
       );
     })();
-  }, [exportList, roleFilter, search, statusFilter, tenantId]);
+  }, [exportList, search, tenantId]);
 
   const warmUser = (row: UserListRow) => {
     prefetchDetail(row.id);
     if (tenantId) prefetchUserDetail(queryClient, tenantId, row.id, row);
   };
 
-  const columns: ColumnConfig<UserListRow>[] = useMemo(
-    () => [
-      {
-        key: "actions",
-        header: "Action",
-        sortable: false,
-        render: (row) => (
-          <Hq6ActionsMenu
-            items={[
-              {
-                id: "view",
-                label: "View",
-                onClick: () => {
-                  warmUser(row);
-                  router.push(detailPath(row.id));
-                },
-              },
-              {
-                id: "edit",
-                label: "Edit",
-                onClick: () => {
-                  warmUser(row);
-                  router.push(`${detailPath(row.id)}/edit`);
-                },
-              },
-              {
-                id: "delete",
-                label: "Delete",
-                danger: true,
-                onClick: () => {
-                  warmUser(row);
-                  router.push(`${detailPath(row.id)}?action=delete`);
-                },
-              },
-            ]}
-          />
-        ),
-      },
-      {
-        key: "username",
-        header: "Username",
-        render: (row) => row.email.split("@")[0],
-      },
-      {
-        key: "name",
-        header: "Name",
-        render: (row) => <span className="font-medium">{row.name}</span>,
-      },
-      {
-        key: "role",
-        header: "Role",
-        render: (row) => formatRole(row.role),
-      },
-      {
-        key: "email",
-        header: "Email",
-        render: (row) => row.email,
-      },
-      {
-        key: "status",
-        header: "Status",
-        render: (row) => (
-          <span className={cn("hq6-pay-badge", statusBadgeClass(row.status))}>
-            {formatStatus(row.status)}
-          </span>
-        ),
-      },
-      {
-        key: "lastLoginAt",
-        header: "Last sign-in",
-        sortValue: (row) =>
-          row.lastLoginAt ? new Date(row.lastLoginAt).getTime() : 0,
-        render: (row) =>
-          row.lastLoginAt ? formatDate(row.lastLoginAt) : "Never",
-      },
-    ],
-    [detailPath, prefetchDetail, queryClient, router, tenantId],
-  );
+  const total = totalCount ?? users.length;
+  const from = users.length === 0 ? 0 : pageIndex * pageSize + 1;
+  const to = pageIndex * pageSize + users.length;
+  const totalPages =
+    pageSize > 0 ? Math.max(1, Math.ceil(Math.max(total, 1) / pageSize)) : 1;
+  const busy = isFetching || isLoading;
 
-  const columnOptions = useMemo(
-    () =>
-      columns
-        .filter((c) => c.key !== "actions")
-        .map((c) => ({ key: c.key, label: String(c.header || c.key) })),
-    [columns],
-  );
-
-  const effectiveColumns = useMemo(() => {
-    if (!visibleColumnKeys) return columns;
-    const allowed = new Set(["actions", ...visibleColumnKeys]);
-    return columns.filter((c) => allowed.has(c.key));
-  }, [columns, visibleColumnKeys]);
+  const pageNumbers = useMemo(() => {
+    const pages: number[] = [];
+    const max = Math.min(totalPages, 7);
+    for (let i = 0; i < max; i++) pages.push(i);
+    return pages;
+  }, [totalPages]);
 
   return (
-    <div className="hq6-page">
-      <section className="hq6-content-header">
-        <h1>Users</h1>
+    <div className="hq6-page hq6-users-page">
+      {/* —— content-header (page.html) —— */}
+      <section className="content-header">
+        <h1 className="tw-text-xl md:tw-text-3xl tw-font-bold tw-text-black">
+          Users{" "}
+          <small className="tw-text-sm md:tw-text-base tw-text-gray-700 tw-font-semibold">
+            Manage users
+          </small>
+        </h1>
       </section>
 
-      <div className="hq6-card hq6-filters-card">
-        <button
-          type="button"
-          className="hq6-filters-summary"
-          onClick={() => setFiltersOpen((o) => !o)}
-        >
-          <Filter className="h-4 w-4" />
-          Filters
-          <ChevronDown
-            className={cn(
-              "ml-auto h-4 w-4 opacity-60 transition-transform",
-              filtersOpen && "rotate-180",
-            )}
-          />
-        </button>
-        {filtersOpen ? (
-          <div className="hq6-filters-body">
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <label className="hq6-field">
-                <span>Role:</span>
-                <select
-                  value={roleFilter}
-                  onChange={(e) => setRoleFilter(e.target.value)}
-                >
-                  <option value="">All</option>
-                  {(["viewer", "staff", "manager", "admin"] as const).map((role) => (
-                    <option key={role} value={role}>
-                      {formatRole(role)}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="hq6-field">
-                <span>Status:</span>
-                <select
-                  value={statusFilter}
-                  onChange={(e) => setStatusFilter(e.target.value)}
-                >
-                  <option value="">All</option>
-                  {(["active", "invited", "suspended"] as const).map((status) => (
-                    <option key={status} value={status}>
-                      {formatStatus(status)}
-                    </option>
-                  ))}
-                </select>
-              </label>
+      {/* —— content + components.widget (box-primary) —— */}
+      <section className="content">
+        <div className="box-primary tw-mb-4 tw-transition-all lg:tw-col-span-2 tw-duration-200 tw-bg-white tw-shadow-sm tw-rounded-xl tw-ring-1 hover:tw-shadow-md tw-ring-gray-200">
+          <div className="tw-p-2 sm:tw-p-3">
+            <div className="box-header">
+              <h3 className="box-title">All users</h3>
+              {canInvite ? (
+                <div className="box-tools">
+                  <a
+                    href={`${detailPath("new")}/edit`}
+                    className="tw-dw-btn tw-bg-gradient-to-r tw-from-indigo-600 tw-to-blue-500 tw-font-bold tw-text-white tw-border-none tw-rounded-full"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      router.push(`${detailPath("new")}/edit`);
+                    }}
+                  >
+                    {PlusIcon} Add
+                  </a>
+                </div>
+              ) : null}
+            </div>
+
+            <div className="tw-flow-root tw-border-gray-200">
+              <div>
+                <div className="tw-py-2 tw-align-middle sm:tw-px-5">
+                  <div className="table-responsive">
+                    <div
+                      id="users_table_wrapper"
+                      className="dataTables_wrapper form-inline dt-bootstrap no-footer"
+                    >
+                      {/* HQ6 DataTables top row — exact classes from page.html */}
+                      <div className="row margin-bottom-20 text-center">
+                        <div className="col-sm-1">
+                          <div
+                            className="dataTables_length"
+                            id="users_table_length"
+                          >
+                            <label>
+                              Show{" "}
+                              <select
+                                name="users_table_length"
+                                aria-controls="users_table"
+                                className="form-control input-sm"
+                                value={pageSize}
+                                disabled={busy}
+                                onChange={(e) =>
+                                  setPageSize(Number(e.target.value))
+                                }
+                              >
+                                {PAGE_SIZE_OPTIONS.map((n) => (
+                                  <option key={n} value={n}>
+                                    {n === -1 ? "All" : n.toLocaleString()}
+                                  </option>
+                                ))}
+                              </select>{" "}
+                              entries
+                            </label>
+                          </div>
+                        </div>
+                        <div className="col-sm-8">
+                          <div className="dt-buttons btn-group">
+                            <a
+                              className="buttons-csv buttons-html5 tw-dw-btn-xs tw-dw-btn tw-dw-btn-outline tw-my-2"
+                              href="#"
+                              role="button"
+                              tabIndex={0}
+                              aria-controls="users_table"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                handleExport();
+                              }}
+                            >
+                              <span>
+                                <i className="fa fa-file-csv" aria-hidden />{" "}
+                                Export CSV
+                              </span>
+                            </a>{" "}
+                            <a
+                              className="buttons-excel buttons-html5 tw-dw-btn-xs tw-dw-btn tw-dw-btn-outline tw-my-2"
+                              href="#"
+                              role="button"
+                              tabIndex={0}
+                              aria-controls="users_table"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                handleExport();
+                              }}
+                            >
+                              <span>
+                                <i className="fa fa-file-excel" aria-hidden />{" "}
+                                Export Excel
+                              </span>
+                            </a>{" "}
+                            <a
+                              className="buttons-print tw-dw-btn-xs tw-dw-btn tw-dw-btn-outline tw-my-2"
+                              href="#"
+                              role="button"
+                              tabIndex={0}
+                              aria-controls="users_table"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                window.print();
+                              }}
+                            >
+                              <span>
+                                <i className="fa fa-print" aria-hidden /> Print
+                              </span>
+                            </a>{" "}
+                            <a
+                              className="buttons-collection buttons-colvis tw-dw-btn-xs tw-dw-btn tw-dw-btn-outline tw-my-2"
+                              href="#"
+                              role="button"
+                              tabIndex={0}
+                              aria-controls="users_table"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                setColumnsOpen((v) => !v);
+                              }}
+                            >
+                              <span>
+                                <i className="fa fa-columns" aria-hidden />{" "}
+                                Column visibility
+                              </span>
+                            </a>{" "}
+                            <a
+                              className="buttons-pdf buttons-html5 tw-dw-btn-xs tw-dw-btn tw-dw-btn-outline tw-my-2"
+                              href="#"
+                              role="button"
+                              tabIndex={0}
+                              aria-controls="users_table"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                handleExport();
+                              }}
+                            >
+                              <span>
+                                <i className="fa fa-file-pdf" aria-hidden />{" "}
+                                Export PDF
+                              </span>
+                            </a>
+                          </div>
+                        </div>
+                        <div className="col-sm-3">
+                          <Hq6DtSearchFilter
+                            id="users_table_filter"
+                            ariaControls="users_table"
+                            value={localSearch}
+                            onChange={setLocalSearch}
+                            onCommit={() => setSearch(localSearch)}
+                            disabled={busy}
+                          />
+                        </div>
+                        <div
+                          id="users_table_processing"
+                          className="dataTables_processing panel panel-default"
+                          style={{
+                            display: busy && users.length === 0 ? "block" : "none",
+                          }}
+                        >
+                          Processing...
+                        </div>
+                      </div>
+
+                      {columnsOpen ? (
+                        <p className="text-muted" style={{ fontSize: 12 }}>
+                          Columns: Username, Name, Role, Email, Action
+                        </p>
+                      ) : null}
+
+                      <table
+                        className="table table-bordered table-striped dataTable no-footer"
+                        id="users_table"
+                        role="grid"
+                        aria-describedby="users_table_info"
+                        style={{ width: "100%" }}
+                      >
+                        <thead>
+                          <tr role="row">
+                            <th
+                              className="sorting_asc"
+                              tabIndex={0}
+                              aria-controls="users_table"
+                              rowSpan={1}
+                              colSpan={1}
+                              aria-sort="ascending"
+                            >
+                              Username
+                            </th>
+                            <th
+                              className="sorting"
+                              tabIndex={0}
+                              aria-controls="users_table"
+                              rowSpan={1}
+                              colSpan={1}
+                            >
+                              Name
+                            </th>
+                            <th
+                              className="sorting"
+                              tabIndex={0}
+                              aria-controls="users_table"
+                              rowSpan={1}
+                              colSpan={1}
+                            >
+                              Role
+                            </th>
+                            <th
+                              className="sorting"
+                              tabIndex={0}
+                              aria-controls="users_table"
+                              rowSpan={1}
+                              colSpan={1}
+                            >
+                              Email
+                            </th>
+                            <th
+                              className="sorting_disabled"
+                              rowSpan={1}
+                              colSpan={1}
+                            >
+                              Action
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {error ? (
+                            <tr className="odd">
+                              <td colSpan={5} className="dataTables_empty">
+                                Could not load users.
+                              </td>
+                            </tr>
+                          ) : !busy && users.length === 0 ? (
+                            <tr className="odd">
+                              <td colSpan={5} className="dataTables_empty">
+                                No data available in table
+                              </td>
+                            </tr>
+                          ) : (
+                            users.map((row, index) => (
+                              <tr
+                                key={row.id}
+                                role="row"
+                                className={index % 2 === 0 ? "odd" : "even"}
+                                onMouseEnter={() => warmUser(row)}
+                              >
+                                <td className="sorting_1">
+                                  <UsernameCell row={row} />
+                                </td>
+                                <td>{row.name}</td>
+                                <td>{formatRole(row.role)}</td>
+                                <td>{row.email}</td>
+                                <td>
+                                  {/* ManageUserController action HTML order */}
+                                  <a
+                                    href={`${detailPath(row.id)}/edit`}
+                                    className="tw-dw-btn tw-dw-btn-xs tw-dw-btn-outline tw-dw-btn-primary"
+                                    onClick={(e) => {
+                                      e.preventDefault();
+                                      warmUser(row);
+                                      router.push(`${detailPath(row.id)}/edit`);
+                                    }}
+                                  >
+                                    <i
+                                      className="glyphicon glyphicon-edit"
+                                      aria-hidden
+                                    />{" "}
+                                    Edit
+                                  </a>
+                                  &nbsp;
+                                  <a
+                                    href={detailPath(row.id)}
+                                    className="tw-dw-btn tw-dw-btn-xs tw-dw-btn-outline tw-dw-btn-info"
+                                    onClick={(e) => {
+                                      e.preventDefault();
+                                      warmUser(row);
+                                      router.push(detailPath(row.id));
+                                    }}
+                                  >
+                                    <i className="fa fa-eye" aria-hidden /> View
+                                  </a>
+                                  &nbsp;
+                                  <button
+                                    type="button"
+                                    data-href={detailPath(row.id)}
+                                    className="tw-dw-btn tw-dw-btn-outline tw-dw-btn-xs tw-dw-btn-error delete_user_button"
+                                    onClick={() => setDeleteTarget(row)}
+                                  >
+                                    <i
+                                      className="glyphicon glyphicon-trash"
+                                      aria-hidden
+                                    />{" "}
+                                    Delete
+                                  </button>
+                                </td>
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
+                      </table>
+
+                      {/* HQ6 page.html: info + paginate as siblings (no Bootstrap row) */}
+                      <div
+                        className="dataTables_info"
+                        id="users_table_info"
+                        role="status"
+                        aria-live="polite"
+                      >
+                        {`Showing ${from} to ${to} of ${total.toLocaleString()} entries`}
+                      </div>
+                      <div
+                        className="dataTables_paginate paging_simple_numbers"
+                        id="users_table_paginate"
+                      >
+                        <ul className="pagination">
+                          <li
+                            className={`paginate_button previous${!canGoPrev || busy ? " disabled" : ""}`}
+                            id="users_table_previous"
+                          >
+                            <a
+                              href="#"
+                              aria-controls="users_table"
+                              tabIndex={0}
+                              onClick={(e) => {
+                                e.preventDefault();
+                                if (canGoPrev && !busy) goPrev();
+                              }}
+                            >
+                              Previous
+                            </a>
+                          </li>
+                          {pageNumbers.map((p) => (
+                            <li
+                              key={p}
+                              className={`paginate_button${p === pageIndex ? " active" : ""}${busy ? " disabled" : ""}`}
+                            >
+                              <a
+                                href="#"
+                                aria-controls="users_table"
+                                tabIndex={0}
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  if (!busy && p !== pageIndex) goToPage(p);
+                                }}
+                              >
+                                {p + 1}
+                              </a>
+                            </li>
+                          ))}
+                          <li
+                            className={`paginate_button next${!hasMore || busy ? " disabled" : ""}`}
+                            id="users_table_next"
+                          >
+                            <a
+                              href="#"
+                              aria-controls="users_table"
+                              tabIndex={0}
+                              onClick={(e) => {
+                                e.preventDefault();
+                                if (hasMore && !busy) goNext();
+                              }}
+                            >
+                              Next
+                            </a>
+                          </li>
+                        </ul>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
-        ) : null}
-      </div>
-
-      <div className="hq6-card hq6-products-box overflow-x-clip">
-        <div className="hq6-tab-row">
-          <div className="flex min-w-0 flex-1">
-            <button type="button" className="hq6-tab hq6-tab-active">
-              All users
-            </button>
-          </div>
-          {canInvite ? (
-            <div className="flex shrink-0 items-center gap-2 px-3">
-              <button
-                type="button"
-                className="hq6-btn hq6-btn-blue"
-                onClick={() => setInviteOpen(true)}
-              >
-                <Plus className="h-3.5 w-3.5" />
-                Add
-              </button>
-              <button
-                type="button"
-                className="hq6-btn hq6-btn-download"
-                onClick={handleExport}
-              >
-                <CloudDownload className="h-3.5 w-3.5" />
-                Download Excel
-              </button>
-            </div>
-          ) : null}
         </div>
+      </section>
 
-        <Hq6ListToolbar
-          pageSize={pageSize}
-          onPageSizeChange={setPageSize}
-          searchValue={localSearch}
-          onSearchChange={setLocalSearch}
-          onSearchCommit={commitSearch}
-          searchPlaceholder={hq6CopyForSlug("users").searchPlaceholder}
-          onPrint={() => setPrintOpen(true)}
-          onColumnVisibility={() => setColumnsOpen(true)}
-        />
-
-        <div className="hq6-table-wrap relative">
-          <DataTable
-            data={users}
-            columns={effectiveColumns}
-            displayMode="table"
-            embedded
-            disablePagination
-            isLoading={isLoading}
-            isFetching={isFetching && !isLoading}
-            error={error ? "Could not load users." : null}
-            emptyState={{ message: "No users found." }}
-            onRowPointerEnter={warmUser}
-            onRowClick={(row) => {
-              warmUser(row);
-              router.push(detailPath(row.id));
-            }}
-          />
-        </div>
-
-        {(users.length > 0 || canGoPrev || isLoading) && !isLoading ? (
-          <CursorPaginationBar
-            pageIndex={pageIndex}
-            pageSize={pageSize}
-            itemCount={users.length}
-            hasMore={hasMore}
-            canGoPrev={canGoPrev}
-            onPrev={goPrev}
-            onNext={goNext}
-            onPageSizeChange={setPageSize}
-            onPageSelect={goToPage}
-            canSelectPage={canSelectPage}
-            totalItems={totalCount}
-            isBusy={isFetching && !isLoading}
-            className="border-t border-[var(--hq6-border)] px-3 py-2"
-          />
-        ) : null}
-      </div>
-
-      <p className="hq6-footer">
-        Vonos Autos Head Office - V6.8 | Copyright © {new Date().getFullYear()} All
-        rights reserved.
-      </p>
-
-      <InviteUserModal
-        open={inviteOpen}
-        onClose={() => setInviteOpen(false)}
-        defaultTenantId={tenantId}
-      />
-      <Hq6PrintModal open={printOpen} onClose={() => setPrintOpen(false)} />
-      <Hq6ColumnVisibilityModal
-        open={columnsOpen}
-        onClose={() => setColumnsOpen(false)}
-        columns={columnOptions}
-        visibleKeys={visibleColumnKeys ?? columnOptions.map((c) => c.key)}
-        onChange={setVisibleColumnKeys}
+      <Hq6ConfirmModal
+        open={Boolean(deleteTarget)}
+        danger
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={() => {
+          if (deleteTarget) {
+            toast.info(
+              `Soft-delete for “${deleteTarget.name}” will use the users API when available.`,
+            );
+          }
+          setDeleteTarget(null);
+        }}
+        title="Are you sure?"
+        message={
+          deleteTarget
+            ? `This will deactivate “${deleteTarget.name}” when the API is wired.`
+            : "This user will be deactivated."
+        }
+        confirmLabel="Yes, delete"
       />
     </div>
   );

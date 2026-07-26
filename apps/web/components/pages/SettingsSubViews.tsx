@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { Plus } from "lucide-react";
 import { Button } from "@/components/atoms/Button";
 import { MenuSelect } from "@/components/molecules/MenuSelect";
@@ -27,6 +27,9 @@ import {
   updateInvoiceSettings,
 } from "@/lib/api/invoiceSettings";
 import type { InvoiceLayout, InvoiceScheme, ReceiptPrinter } from "@vonos/types";
+import { Hq6TaxRatesView } from "@/components/pages/Hq6TaxRatesView";
+import { Hq6ReceiptPrintersView } from "@/components/pages/Hq6ReceiptPrintersView";
+import { Hq6BarcodeSettingsListView } from "@/components/pages/Hq6BarcodeSettingsViews";
 import {
   DataTableSkeleton,
   InvoiceSettingsSkeleton,
@@ -43,7 +46,6 @@ export function InvoiceSettingsView() {
 
 function DefaultInvoiceSettingsView() {
   const tenantId = useTenantId();
-  const queryClient = useQueryClient();
   const { data: settings, isLoading } = useQuery({
     queryKey: ["invoice-settings", tenantId],
     queryFn: getInvoiceSettings,
@@ -69,9 +71,7 @@ function DefaultInvoiceSettingsView() {
         termsText,
       }),
     successMessage: "Invoice settings saved",
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["invoice-settings", tenantId] });
-    },
+    invalidateKeys: [["invoice-settings", tenantId]],
   });
 
   if (isLoading || !settings) {
@@ -177,7 +177,6 @@ function LayoutStylePreview({ design }: { design: string }) {
 
 function Hq6InvoiceSettingsView() {
   const tenantId = useTenantId();
-  const queryClient = useQueryClient();
   const { data: settings, isLoading } = useQuery({
     queryKey: ["invoice-settings", tenantId],
     queryFn: getInvoiceSettings,
@@ -191,14 +190,11 @@ function Hq6InvoiceSettingsView() {
   const [editingLayout, setEditingLayout] = useState<InvoiceLayout | null>(null);
   const [search, setSearch] = useState("");
 
-  const invalidate = () =>
-    void queryClient.invalidateQueries({ queryKey: ["invoice-settings", tenantId] });
-
   const createMutation = useAppMutation({
     mutationFn: createInvoiceScheme,
     successMessage: "Invoice scheme created",
+    invalidateKeys: [["invoice-settings", tenantId]],
     onSuccess: () => {
-      invalidate();
       setSchemeModal(null);
     },
   });
@@ -207,8 +203,8 @@ function Hq6InvoiceSettingsView() {
     mutationFn: ({ id, ...input }: { id: string } & Parameters<typeof updateInvoiceScheme>[1]) =>
       updateInvoiceScheme(id, input),
     successMessage: "Invoice scheme updated",
+    invalidateKeys: [["invoice-settings", tenantId]],
     onSuccess: () => {
-      invalidate();
       setSchemeModal(null);
       setEditing(null);
     },
@@ -217,8 +213,8 @@ function Hq6InvoiceSettingsView() {
   const createLayoutMutation = useAppMutation({
     mutationFn: createInvoiceLayout,
     successMessage: "Invoice layout created",
+    invalidateKeys: [["invoice-settings", tenantId]],
     onSuccess: () => {
-      invalidate();
       setLayoutModal(null);
       setEditingLayout(null);
     },
@@ -231,8 +227,8 @@ function Hq6InvoiceSettingsView() {
     }: { id: string } & Parameters<typeof updateInvoiceLayout>[1]) =>
       updateInvoiceLayout(id, input),
     successMessage: "Invoice layout updated",
+    invalidateKeys: [["invoice-settings", tenantId]],
     onSuccess: () => {
-      invalidate();
       setLayoutModal(null);
       setEditingLayout(null);
     },
@@ -241,19 +237,19 @@ function Hq6InvoiceSettingsView() {
   const deleteLayoutMutation = useAppMutation({
     mutationFn: deleteInvoiceLayout,
     successMessage: "Invoice layout deleted",
-    onSuccess: invalidate,
+    invalidateKeys: [["invoice-settings", tenantId]],
   });
 
   const setDefaultMutation = useAppMutation({
     mutationFn: (schemeId: string) => updateInvoiceSettings({ defaultSchemeId: schemeId }),
     successMessage: "Default scheme updated",
-    onSuccess: invalidate,
+    invalidateKeys: [["invoice-settings", tenantId]],
   });
 
   const setLayoutMutation = useAppMutation({
     mutationFn: (layoutId: string) => updateInvoiceSettings({ defaultLayoutId: layoutId }),
     successMessage: "Default layout updated",
-    onSuccess: invalidate,
+    invalidateKeys: [["invoice-settings", tenantId]],
   });
 
   if (isLoading || !settings) {
@@ -318,7 +314,15 @@ function Hq6InvoiceSettingsView() {
                     onChange={(e) => setSearch(e.target.value)}
                   />
                 </label>
-                <button type="button" className="hq6-search-btn" aria-label="Search">
+                <button
+                  type="button"
+                  className="hq6-search-btn"
+                  aria-label="Search"
+                  onClick={() => {
+                    // Filter is live; keep button for HQ6 chrome parity.
+                    setSearch((prev) => prev.trim());
+                  }}
+                >
                   Search
                 </button>
               </div>
@@ -554,6 +558,11 @@ function Hq6InvoiceSettingsView() {
 
 export function BarcodeSettingsView() {
   const isHq6 = useIsVaHq6();
+  if (isHq6) return <Hq6BarcodeSettingsListView />;
+  return <DefaultBarcodeSettingsView />;
+}
+
+function DefaultBarcodeSettingsView() {
   const [barcodeType, setBarcodeType] = useState("C128");
   const [stickerSheet, setStickerSheet] = useState("20");
 
@@ -563,57 +572,6 @@ export function BarcodeSettingsView() {
     );
   };
 
-  const body = (
-    <div className="space-y-4">
-      <div className="grid gap-4 sm:grid-cols-2">
-        <div>
-          <label className="mb-1 block text-sm font-medium text-foreground">Barcode Type</label>
-          <MenuSelect
-            value={barcodeType}
-            onChange={setBarcodeType}
-            options={[
-              { value: "C128", label: "C128" },
-              { value: "C39", label: "C39" },
-              { value: "EAN-13", label: "EAN-13" },
-              { value: "EAN-8", label: "EAN-8" },
-              { value: "UPC-A", label: "UPC-A" },
-              { value: "UPC-E", label: "UPC-E" },
-            ]}
-          />
-        </div>
-        <div>
-          <label className="mb-1 block text-sm font-medium text-foreground">Sticker Sheet</label>
-          <MenuSelect
-            value={stickerSheet}
-            onChange={setStickerSheet}
-            options={[
-              { value: "20", label: "20 per sheet (4 × 5)" },
-              { value: "30", label: "30 per sheet (3 × 10)" },
-              { value: "40", label: "40 per sheet (4 × 10)" },
-            ]}
-          />
-        </div>
-      </div>
-      <div className="flex justify-end">
-        {isHq6 ? (
-          <button type="button" className="hq6-btn-purple" onClick={handleSave}>
-            Save
-          </button>
-        ) : (
-          <Button onClick={handleSave}>Save Settings</Button>
-        )}
-      </div>
-    </div>
-  );
-
-  if (isHq6) {
-    return (
-      <Hq6PageFrame title="Barcode Settings" subtitle="Manage barcodes">
-        <div className="hq6-card p-4 md:p-6">{body}</div>
-      </Hq6PageFrame>
-    );
-  }
-
   return (
     <div className="mx-auto max-w-3xl space-y-6 py-8">
       <div>
@@ -621,7 +579,38 @@ export function BarcodeSettingsView() {
         <p className="mt-1 text-sm text-muted">Configure barcode label format and content.</p>
       </div>
       <div className="space-y-4 rounded-xl border border-border bg-card p-6 shadow-card">
-        {body}
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div>
+            <label className="mb-1 block text-sm font-medium text-foreground">Barcode Type</label>
+            <MenuSelect
+              value={barcodeType}
+              onChange={setBarcodeType}
+              options={[
+                { value: "C128", label: "C128" },
+                { value: "C39", label: "C39" },
+                { value: "EAN-13", label: "EAN-13" },
+                { value: "EAN-8", label: "EAN-8" },
+                { value: "UPC-A", label: "UPC-A" },
+                { value: "UPC-E", label: "UPC-E" },
+              ]}
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-sm font-medium text-foreground">Sticker Sheet</label>
+            <MenuSelect
+              value={stickerSheet}
+              onChange={setStickerSheet}
+              options={[
+                { value: "20", label: "20 per sheet (4 × 5)" },
+                { value: "30", label: "30 per sheet (3 × 10)" },
+                { value: "40", label: "40 per sheet (4 × 10)" },
+              ]}
+            />
+          </div>
+        </div>
+        <div className="flex justify-end">
+          <Button onClick={handleSave}>Save Settings</Button>
+        </div>
       </div>
     </div>
   );
@@ -647,8 +636,13 @@ const printerColumns: ColumnConfig<ReceiptPrinter>[] = [
 ];
 
 export function ReceiptPrintersView() {
+  const isHq6 = useIsVaHq6();
+  if (isHq6) return <Hq6ReceiptPrintersView />;
+  return <DefaultReceiptPrintersView />;
+}
+
+function DefaultReceiptPrintersView() {
   const tenantId = useTenantId();
-  const queryClient = useQueryClient();
   const { data: settings, isLoading } = useQuery({
     queryKey: ["invoice-settings", tenantId],
     queryFn: getInvoiceSettings,
@@ -668,19 +662,17 @@ export function ReceiptPrintersView() {
         isDefault: (settings?.printers.length ?? 0) === 0,
       }),
     successMessage: "Receipt printer added",
+    invalidateKeys: [["invoice-settings", tenantId]],
     onSuccess: () => {
       setName("");
       setConnectionString("");
-      void queryClient.invalidateQueries({ queryKey: ["invoice-settings", tenantId] });
     },
   });
 
   const deleteMutation = useAppMutation({
     mutationFn: (id: string) => deleteReceiptPrinter(id),
     successMessage: "Receipt printer removed",
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["invoice-settings", tenantId] });
-    },
+    invalidateKeys: [["invoice-settings", tenantId]],
   });
 
   const printers = settings?.printers ?? [];
@@ -791,6 +783,9 @@ const taxRateColumns: ColumnConfig<TaxRateRow>[] = [
 ];
 
 export function TaxRatesListView() {
+  const isHq6 = useIsVaHq6();
+  if (isHq6) return <Hq6TaxRatesView />;
+
   const rows: TaxRateRow[] = [
     { id: "vat", name: "VAT", rate: 7.5, isTaxGroup: false },
   ];

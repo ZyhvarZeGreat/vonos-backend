@@ -7,8 +7,10 @@ import { ReportTableSearchBar } from "@/components/molecules/ReportTableSearchBa
 import { CursorPaginationBar } from "@/components/molecules/CursorPaginationBar";
 import { KpiRow } from "@/components/organisms/KpiRow";
 import { ChartPanel } from "@/components/organisms/ChartPanel";
+import { UposDataTablesShell } from "@/components/upos/UposDataTablesShell";
 import type { KpiCardConfig } from "@vonos/types";
 import { useOffsetPage } from "@/lib/hooks/useOffsetPage";
+import { useIsVaHq6 } from "@/lib/hooks/useIsVaHq6";
 import { formatCurrency, formatCurrencyCompact, formatNumber, formatNumberCompact } from "@/lib/utils/formatCurrency";
 import { formatDate } from "@/lib/utils/formatDate";
 import {
@@ -17,6 +19,8 @@ import {
   resolveReportColumnTotals,
 } from "@/lib/utils/reportTableTotals";
 import { DataTableSkeleton } from "@/components/organisms/skeletons";
+import { Hq6ReportKpiSummary } from "@/components/hq6/Hq6ReportKpiSummary";
+import { Hq6UposCard } from "@/components/hq6/Hq6UposCard";
 import { cn } from "@/lib/utils/cn";
 
 export interface ReportTablePagination {
@@ -210,6 +214,8 @@ function ReportTable({
   );
   const hasTotals = Object.keys(totals).length > 0;
   const totalLabelColIndex = table.columns.findIndex((col) => !(col.key in totals));
+  const isHq6 = useIsVaHq6();
+  const colSpan = table.columns.length + (showActions ? 1 : 0);
 
   const paginationBar = (placement: "top" | "bottom") => (
     <CursorPaginationBar
@@ -234,6 +240,201 @@ function ReportTable({
     />
   );
 
+  const tableBody = activePagination.isBusy ? (
+    <DataTableSkeleton
+      rows={8}
+      columnHeaders={table.columns.map((col) => col.header)}
+      withPagination={false}
+      embedded
+    />
+  ) : (
+    <table
+      className={
+        isHq6
+          ? "table table-bordered table-striped ajax_view dataTable w-full"
+          : "w-full min-w-[32rem] text-sm"
+      }
+      role={isHq6 ? "grid" : undefined}
+    >
+      <thead>
+        <tr
+          className={
+            isHq6
+              ? undefined
+              : "border-b border-border bg-[var(--color-surface-muted)]/50 text-left text-xs text-muted"
+          }
+        >
+          {table.columns.map((col) => (
+            <th
+              key={col.key}
+              className={isHq6 ? undefined : "px-4 py-2.5 font-medium"}
+            >
+              {col.header}
+            </th>
+          ))}
+          {showActions ? (
+            <th
+              className={
+                isHq6 ? undefined : "px-4 py-2.5 text-right font-medium"
+              }
+            >
+              {isHq6 ? "Action" : "Actions"}
+            </th>
+          ) : null}
+        </tr>
+      </thead>
+      <tbody>
+        {rows.length === 0 ? (
+          <tr className={isHq6 ? "odd" : undefined}>
+            <td
+              colSpan={colSpan}
+              className={
+                isHq6
+                  ? "dataTables_empty"
+                  : "px-4 py-8 text-center text-muted"
+              }
+              style={isHq6 ? { textAlign: "center" } : undefined}
+            >
+              {tableSearch.trim()
+                ? "No rows match your search."
+                : isHq6
+                  ? "No data available in table"
+                  : "No rows for this period."}
+            </td>
+          </tr>
+        ) : (
+          rows.map((row, index) => (
+            <tr
+              key={row.id}
+              className={cn(
+                isHq6
+                  ? index % 2 === 0
+                    ? "odd"
+                    : "even"
+                  : "border-b border-border/60 last:border-b-0",
+                rowNeedsStockAlert(row) &&
+                  (isHq6 ? "bg-[#fde8e8]" : "bg-red-50 dark:bg-red-950/30"),
+                onRowClick && !isHq6 && "cursor-pointer hover:bg-[var(--color-surface-muted)]",
+                onRowClick &&
+                  !isHq6 &&
+                  rowNeedsStockAlert(row) &&
+                  "hover:bg-red-100/80 dark:hover:bg-red-950/50",
+                onRowClick && isHq6 && "cursor-pointer",
+              )}
+              onClick={() => onRowClick?.(row)}
+            >
+              {table.columns.map((col) => {
+                const raw = row[col.key as keyof typeof row];
+                const kind = reportColumnTotalKind(col);
+                const display = formatReportCell(
+                  col.key,
+                  raw as string | number | ReportRowAction[] | undefined,
+                  currency,
+                );
+                return (
+                  <td
+                    key={col.key}
+                    className={cn(
+                      !isHq6 && "px-4 py-2 text-foreground",
+                      kind ? "text-right tabular-nums" : undefined,
+                    )}
+                  >
+                    {display}
+                  </td>
+                );
+              })}
+              {showActions ? (
+                <td
+                  className={isHq6 ? undefined : "px-4 py-2 text-right"}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <ReportTableActions
+                    actions={row.actions}
+                    onAction={(action) => onRowAction?.(action)}
+                  />
+                </td>
+              ) : null}
+            </tr>
+          ))
+        )}
+      </tbody>
+      {hasTotals && filteredRows.length > 0 ? (
+        <tfoot>
+          <tr
+            className={
+              isHq6
+                ? undefined
+                : "border-t-2 border-border bg-[var(--color-surface-muted)]/70 text-sm font-semibold text-foreground"
+            }
+          >
+            {table.columns.map((col, index) => {
+              const total = totals[col.key];
+              if (total) {
+                const display =
+                  total.kind === "currency"
+                    ? formatCurrency(total.value, currency ?? "NGN")
+                    : formatNumber(total.value);
+                return (
+                  <td
+                    key={col.key}
+                    className={cn(
+                      !isHq6 && "px-4 py-3 text-right tabular-nums",
+                      isHq6 && "text-right",
+                    )}
+                  >
+                    {display}
+                  </td>
+                );
+              }
+              const showLabel =
+                index === (totalLabelColIndex >= 0 ? totalLabelColIndex : 0);
+              return (
+                <td key={col.key} className={isHq6 ? undefined : "px-4 py-3"}>
+                  {showLabel ? "Total:" : null}
+                </td>
+              );
+            })}
+            {showActions ? (
+              <td className={isHq6 ? undefined : "px-4 py-3"} />
+            ) : null}
+          </tr>
+        </tfoot>
+      ) : null}
+    </table>
+  );
+
+  if (isHq6) {
+    return (
+      <div className="row">
+        <div className="col-md-12">
+          <Hq6UposCard>
+            <UposDataTablesShell
+              tableId="hq6_report_table"
+              pageSize={activePagination.pageSize}
+              onPageSizeChange={activePagination.onPageSizeChange}
+              searchValue={tableSearch}
+              onSearchChange={setTableSearch}
+              searchPlaceholder={searchPlaceholder}
+              pageIndex={activePagination.pageIndex}
+              itemCount={rows.length}
+              totalItems={activePagination.totalItems}
+              hasMore={activePagination.hasMore}
+              canGoPrev={activePagination.canGoPrev}
+              onPrev={activePagination.onPrev}
+              onNext={activePagination.onNext}
+              onPageSelect={activePagination.onPageSelect}
+              canSelectPage={activePagination.canSelectPage}
+              isBusy={activePagination.isBusy}
+              onPrint={() => window.print()}
+            >
+              {tableBody}
+            </UposDataTablesShell>
+          </Hq6UposCard>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="overflow-hidden rounded-lg border border-border">
       {paginationBar("top")}
@@ -242,123 +443,7 @@ function ReportTable({
         onChange={setTableSearch}
         placeholder={searchPlaceholder}
       />
-      {activePagination.isBusy ? (
-        <DataTableSkeleton
-          rows={8}
-          columnHeaders={table.columns.map((col) => col.header)}
-          withPagination={false}
-          embedded
-        />
-      ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[32rem] text-sm">
-            <thead>
-              <tr className="border-b border-border bg-[var(--color-surface-muted)]/50 text-left text-xs text-muted">
-                {table.columns.map((col) => (
-                  <th key={col.key} className="px-4 py-2.5 font-medium">
-                    {col.header}
-                  </th>
-                ))}
-                {showActions ? (
-                  <th className="px-4 py-2.5 text-right font-medium">Actions</th>
-                ) : null}
-              </tr>
-            </thead>
-            <tbody>
-              {rows.length === 0 ? (
-                <tr>
-                  <td
-                    colSpan={table.columns.length + (showActions ? 1 : 0)}
-                    className="px-4 py-8 text-center text-muted"
-                  >
-                    {tableSearch.trim()
-                      ? "No rows match your search."
-                      : "No rows for this period."}
-                  </td>
-                </tr>
-              ) : (
-                rows.map((row) => (
-                  <tr
-                    key={row.id}
-                    className={cn(
-                      "border-b border-border/60 last:border-b-0",
-                      rowNeedsStockAlert(row) && "bg-red-50 dark:bg-red-950/30",
-                      onRowClick && "cursor-pointer hover:bg-[var(--color-surface-muted)]",
-                      onRowClick &&
-                        rowNeedsStockAlert(row) &&
-                        "hover:bg-red-100/80 dark:hover:bg-red-950/50",
-                    )}
-                    onClick={() => onRowClick?.(row)}
-                  >
-                    {table.columns.map((col) => {
-                      const raw = row[col.key as keyof typeof row];
-                      const kind = reportColumnTotalKind(col);
-                      const display = formatReportCell(
-                        col.key,
-                        raw as string | number | ReportRowAction[] | undefined,
-                        currency,
-                      );
-                      return (
-                        <td
-                          key={col.key}
-                          className={cn(
-                            "px-4 py-2 text-foreground",
-                            kind ? "text-right tabular-nums" : undefined,
-                          )}
-                        >
-                          {display}
-                        </td>
-                      );
-                    })}
-                    {showActions ? (
-                      <td
-                        className="px-4 py-2 text-right"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <ReportTableActions
-                          actions={row.actions}
-                          onAction={(action) => onRowAction?.(action)}
-                        />
-                      </td>
-                    ) : null}
-                  </tr>
-                ))
-              )}
-            </tbody>
-            {hasTotals && filteredRows.length > 0 ? (
-              <tfoot>
-                <tr className="border-t-2 border-border bg-[var(--color-surface-muted)]/70 text-sm font-semibold text-foreground">
-                  {table.columns.map((col, index) => {
-                    const total = totals[col.key];
-                    if (total) {
-                      const display =
-                        total.kind === "currency"
-                          ? formatCurrency(total.value, currency ?? "NGN")
-                          : formatNumber(total.value);
-                      return (
-                        <td
-                          key={col.key}
-                          className="px-4 py-3 text-right tabular-nums"
-                        >
-                          {display}
-                        </td>
-                      );
-                    }
-                    const showLabel =
-                      index === (totalLabelColIndex >= 0 ? totalLabelColIndex : 0);
-                    return (
-                      <td key={col.key} className="px-4 py-3">
-                        {showLabel ? "Total:" : null}
-                      </td>
-                    );
-                  })}
-                  {showActions ? <td className="px-4 py-3" /> : null}
-                </tr>
-              </tfoot>
-            ) : null}
-          </table>
-        </div>
-      )}
+      {tableBody}
       {paginationBar("bottom")}
     </div>
   );
@@ -381,6 +466,7 @@ export function ReportDetailSheet({
   onTableSearchChange,
   searchPlaceholder,
 }: ReportDetailSheetProps) {
+  const isHq6 = useIsVaHq6();
   const kpiValues = useMemo(
     () =>
       Object.fromEntries(
@@ -393,13 +479,19 @@ export function ReportDetailSheet({
 
   const kpiBlock =
     data.kpis.length > 0 ? (
-      <div className={cn("px-6 py-2 sm:px-8 print:px-0", kpiClassName)}>
-        <KpiRow cards={kpiToCards(data.kpis)} values={kpiValues} />
-      </div>
+      isHq6 ? (
+        <div className={cn("no-print", kpiClassName)}>
+          <Hq6ReportKpiSummary kpis={data.kpis} />
+        </div>
+      ) : (
+        <div className={cn("px-6 py-2 sm:px-8 print:px-0", kpiClassName)}>
+          <KpiRow cards={kpiToCards(data.kpis)} values={kpiValues} />
+        </div>
+      )
     ) : null;
 
   const tableBlock = data.table ? (
-    <div className="px-6 pb-6 sm:px-8 sm:pb-8">
+    <div className={isHq6 ? undefined : "px-6 pb-6 sm:px-8 sm:pb-8"}>
       <ReportTable
         table={data.table}
         currency={currency}
@@ -412,32 +504,76 @@ export function ReportDetailSheet({
       />
     </div>
   ) : (
-    <p className="px-6 pb-6 text-sm text-muted sm:px-8 sm:pb-8">
+    <p
+      className={
+        isHq6
+          ? "text-center text-[#777]"
+          : "px-6 pb-6 text-sm text-muted sm:px-8 sm:pb-8"
+      }
+    >
       No detail table for this report.
     </p>
   );
 
   const chartsBlock =
     showCharts && data.charts.length > 0 ? (
-      <div className={cn("px-6 pb-4 sm:px-8 print:px-0", chartGridClassName)}>
-        {data.charts.map((chart) => (
-          <div
-            key={chart.id}
-            className="rounded-xl border border-border bg-[var(--color-surface-muted)]/30 p-5 sm:p-6"
-          >
-            <ChartPanel
-              title={chart.title}
-              subtitle={chart.subtitle}
-              type={chart.type}
-              data={chart.data}
-              series={chart.series}
-              horizontal={chart.horizontal}
-              hidePeriodControl
-            />
-          </div>
-        ))}
+      <div
+        className={cn(
+          isHq6 ? "tw-mb-4 print:px-0" : "px-6 pb-4 sm:px-8 print:px-0",
+          chartGridClassName,
+        )}
+      >
+        {data.charts.map((chart) =>
+          isHq6 ? (
+            <Hq6UposCard key={chart.id} title={chart.title}>
+              <ChartPanel
+                title={chart.title}
+                subtitle={chart.subtitle}
+                type={chart.type}
+                data={chart.data}
+                series={chart.series}
+                horizontal={chart.horizontal}
+                hidePeriodControl
+              />
+            </Hq6UposCard>
+          ) : (
+            <div
+              key={chart.id}
+              className="rounded-xl border border-border bg-[var(--color-surface-muted)]/30 p-5 sm:p-6"
+            >
+              <ChartPanel
+                title={chart.title}
+                subtitle={chart.subtitle}
+                type={chart.type}
+                data={chart.data}
+                series={chart.series}
+                horizontal={chart.horizontal}
+                hidePeriodControl
+              />
+            </div>
+          ),
+        )}
       </div>
     ) : null;
+
+  if (isHq6) {
+    return (
+      <div data-print-root className="space-y-4">
+        {kpiBlock}
+        {tableFirst ? (
+          <>
+            {tableBlock}
+            {chartsBlock}
+          </>
+        ) : (
+          <>
+            {chartsBlock}
+            {tableBlock}
+          </>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div

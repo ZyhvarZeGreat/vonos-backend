@@ -59,6 +59,7 @@ export interface HqReportPageLayoutProps {
   tenantId?: string;
   from?: string;
   to?: string;
+  locationCode?: string;
   summaryLoading?: boolean;
   onRowClick?: (row: ReportsTableRow & { id: string }) => void;
   onRowAction?: (action: ReportRowAction) => void;
@@ -66,6 +67,8 @@ export interface HqReportPageLayoutProps {
   tableSearch?: string;
   onTableSearchChange?: (value: string) => void;
   searchPlaceholder?: string;
+  /** Skip Hq6PageFrame when the parent already renders HQ6 page chrome. */
+  bare?: boolean;
 }
 
 export function layoutVariantForReport(reportId: string): HqReportLayoutVariant {
@@ -88,6 +91,7 @@ export function HqReportPageLayout({
   tenantId,
   from,
   to,
+  locationCode,
   summaryLoading,
   onRowClick,
   onRowAction,
@@ -95,12 +99,18 @@ export function HqReportPageLayout({
   tableSearch,
   onTableSearchChange,
   searchPlaceholder,
+  bare = false,
 }: HqReportPageLayoutProps) {
   const variant = layoutVariantForReport(reportId);
   const isHq6 = useIsVaHq6();
 
   const wrap = (panel: ReactNode) => {
     if (isHq6) {
+      if (bare) {
+        return (
+          <div className="space-y-[var(--hq6-section-gap)]">{panel}</div>
+        );
+      }
       return (
         <Hq6PageFrame title={title} subtitle={subtitle}>
           <div className="space-y-[var(--hq6-section-gap)]">{panel}</div>
@@ -125,6 +135,7 @@ export function HqReportPageLayout({
         tenantId={tenantId}
         from={from}
         to={to}
+        locationCode={locationCode}
         summaryLoading={summaryLoading}
         onPrint={() => window.print()}
       />,

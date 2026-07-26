@@ -3,7 +3,6 @@
 import { useSearchParams } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AddProductForm } from "@/components/organisms/AddProductForm";
-import { Hq6FormShell } from "@/components/hq6/Hq6Chrome";
 import { getItem } from "@/lib/api/items";
 import { useIsVaHq6 } from "@/lib/hooks/useIsVaHq6";
 import { useRouteTenant, useTenantId } from "@/lib/hooks/useRouteTenant";
@@ -60,25 +59,31 @@ export function AddProductView() {
     ? "Edit product"
     : duplicateId
       ? "Duplicate product"
-      : copy.title;
-  const subtitle = editId
-    ? `Editing ${editFrom?.name ?? "product"}`
-    : duplicateId
-      ? `Prefilling from ${duplicateFrom?.name ?? "product"}`
-      : copy.subtitle;
+      : isHq6
+        ? "Add new product"
+        : copy.title;
 
   if (isHq6) {
     return (
-      <Hq6FormShell multiCard title={title} subtitle={subtitle}>
-        {form}
-      </Hq6FormShell>
+      <div className="hq6-page hq6-add-product-page">
+        <section className="content-header">
+          <h1 className="tw-text-xl md:tw-text-3xl tw-font-bold tw-text-black">
+            {title}
+          </h1>
+        </section>
+        <section className="content">{form}</section>
+        <p className="hq6-footer">
+          Vonos Autos Head Office - V8.1 | Copyright ©{" "}
+          {new Date().getFullYear()} All rights reserved.
+        </p>
+      </div>
     );
   }
 
   return (
     <div className="space-y-4">
       <h1 className="text-xl font-semibold tracking-tight text-foreground">
-        {editId ? "Edit product" : duplicateId ? "Duplicate product" : "Add new product"}
+        {title}
       </h1>
       {form}
     </div>

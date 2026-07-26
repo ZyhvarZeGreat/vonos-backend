@@ -78,9 +78,9 @@ export function CursorPaginationBar({
 
   const pageButtonClass = (active: boolean, enabled: boolean) =>
     cn(
-      "flex h-8 min-w-8 items-center justify-center rounded-md px-2 text-sm font-medium transition-colors",
+      "flex h-8 min-w-8 items-center justify-center rounded-md border border-border bg-card px-2 text-sm font-medium transition-colors",
       active
-        ? "bg-[var(--color-brand-primary)] text-white"
+        ? "border-[var(--color-brand-primary)] bg-[var(--color-brand-primary)] text-white"
         : enabled
           ? "text-foreground hover:bg-[var(--color-surface-muted)]"
           : "cursor-not-allowed text-muted opacity-50",
@@ -114,7 +114,7 @@ export function CursorPaginationBar({
           type="button"
           disabled={!canGoPrev || isBusy}
           onClick={onPrev}
-          className="flex h-8 w-8 items-center justify-center rounded-md text-muted hover:bg-[var(--color-surface-muted)] hover:text-foreground disabled:opacity-40"
+          className="flex h-8 w-8 items-center justify-center rounded-md border border-border bg-card text-muted hover:bg-[var(--color-surface-muted)] hover:text-foreground disabled:opacity-40"
           aria-label="Previous page"
         >
           <ChevronLeft className="h-4 w-4" />
@@ -151,7 +151,7 @@ export function CursorPaginationBar({
           type="button"
           disabled={!canGoNext || isBusy}
           onClick={onNext}
-          className="flex h-8 w-8 items-center justify-center rounded-md text-muted hover:bg-[var(--color-surface-muted)] hover:text-foreground disabled:opacity-40"
+          className="flex h-8 w-8 items-center justify-center rounded-md border border-border bg-card text-muted hover:bg-[var(--color-surface-muted)] hover:text-foreground disabled:opacity-40"
           aria-label="Next page"
         >
           <ChevronRight className="h-4 w-4" />

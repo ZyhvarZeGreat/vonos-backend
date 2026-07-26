@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { Plus, Trash2 } from "lucide-react";
 import type { JobLabour, JobMaterial } from "@vonos/types";
 import { Button } from "@/components/atoms/Button";
@@ -48,17 +48,10 @@ interface JobCostPanelProps {
   onJobChange: (job: JobDetail) => void;
 }
 
-function invalidateJobQueries(
-  queryClient: ReturnType<typeof useQueryClient>,
-  jobId: string,
-) {
-  void queryClient.invalidateQueries({ queryKey: ["job"] });
-  void queryClient.invalidateQueries({ queryKey: ["jobs"] });
-  void queryClient.invalidateQueries({ queryKey: ["audit", "job", jobId] });
-}
+const JOB_COST_KEYS = (jobId: string) =>
+  [["job"], ["jobs"], ["audit", "job", jobId]] as const;
 
 export function JobMaterialsPanel({ job, tenantId, onJobChange }: JobCostPanelProps) {
-  const queryClient = useQueryClient();
   const [manualName, setManualName] = useState("");
   const [manualQty, setManualQty] = useState("1");
   const [manualUnitCost, setManualUnitCost] = useState("");
@@ -94,9 +87,9 @@ export function JobMaterialsPanel({ job, tenantId, onJobChange }: JobCostPanelPr
       sourceDepartment?: string;
       supplierId?: string;
     }) => addJobMaterial(job.id, body),
+    invalidateKeys: JOB_COST_KEYS(job.id),
     onSuccess: (updated) => {
       onJobChange(updated);
-      invalidateJobQueries(queryClient, job.id);
       setManualName("");
       setManualQty("1");
       setManualUnitCost("");
@@ -131,17 +124,25 @@ export function JobMaterialsPanel({ job, tenantId, onJobChange }: JobCostPanelPr
       materialId: string;
       patch: { quantity?: number; unitCost?: number };
     }) => updateJobMaterial(job.id, materialId, patch),
+    invalidateKeys: JOB_COST_KEYS(job.id),
     onSuccess: (updated) => {
       onJobChange(updated);
-      invalidateJobQueries(queryClient, job.id);
     },
   });
 
   const removeMutation = useAppMutation({
     mutationFn: (materialId: string) => removeJobMaterial(job.id, materialId),
+    optimistic: {
+      keys: JOB_COST_KEYS(job.id),
+      update: (_qc, materialId) => {
+        onJobChange({
+          ...job,
+          materials: job.materials.filter((row) => row.id !== materialId),
+        });
+      },
+    },
     onSuccess: (updated) => {
       onJobChange(updated);
-      invalidateJobQueries(queryClient, job.id);
     },
   });
 
@@ -411,7 +412,6 @@ function MaterialRow({
 }
 
 export function JobLabourPanel({ job, tenantId, onJobChange }: JobCostPanelProps) {
-  const queryClient = useQueryClient();
   const [staffId, setStaffId] = useState("");
   const [hours, setHours] = useState("1");
   const [rate, setRate] = useState("");
@@ -440,9 +440,9 @@ export function JobLabourPanel({ job, tenantId, onJobChange }: JobCostPanelProps
         hours: Number(hours) || 0,
         rate: Number(rate) || 0,
       }),
+    invalidateKeys: JOB_COST_KEYS(job.id),
     onSuccess: (updated) => {
       onJobChange(updated);
-      invalidateJobQueries(queryClient, job.id);
       setHours("1");
       setRate("");
     },
@@ -456,17 +456,25 @@ export function JobLabourPanel({ job, tenantId, onJobChange }: JobCostPanelProps
       labourId: string;
       patch: { hours?: number; rate?: number };
     }) => updateJobLabour(job.id, labourId, patch),
+    invalidateKeys: JOB_COST_KEYS(job.id),
     onSuccess: (updated) => {
       onJobChange(updated);
-      invalidateJobQueries(queryClient, job.id);
     },
   });
 
   const removeMutation = useAppMutation({
     mutationFn: (labourId: string) => removeJobLabour(job.id, labourId),
+    optimistic: {
+      keys: JOB_COST_KEYS(job.id),
+      update: (_qc, labourId) => {
+        onJobChange({
+          ...job,
+          labourEntries: job.labourEntries.filter((row) => row.id !== labourId),
+        });
+      },
+    },
     onSuccess: (updated) => {
       onJobChange(updated);
-      invalidateJobQueries(queryClient, job.id);
     },
   });
 

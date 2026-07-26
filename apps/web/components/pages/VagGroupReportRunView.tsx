@@ -18,11 +18,12 @@ export function VagGroupReportRunView() {
   const params = useParams<{ reportId: string }>();
   const reportId = params.reportId;
   const entry = reportEntryById(reportId);
-  const { dateRange, setDateRange, bounds } = useListPageFilters({
-    defaultDateRange: "last_7_days",
-    unboundedAllTime: false,
-    isolateDateRange: true,
-  });
+  const { dateRange, setDateRange, customDateRange, setCustomDateRange, bounds } =
+    useListPageFilters({
+      defaultDateRange: "last_7_days",
+      unboundedAllTime: false,
+      isolateDateRange: true,
+    });
   const periodLabel = ledgerChartSubtitle(dateRange);
 
   const { data, isLoading, error, isFetching } = useQuery({
@@ -67,7 +68,12 @@ export function VagGroupReportRunView() {
           </Link>
           <div className="flex items-center gap-3">
             {isFetching && data ? <Spinner className="text-muted" /> : null}
-            <DateRangeDropdown value={dateRange} onChange={setDateRange} />
+            <DateRangeDropdown
+              value={dateRange}
+              onChange={setDateRange}
+              customValue={customDateRange}
+              onCustomChange={setCustomDateRange}
+            />
           </div>
         </div>
 

@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { Eye, CheckCircle, RotateCcw } from "lucide-react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import type { Sale, SaleReturnDisposition } from "@vonos/types";
 import { Button } from "@/components/atoms/Button";
 import { Select } from "@/components/atoms/Select";
@@ -21,6 +21,7 @@ import {
   MODAL_REF_STALE_MS,
   modalKeys,
 } from "@/lib/query/modalQueryKeys";
+import { patchEntityInQueries } from "@/lib/query/optimistic";
 import {
   saleDocumentKind,
   saleToInvoiceContact,
@@ -49,7 +50,6 @@ export function SaleRecordModal({
 }: SaleRecordModalProps) {
   const isHq6 = useIsVaHq6();
   const { tenantId, tenantName, tenantCode } = useRouteTenant();
-  const queryClient = useQueryClient();
   const [docPreviewOpen, setDocPreviewOpen] = useState(false);
   const [returnOpen, setReturnOpen] = useState(false);
   const [disposition, setDisposition] = useState<SaleReturnDisposition>("refunded");
@@ -135,11 +135,20 @@ export function SaleRecordModal({
       return finalizeSale(tenantId, saleId);
     },
     successMessage: "Sale finalized",
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: modalKeys.saleView(tenantId, saleId) });
-      await queryClient.invalidateQueries({ queryKey: ["sales"] });
-      await queryClient.invalidateQueries({ queryKey: ["items"] });
-      await queryClient.invalidateQueries({ queryKey: ["ledgerTablePage"] });
+    optimistic: {
+      keys: [
+        modalKeys.saleView(tenantId, saleId),
+        ["sales"],
+        ["items"],
+        ["ledgerTablePage"],
+      ],
+      update: (qc) => {
+        if (!saleId) return;
+        patchEntityInQueries(qc, ["sales"], saleId, {
+          recordStatus: "completed",
+          status: "Completed",
+        });
+      },
     },
   });
 
@@ -152,14 +161,16 @@ export function SaleRecordModal({
       });
     },
     successMessage: "Return recorded",
-    onSuccess: async () => {
+    invalidateKeys: [
+      modalKeys.saleView(tenantId, saleId),
+      ["sales"],
+      ["returns"],
+      ["items"],
+      ["ledgerTablePage"],
+    ],
+    onSuccess: () => {
       setReturnOpen(false);
       setReturnNotes("");
-      await queryClient.invalidateQueries({ queryKey: modalKeys.saleView(tenantId, saleId) });
-      await queryClient.invalidateQueries({ queryKey: ["sales"] });
-      await queryClient.invalidateQueries({ queryKey: ["returns"] });
-      await queryClient.invalidateQueries({ queryKey: ["items"] });
-      await queryClient.invalidateQueries({ queryKey: ["ledgerTablePage"] });
     },
   });
 

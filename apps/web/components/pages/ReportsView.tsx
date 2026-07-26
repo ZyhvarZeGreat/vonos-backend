@@ -28,6 +28,8 @@ import { useUiStore } from "@/stores/uiStore";
 import { Spinner } from "@/components/atoms/Spinner";
 import { useIsVaHq6 } from "@/lib/hooks/useIsVaHq6";
 import { cn } from "@/lib/utils/cn";
+import { UposNavTabs } from "@/components/upos/UposNavTabs";
+import { Hq6PageHeader } from "@/components/hq6/Hq6Chrome";
 
 export { REPORT_TABS } from "@/lib/registries/reportTabs";
 
@@ -82,12 +84,16 @@ function ChartHeader({
   onExport,
   dateRange,
   onDateRangeChange,
+  customDateRange,
+  onCustomDateRangeChange,
 }: {
   title: string;
   subtitle: string;
   onExport: () => void;
   dateRange: ReturnType<typeof useListPageFilters>["dateRange"];
   onDateRangeChange: ReturnType<typeof useListPageFilters>["setDateRange"];
+  customDateRange: ReturnType<typeof useListPageFilters>["customDateRange"];
+  onCustomDateRangeChange: ReturnType<typeof useListPageFilters>["setCustomDateRange"];
 }) {
   return (
     <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
@@ -96,7 +102,12 @@ function ChartHeader({
         <p className="text-sm text-muted">{subtitle}</p>
       </div>
       <div className="flex items-center gap-2">
-        <DateRangeDropdown value={dateRange} onChange={onDateRangeChange} />
+        <DateRangeDropdown
+          value={dateRange}
+          onChange={onDateRangeChange}
+          customValue={customDateRange}
+          onCustomChange={onCustomDateRangeChange}
+        />
         <button
           type="button"
           onClick={onExport}
@@ -152,6 +163,8 @@ export function ReportsDashboardBody({
   error,
   dateRange,
   setDateRange,
+  customDateRange,
+  setCustomDateRange,
   onEntityReportsClick,
 }: {
   tenantCode?: TenantCode;
@@ -162,6 +175,8 @@ export function ReportsDashboardBody({
   error: Error | null;
   dateRange: ReturnType<typeof useListPageFilters>["dateRange"];
   setDateRange: ReturnType<typeof useListPageFilters>["setDateRange"];
+  customDateRange: ReturnType<typeof useListPageFilters>["customDateRange"];
+  setCustomDateRange: ReturnType<typeof useListPageFilters>["setCustomDateRange"];
   /** VAG group: navigate to /admin/reports/[code] */
   onEntityReportsClick?: (tenantCode: string) => void;
 }) {
@@ -279,6 +294,8 @@ export function ReportsDashboardBody({
                 onExport={() => openExportModal()}
                 dateRange={dateRange}
                 onDateRangeChange={setDateRange}
+                customDateRange={customDateRange}
+                onCustomDateRangeChange={setCustomDateRange}
               />
               <ChartPanel
                 title=""
@@ -309,6 +326,8 @@ export function ReportsDashboardBody({
             onExport={() => openExportModal()}
             dateRange={dateRange}
             onDateRangeChange={setDateRange}
+            customDateRange={customDateRange}
+            onCustomDateRangeChange={setCustomDateRange}
           />
           <DataTable<ReportsTableRow & { id: string }>
             data={entityRollupRows(dashboard.byEntity)}
@@ -366,6 +385,8 @@ export function ReportsDashboardBody({
             onExport={() => openExportModal()}
             dateRange={dateRange}
             onDateRangeChange={setDateRange}
+            customDateRange={customDateRange}
+            onCustomDateRangeChange={setCustomDateRange}
           />
           <DataTable<ReportsTableRow & { id: string }>
             data={dashboard.table.rows.map((row, index) => ({
@@ -427,7 +448,13 @@ export function ReportsView({ tenantCode }: { tenantCode: TenantCode }) {
   const archetype = entry?.archetype ?? "stock";
   const tabs = REPORT_TABS[archetype] ?? REPORT_TABS.stock;
   const [activeTab, setActiveTab] = useState(tabs[0]?.id ?? "valuation");
-  const { dateRange, setDateRange, bounds } = useListPageFilters({
+  const {
+    dateRange,
+    setDateRange,
+    customDateRange,
+    setCustomDateRange,
+    bounds,
+  } = useListPageFilters({
     defaultDateRange: "last_7_days",
     unboundedAllTime: false,
     isolateDateRange: true,
@@ -455,46 +482,90 @@ export function ReportsView({ tenantCode }: { tenantCode: TenantCode }) {
   });
 
   return (
-    <div className="space-y-6">
+    <div className={isHq6 ? "hq6-page" : "space-y-6"}>
+      {isHq6 ? <Hq6PageHeader title="Reports" /> : null}
       {!isHq6 ? <EntityContextBanner module="Reports" /> : null}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div
-          className={
-            isHq6
-              ? "hq6-tab-row max-w-full overflow-x-auto"
-              : "flex gap-1 rounded-lg border border-border bg-[var(--color-surface-muted)] p-1"
-          }
-        >
-          {tabs.map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => setActiveTab(tab.id)}
-              className={
-                isHq6
-                  ? cn("hq6-tab shrink-0", activeTab === tab.id && "hq6-tab-active")
-                  : cn(
-                      "rounded-md px-4 py-2 text-sm font-medium transition-colors",
-                      activeTab === tab.id
-                        ? "bg-card text-foreground shadow-sm"
-                        : "text-muted hover:text-foreground",
-                    )
-              }
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
-        <DateRangeDropdown value={dateRange} onChange={setDateRange} />
+      <div
+        className={
+          isHq6
+            ? "content space-y-4"
+            : "flex flex-wrap items-center justify-between gap-3"
+        }
+      >
+        {isHq6 ? (
+          <div className="row no-print">
+            <div className="col-md-12">
+              <UposNavTabs
+                tabs={tabs.map((tab) => ({
+                  id: tab.id,
+                  label: tab.label,
+                  active: activeTab === tab.id,
+                  onClick: () => setActiveTab(tab.id),
+                }))}
+                actions={
+                  <DateRangeDropdown
+                    value={dateRange}
+                    onChange={setDateRange}
+                    customValue={customDateRange}
+                    onCustomChange={setCustomDateRange}
+                  />
+                }
+              >
+                <div className="tab-pane active">
+                  <ReportsDashboardBody
+                    tenantCode={tenantCode}
+                    dashboard={query.data}
+                    isLoading={query.isLoading || query.isFetching}
+                    error={query.error}
+                    dateRange={dateRange}
+                    setDateRange={setDateRange}
+                    customDateRange={customDateRange}
+                    setCustomDateRange={setCustomDateRange}
+                  />
+                </div>
+              </UposNavTabs>
+            </div>
+          </div>
+        ) : (
+          <>
+            <div className="flex gap-1 rounded-lg border border-border bg-[var(--color-surface-muted)] p-1">
+              {tabs.map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setActiveTab(tab.id)}
+                  className={cn(
+                    "rounded-md px-4 py-2 text-sm font-medium transition-colors",
+                    activeTab === tab.id
+                      ? "bg-card text-foreground shadow-sm"
+                      : "text-muted hover:text-foreground",
+                  )}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+            <DateRangeDropdown
+              value={dateRange}
+              onChange={setDateRange}
+              customValue={customDateRange}
+              onCustomChange={setCustomDateRange}
+            />
+          </>
+        )}
       </div>
-      <ReportsDashboardBody
-        tenantCode={tenantCode}
-        dashboard={query.data}
-        isLoading={query.isLoading || query.isFetching}
-        error={query.error}
-        dateRange={dateRange}
-        setDateRange={setDateRange}
-      />
+      {!isHq6 ? (
+        <ReportsDashboardBody
+          tenantCode={tenantCode}
+          dashboard={query.data}
+          isLoading={query.isLoading || query.isFetching}
+          error={query.error}
+          dateRange={dateRange}
+          setDateRange={setDateRange}
+          customDateRange={customDateRange}
+          setCustomDateRange={setCustomDateRange}
+        />
+      ) : null}
     </div>
   );
 }
@@ -505,7 +576,13 @@ export function WarehouseReportsView() {
 
 export function VagGroupReportsView() {
   const router = useRouter();
-  const { dateRange, setDateRange, bounds } = useListPageFilters({
+  const {
+    dateRange,
+    setDateRange,
+    customDateRange,
+    setCustomDateRange,
+    bounds,
+  } = useListPageFilters({
     defaultDateRange: "last_7_days",
     unboundedAllTime: false,
     isolateDateRange: true,
@@ -610,7 +687,12 @@ export function VagGroupReportsView() {
             </button>
           ))}
         </div>
-        <DateRangeDropdown value={dateRange} onChange={setDateRange} />
+        <DateRangeDropdown
+          value={dateRange}
+          onChange={setDateRange}
+          customValue={customDateRange}
+          onCustomChange={setCustomDateRange}
+        />
       </div>
 
       {activeReportId === "overview" ? (
@@ -621,6 +703,8 @@ export function VagGroupReportsView() {
           error={overviewQuery.error ?? coreQuery.error}
           dateRange={dateRange}
           setDateRange={setDateRange}
+          customDateRange={customDateRange}
+          setCustomDateRange={setCustomDateRange}
           onEntityReportsClick={(code) => router.push(`/admin/reports/${code}`)}
         />
       ) : activeEntry ? (

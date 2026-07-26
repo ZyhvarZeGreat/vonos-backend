@@ -10,10 +10,17 @@ import {
 import { createSupplier } from "@/lib/api/suppliers";
 import { getUsers } from "@/lib/api/users";
 import { TYPEAHEAD_PAGE_SIZE } from "@/lib/api/fetchAllPages";
+import { withOptimistic } from "@/lib/hooks/useAppMutation";
 import {
   MODAL_REF_STALE_MS,
   modalKeys,
 } from "@/lib/query/modalQueryKeys";
+import {
+  optimisticTempId,
+  prependEntityInQueries,
+  removeEntityFromQueries,
+} from "@/lib/query/optimistic";
+import type { SupplierListRow } from "@vonos/types";
 import { toast } from "@/stores/toastStore";
 
 function resetAddSupplierForm() {
@@ -59,6 +66,8 @@ export function Hq6AddSupplierModal({
   const [form, setForm] = useState(resetAddSupplierForm);
   const [moreOpen, setMoreOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  /** Local dismiss so the dialog closes before the network returns; reopen on error. */
+  const [dismissed, setDismissed] = useState(false);
 
   const { data: users = [] } = useQuery({
     queryKey: modalKeys.usersFilter(tenantId),
@@ -69,6 +78,7 @@ export function Hq6AddSupplierModal({
 
   useEffect(() => {
     if (!open) return;
+    setDismissed(false);
     setForm(resetAddSupplierForm());
     setMoreOpen(false);
   }, [open]);
@@ -119,8 +129,57 @@ export function Hq6AddSupplierModal({
       .join(", ");
 
     setSaving(true);
+    const notes =
+      [
+        form.contactId.trim()
+          ? `Contact ID: ${form.contactId.trim()}`
+          : "",
+        form.alternateNumber.trim()
+          ? `Alt: ${form.alternateNumber.trim()}`
+          : "",
+        form.landline.trim() ? `Landline: ${form.landline.trim()}` : "",
+        form.payTerm.trim() ? `Pay term: ${form.payTerm.trim()}` : "",
+        form.creditLimit.trim()
+          ? `Credit limit: ${form.creditLimit.trim()}`
+          : "",
+      ]
+        .filter(Boolean)
+        .join(" | ") || null;
+    const now = new Date().toISOString();
+    const tempId = optimisticTempId("supplier");
+    const opt = withOptimistic<SupplierListRow, void>(queryClient, {
+      keys: [["suppliers"]],
+      update: (qc) => {
+        prependEntityInQueries(qc, ["suppliers"], {
+          id: tempId,
+          tenantId,
+          name,
+          contactName: composed || null,
+          email: form.email.trim() || null,
+          phone: form.mobile.trim() || null,
+          address: address || null,
+          locationCode: null,
+          notes,
+          taxNumber: form.taxNumber.trim() || null,
+          openingBalance: balance,
+          assignedToUserId: form.assignedToUserId || null,
+          createdAt: now,
+          updatedAt: now,
+          category: "",
+          leadTimeDays: 0,
+          location: "",
+          rating: 0,
+        } satisfies SupplierListRow);
+        setDismissed(true);
+      },
+      commit: (qc, data) => {
+        removeEntityFromQueries(qc, ["suppliers"], tempId);
+        prependEntityInQueries(qc, ["suppliers"], data);
+      },
+    });
+    const ctx = await opt.onMutate(undefined);
     try {
-      await createSupplier({
+      const created = await createSupplier({
         name,
         contactName: composed || undefined,
         email: form.email.trim() || undefined,
@@ -129,39 +188,27 @@ export function Hq6AddSupplierModal({
         taxNumber: form.taxNumber.trim() || null,
         openingBalance: balance,
         assignedToUserId: form.assignedToUserId || undefined,
-        notes:
-          [
-            form.contactId.trim()
-              ? `Contact ID: ${form.contactId.trim()}`
-              : "",
-            form.alternateNumber.trim()
-              ? `Alt: ${form.alternateNumber.trim()}`
-              : "",
-            form.landline.trim() ? `Landline: ${form.landline.trim()}` : "",
-            form.payTerm.trim() ? `Pay term: ${form.payTerm.trim()}` : "",
-            form.creditLimit.trim()
-              ? `Credit limit: ${form.creditLimit.trim()}`
-              : "",
-          ]
-            .filter(Boolean)
-            .join(" | ") || undefined,
+        notes: notes ?? undefined,
       });
+      opt.onSuccess(created, undefined);
       toast.success("Supplier added");
-      await queryClient.invalidateQueries({ queryKey: ["suppliers"] });
       onSaved?.();
       onClose();
     } catch (err) {
+      opt.onError(err, undefined, ctx);
+      setDismissed(false);
       toast.error(
         err instanceof Error ? err.message : "Failed to add supplier",
       );
     } finally {
+      await opt.onSettled();
       setSaving(false);
     }
   };
 
   return (
     <Hq6Modal
-      open={open}
+      open={open && !dismissed}
       onClose={onClose}
       title="Add a new contact"
       size="xl"

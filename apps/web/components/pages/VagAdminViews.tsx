@@ -35,11 +35,12 @@ function formatGroupKpi(kpi: ReportsKpi): string {
 }
 
 export function VagGroupOverview() {
-  const { dateRange, setDateRange, bounds } = useListPageFilters({
-    defaultDateRange: "last_7_days",
-    unboundedAllTime: false,
-    isolateDateRange: true,
-  });
+  const { dateRange, setDateRange, customDateRange, setCustomDateRange, bounds } =
+    useListPageFilters({
+      defaultDateRange: "last_7_days",
+      unboundedAllTime: false,
+      isolateDateRange: true,
+    });
   const rangeKey = [bounds?.from, bounds?.to] as const;
 
   const summaryQuery = useQuery({
@@ -130,7 +131,12 @@ export function VagGroupOverview() {
         <p className="text-sm text-muted">
           Showing <span className="font-medium text-foreground">{periodLabel}</span>
         </p>
-        <DateRangeDropdown value={dateRange} onChange={setDateRange} />
+        <DateRangeDropdown
+          value={dateRange}
+          onChange={setDateRange}
+          customValue={customDateRange}
+          onCustomChange={setCustomDateRange}
+        />
       </div>
 
       <div className="hq6-card px-4 py-3 text-sm text-[#6b7280]">

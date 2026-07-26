@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { Users, Wallet } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/atoms/Button";
@@ -28,12 +29,16 @@ import {
 } from "@/lib/registries/hrmTabs";
 import { useTenantStore } from "@/stores/tenantStore";
 import { formatCurrency } from "@/lib/utils/formatCurrency";
+import { tenantListPath } from "@/lib/utils/tenantRoutes";
 
 export { HRM_TABS, HRM_SLUG_TO_TAB, type HrmTab } from "@/lib/registries/hrmTabs";
 
 function HrmDashboardPanel({ onOpenPayroll }: { onOpenPayroll: () => void }) {
-  const { tenantId } = useRouteTenant();
+  const { tenantId, tenantCode } = useRouteTenant();
   const isHq6 = useIsVaHq6();
+  const payrollHref = tenantCode
+    ? `${tenantListPath(tenantCode, "hrm")}/my-payrolls`
+    : null;
   const statsQuery = useQuery({
     queryKey: ["workforce", tenantId, "stats"],
     enabled: Boolean(tenantId),
@@ -89,7 +94,14 @@ function HrmDashboardPanel({ onOpenPayroll }: { onOpenPayroll: () => void }) {
             </table>
           </div>
         </div>
-        {isHq6 ? (
+        {isHq6 && payrollHref ? (
+          <Link
+            href={payrollHref}
+            className="hq6-btn shrink-0 bg-[var(--hq6-success,#5cb85c)] text-white hover:opacity-90"
+          >
+            My Payrolls
+          </Link>
+        ) : isHq6 ? (
           <button
             type="button"
             className="hq6-btn shrink-0 bg-[var(--hq6-success,#5cb85c)] text-white hover:opacity-90"
@@ -165,6 +177,7 @@ function HrmDashboardPanel({ onOpenPayroll }: { onOpenPayroll: () => void }) {
         </div>
       </div>
 
+      {isHq6 ? null : (
       <div className="grid gap-3 lg:grid-cols-2">
         <div className={card}>
           <p className={head}>Today&apos;s Attendance</p>
@@ -209,6 +222,7 @@ function HrmDashboardPanel({ onOpenPayroll }: { onOpenPayroll: () => void }) {
           </div>
         </div>
       </div>
+      )}
     </div>
   );
 }
@@ -229,6 +243,12 @@ export function HrmPageView({
   const visibleTabs = useMemo(
     () =>
       HRM_TABS.filter((tab) => {
+        if (isHq6) {
+          return ![
+            "pay-components",
+            "hr-people",
+          ].includes(tab.id);
+        }
         if (fullTabs) return true;
         return ![
           "leave-type",
@@ -309,6 +329,7 @@ export function HrmPageView({
       showSearch={false}
       hq6Title="HRM"
       hq6Subtitle="Human resource management"
+      hq6PageChrome={!isHq6}
     >
       {tabContent}
     </ListPageShell>

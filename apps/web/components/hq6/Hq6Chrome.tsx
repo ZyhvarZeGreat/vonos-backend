@@ -12,10 +12,14 @@ export function Hq6PageHeader({
   subtitle?: string;
 }) {
   return (
-    <section className="hq6-content-header">
-      <h1>
+    <section className="content-header hq6-content-header">
+      <h1 className="tw-text-xl md:tw-text-3xl tw-font-bold tw-text-black">
         {title}
-        {subtitle ? <small>{subtitle}</small> : null}
+        {subtitle ? (
+          <small className="tw-text-sm md:tw-text-base tw-text-gray-700 tw-font-semibold">
+            {subtitle}
+          </small>
+        ) : null}
       </h1>
     </section>
   );
@@ -55,19 +59,29 @@ export function Hq6FormShell({
   subtitle,
   children,
   multiCard = false,
+  className,
 }: {
   title: string;
   subtitle?: string;
   children: ReactNode;
   /** When true, children render as sibling cards under the header (no single wrapper card). */
   multiCard?: boolean;
+  className?: string;
 }) {
   return (
-    <div className="hq6-page">
+    <div className={cn("hq6-page", className)}>
       <Hq6PageHeader title={title} subtitle={subtitle} />
-      {multiCard ? children : <div className="hq6-card p-4 md:p-6">{children}</div>}
+      <section className="content">
+        {multiCard ? (
+          children
+        ) : (
+          <div className="box-primary tw-mb-4 tw-transition-all tw-duration-200 tw-bg-white tw-shadow-sm tw-rounded-xl tw-ring-1 hover:tw-shadow-md tw-ring-gray-200">
+            <div className="tw-p-2 sm:tw-p-3 md:p-6">{children}</div>
+          </div>
+        )}
+      </section>
       <p className="hq6-footer">
-        Vonos Autos Head Office - V6.8 | Copyright © {new Date().getFullYear()} All
+        Vonos Autos Head Office - V8.1 | Copyright © {new Date().getFullYear()} All
         rights reserved.
       </p>
     </div>
@@ -91,7 +105,7 @@ export function Hq6PageFrame({
       {filters ? <Hq6FiltersCard>{filters}</Hq6FiltersCard> : null}
       {children}
       <p className="hq6-footer">
-        Vonos Autos Head Office - V6.8 | Copyright © {new Date().getFullYear()} All
+        Vonos Autos Head Office - V8.1 | Copyright © {new Date().getFullYear()} All
         rights reserved.
       </p>
     </div>

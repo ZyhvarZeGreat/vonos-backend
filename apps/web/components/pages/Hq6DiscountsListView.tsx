@@ -1,7 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useMemo, useState, useCallback } from "react";
 import { Info } from "lucide-react";
 import type { Discount, DiscountType } from "@vonos/types";
 import { DataTable, type ColumnConfig } from "@/components/organisms/DataTable";
@@ -27,7 +26,15 @@ import { useBusinessLocationOptions } from "@/lib/hooks/useBusinessLocationOptio
 import { useRouteTenant, useTenantId } from "@/lib/hooks/useRouteTenant";
 import { useServerListPage } from "@/lib/hooks/useServerListPage";
 import { HQ6_TABLE_PAGE_SIZE } from "@/lib/api/fetchAllPages";
+import { useListExport } from "@/lib/hooks/useListExport";
+import {
+  optimisticTempId,
+  patchEntityInQueries,
+  prependEntityInQueries,
+  removeEntityFromQueries,
+} from "@/lib/query/optimistic";
 import { formatCurrency } from "@/lib/utils/formatCurrency";
+import { formatHq6DateTime } from "@/lib/utils/hq6Format";
 
 function emptyDiscountForm() {
   return {
@@ -52,7 +59,6 @@ export function Hq6DiscountsListView() {
   const tenantId = useTenantId();
   const { config } = useRouteTenant();
   const { options: locationOptions } = useBusinessLocationOptions(config);
-  const queryClient = useQueryClient();
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Discount | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Discount | null>(null);
@@ -124,11 +130,52 @@ export function Hq6DiscountsListView() {
       return createDiscount(tenantId, payload);
     },
     successMessage: editing ? "Discount updated" : "Discount created",
-    onSuccess: async () => {
-      setFormOpen(false);
+    optimistic: {
+      keys: [["discounts"]],
+      update: (qc) => {
+        const startsAt = form.startsAt
+          ? new Date(form.startsAt).toISOString()
+          : null;
+        const endsAt = form.endsAt
+          ? new Date(form.endsAt).toISOString()
+          : null;
+        const amount = Number(form.amount) || 0;
+        if (editing) {
+          patchEntityInQueries(qc, ["discounts"], editing.id, {
+            name: form.name.trim(),
+            discountType: form.discountType,
+            amount,
+            isActive: form.isActive,
+            startsAt,
+            endsAt,
+          });
+        } else if (tenantId) {
+          const now = new Date().toISOString();
+          prependEntityInQueries(qc, ["discounts"], {
+            id: optimisticTempId("discount"),
+            tenantId,
+            name: form.name.trim(),
+            discountType: form.discountType,
+            amount,
+            isActive: form.isActive,
+            startsAt,
+            endsAt,
+            createdAt: now,
+            updatedAt: now,
+          } satisfies Discount);
+        }
+        setFormOpen(false);
+      },
+      commit: (qc, data) => {
+        prependEntityInQueries(qc, ["discounts"], data);
+      },
+    },
+    onSuccess: () => {
       setEditing(null);
       setForm(emptyDiscountForm());
-      await queryClient.invalidateQueries({ queryKey: ["discounts"] });
+    },
+    onError: () => {
+      setFormOpen(true);
     },
   });
 
@@ -138,14 +185,78 @@ export function Hq6DiscountsListView() {
       await deleteDiscount(tenantId, deleteTarget.id);
     },
     successMessage: "Discount deleted",
-    onSuccess: async () => {
+    optimistic: {
+      keys: [["discounts"]],
+      update: (qc) => {
+        if (!deleteTarget) return;
+        removeEntityFromQueries(qc, ["discounts"], deleteTarget.id);
+      },
+    },
+    onSuccess: () => {
       setDeleteTarget(null);
-      await queryClient.invalidateQueries({ queryKey: ["discounts"] });
     },
   });
 
   const columns: ColumnConfig<Discount>[] = useMemo(
     () => [
+      {
+        key: "name",
+        header: "Name",
+        render: (row) => <span className="font-medium">{row.name}</span>,
+      },
+      {
+        key: "startsAt",
+        header: "Starts At",
+        sortValue: (row) =>
+          row.startsAt ? new Date(row.startsAt).getTime() : 0,
+        render: (row) =>
+          row.startsAt ? formatHq6DateTime(row.startsAt) : "",
+      },
+      {
+        key: "endsAt",
+        header: "Ends At",
+        sortValue: (row) => (row.endsAt ? new Date(row.endsAt).getTime() : 0),
+        render: (row) =>
+          row.endsAt ? formatHq6DateTime(row.endsAt) : "",
+      },
+      {
+        key: "amount",
+        header: "Discount Amount",
+        render: (row) =>
+          row.discountType === "percentage"
+            ? `${row.amount}%`
+            : formatCurrency(row.amount),
+      },
+      {
+        key: "priority",
+        header: "Priority",
+        sortable: false,
+        render: () => "",
+      },
+      {
+        key: "brand",
+        header: "Brand",
+        sortable: false,
+        render: () => "",
+      },
+      {
+        key: "category",
+        header: "Category",
+        sortable: false,
+        render: () => "",
+      },
+      {
+        key: "products",
+        header: "Products",
+        sortable: false,
+        render: () => "",
+      },
+      {
+        key: "location",
+        header: "Location",
+        sortable: false,
+        render: () => "",
+      },
       {
         key: "actions",
         header: "Action",
@@ -164,38 +275,6 @@ export function Hq6DiscountsListView() {
           />
         ),
       },
-      {
-        key: "name",
-        header: "Name",
-        render: (row) => <span className="font-medium">{row.name}</span>,
-      },
-      {
-        key: "discountType",
-        header: "Type",
-        render: (row) =>
-          row.discountType === "percentage" ? "Percentage" : "Fixed",
-      },
-      {
-        key: "amount",
-        header: "Amount",
-        render: (row) =>
-          row.discountType === "percentage"
-            ? `${row.amount}%`
-            : formatCurrency(row.amount),
-      },
-      {
-        key: "isActive",
-        header: "Status",
-        render: (row) => (
-          <span
-            className={
-              row.isActive ? "text-[var(--hq6-success)]" : "text-[#777]"
-            }
-          >
-            {row.isActive ? "Active" : "Inactive"}
-          </span>
-        ),
-      },
     ],
     [],
   );
@@ -210,6 +289,38 @@ export function Hq6DiscountsListView() {
     return items.filter((row) => row.name.toLowerCase().includes(q));
   }, [items, localSearch]);
 
+  const exportList = useListExport();
+  const handleExport = useCallback(() => {
+    exportList(
+      "discounts",
+      [
+        { key: "name", header: "Name" },
+        { key: "startsAt", header: "Starts At" },
+        { key: "endsAt", header: "Ends At" },
+        { key: "amount", header: "Discount Amount" },
+        { key: "priority", header: "Priority" },
+        { key: "brand", header: "Brand" },
+        { key: "category", header: "Category" },
+        { key: "products", header: "Products" },
+        { key: "location", header: "Location" },
+      ],
+      filtered.map((r) => ({
+        name: r.name,
+        startsAt: r.startsAt ? formatHq6DateTime(r.startsAt) : "",
+        endsAt: r.endsAt ? formatHq6DateTime(r.endsAt) : "",
+        amount:
+          r.discountType === "percentage"
+            ? `${r.amount}%`
+            : formatCurrency(r.amount),
+        priority: "",
+        brand: "",
+        category: "",
+        products: "",
+        location: "",
+      })),
+    );
+  }, [exportList, filtered]);
+
   const patchForm = (patch: Partial<ReturnType<typeof emptyDiscountForm>>) => {
     setForm((prev) => ({ ...prev, ...patch }));
   };
@@ -217,14 +328,19 @@ export function Hq6DiscountsListView() {
   return (
     <Hq6StandardListShell
       slug="discounts"
-      tabLabel="All discounts"
+      title="Discount"
+      tabLabel="Discount"
+      boxTitle=""
+      addLabel="Add"
       onAdd={openCreate}
+      onExport={handleExport}
       columnOptions={columnOptions}
       chrome={chrome}
       pageSize={pageSize}
       onPageSizeChange={setPageSize}
       searchValue={localSearch}
       onSearchChange={setLocalSearch}
+      searchPlaceholder="Search ..."
       pagination={{
         pageIndex,
         pageSize,
@@ -415,7 +531,7 @@ export function Hq6DiscountsListView() {
         isLoading={isLoading}
         isFetching={isFetching && !isLoading}
         error={error ? "Failed to load discounts." : null}
-        emptyState={{ message: "No discounts configured." }}
+        emptyState={{ message: "No data available in table" }}
       />
     </Hq6StandardListShell>
   );

@@ -211,146 +211,273 @@ export function Hq6SalesListView({
     );
   };
 
-  const columns: ColumnConfig<Sale>[] = useMemo(
-    () => [
-      {
-        key: "actions",
-        header: "Action",
-        sortable: false,
-        render: (row) => {
-          const isQuotation =
-            saleStatus === "quotation" || row.recordStatus === "quotation";
-          const isDraft =
-            saleStatus === "draft" || row.recordStatus === "draft";
-          const isProvisional = isQuotation || isDraft;
-          const items = isProvisional
-            ? [
-                {
-                  id: "view",
-                  label: "View",
-                  icon: <Eye size={15} strokeWidth={1.75} />,
-                  onClick: () => openRecord(row.id, row),
+  const actionColumn: ColumnConfig<Sale> = useMemo(
+    () => ({
+      key: "actions",
+      header: "Action",
+      sortable: false,
+      render: (row) => {
+        const isQuotation =
+          saleStatus === "quotation" || row.recordStatus === "quotation";
+        const isDraft =
+          saleStatus === "draft" || row.recordStatus === "draft";
+        const isProvisional = isQuotation || isDraft;
+        const items = isProvisional
+          ? [
+              {
+                id: "view",
+                label: "View",
+                icon: <Eye size={15} strokeWidth={1.75} />,
+                onClick: () => openRecord(row.id, row),
+              },
+              {
+                id: "edit",
+                label: "Edit",
+                icon: <FileEdit size={15} strokeWidth={1.75} />,
+                onClick: () =>
+                  router.push(
+                    `/${tenantCode}/${
+                      isQuotation ? "add-quotation" : "add-draft"
+                    }?edit=${row.id}`,
+                  ),
+              },
+              {
+                id: "print",
+                label: "Print",
+                icon: <Printer size={15} strokeWidth={1.75} />,
+                onClick: () => openRecord(row.id, row),
+              },
+              {
+                id: "convert",
+                label: "Convert to Proforma Invoice",
+                icon: <RefreshCw size={15} strokeWidth={1.75} />,
+                onClick: () => openRecord(row.id, row),
+              },
+              {
+                id: "delete",
+                label: "Delete",
+                icon: <Trash2 size={15} strokeWidth={1.75} />,
+                danger: true,
+                onClick: () => setDeleteTarget(row),
+              },
+              {
+                id: "copy_quotation",
+                label: isQuotation ? "Copy Quotation" : "Copy Draft",
+                icon: <Copy size={15} strokeWidth={1.75} />,
+                onClick: () =>
+                  router.push(
+                    `/${tenantCode}/${
+                      isQuotation ? "add-quotation" : "add-draft"
+                    }?edit=${row.id}&copy=1`,
+                  ),
+              },
+              {
+                id: "notify",
+                label: isQuotation
+                  ? "New quotation notification"
+                  : "New draft notification",
+                icon: <Mail size={15} strokeWidth={1.75} />,
+                onClick: () =>
+                  toast.info(
+                    isQuotation
+                      ? "Quotation notification queued"
+                      : "Draft notification queued",
+                  ),
+              },
+              {
+                id: "quote_url",
+                label: "View quote url",
+                icon: <Eye size={15} strokeWidth={1.75} />,
+                onClick: () => setInvoiceUrlSale(row),
+              },
+            ]
+          : [
+              { id: "view", label: "View", onClick: () => openRecord(row.id, row) },
+              {
+                id: "edit",
+                label: "Edit",
+                onClick: () =>
+                  router.push(`/${tenantCode}/add-sale?edit=${row.id}`),
+              },
+              {
+                id: "delete",
+                label: "Delete",
+                danger: true,
+                onClick: () => setDeleteTarget(row),
+              },
+              {
+                id: "edit_shipping",
+                label: "Edit Shipping",
+                onClick: () => openRecord(row.id, row),
+              },
+              {
+                id: "print",
+                label: "Print Invoice",
+                onClick: () => openRecord(row.id, row),
+              },
+              {
+                id: "view_payments",
+                label: "View Payments",
+                onClick: () => {
+                  if (tenantId) {
+                    prefetchSaleListModals(queryClient, tenantId, row.id);
+                  }
+                  setPaymentsSale(row);
                 },
-                {
-                  id: "edit",
-                  label: "Edit",
-                  icon: <FileEdit size={15} strokeWidth={1.75} />,
-                  onClick: () =>
-                    router.push(
-                      `/${tenantCode}/${
-                        isQuotation ? "add-quotation" : "add-draft"
-                      }?edit=${row.id}`,
-                    ),
-                },
-                {
-                  id: "print",
-                  label: "Print",
-                  icon: <Printer size={15} strokeWidth={1.75} />,
-                  onClick: () => openRecord(row.id, row),
-                },
-                {
-                  id: "convert",
-                  label: "Convert to Proforma Invoice",
-                  icon: <RefreshCw size={15} strokeWidth={1.75} />,
-                  onClick: () => openRecord(row.id, row),
-                },
-                {
-                  id: "delete",
-                  label: "Delete",
-                  icon: <Trash2 size={15} strokeWidth={1.75} />,
-                  danger: true,
-                  onClick: () => setDeleteTarget(row),
-                },
-                {
-                  id: "copy_quotation",
-                  label: isQuotation ? "Copy Quotation" : "Copy Draft",
-                  icon: <Copy size={15} strokeWidth={1.75} />,
-                  onClick: () =>
-                    router.push(
-                      `/${tenantCode}/${
-                        isQuotation ? "add-quotation" : "add-draft"
-                      }?edit=${row.id}&copy=1`,
-                    ),
-                },
-                {
-                  id: "notify",
-                  label: isQuotation
-                    ? "New quotation notification"
-                    : "New draft notification",
-                  icon: <Mail size={15} strokeWidth={1.75} />,
-                  onClick: () =>
-                    toast.info(
-                      isQuotation
-                        ? "Quotation notification queued"
-                        : "Draft notification queued",
-                    ),
-                },
-                {
-                  id: "quote_url",
-                  label: "View quote url",
-                  icon: <Eye size={15} strokeWidth={1.75} />,
-                  onClick: () => setInvoiceUrlSale(row),
-                },
-              ]
-            : [
-                { id: "view", label: "View", onClick: () => openRecord(row.id, row) },
-                {
-                  id: "edit",
-                  label: "Edit",
-                  onClick: () =>
-                    router.push(`/${tenantCode}/add-sale?edit=${row.id}`),
-                },
-                {
-                  id: "delete",
-                  label: "Delete",
-                  danger: true,
-                  onClick: () => setDeleteTarget(row),
-                },
-                {
-                  id: "edit_shipping",
-                  label: "Edit Shipping",
-                  onClick: () => openRecord(row.id, row),
-                },
-                {
-                  id: "print",
-                  label: "Print Invoice",
-                  onClick: () => openRecord(row.id, row),
-                },
-                {
-                  id: "packing_slip",
-                  label: "Packing Slip",
-                  onClick: () => openRecord(row.id, row),
-                },
-                {
-                  id: "delivery_note",
-                  label: "Delivery Note",
-                  onClick: () => openRecord(row.id, row),
-                },
-                {
-                  id: "view_payments",
-                  label: "View Payments",
-                  onClick: () => {
-                    if (tenantId) {
-                      prefetchSaleListModals(queryClient, tenantId, row.id);
-                    }
-                    setPaymentsSale(row);
-                  },
-                },
-                {
-                  id: "sell_return",
-                  label: "Sell Return",
-                  onClick: () =>
-                    router.push(`/${tenantCode}/returns?saleId=${row.id}`),
-                },
-                {
-                  id: "invoice_url",
-                  label: "Invoice URL",
-                  onClick: () => setInvoiceUrlSale(row),
-                },
-              ];
-          return <Hq6ActionsMenu items={items} />;
-        },
+              },
+              {
+                id: "sell_return",
+                label: "Sell Return",
+                onClick: () =>
+                  router.push(`/${tenantCode}/returns?saleId=${row.id}`),
+              },
+              {
+                id: "invoice_url",
+                label: "Invoice URL",
+                onClick: () => setInvoiceUrlSale(row),
+              },
+            ];
+        return <Hq6ActionsMenu items={items} />;
       },
+    }),
+    [
+      openRecord,
+      queryClient,
+      router,
+      saleStatus,
+      tenantCode,
+      tenantId,
+    ],
+  );
+
+  const columns: ColumnConfig<Sale>[] = useMemo(() => {
+    const loc = (row: Sale) =>
+      businessLocationName(row.locationCode, config?.businessLocations) ?? "—";
+
+    // UPOS sells/draft · quotations — Action last
+    if (saleStatus === "draft" || saleStatus === "quotation") {
+      return [
+        {
+          key: "date",
+          header: "Date",
+          sortValue: (row) => new Date(row.createdAt).getTime(),
+          render: (row) => formatHq6DateTime(row.createdAt),
+        },
+        {
+          key: "reference",
+          header: "Reference No",
+          render: (row) => (
+            <span className="font-semibold">{row.reference}</span>
+          ),
+        },
+        {
+          key: "customerName",
+          header: "Customer name",
+          sortable: false,
+          render: (row) => row.customerName,
+        },
+        {
+          key: "customerPhone",
+          header: "Contact Number",
+          sortable: false,
+          render: (row) => row.customerPhone ?? "—",
+        },
+        {
+          key: "locationCode",
+          header: "Location",
+          sortable: false,
+          render: (row) => loc(row),
+        },
+        {
+          key: "itemCount",
+          header: "Total Items",
+          numeric: true,
+          sortValue: (row) => row.itemCount,
+          render: (row) => row.itemCount,
+        },
+        {
+          key: "addedBy",
+          header: "Added By",
+          sortable: false,
+          render: (row) => row.createdByName ?? "",
+        },
+        actionColumn,
+      ];
+    }
+
+    // UPOS sell/shipments
+    if (shipmentsOnly) {
+      return [
+        actionColumn,
+        {
+          key: "date",
+          header: "Date",
+          sortValue: (row) => new Date(row.createdAt).getTime(),
+          render: (row) => formatHq6DateTime(row.createdAt),
+        },
+        {
+          key: "reference",
+          header: "Invoice No.",
+          render: (row) => (
+            <span className="font-semibold">{row.reference}</span>
+          ),
+        },
+        {
+          key: "customerName",
+          header: "Customer name",
+          sortable: false,
+          render: (row) => row.customerName,
+        },
+        {
+          key: "customerPhone",
+          header: "Contact Number",
+          sortable: false,
+          render: (row) => row.customerPhone ?? "—",
+        },
+        {
+          key: "locationCode",
+          header: "Location",
+          sortable: false,
+          render: (row) => loc(row),
+        },
+        {
+          key: "deliveryPerson",
+          header: "Delivery Person",
+          sortable: false,
+          render: () => "",
+        },
+        {
+          key: "shippingStatus",
+          header: "Shipping Status",
+          sortable: false,
+          render: (row) => row.shippingStatus ?? "",
+        },
+        {
+          key: "paymentStatus",
+          header: "Payment Status",
+          render: (row) => (
+            <span
+              className={cn(
+                "hq6-pay-badge",
+                paymentBadgeClass(row.paymentStatus),
+              )}
+            >
+              {formatHq6PaymentStatus(row.paymentStatus)}
+            </span>
+          ),
+        },
+        {
+          key: "serviceStaff",
+          header: "Service staff",
+          sortable: false,
+          render: (row) => row.serviceStaffEmployeeName ?? "",
+        },
+      ];
+    }
+
+    // UPOS sell/index + List POS
+    return [
+      actionColumn,
       {
         key: "date",
         header: "Date",
@@ -385,8 +512,7 @@ export function Hq6SalesListView({
         key: "locationCode",
         header: "Location",
         sortable: false,
-        render: (row) =>
-          businessLocationName(row.locationCode, config?.businessLocations) ?? "—",
+        render: (row) => loc(row),
       },
       {
         key: "paymentStatus",
@@ -421,8 +547,7 @@ export function Hq6SalesListView({
         numeric: true,
         sortable: false,
         sortValue: (row) => row.totalPaid ?? 0,
-        render: (row) =>
-          formatHq6Currency(row.totalPaid ?? 0, row.currency),
+        render: (row) => formatHq6Currency(row.totalPaid ?? 0, row.currency),
       },
       {
         key: "sellDue",
@@ -432,9 +557,58 @@ export function Hq6SalesListView({
         sortValue: (row) => row.sellDue ?? 0,
         render: (row) => formatHq6Currency(row.sellDue ?? 0, row.currency),
       },
-    ],
-    [config?.businessLocations, openRecord, router, tenantCode],
-  );
+      {
+        key: "sellReturnDue",
+        header: "Sell Return Due",
+        numeric: true,
+        sortable: false,
+        render: () => formatHq6Currency(0),
+      },
+      {
+        key: "shippingStatus",
+        header: "Shipping Status",
+        sortable: false,
+        render: (row) => row.shippingStatus ?? "",
+      },
+      {
+        key: "itemCount",
+        header: "Total Items",
+        numeric: true,
+        sortValue: (row) => row.itemCount,
+        render: (row) => row.itemCount,
+      },
+      {
+        key: "addedBy",
+        header: "Added By",
+        sortable: false,
+        render: (row) => row.createdByName ?? "",
+      },
+      {
+        key: "sellNote",
+        header: "Sell note",
+        sortable: false,
+        render: (row) => row.notes ?? "",
+      },
+      {
+        key: "staffNote",
+        header: "Staff note",
+        sortable: false,
+        render: () => "",
+      },
+      {
+        key: "shippingDetails",
+        header: "Shipping Details",
+        sortable: false,
+        render: (row) => row.shippingAddress ?? "",
+      },
+      {
+        key: "serviceStaff",
+        header: "Service staff",
+        sortable: false,
+        render: (row) => row.serviceStaffEmployeeName ?? "",
+      },
+    ];
+  }, [actionColumn, config?.businessLocations, saleStatus, shipmentsOnly]);
 
   const columnOptions = useMemo(
     () =>
@@ -484,11 +658,41 @@ export function Hq6SalesListView({
     <>
       <Hq6StandardListShell
         slug={slug}
-        title={slug === "sales" ? "Sales" : tabLabel.replace(/^All /i, "")}
+        title={
+          slug === "pos"
+            ? "POS"
+            : slug === "sales"
+              ? "Sales"
+              : slug === "drafts"
+                ? "Drafts"
+                : slug === "quotations"
+                  ? "List quotations"
+                  : slug === "shipments"
+                    ? "Shipments"
+                    : tabLabel.replace(/^All /i, "")
+        }
         tabLabel={tabLabel}
+        boxTitle={
+          slug === "drafts" ||
+          slug === "quotations" ||
+          slug === "shipments"
+            ? ""
+            : undefined
+        }
+        addLabel={
+          slug === "drafts"
+            ? "Add Draft"
+            : slug === "quotations"
+              ? "Add Quotation"
+              : "Add"
+        }
         hidePrimaryAction={hidePrimaryAction}
         onAdd={() => {
           if (!tenantCode) return;
+          if (slug === "pos") {
+            router.push(`/${tenantCode}/pos-terminal`);
+            return;
+          }
           // HQ6 Add Sale / Draft / Quotation are full create pages, not modals.
           const createSlug =
             slug === "drafts"
@@ -504,6 +708,7 @@ export function Hq6SalesListView({
         searchValue={localSearch}
         onSearchChange={setLocalSearch}
         onSearchCommit={commitSearch}
+        searchPlaceholder="Search ..."
         columnOptions={columnOptions}
         chrome={chrome}
         filters={
@@ -562,9 +767,9 @@ export function Hq6SalesListView({
           </Hq6FilterGrid>
         }
         tableFooter={
-          sales.length > 0 ? (
+          saleStatus === "draft" || saleStatus === "quotation" ? null : (
             <div className="space-y-0">
-              {amountSummary ? (
+              {sales.length > 0 && amountSummary ? (
                 <Hq6ListAmountFooter
                   title="All matching"
                   cells={[
@@ -595,27 +800,32 @@ export function Hq6SalesListView({
                 />
               ) : null}
               <Hq6ListAmountFooter
-                title="Page total"
+                title="Total:"
                 cells={[
                   {
-                    label: "Total",
+                    label: "Total amount",
                     amount: totals.totalAmount,
-                    currency: sales[0]?.currency,
+                    currency: sales[0]?.currency ?? "NGN",
                   },
                   {
-                    label: "Paid",
+                    label: "Total paid",
                     amount: totals.totalPaid,
-                    currency: sales[0]?.currency,
+                    currency: sales[0]?.currency ?? "NGN",
                   },
                   {
-                    label: "Due",
+                    label: "Sell Due",
                     amount: totals.totalDue,
-                    currency: sales[0]?.currency,
+                    currency: sales[0]?.currency ?? "NGN",
+                  },
+                  {
+                    label: "Sell Return Due",
+                    amount: 0,
+                    currency: sales[0]?.currency ?? "NGN",
                   },
                 ]}
               />
             </div>
-          ) : null
+          )
         }
         summaryStrip={
           sales.length > 0 ? (
@@ -750,7 +960,7 @@ export function Hq6SalesListView({
           isFetching={isFetching && !isLoading}
           error={error ? "Could not load sales." : null}
           onRowClick={(row) => openRecord(row.id, row)}
-          emptyState={{ message: "No sales found." }}
+          emptyState={{ message: "No data available in table" }}
           serverSort={serverSortProps({ sort, setSort })}
         />
       </Hq6StandardListShell>

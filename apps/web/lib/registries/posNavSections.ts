@@ -2,6 +2,7 @@ import type { NavItem, TenantConfig } from "@vonos/types";
 import { reportsForArchetype } from "@vonos/types";
 import type { NavSection } from "@/components/organisms/Sidebar";
 import { isHq6Tenant } from "@/lib/utils/isHq6Tenant";
+import { REPORT_SLUG_TO_HQ6_PATH } from "@/lib/registries/hq6ReportRoutes";
 
 function r(code: string, slug: string): string {
   return `/${code}/${slug}`;
@@ -191,7 +192,7 @@ function purchasesItems(code: string, config: TenantConfig): NavItem[] {
   if (has(config, "purchases") || has(config, "movements")) {
     items.push(
       { label: "Purchase Order", icon: "clipboard-list", route: r(code, "purchase-orders"), pageType: "list" },
-      { label: "List Purchases", icon: "arrow-down-to-line", route: r(code, "inbound"), pageType: "list" },
+      { label: "List Purchases", icon: "arrow-down-to-line", route: r(code, "purchases"), pageType: "list" },
       { label: "Add Purchase", icon: "plus-circle", route: r(code, "add-purchase"), pageType: "list" },
       { label: "List Purchase Return", icon: "rotate-ccw", route: r(code, "purchase-returns"), pageType: "list" },
     );
@@ -278,16 +279,24 @@ function paymentAccountItems(code: string, config: TenantConfig): NavItem[] {
 /** HQ6 Reports dropdown — one sidebar sublink per report page (filtered like AdminSidebarMenu.php). */
 function reportsItems(code: string, config: TenantConfig): NavItem[] {
   if (!config.archetype) return [];
+  const hq6 = isHq6(config);
   const reports = reportsForArchetype(config.archetype, config.enabledModules)
     .filter((entry) => entry.source.kind !== "payment-accounts")
-    .map((entry) => ({
-      label: entry.label,
-      icon: entry.id === "trending" ? "trending-up" : "file-bar-chart",
-      route: r(code, entry.slug),
-      pageType: "dashboard" as const,
-    }));
+    .map((entry) => {
+      const hq6Path = REPORT_SLUG_TO_HQ6_PATH[entry.slug];
+      const route =
+        hq6 && hq6Path
+          ? r(code, `reports/${hq6Path}`)
+          : r(code, entry.slug);
+      return {
+        label: entry.label,
+        icon: entry.id === "trending" ? "trending-up" : "file-bar-chart",
+        route,
+        pageType: "dashboard" as const,
+      };
+    });
   // HQ6 has no "All Reports" hub — only the individual report links.
-  if (isHq6(config)) return reports;
+  if (hq6) return reports;
   const hub: NavItem = {
     label: "All Reports",
     icon: "pie-chart",

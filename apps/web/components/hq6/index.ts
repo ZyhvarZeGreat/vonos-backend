@@ -1,10 +1,17 @@
+export { Hq6Sidebar } from "./Hq6Sidebar";
+export type { Hq6SidebarProps, Hq6NavSection } from "./Hq6Sidebar";
 export { Hq6PageHeader, Hq6FiltersCard, Hq6FormShell, Hq6PageFrame } from "./Hq6Chrome";
+export { Hq6UposCard } from "./Hq6UposCard";
+export { Hq6ReportKpiSummary } from "./Hq6ReportKpiSummary";
+export { Hq6ReportDataTable } from "./Hq6ReportDataTable";
 export { Hq6DataListPage } from "./Hq6DataListPage";
 export type {
   Hq6DataListPageProps,
   Hq6PrimaryAction,
   Hq6TabConfig,
 } from "./Hq6DataListPage";
+export { Hq6InlineActions } from "./Hq6InlineActions";
+export type { Hq6InlineAction, Hq6InlineActionTone } from "./Hq6InlineActions";
 export { Hq6Modal, Hq6ModalSaveClose, Hq6Field } from "./Hq6Modal";
 export { Hq6ActionsMenu, Hq6ActionsCell } from "./Hq6ActionsMenu";
 export { Hq6ColumnVisibilityModal } from "./Hq6ColumnVisibilityModal";
@@ -37,6 +44,7 @@ export {
   Hq6AddLocationModal,
 } from "./Hq6ProductModals";
 export { Hq6ListToolbar } from "./Hq6ListToolbar";
+export { Hq6DtSearchFilter } from "./Hq6DtSearchFilter";
 export { Hq6SalesSummaryStrip } from "./Hq6SalesSummaryStrip";
 export {
   Hq6FilterCheckbox,

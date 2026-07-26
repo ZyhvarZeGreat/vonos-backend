@@ -1,7 +1,9 @@
 "use client";
 
 import { useMemo, useState, type ReactNode } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
+import { useAppMutation } from "@/lib/hooks/useAppMutation";
+import { removeEntityFromQueries } from "@/lib/query/optimistic";
 import {
   Calendar,
   CheckSquare,
@@ -135,7 +137,6 @@ function ListCard({
 
 export function HrmLeaveTypeView() {
   const tenantId = useTenantId();
-  const qc = useQueryClient();
   const [search, setSearch] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<LeaveTypeRow | null>(null);
@@ -156,7 +157,7 @@ export function HrmLeaveTypeView() {
     getCursor: (row) => nameListCursor(row),
   });
 
-  const saveMutation = useMutation({
+  const saveMutation = useAppMutation({
     mutationFn: () =>
       editing
         ? updateLeaveType(tenantId!, editing.id, {
@@ -167,16 +168,21 @@ export function HrmLeaveTypeView() {
             name: name.trim(),
             maxLeaveCount: Number(maxCount) || 0,
           }),
+    invalidateKeys: [["hrm-leave-types", tenantId]],
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ["hrm-leave-types", tenantId] });
       setModalOpen(false);
     },
   });
 
-  const deleteMutation = useMutation({
+  const deleteMutation = useAppMutation({
     mutationFn: (id: string) => deleteLeaveType(tenantId!, id),
+    optimistic: {
+      keys: [["hrm-leave-types", tenantId]],
+      update: (qc, id) => {
+        removeEntityFromQueries(qc, ["hrm-leave-types", tenantId], id);
+      },
+    },
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ["hrm-leave-types", tenantId] });
       setConfirmDelete(null);
     },
   });
@@ -224,12 +230,31 @@ export function HrmLeaveTypeView() {
         All leave types
       </div>
       <div className="flex justify-end border-b border-[#d2d6de] px-4 py-2">
-        <input
-          className="hq6-modal-input max-w-xs"
-          placeholder="Search..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
+        <div className="hq6-search max-w-xs">
+          <label className="hq6-search-field">
+            <span className="sr-only">Search</span>
+            <input
+              className="hq6-modal-input"
+              placeholder="Search..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  setSearch((prev) => prev.trim());
+                }
+              }}
+            />
+          </label>
+          <button
+            type="button"
+            className="hq6-search-btn"
+            aria-label="Search"
+            onClick={() => setSearch((prev) => prev.trim())}
+          >
+            Search
+          </button>
+        </div>
       </div>
       <ServerPaginatedTable
         items={list.items}
@@ -287,7 +312,6 @@ export function HrmLeaveTypeView() {
 
 export function HrmLeaveView() {
   const tenantId = useTenantId();
-  const qc = useQueryClient();
   const [search, setSearch] = useState("");
   const [designationId, setDesignationId] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
@@ -329,7 +353,7 @@ export function HrmLeaveView() {
     getCursor: (row) => leaveListCursor(row),
   });
 
-  const createMutation = useMutation({
+  const createMutation = useAppMutation({
     mutationFn: () =>
       createLeave(tenantId!, {
         employeeName: employeeName.trim(),
@@ -338,16 +362,21 @@ export function HrmLeaveView() {
         leaveDate,
         reason: reason.trim() || undefined,
       }),
+    invalidateKeys: [["hrm-leaves", tenantId]],
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ["hrm-leaves", tenantId] });
       setModalOpen(false);
     },
   });
 
-  const deleteMutation = useMutation({
+  const deleteMutation = useAppMutation({
     mutationFn: (id: string) => deleteLeave(tenantId!, id),
+    optimistic: {
+      keys: [["hrm-leaves", tenantId]],
+      update: (qc, id) => {
+        removeEntityFromQueries(qc, ["hrm-leaves", tenantId], id);
+      },
+    },
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ["hrm-leaves", tenantId] });
       setConfirmDelete(null);
     },
   });
@@ -415,12 +444,31 @@ export function HrmLeaveView() {
                 </option>
               ))}
             </select>
-            <input
-              className="hq6-modal-input max-w-xs"
-              placeholder="Search..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
+            <div className="hq6-search max-w-xs">
+              <label className="hq6-search-field">
+                <span className="sr-only">Search</span>
+                <input
+                  className="hq6-modal-input"
+                  placeholder="Search..."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      setSearch((prev) => prev.trim());
+                    }
+                  }}
+                />
+              </label>
+              <button
+                type="button"
+                className="hq6-search-btn"
+                aria-label="Search"
+                onClick={() => setSearch((prev) => prev.trim())}
+              >
+                Search
+              </button>
+            </div>
           </div>
         </div>
       }
@@ -505,7 +553,6 @@ export function HrmLeaveView() {
 
 export function HrmHolidayView() {
   const tenantId = useTenantId();
-  const qc = useQueryClient();
   const [search, setSearch] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
   const [name, setName] = useState("");
@@ -529,7 +576,7 @@ export function HrmHolidayView() {
     getCursor: (row) => dateListCursor(row),
   });
 
-  const createMutation = useMutation({
+  const createMutation = useAppMutation({
     mutationFn: () =>
       createHoliday(tenantId!, {
         name: name.trim(),
@@ -537,16 +584,21 @@ export function HrmHolidayView() {
         locationCode: locationCode || undefined,
         note: note.trim() || undefined,
       }),
+    invalidateKeys: [["hrm-holidays", tenantId]],
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ["hrm-holidays", tenantId] });
       setModalOpen(false);
     },
   });
 
-  const deleteMutation = useMutation({
+  const deleteMutation = useAppMutation({
     mutationFn: (id: string) => deleteHoliday(tenantId!, id),
+    optimistic: {
+      keys: [["hrm-holidays", tenantId]],
+      update: (qc, id) => {
+        removeEntityFromQueries(qc, ["hrm-holidays", tenantId], id);
+      },
+    },
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ["hrm-holidays", tenantId] });
       setConfirmDelete(null);
     },
   });
@@ -595,12 +647,31 @@ export function HrmHolidayView() {
       filters={
         <div className="rounded border border-[#d2d6de] bg-white px-4 py-3">
           <p className="mb-2 text-sm font-semibold text-[#555]">Filters</p>
-          <input
-            className="hq6-modal-input max-w-xs"
-            placeholder="Search..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
+          <div className="hq6-search max-w-xs">
+            <label className="hq6-search-field">
+              <span className="sr-only">Search</span>
+              <input
+                className="hq6-modal-input"
+                placeholder="Search..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    setSearch((prev) => prev.trim());
+                  }
+                }}
+              />
+            </label>
+            <button
+              type="button"
+              className="hq6-search-btn"
+              aria-label="Search"
+              onClick={() => setSearch((prev) => prev.trim())}
+            >
+              Search
+            </button>
+          </div>
         </div>
       }
     >
@@ -684,7 +755,6 @@ export function HrmHolidayView() {
 
 export function HrmDepartmentsView() {
   const tenantId = useTenantId();
-  const qc = useQueryClient();
   const [search, setSearch] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<PayrollGroup | null>(null);
@@ -706,7 +776,7 @@ export function HrmDepartmentsView() {
     getCursor: (row) => nameListCursor(row),
   });
 
-  const saveMutation = useMutation({
+  const saveMutation = useAppMutation({
     mutationFn: () =>
       editing
         ? updatePayrollGroup(tenantId!, editing.id, {
@@ -719,16 +789,21 @@ export function HrmDepartmentsView() {
             code: code.trim() || undefined,
             description: description.trim() || undefined,
           }),
+    invalidateKeys: [["hrm-departments", tenantId]],
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ["hrm-departments", tenantId] });
       setModalOpen(false);
     },
   });
 
-  const deleteMutation = useMutation({
+  const deleteMutation = useAppMutation({
     mutationFn: (id: string) => deletePayrollGroup(tenantId!, id),
+    optimistic: {
+      keys: [["hrm-departments", tenantId]],
+      update: (qc, id) => {
+        removeEntityFromQueries(qc, ["hrm-departments", tenantId], id);
+      },
+    },
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ["hrm-departments", tenantId] });
       setConfirmDelete(null);
     },
   });
@@ -777,12 +852,31 @@ export function HrmDepartmentsView() {
       }}
     >
       <div className="flex justify-end border-b border-[#d2d6de] px-4 py-2">
-        <input
-          className="hq6-modal-input max-w-xs"
-          placeholder="Search..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
+        <div className="hq6-search max-w-xs">
+          <label className="hq6-search-field">
+            <span className="sr-only">Search</span>
+            <input
+              className="hq6-modal-input"
+              placeholder="Search..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  setSearch((prev) => prev.trim());
+                }
+              }}
+            />
+          </label>
+          <button
+            type="button"
+            className="hq6-search-btn"
+            aria-label="Search"
+            onClick={() => setSearch((prev) => prev.trim())}
+          >
+            Search
+          </button>
+        </div>
       </div>
       <ServerPaginatedTable
         items={list.items}
@@ -846,7 +940,6 @@ export function HrmDepartmentsView() {
 
 export function HrmDesignationsView() {
   const tenantId = useTenantId();
-  const qc = useQueryClient();
   const [search, setSearch] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Designation | null>(null);
@@ -867,7 +960,7 @@ export function HrmDesignationsView() {
     getCursor: (row) => nameListCursor(row),
   });
 
-  const saveMutation = useMutation({
+  const saveMutation = useAppMutation({
     mutationFn: () =>
       editing
         ? updateDesignation(tenantId!, editing.id, {
@@ -878,16 +971,21 @@ export function HrmDesignationsView() {
             name: name.trim(),
             description: description.trim() || undefined,
           }),
+    invalidateKeys: [["hrm-designations", tenantId]],
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ["hrm-designations", tenantId] });
       setModalOpen(false);
     },
   });
 
-  const deleteMutation = useMutation({
+  const deleteMutation = useAppMutation({
     mutationFn: (id: string) => deleteDesignation(tenantId!, id),
+    optimistic: {
+      keys: [["hrm-designations", tenantId]],
+      update: (qc, id) => {
+        removeEntityFromQueries(qc, ["hrm-designations", tenantId], id);
+      },
+    },
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ["hrm-designations", tenantId] });
       setConfirmDelete(null);
     },
   });
@@ -933,12 +1031,31 @@ export function HrmDesignationsView() {
       }}
     >
       <div className="flex justify-end border-b border-[#d2d6de] px-4 py-2">
-        <input
-          className="hq6-modal-input max-w-xs"
-          placeholder="Search..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
+        <div className="hq6-search max-w-xs">
+          <label className="hq6-search-field">
+            <span className="sr-only">Search</span>
+            <input
+              className="hq6-modal-input"
+              placeholder="Search..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  setSearch((prev) => prev.trim());
+                }
+              }}
+            />
+          </label>
+          <button
+            type="button"
+            className="hq6-search-btn"
+            aria-label="Search"
+            onClick={() => setSearch((prev) => prev.trim())}
+          >
+            Search
+          </button>
+        </div>
       </div>
       <ServerPaginatedTable
         items={list.items}
@@ -995,7 +1112,6 @@ export function HrmDesignationsView() {
 
 export function HrmSalesTargetsView() {
   const tenantId = useTenantId();
-  const qc = useQueryClient();
   const [search, setSearch] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
   const [selected, setSelected] = useState<SalesTargetRow | null>(null);
@@ -1035,15 +1151,15 @@ export function HrmSalesTargetsView() {
     }));
   }, [targetsList.items, workforceQuery.data?.items]);
 
-  const saveMutation = useMutation({
+  const saveMutation = useAppMutation({
     mutationFn: () =>
       upsertSalesTarget(tenantId!, {
         userName: selected?.userName ?? "",
         userId: selected?.userId ?? undefined,
         note: note.trim() || undefined,
       }),
+    invalidateKeys: [["hrm-sales-targets", tenantId]],
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ["hrm-sales-targets", tenantId] });
       setModalOpen(false);
     },
   });
@@ -1079,12 +1195,31 @@ export function HrmSalesTargetsView() {
   return (
     <ListCard title="Sales Targets">
       <div className="flex justify-end border-b border-[#d2d6de] px-4 py-2">
-        <input
-          className="hq6-modal-input max-w-xs"
-          placeholder="Search..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
+        <div className="hq6-search max-w-xs">
+          <label className="hq6-search-field">
+            <span className="sr-only">Search</span>
+            <input
+              className="hq6-modal-input"
+              placeholder="Search..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  setSearch((prev) => prev.trim());
+                }
+              }}
+            />
+          </label>
+          <button
+            type="button"
+            className="hq6-search-btn"
+            aria-label="Search"
+            onClick={() => setSearch((prev) => prev.trim())}
+          >
+            Search
+          </button>
+        </div>
       </div>
       <ServerPaginatedTable
         items={rows}
@@ -1170,7 +1305,6 @@ const ATTENDANCE_TABS: Array<{
 
 export function HrmAttendanceView() {
   const tenantId = useTenantId();
-  const qc = useQueryClient();
   const [tab, setTab] = useState<AttendanceTab>("by-shift");
   const [search, setSearch] = useState("");
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
@@ -1213,26 +1347,26 @@ export function HrmAttendanceView() {
     queryFn: () => getAttendanceByShift(tenantId!, date),
   });
 
-  const createShiftMutation = useMutation({
+  const createShiftMutation = useAppMutation({
     mutationFn: () => createAttendanceShift(tenantId!, { name: shiftName.trim() }),
+    invalidateKeys: [["hrm-attendance-shifts", tenantId]],
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ["hrm-attendance-shifts", tenantId] });
       setShiftModal(false);
     },
   });
 
-  const clockMutation = useMutation({
+  const clockMutation = useAppMutation({
     mutationFn: () =>
       clockInAttendance(tenantId!, {
         employeeName: clockName.trim(),
         date,
       }),
+    invalidateKeys: [
+      ["hrm-attendance", tenantId],
+      ["hrm-attendance-all", tenantId],
+      ["hrm-attendance-by-shift", tenantId],
+    ],
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ["hrm-attendance", tenantId] });
-      void qc.invalidateQueries({ queryKey: ["hrm-attendance-all", tenantId] });
-      void qc.invalidateQueries({
-        queryKey: ["hrm-attendance-by-shift", tenantId],
-      });
       setClockModal(false);
     },
   });

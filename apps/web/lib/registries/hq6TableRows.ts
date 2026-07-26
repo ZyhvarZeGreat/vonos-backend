@@ -58,7 +58,7 @@ export const HQ6_ROLE_ROW_ACTIONS: Hq6RowActionSpec[] = [
   action("delete", "Delete", "confirm", "delete_confirm_modal", true),
 ];
 
-/** Customers — ui-table-rows/05_contacts__type=customer */
+/** Customers — UPOS contact/index.blade.php (type=customer) */
 export const HQ6_CUSTOMER_COLUMNS: Hq6ColumnSpec[] = [
   { key: "contactId", header: "Contact ID", defaultVisible: true },
   { key: "businessName", header: "Business Name", defaultVisible: true },
@@ -68,14 +68,13 @@ export const HQ6_CUSTOMER_COLUMNS: Hq6ColumnSpec[] = [
   { key: "creditLimit", header: "Credit Limit", defaultVisible: true },
   { key: "payTerm", header: "Pay term", defaultVisible: true },
   { key: "openingBalance", header: "Opening Balance", defaultVisible: true },
-  { key: "totalSell", header: "Total Sale", defaultVisible: true },
-  { key: "totalSellDue", header: "Total Sale Due", defaultVisible: true },
-  { key: "totalSellPaid", header: "Sale Paid", defaultVisible: true },
   { key: "advanceBalance", header: "Advance Balance", defaultVisible: true },
   { key: "createdAt", header: "Added On", defaultVisible: true },
   { key: "customerGroup", header: "Customer Group", defaultVisible: true },
-  { key: "phone", header: "Mobile", defaultVisible: false },
-  { key: "totalSellReturn", header: "Total Sell Return Due", defaultVisible: false },
+  { key: "address", header: "Address", defaultVisible: true },
+  { key: "phone", header: "Mobile", defaultVisible: true },
+  { key: "totalSellDue", header: "Total Sale Due", defaultVisible: true },
+  { key: "totalSellReturn", header: "Total Sell Return Due", defaultVisible: true },
 ];
 
 export const HQ6_CUSTOMER_ROW_ACTIONS: Hq6RowActionSpec[] = [
@@ -89,7 +88,7 @@ export const HQ6_CUSTOMER_ROW_ACTIONS: Hq6RowActionSpec[] = [
   action("documents", "Documents & Note", "route", "navigated_subpage"),
 ];
 
-/** Suppliers — ui-table-rows/04_contacts__type=supplier */
+/** Suppliers — UPOS contact/index.blade.php (type=supplier) */
 export const HQ6_SUPPLIER_COLUMNS: Hq6ColumnSpec[] = [
   { key: "contactId", header: "Contact ID", defaultVisible: true },
   { key: "businessName", header: "Business Name", defaultVisible: true },
@@ -98,14 +97,12 @@ export const HQ6_SUPPLIER_COLUMNS: Hq6ColumnSpec[] = [
   { key: "taxNumber", header: "Tax number", defaultVisible: true },
   { key: "payTerm", header: "Pay term", defaultVisible: true },
   { key: "openingBalance", header: "Opening Balance", defaultVisible: true },
-  { key: "totalPurchase", header: "Total Purchase", defaultVisible: true },
-  { key: "totalPurchaseDue", header: "Total Purchase Due", defaultVisible: true },
-  { key: "totalPurchasePaid", header: "Purchase Paid", defaultVisible: true },
   { key: "advanceBalance", header: "Advance Balance", defaultVisible: true },
   { key: "createdAt", header: "Added On", defaultVisible: true },
-  { key: "phone", header: "Mobile", defaultVisible: false },
-  { key: "address", header: "Address", defaultVisible: false },
-  { key: "totalPurchaseReturn", header: "Total Purchase Return Due", defaultVisible: false },
+  { key: "address", header: "Address", defaultVisible: true },
+  { key: "phone", header: "Mobile", defaultVisible: true },
+  { key: "totalPurchaseDue", header: "Total Purchase Due", defaultVisible: true },
+  { key: "totalPurchaseReturn", header: "Total Purchase Return Due", defaultVisible: true },
 ];
 
 export const HQ6_SUPPLIER_ROW_ACTIONS: Hq6RowActionSpec[] = [

@@ -18,6 +18,7 @@ import { useAdminEntityStore } from "@/stores/adminEntityStore";
 import { useUiStore } from "@/stores/uiStore";
 import { PageTransition } from "@/components/atoms/PageTransition";
 import { Spinner } from "@/components/atoms/Spinner";
+import { Hq6UposStyles } from "@/components/hq6/Hq6UposStyles";
 import {
   accentTenantCodeForVagUnit,
   getVagViewUnit,
@@ -44,6 +45,8 @@ export function AdminShell({
   const authName = useAuthStore((state) => state.name);
   const authEmail = useAuthStore((state) => state.email);
   const sidebarCollapsed = useUiStore((state) => state.sidebarCollapsed);
+  const mobileNavOpen = useUiStore((state) => state.mobileNavOpen);
+  const setMobileNavOpen = useUiStore((state) => state.setMobileNavOpen);
   const viewingCode = useAdminEntityStore((state) => state.viewingCode);
   const viewingUnit =
     viewingCode && isVagViewUnitId(viewingCode)
@@ -73,6 +76,10 @@ export function AdminShell({
     scheduleIdle(() => prefetchVagAdminShell(queryClient));
   }, [skipAuth, hydrated, role, queryClient]);
 
+  useEffect(() => {
+    setMobileNavOpen(false);
+  }, [pathname, setMobileNavOpen]);
+
   if (!skipAuth && role && role !== "super_admin") {
     return null;
   }
@@ -86,6 +93,15 @@ export function AdminShell({
       data-tenant={hq6AccentCode}
       style={tenantAccentStyle(hq6AccentCode)}
     >
+      <Hq6UposStyles />
+      {mobileNavOpen ? (
+        <button
+          type="button"
+          className="fixed inset-0 z-40 bg-black/40 md:hidden"
+          aria-label="Close menu"
+          onClick={() => setMobileNavOpen(false)}
+        />
+      ) : null}
       <Sidebar
         sections={VAG_NAV_SECTIONS}
         tenantName="Vonos Autos Group"
@@ -95,6 +111,8 @@ export function AdminShell({
         activeRoute={pathname}
         isNavActive={isAdminNavActive}
         collapsed={sidebarCollapsed}
+        mobileOpen={mobileNavOpen}
+        onMobileClose={() => setMobileNavOpen(false)}
       />
       <div className="flex min-w-0 flex-1 flex-col">
         <TopBar

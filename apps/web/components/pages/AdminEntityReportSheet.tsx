@@ -45,7 +45,13 @@ export function AdminEntityReportSheet({
 }: AdminEntityReportSheetProps) {
   const tenant = getTenantByCode(tenantCode);
   const entry = reportEntryBySlug(reportSlug);
-  const { dateRange, setDateRange, bounds } = useListPageFilters({ unboundedAllTime: false });
+  const {
+    dateRange,
+    setDateRange,
+    customDateRange,
+    setCustomDateRange,
+    bounds,
+  } = useListPageFilters({ unboundedAllTime: false });
   const openExportModal = useUiStore((state) => state.openExportModal);
   const periodLabel = ledgerChartSubtitle(dateRange);
   const [filters, setFilters] = useState<ReportRunOptions>(() => emptyReportFilters());
@@ -207,7 +213,12 @@ export function AdminEntityReportSheet({
             ← Back to {tenant.name} reports
           </Link>
           <div className="flex flex-wrap items-center gap-2">
-            <DateRangeDropdown value={dateRange} onChange={setDateRange} />
+            <DateRangeDropdown
+              value={dateRange}
+              onChange={setDateRange}
+              customValue={customDateRange}
+              onCustomChange={setCustomDateRange}
+            />
             <Button
               variant="secondary"
               size="sm"

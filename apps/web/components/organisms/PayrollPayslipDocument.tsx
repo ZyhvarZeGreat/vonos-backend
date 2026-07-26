@@ -63,9 +63,14 @@ function buildEarnings(payroll: Payroll): PayslipLine[] {
   return lines;
 }
 
+/** Voucher / payroll refs are notes, not deduction line items. */
+function looksLikeReferenceNote(part: string): boolean {
+  return /^(VPR|PR|PAY|REF|INV)[-/]?\d/i.test(part.trim());
+}
+
 function parseDeductionPart(part: string): PayslipLine | null {
   const trimmed = part.trim();
-  if (!trimmed) return null;
+  if (!trimmed || looksLikeReferenceNote(trimmed)) return null;
 
   const added = trimmed.match(/^Added deduction\s+([\d,.]+)/i);
   if (added) {
@@ -76,7 +81,9 @@ function parseDeductionPart(part: string): PayslipLine | null {
     };
   }
 
-  const withAmount = trimmed.match(/^(.+?)[:：]\s*₦?\s*([\d,.]+)(?:\s*[—–-]\s*(.+))?$/);
+  const withAmount = trimmed.match(
+    /^(.+?)[:：]\s*₦?\s*([\d,.]+)(?:\s*[—–-]\s*(.+))?$/,
+  );
   if (withAmount) {
     const amount = Number(withAmount[2]!.replace(/,/g, ""));
     return {
@@ -95,7 +102,8 @@ function parseDeductionPart(part: string): PayslipLine | null {
     };
   }
 
-  return { label: trimmed, amount: 0 };
+  // Unstructured free text without an amount is not a deduction row.
+  return null;
 }
 
 function buildDeductions(payroll: Payroll): PayslipLine[] {
@@ -121,7 +129,7 @@ function buildDeductions(payroll: Payroll): PayslipLine[] {
   } else if (Math.abs(summed - payroll.totalDeduction) > 0.01) {
     const remainder = payroll.totalDeduction - summed;
     if (remainder > 0) {
-      named[named.length - 1]!.amount += remainder;
+      named.push({ label: "Other deductions", amount: remainder });
     }
   }
 
@@ -146,9 +154,17 @@ function extractNoteField(
   return null;
 }
 
+/** Prefer parenthetical group label as department (e.g. MANAGEMENT STAFF). */
+function departmentLabel(groupName: string | null | undefined): string | null {
+  if (!groupName) return null;
+  const paren = groupName.match(/\(([^)]+)\)\s*$/);
+  if (paren?.[1]?.trim()) return paren[1].trim();
+  return groupName;
+}
+
 function InfoRow({ label, value }: { label: string; value?: string | null }) {
   return (
-    <p className="text-[13px] leading-6 text-foreground">
+    <p className="text-[13px] leading-6 text-neutral-900">
       <span className="font-semibold">{label}:</span>{" "}
       <span>{value?.trim() ? value : "\u00A0"}</span>
     </p>
@@ -170,7 +186,8 @@ export function PayrollPayslipDocument({
   const totalEarnings = payroll.grossPay + payroll.totalAllowance;
   const month = monthLabel(payroll.payrollMonth);
   const paymentDate = invoice?.documentDate ?? payroll.payrollMonth;
-  const paymentRef = invoice?.reference ?? `PP-${payroll.id.slice(-8).toUpperCase()}`;
+  const paymentRef =
+    invoice?.reference ?? `PP-${payroll.id.slice(-8).toUpperCase()}`;
   const showPayment =
     payroll.paymentStatus === "paid" ||
     payroll.status === "paid" ||
@@ -208,10 +225,12 @@ export function PayrollPayslipDocument({
       "Account Number",
       "A/C",
     ]);
+  const accountHolder =
+    payroll.accountHolderName?.trim() || payroll.employeeName;
 
-  const daysPresent = extras?.daysPresent ?? 0;
-  const daysAbsent = extras?.daysAbsent ?? 0;
-  const totalWorkDuration = extras?.totalWorkDuration ?? "0";
+  const daysPresent = extras?.daysPresent ?? null;
+  const daysAbsent = extras?.daysAbsent ?? null;
+  const totalWorkDuration = extras?.totalWorkDuration ?? null;
 
   const noteLines =
     payroll.note
@@ -235,39 +254,30 @@ export function PayrollPayslipDocument({
   return (
     <article
       className={cn(
-        "invoice-document mx-auto max-w-4xl overflow-hidden border border-neutral-800 bg-white text-foreground print:border-black",
+        "invoice-document mx-auto max-w-4xl overflow-hidden border border-neutral-800 bg-white text-neutral-900 print:border-black",
         className,
       )}
     >
       <div className="relative border-b border-neutral-800 px-6 pb-4 pt-5">
-        <div className="flex items-start justify-between gap-4">
-          <div className="flex flex-1 items-start">
-            <div className="relative h-16 w-16 overflow-hidden rounded-full border border-neutral-200 bg-white">
-              <Image
-                src="/brand/vonos-autos-logo.png"
-                alt="Vonos Autos"
-                fill
-                className="object-contain p-1.5"
-                sizes="64px"
-                priority
-              />
-            </div>
+        <div className="flex items-start justify-between gap-6">
+          <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-full border border-neutral-200 bg-white">
+            <Image
+              src="/brand/vonos-autos-logo.png"
+              alt="Vonos Autos"
+              fill
+              className="object-contain p-1.5"
+              sizes="64px"
+              priority
+            />
           </div>
-          <div className="flex flex-1 justify-center pt-1">
-            <div className="relative h-16 w-16 overflow-hidden rounded-full border-2 border-neutral-300 bg-white">
-              <Image
-                src="/brand/vonos-autos-mark.png"
-                alt=""
-                fill
-                className="object-contain p-2"
-                sizes="64px"
-              />
-            </div>
-          </div>
-          <div className="flex-1 text-right">
-            <p className="text-lg font-bold leading-tight">{tenantName}</p>
+          <div className="min-w-0 flex-1 text-right">
+            <p className="text-lg font-bold leading-tight text-neutral-900">
+              {tenantName}
+            </p>
             {tenantAddress ? (
-              <p className="mt-1 text-xs leading-snug text-neutral-700">{tenantAddress}</p>
+              <p className="mt-1 text-xs leading-snug text-neutral-700">
+                {tenantAddress}
+              </p>
             ) : (
               <p className="mt-1 text-xs leading-snug text-neutral-700">
                 Vonos Autos Group
@@ -275,7 +285,7 @@ export function PayrollPayslipDocument({
             )}
           </div>
         </div>
-        <p className="mt-4 text-center text-sm font-medium">
+        <p className="mt-4 text-center text-sm font-semibold text-neutral-900">
           Payslip for the month of {month}
         </p>
       </div>
@@ -284,7 +294,10 @@ export function PayrollPayslipDocument({
         <div className="space-y-0.5 border-b border-neutral-800 px-5 py-4 sm:border-b-0 sm:border-r">
           <InfoRow label="Employee" value={payroll.employeeName} />
           <InfoRow label="Employee ID" value={payroll.employeeId} />
-          <InfoRow label="Department" value={payroll.payrollGroupName} />
+          <InfoRow
+            label="Department"
+            value={departmentLabel(payroll.payrollGroupName)}
+          />
           <InfoRow label="Designation" value={payroll.designationName} />
           <InfoRow
             label="Primary work location"
@@ -297,33 +310,35 @@ export function PayrollPayslipDocument({
           <InfoRow label="Bank Name" value={bankName} />
           <InfoRow label="Branch" value={bankBranch} />
           <InfoRow label="Bank Identifier Code" value={bankIdentifierCode} />
-          <InfoRow label="Account Holder's Name" value={payroll.employeeName} />
+          <InfoRow label="Account Holder's Name" value={accountHolder} />
           <InfoRow label="Bank Account No." value={bankAccountNo} />
           <InfoRow label="Payment status" value={payroll.paymentStatus} />
         </div>
       </section>
 
-      <section className="grid grid-cols-3 border-b border-neutral-800 text-[13px]">
+      <section className="grid grid-cols-3 border-b border-neutral-800 text-[13px] text-neutral-900">
         <div className="border-r border-neutral-800 px-5 py-3">
           <span className="font-semibold">Total work duration:</span>{" "}
-          {totalWorkDuration}
+          {totalWorkDuration ?? "—"}
         </div>
         <div className="border-r border-neutral-800 px-5 py-3">
-          <span className="font-semibold">Days present:</span> {daysPresent}
+          <span className="font-semibold">Days present:</span>{" "}
+          {daysPresent ?? "—"}
         </div>
         <div className="px-5 py-3">
-          <span className="font-semibold">Days absent:</span> {daysAbsent}
+          <span className="font-semibold">Days absent:</span>{" "}
+          {daysAbsent ?? "—"}
         </div>
       </section>
 
       <section className="grid border-b border-neutral-800 sm:grid-cols-2">
         <div className="border-b border-neutral-800 sm:border-b-0 sm:border-r">
-          <div className="grid grid-cols-[1fr_auto_auto] gap-2 border-b border-neutral-800 px-4 py-2 text-xs font-semibold">
+          <div className="grid grid-cols-[1fr_auto_auto] gap-2 border-b border-neutral-800 bg-neutral-50 px-4 py-2 text-xs font-semibold text-neutral-900">
             <span>Earnings</span>
             <span className="w-16 text-right">Rate</span>
             <span className="w-28 text-right">Amount</span>
           </div>
-          <div className="min-h-[7rem] px-4 py-2 text-[13px]">
+          <div className="min-h-[7rem] px-4 py-2 text-[13px] text-neutral-900">
             {earnings.map((line) => (
               <div
                 key={line.label}
@@ -342,19 +357,21 @@ export function PayrollPayslipDocument({
               </div>
             ))}
           </div>
-          <div className="flex items-center justify-between border-t border-neutral-800 px-4 py-2 text-[13px] font-semibold">
+          <div className="flex items-center justify-between border-t border-neutral-800 px-4 py-2 text-[13px] font-semibold text-neutral-900">
             <span>Total earnings</span>
-            <span className="tabular-nums">{formatCurrency(totalEarnings, currency)}</span>
+            <span className="tabular-nums">
+              {formatCurrency(totalEarnings, currency)}
+            </span>
           </div>
         </div>
 
         <div>
-          <div className="grid grid-cols-[1fr_auto_auto] gap-2 border-b border-neutral-800 px-4 py-2 text-xs font-semibold">
+          <div className="grid grid-cols-[1fr_auto_auto] gap-2 border-b border-neutral-800 bg-neutral-50 px-4 py-2 text-xs font-semibold text-neutral-900">
             <span>Deductions</span>
             <span className="w-16 text-right">Rate</span>
             <span className="w-28 text-right">Amount</span>
           </div>
-          <div className="min-h-[7rem] px-4 py-2 text-[13px]">
+          <div className="min-h-[7rem] px-4 py-2 text-[13px] text-neutral-900">
             {deductions.length === 0 ? (
               <p className="text-neutral-500">No deductions</p>
             ) : (
@@ -379,7 +396,7 @@ export function PayrollPayslipDocument({
               ))
             )}
           </div>
-          <div className="flex items-center justify-between border-t border-neutral-800 px-4 py-2 text-[13px] font-semibold">
+          <div className="flex items-center justify-between border-t border-neutral-800 px-4 py-2 text-[13px] font-semibold text-neutral-900">
             <span>Total deductions</span>
             <span className="tabular-nums">
               {formatCurrency(payroll.totalDeduction, currency)}
@@ -388,7 +405,7 @@ export function PayrollPayslipDocument({
         </div>
       </section>
 
-      <section className="border-b border-neutral-800 px-5 py-3 text-[13px]">
+      <section className="border-b border-neutral-800 px-5 py-3 text-[13px] text-neutral-900">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <p>
             <span className="font-semibold">In words:</span>{" "}
@@ -396,13 +413,10 @@ export function PayrollPayslipDocument({
           </p>
           <div className="text-right">
             <p className="font-semibold">
-              Net pay / month balance{" "}
+              Net pay{" "}
               <span className="ml-4 tabular-nums">
                 {formatCurrency(payroll.netPay, currency)}
               </span>
-            </p>
-            <p className="mt-0.5 text-xs font-normal text-neutral-600">
-              Take-home after deductions (gross is unchanged)
             </p>
           </div>
         </div>
@@ -410,9 +424,9 @@ export function PayrollPayslipDocument({
 
       {showPayment ? (
         <section className="border-b border-neutral-800">
-          <table className="w-full text-[13px]">
+          <table className="w-full text-[13px] text-neutral-900">
             <thead>
-              <tr className="bg-emerald-500 text-left text-white">
+              <tr className="bg-emerald-600 text-left text-white">
                 <th className="px-3 py-2 font-semibold">#</th>
                 <th className="px-3 py-2 font-semibold">Date</th>
                 <th className="px-3 py-2 font-semibold">Reference No</th>
@@ -443,10 +457,9 @@ export function PayrollPayslipDocument({
         </section>
       ) : null}
 
-      <div className="px-5 py-4 text-[13px]">
+      <div className="px-5 py-4 text-[13px] text-neutral-900">
         <p>
-          <span className="font-semibold">Note:</span>{" "}
-          {noteText || "—"}
+          <span className="font-semibold">Note:</span> {noteText || "—"}
         </p>
         <p className="mt-1 text-xs text-neutral-600">
           Created {formatDate(payroll.createdAt)}

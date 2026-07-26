@@ -8,7 +8,6 @@ import {
   Rows2,
   Rows3,
   Rows4,
-  Search,
 } from "lucide-react";
 import type { TableDensity } from "@/lib/utils/tableColumnAlign";
 import { cn } from "@/lib/utils/cn";
@@ -29,14 +28,16 @@ export interface Hq6ListToolbarProps {
   onDensityChange?: (density: TableDensity) => void;
 }
 
-/** DataTables-style toolbar — ui-audit list pages (products, sales, purchases, etc.). */
+const PAGE_SIZE_OPTIONS = [25, 50, 100, 200, 500, 1000, -1] as const;
+
+/** DataTables-style toolbar — Show | exports | Search (ui-audit/01_users). */
 export function Hq6ListToolbar({
   pageSize,
   onPageSizeChange,
   searchValue,
   onSearchChange,
   onSearchCommit,
-  searchPlaceholder = "Search by name, SKU, reference…",
+  searchPlaceholder,
   onExportCsv,
   onExportExcel,
   onPrint,
@@ -49,50 +50,22 @@ export function Hq6ListToolbar({
 
   return (
     <div className="hq6-dt-toolbar">
-      <div className="hq6-search">
-        <label className="hq6-search-field">
-          <span className="sr-only">Search</span>
-          <input
-            type="search"
-            value={searchValue}
-            onChange={(e) => onSearchChange(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                commit();
-              }
-            }}
-            placeholder={searchPlaceholder}
-            title={searchPlaceholder}
-          />
-        </label>
-        <button
-          type="button"
-          className="hq6-search-btn"
-          onClick={commit}
-          aria-label="Search"
-        >
-          <Search className="h-4 w-4" aria-hidden />
-          Search
-        </button>
-      </div>
-
       <label className="hq6-show-entries">
         Show{" "}
         <select
           value={pageSize}
           onChange={(e) => onPageSizeChange(Number(e.target.value))}
         >
-          {[10, 25, 50, 100].map((n) => (
+          {PAGE_SIZE_OPTIONS.map((n) => (
             <option key={n} value={n}>
-              {n}
+              {n === -1 ? "All" : n.toLocaleString()}
             </option>
           ))}
         </select>{" "}
         entries
       </label>
 
-      <div className="hq6-dt-toolbar-actions ml-auto flex flex-wrap items-center gap-1.5">
+      <div className="hq6-dt-toolbar-actions">
         {onDensityChange && density ? (
           <div
             className="inline-flex items-center rounded border border-[var(--hq6-border)] bg-white p-0.5"
@@ -124,19 +97,31 @@ export function Hq6ListToolbar({
           </div>
         ) : null}
         {onExportCsv ? (
-          <button type="button" className="hq6-btn hq6-btn-outline" onClick={onExportCsv}>
+          <button
+            type="button"
+            className="tw-dw-btn tw-dw-btn-xs tw-dw-btn-outline tw-my-2"
+            onClick={onExportCsv}
+          >
             <FileText className="h-3.5 w-3.5" />
             Export CSV
           </button>
         ) : null}
         {onExportExcel ? (
-          <button type="button" className="hq6-btn hq6-btn-outline" onClick={onExportExcel}>
+          <button
+            type="button"
+            className="tw-dw-btn tw-dw-btn-xs tw-dw-btn-outline tw-my-2"
+            onClick={onExportExcel}
+          >
             <FileSpreadsheet className="h-3.5 w-3.5" />
             Export Excel
           </button>
         ) : null}
         {onPrint ? (
-          <button type="button" className="hq6-btn hq6-btn-outline" onClick={onPrint}>
+          <button
+            type="button"
+            className="tw-dw-btn tw-dw-btn-xs tw-dw-btn-outline tw-my-2"
+            onClick={onPrint}
+          >
             <Printer className="h-3.5 w-3.5" />
             Print
           </button>
@@ -144,7 +129,7 @@ export function Hq6ListToolbar({
         {onColumnVisibility ? (
           <button
             type="button"
-            className="hq6-btn hq6-btn-outline"
+            className="tw-dw-btn tw-dw-btn-xs tw-dw-btn-outline tw-my-2"
             onClick={onColumnVisibility}
           >
             <Columns3 className="h-3.5 w-3.5" />
@@ -152,11 +137,42 @@ export function Hq6ListToolbar({
           </button>
         ) : null}
         {onExportPdf ? (
-          <button type="button" className="hq6-btn hq6-btn-outline" onClick={onExportPdf}>
+          <button
+            type="button"
+            className="tw-dw-btn tw-dw-btn-xs tw-dw-btn-outline tw-my-2"
+            onClick={onExportPdf}
+          >
             <FileText className="h-3.5 w-3.5" />
             Export PDF
           </button>
         ) : null}
+      </div>
+
+      <div className="hq6-dt-search">
+        <span className="hq6-dt-search-label">Search:</span>
+        <input
+          type="search"
+          value={searchValue}
+          onChange={(e) => {
+            onSearchChange(e.target.value);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              commit();
+            }
+          }}
+          placeholder={searchPlaceholder}
+          title={searchPlaceholder}
+        />
+        <button
+          type="button"
+          className="hq6-search-btn"
+          aria-label="Search"
+          onClick={commit}
+        >
+          Search
+        </button>
       </div>
     </div>
   );

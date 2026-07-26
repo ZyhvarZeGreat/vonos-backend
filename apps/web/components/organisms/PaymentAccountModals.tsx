@@ -35,9 +35,11 @@ export function PaymentAccountFormModal({
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [dismissed, setDismissed] = useState(false);
 
   useEffect(() => {
     if (!open) return;
+    setDismissed(false);
     setForm({
       name: account?.name ?? "",
       accountNumber: account?.accountNumber ?? "",
@@ -49,12 +51,13 @@ export function PaymentAccountFormModal({
     setError(null);
   }, [open, account]);
 
-  if (!open) return null;
+  if (!open || dismissed) return null;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
     setError(null);
+    setDismissed(true);
     try {
       await onSave({
         name: form.name.trim(),
@@ -66,6 +69,7 @@ export function PaymentAccountFormModal({
       });
       onClose();
     } catch (err) {
+      setDismissed(false);
       setError(err instanceof Error ? err.message : "Save failed");
     } finally {
       setSaving(false);

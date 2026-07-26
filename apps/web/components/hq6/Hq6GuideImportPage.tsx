@@ -53,6 +53,8 @@ export function Hq6GuideImportPage({
   const [result, setResult] = useState<CsvImportResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  /** Import Sales uses a 2-col fields table (no Column Number). */
+  const salesStyleTable = Boolean(numberedInstructions?.length);
 
   const handleSubmit = async () => {
     if (!file) {
@@ -90,7 +92,7 @@ export function Hq6GuideImportPage({
     if (templateHref) return;
     e.preventDefault();
     const blob = new Blob([buildTemplateCsv(columns)], {
-      type: "text/csv;charset=utf-8",
+      type: "text/csv;charset=utf-8;",
     });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -99,6 +101,55 @@ export function Hq6GuideImportPage({
     a.click();
     URL.revokeObjectURL(url);
   };
+
+  const fieldsTable = (
+    <div className="overflow-x-auto">
+      <table
+        className={
+          salesStyleTable
+            ? "table table-striped table-slim"
+            : "table table-bordered table-striped hq6-import-guide-table"
+        }
+      >
+        <thead>
+          <tr>
+            {salesStyleTable ? (
+              <>
+                <th>Importable fields</th>
+                <th>Instructions</th>
+              </>
+            ) : (
+              <>
+                <th>Column Number</th>
+                <th>Column Name</th>
+                <th>Instruction</th>
+              </>
+            )}
+          </tr>
+        </thead>
+        <tbody>
+          {columns.map((col) => (
+            <tr key={col.n}>
+              {salesStyleTable ? (
+                <>
+                  <td>{col.name}</td>
+                  <td>
+                    <small>{col.instruction || ""}</small>
+                  </td>
+                </>
+              ) : (
+                <>
+                  <td className="tabular-nums">{col.n}</td>
+                  <td>{col.name}</td>
+                  <td>{col.instruction || ""}</td>
+                </>
+              )}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
 
   return (
     <Hq6FormShell multiCard title={title}>
@@ -116,7 +167,7 @@ export function Hq6GuideImportPage({
           </label>
           <button
             type="button"
-            className="hq6-btn-purple"
+            className="tw-dw-btn tw-dw-btn-primary tw-text-white"
             disabled={busy}
             onClick={() => void handleSubmit()}
           >
@@ -125,7 +176,7 @@ export function Hq6GuideImportPage({
         </div>
         <div className="mt-3">
           <a
-            className="hq6-btn-green inline-flex items-center gap-2 no-underline"
+            className="tw-dw-btn tw-dw-btn-success tw-text-white inline-flex items-center gap-2 no-underline"
             href={templateHref ?? "#"}
             download={Boolean(templateHref)}
             onClick={handleDownloadTemplate}
@@ -157,42 +208,21 @@ export function Hq6GuideImportPage({
       <section className="hq6-form-card">
         <h2 className="hq6-form-card-title">Instructions</h2>
         {numberedInstructions?.length ? (
-          <ol className="mb-4 list-decimal space-y-1 pl-5 text-sm text-[#374151]">
+          <ol className="mb-4 list-decimal space-y-2 pl-5 text-sm text-[#374151]">
             {numberedInstructions.map((line) => (
               <li key={line}>{line}</li>
             ))}
+            <li>{fieldsTable}</li>
           </ol>
         ) : (
-          <p className="mb-3 text-sm text-[#555]">
-            Follow the instructions carefully before importing the file.
-            The columns of the file should be in the following order.
-          </p>
+          <>
+            <p className="mb-3 text-sm text-[#555]">
+              Follow the instructions carefully before importing the file.
+              The columns of the file should be in the following order.
+            </p>
+            {fieldsTable}
+          </>
         )}
-        {numberedInstructions?.length ? (
-          <h3 className="mb-2 text-sm font-semibold text-[#111827]">
-            Importable fields:
-          </h3>
-        ) : null}
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-[#e5e7eb] text-left text-[#6b7280]">
-                <th className="pb-2 pr-3 font-medium">Column Number</th>
-                <th className="pb-2 pr-3 font-medium">Column Name</th>
-                <th className="pb-2 font-medium">Instruction</th>
-              </tr>
-            </thead>
-            <tbody>
-              {columns.map((col) => (
-                <tr key={col.n} className="border-b border-[#f3f4f6]">
-                  <td className="py-2 pr-3 tabular-nums">{col.n}</td>
-                  <td className="py-2 pr-3 font-medium text-[#111827]">{col.name}</td>
-                  <td className="py-2 text-[#6b7280]">{col.instruction || "—"}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
       </section>
 
       {historyTitle && historyColumns ? (

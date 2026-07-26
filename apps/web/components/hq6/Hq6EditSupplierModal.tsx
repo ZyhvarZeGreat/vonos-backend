@@ -11,10 +11,12 @@ import {
 import { updateSupplier } from "@/lib/api/suppliers";
 import { getUsers } from "@/lib/api/users";
 import { TYPEAHEAD_PAGE_SIZE } from "@/lib/api/fetchAllPages";
+import { withOptimistic } from "@/lib/hooks/useAppMutation";
 import {
   MODAL_REF_STALE_MS,
   modalKeys,
 } from "@/lib/query/modalQueryKeys";
+import { patchEntityInQueries } from "@/lib/query/optimistic";
 import { toast } from "@/stores/toastStore";
 
 type ContactKind = "individual" | "business";
@@ -71,6 +73,7 @@ export function Hq6EditSupplierModal({
   const [form, setForm] = useState<EditForm | null>(null);
   const [moreOpen, setMoreOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [dismissed, setDismissed] = useState(false);
 
   const { data: users = [] } = useQuery({
     queryKey: modalKeys.usersFilter(tenantId),
@@ -86,6 +89,7 @@ export function Hq6EditSupplierModal({
       setMoreOpen(false);
       return;
     }
+    setDismissed(false);
     setForm(formFromSupplier(supplier));
     setMoreOpen(false);
   }, [open, supplier]);
@@ -133,6 +137,45 @@ export function Hq6EditSupplierModal({
       .join(", ");
 
     setSaving(true);
+    const notes =
+      [
+        form.contactId.trim()
+          ? `Contact ID: ${form.contactId.trim()}`
+          : "",
+        form.alternateNumber.trim()
+          ? `Alt: ${form.alternateNumber.trim()}`
+          : "",
+        form.landline.trim() ? `Landline: ${form.landline.trim()}` : "",
+        form.dateOfBirth.trim()
+          ? `DOB: ${form.dateOfBirth.trim()}`
+          : "",
+        form.payTerm.trim() ? `Pay term: ${form.payTerm.trim()}` : "",
+        form.creditLimit.trim()
+          ? `Credit limit: ${form.creditLimit.trim()}`
+          : "",
+      ]
+        .filter(Boolean)
+        .join(" | ") || undefined;
+    const patch = {
+      name,
+      contactName: composed || null,
+      email: form.email.trim() || null,
+      phone: form.mobile.trim() || null,
+      address: address || null,
+      taxNumber: form.taxNumber.trim() || null,
+      openingBalance: balance,
+      assignedToUserId: form.assignedToUserId || null,
+      notes: notes ?? null,
+      businessName: business || null,
+    };
+    const opt = withOptimistic(queryClient, {
+      keys: [["suppliers"]],
+      update: (qc) => {
+        patchEntityInQueries(qc, ["suppliers"], supplier.id, patch);
+        setDismissed(true);
+      },
+    });
+    const ctx = await opt.onMutate(undefined);
     try {
       await updateSupplier(supplier.id, {
         name,
@@ -143,42 +186,27 @@ export function Hq6EditSupplierModal({
         taxNumber: form.taxNumber.trim() || null,
         openingBalance: balance,
         assignedToUserId: form.assignedToUserId || undefined,
-        notes:
-          [
-            form.contactId.trim()
-              ? `Contact ID: ${form.contactId.trim()}`
-              : "",
-            form.alternateNumber.trim()
-              ? `Alt: ${form.alternateNumber.trim()}`
-              : "",
-            form.landline.trim() ? `Landline: ${form.landline.trim()}` : "",
-            form.dateOfBirth.trim()
-              ? `DOB: ${form.dateOfBirth.trim()}`
-              : "",
-            form.payTerm.trim() ? `Pay term: ${form.payTerm.trim()}` : "",
-            form.creditLimit.trim()
-              ? `Credit limit: ${form.creditLimit.trim()}`
-              : "",
-          ]
-            .filter(Boolean)
-            .join(" | ") || undefined,
+        notes,
       });
+      opt.onSuccess(undefined, undefined);
       toast.success("Supplier updated");
-      await queryClient.invalidateQueries({ queryKey: ["suppliers"] });
       onSaved?.();
       onClose();
     } catch (err) {
+      opt.onError(err, undefined, ctx);
+      setDismissed(false);
       toast.error(
         err instanceof Error ? err.message : "Failed to update supplier",
       );
     } finally {
+      await opt.onSettled();
       setSaving(false);
     }
   };
 
   return (
     <Hq6Modal
-      open={open && Boolean(supplier)}
+      open={open && Boolean(supplier) && !dismissed}
       onClose={onClose}
       title="Edit contact"
       size="xl"

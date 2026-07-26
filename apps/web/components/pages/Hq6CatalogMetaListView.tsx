@@ -2,6 +2,11 @@
 
 import { useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { withOptimistic } from "@/lib/hooks/useAppMutation";
+import {
+  patchEntityInQueries,
+  removeEntityFromQueries,
+} from "@/lib/query/optimistic";
 import { Pencil, Trash2 } from "lucide-react";
 import type {
   Brand,
@@ -161,7 +166,17 @@ export function Hq6CatalogMetaListView({ kind }: { kind: CatalogMetaKind }) {
       toast.error("Name is required");
       return;
     }
+    const targetId = editTarget.id;
+    const opt = withOptimistic(queryClient, {
+      keys: [["catalog-meta"]],
+      update: (qc) => {
+        patchEntityInQueries(qc, ["catalog-meta"], targetId, {
+          name: editForm.name.trim(),
+        });
+      },
+    });
     setSaving(true);
+    const ctx = await opt.onMutate(undefined);
     try {
       const body: Record<string, unknown> = { name: editForm.name.trim() };
       if (kind === "units") {
@@ -178,13 +193,14 @@ export function Hq6CatalogMetaListView({ kind }: { kind: CatalogMetaKind }) {
       if (kind === "warranties") {
         body.description = editForm.description.trim() || null;
       }
-      await updateCatalogMeta(tenantId, kind, editTarget.id, body);
+      await updateCatalogMeta(tenantId, kind, targetId, body);
       toast.success("Updated");
       setEditTarget(null);
-      await queryClient.invalidateQueries({ queryKey: ["catalog-meta"] });
     } catch (err) {
+      opt.onError(err, undefined, ctx);
       toast.error(err instanceof Error ? err.message : "Update failed");
     } finally {
+      await opt.onSettled();
       setSaving(false);
     }
   };
@@ -480,19 +496,29 @@ export function Hq6CatalogMetaListView({ kind }: { kind: CatalogMetaKind }) {
             danger
             onConfirm={() => {
               if (!tenantId || !deleteTarget) return;
-              void deleteCatalogMeta(tenantId, kind, deleteTarget.id)
-                .then(async () => {
-                  toast.success(`Deleted ${deleteTarget.name}`);
+              const targetId = deleteTarget.id;
+              const targetName = deleteTarget.name;
+              const opt = withOptimistic(queryClient, {
+                keys: [["catalog-meta"]],
+                update: (qc) => {
+                  removeEntityFromQueries(qc, ["catalog-meta"], targetId);
+                },
+              });
+              void (async () => {
+                const ctx = await opt.onMutate(undefined);
+                try {
+                  await deleteCatalogMeta(tenantId, kind, targetId);
+                  toast.success(`Deleted ${targetName}`);
                   setDeleteTarget(null);
-                  await queryClient.invalidateQueries({
-                    queryKey: ["catalog-meta"],
-                  });
-                })
-                .catch((err) =>
+                } catch (err) {
+                  opt.onError(err, undefined, ctx);
                   toast.error(
                     err instanceof Error ? err.message : "Delete failed",
-                  ),
-                );
+                  );
+                } finally {
+                  await opt.onSettled();
+                }
+              })();
             }}
           />
         </>

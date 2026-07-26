@@ -3,19 +3,13 @@
 import { useCallback, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
-import { DataTable, type ColumnConfig } from "@/components/organisms/DataTable";
 import { Hq6ActionsMenu } from "@/components/hq6/Hq6ActionsMenu";
+import { Hq6ColumnVisibilityModal } from "@/components/hq6/Hq6ColumnVisibilityModal";
+import { Hq6DtSearchFilter } from "@/components/hq6/Hq6DtSearchFilter";
 import { Hq6EditSupplierModal } from "@/components/hq6/Hq6EditSupplierModal";
 import { Hq6PaySupplierModal } from "@/components/hq6/Hq6PaySupplierModal";
-import {
-  Hq6FilterCheckbox,
-  Hq6FilterCheckboxRow,
-  Hq6FilterGrid,
-  Hq6FilterSelect,
-  Hq6FilterStack,
-} from "@/components/hq6/Hq6FilterFields";
-import { Hq6StackCell } from "@/components/hq6/Hq6StackCell";
-import { Hq6StandardListShell, useHq6ListChrome } from "@/components/hq6/Hq6StandardListShell";
+import { Hq6PrintModal } from "@/components/hq6/Hq6PrintModal";
+import { useHq6ListChrome } from "@/components/hq6/Hq6StandardListShell";
 import {
   getSuppliersPage,
   setSupplierStatus,
@@ -25,9 +19,9 @@ import { getUsers } from "@/lib/api/users";
 import { TYPEAHEAD_PAGE_SIZE, HQ6_TABLE_PAGE_SIZE } from "@/lib/api/fetchAllPages";
 import { useServerListPage } from "@/lib/hooks/useServerListPage";
 import { useListPageFilters } from "@/lib/hooks/useListPageFilters";
+import { withOptimistic } from "@/lib/hooks/useAppMutation";
 import { useRecordNavigation } from "@/lib/hooks/useRecordNavigation";
 import { useTenantId } from "@/lib/hooks/useRouteTenant";
-import { HQ6_SUPPLIER_FILTERS } from "@/lib/registries/hq6Filters";
 import {
   prefetchContactModalRefs,
   prefetchPaymentAccountsRef,
@@ -39,13 +33,47 @@ import {
 } from "@/lib/registries/hq6TableRows";
 import { useUiStore } from "@/stores/uiStore";
 import { toast } from "@/stores/toastStore";
-import { Hq6ListAmountFooter } from "@/components/hq6/Hq6ListAmountFooter";
 import { formatHq6Currency, formatHq6Date, hq6Cell } from "@/lib/utils/hq6Format";
 import { nameListCursor } from "@/lib/utils/pagination";
 
+const PAGE_SIZES = [25, 50, 100, 200, 500, 1000, -1] as const;
+
+/** HQ6 contact custom columns (ui-audit/04 thead). */
+const CUSTOM_HEADERS = [
+  "Milage",
+  "VIN Number",
+  "Car Model & Year",
+  "Customer Location",
+  "Referral source",
+  "Custom Field 6",
+  "Custom Field 7",
+  "Custom Field 8",
+  "Custom Field 9",
+  "Custom Field 10",
+] as const;
+
+const PlusIcon = (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width="24"
+    height="24"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className="icon icon-tabler icons-tabler-outline icon-tabler-plus"
+    aria-hidden
+  >
+    <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+    <path d="M12 5l0 14" />
+    <path d="M5 12l14 0" />
+  </svg>
+);
+
 /**
- * HQ6 Suppliers list — columns + row actions from ui-table-rows/04_contacts__type=supplier.
- * Filters from FILTERS.json `04_contacts__type=supplier`.
+ * Ultimate POS — contact/index.blade.php (type=supplier) + ui-audit/04 (direct HTML lift).
  */
 export function Hq6SuppliersListView() {
   const router = useRouter();
@@ -55,6 +83,7 @@ export function Hq6SuppliersListView() {
   const openCreateModal = useUiStore((state) => state.openCreateModal);
   const { search, setSearch } = useListPageFilters();
   const [localSearch, setLocalSearch] = useState(search);
+  const [filtersOpen, setFiltersOpen] = useState(true);
   const [purchaseDue, setPurchaseDue] = useState(false);
   const [purchaseReturn, setPurchaseReturn] = useState(false);
   const [advanceBalance, setAdvanceBalance] = useState(false);
@@ -75,7 +104,7 @@ export function Hq6SuppliersListView() {
 
   const apiFilters = useMemo(
     () => ({
-      search: (search).trim() || undefined,
+      search: search.trim() || undefined,
       purchaseDue: purchaseDue || undefined,
       purchaseReturn: purchaseReturn || undefined,
       advanceBalance: advanceBalance || undefined,
@@ -115,345 +144,728 @@ export function Hq6SuppliersListView() {
     queryKey: ["suppliers", tenantId, "hq6"],
     enabled: Boolean(tenantId),
     filters: apiFilters,
-    search: search,
+    search,
     defaultPageSize: HQ6_TABLE_PAGE_SIZE,
-    fetchPage: (cursor, limit, _sort, opts) => getSuppliersPage(tenantId!, cursor, limit, { ...apiFilters, includeSummary: opts?.includeSummary }),
+    fetchPage: (cursor, limit, _sort, opts) =>
+      getSuppliersPage(tenantId!, cursor, limit, {
+        ...apiFilters,
+        includeSummary: opts?.includeSummary,
+      }),
     getCursor: (row) => nameListCursor(row),
   });
 
   const commitSearch = useCallback(() => setSearch(localSearch), [localSearch, setSearch]);
 
   const invalidate = useCallback(async () => {
-    await queryClient.invalidateQueries({ queryKey: ["suppliers"] });
+    const opt = withOptimistic(queryClient, { keys: [["suppliers"]] });
+    await opt.onMutate(undefined);
+    await opt.onSettled();
   }, [queryClient]);
-
-  const openEdit = useCallback((row: SupplierListRow) => {
-    setEditTarget(row);
-  }, []);
-
-  const columns: ColumnConfig<SupplierListRow>[] = useMemo(
-    () => [
-      {
-        key: "actions",
-        header: "Action",
-        sortable: false,
-        render: (row) => (
-          <Hq6ActionsMenu
-            items={[
-              {
-                id: "pay",
-                label: "Pay",
-                onClick: () => {
-                  if (tenantId) prefetchPaymentAccountsRef(queryClient, tenantId);
-                  setPayTarget(row);
-                },
-              },
-              { id: "view", label: "View", onClick: () => goToDetail(row.id) },
-              {
-                id: "edit",
-                label: "Edit",
-                onClick: () => {
-                  if (tenantId) prefetchContactModalRefs(queryClient, tenantId);
-                  openEdit(row);
-                },
-              },
-              {
-                id: "delete",
-                label: "Delete",
-                danger: true,
-                onClick: () =>
-                  router.push(`${detailPath(row.id)}?action=delete`),
-              },
-              {
-                id: "deactivate",
-                label: row.status === "inactive" ? "Activate" : "Deactivate",
-                onClick: () => {
-                  if (!tenantId) return;
-                  const next = row.status === "inactive" ? "active" : "inactive";
-                  void setSupplierStatus(tenantId, row.id, next)
-                    .then(async () => {
-                      toast.success(
-                        next === "inactive"
-                          ? "Supplier deactivated"
-                          : "Supplier activated",
-                      );
-                      await invalidate();
-                    })
-                    .catch((err) =>
-                      toast.error(
-                        err instanceof Error
-                          ? err.message
-                          : "Failed to update status",
-                      ),
-                    );
-                },
-              },
-              {
-                id: "ledger",
-                label: "Ledger",
-                onClick: () => router.push(`${detailPath(row.id)}?view=ledger`),
-              },
-              {
-                id: "purchases",
-                label: "Purchases",
-                onClick: () =>
-                  router.push(`${detailPath(row.id)}?view=purchase`),
-              },
-              {
-                id: "stock_report",
-                label: "Stock Report",
-                onClick: () =>
-                  router.push(`${detailPath(row.id)}?view=stock_report`),
-              },
-              {
-                id: "documents",
-                label: "Documents & Note",
-                onClick: () =>
-                  router.push(`${detailPath(row.id)}?view=documents_and_notes`),
-              },
-            ]}
-          />
-        ),
-      },
-      {
-        key: "contactId",
-        header: "Contact ID",
-        render: (r) => hq6Cell(r.contactId),
-      },
-      {
-        key: "businessName",
-        header: "Business Name",
-        render: (r) => hq6Cell(r.businessName ?? r.name),
-      },
-      {
-        key: "contactName",
-        header: "Name",
-        render: (r) => (
-          <Hq6StackCell
-            primary={hq6Cell(r.contactName) || r.name}
-            secondary={hq6Cell(r.phone) || undefined}
-            tertiary={hq6Cell(r.contactId) || undefined}
-          />
-        ),
-      },
-      { key: "email", header: "Email", render: (r) => hq6Cell(r.email) },
-      {
-        key: "taxNumber",
-        header: "Tax number",
-        render: (r) => hq6Cell(r.taxNumber),
-      },
-      {
-        key: "payTerm",
-        header: "Pay term",
-        render: (r) => hq6Cell(r.payTerm),
-      },
-      {
-        key: "openingBalance",
-        header: "Opening Balance",
-        numeric: true,
-        sortValue: (r) => r.openingBalance ?? 0,
-        render: (r) => formatHq6Currency(r.openingBalance ?? 0),
-      },
-      {
-        key: "totalPurchase",
-        header: "Total Purchase",
-        numeric: true,
-        sortValue: (r) => r.totalPurchase ?? 0,
-        render: (r) => formatHq6Currency(r.totalPurchase ?? 0),
-      },
-      {
-        key: "totalPurchaseDue",
-        header: "Total Purchase Due",
-        numeric: true,
-        sortValue: (r) => r.totalPurchaseDue ?? 0,
-        render: (r) => formatHq6Currency(r.totalPurchaseDue ?? 0),
-      },
-      {
-        key: "totalPurchasePaid",
-        header: "Purchase Paid",
-        numeric: true,
-        sortValue: (r) => r.totalPurchasePaid ?? 0,
-        render: (r) => formatHq6Currency(r.totalPurchasePaid ?? 0),
-      },
-      {
-        key: "advanceBalance",
-        header: "Advance Balance",
-        numeric: true,
-        sortValue: (r) => r.totalAdvance ?? 0,
-        render: (r) => formatHq6Currency(r.totalAdvance ?? 0),
-      },
-      {
-        key: "createdAt",
-        header: "Added On",
-        sortValue: (r) => new Date(r.createdAt).getTime(),
-        render: (r) => formatHq6Date(r.createdAt),
-      },
-      { key: "phone", header: "Mobile", render: (r) => hq6Cell(r.phone) },
-      {
-        key: "address",
-        header: "Address",
-        render: (r) => hq6Cell(r.address),
-      },
-      {
-        key: "totalPurchaseReturn",
-        header: "Total Purchase Return Due",
-        numeric: true,
-        sortValue: (r) => r.totalPurchaseReturn ?? 0,
-        render: (r) => formatHq6Currency(r.totalPurchaseReturn ?? 0),
-      },
-    ],
-    [detailPath, goToDetail, openEdit, queryClient, router, tenantId],
-  );
 
   const defaultKeys = useMemo(() => hq6DefaultColumnKeys(HQ6_SUPPLIER_COLUMNS), []);
   const columnOptions = useMemo(
     () => HQ6_SUPPLIER_COLUMNS.map((c) => ({ key: c.key, label: c.header })),
     [],
   );
-  const effectiveColumns = useMemo(() => {
-    const visible = chrome.visibleColumnKeys ?? defaultKeys;
-    const allowed = new Set(["actions", ...visible]);
-    return columns.filter((c) => allowed.has(c.key));
-  }, [chrome.visibleColumnKeys, columns, defaultKeys]);
+  const visibleKeys = useMemo(() => {
+    const keys = chrome.visibleColumnKeys ?? defaultKeys;
+    return new Set(keys);
+  }, [chrome.visibleColumnKeys, defaultKeys]);
 
-  const filters = (
-    <Hq6FilterStack>
-      <Hq6FilterCheckboxRow>
-        <Hq6FilterCheckbox
-          label="Purchase Due"
-          checked={purchaseDue}
-          onChange={setPurchaseDue}
-        />
-        <Hq6FilterCheckbox
-          label="Purchase Return"
-          checked={purchaseReturn}
-          onChange={setPurchaseReturn}
-        />
-        <Hq6FilterCheckbox
-          label="Advance Balance"
-          checked={advanceBalance}
-          onChange={setAdvanceBalance}
-        />
-        <Hq6FilterCheckbox
-          label="Opening Balance"
-          checked={openingBalance}
-          onChange={setOpeningBalance}
-        />
-      </Hq6FilterCheckboxRow>
-      <Hq6FilterGrid>
-        <Hq6FilterSelect
-          label="Assigned to"
-          value={assignedToUserId}
-          onChange={setAssignedToUserId}
-          emptyLabel="None"
-          options={(usersQuery.data ?? []).map((u) => ({
-            value: u.id,
-            label: u.name || u.email,
-          }))}
-        />
-        <Hq6FilterSelect
-          label="Status"
-          value={status}
-          onChange={setStatus}
-          options={HQ6_SUPPLIER_FILTERS[5]!.options!}
-        />
-      </Hq6FilterGrid>
-    </Hq6FilterStack>
+  const totalItems = totalCount ?? suppliers.length;
+  const effectiveSize = pageSize <= 0 ? Math.max(totalItems, 1) : pageSize;
+  const knownPages =
+    totalCount != null
+      ? Math.max(1, Math.ceil(Math.max(totalCount, 1) / effectiveSize))
+      : Math.max(pageIndex + 1 + (hasMore ? 1 : 0), 1);
+  const from =
+    suppliers.length === 0 ? 0 : pageIndex * effectiveSize + 1;
+  const to = pageIndex * effectiveSize + suppliers.length;
+  const busy = isPaging || isLoading || isFetching;
+
+  const dueTotal =
+    amountSummary?.totalDue ??
+    suppliers.reduce((sum, row) => sum + (row.totalPurchaseDue ?? 0), 0);
+  const returnDueTotal = suppliers.reduce(
+    (sum, row) => sum + (row.totalPurchaseReturn ?? 0),
+    0,
   );
 
-  const pageTotals = useMemo(() => {
-    let totalPurchase = 0;
-    let totalDue = 0;
-    let totalPaid = 0;
-    for (const row of suppliers) {
-      totalPurchase += row.totalPurchase ?? 0;
-      totalDue += row.totalPurchaseDue ?? 0;
-      totalPaid += row.totalPurchasePaid ?? 0;
-    }
-    return { totalPurchase, totalDue, totalPaid };
-  }, [suppliers]);
+  const exportToast = (label: string) =>
+    toast.info(`${label} — export coming with API.`);
+
+  const pageNumbers = useMemo(() => {
+    const max = Math.min(knownPages, 7);
+    return Array.from({ length: max }, (_, i) => i);
+  }, [knownPages]);
+
+  const showCol = (key: string) => visibleKeys.has(key);
 
   return (
-    <>
-      <Hq6StandardListShell
-        slug="suppliers"
-        tabLabel="All your Suppliers"
-        filters={filters}
-        onAdd={() => openCreateModal("supplier")}
-        columnOptions={columnOptions}
-        defaultVisibleColumnKeys={defaultKeys}
-        chrome={chrome}
-        pageSize={pageSize}
-        onPageSizeChange={setPageSize}
-        searchValue={localSearch}
-        onSearchChange={setLocalSearch}
-        onSearchCommit={commitSearch}
-        tableFooter={
-          suppliers.length > 0 ? (
-            <div className="space-y-0">
-              {amountSummary ? (
-                <Hq6ListAmountFooter
-                  title="All matching"
-                  cells={[
-                    {
-                      label: "Purchase",
-                      amount: amountSummary.totalAmount ?? 0,
-                    },
-                    { label: "Due", amount: amountSummary.totalDue ?? 0 },
-                    { label: "Paid", amount: amountSummary.totalPaid ?? 0 },
-                  ]}
-                />
-              ) : null}
-              <Hq6ListAmountFooter
-                title="Page total"
-                cells={[
-                  { label: "Purchase", amount: pageTotals.totalPurchase },
-                  { label: "Due", amount: pageTotals.totalDue },
-                  { label: "Paid", amount: pageTotals.totalPaid },
-                ]}
-              />
+    <div className="hq6-page hq6-suppliers-page">
+      <section className="content-header">
+        <h1 className="tw-text-xl md:tw-text-3xl tw-font-bold tw-text-black">
+          {" "}
+          Suppliers{" "}
+          <small className="tw-text-sm md:tw-text-base tw-text-gray-700 tw-font-semibold">
+            Manage your Suppliers
+          </small>
+        </h1>
+      </section>
+
+      <section className="content">
+        {/* components/filters.blade.php — collapsed by default on HQ6 */}
+        <div className="tw-transition-all tw-mb-4 lg:tw-col-span-1 tw-duration-200 tw-bg-white tw-shadow-sm tw-rounded-xl tw-ring-1 hover:tw-shadow-md tw-ring-gray-200">
+          <div
+            className="box-header with-border"
+            style={{ cursor: "pointer" }}
+            onClick={() => setFiltersOpen((v) => !v)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                setFiltersOpen((v) => !v);
+              }
+            }}
+            role="button"
+            tabIndex={0}
+            aria-expanded={filtersOpen}
+          >
+            <h3 className="box-title tw-pt-2 tw-pb-2 tw-pl-2">
+              <a
+                href="#collapseFilter"
+                onClick={(e) => e.preventDefault()}
+              >
+                <i className="fa fa-filter" aria-hidden /> Filters
+              </a>
+            </h3>
+          </div>
+          <div
+            id="collapseFilter"
+            className="upos-filters-body tw-pt-4 tw-pb-4"
+            aria-expanded={filtersOpen}
+            hidden={!filtersOpen}
+            style={{ display: filtersOpen ? "block" : "none" }}
+          >
+            <div className="box-body">
+              <div className="col-md-3">
+                <div className="form-group">
+                  <label>
+                    <input
+                      className="input-icheck"
+                      id="has_purchase_due"
+                      type="checkbox"
+                      checked={purchaseDue}
+                      onChange={(e) => setPurchaseDue(e.target.checked)}
+                    />{" "}
+                    <strong>Purchase Due</strong>
+                  </label>
+                </div>
+              </div>
+              <div className="col-md-3">
+                <div className="form-group">
+                  <label>
+                    <input
+                      className="input-icheck"
+                      id="has_purchase_return"
+                      type="checkbox"
+                      checked={purchaseReturn}
+                      onChange={(e) => setPurchaseReturn(e.target.checked)}
+                    />{" "}
+                    <strong>Purchase Return</strong>
+                  </label>
+                </div>
+              </div>
+              <div className="col-md-3">
+                <div className="form-group">
+                  <label>
+                    <input
+                      className="input-icheck"
+                      id="has_advance_balance"
+                      type="checkbox"
+                      checked={advanceBalance}
+                      onChange={(e) => setAdvanceBalance(e.target.checked)}
+                    />{" "}
+                    <strong>Advance Balance</strong>
+                  </label>
+                </div>
+              </div>
+              <div className="col-md-3">
+                <div className="form-group">
+                  <label>
+                    <input
+                      className="input-icheck"
+                      id="has_opening_balance"
+                      type="checkbox"
+                      checked={openingBalance}
+                      onChange={(e) => setOpeningBalance(e.target.checked)}
+                    />{" "}
+                    <strong>Opening Balance</strong>
+                  </label>
+                </div>
+              </div>
+              <div className="col-md-3">
+                <div className="form-group">
+                  <label htmlFor="assigned_to">Assigned to:</label>
+                  <select
+                    className="form-control"
+                    style={{ width: "100%" }}
+                    id="assigned_to"
+                    value={assignedToUserId}
+                    onChange={(e) => setAssignedToUserId(e.target.value)}
+                  >
+                    <option value="">None</option>
+                    {(usersQuery.data ?? []).map((u) => (
+                      <option key={u.id} value={u.id}>
+                        {u.name || u.email}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div className="col-md-3">
+                <div className="form-group">
+                  <label htmlFor="status_filter">Status:</label>
+                  <select
+                    className="form-control"
+                    id="status_filter"
+                    value={status}
+                    onChange={(e) => setStatus(e.target.value)}
+                  >
+                    <option value="">None</option>
+                    <option value="active">Active</option>
+                    <option value="inactive">Inactive</option>
+                  </select>
+                </div>
+              </div>
+              <div className="clearfix" />
             </div>
-          ) : null
-        }
-        pagination={{
-          pageIndex,
-          pageSize,
-          itemCount: suppliers.length,
-          hasMore,
-          canGoPrev,
-          onPrev: goPrev,
-          onNext: goNext,
-          onPageSizeChange: setPageSize,
-          onPageSelect: goToPage,
-          canSelectPage,
-          totalItems: totalCount,
-          isBusy: isPaging || isLoading,
-        }}
-      >
-        <DataTable
-          data={suppliers}
-          columns={effectiveColumns}
-          displayMode="table"
-          embedded
-          disablePagination
-          stickyFirstColumn
-          density={chrome.density}
-          onDensityChange={chrome.setDensity}
-          showDensityControl={false}
-          isLoading={isLoading}
-          isFetching={isFetching && !isLoading}
-          error={error ? "Failed to load suppliers." : null}
-          onRowPointerEnter={(row) => {
-            prefetchDetail(row.id);
-            if (tenantId) prefetchSupplierDetail(queryClient, tenantId, row.id, row);
-          }}
-          onRowClick={(row) => {
-            if (tenantId) prefetchSupplierDetail(queryClient, tenantId, row.id, row);
-            goToDetail(row.id);
-          }}
-          emptyState={{ message: "No suppliers found." }}
-        />
-      </Hq6StandardListShell>
+          </div>
+        </div>
+
+        <input type="hidden" value="supplier" id="contact_type" readOnly />
+
+        <div className="box-primary tw-mb-4 tw-transition-all lg:tw-col-span-2 tw-duration-200 tw-bg-white tw-shadow-sm tw-rounded-xl tw-ring-1 hover:tw-shadow-md tw-ring-gray-200">
+          <div className="tw-p-2 sm:tw-p-3">
+            <div className="box-header">
+              <h3 className="box-title">All your Suppliers</h3>
+              <div className="box-tools">
+                <button
+                  type="button"
+                  className="tw-dw-btn tw-bg-gradient-to-r tw-from-indigo-600 tw-to-blue-500 tw-font-bold tw-text-white tw-border-none tw-rounded-full btn-modal"
+                  onClick={() => openCreateModal("supplier")}
+                >
+                  {PlusIcon} Add
+                </button>
+              </div>
+            </div>
+
+            <div className="tw-flow-root tw-border-gray-200">
+              <div>
+                <div className="tw-py-2 tw-align-middle sm:tw-px-5">
+                  <div className="table-responsive">
+                    <div
+                      id="contact_table_wrapper"
+                      className="dataTables_wrapper form-inline dt-bootstrap no-footer"
+                    >
+                      <div className="row margin-bottom-20 text-center">
+                        <div className="col-sm-1">
+                          <div
+                            className="dataTables_length"
+                            id="contact_table_length"
+                          >
+                            <label>
+                              Show{" "}
+                              <select
+                                name="contact_table_length"
+                                aria-controls="contact_table"
+                                className="form-control input-sm"
+                                value={pageSize}
+                                onChange={(e) =>
+                                  setPageSize(Number(e.target.value))
+                                }
+                              >
+                                {PAGE_SIZES.map((n) => (
+                                  <option key={n} value={n}>
+                                    {n === -1 ? "All" : n.toLocaleString()}
+                                  </option>
+                                ))}
+                              </select>{" "}
+                              entries
+                            </label>
+                          </div>
+                        </div>
+                        <div className="col-sm-8">
+                          <div className="dt-buttons btn-group">
+                            {(
+                              [
+                                ["csv", "fa-file-csv", "Export CSV"],
+                                ["excel", "fa-file-excel", "Export Excel"],
+                                ["print", "fa-print", "Print"],
+                                ["colvis", "fa-columns", "Column visibility"],
+                                ["pdf", "fa-file-pdf", "Export PDF"],
+                              ] as const
+                            ).map(([key, icon, label]) => (
+                              <a
+                                key={key}
+                                className={`${
+                                  key === "print"
+                                    ? "buttons-print"
+                                    : key === "colvis"
+                                      ? "buttons-collection buttons-colvis"
+                                      : `buttons-${key} buttons-html5`
+                                } tw-dw-btn-xs tw-dw-btn tw-dw-btn-outline tw-my-2`}
+                                href="#"
+                                role="button"
+                                tabIndex={0}
+                                aria-controls="contact_table"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  if (key === "print") chrome.setPrintOpen(true);
+                                  else if (key === "colvis")
+                                    chrome.setColumnsOpen(true);
+                                  else exportToast(label);
+                                }}
+                              >
+                                <span>
+                                  <i className={`fa ${icon}`} aria-hidden />{" "}
+                                  {label}
+                                </span>
+                              </a>
+                            ))}
+                          </div>
+                        </div>
+                        <div className="col-sm-3">
+                          <Hq6DtSearchFilter
+                            id="contact_table_filter"
+                            ariaControls="contact_table"
+                            value={localSearch}
+                            onChange={setLocalSearch}
+                            onCommit={commitSearch}
+                          />
+                        </div>
+                        {busy ? (
+                          <div
+                            id="contact_table_processing"
+                            className="dataTables_processing panel panel-default"
+                          >
+                            Processing...
+                          </div>
+                        ) : null}
+                      </div>
+
+                      <div className="dataTables_scroll">
+                        <table
+                          className="table table-bordered table-striped dataTable no-footer"
+                          id="contact_table"
+                          role="grid"
+                          aria-describedby="contact_table_info"
+                          style={{ width: "100%" }}
+                        >
+                          <thead>
+                            <tr role="row">
+                              <th className="tw-w-full sorting_disabled">
+                                Action
+                              </th>
+                              {showCol("contactId") ? (
+                                <th className="sorting_desc">Contact ID</th>
+                              ) : null}
+                              {showCol("businessName") ? (
+                                <th>Business Name</th>
+                              ) : null}
+                              {showCol("contactName") ? <th>Name</th> : null}
+                              {showCol("email") ? <th>Email</th> : null}
+                              {showCol("taxNumber") ? (
+                                <th>Tax number</th>
+                              ) : null}
+                              {showCol("payTerm") ? (
+                                <th className="sorting_disabled">Pay term</th>
+                              ) : null}
+                              {showCol("openingBalance") ? (
+                                <th>Opening Balance</th>
+                              ) : null}
+                              {showCol("advanceBalance") ? (
+                                <th>Advance Balance</th>
+                              ) : null}
+                              {showCol("createdAt") ? <th>Added On</th> : null}
+                              {showCol("address") ? (
+                                <th className="sorting_disabled">Address</th>
+                              ) : null}
+                              {showCol("phone") ? <th>Mobile</th> : null}
+                              {showCol("totalPurchaseDue") ? (
+                                <th className="sorting_disabled">
+                                  Total Purchase Due
+                                </th>
+                              ) : null}
+                              {showCol("totalPurchaseReturn") ? (
+                                <th className="sorting_disabled">
+                                  Total Purchase Return Due
+                                </th>
+                              ) : null}
+                              {CUSTOM_HEADERS.map((h) => (
+                                <th key={h}>{h}</th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {error ? (
+                              <tr className="odd">
+                                <td
+                                  colSpan={14 + CUSTOM_HEADERS.length}
+                                  className="dataTables_empty"
+                                >
+                                  Failed to load suppliers.
+                                </td>
+                              </tr>
+                            ) : isLoading && suppliers.length === 0 ? (
+                              <tr className="odd">
+                                <td
+                                  colSpan={14 + CUSTOM_HEADERS.length}
+                                  className="dataTables_empty"
+                                >
+                                  Processing...
+                                </td>
+                              </tr>
+                            ) : suppliers.length === 0 ? (
+                              <tr className="odd">
+                                <td
+                                  colSpan={14 + CUSTOM_HEADERS.length}
+                                  className="dataTables_empty"
+                                  valign="top"
+                                >
+                                  No data available in table
+                                </td>
+                              </tr>
+                            ) : (
+                              suppliers.map((row, index) => (
+                                <tr
+                                  key={row.id}
+                                  role="row"
+                                  className={index % 2 === 0 ? "odd" : "even"}
+                                  onMouseEnter={() => {
+                                    prefetchDetail(row.id);
+                                    if (tenantId)
+                                      prefetchSupplierDetail(
+                                        queryClient,
+                                        tenantId,
+                                        row.id,
+                                        row,
+                                      );
+                                  }}
+                                >
+                                  <td>
+                                    <div className="btn-group">
+                                      <Hq6ActionsMenu
+                                        items={[
+                                          {
+                                            id: "pay",
+                                            label: "Pay",
+                                            onClick: () => {
+                                              if (tenantId)
+                                                prefetchPaymentAccountsRef(
+                                                  queryClient,
+                                                  tenantId,
+                                                );
+                                              setPayTarget(row);
+                                            },
+                                          },
+                                          {
+                                            id: "view",
+                                            label: "View",
+                                            onClick: () => goToDetail(row.id),
+                                          },
+                                          {
+                                            id: "edit",
+                                            label: "Edit",
+                                            onClick: () => {
+                                              if (tenantId)
+                                                prefetchContactModalRefs(
+                                                  queryClient,
+                                                  tenantId,
+                                                );
+                                              setEditTarget(row);
+                                            },
+                                          },
+                                          {
+                                            id: "delete",
+                                            label: "Delete",
+                                            danger: true,
+                                            onClick: () =>
+                                              router.push(
+                                                `${detailPath(row.id)}?action=delete`,
+                                              ),
+                                          },
+                                          {
+                                            id: "deactivate",
+                                            label:
+                                              row.status === "inactive"
+                                                ? "Activate"
+                                                : "Deactivate",
+                                            onClick: () => {
+                                              if (!tenantId) return;
+                                              const next =
+                                                row.status === "inactive"
+                                                  ? "active"
+                                                  : "inactive";
+                                              void setSupplierStatus(
+                                                tenantId,
+                                                row.id,
+                                                next,
+                                              )
+                                                .then(async () => {
+                                                  toast.success(
+                                                    next === "inactive"
+                                                      ? "Supplier deactivated"
+                                                      : "Supplier activated",
+                                                  );
+                                                  await invalidate();
+                                                })
+                                                .catch((err) =>
+                                                  toast.error(
+                                                    err instanceof Error
+                                                      ? err.message
+                                                      : "Failed to update status",
+                                                  ),
+                                                );
+                                            },
+                                          },
+                                          {
+                                            id: "ledger",
+                                            label: "Ledger",
+                                            dividerBefore: true,
+                                            onClick: () =>
+                                              router.push(
+                                                `${detailPath(row.id)}?view=ledger`,
+                                              ),
+                                          },
+                                          {
+                                            id: "purchases",
+                                            label: "Purchases",
+                                            onClick: () =>
+                                              router.push(
+                                                `${detailPath(row.id)}?view=purchase`,
+                                              ),
+                                          },
+                                          {
+                                            id: "stock_report",
+                                            label: "Stock Report",
+                                            onClick: () =>
+                                              router.push(
+                                                `${detailPath(row.id)}?view=stock_report`,
+                                              ),
+                                          },
+                                          {
+                                            id: "documents",
+                                            label: "Documents & Note",
+                                            onClick: () =>
+                                              router.push(
+                                                `${detailPath(row.id)}?view=documents_and_notes`,
+                                              ),
+                                          },
+                                        ]}
+                                      />
+                                    </div>
+                                  </td>
+                                  {showCol("contactId") ? (
+                                    <td>{hq6Cell(row.contactId)}</td>
+                                  ) : null}
+                                  {showCol("businessName") ? (
+                                    <td>
+                                      {hq6Cell(row.businessName ?? row.name)}
+                                    </td>
+                                  ) : null}
+                                  {showCol("contactName") ? (
+                                    <td>
+                                      {hq6Cell(row.contactName) || row.name}
+                                    </td>
+                                  ) : null}
+                                  {showCol("email") ? (
+                                    <td>{hq6Cell(row.email)}</td>
+                                  ) : null}
+                                  {showCol("taxNumber") ? (
+                                    <td>{hq6Cell(row.taxNumber)}</td>
+                                  ) : null}
+                                  {showCol("payTerm") ? (
+                                    <td>{hq6Cell(row.payTerm)}</td>
+                                  ) : null}
+                                  {showCol("openingBalance") ? (
+                                    <td>
+                                      <span
+                                        data-orig-value={String(
+                                          row.openingBalance ?? 0,
+                                        )}
+                                      >
+                                        {formatHq6Currency(
+                                          row.openingBalance ?? 0,
+                                        )}
+                                      </span>
+                                    </td>
+                                  ) : null}
+                                  {showCol("advanceBalance") ? (
+                                    <td>
+                                      <span
+                                        data-orig-value={String(
+                                          row.totalAdvance ?? 0,
+                                        )}
+                                      >
+                                        {formatHq6Currency(
+                                          row.totalAdvance ?? 0,
+                                        )}
+                                      </span>
+                                    </td>
+                                  ) : null}
+                                  {showCol("createdAt") ? (
+                                    <td>{formatHq6Date(row.createdAt)}</td>
+                                  ) : null}
+                                  {showCol("address") ? (
+                                    <td>{hq6Cell(row.address)}</td>
+                                  ) : null}
+                                  {showCol("phone") ? (
+                                    <td>{hq6Cell(row.phone)}</td>
+                                  ) : null}
+                                  {showCol("totalPurchaseDue") ? (
+                                    <td>
+                                      <span
+                                        className="contact_due"
+                                        data-orig-value={String(
+                                          row.totalPurchaseDue ?? 0,
+                                        )}
+                                      >
+                                        {formatHq6Currency(
+                                          row.totalPurchaseDue ?? 0,
+                                        )}
+                                      </span>
+                                    </td>
+                                  ) : null}
+                                  {showCol("totalPurchaseReturn") ? (
+                                    <td>
+                                      <span
+                                        className="return_due"
+                                        data-orig-value={String(
+                                          row.totalPurchaseReturn ?? 0,
+                                        )}
+                                      >
+                                        {formatHq6Currency(
+                                          row.totalPurchaseReturn ?? 0,
+                                        )}
+                                      </span>
+                                    </td>
+                                  ) : null}
+                                  {CUSTOM_HEADERS.map((h) => (
+                                    <td key={h} />
+                                  ))}
+                                </tr>
+                              ))
+                            )}
+                          </tbody>
+                          {suppliers.length > 0 ? (
+                            <tfoot>
+                              <tr className="bg-gray font-17 text-center footer-total">
+                                <td />
+                                {showCol("contactId") ? <td /> : null}
+                                {showCol("businessName") ? <td /> : null}
+                                {showCol("contactName") ? <td /> : null}
+                                {showCol("email") ? <td /> : null}
+                                {showCol("taxNumber") ? <td /> : null}
+                                <td
+                                  colSpan={
+                                    [
+                                      "payTerm",
+                                      "openingBalance",
+                                      "advanceBalance",
+                                      "createdAt",
+                                      "address",
+                                      "phone",
+                                    ].filter((k) => showCol(k)).length || 1
+                                  }
+                                >
+                                  <strong>Total:</strong>
+                                </td>
+                                {showCol("totalPurchaseDue") ? (
+                                  <td className="footer_contact_due">
+                                    {formatHq6Currency(dueTotal)}
+                                  </td>
+                                ) : null}
+                                {showCol("totalPurchaseReturn") ? (
+                                  <td className="footer_contact_return_due">
+                                    {formatHq6Currency(returnDueTotal)}
+                                  </td>
+                                ) : null}
+                                {CUSTOM_HEADERS.map((h) => (
+                                  <td key={h} />
+                                ))}
+                              </tr>
+                            </tfoot>
+                          ) : null}
+                        </table>
+                      </div>
+
+                      <div
+                        className="dataTables_info"
+                        id="contact_table_info"
+                        role="status"
+                        aria-live="polite"
+                      >
+                        {`Showing ${from} to ${to} of ${(totalCount ?? to).toLocaleString()} entries`}
+                      </div>
+                      <div
+                        className="dataTables_paginate paging_simple_numbers"
+                        id="contact_table_paginate"
+                      >
+                        <ul className="pagination">
+                          <li
+                            className={`paginate_button previous${!canGoPrev ? " disabled" : ""}`}
+                            id="contact_table_previous"
+                          >
+                            <a
+                              href="#"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                if (canGoPrev) goPrev();
+                              }}
+                            >
+                              Previous
+                            </a>
+                          </li>
+                          {pageNumbers.map((i) => (
+                            <li
+                              key={i}
+                              className={`paginate_button${i === pageIndex ? " active" : ""}`}
+                            >
+                              <a
+                                href="#"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  if (canSelectPage?.(i) !== false) goToPage(i);
+                                }}
+                              >
+                                {i + 1}
+                              </a>
+                            </li>
+                          ))}
+                          <li
+                            className={`paginate_button next${!hasMore ? " disabled" : ""}`}
+                            id="contact_table_next"
+                          >
+                            <a
+                              href="#"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                if (hasMore) goNext();
+                              }}
+                            >
+                              Next
+                            </a>
+                          </li>
+                        </ul>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
 
       <Hq6EditSupplierModal
         open={Boolean(editTarget)}
@@ -474,6 +886,21 @@ export function Hq6SuppliersListView() {
           void queryClient.invalidateQueries({ queryKey: ["supplier-summary"] });
         }}
       />
-    </>
+      <Hq6PrintModal
+        open={chrome.printOpen}
+        onClose={() => chrome.setPrintOpen(false)}
+      />
+      <Hq6ColumnVisibilityModal
+        open={chrome.columnsOpen}
+        onClose={() => chrome.setColumnsOpen(false)}
+        columns={columnOptions}
+        visibleKeys={chrome.visibleColumnKeys ?? defaultKeys}
+        onChange={chrome.setVisibleColumnKeys}
+        onReset={() => {
+          chrome.resetColumnVisibility();
+          chrome.setColumnsOpen(false);
+        }}
+      />
+    </div>
   );
 }

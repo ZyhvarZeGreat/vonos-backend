@@ -48,6 +48,7 @@ export interface StockMovementListRow {
   paymentMethod?: string | null;
   paymentDue?: number;
   supplierId?: string | null;
+  createdByName?: string | null;
 }
 
 export const MOVEMENT_SOURCES = ["standard", "purchase_return"] as const;

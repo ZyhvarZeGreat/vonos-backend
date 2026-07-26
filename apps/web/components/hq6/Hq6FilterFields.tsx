@@ -17,7 +17,7 @@ export function Hq6FilterCheckbox({
     <label className="inline-flex items-center gap-2 text-sm font-medium text-[#374151]">
       <input
         type="checkbox"
-        className="h-4 w-4 rounded border-[#d1d5db]"
+        className="h-4 w-4 rounded border border-[#d1d5db]"
         checked={checked}
         onChange={(e) => onChange(e.target.checked)}
       />

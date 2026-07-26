@@ -49,6 +49,8 @@ export interface Hq6StandardListShellProps {
   filters?: ReactNode;
   onAdd?: () => void;
   addHref?: string;
+  /** Override primary Add button label (e.g. "Add Draft"). */
+  addLabel?: string;
   onExport?: () => void;
   pageSize: number;
   onPageSizeChange: (size: number) => void;
@@ -69,6 +71,7 @@ export interface Hq6StandardListShellProps {
     label: string;
     active?: boolean;
     icon?: ReactNode;
+    iconClass?: string;
     onClick?: () => void;
   }>;
   tabActions?: ReactNode;
@@ -90,6 +93,10 @@ export interface Hq6StandardListShellProps {
   modals?: ReactNode;
   hidePrimaryAction?: boolean;
   hideToolbar?: boolean;
+  /** When true, omit CSV/Excel/Print/PDF/column visibility (UPOS roles uses buttons:[]). */
+  hideExports?: boolean;
+  /** Override box header title; empty string = tools-only header (UPOS agents). */
+  boxTitle?: string;
   /** Freeze first column on horizontal scroll. Default true. */
   freezeFirstColumn?: boolean;
 }
@@ -102,6 +109,7 @@ export function Hq6StandardListShell({
   filters,
   onAdd,
   addHref,
+  addLabel,
   onExport,
   pageSize,
   onPageSizeChange,
@@ -122,6 +130,8 @@ export function Hq6StandardListShell({
   modals,
   hidePrimaryAction,
   hideToolbar,
+  hideExports = false,
+  boxTitle,
   freezeFirstColumn = true,
 }: Hq6StandardListShellProps) {
   const rules = hq6ListActionRule(slug);
@@ -135,7 +145,7 @@ export function Hq6StandardListShell({
     const actions = [];
     if (rules.addVariant !== "none" && (onAdd || addHref)) {
       actions.push({
-        label: "Add",
+        label: addLabel ?? "Add",
         variant: rules.addVariant,
         onClick: onAdd,
         href: addHref,
@@ -149,7 +159,7 @@ export function Hq6StandardListShell({
       });
     }
     return actions;
-  }, [addHref, hidePrimaryAction, onAdd, onExport, rules, tabActions]);
+  }, [addHref, addLabel, hidePrimaryAction, onAdd, onExport, rules, tabActions]);
 
   const listTabs =
     tabs ??
@@ -161,13 +171,25 @@ export function Hq6StandardListShell({
       },
     ] as const);
 
+  const resolvedBoxTitle =
+    boxTitle !== undefined
+      ? boxTitle
+      : listTabs.length === 1
+        ? listTabs[0]?.label
+        : undefined;
+
+  /** UPOS always shows DataTables export chrome; print/colvis don't need onExport. */
+  const showExportChrome = !hideExports;
+  const exportOrNoop = onExport ?? (() => undefined);
+
   return (
     <Hq6DataListPage
       title={resolvedTitle}
       subtitle={copy.subtitle}
       showSubtitle={!rules.titleOnly && Boolean(copy.subtitle)}
+      boxTitle={resolvedBoxTitle}
       filters={filters}
-      tabs={listTabs}
+      tabs={[...listTabs]}
       tabActions={tabActions}
       primaryActions={primaryActions}
       toolbar={
@@ -180,12 +202,15 @@ export function Hq6StandardListShell({
               onSearchChange,
               onSearchCommit,
               searchPlaceholder: resolvedSearchPlaceholder,
-              onExportCsv: onExport,
-              onExportExcel: onExport,
-              onPrint: () => chrome.setPrintOpen(true),
-              onColumnVisibility: () => chrome.setColumnsOpen(true),
-              density: chrome.density,
-              onDensityChange: chrome.setDensity,
+              onExportCsv: showExportChrome ? exportOrNoop : undefined,
+              onExportExcel: showExportChrome ? exportOrNoop : undefined,
+              onPrint: showExportChrome
+                ? () => chrome.setPrintOpen(true)
+                : undefined,
+              onColumnVisibility: showExportChrome
+                ? () => chrome.setColumnsOpen(true)
+                : undefined,
+              onExportPdf: showExportChrome ? exportOrNoop : undefined,
             }
       }
       tableFooter={tableFooter}
