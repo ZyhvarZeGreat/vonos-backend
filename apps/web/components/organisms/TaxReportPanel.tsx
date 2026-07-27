@@ -283,6 +283,8 @@ function InvoiceTableSection({
     return table.rows.filter((row) => rowMatchesSearch(row, search));
   }, [table, search, needsServerPage, debouncedSearch]);
 
+  const isHq6 = useIsVaHq6();
+
   if (!table) return null;
 
   const displayTable: ReportsTable = {
@@ -290,7 +292,6 @@ function InvoiceTableSection({
     rows: filteredRows,
   };
   const isBusy = pageQuery.isFetching && !pageQuery.isLoading;
-  const isHq6 = useIsVaHq6();
 
   if (isHq6) {
     return (

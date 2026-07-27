@@ -151,14 +151,16 @@ export function Hq6Field({
   required,
   children,
   hint,
+  className,
 }: {
   label: string;
   required?: boolean;
   children: ReactNode;
   hint?: ReactNode;
+  className?: string;
 }) {
   return (
-    <label className="hq6-modal-field">
+    <label className={cn("hq6-modal-field", className)}>
       <span>
         {label}
         {required ? ":*" : ":"}
