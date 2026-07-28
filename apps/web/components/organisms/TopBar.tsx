@@ -160,10 +160,7 @@ export function TopBar({
           </IconButton>
           {isAdminChrome ? (
             <div className="flex min-w-0 items-center gap-3">
-              <AdminEntitySwitcher
-                variant="topbar"
-                className="min-w-0 w-[9.5rem] sm:w-[12rem] md:w-[14rem] lg:w-[16rem]"
-              />
+              <AdminEntitySwitcher variant="topbar" />
               <div className="hidden min-w-0 sm:block">
                 <p className="truncate text-xs text-white/80">VAG Super Admin</p>
               </div>

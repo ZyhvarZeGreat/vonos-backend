@@ -11,7 +11,7 @@ import { useAdminEntityStore } from "@/stores/adminEntityStore";
 
 /**
  * VAG HRM — same HrmPageView module as entity apps (`/{code}/hrm`).
- * Module entity strip scopes which tenant’s HRM loads (SP → VSP).
+ * “Show info for” scopes which tenant’s HRM loads (SP → VSP).
  * Group (no entity) falls back to Automotive (VA) via useRouteTenant.
  * Add User stays on the group overview (HQ6 hides Users under HRM tabs).
  */
@@ -24,8 +24,8 @@ export default function AdminHrmPage() {
 
   const title = viewingUnit ? `HRM — ${viewingUnit.name}` : "HRM";
   const subtitle = viewingUnit
-    ? `Same module as /${viewingUnit.enterCode}/hrm · switch module entity above to change`
-    : "Group HRM · add users across entities · pick a module entity above for scoped HRM";
+    ? `Same module as /${viewingUnit.enterCode}/hrm · change “Show info for” above`
+    : "Group HRM · add users across entities · pick a business under “Show info for” above";
 
   return (
     <Hq6PageFrame title={title} subtitle={subtitle}>
@@ -49,22 +49,22 @@ export default function AdminHrmPage() {
               ) : null}
               . Use{" "}
               <span className="font-semibold text-[#111827]">
-                Module entity
+                Show info for
               </span>{" "}
-              above to switch without leaving VAG. The top-bar{" "}
-              <span className="font-semibold text-[#111827]">Open app</span>{" "}
-              switcher opens that entity&apos;s full dashboard instead.
+              above to switch without leaving Group admin. The top-bar{" "}
+              <span className="font-semibold text-[#111827]">Open an app</span>{" "}
+              control leaves admin and opens that business&apos;s full dashboard.
             </>
           ) : (
             <>
               Group overview — invite or create users for any entity below, then
-              browse Automotive (VA) HRM by default. Pick{" "}
+              browse Automotive (VA) HRM by default. Pick a business under{" "}
               <span className="font-semibold text-[#111827]">
-                Module entity
+                Show info for
               </span>{" "}
               above for Warehouse or Spare Parts. Top-bar{" "}
-              <span className="font-semibold text-[#111827]">Open app</span>{" "}
-              leaves VAG for a full entity dashboard.
+              <span className="font-semibold text-[#111827]">Open an app</span>{" "}
+              leaves Group admin for a full entity dashboard.
             </>
           )}
         </div>

@@ -1,8 +1,9 @@
 "use client";
 
-import { useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
+import { ChevronDown, LayoutGrid } from "lucide-react";
 import {
   getVagViewUnit,
   VAG_VIEW_UNITS,
@@ -40,8 +41,8 @@ function parseScopeId(raw: string): AdminViewingCode {
 
 /**
  * Two distinct switchers for VAG admin:
- * - Topbar: VAG ↔ entity workspaces (full dashboards).
- * - Bar: entity scope for Reports / Finance / HRM (stay on `/admin/*`).
+ * - Topbar “Open app”: leave Group admin → that business’s full dashboard.
+ * - Bar “Group info”: stay in Group admin; filter Reports / Finance / HRM / Stock.
  */
 export function AdminEntitySwitcher({
   className,
@@ -55,8 +56,28 @@ export function AdminEntitySwitcher({
   const customDateRange = useUiStore((s) => s.customDateRange);
   const beginEntitySwitch = useUiStore((s) => s.beginEntitySwitch);
   const warmedRef = useRef<Set<string>>(new Set());
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
   const isTopbar = variant === "topbar";
   const navigatingRef = useRef(false);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onPointerDown = (event: MouseEvent) => {
+      if (!menuRef.current?.contains(event.target as Node)) {
+        setMenuOpen(false);
+      }
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setMenuOpen(false);
+    };
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [menuOpen]);
 
   const warmUnit = (unitId: VagViewUnitId) => {
     const unit = VAG_VIEW_UNITS.find((u) => u.id === unitId);
@@ -159,35 +180,24 @@ export function AdminEntitySwitcher({
     setViewingCode(code);
     refreshScopedQueries();
     if (!code) {
-      toast.info("Module entity: Group (Reports / Finance / HRM / Stock)");
+      toast.info("Group info: all businesses (Reports / Finance / HRM / Stock)");
       return;
     }
     const unit = getVagViewUnit(code);
     toast.success(
-      `Module entity: ${shortName(unit.name)} (stay in VAG)`,
+      `Group info: ${shortName(unit.name)} — still in Group admin`,
     );
   };
-
-  const topbarOptions = useMemo(
-    () => [
-      { value: "VAG", label: "VAG — Group admin" },
-      ...VAG_VIEW_UNITS.map((unit) => ({
-        value: unit.enterCode,
-        label: `${unit.badge} — ${shortName(unit.name)} dashboard`,
-      })),
-    ],
-    [],
-  );
 
   const scopeOptions = useMemo(
     () => [
       {
         value: "",
-        label: "Group — All entities (consolidated)",
+        label: "All businesses (combined)",
       },
       ...VAG_VIEW_UNITS.map((unit) => ({
         value: unit.id,
-        label: `${unit.badge} — ${shortName(unit.name)}${
+        label: `${shortName(unit.name)}${
           unit.tenantCodes.length > 1
             ? ` (${unit.tenantCodes.join(" + ")})`
             : ""
@@ -200,34 +210,69 @@ export function AdminEntitySwitcher({
   if (isTopbar) {
     return (
       <div
-        className={cn("tw-relative tw-z-20 tw-min-w-0", className)}
+        ref={menuRef}
+        className={cn("tw-relative tw-z-30 tw-shrink-0", className)}
         onMouseEnter={warmAllUnits}
-        title="Leaves VAG and opens that entity’s full dashboard"
       >
-        {/*
-          Uncontrolled + defaultValue: a controlled value stuck on "VAG"/""
-          prevented native change from sticking and looked like a dead control.
-          Hard assign() crosses admin → tenant layouts reliably.
-          Hint lives in aria-label + option text — no stacked label (broke header).
-        */}
-        <select
+        <button
+          type="button"
           id="upos-admin-workspace-switcher"
-          key={`workspace-${pathname}`}
-          className="form-control select2 upos-header-entity-select"
-          defaultValue="VAG"
-          aria-label="Open app: leave VAG and open an entity’s full dashboard"
-          onChange={(event) => {
-            const next = event.target.value;
-            if (next === "VAG") return;
-            enterEntityDashboard(next);
-          }}
+          className="tw-inline-flex tw-h-10 tw-min-w-[11.5rem] tw-items-center tw-justify-between tw-gap-2 tw-rounded-md tw-border tw-border-white/35 tw-bg-white tw-px-3.5 tw-py-2 tw-text-sm tw-font-medium tw-text-gray-900 tw-shadow-none hover:tw-bg-gray-50"
+          aria-expanded={menuOpen}
+          aria-haspopup="menu"
+          aria-label="Open an app — leave Group admin and open a business dashboard"
+          onClick={() => setMenuOpen((open) => !open)}
         >
-          {topbarOptions.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </select>
+          <LayoutGrid className="tw-h-4 tw-w-4 tw-shrink-0 tw-text-gray-500" />
+          <span className="tw-whitespace-nowrap">Open app</span>
+          <ChevronDown
+            className={cn(
+              "tw-h-4 tw-w-4 tw-shrink-0 tw-text-gray-500 tw-transition-transform",
+              menuOpen && "tw-rotate-180",
+            )}
+          />
+        </button>
+
+        {menuOpen ? (
+          <div
+            role="menu"
+            aria-labelledby="upos-admin-workspace-switcher"
+            className="tw-absolute tw-left-0 tw-top-[calc(100%+8px)] tw-z-50 tw-w-[22rem] tw-overflow-hidden tw-rounded-lg tw-border tw-border-gray-200 tw-bg-white tw-shadow-lg"
+          >
+            <div className="tw-border-b tw-border-gray-100 tw-bg-gray-50 tw-px-4 tw-py-3.5">
+              <p className="tw-mb-0 tw-text-sm tw-font-semibold tw-text-gray-900">
+                Open a business app
+              </p>
+              <p className="tw-mb-0 tw-mt-1.5 tw-text-xs tw-leading-relaxed tw-text-gray-500">
+                Leaves Group admin and opens that business’s full dashboard.
+                To filter Reports / Finance here, use{" "}
+                <span className="tw-font-semibold">Show info for</span> below.
+              </p>
+            </div>
+            <ul className="tw-m-0 tw-list-none tw-space-y-0.5 tw-p-2.5">
+              {VAG_VIEW_UNITS.map((unit) => (
+                <li key={unit.id}>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="tw-flex tw-w-full tw-items-center tw-justify-between tw-rounded-md tw-px-3.5 tw-py-3 tw-text-left tw-text-sm tw-text-gray-800 hover:tw-bg-gray-100"
+                    onClick={() => {
+                      setMenuOpen(false);
+                      enterEntityDashboard(unit.enterCode);
+                    }}
+                  >
+                    <span className="tw-font-medium">
+                      {shortName(unit.name)}
+                    </span>
+                    <span className="tw-text-[11px] tw-font-semibold tw-uppercase tw-tracking-wide tw-text-gray-400">
+                      {unit.enterCode}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
       </div>
     );
   }
@@ -236,15 +281,15 @@ export function AdminEntitySwitcher({
     <div
       className={cn("tw-relative tw-min-w-0", className)}
       onMouseEnter={warmAllUnits}
-      title="Stay in VAG — scopes Reports, Finance, HRM, and Stock"
+      title="Stay in Group admin — filters Reports, Finance, HRM, and Stock"
     >
       <select
         id="upos-admin-report-entity"
         className="form-control select2 upos-admin-entity-scope-select"
         value={viewingCode ?? ""}
-        aria-label={`Module entity: ${
-          viewingCode ? getVagViewUnit(viewingCode).name : "All entities"
-        }. Stay in VAG — changes Reports, Finance, HRM, and Stock.`}
+        aria-label={`Group information for: ${
+          viewingCode ? getVagViewUnit(viewingCode).name : "All businesses"
+        }. Stay in Group admin — changes Reports, Finance, HRM, and Stock.`}
         onChange={(event) => setModuleScope(parseScopeId(event.target.value))}
       >
         {scopeOptions.map((option) => (

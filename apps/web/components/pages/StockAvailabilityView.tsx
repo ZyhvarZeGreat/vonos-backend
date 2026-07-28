@@ -105,7 +105,7 @@ export function StockAvailabilityView() {
       ) : (
         <p className={`text-sm ${muted}`}>
           First 10 products load immediately. Search by name or SKU — available =
-          on hand minus Approved requisition holds. Module entity above scopes
+          on hand minus Approved requisition holds. “Show info for” above scopes
           the filter when set.
         </p>
       )}

@@ -12,6 +12,8 @@ import {
   VAG_VIEW_UNITS,
 } from "@/lib/registries/vagViewUnits";
 import { useAdminEntityStore } from "@/stores/adminEntityStore";
+import { useUiStore } from "@/stores/uiStore";
+import { toast } from "@/stores/toastStore";
 import { cn } from "@/lib/utils/cn";
 
 export interface FinanceActionBarProps {
@@ -24,12 +26,13 @@ export interface FinanceActionBarProps {
 
 const UNIT_OPTIONS = VAG_VIEW_UNITS.map((unit) => ({
   value: unit.id,
-  label: `${unit.badge} — ${unit.name}`,
+  label: `${unit.badge} — ${unit.name.replace(/^Vonos\s+/i, "")}`,
 }));
 
 /**
- * Admin/group finance actions deep-link into the entity workspace.
- * No global add-sale / add-expense modals — those stay on entity pages.
+ * Admin/group finance actions.
+ * Expense + Sale open in-place modals for the chosen entity (no page redirect).
+ * Payments / purchases still deep-link into that entity’s list pages.
  */
 export function FinanceActionBar({
   groupMode = false,
@@ -41,6 +44,8 @@ export function FinanceActionBar({
   const { tenantCode: routeTenantCode } = useRouteTenant({ adminFallback: null });
   const viewingCode = useAdminEntityStore((s) => s.viewingCode);
   const setViewingCode = useAdminEntityStore((s) => s.setViewingCode);
+  const openAddExpenseModal = useUiStore((s) => s.openAddExpenseModal);
+  const openAddSaleModal = useUiStore((s) => s.openAddSaleModal);
 
   const workspaceCode: TenantCode | null = fixedTenantCode
     ? fixedTenantCode
@@ -54,16 +59,27 @@ export function FinanceActionBar({
 
   const helperText = useMemo(() => {
     if (fixedTenantCode && activeTenant) {
-      return `Actions open in ${activeTenant.name}'s workspace (sales, purchases, expenses, payments).`;
+      return `Expense and sale stay on this page for ${activeTenant.name}. Payments and purchases open that app’s list.`;
     }
     if (groupMode) {
-      return "Pick a module entity above (or here), then open that department's payments, expenses, sales, or purchases page. Spare Parts opens VSP.";
+      return "Pick which business to post for, then Add Expense or Add Sale here (no redirect). Payments / purchases open that app’s page.";
     }
     return null;
   }, [activeTenant, fixedTenantCode, groupMode]);
 
+  const requireTenant = (): string | null => {
+    if (!activeTenant?.tenantId) {
+      toast.error("Choose a business first");
+      return null;
+    }
+    return activeTenant.tenantId;
+  };
+
   const goToEntity = (suffix: string) => {
-    if (!workspaceCode) return;
+    if (!workspaceCode) {
+      toast.error("Choose a business first");
+      return;
+    }
     router.push(`/${workspaceCode}/${suffix}`);
   };
 
@@ -91,7 +107,7 @@ export function FinanceActionBar({
                   : "mb-1.5 block text-sm font-medium text-foreground"
               }
             >
-              Entity for actions
+              Post for business
             </label>
             <select
               id="finance-action-entity"
@@ -99,7 +115,7 @@ export function FinanceActionBar({
               value={viewingCode ?? ""}
               onChange={(e) => setViewingCode(e.target.value || null)}
             >
-              <option value="">Select entity…</option>
+              <option value="">Select business…</option>
               {UNIT_OPTIONS.map((opt) => (
                 <option key={opt.value} value={opt.value}>
                   {opt.label}
@@ -123,7 +139,10 @@ export function FinanceActionBar({
             type="button"
             className={actionBtnClass}
             disabled={blocked}
-            onClick={() => goToEntity("expenses")}
+            onClick={() => {
+              const tenantId = requireTenant();
+              if (tenantId) openAddExpenseModal(tenantId);
+            }}
           >
             <Receipt className="tw-h-4 tw-w-4" />
             Add Expense
@@ -132,7 +151,10 @@ export function FinanceActionBar({
             type="button"
             className={actionBtnClass}
             disabled={blocked}
-            onClick={() => goToEntity("sales")}
+            onClick={() => {
+              const tenantId = requireTenant();
+              if (tenantId) openAddSaleModal(tenantId);
+            }}
           >
             <Plus className="tw-h-4 tw-w-4" />
             Add Sale

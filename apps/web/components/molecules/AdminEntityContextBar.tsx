@@ -13,8 +13,9 @@ import { AdminEntitySwitcher } from "@/components/molecules/AdminEntitySwitcher"
 import { useAdminEntityStore } from "@/stores/adminEntityStore";
 
 /**
- * VAG module strip: entity scope for Reports / Finance / HRM.
- * Does not leave `/admin/*` — use the top-bar switcher to open a full entity dashboard.
+ * VAG strip under the header: which business’s data to show in Group admin
+ * (Reports / Finance / HRM / Stock). Does not leave `/admin/*`.
+ * Use the top-bar “Open an app” control to enter a full entity dashboard.
  */
 export function AdminEntityContextBar({ className }: { className?: string }) {
   const viewingCode = useAdminEntityStore((s) => s.viewingCode);
@@ -30,13 +31,13 @@ export function AdminEntityContextBar({ className }: { className?: string }) {
     : accentForTenantCode("VAG");
 
   const title = viewingUnit
-    ? `${viewingUnit.badge} — ${viewingUnit.name.replace(/^Vonos\s+/i, "")}`
-    : "Group — All entities";
+    ? viewingUnit.name.replace(/^Vonos\s+/i, "")
+    : "All businesses";
   const detail = viewingUnit
     ? viewingUnit.tenantCodes.length > 1
-      ? `Stay in VAG · Reports, Finance, HRM, Stock · ${viewingUnit.tenantCodes.join(" + ")}`
-      : `Stay in VAG · Reports, Finance, HRM, Stock · same as /${viewingUnit.enterCode}`
-    : "Stay in VAG · consolidated Reports, Finance, HRM & Stock";
+      ? `Group admin view · ${viewingUnit.tenantCodes.join(" + ")} · Reports, Finance, HRM, Stock`
+      : `Group admin view · same data as /${viewingUnit.enterCode} · Reports, Finance, HRM, Stock`
+    : "Group admin view · combined Reports, Finance, HRM & Stock across the group";
 
   return (
     <div
@@ -55,9 +56,9 @@ export function AdminEntityContextBar({ className }: { className?: string }) {
         </span>
         <div className="tw-min-w-0">
           <p className="tw-text-xs tw-font-semibold tw-uppercase tw-tracking-wide tw-text-gray-500">
-            Module entity
+            Group information
             <span className="tw-ml-1.5 tw-font-normal tw-normal-case tw-tracking-normal tw-text-gray-400">
-              (stay in VAG)
+              (stay in admin)
             </span>
           </p>
           <p className="tw-truncate tw-text-sm tw-font-semibold tw-text-gray-900">
@@ -72,9 +73,14 @@ export function AdminEntityContextBar({ className }: { className?: string }) {
           htmlFor="upos-admin-report-entity"
           className="tw-text-xs tw-font-semibold tw-uppercase tw-tracking-wide tw-text-gray-500"
         >
-          Switch module entity
+          Show info for
         </label>
         <AdminEntitySwitcher variant="bar" className="tw-w-full" />
+        <p className="tw-mb-0 tw-text-[11px] tw-leading-snug tw-text-gray-400">
+          Filters what you see here. To work inside a business app, use{" "}
+          <span className="tw-font-semibold tw-text-gray-500">Open an app</span>{" "}
+          in the top bar.
+        </p>
       </div>
     </div>
   );

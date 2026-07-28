@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAppMutation } from "@/lib/hooks/useAppMutation";
 import { Button } from "@/components/atoms/Button";
@@ -11,6 +11,7 @@ import { Select } from "@/components/atoms/Select";
 import { createManualExpense } from "@/lib/api/ledger";
 import { useIsVaHq6 } from "@/lib/hooks/useIsVaHq6";
 import { useRouteTenant, useTenantId } from "@/lib/hooks/useRouteTenant";
+import { ENTITY_LIST } from "@/lib/registries/tenants";
 import { useUiStore } from "@/stores/uiStore";
 
 const EXPENSE_CATEGORIES = [
@@ -23,6 +24,7 @@ const EXPENSE_CATEGORIES = [
 
 export function AddExpenseModal() {
   const router = useRouter();
+  const pathname = usePathname();
   const activeModal = useUiStore((state) => state.activeModal);
   const closeModal = useUiStore((state) => state.closeModal);
   const financeActionTenantId = useUiStore((state) => state.financeActionTenantId);
@@ -32,6 +34,15 @@ export function AddExpenseModal() {
   const queryClient = useQueryClient();
   const open = activeModal === "addExpense";
   const isHq6 = useIsVaHq6();
+  const onAdmin = Boolean(pathname?.startsWith("/admin"));
+  /** VAG finance bar: keep modal on Group admin (do not redirect into an entity app). */
+  const stayInAdmin = onAdmin && Boolean(financeActionTenantId);
+
+  const entityLabel = useMemo(() => {
+    if (!tenantId) return null;
+    const hit = ENTITY_LIST.find((e) => e.tenantId === tenantId);
+    return hit ? hit.name.replace(/^Vonos\s+/i, "") : null;
+  }, [tenantId]);
 
   const [amount, setAmount] = useState("");
   const [category, setCategory] = useState("other");
@@ -39,16 +50,16 @@ export function AddExpenseModal() {
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [error, setError] = useState<string | null>(null);
 
-  // HQ6: Add Expense is a full page (`/expenses/create`), not a modal.
+  // HQ6 entity apps: Add Expense is a full page — except VAG admin in-place flow.
   useEffect(() => {
-    if (!open || !isHq6 || !tenantCode) return;
+    if (!open || !isHq6 || stayInAdmin || !tenantCode) return;
     closeModal();
     router.push(`/${tenantCode}/add-expense`);
-  }, [closeModal, isHq6, open, router, tenantCode]);
+  }, [closeModal, isHq6, open, router, stayInAdmin, tenantCode]);
 
   const mutation = useAppMutation({
     mutationFn: async () => {
-      if (!tenantId) throw new Error("No tenant selected");
+      if (!tenantId) throw new Error("No business selected");
       const parsed = Number(amount);
       if (!Number.isFinite(parsed) || parsed <= 0) {
         throw new Error("Enter a valid amount");
@@ -62,7 +73,9 @@ export function AddExpenseModal() {
         date,
       });
     },
-    successMessage: "Expense added to ledger",
+    successMessage: entityLabel
+      ? `Expense added for ${entityLabel}`
+      : "Expense added to ledger",
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["ledgerEntries"] });
       await queryClient.invalidateQueries({ queryKey: ["ledgerTablePage"] });
@@ -82,13 +95,17 @@ export function AddExpenseModal() {
     closeModal();
   };
 
-  if (!open || isHq6) return null;
+  if (!open || (isHq6 && !stayInAdmin)) return null;
 
   return (
     <Modal open={open} onClose={handleClose}>
       <ModalHeader
         title="Add Expense"
-        subtitle="Record a manual expense in the ledger"
+        subtitle={
+          entityLabel
+            ? `Posting to ${entityLabel} ledger`
+            : "Record a manual expense in the ledger"
+        }
         onClose={handleClose}
       />
       <div className="space-y-3.5 px-4 pb-2">

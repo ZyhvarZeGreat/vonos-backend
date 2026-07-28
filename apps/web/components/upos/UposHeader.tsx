@@ -133,7 +133,7 @@ export function UposHeader({
     <>
       <div className="tw-transition-all tw-duration-5000 tw-border-b theme-header-bg tw-shrink-0 lg:tw-h-15 tw-border-primary-500/30 no-print">
         <div className="tw-px-5 tw-py-3">
-          <div className="tw-flex tw-items-start tw-justify-between tw-gap-2 sm:tw-gap-3 md:tw-gap-4 lg:tw-items-center lg:tw-gap-6">
+          <div className="tw-flex tw-items-center tw-justify-between tw-gap-2 sm:tw-gap-3 md:tw-gap-4 lg:tw-gap-6">
             <div className="tw-flex tw-min-w-0 tw-shrink tw-items-center tw-gap-2 sm:tw-gap-3">
               <button
                 type="button"
@@ -185,10 +185,7 @@ export function UposHeader({
 
               {/* VAG topbar: leave admin → full entity dashboard (not module scope). */}
               {isAdminHeader ? (
-                <AdminEntitySwitcher
-                  variant="topbar"
-                  className="tw-min-w-0 tw-w-[10rem] sm:tw-w-[13rem] md:tw-w-[16rem] lg:tw-w-[18rem]"
-                />
+                <AdminEntitySwitcher variant="topbar" />
               ) : isVonosAdmin ? (
                 <TenantSwitcher
                   tenantCode={tenantCode}

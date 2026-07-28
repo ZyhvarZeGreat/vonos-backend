@@ -23,6 +23,8 @@ import { prefetchVagAdminShell } from "@/lib/prefetch/routePrefetchRegistry";
 import { UposAppShell } from "@/components/upos/UposAppShell";
 import { TopProgressBar } from "@/components/atoms/TopProgressBar";
 import { Spinner } from "@/components/atoms/Spinner";
+import { AddExpenseModal } from "@/components/organisms/AddExpenseModal";
+import { AddSaleModal } from "@/components/organisms/AddSaleModal";
 
 /**
  * VAG Group admin shell — same Ultimate POS chrome as operating tenants
@@ -113,6 +115,8 @@ export function AdminShell({
           children
         )}
       </UposAppShell>
+      <AddExpenseModal />
+      <AddSaleModal />
     </div>
   );
 }
