@@ -47,9 +47,13 @@ export interface Hq6ContactDetailModel {
   displayName: string;
   contactId?: string | null;
   typeLabel: string;
+  /** Person / contact name when distinct from business display name */
+  contactPerson?: string | null;
   address?: string | null;
   mobile?: string | null;
+  email?: string | null;
   taxNumber?: string | null;
+  payTerm?: string | null;
   currency?: string;
   totalPurchase?: number;
   totalInvoice?: number;
@@ -149,7 +153,7 @@ export function Hq6ContactDetailShell({
     formatHq6Currency(n ?? 0, currency);
 
   return (
-    <div className="hq6-contact-page">
+    <div className="hq6-page hq6-contact-page">
       <div className="hq6-contact-topbar">
         <h1 className="hq6-contact-title">View Contact</h1>
         <select
@@ -171,31 +175,99 @@ export function Hq6ContactDetailShell({
 
       <section className="hq6-contact-summary">
         <div className="hq6-contact-summary-grid">
-          <div>
+          <div className="hq6-contact-summary-col">
             <h2 className="hq6-contact-profile-name">
-              <UserRound className="h-5 w-5 shrink-0 text-[#3c8dbc]" />
-              <span>{contact.displayName}</span>
-              <small>{contact.typeLabel}</small>
+              <UserRound className="hq6-contact-profile-icon" aria-hidden />
+              <span className="hq6-contact-profile-text">
+                <span className="hq6-contact-profile-title">
+                  {contact.displayName}
+                </span>
+                <small className="hq6-contact-profile-type">
+                  {contact.typeLabel}
+                </small>
+              </span>
             </h2>
             <div className="hq6-contact-meta-block">
               <div className="hq6-contact-meta-label">
-                <MapPin className="h-3.5 w-3.5" /> Address
+                <MapPin className="h-3.5 w-3.5" aria-hidden /> Address
               </div>
-              <p>{contact.address?.trim() || contact.displayName || "—"}</p>
+              <p className="hq6-contact-meta-value">
+                {contact.address?.trim() || "—"}
+              </p>
             </div>
+            {contact.contactPerson?.trim() ? (
+              <div className="hq6-contact-meta-block">
+                <div className="hq6-contact-meta-label">
+                  <UserRound className="h-3.5 w-3.5" aria-hidden /> Contact
+                </div>
+                <p className="hq6-contact-meta-value">
+                  {contact.contactPerson.trim()}
+                </p>
+              </div>
+            ) : null}
             <div className="hq6-contact-meta-block">
               <div className="hq6-contact-meta-label">
-                <Smartphone className="h-3.5 w-3.5" /> Mobile
+                <Smartphone className="h-3.5 w-3.5" aria-hidden /> Mobile
               </div>
-              <p>{contact.mobile?.trim() || "NIL"}</p>
+              <p className="hq6-contact-meta-value">
+                {contact.mobile?.trim() || "—"}
+              </p>
             </div>
+            {contact.email?.trim() ? (
+              <div className="hq6-contact-meta-block">
+                <div className="hq6-contact-meta-label">
+                  <Mail className="h-3.5 w-3.5" aria-hidden /> Email
+                </div>
+                <p className="hq6-contact-meta-value">{contact.email.trim()}</p>
+              </div>
+            ) : null}
           </div>
-          <div>
+
+          <div className="hq6-contact-summary-col hq6-contact-summary-col--meta">
             <div className="hq6-contact-meta-block">
               <div className="hq6-contact-meta-label">
-                <Info className="h-3.5 w-3.5" /> Tax number
+                <Info className="h-3.5 w-3.5" aria-hidden /> Tax number
               </div>
-              <p>{contact.taxNumber?.trim() || ""}</p>
+              <p className="hq6-contact-meta-value">
+                {contact.taxNumber?.trim() || "—"}
+              </p>
+            </div>
+            {contact.payTerm?.trim() ? (
+              <div className="hq6-contact-meta-block">
+                <div className="hq6-contact-meta-label">Pay term</div>
+                <p className="hq6-contact-meta-value">
+                  {contact.payTerm.trim()}
+                </p>
+              </div>
+            ) : null}
+            {contact.contactId ? (
+              <div className="hq6-contact-meta-block">
+                <div className="hq6-contact-meta-label">
+                  <FileText className="h-3.5 w-3.5" aria-hidden /> Contact ID
+                </div>
+                <p className="hq6-contact-meta-value">{contact.contactId}</p>
+              </div>
+            ) : null}
+          </div>
+
+          <div className="hq6-contact-summary-col hq6-contact-summary-col--totals">
+            <div className="hq6-contact-meta-block">
+              <div className="hq6-contact-meta-label">Total invoice</div>
+              <p className="hq6-contact-meta-value hq6-contact-meta-value--strong">
+                {money(contact.totalInvoice)}
+              </p>
+            </div>
+            <div className="hq6-contact-meta-block">
+              <div className="hq6-contact-meta-label">Total paid</div>
+              <p className="hq6-contact-meta-value hq6-contact-meta-value--strong">
+                {money(contact.totalPaid)}
+              </p>
+            </div>
+            <div className="hq6-contact-meta-block">
+              <div className="hq6-contact-meta-label">Balance due</div>
+              <p className="hq6-contact-meta-value hq6-contact-meta-value--strong">
+                {money(contact.balanceDue)}
+              </p>
             </div>
           </div>
         </div>

@@ -134,8 +134,13 @@ export function Hq6CustomerDetailView({ recordId }: { recordId: string }) {
           displayName,
           contactId: customer.contactId,
           typeLabel: "Customer",
-          address: customer.businessName ?? customer.name,
+          contactPerson:
+            customer.businessName && customer.name !== customer.businessName
+              ? customer.name
+              : null,
+          address: null,
           mobile: customer.phone,
+          email: customer.email,
           taxNumber: customer.taxNumber,
           currency,
           totalPurchase: 0,
