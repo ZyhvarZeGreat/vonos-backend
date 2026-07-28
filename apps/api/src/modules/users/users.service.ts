@@ -347,18 +347,101 @@ export class UsersService {
     return { user: this.toUser(user) };
   }
 
+  async updateUser(
+    actor: AuthenticatedUser,
+    id: string,
+    body: {
+      email?: string;
+      name?: string;
+      role?: User['role'];
+      status?: User['status'];
+      password?: string;
+    },
+  ): Promise<{ user: User }> {
+    const row = await this.findManagedUser(actor, id);
+
+    const data: {
+      email?: string;
+      name?: string;
+      role?: User['role'];
+      status?: User['status'];
+      passwordHash?: string;
+      tokenVersion?: { increment: number };
+    } = {};
+
+    if (body.name !== undefined) {
+      const name = body.name.trim();
+      if (!name) throw new BadRequestException('Name is required');
+      data.name = name;
+    }
+
+    if (body.email !== undefined) {
+      const email = body.email.trim().toLowerCase();
+      if (!email) throw new BadRequestException('Email is required');
+      const clash = await this.prisma.user.findFirst({
+        where: {
+          email: { equals: email, mode: 'insensitive' },
+          deletedAt: null,
+          NOT: { id: row.id },
+        },
+      });
+      if (clash) {
+        throw new ConflictException('A user with this email already exists');
+      }
+      data.email = email;
+    }
+
+    if (body.role !== undefined) {
+      if (!ROLES.includes(body.role)) {
+        throw new BadRequestException('Invalid role');
+      }
+      if (actor.role === 'admin') {
+        const allowed: User['role'][] = ['manager', 'staff', 'viewer'];
+        if (!allowed.includes(body.role)) {
+          throw new ForbiddenException('Cannot assign this role');
+        }
+      }
+      if (body.role === 'super_admin' && row.tenantId !== null) {
+        throw new BadRequestException(
+          'Super admin role requires a VAG (unscoped) user',
+        );
+      }
+      data.role = body.role;
+    }
+
+    if (body.status !== undefined) {
+      if (!['active', 'suspended', 'invited'].includes(body.status)) {
+        throw new BadRequestException('Invalid status');
+      }
+      data.status = body.status;
+    }
+
+    if (body.password !== undefined && body.password.length > 0) {
+      if (body.password.length < 8) {
+        throw new BadRequestException('Password must be at least 8 characters');
+      }
+      data.passwordHash = await hashPassword(body.password);
+      data.tokenVersion = { increment: 1 };
+    }
+
+    if (Object.keys(data).length === 0) {
+      throw new BadRequestException('No fields to update');
+    }
+
+    const updated = await this.prisma.user.update({
+      where: { id: row.id },
+      data,
+    });
+    this.invalidateUserCaches(row.tenantId);
+    return { user: this.toUser(updated) };
+  }
+
   async updateUserStatus(
     actor: AuthenticatedUser,
     id: string,
     status: 'active' | 'suspended',
   ): Promise<{ user: User }> {
-    const row = await this.findManagedUser(actor, id);
-    const updated = await this.prisma.user.update({
-      where: { id: row.id },
-      data: { status },
-    });
-    this.invalidateUserCaches(row.tenantId);
-    return { user: this.toUser(updated) };
+    return this.updateUser(actor, id, { status });
   }
 
   async deactivateUser(

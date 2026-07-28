@@ -9,7 +9,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import type { User } from "@vonos/types";
 import { EmptyState } from "@/components/atoms/EmptyState";
 import { Hq6ConfirmModal } from "@/components/hq6/Hq6ConfirmModal";
-import { createUser, deactivateUser, getUser } from "@/lib/api/users";
+import { createUser, deactivateUser, getUser, inviteUser, updateUser } from "@/lib/api/users";
 import { useRecordNavigation } from "@/lib/hooks/useRecordNavigation";
 import { useTenantId } from "@/lib/hooks/useRouteTenant";
 import { DETAIL_RECORD_STALE_MS } from "@/lib/query/prefetchListDetails";
@@ -90,6 +90,31 @@ export function Hq6UserDetailView({
         allowLogin: true,
         password: "",
         confirmPassword: "",
+        salesCommission: "0.00",
+        maxDiscount: "",
+        dob: "",
+        gender: "",
+        maritalStatus: "",
+        bloodGroup: "",
+        mobile: "",
+        altContact: "",
+        familyContact: "",
+        guardianName: "",
+        idProofName: "",
+        idProofNumber: "",
+        permanentAddress: "",
+        currentAddress: "",
+        bankAccountName: "",
+        bankAccountNumber: "",
+        bankName: "",
+        bankCode: "",
+        bankBranch: "",
+        taxPayerId: "",
+        department: "",
+        designation: "",
+        primaryLocation: "",
+        basicSalary: "",
+        salaryPeriod: "month",
       };
     }
     const parts = splitName(user.name);
@@ -101,9 +126,34 @@ export function Hq6UserDetailView({
       username: user.email.split("@")[0] ?? "",
       role: user.role,
       isActive: user.status === "active",
-      allowLogin: user.status === "active",
+      allowLogin: user.status === "active" || user.status === "invited",
       password: "",
       confirmPassword: "",
+      salesCommission: "0.00",
+      maxDiscount: "",
+      dob: "",
+      gender: "",
+      maritalStatus: "",
+      bloodGroup: "",
+      mobile: "",
+      altContact: "",
+      familyContact: "",
+      guardianName: "",
+      idProofName: "",
+      idProofNumber: "",
+      permanentAddress: "",
+      currentAddress: "",
+      bankAccountName: "",
+      bankAccountNumber: "",
+      bankName: "",
+      bankCode: "",
+      bankBranch: "",
+      taxPayerId: "",
+      department: "",
+      designation: "",
+      primaryLocation: "",
+      basicSalary: "",
+      salaryPeriod: "month",
     };
   }, [isCreate, user]);
 
@@ -172,18 +222,12 @@ export function Hq6UserDetailView({
       toast.error("First name and email are required.");
       return;
     }
-    if (form.allowLogin && form.password && form.password !== form.confirmPassword) {
+    if (
+      form.allowLogin &&
+      form.password &&
+      form.password !== form.confirmPassword
+    ) {
       toast.error("Passwords do not match.");
-      return;
-    }
-
-    if (!isCreate) {
-      toast.error("Editing existing users is not available yet. Deactivate and create a new account if needed.");
-      return;
-    }
-
-    if (!form.password || form.password.length < 8) {
-      toast.error("Password must be at least 8 characters.");
       return;
     }
 
@@ -194,21 +238,68 @@ export function Hq6UserDetailView({
 
     setSaving(true);
     try {
-      await createUser(
-        {
-          email: form.email.trim(),
-          name,
-          role: form.role,
-          password: form.password,
-          tenantId: tenantId ?? undefined,
-        },
-        { tenantId },
-      );
-      toast.success(`Created ${name}`);
+      if (isCreate) {
+        if (form.allowLogin) {
+          if (!form.password || form.password.length < 8) {
+            toast.error("Password must be at least 8 characters.");
+            setSaving(false);
+            return;
+          }
+          await createUser(
+            {
+              email: form.email.trim(),
+              name,
+              role: form.role,
+              password: form.password,
+              tenantId: tenantId ?? undefined,
+            },
+            { tenantId },
+          );
+          toast.success(`Created ${name}`);
+        } else {
+          const invited = await inviteUser(
+            {
+              email: form.email.trim(),
+              name,
+              role: form.role,
+              tenantId: tenantId ?? undefined,
+            },
+            { tenantId },
+          );
+          toast.success(`Invited ${name}`);
+          if (invited.devInviteUrl && typeof window !== "undefined") {
+            console.info("[invite]", invited.devInviteUrl);
+          }
+        }
+      } else {
+        await updateUser(
+          recordId,
+          {
+            email: form.email.trim(),
+            name,
+            role: form.role,
+            status: form.isActive ? "active" : "suspended",
+            ...(form.allowLogin && form.password
+              ? { password: form.password }
+              : {}),
+          },
+          { tenantId },
+        );
+        toast.success(`Updated ${name}`);
+        await queryClient.invalidateQueries({
+          queryKey: ["user", tenantId, recordId],
+        });
+      }
       await queryClient.invalidateQueries({ queryKey: ["users"] });
       router.push(listPath);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to create user");
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : isCreate
+            ? "Failed to create user"
+            : "Failed to update user",
+      );
     } finally {
       setSaving(false);
     }
@@ -302,6 +393,23 @@ export function Hq6UserDetailView({
                                     }
                                   />{" "}
                                   Status (Active)
+                                </label>
+                              </div>
+                            </div>
+                          </div>
+                          <div className="col-md-3">
+                            <div className="form-group">
+                              <div className="checkbox">
+                                <br />
+                                <label>
+                                  <input
+                                    type="checkbox"
+                                    className="input-icheck"
+                                    checked={false}
+                                    readOnly
+                                    disabled
+                                  />{" "}
+                                  Enable service staff pin
                                 </label>
                               </div>
                             </div>
@@ -420,12 +528,464 @@ export function Hq6UserDetailView({
               </div>
 
               <div className="col-md-12">
+                <div className="box-primary tw-mb-4 tw-transition-all tw-duration-200 tw-bg-white tw-shadow-sm tw-rounded-xl tw-ring-1 hover:tw-shadow-md tw-ring-gray-200">
+                  <div className="tw-p-2 sm:tw-p-3">
+                    <div className="box-header">
+                      <h3 className="box-title">Sales</h3>
+                    </div>
+                    <div className="tw-flow-root">
+                      <div className="tw-py-2 tw-align-middle sm:tw-px-5">
+                        <div className="row">
+                          <div className="col-md-4">
+                            <div className="form-group">
+                              <label htmlFor="cmmsn_percent">
+                                Sales Commission Percentage (%):
+                              </label>
+                              <input
+                                id="cmmsn_percent"
+                                className="form-control"
+                                value={form.salesCommission}
+                                onChange={(e) =>
+                                  patch("salesCommission", e.target.value)
+                                }
+                              />
+                            </div>
+                          </div>
+                          <div className="col-md-4">
+                            <div className="form-group">
+                              <label htmlFor="max_sales_discount">
+                                Max sales discount percent:
+                              </label>
+                              <input
+                                id="max_sales_discount"
+                                className="form-control"
+                                value={form.maxDiscount}
+                                onChange={(e) =>
+                                  patch("maxDiscount", e.target.value)
+                                }
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="col-md-12">
+                <div className="box-primary tw-mb-4 tw-transition-all tw-duration-200 tw-bg-white tw-shadow-sm tw-rounded-xl tw-ring-1 hover:tw-shadow-md tw-ring-gray-200">
+                  <div className="tw-p-2 sm:tw-p-3">
+                    <div className="box-header">
+                      <h3 className="box-title">More Informations</h3>
+                    </div>
+                    <div className="tw-flow-root">
+                      <div className="tw-py-2 tw-align-middle sm:tw-px-5">
+                        <div className="row">
+                          <div className="col-md-4">
+                            <div className="form-group">
+                              <label htmlFor="dob">Date of birth:</label>
+                              <input
+                                id="dob"
+                                type="date"
+                                className="form-control"
+                                value={form.dob}
+                                onChange={(e) => patch("dob", e.target.value)}
+                              />
+                            </div>
+                          </div>
+                          <div className="col-md-4">
+                            <div className="form-group">
+                              <label htmlFor="gender">Gender:</label>
+                              <select
+                                id="gender"
+                                className="form-control"
+                                value={form.gender}
+                                onChange={(e) => patch("gender", e.target.value)}
+                              >
+                                <option value="">Please Select</option>
+                                <option value="male">Male</option>
+                                <option value="female">Female</option>
+                                <option value="other">Others</option>
+                              </select>
+                            </div>
+                          </div>
+                          <div className="col-md-4">
+                            <div className="form-group">
+                              <label htmlFor="marital_status">
+                                Marital Status:
+                              </label>
+                              <select
+                                id="marital_status"
+                                className="form-control"
+                                value={form.maritalStatus}
+                                onChange={(e) =>
+                                  patch("maritalStatus", e.target.value)
+                                }
+                              >
+                                <option value="">Please Select</option>
+                                <option value="married">Married</option>
+                                <option value="unmarried">Unmarried</option>
+                                <option value="divorced">Divorced</option>
+                              </select>
+                            </div>
+                          </div>
+                          <div className="clearfix" />
+                          <div className="col-md-4">
+                            <div className="form-group">
+                              <label htmlFor="blood_group">Blood Group:</label>
+                              <input
+                                id="blood_group"
+                                className="form-control"
+                                value={form.bloodGroup}
+                                onChange={(e) =>
+                                  patch("bloodGroup", e.target.value)
+                                }
+                              />
+                            </div>
+                          </div>
+                          <div className="col-md-4">
+                            <div className="form-group">
+                              <label htmlFor="mobile">Mobile Number:</label>
+                              <input
+                                id="mobile"
+                                className="form-control"
+                                value={form.mobile}
+                                onChange={(e) => patch("mobile", e.target.value)}
+                              />
+                            </div>
+                          </div>
+                          <div className="col-md-4">
+                            <div className="form-group">
+                              <label htmlFor="alt_number">
+                                Alternate contact number:
+                              </label>
+                              <input
+                                id="alt_number"
+                                className="form-control"
+                                value={form.altContact}
+                                onChange={(e) =>
+                                  patch("altContact", e.target.value)
+                                }
+                              />
+                            </div>
+                          </div>
+                          <div className="clearfix" />
+                          <div className="col-md-4">
+                            <div className="form-group">
+                              <label htmlFor="family_number">
+                                Family contact number:
+                              </label>
+                              <input
+                                id="family_number"
+                                className="form-control"
+                                value={form.familyContact}
+                                onChange={(e) =>
+                                  patch("familyContact", e.target.value)
+                                }
+                              />
+                            </div>
+                          </div>
+                          <div className="col-md-4">
+                            <div className="form-group">
+                              <label htmlFor="guardian_name">
+                                Guardian Name:
+                              </label>
+                              <input
+                                id="guardian_name"
+                                className="form-control"
+                                value={form.guardianName}
+                                onChange={(e) =>
+                                  patch("guardianName", e.target.value)
+                                }
+                              />
+                            </div>
+                          </div>
+                          <div className="col-md-4">
+                            <div className="form-group">
+                              <label htmlFor="id_proof_name">
+                                ID Proof Name:
+                              </label>
+                              <input
+                                id="id_proof_name"
+                                className="form-control"
+                                value={form.idProofName}
+                                onChange={(e) =>
+                                  patch("idProofName", e.target.value)
+                                }
+                              />
+                            </div>
+                          </div>
+                          <div className="clearfix" />
+                          <div className="col-md-4">
+                            <div className="form-group">
+                              <label htmlFor="id_proof_number">
+                                ID Proof Number:
+                              </label>
+                              <input
+                                id="id_proof_number"
+                                className="form-control"
+                                value={form.idProofNumber}
+                                onChange={(e) =>
+                                  patch("idProofNumber", e.target.value)
+                                }
+                              />
+                            </div>
+                          </div>
+                          <div className="col-md-6">
+                            <div className="form-group">
+                              <label htmlFor="permanent_address">
+                                Permanent Address:
+                              </label>
+                              <textarea
+                                id="permanent_address"
+                                className="form-control"
+                                rows={3}
+                                value={form.permanentAddress}
+                                onChange={(e) =>
+                                  patch("permanentAddress", e.target.value)
+                                }
+                              />
+                            </div>
+                          </div>
+                          <div className="col-md-6">
+                            <div className="form-group">
+                              <label htmlFor="current_address">
+                                Current Address:
+                              </label>
+                              <textarea
+                                id="current_address"
+                                className="form-control"
+                                rows={3}
+                                value={form.currentAddress}
+                                onChange={(e) =>
+                                  patch("currentAddress", e.target.value)
+                                }
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="col-md-12">
+                <div className="box-primary tw-mb-4 tw-transition-all tw-duration-200 tw-bg-white tw-shadow-sm tw-rounded-xl tw-ring-1 hover:tw-shadow-md tw-ring-gray-200">
+                  <div className="tw-p-2 sm:tw-p-3">
+                    <div className="box-header">
+                      <h3 className="box-title">Bank Details</h3>
+                    </div>
+                    <div className="tw-flow-root">
+                      <div className="tw-py-2 tw-align-middle sm:tw-px-5">
+                        <div className="row">
+                          <div className="col-md-4">
+                            <div className="form-group">
+                              <label htmlFor="bankAccountName">
+                                Account Holder&apos;s Name:
+                              </label>
+                              <input
+                                id="bankAccountName"
+                                className="form-control"
+                                value={form.bankAccountName}
+                                onChange={(e) =>
+                                  patch("bankAccountName", e.target.value)
+                                }
+                              />
+                            </div>
+                          </div>
+                          <div className="col-md-4">
+                            <div className="form-group">
+                              <label htmlFor="bankAccountNumber">
+                                Account Number:
+                              </label>
+                              <input
+                                id="bankAccountNumber"
+                                className="form-control"
+                                value={form.bankAccountNumber}
+                                onChange={(e) =>
+                                  patch("bankAccountNumber", e.target.value)
+                                }
+                              />
+                            </div>
+                          </div>
+                          <div className="col-md-4">
+                            <div className="form-group">
+                              <label htmlFor="bankName">Bank Name:</label>
+                              <input
+                                id="bankName"
+                                className="form-control"
+                                value={form.bankName}
+                                onChange={(e) =>
+                                  patch("bankName", e.target.value)
+                                }
+                              />
+                            </div>
+                          </div>
+                          <div className="col-md-4">
+                            <div className="form-group">
+                              <label htmlFor="bankCode">
+                                Bank Identifier Code:
+                              </label>
+                              <input
+                                id="bankCode"
+                                className="form-control"
+                                value={form.bankCode}
+                                onChange={(e) =>
+                                  patch("bankCode", e.target.value)
+                                }
+                              />
+                            </div>
+                          </div>
+                          <div className="col-md-4">
+                            <div className="form-group">
+                              <label htmlFor="bankBranch">Branch:</label>
+                              <input
+                                id="bankBranch"
+                                className="form-control"
+                                value={form.bankBranch}
+                                onChange={(e) =>
+                                  patch("bankBranch", e.target.value)
+                                }
+                              />
+                            </div>
+                          </div>
+                          <div className="col-md-4">
+                            <div className="form-group">
+                              <label htmlFor="taxPayerId">Tax Payer ID:</label>
+                              <input
+                                id="taxPayerId"
+                                className="form-control"
+                                value={form.taxPayerId}
+                                onChange={(e) =>
+                                  patch("taxPayerId", e.target.value)
+                                }
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="col-md-12">
+                <div className="box-primary tw-mb-4 tw-transition-all tw-duration-200 tw-bg-white tw-shadow-sm tw-rounded-xl tw-ring-1 hover:tw-shadow-md tw-ring-gray-200">
+                  <div className="tw-p-2 sm:tw-p-3">
+                    <div className="box-header">
+                      <h3 className="box-title">HRM Details</h3>
+                    </div>
+                    <div className="tw-flow-root">
+                      <div className="tw-py-2 tw-align-middle sm:tw-px-5">
+                        <div className="row">
+                          <div className="col-md-4">
+                            <div className="form-group">
+                              <label htmlFor="department">Department:</label>
+                              <input
+                                id="department"
+                                className="form-control"
+                                placeholder="Department"
+                                value={form.department}
+                                onChange={(e) =>
+                                  patch("department", e.target.value)
+                                }
+                              />
+                            </div>
+                          </div>
+                          <div className="col-md-4">
+                            <div className="form-group">
+                              <label htmlFor="designation">Designation:</label>
+                              <input
+                                id="designation"
+                                className="form-control"
+                                placeholder="Designation"
+                                value={form.designation}
+                                onChange={(e) =>
+                                  patch("designation", e.target.value)
+                                }
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="col-md-12">
+                <div className="box-primary tw-mb-4 tw-transition-all tw-duration-200 tw-bg-white tw-shadow-sm tw-rounded-xl tw-ring-1 hover:tw-shadow-md tw-ring-gray-200">
+                  <div className="tw-p-2 sm:tw-p-3">
+                    <div className="box-header">
+                      <h3 className="box-title">Payroll</h3>
+                    </div>
+                    <div className="tw-flow-root">
+                      <div className="tw-py-2 tw-align-middle sm:tw-px-5">
+                        <div className="row">
+                          <div className="col-md-4">
+                            <div className="form-group">
+                              <label htmlFor="primary_location">
+                                Primary work location:
+                              </label>
+                              <input
+                                id="primary_location"
+                                className="form-control"
+                                value={form.primaryLocation}
+                                onChange={(e) =>
+                                  patch("primaryLocation", e.target.value)
+                                }
+                              />
+                            </div>
+                          </div>
+                          <div className="col-md-4">
+                            <div className="form-group">
+                              <label htmlFor="basic_salary">Basic salary:</label>
+                              <div className="input-group">
+                                <input
+                                  id="basic_salary"
+                                  className="form-control"
+                                  value={form.basicSalary}
+                                  onChange={(e) =>
+                                    patch("basicSalary", e.target.value)
+                                  }
+                                />
+                                <span
+                                  className="input-group-addon"
+                                  style={{ padding: 0 }}
+                                >
+                                  <select
+                                    className="form-control"
+                                    style={{ border: 0, height: "34px" }}
+                                    value={form.salaryPeriod}
+                                    onChange={(e) =>
+                                      patch("salaryPeriod", e.target.value)
+                                    }
+                                  >
+                                    <option value="month">Per Month</option>
+                                    <option value="week">Per Week</option>
+                                    <option value="day">Per Day</option>
+                                  </select>
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="col-md-12">
                 <button
                   type="submit"
+                  id="submit_user_button"
                   className="tw-dw-btn tw-dw-btn-primary tw-text-white tw-dw-btn-lg"
-                  disabled={saving || !isCreate}
+                  disabled={saving}
                 >
-                  {saving ? "Saving…" : isCreate ? "Create user" : "Save"}
+                  {saving ? "Saving…" : isCreate ? "Save" : "Update"}
                 </button>{" "}
                 <button
                   type="button"
@@ -434,11 +994,6 @@ export function Hq6UserDetailView({
                 >
                   Cancel
                 </button>
-                {!isCreate ? (
-                  <p className="mt-2 text-sm text-muted">
-                    Profile edits are not available yet. Use deactivate from the user list if you need to remove access.
-                  </p>
-                ) : null}
               </div>
             </div>
           </form>
@@ -450,177 +1005,132 @@ export function Hq6UserDetailView({
   /* ——— View (manage_user/show.blade.php) ——— */
   return (
     <div className="hq6-page hq6-user-show-page">
-      <section className="content">
-        <div className="row">
-          <div className="col-md-4">
-            <h3>View User</h3>
-          </div>
-          <div className="col-md-4 col-xs-12 mt-15 pull-right">
-            <select
-              className="form-control"
-              id="user_id"
-              value={recordId}
-              onChange={(e) => {
-                if (e.target.value) router.push(detailPath(e.target.value));
-              }}
-            >
-              <option value={recordId}>{displayName}</option>
-            </select>
-          </div>
+      <div className="hq6-user-show-topbar">
+        <h1 className="hq6-user-show-title">View User</h1>
+        <select
+          className="hq6-user-show-switcher"
+          id="user_id"
+          value={recordId}
+          onChange={(e) => {
+            if (e.target.value) router.push(detailPath(e.target.value));
+          }}
+          aria-label="Select user"
+        >
+          <option value={recordId}>{displayName}</option>
+        </select>
+      </div>
+
+      <div className="hq6-user-show-body">
+        <div className="hq6-user-show-card hq6-user-show-profile-card">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            className="hq6-user-show-avatar"
+            src={avatarUrl(displayName)}
+            alt=""
+          />
+          <h2 className="hq6-user-show-name">{displayName}</h2>
+          <p className="hq6-user-show-role">{user ? formatRole(user.role) : ""}</p>
+
+          <dl className="hq6-user-show-meta">
+            <div className="hq6-user-show-meta-row">
+              <dt>Username</dt>
+              <dd>{username}</dd>
+            </div>
+            <div className="hq6-user-show-meta-row">
+              <dt>Email</dt>
+              <dd>{user?.email}</dd>
+            </div>
+            <div className="hq6-user-show-meta-row">
+              <dt>Status for user</dt>
+              <dd>
+                {user?.status === "active" ? (
+                  <span className="hq6-user-show-badge hq6-user-show-badge-ok">
+                    Active
+                  </span>
+                ) : (
+                  <span className="hq6-user-show-badge hq6-user-show-badge-off">
+                    Inactive
+                  </span>
+                )}
+              </dd>
+            </div>
+          </dl>
+
+          <button
+            type="button"
+            className="hq6-user-show-edit-btn"
+            onClick={() => router.push(`${detailPath(recordId)}/edit`)}
+          >
+            Edit
+          </button>
         </div>
-        <br />
-        <div className="row">
-          <div className="col-md-3">
-            <div className="box box-primary">
-              <div className="box-body box-profile">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  className="profile-user-img img-responsive img-circle"
-                  src={avatarUrl(displayName)}
-                  alt="User profile"
-                />
-                <h3 className="profile-username text-center">{displayName}</h3>
-                <p className="text-muted text-center" title="Role">
-                  {user ? formatRole(user.role) : ""}
-                </p>
-                <ul className="list-group list-group-unbordered">
-                  <li className="list-group-item">
-                    <b>Username</b>
-                    <a className="pull-right">{username}</a>
-                  </li>
-                  <li className="list-group-item">
-                    <b>Email</b>
-                    <a className="pull-right">{user?.email}</a>
-                  </li>
-                  <li className="list-group-item">
-                    <b>Status for user</b>
-                    {user?.status === "active" ? (
-                      <span className="label label-success pull-right">
-                        Active
-                      </span>
-                    ) : (
-                      <span className="label label-danger pull-right">
-                        Inactive
-                      </span>
-                    )}
-                  </li>
-                </ul>
-                <a
-                  href={`${detailPath(recordId)}/edit`}
-                  className="tw-dw-btn tw-dw-btn-primary tw-dw-btn-sm tw-text-white"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    router.push(`${detailPath(recordId)}/edit`);
-                  }}
-                >
-                  <i className="glyphicon glyphicon-edit" aria-hidden /> Edit
-                </a>
-              </div>
-            </div>
-          </div>
-          <div className="col-md-9">
-            <div className="nav-tabs-custom">
-              <ul className="nav nav-tabs nav-justified">
-                <li className={cn(activeTab === "info" && "active")}>
-                  <a
-                    href="#user_info_tab"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      setActiveTab("info");
-                    }}
-                  >
-                    <i className="fas fa-user" aria-hidden /> User info
-                  </a>
-                </li>
-                <li className={cn(activeTab === "docs" && "active")}>
-                  <a
-                    href="#documents_and_notes_tab"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      setActiveTab("docs");
-                    }}
-                  >
-                    <i className="fas fa-paperclip" aria-hidden /> Documents &amp;
-                    Notes
-                  </a>
-                </li>
-                <li className={cn(activeTab === "activities" && "active")}>
-                  <a
-                    href="#activities_tab"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      setActiveTab("activities");
-                    }}
-                  >
-                    <i className="fas fa-pen-square" aria-hidden /> Activities
-                  </a>
-                </li>
-              </ul>
-              <div className="tab-content">
-                {activeTab === "info" ? (
-                  <div className="tab-pane active" id="user_info_tab">
-                    <div className="row">
-                      <div className="col-md-12">
-                        <div className="col-md-6">
-                          <p>
-                            <strong>Sales Commission Percentage: </strong> 0%
-                          </p>
-                        </div>
-                        <div className="col-md-6">
-                          <p>
-                            <strong>Allowed contacts: </strong> All
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="row" style={{ marginTop: 12 }}>
-                      <div className="col-md-6">
-                        <p>
-                          <strong>Role: </strong>
-                          {user ? formatRole(user.role) : "—"}
-                        </p>
-                        <p>
-                          <strong>Email: </strong>
-                          {user?.email}
-                        </p>
-                      </div>
-                      <div className="col-md-6">
-                        <p>
-                          <strong>Username: </strong>
-                          {username}
-                        </p>
-                        <p>
-                          <strong>Status: </strong>
-                          {user?.status === "active" ? "Active" : "Inactive"}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                ) : null}
-                {activeTab === "docs" ? (
-                  <div className="tab-pane active" id="documents_and_notes_tab">
-                    <p className="text-muted">No documents or notes.</p>
-                  </div>
-                ) : null}
-                {activeTab === "activities" ? (
-                  <div className="tab-pane active" id="activities_tab">
-                    <p className="text-muted">No activity logged yet.</p>
-                  </div>
-                ) : null}
-              </div>
-            </div>
-            <p style={{ marginTop: 16 }}>
+
+        <div className="hq6-user-show-card hq6-user-show-tabs-card">
+          <nav className="hq6-user-show-tabs" aria-label="User sections">
+            {(
+              [
+                { id: "info" as const, label: "User info" },
+                { id: "docs" as const, label: "Documents & Notes" },
+                { id: "activities" as const, label: "Activities" },
+              ] as const
+            ).map((tab) => (
               <button
+                key={tab.id}
                 type="button"
-                className="tw-dw-btn"
-                onClick={() => router.push(listPath)}
+                className={cn(
+                  "hq6-user-show-tab",
+                  activeTab === tab.id && "hq6-user-show-tab-active",
+                )}
+                onClick={() => setActiveTab(tab.id)}
               >
-                Back to users
+                {tab.label}
               </button>
-            </p>
+            ))}
+          </nav>
+
+          <div className="hq6-user-show-tab-body">
+            {activeTab === "info" ? (
+              <div className="hq6-user-show-info-grid">
+                <p>
+                  <strong>Sales Commission Percentage:</strong> 0%
+                </p>
+                <p>
+                  <strong>Allowed contacts:</strong> All
+                </p>
+                <p>
+                  <strong>Role:</strong> {user ? formatRole(user.role) : "—"}
+                </p>
+                <p>
+                  <strong>Username:</strong> {username}
+                </p>
+                <p>
+                  <strong>Email:</strong> {user?.email}
+                </p>
+                <p>
+                  <strong>Status:</strong>{" "}
+                  {user?.status === "active" ? "Active" : "Inactive"}
+                </p>
+              </div>
+            ) : null}
+            {activeTab === "docs" ? (
+              <p className="hq6-user-show-empty">No documents or notes.</p>
+            ) : null}
+            {activeTab === "activities" ? (
+              <p className="hq6-user-show-empty">No activity logged yet.</p>
+            ) : null}
           </div>
         </div>
-      </section>
+      </div>
+
+      <div className="hq6-user-show-footer">
+        <button
+          type="button"
+          className="hq6-user-show-back-btn"
+          onClick={() => router.push(listPath)}
+        >
+          Back to users
+        </button>
+      </div>
 
       <Hq6ConfirmModal
         open={deleteOpen}

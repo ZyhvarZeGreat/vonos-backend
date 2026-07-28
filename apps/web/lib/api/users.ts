@@ -215,6 +215,28 @@ export async function createUser(
   return response.json();
 }
 
+export async function updateUser(
+  id: string,
+  payload: {
+    email?: string;
+    name?: string;
+    role?: User["role"];
+    status?: User["status"];
+    password?: string;
+  },
+  options?: { tenantId?: string | null },
+): Promise<{ user: User }> {
+  const path = withTenantQuery(`/users/${id}`, options?.tenantId ?? undefined);
+  const response = await apiFetch(path, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    return parseUserMutationError(response, "Failed to update user");
+  }
+  return response.json();
+}
+
 export async function deactivateUser(
   id: string,
   options?: { tenantId?: string | null },

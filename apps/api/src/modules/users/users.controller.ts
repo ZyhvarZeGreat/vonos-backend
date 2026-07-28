@@ -74,12 +74,19 @@ export class UsersController {
 
   @Patch(':id')
   @Roles('admin', 'super_admin')
-  updateStatus(
+  update(
     @Req() request: AuthedRequest,
     @Param('id') id: string,
-    @Body() body: { status: 'active' | 'suspended' },
+    @Body()
+    body: {
+      email?: string;
+      name?: string;
+      role?: InviteUserRequest['role'];
+      status?: 'active' | 'suspended' | 'invited';
+      password?: string;
+    },
   ) {
-    return this.usersService.updateUserStatus(request.user, id, body.status);
+    return this.usersService.updateUser(request.user, id, body);
   }
 
   @Delete(':id')

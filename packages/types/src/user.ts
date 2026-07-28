@@ -82,6 +82,19 @@ export interface CreateUserResponse {
   user: User;
 }
 
+export interface UpdateUserRequest {
+  email?: string;
+  name?: string;
+  role?: Role;
+  status?: UserStatus;
+  /** Optional — when set, must be at least 8 characters. */
+  password?: string;
+}
+
+export interface UpdateUserResponse {
+  user: User;
+}
+
 export interface TwoFactorSetupResponse {
   secret: string;
   otpauthUrl: string;
