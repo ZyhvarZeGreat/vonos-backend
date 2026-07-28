@@ -28,6 +28,10 @@ import { Hq6StandardListShell, useHq6ListChrome } from "@/components/hq6/Hq6Stan
 import { Hq6ViewPaymentsModal } from "@/components/hq6/Hq6ViewPaymentsModal";
 import { Hq6InvoiceUrlModal } from "@/components/hq6/Hq6InvoiceUrlModal";
 import {
+  Hq6PrintInvoiceModal,
+  type Hq6PrintDocKind,
+} from "@/components/hq6/Hq6PrintInvoiceModal";
+import {
   deleteSale,
   finalizeSale,
   getSale,
@@ -106,12 +110,16 @@ export function Hq6SalesListView({
   const [invoiceUrlSale, setInvoiceUrlSale] = useState<Sale | null>(null);
   const [paymentsSale, setPaymentsSale] = useState<Sale | null>(null);
   const [shippingSale, setShippingSale] = useState<Sale | null>(null);
+  const [printDoc, setPrintDoc] = useState<{
+    sale: Sale;
+    kind: Hq6PrintDocKind;
+  } | null>(null);
   const [convertTarget, setConvertTarget] = useState<Sale | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [converting, setConverting] = useState(false);
 
   const sendSaleNotification = useCallback(
-    async (row: Sale, kind: "quotation" | "draft") => {
+    async (row: Sale, kind: "quotation" | "draft" | "sale") => {
       if (!tenantId) return;
       try {
         const [urlRes, detail] = await Promise.all([
@@ -122,7 +130,12 @@ export function Hq6SalesListView({
           typeof window !== "undefined" ? window.location.origin : "";
         const link = urlRes.path ? `${origin}${urlRes.path}` : "";
         const email = detail?.customerEmail?.trim() ?? "";
-        const label = kind === "quotation" ? "Quotation" : "Draft";
+        const label =
+          kind === "quotation"
+            ? "Quotation"
+            : kind === "draft"
+              ? "Draft"
+              : "Sale";
         const subject = encodeURIComponent(`${label} ${row.reference}`);
         const body = encodeURIComponent(
           [
@@ -299,10 +312,8 @@ export function Hq6SalesListView({
                 id: "print",
                 label: "Print",
                 icon: <Printer size={15} strokeWidth={1.75} />,
-                onClick: () => {
-                  openRecord(row.id, row);
-                  window.setTimeout(() => window.print(), 400);
-                },
+                onClick: () =>
+                  setPrintDoc({ sale: row, kind: "invoice" }),
               },
               {
                 id: "convert",
@@ -369,14 +380,22 @@ export function Hq6SalesListView({
               {
                 id: "print",
                 label: "Print Invoice",
-                onClick: () => {
-                  openRecord(row.id, row);
-                  window.setTimeout(() => window.print(), 400);
-                },
+                onClick: () => setPrintDoc({ sale: row, kind: "invoice" }),
+              },
+              {
+                id: "packing_slip",
+                label: "Packing Slip",
+                onClick: () => setPrintDoc({ sale: row, kind: "packing_slip" }),
+              },
+              {
+                id: "delivery_note",
+                label: "Delivery Note",
+                onClick: () => setPrintDoc({ sale: row, kind: "delivery_note" }),
               },
               {
                 id: "view_payments",
                 label: "View Payments",
+                dividerBefore: true,
                 onClick: () => {
                   if (tenantId) {
                     prefetchSaleListModals(queryClient, tenantId, row.id);
@@ -394,6 +413,16 @@ export function Hq6SalesListView({
                 id: "invoice_url",
                 label: "Invoice URL",
                 onClick: () => setInvoiceUrlSale(row),
+              },
+              {
+                id: "notify",
+                label: "New Sale Notification",
+                onClick: () => void sendSaleNotification(row, "sale"),
+              },
+              {
+                id: "terms",
+                label: "Terms and Conditions",
+                onClick: () => setPrintDoc({ sale: row, kind: "terms" }),
               },
             ];
         return <Hq6ActionsMenu items={items} />;
@@ -1046,6 +1075,14 @@ export function Hq6SalesListView({
               saleId={invoiceUrlSale?.id ?? null}
               invoiceNo={invoiceUrlSale?.reference}
               onClose={() => setInvoiceUrlSale(null)}
+            />
+            <Hq6PrintInvoiceModal
+              open={Boolean(printDoc)}
+              saleId={printDoc?.sale.id ?? null}
+              initialSale={printDoc?.sale ?? null}
+              kind={printDoc?.kind ?? "invoice"}
+              autoPrint
+              onClose={() => setPrintDoc(null)}
             />
           </>
         }

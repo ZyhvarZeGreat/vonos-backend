@@ -135,6 +135,33 @@ export class SalesController {
     return this.salesService.listPayments(id);
   }
 
+  @Patch(':id/payments/:paymentId')
+  @Roles('staff', 'manager', 'admin', 'super_admin')
+  updatePayment(
+    @Param('id') id: string,
+    @Param('paymentId') paymentId: string,
+    @Body()
+    body: {
+      amount?: number;
+      method?: string | null;
+      note?: string | null;
+      paidOn?: string | null;
+      accountId?: string | null;
+      paymentRefNo?: string | null;
+    },
+  ) {
+    return this.salesService.updatePayment(id, paymentId, body);
+  }
+
+  @Delete(':id/payments/:paymentId')
+  @Roles('manager', 'admin', 'super_admin')
+  removePayment(
+    @Param('id') id: string,
+    @Param('paymentId') paymentId: string,
+  ) {
+    return this.salesService.removePayment(id, paymentId);
+  }
+
   @Get(':id/invoice-url')
   getInvoiceUrl(@Param('id') id: string) {
     return this.salesService.getInvoiceShareUrl(id);

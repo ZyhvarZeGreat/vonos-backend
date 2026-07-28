@@ -2,11 +2,20 @@ import type { BusinessLocation } from "./tenantConfig";
 
 /** Legacy WordPress `business_locations` — branch / POS sites per entity. */
 export const BUSINESS_LOCATION_PRESETS: Record<string, BusinessLocation[]> = {
-  VW: [{ code: "BL004", name: "VONOS HEAD OFFICE" }],
-  VISP: [{ code: "BL005", name: "Vonos Institute Spare Parts" }],
+  VW: [
+    { code: "VW", name: "Vonos Warehouse" },
+    { code: "VA", name: "Vonos Automotive" },
+    { code: "VISP", name: "Vonos Institute Spare Parts" },
+    { code: "BL004", name: "VONOS HEAD OFFICE" },
+  ],
+  VISP: [
+    { code: "VISP", name: "Vonos Institute Spare Parts" },
+    { code: "VA", name: "Vonos Automotive" },
+    { code: "VW", name: "Vonos Warehouse" },
+    { code: "BL005", name: "Vonos Institute Spare Parts (legacy)" },
+  ],
   VSP: [{ code: "BL001", name: "Vonos SP Marketplace" }],
   VC: [{ code: "BL0001", name: "Vonos Cafe" }],
-  VAG: [{ code: "BL003", name: "VONOS GWARIMPA BRANCH" }],
   VM: [
     { code: "BL0001", name: "VONOS AUTOS WAREHOUSE" },
     { code: "BL0002", name: "Mainshop" },
@@ -20,9 +29,20 @@ export const BUSINESS_LOCATION_PRESETS: Record<string, BusinessLocation[]> = {
     { code: "BL0008", name: "LABOUR/CONSUMABLES" },
   ],
   VS: [{ code: "BL0003", name: "Vonos saloon" }],
+  /** Cross-entity ops locations + legacy sales counters. */
   VA: [
+    { code: "VA", name: "Vonos Automotive" },
+    { code: "VW", name: "Vonos Warehouse" },
+    { code: "VISP", name: "Vonos Institute Spare Parts" },
     { code: "VS001", name: "Vonos Sales 001" },
     { code: "VS002", name: "Vonos Sales 002" },
+  ],
+  /** Group / payroll primary locations — VISP + All. */
+  VAG: [
+    { code: "ALL", name: "All Locations" },
+    { code: "VISP", name: "Vonos Institute Spare Parts" },
+    { code: "VA", name: "Vonos Automotive" },
+    { code: "VW", name: "Vonos Warehouse" },
   ],
 };
 

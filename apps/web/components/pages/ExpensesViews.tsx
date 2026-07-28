@@ -37,12 +37,14 @@ import {
   updateExpense,
   updateExpenseCategory,
 } from "@/lib/api/expenses";
+import { getPaymentAccounts } from "@/lib/api/paymentAccounts";
 import {
   optimisticTempId,
   patchEntityInQueries,
   prependEntityInQueries,
   removeEntityFromQueries,
 } from "@/lib/query/optimistic";
+import { modalKeys, MODAL_REF_STALE_MS } from "@/lib/query/modalQueryKeys";
 
 const EXPORT_COLUMNS = [
   { key: "expenseDate", header: "Date" },
@@ -360,6 +362,9 @@ type ExpenseFormState = {
   isRefund: boolean;
   recurInterval: string;
   recurIntervalType: string;
+  paymentMethod: string;
+  paymentAccountId: string;
+  paymentNote: string;
 };
 
 const emptyForm = (): ExpenseFormState => ({
@@ -378,6 +383,9 @@ const emptyForm = (): ExpenseFormState => ({
   isRefund: false,
   recurInterval: "",
   recurIntervalType: "days",
+  paymentMethod: "cash",
+  paymentAccountId: "",
+  paymentNote: "",
 });
 
 function expenseToForm(expense: Expense): ExpenseFormState {
@@ -397,6 +405,9 @@ function expenseToForm(expense: Expense): ExpenseFormState {
     isRefund: false,
     recurInterval: expense.recurInterval != null ? String(expense.recurInterval) : "",
     recurIntervalType: expense.recurIntervalType ?? "days",
+    paymentMethod: "cash",
+    paymentAccountId: "",
+    paymentNote: "",
   };
 }
 
@@ -416,6 +427,13 @@ export function AddExpenseView() {
     queryKey: ["expense-categories", tenantId],
     queryFn: () => getExpenseCategories(tenantId!),
     enabled: Boolean(tenantId),
+  });
+
+  const { data: paymentAccounts = [] } = useQuery({
+    queryKey: modalKeys.paymentAccounts(tenantId),
+    queryFn: () => getPaymentAccounts(tenantId!),
+    enabled: Boolean(tenantId),
+    staleTime: MODAL_REF_STALE_MS,
   });
 
   const { data: existing, isLoading: loadingExpense } = useQuery({
@@ -754,16 +772,35 @@ export function AddExpenseView() {
               <span>
                 Payment Method: <span className="req">*</span>
               </span>
-              <select className="hq6-form-input" defaultValue="cash">
+              <select
+                className="hq6-form-input"
+                value={form.paymentMethod}
+                onChange={(e) =>
+                  setForm({ ...form, paymentMethod: e.target.value })
+                }
+              >
                 <option value="cash">Cash</option>
                 <option value="card">Card</option>
-                <option value="transfer">Bank Transfer</option>
+                <option value="bank_transfer">Bank Transfer</option>
+                <option value="cheque">Cheque</option>
+                <option value="other">Other</option>
               </select>
             </label>
             <label className="hq6-form-label">
               <span>Payment Account:</span>
-              <select className="hq6-form-input" defaultValue="">
+              <select
+                className="hq6-form-input"
+                value={form.paymentAccountId}
+                onChange={(e) =>
+                  setForm({ ...form, paymentAccountId: e.target.value })
+                }
+              >
                 <option value="">None</option>
+                {paymentAccounts.map((acc) => (
+                  <option key={acc.id} value={acc.id}>
+                    {acc.name}
+                  </option>
+                ))}
               </select>
             </label>
             <label
@@ -771,7 +808,14 @@ export function AddExpenseView() {
               style={{ gridColumn: "1 / -1" }}
             >
               <span>Payment note:</span>
-              <textarea className="hq6-form-input" rows={2} />
+              <textarea
+                className="hq6-form-input"
+                rows={2}
+                value={form.paymentNote}
+                onChange={(e) =>
+                  setForm({ ...form, paymentNote: e.target.value })
+                }
+              />
             </label>
           </div>
           <div className="hq6-form-total-row">

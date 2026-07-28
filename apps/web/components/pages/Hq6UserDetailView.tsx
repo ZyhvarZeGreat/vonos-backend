@@ -10,8 +10,14 @@ import type { User } from "@vonos/types";
 import { EmptyState } from "@/components/atoms/EmptyState";
 import { Hq6ConfirmModal } from "@/components/hq6/Hq6ConfirmModal";
 import { createUser, deactivateUser, getUser, inviteUser, updateUser } from "@/lib/api/users";
+import {
+  createDesignation,
+  createEmployee,
+  getDesignations,
+} from "@/lib/api/hrm";
 import { useRecordNavigation } from "@/lib/hooks/useRecordNavigation";
-import { useTenantId } from "@/lib/hooks/useRouteTenant";
+import { useTenantId, useRouteTenant } from "@/lib/hooks/useRouteTenant";
+import { BUSINESS_LOCATION_PRESETS } from "@vonos/types";
 import { DETAIL_RECORD_STALE_MS } from "@/lib/query/prefetchListDetails";
 import { cn } from "@/lib/utils/cn";
 import { toast } from "@/stores/toastStore";
@@ -57,7 +63,28 @@ export function Hq6UserDetailView({
   const searchParams = useSearchParams();
   const queryClient = useQueryClient();
   const tenantId = useTenantId();
+  const { config } = useRouteTenant();
   const { listPath, detailPath } = useRecordNavigation("users");
+
+  const payrollLocations = useMemo(() => {
+    const fromConfig = config?.businessLocations ?? [];
+    const vag = BUSINESS_LOCATION_PRESETS.VAG ?? [];
+    const codes = new Set(fromConfig.map((l) => l.code));
+    const merged = [...fromConfig];
+    for (const loc of vag) {
+      if (!codes.has(loc.code)) merged.push(loc);
+    }
+    if (!merged.some((l) => l.code === "ALL")) {
+      merged.unshift({ code: "ALL", name: "All Locations" });
+    }
+    if (!merged.some((l) => l.code === "VISP")) {
+      merged.push({
+        code: "VISP",
+        name: "Vonos Institute Spare Parts",
+      });
+    }
+    return merged;
+  }, [config?.businessLocations]);
   const isCreate = recordId === "new" || recordId === "create";
   const isEdit = mode === "edit" || isCreate;
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -245,7 +272,7 @@ export function Hq6UserDetailView({
             setSaving(false);
             return;
           }
-          await createUser(
+          const created = await createUser(
             {
               email: form.email.trim(),
               name,
@@ -255,7 +282,37 @@ export function Hq6UserDetailView({
             },
             { tenantId },
           );
-          toast.success(`Created ${name}`);
+          if (tenantId && created.user?.id) {
+            try {
+              let designations = await getDesignations(tenantId);
+              let designationId = designations[0]?.id;
+              if (!designationId) {
+                const createdDes = await createDesignation(tenantId, {
+                  name: "Staff",
+                });
+                designationId = createdDes.id;
+              }
+              const locationCode =
+                form.primaryLocation === "ALL"
+                  ? "VISP"
+                  : form.primaryLocation || "VISP";
+              await createEmployee(tenantId, {
+                name,
+                userId: created.user.id,
+                designationId,
+                locationCode,
+                isServiceStaff: false,
+              });
+              await queryClient.invalidateQueries({ queryKey: ["employees"] });
+              await queryClient.invalidateQueries({ queryKey: ["hrm"] });
+            } catch (payrollErr) {
+              console.error("[user→payroll]", payrollErr);
+              toast.info(
+                "User created, but payroll employee link failed — add them under HRM.",
+              );
+            }
+          }
+          toast.success(`Created ${name} (linked to payroll)`);
         } else {
           const invited = await inviteUser(
             {
@@ -929,14 +986,20 @@ export function Hq6UserDetailView({
                               <label htmlFor="primary_location">
                                 Primary work location:
                               </label>
-                              <input
+                              <select
                                 id="primary_location"
                                 className="form-control"
-                                value={form.primaryLocation}
+                                value={form.primaryLocation || "VISP"}
                                 onChange={(e) =>
                                   patch("primaryLocation", e.target.value)
                                 }
-                              />
+                              >
+                                {payrollLocations.map((loc) => (
+                                  <option key={loc.code} value={loc.code}>
+                                    {loc.name} ({loc.code})
+                                  </option>
+                                ))}
+                              </select>
                             </div>
                           </div>
                           <div className="col-md-4">

@@ -9,6 +9,7 @@ import { DateRangeDropdown } from "@/components/molecules/DateRangeDropdown";
 import { Hq6PageFrame } from "@/components/hq6/Hq6Chrome";
 import { HqReportPageLayout, HqReportPageSkeleton } from "@/components/organisms/HqReportPageLayout";
 import { ReportFilterShell } from "@/components/organisms/ReportFilterShell";
+import { PaymentAccountReportView } from "@/components/pages/PaymentAccountViews";
 import { runReport } from "@/lib/api/reports";
 import { reportEntryBySlug } from "@/lib/registries/reportRegistry";
 import {
@@ -17,6 +18,10 @@ import {
   REPORT_TABLE_UI,
   TABLE_REPORT_PAGE_SIZE,
 } from "@/lib/registries/reportTableUi";
+import {
+  PAYMENT_ACCOUNT_PAGE_TABS,
+  type PaymentAccountPageSlug,
+} from "@/lib/registries/paymentAccountNav";
 import { getTenantByCode, type TenantCode } from "@/lib/registries/tenants";
 import { useCursorPage } from "@/lib/hooks/useCursorPage";
 import { useListPageFilters } from "@/lib/hooks/useListPageFilters";
@@ -34,12 +39,58 @@ import { isPaginatedTableReport } from "@vonos/types";
 import { useUiStore } from "@/stores/uiStore";
 import { useAdminEntityStore } from "@/stores/adminEntityStore";
 
+const PAYMENT_ACCOUNT_SLUGS = new Set(
+  PAYMENT_ACCOUNT_PAGE_TABS.map((t) => t.slug),
+);
+
 export interface AdminEntityReportSheetProps {
   tenantCode: TenantCode;
   reportSlug: string;
 }
 
 export function AdminEntityReportSheet({
+  tenantCode,
+  reportSlug,
+}: AdminEntityReportSheetProps) {
+  const tenant = getTenantByCode(tenantCode);
+  const setViewingCode = useAdminEntityStore((state) => state.setViewingCode);
+
+  useEffect(() => {
+    setViewingCode(tenantCode);
+  }, [setViewingCode, tenantCode]);
+
+  if (
+    PAYMENT_ACCOUNT_SLUGS.has(reportSlug as PaymentAccountPageSlug) &&
+    reportSlug !== "payment-accounts"
+  ) {
+    const tab = PAYMENT_ACCOUNT_PAGE_TABS.find((t) => t.slug === reportSlug);
+    return (
+      <Hq6PageFrame
+        title={tab?.label ?? reportSlug}
+        subtitle={`${tenant?.name ?? tenantCode} · same trial / account sheets as the entity app`}
+      >
+        <div className="mb-4 print:hidden">
+          <Link
+            href={`/admin/reports/${tenantCode}`}
+            className="text-sm font-medium text-info hover:underline"
+          >
+            ← Back to {tenant?.name ?? tenantCode} reports
+          </Link>
+        </div>
+        <PaymentAccountReportView slug={reportSlug as PaymentAccountPageSlug} />
+      </Hq6PageFrame>
+    );
+  }
+
+  return (
+    <AdminEntityReportSheetBody
+      tenantCode={tenantCode}
+      reportSlug={reportSlug}
+    />
+  );
+}
+
+function AdminEntityReportSheetBody({
   tenantCode,
   reportSlug,
 }: AdminEntityReportSheetProps) {

@@ -34,6 +34,7 @@ import {
   modalKeys,
 } from "@/lib/query/modalQueryKeys";
 import { useUiStore } from "@/stores/uiStore";
+import { Hq6AddCustomerModal } from "@/components/hq6/Hq6AddCustomerModal";
 import { Hq6AddSupplierModal } from "@/components/hq6/Hq6AddSupplierModal";
 
 function resetOnClose() {
@@ -371,10 +372,19 @@ export function CreateRecordModal() {
   // Avoid flashing the create modal while redirecting to HQ6 full pages.
   if (isHq6 && (isItemFlow(createFlow) || createFlow === "sale")) return null;
 
-  // HQ6 suppliers use the Ultimate POS “Add a new contact” modal.
+  // HQ6 suppliers / customers use the Ultimate POS “Add a new contact” modal.
   if (isHq6 && createFlow === "supplier") {
     return (
       <Hq6AddSupplierModal
+        open={open}
+        tenantId={tenantId}
+        onClose={handleClose}
+      />
+    );
+  }
+  if (isHq6 && createFlow === "customer") {
+    return (
+      <Hq6AddCustomerModal
         open={open}
         tenantId={tenantId}
         onClose={handleClose}

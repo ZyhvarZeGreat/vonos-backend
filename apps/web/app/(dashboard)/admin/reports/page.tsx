@@ -1,7 +1,7 @@
 "use client";
 
 import { Hq6PageFrame } from "@/components/hq6/Hq6Chrome";
-import { EntityReportsView } from "@/components/pages/EntityReportsView";
+import { AdminEntityReportsHub } from "@/components/pages/AdminEntityReportsHub";
 import { VagGroupReportsView } from "@/components/pages/ReportsView";
 import {
   getVagViewUnit,
@@ -10,8 +10,8 @@ import {
 import { useAdminEntityStore } from "@/stores/adminEntityStore";
 
 /**
- * VAG Reports — group roll-up by default; entity/SP selection shows that
- * unit's reports (SP → VISP archetype hub; VSP still reachable via Open links).
+ * VAG Reports — group roll-up by default; entity/SP selection shows the same
+ * reports hub as that entity’s `/reports` (dashboard + printable sheets).
  */
 export default function AdminReportsPage() {
   const viewingCode = useAdminEntityStore((s) => s.viewingCode);
@@ -22,35 +22,12 @@ export default function AdminReportsPage() {
 
   if (viewingUnit) {
     return (
-      <Hq6PageFrame
+      <AdminEntityReportsHub
+        tenantCode={viewingUnit.enterCode}
+        embedded
         title={`Reports — ${viewingUnit.name}`}
-        subtitle="Entity reports · Switch report entity above scopes Reports / Finance / HRM"
-      >
-        <div className="space-y-3">
-          <div className="hq6-card px-4 py-3 text-sm text-[#6b7280]">
-            Reports for{" "}
-            <span className="font-semibold text-[#111827]">{viewingUnit.name}</span>
-            {viewingUnit.tenantCodes.length > 1 ? (
-              <>
-                {" "}
-                — showing {viewingUnit.enterCode} sheets; open{" "}
-                {viewingUnit.tenantCodes
-                  .filter((c) => c !== viewingUnit.enterCode)
-                  .join(", ")}{" "}
-                from the entity workspace for marketplace-only reports.
-              </>
-            ) : (
-              <>
-                {" "}
-                — same as /{viewingUnit.enterCode}/reports.
-              </>
-            )}{" "}
-            Use <span className="font-semibold text-[#111827]">Switch report entity</span>{" "}
-            above to change Reports / Finance / HRM scope without leaving VAG.
-          </div>
-          <EntityReportsView tenantCode={viewingUnit.enterCode} />
-        </div>
-      </Hq6PageFrame>
+        subtitle="Same report sheets as the entity app · scoped by Show info for"
+      />
     );
   }
 

@@ -89,6 +89,9 @@ export function hq6ActionIcon(actionId: string): ReactNode | undefined {
     case "packing_slip":
     case "delivery_note":
       return <Truck className={ICON_CLASS} strokeWidth={1.75} />;
+    case "terms":
+    case "terms_and_conditions":
+      return <FileText className={ICON_CLASS} strokeWidth={1.75} />;
     case "opening_stock":
       return <PlusCircle className={ICON_CLASS} strokeWidth={1.75} />;
     case "stock_history":

@@ -99,13 +99,20 @@ export function Hq6ContactEditModal({
 
   useEffect(() => {
     if (!open || !customer) return;
-    setContactKind("individual");
+    const looksBusiness = Boolean(
+      customer.businessName &&
+        customer.businessName.trim() &&
+        customer.businessName !== customer.name,
+    );
+    setContactKind(looksBusiness ? "business" : "individual");
     setContactId(customer.contactId ?? "");
     setCustomerGroupId(customer.customerGroupId ?? "");
     setBusinessName(
-      customer.businessName && customer.businessName !== customer.name
-        ? customer.businessName
-        : "",
+      looksBusiness
+        ? (customer.businessName ?? "")
+        : customer.businessName && customer.businessName !== customer.name
+          ? customer.businessName
+          : "",
     );
     setPrefix("");
     setFirstName(customer.name);
@@ -128,13 +135,25 @@ export function Hq6ContactEditModal({
 
   const handleUpdate = async () => {
     if (!tenantId || !customer) return;
+    if (contactKind === "business" && !businessName.trim()) {
+      toast.error("Business Name is required");
+      return;
+    }
     const composed = [prefix, firstName, middleName, lastName]
       .map((p) => p.trim())
       .filter(Boolean)
       .join(" ");
-    const name = composed || firstName.trim();
+    const personName = composed || firstName.trim();
+    const name =
+      contactKind === "business"
+        ? businessName.trim() || personName
+        : personName;
     if (!name) {
-      toast.error("First Name is required");
+      toast.error(
+        contactKind === "business"
+          ? "Business Name is required"
+          : "First Name is required",
+      );
       return;
     }
     if (!mobile.trim()) {
@@ -152,8 +171,10 @@ export function Hq6ContactEditModal({
         name,
         email: email.trim() || null,
         phone: mobile.trim() || null,
-        customerGroupId: customerGroupId || null,
+        customerGroupId:
+          contactKind === "individual" ? customerGroupId || null : null,
         openingBalance: balance,
+        taxNumber: taxNumber.trim() || null,
       });
       toast.success("Contact updated");
       onSaved();
@@ -200,7 +221,11 @@ export function Hq6ContactEditModal({
               <input
                 type="radio"
                 checked={contactKind === "business"}
-                onChange={() => setContactKind("business")}
+                onChange={() => {
+                  setContactKind("business");
+                  setCustomerGroupId("");
+                  setMoreOpen(true);
+                }}
               />
               Business
             </label>
@@ -215,28 +240,33 @@ export function Hq6ContactEditModal({
               onChange={(e) => setContactId(e.target.value)}
             />
           </Hq6Field>
-          <Hq6Field label="Customer Group">
-            <select
-              className="hq6-modal-input"
-              value={customerGroupId}
-              onChange={(e) => setCustomerGroupId(e.target.value)}
-            >
-              <option value="">None</option>
-              {groups.map((g) => (
-                <option key={g.id} value={g.id}>
-                  {g.name}
-                </option>
-              ))}
-            </select>
-          </Hq6Field>
+          {contactKind === "individual" ? (
+            <Hq6Field label="Customer Group">
+              <select
+                className="hq6-modal-input"
+                value={customerGroupId}
+                onChange={(e) => setCustomerGroupId(e.target.value)}
+              >
+                <option value="">None</option>
+                {groups.map((g) => (
+                  <option key={g.id} value={g.id}>
+                    {g.name}
+                  </option>
+                ))}
+              </select>
+            </Hq6Field>
+          ) : (
+            <div />
+          )}
         </div>
 
         {contactKind === "business" ? (
-          <Hq6Field label="Business Name">
+          <Hq6Field label="Business Name" required>
             <input
               className="hq6-modal-input"
               value={businessName}
               onChange={(e) => setBusinessName(e.target.value)}
+              placeholder="Business Name"
             />
           </Hq6Field>
         ) : null}

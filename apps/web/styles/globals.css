@@ -188,24 +188,36 @@ h6,
 
   /*
    * Document preview (payslip / invoice) is portaled to body.
-   * Hide the app chrome so only the slip prints — not the page behind.
+   * Visibility + absolute positioning is more reliable than display:none on
+   * body children (Next.js / multiple portals leave chrome in the print).
    */
-  body:has(.invoice-print-overlay) > *:not(.invoice-print-overlay) {
-    display: none !important;
+  body:has(.invoice-print-overlay) * {
+    visibility: hidden !important;
+  }
+
+  body:has(.invoice-print-overlay) .invoice-print-overlay,
+  body:has(.invoice-print-overlay) .invoice-print-overlay * {
+    visibility: visible !important;
   }
 
   body:has(.invoice-print-overlay) {
     background: #fff !important;
   }
 
-  .invoice-print-overlay {
-    position: static !important;
-    inset: auto !important;
+  body:has(.invoice-print-overlay) .invoice-print-overlay {
+    position: absolute !important;
+    inset: 0 auto auto 0 !important;
+    width: 100% !important;
     display: block !important;
     overflow: visible !important;
-    background: transparent !important;
+    background: #fff !important;
     padding: 0 !important;
-    z-index: auto !important;
+    z-index: 1 !important;
+  }
+
+  body:has(.invoice-print-overlay) .hq6-modal-root,
+  body:has(.invoice-print-overlay) .hq6-modal-backdrop {
+    display: none !important;
   }
 
   .invoice-print-overlay > .relative {

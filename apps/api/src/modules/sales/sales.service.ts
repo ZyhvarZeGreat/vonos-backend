@@ -1346,6 +1346,133 @@ export class SalesService {
     }));
   }
 
+  private async syncSalePaymentStatus(saleId: string, tenantId: string) {
+    const sale = await this.tenantDb.db.sale.findFirst({
+      where: { id: saleId, tenantId, deletedAt: null },
+      select: { id: true, total: true, customerId: true },
+    });
+    if (!sale) return;
+
+    const payments = await this.tenantDb.db.payment.findMany({
+      where: { tenantId, saleId, deletedAt: null, isReturn: false },
+      select: { amount: true },
+    });
+    const paidTotal = payments.reduce((sum, row) => sum + toNumber(row.amount), 0);
+    const total = toNumber(sale.total);
+    let paymentStatus: PaymentStatus = 'paid';
+    if (paidTotal <= 0) paymentStatus = 'due';
+    else if (paidTotal + 1e-6 < total) paymentStatus = 'partial';
+
+    await this.tenantDb.db.sale.update({
+      where: { id: saleId },
+      data: { paymentStatus },
+    });
+
+    if (sale.customerId) {
+      await refreshCustomerFinancialRollups(this.tenantDb.db, sale.customerId);
+    }
+    await invalidateTenantDashboardCache(this.cache, tenantId);
+  }
+
+  async updatePayment(
+    saleId: string,
+    paymentId: string,
+    body: {
+      amount?: number;
+      method?: string | null;
+      note?: string | null;
+      paidOn?: string | null;
+      accountId?: string | null;
+      paymentRefNo?: string | null;
+    },
+  ) {
+    const tenantId = this.tenantDb.requireTenantId();
+    const payment = await this.tenantDb.db.payment.findFirst({
+      where: {
+        id: paymentId,
+        saleId,
+        tenantId,
+        deletedAt: null,
+        isReturn: false,
+      },
+    });
+    if (!payment) throw new NotFoundException('Payment not found');
+
+    const amount =
+      body.amount !== undefined ? Number(body.amount) : toNumber(payment.amount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      throw new BadRequestException('Enter a valid payment amount');
+    }
+
+    const updated = await this.tenantDb.db.payment.update({
+      where: { id: paymentId },
+      data: {
+        amount,
+        ...(body.method !== undefined
+          ? { method: body.method?.trim() || null }
+          : {}),
+        ...(body.note !== undefined ? { note: body.note?.trim() || null } : {}),
+        ...(body.paidOn !== undefined
+          ? { paidOn: body.paidOn ? new Date(body.paidOn) : null }
+          : {}),
+        ...(body.accountId !== undefined
+          ? { accountId: body.accountId || null }
+          : {}),
+        ...(body.paymentRefNo !== undefined
+          ? { paymentRefNo: body.paymentRefNo?.trim() || null }
+          : {}),
+      },
+      include: { account: { select: { name: true } } },
+    });
+
+    await this.syncSalePaymentStatus(saleId, tenantId);
+    await this.auditService.log({
+      action: 'updated',
+      entityType: 'payment',
+      entityId: paymentId,
+      summary: `Updated payment on sale ${saleId}`,
+    });
+
+    return {
+      id: updated.id,
+      amount: toNumber(updated.amount),
+      currency: updated.currency,
+      method: updated.method,
+      paymentRefNo: updated.paymentRefNo,
+      paidOn: updated.paidOn ? toIso(updated.paidOn) : null,
+      note: updated.note,
+      accountId: updated.accountId,
+      accountName: updated.account?.name ?? null,
+      createdByName: updated.createdByName,
+    };
+  }
+
+  async removePayment(saleId: string, paymentId: string): Promise<void> {
+    const tenantId = this.tenantDb.requireTenantId();
+    const payment = await this.tenantDb.db.payment.findFirst({
+      where: {
+        id: paymentId,
+        saleId,
+        tenantId,
+        deletedAt: null,
+        isReturn: false,
+      },
+    });
+    if (!payment) throw new NotFoundException('Payment not found');
+
+    await this.tenantDb.db.payment.update({
+      where: { id: paymentId },
+      data: { deletedAt: new Date() },
+    });
+    await this.syncSalePaymentStatus(saleId, tenantId);
+    await this.auditService.log({
+      action: 'deleted',
+      entityType: 'payment',
+      entityId: paymentId,
+      summary: `Deleted payment on sale ${saleId}`,
+    });
+  }
+
   /** HQ6 “Invoice URL” share link (public `/invoice/:token`, no login). */
   async getInvoiceShareUrl(id: string): Promise<{ token: string; path: string }> {
     const tenantId = this.tenantDb.requireTenantId();

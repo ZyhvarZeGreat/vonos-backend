@@ -25,6 +25,7 @@ import {
   Hq6OpeningStockModal,
   Hq6AddLocationModal,
 } from "@/components/hq6/Hq6ProductModals";
+import { Hq6MoveProductModal } from "@/components/hq6/Hq6MoveProductModal";
 import { Hq6ConfirmModal } from "@/components/hq6/Hq6ConfirmModal";
 import { Hq6ColumnVisibilityModal } from "@/components/hq6/Hq6ColumnVisibilityModal";
 import { Hq6PrintModal } from "@/components/hq6/Hq6PrintModal";
@@ -84,6 +85,7 @@ export function Hq6ProductsListView({
   const [localSearch, setLocalSearch] = useState(search);
   const [viewItem, setViewItem] = useState<Item | null>(null);
   const [stockItem, setStockItem] = useState<Item | null>(null);
+  const [moveItem, setMoveItem] = useState<Item | null>(null);
   const [locationModalOpen, setLocationModalOpen] = useState(false);
   const [deleteItem, setDeleteItem] = useState<Item | null>(null);
   const [bulkDeleteIds, setBulkDeleteIds] = useState<string[] | null>(null);
@@ -845,6 +847,11 @@ export function Hq6ProductsListView({
                                           onClick: () => setStockItem(row),
                                         },
                                         {
+                                          id: "move_product",
+                                          label: "Move product",
+                                          onClick: () => setMoveItem(row),
+                                        },
+                                        {
                                           id: "stock_history",
                                           label: "Product stock history",
                                           onClick: () =>
@@ -958,6 +965,19 @@ export function Hq6ProductsListView({
         open={Boolean(stockItem)}
         onClose={() => setStockItem(null)}
         item={stockItem}
+      />
+      <Hq6MoveProductModal
+        open={Boolean(moveItem)}
+        onClose={() => setMoveItem(null)}
+        tenantId={tenantId}
+        item={moveItem}
+        locations={(config?.businessLocations ?? []).map((loc) => ({
+          code: loc.code,
+          name: loc.name,
+        }))}
+        onSaved={() => {
+          void queryClient.invalidateQueries({ queryKey: ["catalog"] });
+        }}
       />
       <Hq6AddLocationModal
         open={locationModalOpen}

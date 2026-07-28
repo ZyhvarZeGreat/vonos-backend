@@ -253,6 +253,53 @@ export async function getSalePayments(
   return response.json();
 }
 
+export async function updateSalePayment(
+  tenantId: string,
+  saleId: string,
+  paymentId: string,
+  body: {
+    amount?: number;
+    method?: string | null;
+    note?: string | null;
+    paidOn?: string | null;
+    accountId?: string | null;
+    paymentRefNo?: string | null;
+  },
+): Promise<SalePaymentRow> {
+  const response = await apiFetch(
+    withTenantQuery(`/sales/${saleId}/payments/${paymentId}`, tenantId),
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    },
+  );
+  if (!response.ok) {
+    const err = (await response.json().catch(() => null)) as {
+      message?: string;
+    } | null;
+    throw new Error(err?.message ?? "Failed to update payment");
+  }
+  return response.json();
+}
+
+export async function deleteSalePayment(
+  tenantId: string,
+  saleId: string,
+  paymentId: string,
+): Promise<void> {
+  const response = await apiFetch(
+    withTenantQuery(`/sales/${saleId}/payments/${paymentId}`, tenantId),
+    { method: "DELETE" },
+  );
+  if (!response.ok) {
+    const err = (await response.json().catch(() => null)) as {
+      message?: string;
+    } | null;
+    throw new Error(err?.message ?? "Failed to delete payment");
+  }
+}
+
 export async function getSaleInvoiceUrl(
   tenantId: string,
   saleId: string,

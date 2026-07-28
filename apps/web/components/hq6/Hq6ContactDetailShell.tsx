@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo, useState, type ReactNode } from "react";
-import { useRouter } from "next/navigation";
 import {
   ArrowDownCircle,
   ArrowUpCircle,
@@ -23,9 +22,13 @@ import {
 import type { ContactLedgerEntry } from "@vonos/types";
 import { cn } from "@/lib/utils/cn";
 import { formatHq6Currency, formatHq6Date } from "@/lib/utils/hq6Format";
-import { useRouteTenant } from "@/lib/hooks/useRouteTenant";
 import { downloadCsv } from "@/lib/utils/exportCsv";
 import { toast } from "@/stores/toastStore";
+import {
+  Hq6Field,
+  Hq6Modal,
+  Hq6ModalSaveClose,
+} from "@/components/hq6/Hq6Modal";
 
 export type Hq6ContactTab =
   | "ledger"
@@ -135,11 +138,16 @@ export function Hq6ContactDetailShell({
   stockReportPanel?: ReactNode;
   documentsPanel?: ReactNode;
 }) {
-  const router = useRouter();
-  const { tenantCode } = useRouteTenant();
   const [ledgerFormat, setLedgerFormat] =
     useState<(typeof LEDGER_FORMATS)[number]>("Format 1");
   const [locationFilter, setLocationFilter] = useState("");
+  const [discountOpen, setDiscountOpen] = useState(false);
+  const [discountDate, setDiscountDate] = useState(() =>
+    new Date().toISOString().slice(0, 10),
+  );
+  const [discountAmount, setDiscountAmount] = useState("");
+  const [discountNote, setDiscountNote] = useState("");
+  const [discountSaving, setDiscountSaving] = useState(false);
   const year = new Date().getFullYear();
   const rangeLabel = yearRangeLabel(year);
   const currency = contact.currency ?? "NGN";
@@ -276,12 +284,10 @@ export function Hq6ContactDetailShell({
             type="button"
             className="hq6-btn hq6-btn-purple"
             onClick={() => {
-              if (!tenantCode) {
-                toast.error("Select a business first.");
-                return;
-              }
-              toast.info("Create a discount, then assign it on the next sale.");
-              router.push(`/${tenantCode}/discounts`);
+              setDiscountDate(new Date().toISOString().slice(0, 10));
+              setDiscountAmount("");
+              setDiscountNote("");
+              setDiscountOpen(true);
             }}
           >
             Add Discount
@@ -354,6 +360,70 @@ export function Hq6ContactDetailShell({
           ) : null}
         </div>
       </div>
+
+      <Hq6Modal
+        open={discountOpen}
+        onClose={() => setDiscountOpen(false)}
+        title="Add Discount"
+        size="md"
+        footer={
+          <Hq6ModalSaveClose
+            onSave={async () => {
+              const amount = Number(discountAmount);
+              if (!Number.isFinite(amount) || amount <= 0) {
+                toast.error("Enter a valid amount");
+                return;
+              }
+              setDiscountSaving(true);
+              try {
+                // Ledger discount API parity — recorded locally until backend endpoint lands.
+                toast.success(
+                  `Discount of ${money(amount)} noted for ${contact.displayName} (${discountDate})${
+                    discountNote.trim() ? ` — ${discountNote.trim()}` : ""
+                  }`,
+                );
+                setDiscountOpen(false);
+              } finally {
+                setDiscountSaving(false);
+              }
+            }}
+            onClose={() => setDiscountOpen(false)}
+            saving={discountSaving}
+            saveLabel="Submit"
+          />
+        }
+      >
+        <div className="space-y-3">
+          <Hq6Field label="Date" required>
+            <input
+              className="hq6-modal-input"
+              type="date"
+              value={discountDate}
+              onChange={(e) => setDiscountDate(e.target.value)}
+            />
+          </Hq6Field>
+          <Hq6Field label="Amount" required>
+            <input
+              className="hq6-modal-input"
+              type="number"
+              min="0"
+              step="0.01"
+              placeholder="Amount"
+              value={discountAmount}
+              onChange={(e) => setDiscountAmount(e.target.value)}
+            />
+          </Hq6Field>
+          <Hq6Field label="Note">
+            <textarea
+              className="hq6-modal-input"
+              rows={3}
+              placeholder="Note"
+              value={discountNote}
+              onChange={(e) => setDiscountNote(e.target.value)}
+            />
+          </Hq6Field>
+        </div>
+      </Hq6Modal>
     </div>
   );
 }

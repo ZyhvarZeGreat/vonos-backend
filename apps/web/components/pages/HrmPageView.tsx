@@ -229,12 +229,17 @@ function HrmDashboardPanel({ onOpenPayroll }: { onOpenPayroll: () => void }) {
 export function HrmPageView({
   defaultTab = "dashboard",
   forceFullTabs = false,
+  summaryOnly = false,
 }: {
   defaultTab?: HrmTab;
   /** Admin / VAG: always show the full VA HRM tab set. */
   forceFullTabs?: boolean;
+  /** VAG Group HRM: dashboard / summary only (no module nav). */
+  summaryOnly?: boolean;
 }) {
-  const [activeTab, setActiveTab] = useState<HrmTab>(defaultTab);
+  const [activeTab, setActiveTab] = useState<HrmTab>(
+    summaryOnly ? "dashboard" : defaultTab,
+  );
   const tenantConfig = useTenantStore((state) => state.tenantConfig);
   const isHq6 = useIsVaHq6();
   const essentialsEnabled = tenantConfig?.enabledModules.includes("hrmEssentials") ?? false;
@@ -243,6 +248,7 @@ export function HrmPageView({
   const visibleTabs = useMemo(
     () =>
       HRM_TABS.filter((tab) => {
+        if (summaryOnly) return tab.id === "dashboard";
         if (isHq6) {
           return ![
             "pay-components",
@@ -261,11 +267,11 @@ export function HrmPageView({
           "settings",
         ].includes(tab.id);
       }).map((tab) =>
-        (forceFullTabs || isHq6) && tab.id === "dashboard"
+        (forceFullTabs || isHq6 || summaryOnly) && tab.id === "dashboard"
           ? { ...tab, label: "HRM" }
           : tab,
       ),
-    [forceFullTabs, fullTabs, isHq6],
+    [forceFullTabs, fullTabs, isHq6, summaryOnly],
   );
 
   useEffect(() => {
@@ -352,6 +358,11 @@ export function HrmPageView({
   // HQ6: module navbar owns section chrome. Child views (Payroll ListPageShell,
   // ListCard essentials) already render their own box — nesting another shell
   // smashes toolbars on tablet/mobile.
+  // VAG summaryOnly: no secondary module nav — dashboard cards only.
+  if (summaryOnly) {
+    return <div className="hq6-page">{tabContent}</div>;
+  }
+
   return (
     <div className="hq6-page">
       <nav className="navbar navbar-default hq6-hrm-module-nav" role="navigation">

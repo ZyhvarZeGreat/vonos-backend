@@ -8,6 +8,7 @@ import { Button } from "@/components/atoms/Button";
 import { Select } from "@/components/atoms/Select";
 import { StatusPill } from "@/components/atoms/StatusPill";
 import { Hq6SaleViewModal } from "@/components/hq6/Hq6SaleViewModal";
+import { Hq6PrintInvoiceModal } from "@/components/hq6/Hq6PrintInvoiceModal";
 import { RecordViewModal } from "@/components/organisms/RecordViewModal";
 import { InvoiceDocument } from "@/components/organisms/InvoiceDocument";
 import { DocumentPreviewModal } from "@/components/organisms/DocumentPreviewModal";
@@ -54,6 +55,9 @@ export function SaleRecordModal({
   const isHq6 = useIsVaHq6();
   const { tenantId, tenantName, tenantCode } = useRouteTenant();
   const [docPreviewOpen, setDocPreviewOpen] = useState(false);
+  const [hq6PrintKind, setHq6PrintKind] = useState<
+    "invoice" | "packing_slip" | null
+  >(null);
   const [returnOpen, setReturnOpen] = useState(false);
   const [disposition, setDisposition] = useState<SaleReturnDisposition>("refunded");
   const [returnNotes, setReturnNotes] = useState("");
@@ -181,23 +185,22 @@ export function SaleRecordModal({
     return (
       <>
         <Hq6SaleViewModal
-          open={Boolean(saleId)}
+          open={Boolean(saleId) && !hq6PrintKind}
           saleId={saleId}
           initialSale={initialSale}
           showBack={showBack}
           onClose={onClose}
-          onPrintInvoice={() => setDocPreviewOpen(true)}
-          onPackingSlip={() => setDocPreviewOpen(true)}
+          onPrintInvoice={() => setHq6PrintKind("invoice")}
+          onPackingSlip={() => setHq6PrintKind("packing_slip")}
         />
-        <DocumentPreviewModal
-          open={docPreviewOpen}
-          title="Invoice preview"
-          showBack
-          onBack={() => setDocPreviewOpen(false)}
-          onClose={() => setDocPreviewOpen(false)}
-        >
-          {saleId ? <Hq6SaleInvoicePreview saleId={saleId} /> : null}
-        </DocumentPreviewModal>
+        <Hq6PrintInvoiceModal
+          open={Boolean(hq6PrintKind && saleId)}
+          saleId={saleId}
+          initialSale={initialSale}
+          kind={hq6PrintKind ?? "invoice"}
+          autoPrint
+          onClose={() => setHq6PrintKind(null)}
+        />
       </>
     );
   }
@@ -396,51 +399,5 @@ export function SaleRecordModal({
         {document}
       </DocumentPreviewModal>
     </>
-  );
-}
-
-/** Lightweight invoice document for HQ6 print from the Sell Details modal. */
-function Hq6SaleInvoicePreview({ saleId }: { saleId: string }) {
-  const { tenantId, tenantName } = useRouteTenant();
-  const { data: bundle } = useQuery({
-    queryKey: modalKeys.saleView(tenantId, saleId),
-    queryFn: () => getSaleView(saleId, tenantId!),
-    enabled: Boolean(tenantId && saleId),
-    staleTime: MODAL_RECORD_STALE_MS,
-    placeholderData: (prev) => prev,
-  });
-  const sale = bundle?.sale;
-  const { data: invoiceSettings } = useQuery({
-    queryKey: modalKeys.invoiceSettings(tenantId),
-    queryFn: getInvoiceSettings,
-    enabled: Boolean(tenantId),
-    staleTime: MODAL_REF_STALE_MS,
-    placeholderData: (prev) => prev,
-  });
-
-  if (!sale) {
-    return <p className="p-4 text-sm text-muted">Loading invoice…</p>;
-  }
-
-  const kind = saleDocumentKind(sale.recordStatus, sale.paymentStatus);
-  const lines = saleToInvoiceLines(sale);
-  const sub = lines.reduce((sum, line) => sum + line.total, 0);
-
-  return (
-    <InvoiceDocument
-      kind={kind}
-      tenantName={tenantName}
-      reference={sale.reference}
-      date={sale.date}
-      contact={saleToInvoiceContact(sale)}
-      lineItems={lines}
-      subtotal={sub}
-      total={sale.total}
-      currency={sale.currency}
-      notes={sale.notes}
-      balanceDue={sale.sellDue ?? null}
-      {...invoiceDocumentLayoutProps(invoiceSettings)}
-      className="invoice-print-root"
-    />
   );
 }
