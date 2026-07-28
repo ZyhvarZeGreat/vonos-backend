@@ -40,11 +40,11 @@ export function Hq6FiltersCard({
         className="hq6-filters-summary"
         onClick={() => setOpen((v) => !v)}
       >
-        <Filter className="h-4 w-4" />
+        <Filter className="h-4 w-4 shrink-0" />
         Filters
         <ChevronDown
           className={cn(
-            "ml-auto h-4 w-4 opacity-60 transition-transform",
+            "h-4 w-4 shrink-0 opacity-60 transition-transform",
             open && "rotate-180",
           )}
         />

@@ -888,21 +888,25 @@ export function DataTable<T extends { id: string }>({
                         <button
                           type="button"
                           onClick={() => handleSort(column)}
-                          className={cn(
-                            "inline-flex items-center gap-1 hover:text-foreground",
-                            align === "right" && "w-full justify-end",
-                          )}
+                          className="inline-flex w-full items-center gap-1 hover:text-foreground justify-start"
                         >
-                          {column.header}
                           {isActive ? (
                             activeSortDirection === "asc" ? (
-                              <ArrowUp className="h-3.5 w-3.5" />
+                              <ArrowUp className="h-3.5 w-3.5 shrink-0" />
                             ) : (
-                              <ArrowDown className="h-3.5 w-3.5" />
+                              <ArrowDown className="h-3.5 w-3.5 shrink-0" />
                             )
                           ) : (
-                            <ArrowUpDown className="h-3.5 w-3.5 opacity-40" />
+                            <ArrowUpDown className="h-3.5 w-3.5 shrink-0 opacity-40" />
                           )}
+                          <span
+                            className={cn(
+                              "min-w-0",
+                              align === "right" && "ml-auto text-right",
+                            )}
+                          >
+                            {column.header}
+                          </span>
                         </button>
                       ) : (
                         column.header

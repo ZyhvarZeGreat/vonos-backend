@@ -534,15 +534,15 @@ export function Hq6OverviewView() {
       {/* Blade: tw-pb-6 tw-bg-gradient-to-r tw-from-*-800 tw-to-*-900 xl:tw-pb-0 */}
       <div className="tw-pb-6 theme-header-bg xl:tw-pb-0">
         <div className="tw-px-5 tw-pt-3">
-          <div className="tw-flex tw-flex-col tw-gap-3 sm:tw-flex-row sm:tw-items-center sm:tw-justify-between sm:tw-gap-4">
-            <div className="tw-min-w-0 sm:tw-flex-1">
+          <div className="tw-flex tw-flex-col tw-gap-3 sm:tw-flex-row sm:tw-items-center sm:tw-justify-start sm:tw-gap-4">
+            <div className="tw-min-w-0">
               <h1 className="tw-text-2xl lg:tw-text-4xl tw-tracking-tight tw-text-primary-800 tw-font-semibold text-white">
                 Welcome {firstName}, 👋
               </h1>
             </div>
 
-            {/* Location + date: compact, side-by-side, right-aligned */}
-            <div className="hq6-home-filters tw-ml-auto tw-flex tw-w-auto tw-shrink-0 tw-items-center tw-justify-end tw-gap-2">
+            {/* Location + date sit left next to welcome (not far-right) */}
+            <div className="hq6-home-filters tw-flex tw-w-auto tw-shrink-0 tw-items-center tw-justify-start tw-gap-2">
               <div className="hq6-home-filter">
                 <select
                   id="dashboard_location"
@@ -567,7 +567,7 @@ export function Hq6OverviewView() {
                   onChange={setDateRange}
                   customValue={customDateRange}
                   onCustomChange={setCustomDateRange}
-                  align="end"
+                  align="start"
                   className="tw-w-full"
                 />
               </div>

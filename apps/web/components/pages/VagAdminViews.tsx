@@ -289,8 +289,8 @@ export function VagGroupOverview() {
     <div className="hq6-page hq6-home">
       <div className="tw-pb-6 theme-header-bg xl:tw-pb-0">
         <div className="tw-px-5 tw-pt-3">
-          <div className="tw-flex tw-flex-col tw-gap-3 sm:tw-flex-row sm:tw-items-center sm:tw-justify-between sm:tw-gap-4">
-            <div className="tw-min-w-0 sm:tw-flex-1">
+          <div className="tw-flex tw-flex-col tw-gap-3 sm:tw-flex-row sm:tw-items-center sm:tw-justify-start sm:tw-gap-4">
+            <div className="tw-min-w-0">
               <h1 className="tw-text-2xl lg:tw-text-4xl tw-tracking-tight tw-font-semibold text-white">
                 Welcome {firstName}, 👋
               </h1>
@@ -299,7 +299,7 @@ export function VagGroupOverview() {
               </p>
             </div>
 
-            <div className="hq6-home-filters tw-ml-auto tw-flex tw-w-auto tw-shrink-0 tw-items-center tw-justify-end tw-gap-2">
+            <div className="hq6-home-filters tw-flex tw-w-auto tw-shrink-0 tw-items-center tw-justify-start tw-gap-2">
               <div className="hq6-home-filter">
                 <DateRangeDropdown
                   id="vag_group_date_filter"
@@ -307,7 +307,7 @@ export function VagGroupOverview() {
                   onChange={setDateRange}
                   customValue={customDateRange}
                   onCustomChange={setCustomDateRange}
-                  align="end"
+                  align="start"
                   className="tw-w-full"
                 />
               </div>

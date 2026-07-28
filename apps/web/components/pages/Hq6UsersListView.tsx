@@ -206,10 +206,10 @@ export function Hq6UsersListView() {
       <section className="content">
         <div className="box-primary tw-mb-4 tw-transition-all lg:tw-col-span-2 tw-duration-200 tw-bg-white tw-shadow-sm tw-rounded-xl tw-ring-1 hover:tw-shadow-md tw-ring-gray-200">
           <div className="tw-p-2 sm:tw-p-3">
-            <div className="box-header">
+            <div className="box-header tw-flex tw-items-center tw-justify-between tw-gap-3">
               <h3 className="box-title">All users</h3>
               {canInvite ? (
-                <div className="box-tools">
+                <div className="box-tools tw-flex tw-items-center">
                   <a
                     href={`${detailPath("new")}/edit`}
                     className="tw-dw-btn tw-bg-gradient-to-r tw-from-indigo-600 tw-to-blue-500 tw-font-bold tw-text-white tw-border-none tw-rounded-full"
