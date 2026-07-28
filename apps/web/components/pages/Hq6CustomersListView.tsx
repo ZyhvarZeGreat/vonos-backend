@@ -15,6 +15,7 @@ import {
 import { Hq6PrintModal } from "@/components/hq6/Hq6PrintModal";
 import { useHq6ListChrome } from "@/components/hq6/Hq6StandardListShell";
 import {
+  getAllCustomers,
   getCustomersPage,
   setCustomerStatus,
 } from "@/lib/api/customers";
@@ -24,6 +25,7 @@ import { patchEntityInQueries } from "@/lib/query/optimistic";
 import { getUsers } from "@/lib/api/users";
 import { useServerListPage } from "@/lib/hooks/useServerListPage";
 import { HQ6_TABLE_PAGE_SIZE } from "@/lib/api/fetchAllPages";
+import { useListExport } from "@/lib/hooks/useListExport";
 import { useListPageFilters } from "@/lib/hooks/useListPageFilters";
 import { useRecordNavigation } from "@/lib/hooks/useRecordNavigation";
 import { useTenantId } from "@/lib/hooks/useRouteTenant";
@@ -85,7 +87,7 @@ export function Hq6CustomersListView() {
   const tenantId = useTenantId();
   const openCreateModal = useUiStore((state) => state.openCreateModal);
   const { search, setSearch } = useListPageFilters({
-    defaultDateRange: "all_time",
+    defaultDateRange: "last_7_days",
   });
   const [localSearch, setLocalSearch] = useState(search);
   const [filtersOpen, setFiltersOpen] = useState(true);
@@ -251,8 +253,34 @@ export function Hq6CustomersListView() {
     0,
   );
 
-  const exportToast = (label: string) =>
-    toast.info(`${label} — export coming with API.`);
+  const exportList = useListExport();
+
+  const handleExport = useCallback(async () => {
+    if (!tenantId) return;
+    const rows = await getAllCustomers(tenantId, apiFilters);
+    exportList(
+      "customers",
+      [
+        { key: "contactId", header: "Contact ID" },
+        { key: "businessName", header: "Business Name" },
+        { key: "name", header: "Name" },
+        { key: "email", header: "Email" },
+        { key: "mobile", header: "Mobile" },
+        { key: "totalSellDue", header: "Total sell due" },
+        { key: "status", header: "Status" },
+      ],
+      rows.map((row) => ({
+        contactId: row.contactId ?? "",
+        businessName: row.businessName ?? "",
+        name: row.name,
+        email: row.email ?? "",
+        mobile: row.phone ?? "",
+        totalSellDue: row.totalSellDue ?? 0,
+        status: row.status ?? "active",
+      })),
+      "Export Customers Spreadsheet",
+    );
+  }, [apiFilters, exportList, tenantId]);
 
   const pageNumbers = useMemo(() => {
     const max = Math.min(knownPages, 7);
@@ -515,7 +543,7 @@ export function Hq6CustomersListView() {
                                   if (key === "print") chrome.setPrintOpen(true);
                                   else if (key === "colvis")
                                     chrome.setColumnsOpen(true);
-                                  else exportToast(label);
+                                  else void handleExport();
                                 }}
                               >
                                 <span>

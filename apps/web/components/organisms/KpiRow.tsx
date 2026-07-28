@@ -2,8 +2,11 @@ import type { KpiCardConfig } from "@vonos/types";
 import {
   ArrowDown,
   ArrowUp,
+  Building2,
   Calculator,
+  Clock,
   Package,
+  Wrench,
 } from "lucide-react";
 import { KpiCard } from "@/components/molecules/KpiCard";
 import { KpiRowSkeleton } from "@/components/organisms/skeletons";
@@ -19,6 +22,9 @@ const iconMap: Record<string, IconComponent> = {
   "arrow-up": ArrowUp,
   wallet: Calculator,
   calculator: Calculator,
+  wrench: Wrench,
+  clock: Clock,
+  building: Building2,
 };
 
 const tintByMetric: Record<string, "emerald" | "blue" | "purple" | "rose"> = {
@@ -26,6 +32,10 @@ const tintByMetric: Record<string, "emerald" | "blue" | "purple" | "rose"> = {
   todayInbound: "blue",
   todayOutbound: "purple",
   stockValue: "rose",
+  revenue: "emerald",
+  jobs: "blue",
+  entities: "purple",
+  outstanding: "rose",
 };
 
 export interface KpiRowProps {
@@ -58,10 +68,13 @@ export function KpiRow({
   return (
     <div
       className={cn(
-        "grid grid-cols-1 gap-6 md:grid-cols-2",
-        cards.length > 4 ? "lg:grid-cols-3" : "lg:grid-cols-4",
+        /* auto-fit avoids 4 crushed columns in the VAG content column (~700px) */
+        "hq6-kpi-row grid gap-4",
         className,
       )}
+      style={{
+        gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 15.5rem), 1fr))",
+      }}
       aria-busy={isLoading || undefined}
     >
       {cards.map((card) => {

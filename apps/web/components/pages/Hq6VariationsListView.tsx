@@ -23,6 +23,7 @@ import {
 } from "@/lib/api/variations";
 import { useServerListPage } from "@/lib/hooks/useServerListPage";
 import { HQ6_TABLE_PAGE_SIZE } from "@/lib/api/fetchAllPages";
+import { useListExport } from "@/lib/hooks/useListExport";
 import { useTenantId } from "@/lib/hooks/useRouteTenant";
 import { toast } from "@/stores/toastStore";
 
@@ -240,8 +241,22 @@ export function Hq6VariationsListView() {
     { key: "values", label: "Values" },
   ];
 
-  const exportToast = (label: string) =>
-    toast.info(`${label} — export coming with API.`);
+  const exportList = useListExport();
+
+  const handleExport = useCallback(() => {
+    exportList(
+      "variations",
+      [
+        { key: "name", header: "Variations" },
+        { key: "values", header: "Values" },
+      ],
+      displayItems.map((row) => ({
+        name: row.name,
+        values: row.values.join(", "),
+      })),
+      "Export Variations",
+    );
+  }, [displayItems, exportList]);
 
   return (
     <div className="hq6-page hq6-customer-groups-page hq6-variations-page">
@@ -333,7 +348,7 @@ export function Hq6VariationsListView() {
                                   if (key === "print") chrome.setPrintOpen(true);
                                   else if (key === "colvis")
                                     chrome.setColumnsOpen(true);
-                                  else exportToast(label);
+                                  else handleExport();
                                 }}
                               >
                                 <span>

@@ -347,6 +347,56 @@ export class UsersService {
     return { user: this.toUser(user) };
   }
 
+  async updateUserStatus(
+    actor: AuthenticatedUser,
+    id: string,
+    status: 'active' | 'suspended',
+  ): Promise<{ user: User }> {
+    const row = await this.findManagedUser(actor, id);
+    const updated = await this.prisma.user.update({
+      where: { id: row.id },
+      data: { status },
+    });
+    this.invalidateUserCaches(row.tenantId);
+    return { user: this.toUser(updated) };
+  }
+
+  async deactivateUser(
+    actor: AuthenticatedUser,
+    id: string,
+  ): Promise<{ user: User }> {
+    const row = await this.findManagedUser(actor, id);
+    if (row.id === actor.sub) {
+      throw new BadRequestException('You cannot deactivate your own account');
+    }
+    const updated = await this.prisma.user.update({
+      where: { id: row.id },
+      data: {
+        status: 'suspended',
+        deletedAt: new Date(),
+        tokenVersion: { increment: 1 },
+      },
+    });
+    this.invalidateUserCaches(row.tenantId);
+    return { user: this.toUser(updated) };
+  }
+
+  private async findManagedUser(actor: AuthenticatedUser, id: string) {
+    const row = await this.prisma.user.findFirst({
+      where: { id, deletedAt: null },
+    });
+    if (!row) {
+      throw new NotFoundException('User not found');
+    }
+    if (actor.role === 'admin') {
+      const tenantId = this.tenantDb.requireTenantId();
+      if (row.tenantId !== tenantId) {
+        throw new ForbiddenException('Cannot manage users outside your entity');
+      }
+    }
+    return row;
+  }
+
   private async resolveUserAssignment(
     actor: AuthenticatedUser,
     body: {

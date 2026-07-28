@@ -1,6 +1,5 @@
 "use client";
 
-import { Building2 } from "lucide-react";
 import {
   accentTenantCodeForVagUnit,
   getVagViewUnit,
@@ -8,13 +7,14 @@ import {
 } from "@/lib/registries/vagViewUnits";
 import { accentForTenantCode } from "@/lib/registries/tenantAccents";
 import { iconForTenantCode } from "@/lib/registries/tenantIcons";
+import { Building2 } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
 import { AdminEntitySwitcher } from "@/components/molecules/AdminEntitySwitcher";
 import { useAdminEntityStore } from "@/stores/adminEntityStore";
 
 /**
- * Persistent admin strip: which entity scope is active for Finance / Reports /
- * HRM, plus the switcher to change it without leaving the module.
+ * VAG module strip: entity scope for Reports / Finance / HRM.
+ * Does not leave `/admin/*` — use the top-bar switcher to open a full entity dashboard.
  */
 export function AdminEntityContextBar({ className }: { className?: string }) {
   const viewingCode = useAdminEntityStore((s) => s.viewingCode);
@@ -22,9 +22,6 @@ export function AdminEntityContextBar({ className }: { className?: string }) {
     viewingCode && isVagViewUnitId(viewingCode)
       ? getVagViewUnit(viewingCode)
       : null;
-  const label = viewingUnit
-    ? `${viewingUnit.name} (${viewingUnit.badge})`
-    : "All entities (Group)";
   const ActiveIcon = viewingUnit
     ? iconForTenantCode(accentTenantCodeForVagUnit(viewingUnit.id))
     : Building2;
@@ -32,33 +29,53 @@ export function AdminEntityContextBar({ className }: { className?: string }) {
     ? accentForTenantCode(accentTenantCodeForVagUnit(viewingUnit.id))
     : accentForTenantCode("VAG");
 
+  const title = viewingUnit
+    ? `${viewingUnit.badge} — ${viewingUnit.name.replace(/^Vonos\s+/i, "")}`
+    : "Group — All entities";
+  const detail = viewingUnit
+    ? viewingUnit.tenantCodes.length > 1
+      ? `Stay in VAG · Reports, Finance, HRM, Stock · ${viewingUnit.tenantCodes.join(" + ")}`
+      : `Stay in VAG · Reports, Finance, HRM, Stock · same as /${viewingUnit.enterCode}`
+    : "Stay in VAG · consolidated Reports, Finance, HRM & Stock";
+
   return (
     <div
       className={cn(
-        "flex flex-wrap items-center justify-between gap-3 border-b border-border bg-[var(--color-surface-muted)]/80 px-4 py-2.5 sm:px-6",
+        "tw-flex tw-flex-wrap tw-items-center tw-justify-between tw-gap-3 tw-border-b tw-border-solid tw-border-gray-200 tw-bg-white tw-px-4 tw-py-2.5 sm:tw-px-5",
         className,
       )}
     >
-      <div className="flex min-w-0 items-start gap-3">
+      <div className="tw-flex tw-min-w-0 tw-flex-1 tw-items-center tw-gap-3">
         <span
-          className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-white"
+          className="tw-flex tw-h-9 tw-w-9 tw-shrink-0 tw-items-center tw-justify-center tw-rounded-md tw-text-white"
           style={{ backgroundColor: accent }}
+          aria-hidden
         >
-          <ActiveIcon className="h-4 w-4" />
+          <ActiveIcon className="tw-h-4 tw-w-4" />
         </span>
-        <div className="min-w-0">
-          <p className="text-xs font-semibold uppercase tracking-wide text-muted">
-            Viewing
+        <div className="tw-min-w-0">
+          <p className="tw-text-xs tw-font-semibold tw-uppercase tw-tracking-wide tw-text-gray-500">
+            Module entity
+            <span className="tw-ml-1.5 tw-font-normal tw-normal-case tw-tracking-normal tw-text-gray-400">
+              (stay in VAG)
+            </span>
           </p>
-          <p className="truncate text-sm font-medium text-foreground">{label}</p>
-          <p className="text-xs text-muted">
-            Finance, reports, and entity-scoped modules use this selection. Use
-            the top-bar switcher to open a full entity workspace.
+          <p className="tw-truncate tw-text-sm tw-font-semibold tw-text-gray-900">
+            {title}
           </p>
+          <p className="tw-truncate tw-text-xs tw-text-gray-500">{detail}</p>
         </div>
       </div>
 
-      <AdminEntitySwitcher variant="bar" className="shrink-0" />
+      <div className="tw-flex tw-w-full tw-min-w-0 tw-flex-col tw-gap-1 sm:tw-w-auto sm:tw-min-w-[18rem] sm:tw-max-w-md">
+        <label
+          htmlFor="upos-admin-report-entity"
+          className="tw-text-xs tw-font-semibold tw-uppercase tw-tracking-wide tw-text-gray-500"
+        >
+          Switch module entity
+        </label>
+        <AdminEntitySwitcher variant="bar" className="tw-w-full" />
+      </div>
     </div>
   );
 }

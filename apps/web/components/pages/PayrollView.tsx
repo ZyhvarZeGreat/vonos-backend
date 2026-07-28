@@ -2,13 +2,16 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { Minus, Plus } from "lucide-react";
 import { useAppMutation } from "@/lib/hooks/useAppMutation";
-import type { InvoiceListRow, PayComponent, Payroll, PayrollGroup } from "@vonos/types";
+import type { InvoiceListRow, PayComponent, Payroll, PayrollGroup, WorkforceMember } from "@vonos/types";
 import { Button } from "@/components/atoms/Button";
 import { Input } from "@/components/atoms/Input";
 import { Modal, ModalFooter, ModalHeader } from "@/components/atoms/Modal";
 import { StatusPill } from "@/components/atoms/StatusPill";
 import { EntityContextBanner } from "@/components/molecules/EntityContextBanner";
+import { Hq6ActionsMenu } from "@/components/hq6/Hq6ActionsMenu";
+import { Hq6Field, Hq6Modal, Hq6ModalSaveClose } from "@/components/hq6/Hq6Modal";
 import { type ColumnConfig } from "@/components/organisms/DataTable";
 import { DocumentPreviewModal } from "@/components/organisms/DocumentPreviewModal";
 import { ListPageShell } from "@/components/organisms/ListPageShell";
@@ -17,6 +20,7 @@ import {
   payrollPayslipTitle,
 } from "@/components/organisms/PayrollPayslipDocument";
 import { ServerPaginatedTable } from "@/components/organisms/ServerPaginatedTable";
+import { UposGradientActionButton } from "@/components/upos/UposNavTabs";
 import {
   addPayrollDeduction,
   createPayComponent,
@@ -27,9 +31,9 @@ import {
   getPayrollGroupsPage,
   getPayrollsPage,
   getDesignations,
+  getWorkforcePage,
 } from "@/lib/api/hrm";
 import { findInvoiceForPayroll } from "@/lib/api/invoices";
-import { businessLocationOptions } from "@/lib/hooks/useBusinessLocationOptions";
 import { useServerListPage } from "@/lib/hooks/useServerListPage";
 import { useRouteTenant, useTenantId } from "@/lib/hooks/useRouteTenant";
 import { formatCurrency } from "@/lib/utils/formatCurrency";
@@ -38,6 +42,148 @@ import {
   nameListCursor,
   payrollListCursor,
 } from "@/lib/utils/pagination";
+
+type AmountType = "fixed" | "percent";
+
+type PayLine = {
+  id: string;
+  name: string;
+  amountType: AmountType;
+  amount: string;
+};
+
+type EmployeePayrollDraft = {
+  workDuration: string;
+  durationUnit: string;
+  amountPerUnit: string;
+  allowances: PayLine[];
+  deductions: PayLine[];
+  note: string;
+};
+
+const DURATION_UNIT_OPTIONS = [
+  { value: "Month", label: "Month" },
+  { value: "Day", label: "Day" },
+  { value: "Hour", label: "Hour" },
+] as const;
+
+function newPayLine(): PayLine {
+  return {
+    id: `line-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    name: "",
+    amountType: "fixed",
+    amount: "0",
+  };
+}
+
+function emptyEmployeeDraft(): EmployeePayrollDraft {
+  return {
+    workDuration: "1",
+    durationUnit: "Month",
+    amountPerUnit: "0",
+    allowances: [newPayLine()],
+    deductions: [newPayLine()],
+    note: "",
+  };
+}
+
+function lineAmountValue(line: PayLine, base: number): number {
+  const n = Number(line.amount);
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  if (line.amountType === "percent") return (base * n) / 100;
+  return n;
+}
+
+function sumPayLines(lines: PayLine[], base: number): number {
+  return lines.reduce((sum, line) => sum + lineAmountValue(line, base), 0);
+}
+
+function basicSalaryTotal(draft: EmployeePayrollDraft): number {
+  const duration = Number(draft.workDuration);
+  const rate = Number(draft.amountPerUnit);
+  if (!Number.isFinite(duration) || !Number.isFinite(rate)) return 0;
+  return duration * rate;
+}
+
+function formatPayLinesNote(
+  allowances: PayLine[],
+  deductions: PayLine[],
+  base: number,
+): string | undefined {
+  const parts: string[] = [];
+  for (const line of allowances) {
+    const amt = lineAmountValue(line, base);
+    if (!line.name.trim() || amt <= 0) continue;
+    const suffix =
+      line.amountType === "percent" ? ` (${line.amount}% of basic)` : "";
+    parts.push(`+ ${line.name.trim()}: ${amt}${suffix}`);
+  }
+  for (const line of deductions) {
+    const amt = lineAmountValue(line, base);
+    if (!line.name.trim() || amt <= 0) continue;
+    const suffix =
+      line.amountType === "percent" ? ` (${line.amount}% of basic)` : "";
+    parts.push(`- ${line.name.trim()}: ${amt}${suffix}`);
+  }
+  return parts.length > 0 ? parts.join("; ") : undefined;
+}
+
+function updatePayLine(
+  lines: PayLine[],
+  id: string,
+  patch: Partial<PayLine>,
+): PayLine[] {
+  return lines.map((row) => (row.id === id ? { ...row, ...patch } : row));
+}
+
+/** Canonical default for Add Payroll — matches imported VA workforce location labels. */
+const DEFAULT_PAYROLL_LOCATION = "VONOS SALES 002";
+
+function normalizeLocationKey(value: string): string {
+  return value.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function isVonosSales002(value: string | null | undefined): boolean {
+  if (!value) return false;
+  const key = normalizeLocationKey(value);
+  return (
+    key === "vonos sales 002" ||
+    key === "vs002" ||
+    key.endsWith("sales 002") ||
+    key.includes("vonos sales 002")
+  );
+}
+
+function locationsMatch(
+  employeeLocation: string | null | undefined,
+  selected: string,
+): boolean {
+  if (!selected) return true;
+  if (!employeeLocation) return false;
+  if (employeeLocation === selected) return true;
+  if (
+    normalizeLocationKey(employeeLocation) === normalizeLocationKey(selected)
+  ) {
+    return true;
+  }
+  return isVonosSales002(employeeLocation) && isVonosSales002(selected);
+}
+
+function resolveDefaultPayrollLocation(
+  options: Array<{ value: string; label: string }>,
+  workforceCodes: string[],
+): string {
+  for (const opt of options) {
+    if (!opt.value) continue;
+    if (isVonosSales002(opt.value) || isVonosSales002(opt.label)) {
+      return opt.value;
+    }
+  }
+  for (const code of workforceCodes) {
+    if (isVonosSales002(code)) return code;
+  }
+  return DEFAULT_PAYROLL_LOCATION;
+}
 
 function listLoadError(error: unknown, fallback: string): string | null {
   if (!error) return null;
@@ -176,17 +322,46 @@ export function PayrollView({
   });
   const [deductionError, setDeductionError] = useState<string | null>(null);
 
-  const [newPayroll, setNewPayroll] = useState({
-    employeeName: "",
-    grossPay: "",
-    payrollMonth: new Date().toISOString().slice(0, 7) + "-01",
-  });
+  const [addPayrollOpen, setAddPayrollOpen] = useState(false);
+  const [addPayrollStep, setAddPayrollStep] = useState<"select" | "details">("select");
+  const [addPayrollLocationCode, setAddPayrollLocationCode] = useState(
+    DEFAULT_PAYROLL_LOCATION,
+  );
+  const [addPayrollEmployeeIds, setAddPayrollEmployeeIds] = useState<string[]>([]);
+  const [addPayrollMonth, setAddPayrollMonth] = useState(
+    () => new Date().toISOString().slice(0, 7), // YYYY-MM
+  );
+  const [payrollGroupName, setPayrollGroupName] = useState("");
+  const [addPayrollStatus, setAddPayrollStatus] = useState<"draft" | "final">("draft");
+  const [employeeDrafts, setEmployeeDrafts] = useState<
+    Record<string, EmployeePayrollDraft>
+  >({});
   const [newGroupName, setNewGroupName] = useState("");
   const [newComponent, setNewComponent] = useState({
     name: "",
     type: "allowance" as PayComponent["type"],
     amount: "",
   });
+
+  function resetAddPayrollFlow() {
+    setAddPayrollOpen(false);
+    setAddPayrollStep("select");
+    setAddPayrollEmployeeIds([]);
+    setEmployeeDrafts({});
+    setPayrollGroupName("");
+    setAddPayrollStatus("draft");
+    setAddPayrollLocationCode(DEFAULT_PAYROLL_LOCATION);
+  }
+
+  function patchEmployeeDraft(
+    employeeId: string,
+    patch: Partial<EmployeePayrollDraft>,
+  ) {
+    setEmployeeDrafts((prev) => {
+      const current = prev[employeeId] ?? emptyEmployeeDraft();
+      return { ...prev, [employeeId]: { ...current, ...patch } };
+    });
+  }
 
   useEffect(() => {
     setActiveTab(defaultTab);
@@ -226,12 +401,6 @@ export function PayrollView({
     queryFn: () => getDesignations(tenantId!),
     staleTime: 5 * 60_000,
   });
-
-  const locationOptions = useMemo(
-    () => businessLocationOptions(config?.businessLocations),
-    [config?.businessLocations],
-  );
-  const hasLocations = (config?.businessLocations?.length ?? 0) > 0;
 
   const groupFilterOptions = useMemo(
     () =>
@@ -289,16 +458,139 @@ export function PayrollView({
     getCursor: (row) => nameListCursor(row),
   });
 
-  const createPayrollMutation = useAppMutation({
-    mutationFn: () =>
-      createPayroll(tenantId!, {
-        employeeName: newPayroll.employeeName,
-        grossPay: Number(newPayroll.grossPay),
-        payrollMonth: newPayroll.payrollMonth,
-      }),
-    invalidateKeys: [["payrolls", tenantId]],
-    onSuccess: () => {
-      setNewPayroll({ employeeName: "", grossPay: "", payrollMonth: newPayroll.payrollMonth });
+  const addWorkforceQuery = useQuery({
+    queryKey: ["workforce-for-add-payroll", tenantId],
+    enabled: Boolean(tenantId) && (addPayrollOpen || addPayrollStep === "details"),
+    queryFn: async () => {
+      const page = await getWorkforcePage(tenantId!, undefined, 500, undefined, {
+        includeSummary: false,
+      });
+      return page.items;
+    },
+    staleTime: 5 * 60_000,
+  });
+
+  const locationOptions = useMemo(() => {
+    const fromConfig = (config?.businessLocations ?? []).map((row) => ({
+      value: row.code,
+      label: `${row.code} — ${row.name}`,
+    }));
+    const workforceCodes = Array.from(
+      new Set(
+        (addWorkforceQuery.data ?? [])
+          .map((e) => e.locationCode?.trim())
+          .filter((code): code is string => Boolean(code)),
+      ),
+    );
+    const merged = new Map<string, { value: string; label: string }>();
+    for (const opt of fromConfig) {
+      if (opt.value) merged.set(opt.value, opt);
+    }
+    for (const code of workforceCodes) {
+      if (!merged.has(code)) {
+        merged.set(code, { value: code, label: code });
+      }
+    }
+    if (![...merged.keys()].some(isVonosSales002)) {
+      merged.set(DEFAULT_PAYROLL_LOCATION, {
+        value: DEFAULT_PAYROLL_LOCATION,
+        label: DEFAULT_PAYROLL_LOCATION,
+      });
+    }
+    return Array.from(merged.values());
+  }, [addWorkforceQuery.data, config?.businessLocations]);
+  const hasLocations = locationOptions.length > 0;
+
+  useEffect(() => {
+    if (!addPayrollOpen) return;
+    const workforceCodes = (addWorkforceQuery.data ?? [])
+      .map((e) => e.locationCode?.trim())
+      .filter((code): code is string => Boolean(code));
+    const resolved = resolveDefaultPayrollLocation(
+      locationOptions,
+      workforceCodes,
+    );
+    setAddPayrollLocationCode((prev) => {
+      if (prev && locationOptions.some((o) => o.value === prev)) return prev;
+      if (prev && isVonosSales002(prev)) return resolved;
+      return resolved;
+    });
+  }, [addPayrollOpen, addWorkforceQuery.data, locationOptions]);
+
+  const employeesForPayrollModal = useMemo(() => {
+    const list = addWorkforceQuery.data ?? [];
+    if (!addPayrollLocationCode) return list;
+    return list.filter((e) =>
+      locationsMatch(e.locationCode, addPayrollLocationCode),
+    );
+  }, [addPayrollLocationCode, addWorkforceQuery.data]);
+
+  const selectedEmployeesForPayroll = useMemo(() => {
+    const selected = new Set(addPayrollEmployeeIds);
+    return employeesForPayrollModal.filter((e) => selected.has(e.id));
+  }, [addPayrollEmployeeIds, employeesForPayrollModal]);
+
+  const createPayrollsMutation = useAppMutation<Payroll[]>({
+    mutationFn: async () => {
+      if (!tenantId) throw new Error("No tenant selected");
+      if (selectedEmployeesForPayroll.length === 0) {
+        throw new Error("Select at least one employee");
+      }
+      const created: Payroll[] = [];
+      const payrollMonth = `${addPayrollMonth}-01`;
+
+      const groupName = payrollGroupName.trim();
+      if (!groupName) {
+        throw new Error("Payroll group name is required");
+      }
+      const group = await createPayrollGroup(tenantId, { name: groupName });
+      const payrollGroupId = group.id;
+
+      for (const employee of selectedEmployeesForPayroll) {
+        const draft = employeeDrafts[employee.id] ?? emptyEmployeeDraft();
+        const basic = basicSalaryTotal(draft);
+        if (!Number.isFinite(basic) || basic <= 0) {
+          throw new Error(
+            `Enter work duration and amount per unit for ${employee.employeeName}`,
+          );
+        }
+        const totalAllowance = sumPayLines(draft.allowances, basic);
+        const totalDeduction = sumPayLines(draft.deductions, basic);
+        const lineNote = formatPayLinesNote(
+          draft.allowances,
+          draft.deductions,
+          basic,
+        );
+        const noteParts = [
+          `Basic: ${draft.workDuration} ${draft.durationUnit} × ${draft.amountPerUnit}`,
+          lineNote,
+          draft.note.trim() || undefined,
+        ].filter(Boolean);
+
+        const row = await createPayroll(tenantId, {
+          employeeRecordId: employee.id,
+          payrollGroupId,
+          locationCode: addPayrollLocationCode || undefined,
+          grossPay: basic,
+          totalAllowance,
+          totalDeduction,
+          status: addPayrollStatus,
+          payrollMonth,
+          note: noteParts.join(" · ") || undefined,
+        });
+        created.push(row);
+      }
+
+      return created;
+    },
+    invalidateKeys: [
+      ["payrolls", tenantId],
+      ["payroll-groups", tenantId],
+    ],
+    onSuccess: (created) => {
+      const first = created[0] ?? null;
+      setSelectedPayroll(first);
+      resetAddPayrollFlow();
     },
   });
 
@@ -447,6 +739,551 @@ export function PayrollView({
         ]
       : undefined;
 
+  const payrollActionColumn: ColumnConfig<Payroll> = {
+    key: "actions",
+    header: "Action",
+    sortable: false,
+    render: (r) => (
+      <Hq6ActionsMenu
+        label="Actions"
+        items={[
+          {
+            id: "view",
+            label: "View payslip",
+            onClick: () => setSelectedPayroll(r),
+          },
+          {
+            id: "edit",
+            label: "Add deduction",
+            onClick: () => openDeductionModal(r),
+          },
+        ]}
+      />
+    ),
+  };
+
+  const addPayrollMonthLabel = useMemo(() => {
+    const iso = `${addPayrollMonth}-01`;
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return addPayrollMonth;
+    return d.toLocaleString("en", { month: "long", year: "numeric" });
+  }, [addPayrollMonth]);
+
+  const addPayrollSelectModal = (
+    <Hq6Modal
+      open={addPayrollOpen}
+      onClose={resetAddPayrollFlow}
+      title="Add Payroll"
+      size="2xl"
+      footer={
+        <Hq6ModalSaveClose
+          onSave={() => {
+            const drafts: Record<string, EmployeePayrollDraft> = {};
+            for (const employee of selectedEmployeesForPayroll) {
+              drafts[employee.id] = emptyEmployeeDraft();
+            }
+            setEmployeeDrafts(drafts);
+            setPayrollGroupName(`Payroll for ${addPayrollMonthLabel}`);
+            setAddPayrollStatus("draft");
+            setAddPayrollOpen(false);
+            setAddPayrollStep("details");
+          }}
+          onClose={resetAddPayrollFlow}
+          saveLabel="Proceed"
+          saving={false}
+          saveDisabled={
+            !addPayrollLocationCode ||
+            addPayrollEmployeeIds.length === 0 ||
+            !addPayrollMonth
+          }
+        />
+      }
+    >
+      <div className="space-y-4">
+        <Hq6Field label="Location" required>
+          <select
+            className="form-control select2 hq6-modal-input"
+            value={addPayrollLocationCode}
+            onChange={(e) => {
+              setAddPayrollLocationCode(e.target.value);
+              setAddPayrollEmployeeIds([]);
+            }}
+          >
+            {locationOptions.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+        </Hq6Field>
+
+        <Hq6Field
+          label="Employee"
+          required
+          hint={
+            <span className="ml-2 inline-flex flex-wrap gap-1.5 align-middle font-normal">
+              <button
+                type="button"
+                className="hq6-btn hq6-btn-blue !px-2 !py-0.5 text-xs"
+                onClick={() =>
+                  setAddPayrollEmployeeIds(
+                    employeesForPayrollModal.map((e) => e.id),
+                  )
+                }
+                disabled={employeesForPayrollModal.length === 0}
+              >
+                Select all
+              </button>
+              <button
+                type="button"
+                className="hq6-btn hq6-btn-outline !px-2 !py-0.5 text-xs"
+                onClick={() => setAddPayrollEmployeeIds([])}
+                disabled={addPayrollEmployeeIds.length === 0}
+              >
+                Deselect all
+              </button>
+            </span>
+          }
+        >
+          {employeesForPayrollModal.length === 0 ? (
+            <p className="hq6-modal-input min-h-[10rem] py-3 text-sm text-muted">
+              No employees found for this location.
+            </p>
+          ) : (
+            <select
+              multiple
+              size={8}
+              className="form-control hq6-modal-input w-full min-h-[10rem]"
+              value={addPayrollEmployeeIds}
+              onChange={(e) => {
+                const selected = Array.from(e.target.selectedOptions).map(
+                  (opt) => opt.value,
+                );
+                setAddPayrollEmployeeIds(selected);
+              }}
+            >
+              {employeesForPayrollModal.map((employee) => (
+                <option key={employee.id} value={employee.id}>
+                  {employee.employeeName}
+                </option>
+              ))}
+            </select>
+          )}
+        </Hq6Field>
+
+        <Hq6Field label="Month/Year" required>
+          <input
+            type="month"
+            className="hq6-modal-input w-full"
+            value={addPayrollMonth}
+            onChange={(e) => setAddPayrollMonth(e.target.value)}
+          />
+        </Hq6Field>
+      </div>
+    </Hq6Modal>
+  );
+
+  const addPayrollDetailsPage =
+    addPayrollStep === "details" ? (
+      <div className="space-y-5 p-1">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <h2 className="text-lg font-semibold text-[#111827]">Add Payroll</h2>
+            <p className="mt-1 text-base font-semibold text-[#111827]">
+              Payroll for {addPayrollMonthLabel}
+            </p>
+            <p className="text-sm text-muted">
+              Location:{" "}
+              {locationOptions.find((l) => l.value === addPayrollLocationCode)
+                ?.label ??
+                addPayrollLocationCode ??
+                "—"}
+            </p>
+          </div>
+          <div className="grid min-w-[16rem] flex-1 gap-3 sm:max-w-md sm:grid-cols-2">
+            <div>
+              <label className="mb-1 block text-xs font-semibold text-[#555]">
+                Payroll group name<span className="text-red-600">*</span>:
+              </label>
+              <input
+                className="form-control hq6-modal-input w-full"
+                value={payrollGroupName}
+                onChange={(e) => setPayrollGroupName(e.target.value)}
+                placeholder={`Payroll for ${addPayrollMonthLabel}`}
+                required
+              />
+            </div>
+            <div>
+              <label className="mb-1 flex items-center gap-1 text-xs font-semibold text-[#555]">
+                Status<span className="text-red-600">*</span>:
+                <span
+                  className="inline-flex size-4 items-center justify-center rounded-full bg-[#3b82f6] text-[10px] font-bold text-white"
+                  title="Payroll can not be deleted if status is final"
+                >
+                  i
+                </span>
+              </label>
+              <select
+                className="form-control select2 hq6-modal-input w-full"
+                value={addPayrollStatus}
+                onChange={(e) =>
+                  setAddPayrollStatus(e.target.value as "draft" | "final")
+                }
+              >
+                <option value="draft">Draft</option>
+                <option value="final">Final</option>
+              </select>
+              <p className="mt-1 text-xs text-[#b45309]">
+                Payroll can not be deleted if status is final
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {createPayrollsMutation.isError ? (
+          <p className="text-sm text-[var(--color-error-text)]">
+            {createPayrollsMutation.error instanceof Error
+              ? createPayrollsMutation.error.message
+              : "Failed to create payroll"}
+          </p>
+        ) : null}
+
+        <div className="space-y-4">
+          {selectedEmployeesForPayroll.map((employee) => {
+            const draft = employeeDrafts[employee.id] ?? emptyEmployeeDraft();
+            const basic = basicSalaryTotal(draft);
+            const allowanceTotal = sumPayLines(draft.allowances, basic);
+            const deductionTotal = sumPayLines(draft.deductions, basic);
+            const grossAmount = basic + allowanceTotal - deductionTotal;
+
+            return (
+              <div
+                key={employee.id}
+                className="overflow-hidden rounded border border-[#e5e7eb] bg-white"
+              >
+                <div className="grid gap-4 p-4 md:grid-cols-2 xl:grid-cols-[minmax(9rem,11rem)_minmax(11rem,14rem)_minmax(0,1fr)_minmax(0,1fr)_minmax(7rem,9rem)]">
+                  <div>
+                    <p className="text-sm font-semibold text-[#111827]">
+                      {employee.employeeName}
+                    </p>
+                    <p className="mt-2 text-xs leading-5 text-muted">
+                      Leaves : 0 days
+                      <br />
+                      Work Duration : 0.00 hour
+                      <br />
+                      Attendance: 0 Days
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <p className="text-sm font-semibold text-[#111827]">
+                      Basic salary
+                    </p>
+                    <div>
+                      <label className="mb-0.5 block text-xs text-[#555]">
+                        Total work duration
+                        <span className="text-red-600">*</span>:
+                      </label>
+                      <input
+                        type="number"
+                        min={0}
+                        step="0.01"
+                        className="form-control hq6-modal-input w-full"
+                        value={draft.workDuration}
+                        onChange={(e) =>
+                          patchEmployeeDraft(employee.id, {
+                            workDuration: e.target.value,
+                          })
+                        }
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-0.5 block text-xs text-[#555]">
+                        Duration Unit:
+                      </label>
+                      <select
+                        className="form-control select2 hq6-modal-input w-full"
+                        value={draft.durationUnit}
+                        onChange={(e) =>
+                          patchEmployeeDraft(employee.id, {
+                            durationUnit: e.target.value,
+                          })
+                        }
+                      >
+                        {DURATION_UNIT_OPTIONS.map((opt) => (
+                          <option key={opt.value} value={opt.value}>
+                            {opt.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="mb-0.5 block text-xs text-[#555]">
+                        Amount per unit duration
+                        <span className="text-red-600">*</span>:
+                      </label>
+                      <input
+                        type="number"
+                        min={0}
+                        step="0.01"
+                        className="form-control hq6-modal-input w-full"
+                        value={draft.amountPerUnit}
+                        onChange={(e) =>
+                          patchEmployeeDraft(employee.id, {
+                            amountPerUnit: e.target.value,
+                          })
+                        }
+                      />
+                    </div>
+                    <p className="text-sm text-[#111827]">
+                      Total:{" "}
+                      <span className="font-semibold tabular-nums">
+                        {formatCurrency(basic, "NGN")}
+                      </span>
+                    </p>
+                  </div>
+
+                  <div className="rounded border border-[#e5e7eb] bg-[#fafafa] p-3">
+                    <div className="mb-2 flex items-center justify-between">
+                      <p className="text-sm font-semibold text-[#111827]">
+                        Earnings
+                      </p>
+                      <button
+                        type="button"
+                        className="inline-flex size-7 items-center justify-center rounded bg-[#3b82f6] text-white"
+                        aria-label="Add earning"
+                        onClick={() =>
+                          patchEmployeeDraft(employee.id, {
+                            allowances: [...draft.allowances, newPayLine()],
+                          })
+                        }
+                      >
+                        <Plus className="size-3.5" />
+                      </button>
+                    </div>
+                    <div className="mb-1 grid grid-cols-[minmax(0,1fr)_minmax(5rem,6.5rem)_minmax(4.5rem,5.5rem)_1.75rem] gap-1.5 text-[11px] text-muted">
+                      <span>Description</span>
+                      <span>Amount Type</span>
+                      <span className="text-right">Amount</span>
+                      <span />
+                    </div>
+                    <div className="space-y-1.5">
+                      {draft.allowances.map((line, index) => (
+                        <div
+                          key={line.id}
+                          className="grid grid-cols-[minmax(0,1fr)_minmax(5rem,6.5rem)_minmax(4.5rem,5.5rem)_1.75rem] items-center gap-1.5"
+                        >
+                          <input
+                            className="form-control hq6-modal-input w-full"
+                            placeholder="Description"
+                            value={line.name}
+                            onChange={(e) =>
+                              patchEmployeeDraft(employee.id, {
+                                allowances: updatePayLine(
+                                  draft.allowances,
+                                  line.id,
+                                  { name: e.target.value },
+                                ),
+                              })
+                            }
+                          />
+                          <select
+                            className="form-control select2 hq6-modal-input w-full"
+                            value={line.amountType}
+                            onChange={(e) =>
+                              patchEmployeeDraft(employee.id, {
+                                allowances: updatePayLine(
+                                  draft.allowances,
+                                  line.id,
+                                  {
+                                    amountType: e.target.value as AmountType,
+                                  },
+                                ),
+                              })
+                            }
+                          >
+                            <option value="fixed">Fixed</option>
+                            <option value="percent">Percent</option>
+                          </select>
+                          <input
+                            type="number"
+                            min={0}
+                            step="0.01"
+                            className="form-control hq6-modal-input w-full text-right"
+                            value={line.amount}
+                            onChange={(e) =>
+                              patchEmployeeDraft(employee.id, {
+                                allowances: updatePayLine(
+                                  draft.allowances,
+                                  line.id,
+                                  { amount: e.target.value },
+                                ),
+                              })
+                            }
+                          />
+                          {index === 0 ? (
+                            <span className="size-7" />
+                          ) : (
+                            <button
+                              type="button"
+                              className="inline-flex size-7 items-center justify-center rounded bg-[#ef4444] text-white"
+                              aria-label="Remove earning"
+                              onClick={() =>
+                                patchEmployeeDraft(employee.id, {
+                                  allowances: draft.allowances.filter(
+                                    (row) => row.id !== line.id,
+                                  ),
+                                })
+                              }
+                            >
+                              <Minus className="size-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                    <p className="mt-2 text-right text-xs text-muted">
+                      Total: {formatCurrency(allowanceTotal, "NGN")}
+                    </p>
+                  </div>
+
+                  <div className="rounded border border-[#e5e7eb] bg-[#fafafa] p-3">
+                    <div className="mb-2 flex items-center justify-between">
+                      <p className="text-sm font-semibold text-[#111827]">
+                        Deductions
+                      </p>
+                      <button
+                        type="button"
+                        className="inline-flex size-7 items-center justify-center rounded bg-[#3b82f6] text-white"
+                        aria-label="Add deduction"
+                        onClick={() =>
+                          patchEmployeeDraft(employee.id, {
+                            deductions: [...draft.deductions, newPayLine()],
+                          })
+                        }
+                      >
+                        <Plus className="size-3.5" />
+                      </button>
+                    </div>
+                    <div className="mb-1 grid grid-cols-[minmax(0,1fr)_minmax(5rem,6.5rem)_minmax(4.5rem,5.5rem)_1.75rem] gap-1.5 text-[11px] text-muted">
+                      <span>Description</span>
+                      <span>Amount Type</span>
+                      <span className="text-right">Amount</span>
+                      <span />
+                    </div>
+                    <div className="space-y-1.5">
+                      {draft.deductions.map((line, index) => (
+                        <div
+                          key={line.id}
+                          className="grid grid-cols-[minmax(0,1fr)_minmax(5rem,6.5rem)_minmax(4.5rem,5.5rem)_1.75rem] items-center gap-1.5"
+                        >
+                          <input
+                            className="form-control hq6-modal-input w-full"
+                            placeholder="Description"
+                            value={line.name}
+                            onChange={(e) =>
+                              patchEmployeeDraft(employee.id, {
+                                deductions: updatePayLine(
+                                  draft.deductions,
+                                  line.id,
+                                  { name: e.target.value },
+                                ),
+                              })
+                            }
+                          />
+                          <select
+                            className="form-control select2 hq6-modal-input w-full"
+                            value={line.amountType}
+                            onChange={(e) =>
+                              patchEmployeeDraft(employee.id, {
+                                deductions: updatePayLine(
+                                  draft.deductions,
+                                  line.id,
+                                  {
+                                    amountType: e.target.value as AmountType,
+                                  },
+                                ),
+                              })
+                            }
+                          >
+                            <option value="fixed">Fixed</option>
+                            <option value="percent">Percent</option>
+                          </select>
+                          <input
+                            type="number"
+                            min={0}
+                            step="0.01"
+                            className="form-control hq6-modal-input w-full text-right"
+                            value={line.amount}
+                            onChange={(e) =>
+                              patchEmployeeDraft(employee.id, {
+                                deductions: updatePayLine(
+                                  draft.deductions,
+                                  line.id,
+                                  { amount: e.target.value },
+                                ),
+                              })
+                            }
+                          />
+                          {index === 0 ? (
+                            <span className="size-7" />
+                          ) : (
+                            <button
+                              type="button"
+                              className="inline-flex size-7 items-center justify-center rounded bg-[#ef4444] text-white"
+                              aria-label="Remove deduction"
+                              onClick={() =>
+                                patchEmployeeDraft(employee.id, {
+                                  deductions: draft.deductions.filter(
+                                    (row) => row.id !== line.id,
+                                  ),
+                                })
+                              }
+                            >
+                              <Minus className="size-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                    <p className="mt-2 text-right text-xs text-muted">
+                      Total: {formatCurrency(deductionTotal, "NGN")}
+                    </p>
+                  </div>
+
+                  <div className="flex flex-col justify-start xl:items-end">
+                    <p className="text-sm font-semibold text-[#111827]">
+                      Gross Amount
+                    </p>
+                    <p className="mt-1 text-lg font-bold tabular-nums text-[#111827]">
+                      {formatCurrency(grossAmount, "NGN")}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="border-t border-[#e5e7eb] px-4 py-3">
+                  <label className="mb-1 block text-xs font-semibold text-[#555]">
+                    Note:
+                  </label>
+                  <textarea
+                    className="form-control hq6-modal-input min-h-[4.5rem] w-full"
+                    value={draft.note}
+                    placeholder="Total"
+                    onChange={(e) =>
+                      patchEmployeeDraft(employee.id, { note: e.target.value })
+                    }
+                  />
+                </div>
+              </div>
+            );
+          })}
+          {selectedEmployeesForPayroll.length === 0 ? (
+            <p className="text-sm text-muted">No employees selected.</p>
+          ) : null}
+        </div>
+      </div>
+    ) : null;
+
   const deductionModals = (
     <>
       <DocumentPreviewModal
@@ -549,75 +1386,76 @@ export function PayrollView({
     </>
   );
 
+  const payrollPrimaryAction =
+    addPayrollStep === "details" ? (
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          className="hq6-btn hq6-btn-outline"
+          onClick={resetAddPayrollFlow}
+          disabled={createPayrollsMutation.isPending}
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          className="hq6-btn hq6-btn-blue"
+          onClick={() => createPayrollsMutation.mutate()}
+          disabled={
+            createPayrollsMutation.isPending ||
+            !payrollGroupName.trim() ||
+            selectedEmployeesForPayroll.length === 0 ||
+            selectedEmployeesForPayroll.some((employee) => {
+              const draft = employeeDrafts[employee.id] ?? emptyEmployeeDraft();
+              return basicSalaryTotal(draft) <= 0;
+            })
+          }
+        >
+          {createPayrollsMutation.isPending ? "Saving…" : "Save"}
+        </button>
+      </div>
+    ) : activeTab === "payrolls" ? (
+      <UposGradientActionButton
+        label="Add"
+        onClick={() => {
+          setAddPayrollStep("select");
+          setAddPayrollLocationCode(DEFAULT_PAYROLL_LOCATION);
+          setAddPayrollEmployeeIds([]);
+          setEmployeeDrafts({});
+          setPayrollGroupName("");
+          setAddPayrollStatus("draft");
+          setAddPayrollOpen(true);
+        }}
+      />
+    ) : null;
+
   const panelBody = (
     <>
-      {activeTab === "payrolls" ? (
-        <>
-          <div className="mb-4 flex flex-wrap items-end gap-2 rounded-lg border border-border bg-card p-4">
-            <div className="min-w-[12rem] flex-1">
-              <label className="mb-1 block text-xs font-medium text-muted">Employee name</label>
-              <input
-                className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm"
-                value={newPayroll.employeeName}
-                onChange={(e) =>
-                  setNewPayroll({ ...newPayroll, employeeName: e.target.value })
-                }
-              />
-            </div>
-            <div className="w-36">
-              <label className="mb-1 block text-xs font-medium text-muted">Gross pay</label>
-              <input
-                type="number"
-                className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm"
-                value={newPayroll.grossPay}
-                onChange={(e) => setNewPayroll({ ...newPayroll, grossPay: e.target.value })}
-              />
-            </div>
-            <div className="w-40">
-              <label className="mb-1 block text-xs font-medium text-muted">Month</label>
-              <input
-                type="month"
-                className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm"
-                value={newPayroll.payrollMonth.slice(0, 7)}
-                onChange={(e) =>
-                  setNewPayroll({ ...newPayroll, payrollMonth: `${e.target.value}-01` })
-                }
-              />
-            </div>
-            <Button
-              onClick={() => createPayrollMutation.mutate()}
-              disabled={
-                !newPayroll.employeeName ||
-                !newPayroll.grossPay ||
-                createPayrollMutation.isPending
-              }
-            >
-              Add Payroll
-            </Button>
-          </div>
-          <ServerPaginatedTable
-            items={payrollsPage.items}
-            columns={payrollColumns}
-            pageIndex={payrollsPage.pageIndex}
-            pageSize={payrollsPage.pageSize}
-            hasMore={payrollsPage.hasMore}
-            canGoPrev={payrollsPage.canGoPrev}
-            onNext={payrollsPage.goNext}
-            onPrev={payrollsPage.goPrev}
-            onPageSizeChange={payrollsPage.setPageSize}
-            onPageSelect={payrollsPage.goToPage}
-            canSelectPage={payrollsPage.canSelectPage}
-            isLoading={payrollsPage.isLoading}
-            isFetching={payrollsPage.isFetching}
-            isPaging={payrollsPage.isPaging}
-            error={listLoadError(payrollsPage.error, "Failed to load payrolls.")}
-            emptyState={{ message: "No payroll records yet." }}
-            onRowClick={(row) => setSelectedPayroll(row)}
-          />
-        </>
+      {addPayrollStep === "details" ? (
+        addPayrollDetailsPage
+      ) : activeTab === "payrolls" ? (
+        <ServerPaginatedTable
+          items={payrollsPage.items}
+          columns={[payrollActionColumn, ...payrollColumns]}
+          pageIndex={payrollsPage.pageIndex}
+          pageSize={payrollsPage.pageSize}
+          hasMore={payrollsPage.hasMore}
+          canGoPrev={payrollsPage.canGoPrev}
+          onNext={payrollsPage.goNext}
+          onPrev={payrollsPage.goPrev}
+          onPageSizeChange={payrollsPage.setPageSize}
+          onPageSelect={payrollsPage.goToPage}
+          canSelectPage={payrollsPage.canSelectPage}
+          isLoading={payrollsPage.isLoading}
+          isFetching={payrollsPage.isFetching}
+          isPaging={payrollsPage.isPaging}
+          error={listLoadError(payrollsPage.error, "Failed to load payrolls.")}
+          emptyState={{ message: "No payroll records yet." }}
+          stickyFirstColumn
+        />
       ) : null}
 
-      {activeTab === "groups" ? (
+      {addPayrollStep !== "details" && activeTab === "groups" ? (
         <>
           <div className="mb-4 flex flex-wrap items-end gap-2 rounded-lg border border-border bg-card p-4">
             <div className="min-w-[12rem] flex-1">
@@ -656,7 +1494,7 @@ export function PayrollView({
         </>
       ) : null}
 
-      {activeTab === "components" ? (
+      {addPayrollStep !== "details" && activeTab === "components" ? (
         <>
           <div className="mb-4 flex flex-wrap items-end gap-2 rounded-lg border border-border bg-card p-4">
             <div className="min-w-[10rem] flex-1">
@@ -724,6 +1562,7 @@ export function PayrollView({
         </>
       ) : null}
 
+      {addPayrollSelectModal}
       {deductionModals}
     </>
   );
@@ -731,21 +1570,47 @@ export function PayrollView({
   const shell = (
     <ListPageShell
       tabs={
-        embedded
-          ? PAYROLL_TABS.filter((t) => t.id === activeTab).map((t) => ({
-              id: t.id,
-              label: t.label,
-            }))
-          : PAYROLL_TABS.map((t) => ({ id: t.id, label: t.label }))
+        addPayrollStep === "details"
+          ? [{ id: "payrolls", label: "Add Payroll" }]
+          : embedded
+            ? PAYROLL_TABS.filter((t) => t.id === activeTab).map((t) => ({
+                id: t.id,
+                label: t.label,
+              }))
+            : PAYROLL_TABS.map((t) => ({ id: t.id, label: t.label }))
       }
-      activeTab={activeTab}
-      onTabChange={(id) => setActiveTab(id as PayrollTab)}
+      activeTab={addPayrollStep === "details" ? "payrolls" : activeTab}
+      onTabChange={(id) => {
+        if (addPayrollStep === "details") return;
+        setActiveTab(id as PayrollTab);
+      }}
       searchValue={search}
       onSearchChange={setSearch}
       searchPlaceholder={searchPlaceholder}
       showImport={false}
       showDateRange={false}
-      filterDropdowns={payrollFilterDropdowns}
+      filterDropdowns={
+        addPayrollStep === "details" ? undefined : payrollFilterDropdowns
+      }
+      showSearch={addPayrollStep !== "details"}
+      showExport={addPayrollStep !== "details"}
+      primaryAction={payrollPrimaryAction}
+      pageSize={
+        activeTab === "payrolls"
+          ? payrollsPage.pageSize
+          : activeTab === "groups"
+            ? groupsPage.pageSize
+            : componentsPage.pageSize
+      }
+      onPageSizeChange={
+        addPayrollStep === "details"
+          ? undefined
+          : activeTab === "payrolls"
+            ? payrollsPage.setPageSize
+            : activeTab === "groups"
+              ? groupsPage.setPageSize
+              : componentsPage.setPageSize
+      }
       className={embedded ? "border-0 shadow-none" : undefined}
       hq6Title="HRM"
       hq6Subtitle="Payroll"
@@ -756,7 +1621,7 @@ export function PayrollView({
   );
 
   if (embedded) {
-    return <div className="p-1">{shell}</div>;
+    return shell;
   }
 
   return (

@@ -3,14 +3,13 @@ import type { TenantCode } from "@/lib/registries/tenants";
 
 /**
  * Per-entity accent — drives --color-brand-accent per tenant shell.
- * Colors are spread across the hue wheel so entities read as distinct in
- * The 4 Autos Group entities (VW, VA, VISP, VSP) are given clearly separated hues.
+ * Autos Group: VA, VW, VSP (VISP collapsed into VSP — same teal).
  */
 export const TENANT_ACCENT: Record<TenantCode, string> = {
   VW: "#2563EB", // blue — Warehouse
   VA: "#16A34A", // green — Automotive (merged VM + VMS)
-  VISP: "#0D9488", // teal — Institute Spare Parts
-  VSP: "#EA580C", // orange — SP Marketplace
+  VISP: "#0D9488", // teal — legacy alias → VSP
+  VSP: "#0D9488", // teal — Vonos Spare Parts (VISP+VSP)
   VC: "#DC2626", // red — Cafe
   VKW: "#F59E0B", // amber — Kids Wear
   VS: "#DB2777", // pink — Saloon
@@ -24,7 +23,7 @@ export const ENTITY_COLOR_LEGEND = (
 export const VAG_ACCENT = "#1E293B";
 
 export function accentForTenantCode(code: string): string {
-  if (code === "SP") return TENANT_ACCENT.VISP;
+  if (code === "SP" || code === "VISP") return TENANT_ACCENT.VSP;
   if (code in TENANT_ACCENT) {
     return TENANT_ACCENT[code as TenantCode];
   }
@@ -45,11 +44,22 @@ export function darkenAccent(hex: string, factor = 0.82): string {
   return `#${channel(0)}${channel(2)}${channel(4)}`;
 }
 
+/** Ultimate POS shell reads --theme-700/800/900 on `html` for header, logo, buttons. */
+export function uposThemeVars(code: string): Record<string, string> {
+  const accent = accentForTenantCode(code);
+  return {
+    "--theme-700": accent,
+    "--theme-800": darkenAccent(accent, 0.9),
+    "--theme-900": darkenAccent(accent, 0.72),
+  };
+}
+
 /** CSS custom properties applied on the tenant shell root. */
 export function tenantAccentStyle(code: string): CSSProperties {
   const accent = accentForTenantCode(code);
   const header = accent;
   const headerHover = darkenAccent(accent);
+  const theme = uposThemeVars(code);
   return {
     ["--color-brand-accent" as string]: accent,
     ["--color-brand-primary" as string]: accent,
@@ -60,6 +70,9 @@ export function tenantAccentStyle(code: string): CSSProperties {
     // HQ6 chrome reads these — one accent per operating entity.
     ["--hq6-header" as string]: header,
     ["--hq6-header-hover" as string]: headerHover,
+    ["--theme-700" as string]: theme["--theme-700"],
+    ["--theme-800" as string]: theme["--theme-800"],
+    ["--theme-900" as string]: theme["--theme-900"],
   };
 }
 
@@ -90,16 +103,21 @@ export function sidebarHeaderStyle(code: string): CSSProperties {
 }
 
 /**
- * CSS variables scoped to the sidebar element — light neutral surface.
- * Entity accent lives on the top bar; sidebar stays clean white/off-white.
+ * CSS variables scoped to the sidebar element.
+ * Surface stays light; active/hover use a soft tint of the entity accent.
  */
-export function sidebarAccentStyle(_code: string): CSSProperties {
+export function sidebarAccentStyle(code: string): CSSProperties {
+  const accent = accentForTenantCode(code);
   return {
     ["--color-surface-sidebar" as string]: "#fdfdfd",
     ["--color-text-nav" as string]: "#111827",
-    ["--color-text-nav-active" as string]: "#111827",
-    ["--color-surface-nav-active" as string]: "#f3f4f6",
-    ["--color-surface-nav-hover" as string]: "#f9fafb",
+    ["--color-text-nav-active" as string]: accent,
+    ["--color-surface-nav-active" as string]: `${accent}18`,
+    ["--color-surface-nav-hover" as string]: `${accent}0d`,
     ["--color-border" as string]: "#e5e7eb",
+    ["--theme-700" as string]: accent,
+    ["--theme-800" as string]: darkenAccent(accent, 0.9),
+    ["--theme-900" as string]: darkenAccent(accent, 0.72),
+    ["--hq6-header" as string]: accent,
   };
 }

@@ -50,7 +50,11 @@ export function Hq6FilterSelect({
   return (
     <label className="hq6-field">
       <span>{label}:</span>
-      <select value={value} onChange={(e) => onChange(e.target.value)}>
+      <select
+        className="form-control select2"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+      >
         {!hasBlank ? <option value="">{emptyLabel}</option> : null}
         {uniqueOptions.map((o, index) => (
           <option key={`${o.value || "blank"}-${index}`} value={o.value}>

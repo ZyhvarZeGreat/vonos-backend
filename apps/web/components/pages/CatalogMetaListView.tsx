@@ -11,7 +11,6 @@ import { useServerListPage } from "@/lib/hooks/useServerListPage";
 import { useTenantId } from "@/lib/hooks/useRouteTenant";
 import { useIsVaHq6 } from "@/lib/hooks/useIsVaHq6";
 import { Hq6CatalogMetaListView } from "@/components/pages/Hq6CatalogMetaListView";
-import { useUiStore } from "@/stores/uiStore";
 
 interface MetaRow {
   id: string;
@@ -77,7 +76,6 @@ export function CatalogMetaListView({ kind }: { kind: CatalogMetaKind }) {
 
 function CatalogMetaListViewBody({ kind }: { kind: CatalogMetaKind }) {
   const tenantId = useTenantId();
-  const openExportModal = useUiStore((state) => state.openExportModal);
   const label = KIND_LABELS[kind];
 
   const {
@@ -122,12 +120,6 @@ function CatalogMetaListViewBody({ kind }: { kind: CatalogMetaKind }) {
       onTabChange={() => {}}
       showImport={false}
       showDateRange={false}
-      onExport={() =>
-        openExportModal({
-          title: `Export ${label}`,
-          subtitle: "Download list as CSV",
-        })
-      }
     >
       <CatalogMetaCreateBar kind={kind} />
       <ServerPaginatedTable

@@ -11,6 +11,7 @@ import { Hq6PaySupplierModal } from "@/components/hq6/Hq6PaySupplierModal";
 import { Hq6PrintModal } from "@/components/hq6/Hq6PrintModal";
 import { useHq6ListChrome } from "@/components/hq6/Hq6StandardListShell";
 import {
+  getAllSuppliers,
   getSuppliersPage,
   setSupplierStatus,
   type SupplierListRow,
@@ -18,6 +19,7 @@ import {
 import { getUsers } from "@/lib/api/users";
 import { TYPEAHEAD_PAGE_SIZE, HQ6_TABLE_PAGE_SIZE } from "@/lib/api/fetchAllPages";
 import { useServerListPage } from "@/lib/hooks/useServerListPage";
+import { useListExport } from "@/lib/hooks/useListExport";
 import { useListPageFilters } from "@/lib/hooks/useListPageFilters";
 import { withOptimistic } from "@/lib/hooks/useAppMutation";
 import { useRecordNavigation } from "@/lib/hooks/useRecordNavigation";
@@ -191,8 +193,34 @@ export function Hq6SuppliersListView() {
     0,
   );
 
-  const exportToast = (label: string) =>
-    toast.info(`${label} — export coming with API.`);
+  const exportList = useListExport();
+
+  const handleExport = useCallback(async () => {
+    if (!tenantId) return;
+    const rows = await getAllSuppliers(tenantId, apiFilters);
+    exportList(
+      "suppliers",
+      [
+        { key: "contactId", header: "Contact ID" },
+        { key: "businessName", header: "Business Name" },
+        { key: "name", header: "Name" },
+        { key: "email", header: "Email" },
+        { key: "mobile", header: "Mobile" },
+        { key: "totalPurchaseDue", header: "Total purchase due" },
+        { key: "status", header: "Status" },
+      ],
+      rows.map((row) => ({
+        contactId: row.contactId ?? "",
+        businessName: row.businessName ?? "",
+        name: row.name,
+        email: row.email ?? "",
+        mobile: row.phone ?? "",
+        totalPurchaseDue: row.totalPurchaseDue ?? 0,
+        status: row.status ?? "active",
+      })),
+      "Export Suppliers Spreadsheet",
+    );
+  }, [apiFilters, exportList, tenantId]);
 
   const pageNumbers = useMemo(() => {
     const max = Math.min(knownPages, 7);
@@ -423,7 +451,7 @@ export function Hq6SuppliersListView() {
                                   if (key === "print") chrome.setPrintOpen(true);
                                   else if (key === "colvis")
                                     chrome.setColumnsOpen(true);
-                                  else exportToast(label);
+                                  else void handleExport();
                                 }}
                               >
                                 <span>

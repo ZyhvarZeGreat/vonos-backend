@@ -1,7 +1,7 @@
 /**
  * VAG admin viewing units — what the entity switcher / overview cards show.
- * VISP + VSP are one "Spare Parts" unit for group oversight (still separate
- * workspaces at /VISP and /VSP).
+ * VISP + VSP collapse into one workspace: VSP = Vonos Spare Parts
+ * (both tenant IDs still used for roll-up queries).
  */
 import {
   getTenantByCode,
@@ -41,11 +41,10 @@ export const VAG_VIEW_UNITS: readonly VagViewUnit[] = [
   },
   {
     id: "SP",
-    badge: "SP",
+    badge: "VSP",
     name: "Vonos Spare Parts",
-    description: "Institute (VISP) + Marketplace (VSP)",
-    tenantCodes: ["VISP", "VSP"],
-    enterCode: "VISP",
+    tenantCodes: ["VSP", "VISP"],
+    enterCode: "VSP",
   },
 ] as const;
 
@@ -74,7 +73,7 @@ export function tenantIdsForVagUnit(id: VagViewUnitId): string[] {
   });
 }
 
-/** Accent: use VISP teal for combined SP. */
+/** Accent: VSP teal for combined spare parts. */
 export function accentTenantCodeForVagUnit(id: VagViewUnitId): TenantCode {
   return getVagViewUnit(id).enterCode;
 }

@@ -131,6 +131,31 @@ export function Hq6IconChevronDown({ className }: { className?: string }) {
   );
 }
 
+export function Hq6IconBuilding({ className }: { className?: string }) {
+  return (
+    <svg className={className} {...svgProps} strokeWidth={2}>
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M3 21l18 0" />
+      <path d="M9 8l1 0" />
+      <path d="M9 12l1 0" />
+      <path d="M9 16l1 0" />
+      <path d="M14 8l1 0" />
+      <path d="M14 12l1 0" />
+      <path d="M14 16l1 0" />
+      <path d="M5 21v-16a2 2 0 0 1 2 -2h10a2 2 0 0 1 2 2v16" />
+    </svg>
+  );
+}
+
+export function Hq6IconTool({ className }: { className?: string }) {
+  return (
+    <svg className={className} {...svgProps} strokeWidth={2}>
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M7 10h3v-3l-3.5 -3.5a6 6 0 0 1 8 8l6 6a2 2 0 0 1 -3 3l-6 -6a6 6 0 0 1 -8 -8l3.5 3.5" />
+    </svg>
+  );
+}
+
 const KPI_ICONS: Record<
   string,
   (props: { className?: string }) => ReactElement
@@ -143,6 +168,11 @@ const KPI_ICONS: Record<
   purchaseDue: Hq6IconAlertTriangle,
   purchaseReturn: Hq6IconReceiptRefund,
   expense: Hq6IconReceipt,
+  // VAG group overview
+  revenue: Hq6IconReceipt,
+  jobs: Hq6IconTool,
+  entities: Hq6IconBuilding,
+  outstanding: Hq6IconFileInvoice,
 };
 
 const KPI_ICON_WRAP: Record<string, string> = {
@@ -154,6 +184,10 @@ const KPI_ICON_WRAP: Record<string, string> = {
   purchaseDue: "tw-text-yellow-500 tw-bg-yellow-100",
   purchaseReturn: "tw-text-red-500 tw-bg-red-100",
   expense: "tw-text-red-500 tw-bg-red-100",
+  revenue: "tw-text-green-500 tw-bg-green-100",
+  jobs: "tw-bg-sky-100 tw-text-sky-500",
+  entities: "tw-bg-sky-100 tw-text-sky-500",
+  outstanding: "tw-text-yellow-500 tw-bg-yellow-100",
 };
 
 export function hq6KpiIcon(metricKey: string) {

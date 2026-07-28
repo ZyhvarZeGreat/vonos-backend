@@ -4,16 +4,15 @@
  * HQ6 user View / Edit / Add — lifted from manage_user/show|edit|create.blade.php
  */
 import { useEffect, useMemo, useState, type FormEvent } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter, useSearchParams } from "next/navigation";
 import type { User } from "@vonos/types";
 import { EmptyState } from "@/components/atoms/EmptyState";
 import { Hq6ConfirmModal } from "@/components/hq6/Hq6ConfirmModal";
-import { getUser } from "@/lib/api/users";
+import { createUser, deactivateUser, getUser } from "@/lib/api/users";
 import { useRecordNavigation } from "@/lib/hooks/useRecordNavigation";
 import { useTenantId } from "@/lib/hooks/useRouteTenant";
 import { DETAIL_RECORD_STALE_MS } from "@/lib/query/prefetchListDetails";
-import { DetailPageSkeleton } from "@/components/organisms/skeletons";
 import { cn } from "@/lib/utils/cn";
 import { toast } from "@/stores/toastStore";
 
@@ -56,11 +55,13 @@ export function Hq6UserDetailView({
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const queryClient = useQueryClient();
   const tenantId = useTenantId();
   const { listPath, detailPath } = useRecordNavigation("users");
   const isCreate = recordId === "new" || recordId === "create";
   const isEdit = mode === "edit" || isCreate;
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [activeTab, setActiveTab] = useState<"info" | "docs" | "activities">(
     "info",
   );
@@ -115,8 +116,35 @@ export function Hq6UserDetailView({
     }
   }, [searchParams, isCreate]);
 
-  if (!tenantId) return <DetailPageSkeleton />;
-  if (!isCreate && isLoading) return <DetailPageSkeleton />;
+  const deactivateMutation = useMutation({
+    mutationFn: () => deactivateUser(recordId, { tenantId }),
+    onSuccess: async () => {
+      toast.success("User deactivated");
+      await queryClient.invalidateQueries({ queryKey: ["users"] });
+      setDeleteOpen(false);
+      router.push(listPath);
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || "Failed to deactivate user");
+    },
+  });
+
+  if (!tenantId) {
+    return (
+      <div className="hq6-page p-6" aria-busy>
+        <h1 className="text-xl font-semibold">Users</h1>
+        <p className="mt-2 text-sm text-muted">Connecting to entity…</p>
+      </div>
+    );
+  }
+  if (!isCreate && isLoading) {
+    return (
+      <div className="hq6-page p-6" aria-busy>
+        <h1 className="text-xl font-semibold">User</h1>
+        <p className="mt-2 text-sm text-muted">Loading profile…</p>
+      </div>
+    );
+  }
   if (!isCreate && (isError || !user)) {
     return (
       <EmptyState
@@ -138,7 +166,7 @@ export function Hq6UserDetailView({
   const patch = <K extends keyof typeof form>(key: K, value: (typeof form)[K]) =>
     setForm((prev) => ({ ...prev, [key]: value }));
 
-  const handleSave = (e: FormEvent) => {
+  const handleSave = async (e: FormEvent) => {
     e.preventDefault();
     if (!form.firstName.trim() || !form.email.trim()) {
       toast.error("First name and email are required.");
@@ -148,12 +176,42 @@ export function Hq6UserDetailView({
       toast.error("Passwords do not match.");
       return;
     }
-    toast.info(
-      isCreate
-        ? "Create user will use the users API when available."
-        : "Update user will use the users API when available.",
-    );
-    router.push(listPath);
+
+    if (!isCreate) {
+      toast.error("Editing existing users is not available yet. Deactivate and create a new account if needed.");
+      return;
+    }
+
+    if (!form.password || form.password.length < 8) {
+      toast.error("Password must be at least 8 characters.");
+      return;
+    }
+
+    const name = [form.surname, form.firstName, form.lastName]
+      .map((p) => p.trim())
+      .filter(Boolean)
+      .join(" ");
+
+    setSaving(true);
+    try {
+      await createUser(
+        {
+          email: form.email.trim(),
+          name,
+          role: form.role,
+          password: form.password,
+          tenantId: tenantId ?? undefined,
+        },
+        { tenantId },
+      );
+      toast.success(`Created ${name}`);
+      await queryClient.invalidateQueries({ queryKey: ["users"] });
+      router.push(listPath);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to create user");
+    } finally {
+      setSaving(false);
+    }
   };
 
   /* ——— Edit / Create form (manage_user/edit|create.blade.php) ——— */
@@ -365,8 +423,9 @@ export function Hq6UserDetailView({
                 <button
                   type="submit"
                   className="tw-dw-btn tw-dw-btn-primary tw-text-white tw-dw-btn-lg"
+                  disabled={saving || !isCreate}
                 >
-                  Save
+                  {saving ? "Saving…" : isCreate ? "Create user" : "Save"}
                 </button>{" "}
                 <button
                   type="button"
@@ -375,6 +434,11 @@ export function Hq6UserDetailView({
                 >
                   Cancel
                 </button>
+                {!isCreate ? (
+                  <p className="mt-2 text-sm text-muted">
+                    Profile edits are not available yet. Use deactivate from the user list if you need to remove access.
+                  </p>
+                ) : null}
               </div>
             </div>
           </form>
@@ -566,15 +630,13 @@ export function Hq6UserDetailView({
           router.replace(detailPath(recordId));
         }}
         onConfirm={() => {
-          toast.info(
-            `Soft-delete for “${displayName}” will use the users API when available.`,
-          );
-          setDeleteOpen(false);
-          router.push(listPath);
+          if (!deactivateMutation.isPending) {
+            deactivateMutation.mutate();
+          }
         }}
         title="Are you sure?"
-        message="This user will be deactivated when the API is wired."
-        confirmLabel="Yes, delete"
+        message={`This will deactivate “${displayName}” and revoke their access.`}
+        confirmLabel={deactivateMutation.isPending ? "Deactivating…" : "Yes, deactivate"}
       />
     </div>
   );

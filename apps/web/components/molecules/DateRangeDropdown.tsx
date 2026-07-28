@@ -1,9 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ChevronDown } from "lucide-react";
 import { DateRangeCalendar } from "@/components/molecules/DateRangeCalendar";
-import { DropdownMenu } from "@/components/molecules/DropdownMenu";
 import { FloatingMenuPanel } from "@/components/molecules/FloatingMenuPanel";
 import { toDateInputValue } from "@/lib/utils/dateRange";
 import {
@@ -40,19 +38,24 @@ export interface DateRangeDropdownProps {
   customValue?: CustomDateRange | null;
   onCustomChange?: (range: CustomDateRange | null) => void;
   className?: string;
-  /** Optional trigger label override (defaults to the selected range). */
+  /** Optional aria / visible label prefix (unused for native select value). */
   triggerLabel?: string;
   align?: "start" | "end";
+  id?: string;
 }
 
+/**
+ * Ultimate POS–style date filter: native `select.form-control.select2`.
+ * Custom range opens the calendar panel when selected.
+ */
 export function DateRangeDropdown({
   value: controlledValue,
   onChange,
   customValue: controlledCustom,
   onCustomChange,
   className,
-  triggerLabel,
   align = "start",
+  id = "date_range_filter",
 }: DateRangeDropdownProps) {
   const storeValue = useUiStore((state) => state.dateRange);
   const storeCustom = useUiStore((state) => state.customDateRange);
@@ -60,8 +63,6 @@ export function DateRangeDropdown({
   const setStoreCustomDateRange = useUiStore((state) => state.setCustomDateRange);
 
   const isPresetControlled = controlledValue !== undefined;
-  // Controlled preset pages (esp. isolateDateRange) must own custom too —
-  // otherwise Apply writes the global store while bounds read local null.
   const isCustomControlled =
     onCustomChange != null || controlledCustom !== undefined;
 
@@ -100,34 +101,32 @@ export function DateRangeDropdown({
   };
 
   return (
-    <div ref={anchorRef} className={cn("relative inline-flex", className)}>
-      <DropdownMenu
+    <div ref={anchorRef} className={cn("relative min-w-0 w-full", className)}>
+      <select
+        id={id}
+        className="form-control select2"
         value={value}
-        options={DATE_RANGE_OPTIONS}
-        align={align}
-        onSelect={(next) => {
-          const preset = next as DateRangePreset;
+        aria-label="Filter by date"
+        onChange={(event) => {
+          const preset = event.target.value as DateRangePreset;
           if (preset === "custom") {
-            setCalendarOpen(true);
             applyPreset("custom");
+            setCalendarOpen(true);
             return;
           }
           setCalendarOpen(false);
-          applyPreset(preset);
           applyCustom(null);
+          applyPreset(preset);
         }}
-        trigger={
-          <button
-            type="button"
-            className={cn(
-              "inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-card px-3 text-sm text-[var(--color-text-secondary)] shadow-sm transition-colors hover:bg-[var(--color-surface-muted)]",
-            )}
-          >
-            {triggerLabel ?? getDateRangeLabel(value, custom)}
-            <ChevronDown className="h-4 w-4 text-muted" />
-          </button>
-        }
-      />
+      >
+        {DATE_RANGE_OPTIONS.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.value === "custom" && custom?.from && custom?.to
+              ? getDateRangeLabel("custom", custom)
+              : option.label}
+          </option>
+        ))}
+      </select>
       <FloatingMenuPanel
         open={calendarOpen}
         anchorRef={anchorRef}
@@ -145,7 +144,7 @@ export function DateRangeDropdown({
           }}
           onClear={() => {
             applyCustom(null);
-            applyPreset("all_time");
+            applyPreset("last_7_days");
             setCalendarOpen(false);
           }}
         />

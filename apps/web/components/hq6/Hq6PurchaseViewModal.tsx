@@ -37,14 +37,17 @@ export function Hq6PurchaseViewModal({
   purchaseId,
   initialPurchase = null,
   onClose,
+  showBack = false,
 }: {
   open: boolean;
   purchaseId: string | null;
   initialPurchase?: StockMovementListRow | null;
   onClose: () => void;
+  showBack?: boolean;
 }) {
   const tenantId = useTenantId();
-  const { config, tenantName } = useRouteTenant();
+  const { tenantId: routeTenantId, config, tenantName } = useRouteTenant();
+  const effectiveTenantId = tenantId ?? routeTenantId;
 
   const seeded: StockMovement | null =
     initialPurchase && purchaseId && initialPurchase.id === purchaseId
@@ -52,9 +55,9 @@ export function Hq6PurchaseViewModal({
       : null;
 
   const { data: bundle, isLoading, isFetching } = useQuery({
-    queryKey: modalKeys.purchaseView(tenantId, purchaseId),
-    queryFn: () => getPurchaseView(tenantId!, purchaseId!),
-    enabled: Boolean(open && tenantId && purchaseId),
+    queryKey: modalKeys.purchaseView(effectiveTenantId, purchaseId),
+    queryFn: () => getPurchaseView(effectiveTenantId!, purchaseId!),
+    enabled: Boolean(open && effectiveTenantId && purchaseId),
     staleTime: MODAL_RECORD_STALE_MS,
     placeholderData: (prev) =>
       prev?.movement?.id === purchaseId ? prev : undefined,
@@ -131,9 +134,19 @@ export function Hq6PurchaseViewModal({
       onClose={onClose}
       title={title}
       size="2xl"
+      showBack={showBack}
       bodyClassName="hq6-purchase-view-body"
       footer={
         <div className="flex flex-wrap justify-end gap-2">
+          {showBack ? (
+            <button
+              type="button"
+              className="hq6-modal-btn hq6-modal-btn-close"
+              onClick={onClose}
+            >
+              Back
+            </button>
+          ) : null}
           <button
             type="button"
             className="hq6-modal-btn hq6-modal-btn-print"
@@ -153,9 +166,14 @@ export function Hq6PurchaseViewModal({
       }
     >
       {!movement ? (
-        <p className="text-sm text-[#6b7280]">
-          {isLoading ? "Loading purchase…" : "Purchase not found."}
-        </p>
+        <div className="space-y-3 py-2" aria-busy aria-label="Loading purchase">
+          <div className="h-4 w-1/3 animate-pulse rounded bg-gray-200" />
+          <div className="h-3 w-full animate-pulse rounded bg-gray-200" />
+          <div className="mt-4 h-48 w-full animate-pulse rounded-lg bg-gray-100" />
+          <p className="pt-2 text-center text-sm text-[#6b7280]">
+            {isLoading ? "Loading purchase…" : "Purchase not found."}
+          </p>
+        </div>
       ) : (
         <div className="hq6-purchase-view">
           <p className="hq6-purchase-view-date">

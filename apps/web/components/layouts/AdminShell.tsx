@@ -3,8 +3,6 @@
 import { useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
-import { Sidebar } from "@/components/organisms/Sidebar";
-import { TopBar } from "@/components/organisms/TopBar";
 import { AdminEntityContextBar } from "@/components/molecules/AdminEntityContextBar";
 import { getPostLoginPath } from "@/lib/utils/authRedirect";
 import { isAuthSkipped } from "@/lib/utils/devAccess";
@@ -12,25 +10,26 @@ import {
   isAdminNavActive,
   VAG_NAV_SECTIONS,
 } from "@/lib/registries/vagNavSections";
-import { adminPageTitle } from "@/lib/utils/adminPageTitle";
 import { useAuthStore } from "@/stores/authStore";
 import { useAdminEntityStore } from "@/stores/adminEntityStore";
-import { useUiStore } from "@/stores/uiStore";
-import { PageTransition } from "@/components/atoms/PageTransition";
-import { Spinner } from "@/components/atoms/Spinner";
-import { Hq6UposStyles } from "@/components/hq6/Hq6UposStyles";
 import {
   accentTenantCodeForVagUnit,
   getVagViewUnit,
   isVagViewUnitId,
 } from "@/lib/registries/vagViewUnits";
-import { tenantAccentStyle } from "@/lib/registries/tenantAccents";
+import { tenantAccentStyle, uposThemeVars } from "@/lib/registries/tenantAccents";
 import { scheduleIdle } from "@/lib/prefetch/scheduleIdle";
 import { prefetchVagAdminShell } from "@/lib/prefetch/routePrefetchRegistry";
+import { UposAppShell } from "@/components/upos/UposAppShell";
+import { TopProgressBar } from "@/components/atoms/TopProgressBar";
+import { Spinner } from "@/components/atoms/Spinner";
 
+/**
+ * VAG Group admin shell — same Ultimate POS chrome as operating tenants
+ * (`html.upos-shell` + `html.upos-hq6`) so forms, selects, and page layout match.
+ */
 export function AdminShell({
   children,
-  title,
 }: {
   children: React.ReactNode;
   title?: string;
@@ -44,23 +43,17 @@ export function AdminShell({
   const tenantId = useAuthStore((state) => state.tenantId);
   const authName = useAuthStore((state) => state.name);
   const authEmail = useAuthStore((state) => state.email);
-  const sidebarCollapsed = useUiStore((state) => state.sidebarCollapsed);
-  const mobileNavOpen = useUiStore((state) => state.mobileNavOpen);
-  const setMobileNavOpen = useUiStore((state) => state.setMobileNavOpen);
   const viewingCode = useAdminEntityStore((state) => state.viewingCode);
   const viewingUnit =
     viewingCode && isVagViewUnitId(viewingCode)
       ? getVagViewUnit(viewingCode)
       : null;
-  /** Accent for HQ6 tokens — viewing unit, else VA green like HQ6 Home. */
-  const hq6AccentCode = viewingUnit
-    ? accentTenantCodeForVagUnit(viewingUnit.id)
-    : "VA";
-  /** Switcher identity — VAG when consolidated so Group is the active item. */
-  const topbarCode = viewingUnit
+  /** Accent — viewing unit, else slate VAG (never default to VA green on Group). */
+  const shellAccentCode = viewingUnit
     ? accentTenantCodeForVagUnit(viewingUnit.id)
     : "VAG";
-  const topbarName = viewingUnit?.name ?? "Vonos Autos Group";
+  const onGroupOverview =
+    pathname === "/admin/overview" || pathname.startsWith("/admin/overview/");
 
   useEffect(() => {
     if (skipAuth) return;
@@ -77,66 +70,49 @@ export function AdminShell({
   }, [skipAuth, hydrated, role, queryClient]);
 
   useEffect(() => {
-    setMobileNavOpen(false);
-  }, [pathname, setMobileNavOpen]);
+    const theme = uposThemeVars(shellAccentCode);
+    const root = document.documentElement;
+    for (const [key, value] of Object.entries(theme)) {
+      root.style.setProperty(key, value);
+    }
+  }, [shellAccentCode]);
 
   if (!skipAuth && role && role !== "super_admin") {
     return null;
   }
 
-  const pageTitle = title ?? adminPageTitle(pathname);
-
   return (
     <div
-      className="flex h-screen overflow-hidden bg-background"
       data-hq6="true"
-      data-tenant={hq6AccentCode}
-      style={tenantAccentStyle(hq6AccentCode)}
+      data-upos-shell="true"
+      data-tenant={shellAccentCode}
+      style={tenantAccentStyle(shellAccentCode)}
+      className="min-h-screen tw-bg-gray-100"
     >
-      <Hq6UposStyles />
-      {mobileNavOpen ? (
-        <button
-          type="button"
-          className="fixed inset-0 z-40 bg-black/40 md:hidden"
-          aria-label="Close menu"
-          onClick={() => setMobileNavOpen(false)}
-        />
-      ) : null}
-      <Sidebar
+      <TopProgressBar />
+      <UposAppShell
+        variant="admin"
         sections={VAG_NAV_SECTIONS}
+        tenantCode={shellAccentCode}
         tenantName="Vonos Autos Group"
-        tenantCode={hq6AccentCode}
-        userName={authName ?? undefined}
-        userEmail={authEmail ?? undefined}
         activeRoute={pathname}
         isNavActive={isAdminNavActive}
-        collapsed={sidebarCollapsed}
-        mobileOpen={mobileNavOpen}
-        onMobileClose={() => setMobileNavOpen(false)}
-      />
-      <div className="flex min-w-0 flex-1 flex-col">
-        <TopBar
-          title={pageTitle}
-          tenantCode={topbarCode}
-          tenantName={topbarName}
-          variant="admin"
-        />
-        <AdminEntityContextBar />
-        <main className="flex-1 overflow-y-auto">
-          {!skipAuth && !hydrated ? (
-            <div className="space-y-4 p-4">
-              <p className="text-sm text-muted">Loading {pageTitle}…</p>
-              <div className="flex min-h-[20vh] items-center justify-center">
-                <Spinner size="lg" />
-              </div>
+        userName={authName ?? authEmail ?? undefined}
+        contextBar={
+          !onGroupOverview ? <AdminEntityContextBar /> : undefined
+        }
+      >
+        {!skipAuth && !hydrated ? (
+          <div className="hq6-page space-y-4 p-4">
+            <p className="text-sm text-muted">Loading…</p>
+            <div className="flex min-h-[20vh] items-center justify-center">
+              <Spinner size="lg" />
             </div>
-          ) : (
-            <PageTransition className="mx-auto w-full max-w-none">
-              {children}
-            </PageTransition>
-          )}
-        </main>
-      </div>
+          </div>
+        ) : (
+          children
+        )}
+      </UposAppShell>
     </div>
   );
 }

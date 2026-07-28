@@ -7,14 +7,13 @@ import { getTenantConfig } from "@/lib/api";
 import { canAccessTenant } from "@/lib/utils/authRedirect";
 import { isAuthSkipped } from "@/lib/utils/devAccess";
 import { getTenantByCode, isTenantCode } from "@/lib/registries/tenants";
-import { tenantAccentStyle } from "@/lib/registries/tenantAccents";
+import { tenantAccentStyle, uposThemeVars } from "@/lib/registries/tenantAccents";
 import { getTenantConfigByCode } from "@/lib/registries/tenantConfigs";
 import { useAuthStore } from "@/stores/authStore";
 import { useTenantStore } from "@/stores/tenantStore";
 import { useUiStore } from "@/stores/uiStore";
 import { dateRangePresetToApiBounds } from "@/lib/utils/dateRange";
 import { isHq6Tenant, isUposShellTenant } from "@/lib/utils/isHq6Tenant";
-import { Spinner } from "@/components/atoms/Spinner";
 import { Hq6UposStyles } from "@/components/hq6/Hq6UposStyles";
 import { prefetchTenantShell } from "@/lib/prefetch/routePrefetchRegistry";
 
@@ -61,13 +60,22 @@ export function TenantShell({ children }: { children: React.ReactNode }) {
       previousTenantCode.current &&
       previousTenantCode.current !== tenantCode
     ) {
-      // Refresh entity data, but keep tenantConfig cache so the shell stays mounted.
-      queryClient.invalidateQueries({
+      // Drop cached entity data so the next tenant never shows stale rows/KPIs.
+      queryClient.removeQueries({
         predicate: (query) => query.queryKey[0] !== "tenantConfig",
       });
     }
     previousTenantCode.current = tenantCode;
   }, [tenantCode, queryClient]);
+
+  // Ultimate POS header/logo/button chrome reads --theme-* on <html>.
+  useEffect(() => {
+    const theme = uposThemeVars(tenantCode);
+    const root = document.documentElement;
+    for (const [key, value] of Object.entries(theme)) {
+      root.style.setProperty(key, value);
+    }
+  }, [tenantCode]);
 
   const configQuery = useQuery({
     queryKey: ["tenantConfig", registryEntry?.tenantId],
@@ -119,26 +127,18 @@ export function TenantShell({ children }: { children: React.ReactNode }) {
     );
   }, [tenantCode, registryEntry?.tenantId, queryClient, dateBounds]);
 
-  // Unknown route tenant — keep chrome free; show a simple loader.
+  // Unknown route tenant — AuthGuard / redirect handles navigation.
   if (!registryEntry) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-background">
-        <Spinner size="lg" />
-      </div>
-    );
+    return null;
   }
 
-  // First paint before auth hydrate — don't fake the whole app shell.
+  // Persist hydrate — AuthGuard gates private routes; avoid spinner flash.
   if (!skipAuth && !hydrated) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-background">
-        <Spinner size="lg" />
-      </div>
-    );
+    return null;
   }
 
-  // While tenant config fetches, keep the real sidebar/top bar; page content
-  // uses its own skeletons. Static registry config already drives nav.
+  // While tenant config fetches, keep the real sidebar/top bar; TopProgressBar
+  // covers data. Static registry config already drives nav.
   const hq6 = isHq6Tenant(tenantCode);
   const uposShell = isUposShellTenant(tenantCode);
   return (
@@ -148,7 +148,7 @@ export function TenantShell({ children }: { children: React.ReactNode }) {
       data-upos-shell={uposShell ? "true" : undefined}
       style={tenantAccentStyle(tenantCode)}
     >
-      {/* UposAppShell loads its own styles; other HQ6 tenants keep skin CSS. */}
+      {/* UposAppShell loads its own styles; keep for non-shell HQ6 if any. */}
       {hq6 && !uposShell ? <Hq6UposStyles /> : null}
       {children}
     </div>

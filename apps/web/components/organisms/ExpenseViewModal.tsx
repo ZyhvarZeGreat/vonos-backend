@@ -20,10 +20,12 @@ export function ExpenseViewModal({
   expense,
   onClose,
   onEdit,
+  showBack = false,
 }: {
   expense: Expense | null;
   onClose: () => void;
   onEdit?: (expense: Expense) => void;
+  showBack?: boolean;
 }) {
   const { config, tenantName } = useRouteTenant();
 
@@ -52,6 +54,7 @@ export function ExpenseViewModal({
       onClose={onClose}
       title={title}
       size="2xl"
+      showBack={showBack}
       bodyClassName="hq6-purchase-view-body"
       footer={
         <div className="flex flex-wrap justify-end gap-2">

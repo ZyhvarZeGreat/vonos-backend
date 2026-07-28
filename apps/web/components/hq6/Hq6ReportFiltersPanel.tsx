@@ -68,16 +68,19 @@ export function Hq6ReportFiltersPanel({
     <div className="row no-print">
       <div className="col-md-12">
         <UposFiltersPanel title="Filters" defaultOpen={defaultOpen}>
-          <div className="row">
+          <div className="row upos-report-filters-row">
             {selectFields.map((field) => (
-              <div key={field.key} className="col-md-3">
+              <div
+                key={field.key}
+                className="col-xs-12 col-sm-6 col-md-4 col-lg-3"
+              >
                 <div className="form-group">
                   <label htmlFor={`hq6-report-filter-${field.key}`}>
                     {field.label}:
                   </label>
                   <select
                     id={`hq6-report-filter-${field.key}`}
-                    className="form-control"
+                    className="form-control select2"
                     value={String(values[field.key] ?? "")}
                     onChange={(e) =>
                       onChange({
@@ -95,10 +98,10 @@ export function Hq6ReportFiltersPanel({
               </div>
             ))}
             {showDates ? (
-              <div className="col-md-3">
+              <div className="col-xs-12 col-sm-6 col-md-4 col-lg-3">
                 <div className="form-group">
                   <label>Date Range:</label>
-                  <div className="input-group" style={{ gap: 4, display: "flex" }}>
+                  <div className="upos-report-date-range">
                     <input
                       type="date"
                       className="form-control"

@@ -5,6 +5,7 @@ import {
 } from "@/stores/adminEntityStore";
 import { useAuthStore } from "@/stores/authStore";
 import { useTenantStore } from "@/stores/tenantStore";
+import { useUiStore } from "@/stores/uiStore";
 
 /**
  * Tenant id the API should scope to for the current screen.
@@ -24,14 +25,25 @@ export function resolveViewingTenantId(): string | null {
     const parts = window.location.pathname.split("/").filter(Boolean);
     const segment = parts[0];
 
+    // During entity switch, API calls may run before the URL updates — scope to target.
+    const entitySwitch = useUiStore.getState().entitySwitch;
+    if (entitySwitch?.code && isTenantCode(entitySwitch.code)) {
+      const switchingId = getTenantByCode(entitySwitch.code)?.tenantId;
+      if (switchingId) return switchingId;
+    }
+
     if (segment === "admin") {
       const viewingCode = useAdminEntityStore.getState().viewingCode;
-      // SP combined → primary VISP for single-tenant headers
+      // SP combined → primary VSP for single-tenant headers
       return adminViewingTenantId(viewingCode);
     }
 
     if (segment && isTenantCode(segment)) {
-      return getTenantByCode(segment)?.tenantId ?? null;
+      const fromUrl = getTenantByCode(segment)?.tenantId ?? null;
+      const active = useTenantStore.getState().activeTenantId;
+      if (fromUrl) return fromUrl;
+      if (active) return active;
+      return null;
     }
   }
 

@@ -10,6 +10,7 @@ import { AuthFooterLink, AuthTemplate } from "@/components/templates/AuthTemplat
 import { isTwoFactorChallenge, login, verifyTwoFactor } from "@/lib/api/auth";
 import { warmPostLoginDestination } from "@/lib/prefetch/warmPostLogin";
 import { getPostLoginPath } from "@/lib/utils/authRedirect";
+import { preloadUposStylesheets } from "@/lib/upos/styles";
 import { useAuthStore } from "@/stores/authStore";
 import { toast } from "@/stores/toastStore";
 
@@ -34,6 +35,10 @@ export function LoginForm() {
   const [challengeEmail, setChallengeEmail] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    preloadUposStylesheets();
+  }, []);
 
   // Already signed in (bookmark / back) — leave login without waiting on AuthGuard.
   useEffect(() => {

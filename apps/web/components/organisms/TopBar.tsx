@@ -19,6 +19,7 @@ import {
 import { Button } from "@/components/atoms/Button";
 import { IconButton } from "@/components/atoms/IconButton";
 import { TenantSwitcher } from "@/components/molecules/TenantSwitcher";
+import { AdminEntitySwitcher } from "@/components/molecules/AdminEntitySwitcher";
 import { typographyRoles } from "@/lib/registries/typography";
 import { NotificationPanel } from "@/components/organisms/NotificationPanel";
 import { CreateRecordModal } from "@/components/organisms/CreateRecordModal";
@@ -94,10 +95,11 @@ export function TopBar({
   const adminUserLabel =
     userName.includes("@") ? userName.split("@")[0]! : userName;
 
+  // Super-admin on Group has no viewing tenantId — still load user notifications.
   const notificationsQuery = useQuery({
-    queryKey: ["notifications", tenantId],
+    queryKey: ["notifications", tenantId ?? "group"],
     queryFn: () => getNotifications(tenantId ?? undefined),
-    enabled: Boolean(tenantId),
+    enabled: isAuthenticated || isAdminChrome,
     meta: {
       suppressErrorToast: false,
       errorLabel: "Notifications",
@@ -158,11 +160,9 @@ export function TopBar({
           </IconButton>
           {isAdminChrome ? (
             <div className="flex min-w-0 items-center gap-3">
-              <TenantSwitcher
-                tenantCode={tenantCode}
-                tenantName={tenantName}
+              <AdminEntitySwitcher
                 variant="topbar"
-                className="min-w-0"
+                className="min-w-0 w-[9.5rem] sm:w-[12rem] md:w-[14rem] lg:w-[16rem]"
               />
               <div className="hidden min-w-0 sm:block">
                 <p className="truncate text-xs text-white/80">VAG Super Admin</p>
@@ -174,12 +174,12 @@ export function TopBar({
                 tenantCode={tenantCode}
                 tenantName={tenantName}
                 variant="topbar"
-                className="hidden md:block"
+                className="min-w-0 w-[9.5rem] sm:w-[12rem] md:w-[14rem] lg:w-[16rem]"
               />
               <span
                 className={cn(
-                  "hidden text-[var(--color-topbar-text-muted)] md:inline",
-                  isHq6 && "md:hidden",
+                  "hidden text-[var(--color-topbar-text-muted)] lg:inline",
+                  isHq6 && "lg:hidden",
                 )}
                 aria-hidden
               >
@@ -279,13 +279,35 @@ export function TopBar({
               <Inbox className="h-5 w-5" />
             </IconButton>
           ) : null}
-          <div className="relative">
-            <IconButton label="Notifications" onClick={toggleNotifications} className="text-white/80 hover:bg-white/10 hover:text-white">
-              <Bell className="h-5 w-5" />
-            </IconButton>
-            {unreadCount > 0 ? (
-              <span className="absolute right-0.5 top-0.5 h-2 w-2 rounded-full border-2 border-[var(--color-surface-topbar)] bg-white" />
-            ) : null}
+          <div className="relative inline-flex shrink-0 items-center">
+            {isHq6 ? (
+              <button
+                type="button"
+                className="hq6-topbar-icon relative"
+                title="Notifications"
+                aria-label="Notifications"
+                aria-expanded={notificationsOpen}
+                onClick={toggleNotifications}
+              >
+                <Bell className="h-4 w-4" />
+                {unreadCount > 0 ? (
+                  <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full border-2 border-[var(--color-surface-topbar)] bg-white" />
+                ) : null}
+              </button>
+            ) : (
+              <>
+                <IconButton
+                  label="Notifications"
+                  onClick={toggleNotifications}
+                  className="text-white/80 hover:bg-white/10 hover:text-white"
+                >
+                  <Bell className="h-5 w-5" />
+                </IconButton>
+                {unreadCount > 0 ? (
+                  <span className="absolute right-0.5 top-0.5 h-2 w-2 rounded-full border-2 border-[var(--color-surface-topbar)] bg-white" />
+                ) : null}
+              </>
+            )}
             <NotificationPanel
               open={notificationsOpen}
               items={feedItems}

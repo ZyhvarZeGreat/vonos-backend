@@ -61,7 +61,7 @@ export function Hq6ExpensesListView() {
     search,
     setSearch,
     bounds,
-  } = useListPageFilters({ defaultDateRange: "all_time" });
+  } = useListPageFilters({ defaultDateRange: "last_7_days" });
   const [localSearch, setLocalSearch] = useState(search);
   const [locationFilter, setLocationFilter] = useState("");
   const [expenseForFilter, setExpenseForFilter] = useState("");

@@ -54,7 +54,7 @@ const transactionNavItems = (code: string) => [
 export const vispTenantConfig: TenantConfig = withCatalog({
   tenantId: "tenant_visp_001",
   code: "VISP",
-  name: "Vonos Institute Spare Parts",
+  name: "Vonos Spare Parts",
   archetype: "transaction",
   navItems: transactionNavItems("VISP"),
   kpiCards: [
@@ -70,12 +70,12 @@ export const vispTenantConfig: TenantConfig = withCatalog({
 export const vspTenantConfig: TenantConfig = withCatalog({
   tenantId: "tenant_vsp_001",
   code: "VSP",
-  name: "Vonos SP Marketplace",
+  name: "Vonos Spare Parts",
   archetype: "transaction",
   navItems: transactionNavItems("VSP"),
   kpiCards: [
-    { label: "Today's Orders", icon: "receipt", metricKey: "todaySales", color: "#059669" },
-    { label: "Listings", icon: "package", metricKey: "totalSku", color: "#2563eb" },
+    { label: "Today's Sales", icon: "receipt", metricKey: "todaySales", color: "#059669" },
+    { label: "Returns", icon: "rotate-ccw", metricKey: "returns", color: "#2563eb" },
     { label: "Low Stock", icon: "alert-triangle", metricKey: "lowStock", color: "#9333ea" },
     { label: "Revenue", icon: "wallet", metricKey: "revenue", color: "#e11d48" },
   ],

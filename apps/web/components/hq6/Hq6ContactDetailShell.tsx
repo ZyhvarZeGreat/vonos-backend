@@ -342,7 +342,7 @@ function LedgerPanel({
         <label className="hq6-contact-field min-w-[10rem]">
           <span className="sr-only">Business Location</span>
           <select
-            className="hq6-modal-input"
+            className="form-control select2"
             value={locationFilter}
             onChange={(e) => onLocationFilterChange(e.target.value)}
           >

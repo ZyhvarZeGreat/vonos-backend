@@ -45,7 +45,7 @@ export function Hq6ReturnsListView() {
     search,
     setSearch,
     bounds,
-  } = useListPageFilters({ defaultDateRange: "all_time" });
+  } = useListPageFilters({ defaultDateRange: "last_7_days" });
   const [statusFilter, setStatusFilter] = useState("");
   const [locationFilter, setLocationFilter] = useState("");
   const [customerFilter, setCustomerFilter] = useState("");

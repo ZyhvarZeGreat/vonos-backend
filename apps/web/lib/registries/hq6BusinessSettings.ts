@@ -37,7 +37,26 @@ export function defaultHq6BusinessSettings(
   businessName: string,
   tenantCode?: string | null,
 ): Hq6BusinessSettings {
-  const isVa = tenantCode === "VA";
+  const useAutoContactLabels =
+    tenantCode === "VA" ||
+    tenantCode === "VW" ||
+    tenantCode === "VISP" ||
+    tenantCode === "VSP";
+
+  const skuPrefix =
+    tenantCode === "VA"
+      ? "VONOS AUTO-"
+      : tenantCode === "VW"
+        ? "VONOS WH-"
+        : tenantCode === "VISP" || tenantCode === "VSP"
+          ? "VONOS SP-"
+          : tenantCode === "VC"
+              ? "VONOS CAFE-"
+              : tenantCode === "VKW"
+                ? "VONOS KW-"
+                : tenantCode === "VS"
+                  ? "VONOS SALON-"
+                  : "";
 
   return {
     business: {
@@ -62,7 +81,7 @@ export function defaultHq6BusinessSettings(
       enableInlineTax: false,
     },
     product: {
-      skuPrefix: isVa ? "VONOS AUTO-" : "",
+      skuPrefix,
       enableProductExpiry: "add",
       defaultUnit: "sng",
       onProductExpiry: "keep",
@@ -207,7 +226,7 @@ export function defaultHq6BusinessSettings(
       kitchen: false,
       typesOfService: false,
     },
-    customLabels: isVa
+    customLabels: useAutoContactLabels
       ? {
           payments: [
             "POS 1",

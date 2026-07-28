@@ -10,7 +10,6 @@ import {
   AddSaleView,
   AppointmentsCalendarView,
   BarcodeSettingsView,
-  CatalogListView,
   CatalogMetaListView,
   CommissionAgentsListView,
   CustomerGroupsListView,
@@ -37,11 +36,9 @@ import {
   InvoiceSettingsView,
   InvoicesListView,
   JobsListView,
-  KidsWearInventoryView,
   KitchenDisplayView,
   ListPosView,
   LocationsView,
-  MenuItemsListView,
   MovementListView,
   OrdersListView,
   PaymentAccountReportView,
@@ -68,7 +65,6 @@ import {
   UsersView,
   VariationsListView,
   VehiclesListView,
-  WarehouseInventoryView,
   WarehouseSuppliersView,
   WarehouseTransfersView,
 } from "@/lib/registries/lazyEntityViews";
@@ -109,16 +105,16 @@ const sharedCustomers: EntityPageConfig = {
   View: CustomersListView,
 };
 const sharedCatalog: EntityPageConfig = {
-  title: "Catalog",
+  title: "Products",
   primaryActionLabel: "Add Product",
   openCreateOnPrimary: true,
   createFlowKey: "item",
   createCopy: {
     title: "Add Product",
-    subtitle: "Add a product to the retail catalog",
+    subtitle: "Add a product to the catalog",
     submitLabel: "Add Product",
   },
-  View: CatalogListView,
+  View: Hq6ProductsListView,
 };
 const sharedSuppliers: EntityPageConfig = {
   title: "Suppliers",
@@ -329,6 +325,7 @@ const hq6SharedShellPages: SlugMap = {
     title: "Notification Templates",
     View: Hq6NotificationTemplatesView,
   },
+  "hq6-checklist": { title: "HQ6 Checklist", View: Hq6ChecklistView },
 };
 
 function salesAndSellPages(
@@ -356,13 +353,14 @@ function salesAndSellPages(
 const ENTITY_PAGES: Record<TenantCode, SlugMap> = {
   VW: {
     inventory: {
-      title: "Inventory",
-      primaryActionLabel: "Add Item",
+      title: "Products",
+      primaryActionLabel: "Add Product",
       openCreateOnPrimary: true,
       createFlowKey: "item",
-      createCopy: { title: "Add Item", subtitle: "Add a new SKU", submitLabel: "Add Item" },
-      View: WarehouseInventoryView,
+      createCopy: { title: "Add Product", subtitle: "Add a new SKU", submitLabel: "Add Product" },
+      View: () => <Hq6ProductsListView listSlug="inventory" />,
     },
+    catalog: sharedCatalog,
     inbound,
     outbound,
     transfers: {
@@ -401,13 +399,14 @@ const ENTITY_PAGES: Record<TenantCode, SlugMap> = {
   },
   VKW: {
     inventory: {
-      title: "Inventory",
-      primaryActionLabel: "Add Variant",
+      title: "Products",
+      primaryActionLabel: "Add Product",
       openCreateOnPrimary: true,
       createFlowKey: "variant",
       createCopy: { title: "Add Variant", subtitle: "Add item with size × color matrix", submitLabel: "Add" },
-      View: KidsWearInventoryView,
+      View: () => <Hq6ProductsListView listSlug="inventory" />,
     },
+    catalog: sharedCatalog,
     inbound,
     outbound,
     reports: reportsFor("VKW"),
@@ -447,8 +446,9 @@ const ENTITY_PAGES: Record<TenantCode, SlugMap> = {
       openCreateOnPrimary: true,
       createFlowKey: "menu-item",
       createCopy: { title: "Add Menu Item", subtitle: "With modifier groups", submitLabel: "Add" },
-      View: MenuItemsListView,
+      View: () => <Hq6ProductsListView listSlug="menu-items" />,
     },
+    catalog: sharedCatalog,
     kitchen: { title: "Kitchen Display", View: KitchenDisplayView },
     tables: { title: "Table Management", View: TableManagementView },
     customers: sharedCustomers,
@@ -510,18 +510,7 @@ const ENTITY_PAGES: Record<TenantCode, SlugMap> = {
       },
       View: SalesListView,
     },
-    catalog: {
-      title: "Products",
-      primaryActionLabel: "Add",
-      openCreateOnPrimary: true,
-      createFlowKey: "item",
-      createCopy: {
-        title: "Add Product",
-        subtitle: "Add a product to the catalog",
-        submitLabel: "Add Product",
-      },
-      View: Hq6ProductsListView,
-    },
+    catalog: sharedCatalog,
     returns: { title: "Returns & Warranty", View: ReturnsListView },
     customers: sharedCustomers,
     suppliers: sharedSuppliers,
@@ -546,7 +535,6 @@ const ENTITY_PAGES: Record<TenantCode, SlugMap> = {
     ...hq6SharedShellPages,
     // VA: Ultimate POS service-staff Orders module (ui-audit/61_modules__orders).
     orders: { title: "Orders", View: Hq6OrdersModuleView },
-    "hq6-checklist": { title: "HQ6 Checklist", View: Hq6ChecklistView },
   },
   VS: {
     appointments: {

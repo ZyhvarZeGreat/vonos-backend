@@ -60,7 +60,7 @@ export function ReportRunView({ slug }: ReportRunViewProps) {
   const { dateRange, setDateRange, customDateRange, setCustomDateRange, bounds } =
     useListPageFilters({
       unboundedAllTime: false,
-      defaultDateRange: "all_time",
+      defaultDateRange: "last_7_days",
       isolateDateRange: true,
     });
   const periodLabel = ledgerChartSubtitle(dateRange);
@@ -325,14 +325,14 @@ export function ReportRunView({ slug }: ReportRunViewProps) {
       ) : null}
 
       {isHq6 && isProfitLoss ? (
-        <div className="row no-print hq6-pl-toolbar">
-          <div className="col-md-4 col-xs-12">
+        <div className="row no-print hq6-pl-toolbar upos-report-filters-row">
+          <div className="col-xs-12 col-sm-6 col-md-4">
             <div className="input-group">
               <span className="input-group-addon bg-light-blue">
                 <i className="fa fa-map-marker" aria-hidden />
               </span>
               <select
-                className="form-control"
+                className="form-control select2"
                 id="profit_loss_location_filter"
                 value={filters.locationCode ?? ""}
                 onChange={(e) =>
@@ -351,12 +351,13 @@ export function ReportRunView({ slug }: ReportRunViewProps) {
               </select>
             </div>
           </div>
-          <div className="col-md-4 col-xs-12">
+          <div className="col-xs-12 col-sm-6 col-md-4">
             <div className="form-group hq6-pl-date-filter">
               <label className="sr-only" htmlFor="profit_loss_date_filter">
                 Filter by date
               </label>
               <DateRangeDropdown
+                id="profit_loss_date_filter"
                 value={dateRange}
                 onChange={setDateRange}
                 customValue={customDateRange}

@@ -780,6 +780,11 @@ export class HrmService {
       throw new BadRequestException('Designation not found');
     }
 
+    const status =
+      dto.status === 'final' || dto.status === 'paid' || dto.status === 'draft'
+        ? dto.status
+        : 'draft';
+
     const row = await this.tenantDb.db.payroll.create({
       data: {
         tenantId,
@@ -793,6 +798,7 @@ export class HrmService {
         totalAllowance: allowance,
         totalDeduction: deduction,
         netPay,
+        status,
         payrollMonth: new Date(dto.payrollMonth),
         note: dto.note ?? null,
       },

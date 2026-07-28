@@ -99,12 +99,14 @@ export function Hq6Sidebar({
     >
       <Link
         href={homeHref}
-        className="tw-flex tw-items-center tw-justify-center tw-w-full tw-border-r tw-h-15 tw-bg-green-800 tw-shrink-0 tw-border-primary-500/30"
+        className="tw-flex tw-items-center tw-justify-center tw-w-full tw-border-r tw-h-15 tw-shrink-0 tw-border-primary-500/30"
+        style={{ backgroundColor: "var(--theme-800, var(--hq6-header, #085d3a))" }}
       >
         <p className="tw-text-lg tw-font-medium tw-text-white side-bar-heading tw-text-center">
           {tenantName ?? "Business"}{" "}
           <span
-            className="tw-inline-block tw-w-3 tw-h-3 tw-bg-green-400 tw-rounded-full"
+            className="tw-inline-block tw-w-3 tw-h-3 tw-rounded-full"
+            style={{ backgroundColor: "var(--theme-700, #47cd89)" }}
             title="Online"
           />
         </p>

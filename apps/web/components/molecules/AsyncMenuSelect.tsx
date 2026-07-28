@@ -23,7 +23,7 @@ export interface AsyncMenuSelectProps {
 
 /**
  * Searchable select that loads options from the server as the user types.
- * Prefer this over prefetching large catalogs into MenuSelect.
+ * Chrome matches UPOS `select.form-control.select2`.
  */
 export function AsyncMenuSelect({
   id,
@@ -104,7 +104,7 @@ export function AsyncMenuSelect({
   }, [open, query, loadOptions, debounceMs]);
 
   return (
-    <div ref={anchorRef} className={cn("relative w-full", className)}>
+    <div ref={anchorRef} className={cn("tw-relative tw-min-w-0 tw-w-full", className)}>
       <button
         id={id}
         type="button"
@@ -113,34 +113,35 @@ export function AsyncMenuSelect({
         aria-expanded={open}
         aria-controls={listId}
         className={cn(
-          "inline-flex h-10 w-full items-center justify-between gap-2 rounded-md border border-border bg-surface px-3 text-left text-sm text-foreground",
-          "hover:bg-[var(--color-surface-muted)] disabled:cursor-not-allowed disabled:opacity-60",
-          !value && "text-muted",
+          "form-control select2 vonos-menu-select-trigger",
+          !value && "vonos-menu-select-placeholder",
         )}
         onClick={() => setOpen((current) => !current)}
       >
-        <span className="truncate">{displayLabel}</span>
-        <ChevronDown className="h-4 w-4 shrink-0 text-muted" />
+        <span className="tw-min-w-0 tw-flex-1 tw-truncate tw-text-left">
+          {displayLabel}
+        </span>
+        <ChevronDown className="tw-h-4 tw-w-4 tw-shrink-0 tw-opacity-60" />
       </button>
 
       <FloatingMenuPanel
         open={open}
         anchorRef={anchorRef}
         menuRef={menuRef}
-        className="overflow-hidden rounded-lg border border-border bg-card shadow-lg"
+        className="tw-overflow-hidden tw-rounded-lg tw-border tw-border-solid tw-border-gray-200 tw-bg-white tw-shadow-lg"
       >
         <div
-          className="flex max-h-[min(20rem,var(--vonos-floating-max-h,20rem))] flex-col"
+          className="tw-flex tw-max-h-[min(20rem,var(--vonos-floating-max-h,20rem))] tw-flex-col"
           style={{ width: menuWidth ? `${menuWidth}px` : "16rem" }}
         >
-          <div className="shrink-0 border-b border-border p-2">
+          <div className="tw-shrink-0 tw-border-b tw-border-solid tw-border-gray-200 tw-p-2.5">
             <input
               ref={inputRef}
               type="search"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               placeholder="Search…"
-              className="h-8 w-full rounded-md border border-border bg-surface px-2 text-sm outline-none focus:border-brand"
+              className="form-control select2"
               onClick={(event) => event.stopPropagation()}
               onKeyDown={(event) => event.stopPropagation()}
             />
@@ -148,15 +149,21 @@ export function AsyncMenuSelect({
           <div
             id={listId}
             role="listbox"
-            className="min-h-0 flex-1 overflow-y-auto overscroll-contain py-0.5"
+            className="tw-min-h-0 tw-flex-1 tw-overflow-y-auto tw-overscroll-contain tw-py-1"
             onWheel={(event) => event.stopPropagation()}
           >
             {loading ? (
-              <p className="px-2.5 py-2 text-xs text-muted">Searching…</p>
+              <p className="tw-px-3.5 tw-py-2.5 tw-text-sm tw-text-gray-500">
+                Searching…
+              </p>
             ) : error ? (
-              <p className="px-2.5 py-2 text-xs text-error">{error}</p>
+              <p className="tw-px-3.5 tw-py-2.5 tw-text-sm tw-text-red-600">
+                {error}
+              </p>
             ) : options.length === 0 ? (
-              <p className="px-2.5 py-2 text-xs text-muted">{emptyMessage}</p>
+              <p className="tw-px-3.5 tw-py-2.5 tw-text-sm tw-text-gray-500">
+                {emptyMessage}
+              </p>
             ) : (
               options.map((option) => (
                 <button
@@ -165,8 +172,8 @@ export function AsyncMenuSelect({
                   role="option"
                   aria-selected={option.value === value}
                   className={cn(
-                    "flex w-full px-2.5 py-2 text-left text-sm text-foreground transition-colors hover:bg-[var(--color-surface-muted)]",
-                    option.value === value && "bg-[var(--color-surface-muted)]",
+                    "tw-flex tw-w-full tw-cursor-pointer tw-items-center tw-border-0 tw-bg-transparent tw-px-3.5 tw-py-2.5 tw-text-left tw-text-sm tw-leading-5 tw-text-gray-900 hover:tw-bg-gray-100",
+                    option.value === value && "tw-bg-gray-100 tw-font-medium",
                   )}
                   onClick={() => {
                     onChange(option.value);

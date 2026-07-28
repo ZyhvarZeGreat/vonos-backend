@@ -1,15 +1,4 @@
-"use client";
-
-import { Spinner } from "@/components/atoms/Spinner";
-import { KpiRow } from "@/components/organisms/KpiRow";
-
-const PLACEHOLDER_CARDS = [
-  { label: "Revenue", icon: "wallet" as const, metricKey: "revenue", color: "#059669" },
-  { label: "Orders", icon: "package" as const, metricKey: "orders", color: "#2563eb" },
-  { label: "Customers", icon: "users" as const, metricKey: "customers", color: "#9333ea" },
-  { label: "Net", icon: "calculator" as const, metricKey: "net", color: "#e11d48" },
-];
-
+/** Overview route — keep text chrome; TopProgressBar handles indication. */
 export default function TenantOverviewLoading() {
   return (
     <div
@@ -17,29 +6,9 @@ export default function TenantOverviewLoading() {
       aria-busy
       aria-label="Loading overview"
     >
-      <KpiRow
-        cards={PLACEHOLDER_CARDS}
-        values={{
-          revenue: "0",
-          orders: "0",
-          customers: "0",
-          net: "0",
-        }}
-        isLoading
-        loadingDisplay="zero-spinner"
-      />
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <div className="flex min-h-[240px] flex-col items-center justify-center gap-2 rounded-xl border border-border bg-card p-6">
-          <p className="text-2xl font-semibold tabular-nums">0</p>
-          <Spinner size="md" className="text-muted" />
-          <p className="text-xs text-muted">Loading…</p>
-        </div>
-        <div className="flex min-h-[240px] flex-col items-center justify-center gap-2 rounded-xl border border-border bg-card p-6">
-          <p className="text-2xl font-semibold tabular-nums">0</p>
-          <Spinner size="md" className="text-muted" />
-          <p className="text-xs text-muted">Loading…</p>
-        </div>
-      </div>
+      <h1 className="text-xl font-semibold text-foreground">Overview</h1>
+      <p className="text-sm text-muted">Dashboard metrics load in a moment.</p>
+      <div className="min-h-[40vh]" />
     </div>
   );
 }

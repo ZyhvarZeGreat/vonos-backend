@@ -14,6 +14,8 @@ import { getNotifications, markNotificationRead } from "@/lib/api/notifications"
 import { useAuthStore } from "@/stores/authStore";
 import { useUiStore } from "@/stores/uiStore";
 import { useTenantId } from "@/lib/hooks/useRouteTenant";
+import { TenantSwitcher } from "@/components/molecules/TenantSwitcher";
+import { AdminEntitySwitcher } from "@/components/molecules/AdminEntitySwitcher";
 import {
   Hq6GlobalChromeModals,
   type Hq6GlobalModalId,
@@ -24,9 +26,12 @@ import { cn } from "@/lib/utils/cn";
 
 export interface UposHeaderProps {
   tenantCode: string;
+  tenantName?: string;
   userName?: string;
   onToggleMobile: () => void;
   onToggleCollapse: () => void;
+  /** VAG admin header: entity switcher, no POS / profit shortcuts. */
+  variant?: "tenant" | "admin";
 }
 
 const btnClass =
@@ -50,16 +55,22 @@ function toggleFullscreen() {
 
 export function UposHeader({
   tenantCode,
+  tenantName,
   userName,
   onToggleMobile,
   onToggleCollapse,
+  variant = "tenant",
 }: UposHeaderProps) {
   const router = useRouter();
   const queryClient = useQueryClient();
   const tenantId = useTenantId();
   const clearAuth = useAuthStore((s) => s.clearAuth);
+  const authRole = useAuthStore((s) => s.role);
   const authName = useAuthStore((s) => s.name);
   const displayName = userName ?? authName ?? "User";
+  const isVonosAdmin = authRole === "super_admin";
+  const isAdminHeader = variant === "admin";
+  const showTenantTools = !isAdminHeader;
   const setNotifications = useUiStore((s) => s.setNotifications);
   const notifications = useUiStore((s) => s.notifications);
   const unreadCount = notifications.filter((n) => !n.read).length;
@@ -74,9 +85,9 @@ export function UposHeader({
   const [today] = useState(() => formatHq6Date(new Date()));
 
   const notificationsQuery = useQuery({
-    queryKey: ["notifications", tenantId],
-    queryFn: () => getNotifications(),
-    enabled: Boolean(tenantId),
+    queryKey: ["notifications", tenantId ?? (isAdminHeader ? "group" : "none")],
+    queryFn: () => getNotifications(tenantId ?? undefined),
+    enabled: Boolean(tenantId) || isAdminHeader,
     staleTime: 60_000,
   });
 
@@ -122,14 +133,14 @@ export function UposHeader({
     <>
       <div className="tw-transition-all tw-duration-5000 tw-border-b theme-header-bg tw-shrink-0 lg:tw-h-15 tw-border-primary-500/30 no-print">
         <div className="tw-px-5 tw-py-3">
-          <div className="tw-flex tw-items-start tw-justify-between tw-gap-6 lg:tw-items-center">
-            <div className="tw-flex tw-items-center tw-gap-3">
+          <div className="tw-flex tw-items-start tw-justify-between tw-gap-2 sm:tw-gap-3 md:tw-gap-4 lg:tw-items-center lg:tw-gap-6">
+            <div className="tw-flex tw-min-w-0 tw-shrink tw-items-center tw-gap-2 sm:tw-gap-3">
               <button
                 type="button"
                 className={cn(btnClass, "small-view-button xl:tw-w-20 lg:tw-hidden")}
                 onClick={onToggleMobile}
+                aria-label="Sidebar Menu"
               >
-                <span className="tw-sr-only">Sidebar Menu</span>
                 <svg
                   aria-hidden
                   className="tw-size-5"
@@ -152,8 +163,8 @@ export function UposHeader({
                 type="button"
                 className={cn(btnClass, "side-bar-collapse tw-hidden lg:tw-inline-flex")}
                 onClick={onToggleCollapse}
+                aria-label="Collapse Sidebar"
               >
-                <span className="tw-sr-only">Collapse Sidebar</span>
                 <svg
                   aria-hidden
                   className="tw-size-5"
@@ -171,78 +182,102 @@ export function UposHeader({
                   <path d="M10 10l-2 2l2 2" />
                 </svg>
               </button>
+
+              {/* VAG topbar: leave admin → full entity dashboard (not module scope). */}
+              {isAdminHeader ? (
+                <AdminEntitySwitcher
+                  variant="topbar"
+                  className="tw-min-w-0 tw-w-[10rem] sm:tw-w-[13rem] md:tw-w-[16rem] lg:tw-w-[18rem]"
+                />
+              ) : isVonosAdmin ? (
+                <TenantSwitcher
+                  tenantCode={tenantCode}
+                  tenantName={tenantName}
+                  variant="topbar"
+                  className="tw-min-w-0 tw-w-[9.5rem] sm:tw-w-[12rem] md:tw-w-[14rem] lg:tw-w-[16rem]"
+                />
+              ) : null}
+              {isAdminHeader ? (
+                <span className="tw-hidden tw-shrink-0 tw-rounded tw-bg-white/15 tw-px-2 tw-py-1 tw-text-[11px] tw-font-semibold tw-uppercase tw-tracking-wide tw-text-white/90 lg:tw-inline-block">
+                  Super Admin
+                </span>
+              ) : null}
             </div>
 
-            <div className="tw-flex tw-flex-wrap tw-items-center tw-justify-end tw-gap-3">
-              {/* Tools: Calendar / To Do / Tour */}
-              <details
-                ref={toolsRef}
-                className="tw-dw-dropdown tw-relative tw-inline-block tw-text-left"
-                open={toolsOpen}
-                onToggle={(e) =>
-                  setToolsOpen((e.target as HTMLDetailsElement).open)
-                }
-              >
-                <summary
-                  className={cn(
-                    btnClass,
-                    "tw-py-1.5 tw-px-3 tw-gap-1 tw-cursor-pointer",
-                  )}
-                >
-                  <svg
-                    aria-hidden
-                    className="tw-size-5"
-                    xmlns="http://www.w3.org/2000/svg"
-                    viewBox="0 0 24 24"
-                    strokeWidth="1.5"
-                    stroke="currentColor"
-                    fill="none"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
+            <div className="tw-flex tw-min-w-0 tw-flex-wrap tw-items-center tw-justify-end tw-gap-2 sm:tw-gap-3">
+              {showTenantTools ? (
+                <>
+                  {/* Tools: Calendar / To Do */}
+                  <details
+                    ref={toolsRef}
+                    className="tw-dw-dropdown tw-relative tw-hidden tw-text-left sm:tw-inline-block"
+                    open={toolsOpen}
+                    onToggle={(e) =>
+                      setToolsOpen((e.target as HTMLDetailsElement).open)
+                    }
                   >
-                    <path stroke="none" d="M0 0h24v24H0z" fill="none" />
-                    <path d="M3 12a9 9 0 1 0 18 0a9 9 0 0 0 -18 0" />
-                    <path d="M9 12h6" />
-                    <path d="M12 9v6" />
-                  </svg>
-                </summary>
-                <ul
-                  className="tw-w-48 tw-absolute tw-left-0 tw-z-10 tw-mt-2 tw-origin-top-right tw-bg-white tw-rounded-lg tw-shadow-lg tw-ring-1 tw-ring-gray-200"
-                  role="menu"
-                >
-                  <div className="tw-p-2" role="none">
-                    <button
-                      type="button"
-                      className="tw-flex tw-w-full tw-items-center tw-gap-2 tw-px-3 tw-py-2 tw-text-sm tw-font-medium tw-text-gray-600 tw-rounded-lg hover:tw-bg-gray-100 tw-bg-transparent tw-border-0 tw-cursor-pointer"
-                      role="menuitem"
-                      onClick={() => {
-                        setToolsOpen(false);
-                        setHq6GlobalModal("task");
-                      }}
+                    <summary
+                      className={cn(
+                        btnClass,
+                        "tw-py-1.5 tw-px-3 tw-gap-1 tw-cursor-pointer",
+                      )}
                     >
-                      Calendar / To Do
-                    </button>
-                    <Link
-                      href={`/${tenantCode}/essentials-todo`}
-                      className="tw-flex tw-items-center tw-gap-2 tw-px-3 tw-py-2 tw-text-sm tw-font-medium tw-text-gray-600 tw-rounded-lg hover:tw-bg-gray-100"
-                      role="menuitem"
-                      onClick={() => setToolsOpen(false)}
+                      <svg
+                        aria-hidden
+                        className="tw-size-5"
+                        xmlns="http://www.w3.org/2000/svg"
+                        viewBox="0 0 24 24"
+                        strokeWidth="1.5"
+                        stroke="currentColor"
+                        fill="none"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+                        <path d="M3 12a9 9 0 1 0 18 0a9 9 0 0 0 -18 0" />
+                        <path d="M9 12h6" />
+                        <path d="M12 9v6" />
+                      </svg>
+                    </summary>
+                    <ul
+                      className="tw-w-48 tw-absolute tw-left-0 tw-z-10 tw-mt-2 tw-origin-top-right tw-bg-white tw-rounded-lg tw-shadow-lg tw-ring-1 tw-ring-gray-200"
+                      role="menu"
                     >
-                      Essentials
-                    </Link>
-                  </div>
-                </ul>
-              </details>
+                      <div className="tw-p-2" role="none">
+                        <button
+                          type="button"
+                          className="tw-flex tw-w-full tw-items-center tw-gap-2 tw-px-3 tw-py-2 tw-text-sm tw-font-medium tw-text-gray-600 tw-rounded-lg hover:tw-bg-gray-100 tw-bg-transparent tw-border-0 tw-cursor-pointer"
+                          role="menuitem"
+                          onClick={() => {
+                            setToolsOpen(false);
+                            setHq6GlobalModal("task");
+                          }}
+                        >
+                          Calendar / To Do
+                        </button>
+                        <Link
+                          href={`/${tenantCode}/essentials-todo`}
+                          className="tw-flex tw-items-center tw-gap-2 tw-px-3 tw-py-2 tw-text-sm tw-font-medium tw-text-gray-600 tw-rounded-lg hover:tw-bg-gray-100"
+                          role="menuitem"
+                          onClick={() => setToolsOpen(false)}
+                        >
+                          Essentials
+                        </Link>
+                      </div>
+                    </ul>
+                  </details>
+                </>
+              ) : null}
 
-              {/* Calculator */}
+              {/* Calculator — available on tenant + VAG */}
               <button
                 id="btnCalculator"
                 type="button"
                 title="Calculator"
+                aria-label="Calculator"
                 className={cn(btnClass, "tw-hidden md:tw-inline-flex")}
                 onClick={() => setHq6GlobalModal("calculator")}
               >
-                <span className="tw-sr-only">Calculator</span>
                 <svg
                   aria-hidden
                   className="tw-size-5"
@@ -270,10 +305,10 @@ export function UposHeader({
               <button
                 type="button"
                 title="Fullscreen"
+                aria-label="Fullscreen"
                 className={cn(btnClass, "tw-hidden md:tw-inline-flex")}
                 onClick={toggleFullscreen}
               >
-                <span className="tw-sr-only">Fullscreen</span>
                 <svg
                   aria-hidden
                   className="tw-size-5"
@@ -293,63 +328,67 @@ export function UposHeader({
                 </svg>
               </button>
 
-              {/* POS */}
-              <Link
-                href={`/${tenantCode}/pos-terminal`}
-                className="sm:tw-inline-flex tw-transition-all tw-duration-200 tw-gap-2 theme-btn-bg tw-py-1.5 tw-px-3 tw-rounded-lg tw-items-center tw-justify-center tw-text-sm tw-font-medium tw-ring-1 tw-ring-white/10 hover:tw-text-white tw-text-white"
-              >
-                <svg
-                  aria-hidden
-                  className="tw-size-5 tw-hidden md:tw-block"
-                  xmlns="http://www.w3.org/2000/svg"
-                  viewBox="0 0 24 24"
-                  strokeWidth="1.5"
-                  stroke="currentColor"
-                  fill="none"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <path stroke="none" d="M0 0h24v24H0z" fill="none" />
-                  <path d="M4 4m0 1a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v4a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1z" />
-                  <path d="M14 4m0 1a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v4a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1z" />
-                  <path d="M4 14m0 1a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v4a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1z" />
-                  <path d="M14 14m0 1a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v4a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1z" />
-                </svg>
-                POS
-              </Link>
+              {showTenantTools ? (
+                <>
+                  {/* POS */}
+                  <Link
+                    href={`/${tenantCode}/pos-terminal`}
+                    className="tw-inline-flex tw-transition-all tw-duration-200 tw-gap-2 theme-btn-bg tw-py-1.5 tw-px-3 tw-rounded-lg tw-items-center tw-justify-center tw-text-sm tw-font-medium tw-ring-1 tw-ring-white/10 hover:tw-text-white tw-text-white"
+                  >
+                    <svg
+                      aria-hidden
+                      className="tw-size-5 tw-hidden md:tw-block"
+                      xmlns="http://www.w3.org/2000/svg"
+                      viewBox="0 0 24 24"
+                      strokeWidth="1.5"
+                      stroke="currentColor"
+                      fill="none"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+                      <path d="M4 4m0 1a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v4a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1z" />
+                      <path d="M14 4m0 1a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v4a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1z" />
+                      <path d="M4 14m0 1a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v4a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1z" />
+                      <path d="M14 14m0 1a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v4a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1z" />
+                    </svg>
+                    POS
+                  </Link>
 
-              {/* Today's profit */}
-              <button
-                type="button"
-                id="view_todays_profit"
-                title="Today's Profit"
-                className={cn(btnClass, "tw-hidden sm:tw-inline-flex")}
-                onClick={() => setHq6GlobalModal("todays-profit")}
-              >
-                <span className="tw-sr-only">Today&apos;s Profit</span>
-                <svg
-                  aria-hidden
-                  className="tw-size-5"
-                  xmlns="http://www.w3.org/2000/svg"
-                  viewBox="0 0 24 24"
-                  strokeWidth="1.5"
-                  stroke="currentColor"
-                  fill="none"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <path stroke="none" d="M0 0h24v24H0z" fill="none" />
-                  <path d="M12 12m-3 0a3 3 0 1 0 6 0a3 3 0 1 0 -6 0" />
-                  <path d="M3 6m0 2a2 2 0 0 1 2 -2h14a2 2 0 0 1 2 2v8a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2z" />
-                  <path d="M18 12l.01 0" />
-                  <path d="M6 12l.01 0" />
-                </svg>
-              </button>
+                  {/* Today's profit */}
+                  <button
+                    type="button"
+                    id="view_todays_profit"
+                    title="Today's Profit"
+                    aria-label="Today's Profit"
+                    className={cn(btnClass, "tw-hidden sm:tw-inline-flex")}
+                    onClick={() => setHq6GlobalModal("todays-profit")}
+                  >
+                    <svg
+                      aria-hidden
+                      className="tw-size-5"
+                      xmlns="http://www.w3.org/2000/svg"
+                      viewBox="0 0 24 24"
+                      strokeWidth="1.5"
+                      stroke="currentColor"
+                      fill="none"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+                      <path d="M12 12m-3 0a3 3 0 1 0 6 0a3 3 0 1 0 -6 0" />
+                      <path d="M3 6m0 2a2 2 0 0 1 2 -2h14a2 2 0 0 1 2 2v8a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2z" />
+                      <path d="M18 12l.01 0" />
+                      <path d="M6 12l.01 0" />
+                    </svg>
+                  </button>
+                </>
+              ) : null}
 
               {/* Date */}
               <button
                 type="button"
-                className="tw-hidden lg:tw-inline-flex tw-transition-all tw-ring-1 tw-ring-white/10 tw-duration-200 theme-btn-bg tw-py-1.5 tw-px-3 tw-rounded-lg tw-items-center tw-justify-center tw-text-sm tw-font-medium tw-text-white hover:tw-text-white tw-font-mono"
+                className="tw-hidden xl:tw-inline-flex tw-transition-all tw-ring-1 tw-ring-white/10 tw-duration-200 theme-btn-bg tw-py-1.5 tw-px-3 tw-rounded-lg tw-items-center tw-justify-center tw-text-sm tw-font-medium tw-text-white hover:tw-text-white tw-font-mono"
               >
                 {today}
               </button>
@@ -360,10 +399,10 @@ export function UposHeader({
                   type="button"
                   className={cn(btnClass, "load_notifications")}
                   id="show_unread_notifications"
+                  aria-label="Notifications"
                   aria-expanded={notifOpen}
                   onClick={() => setNotifOpen((v) => !v)}
                 >
-                  <span className="tw-sr-only">Notifications</span>
                   <svg
                     aria-hidden
                     className="tw-size-5"
@@ -473,12 +512,12 @@ export function UposHeader({
                   </div>
                   <li>
                     <Link
-                      href={`/${tenantCode}/users`}
+                      href={isAdminHeader ? "/admin/security" : `/${tenantCode}/users`}
                       className="tw-flex tw-items-center tw-gap-2 tw-px-3 tw-py-2 tw-text-sm tw-font-medium tw-text-gray-600 tw-rounded-lg hover:tw-bg-gray-100"
                       role="menuitem"
                       onClick={() => setUserOpen(false)}
                     >
-                      Profile
+                      {isAdminHeader ? "Security" : "Profile"}
                     </Link>
                   </li>
                   <li>

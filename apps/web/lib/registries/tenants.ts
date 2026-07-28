@@ -23,15 +23,15 @@ export const TENANT_REGISTRY = {
   VISP: {
     tenantId: "tenant_visp_001",
     code: "VISP",
-    name: "Vonos Institute Spare Parts",
+    name: "Vonos Spare Parts (legacy)",
     archetype: "transaction" as const,
-    status: "active" as const,
+    status: "retired" as const,
     group: "autos" as const,
   },
   VSP: {
     tenantId: "tenant_vsp_001",
     code: "VSP",
-    name: "Vonos SP Marketplace",
+    name: "Vonos Spare Parts",
     archetype: "transaction" as const,
     status: "active" as const,
     group: "autos" as const,
@@ -85,7 +85,7 @@ export const ENTITY_LIST = Object.values(TENANT_REGISTRY);
  * Display order for Vonos Autos Group surfaces (admin overview, switcher, etc.).
  * VA leads so Automotive is the first card on Group Overview.
  */
-export const AUTOS_GROUP_ORDER = ["VA", "VW", "VISP", "VSP"] as const satisfies ReadonlyArray<
+export const AUTOS_GROUP_ORDER = ["VA", "VW", "VSP"] as const satisfies ReadonlyArray<
   Extract<(typeof TENANT_REGISTRY)[TenantCode]["code"], TenantCode>
 >;
 
@@ -96,8 +96,8 @@ export const AUTOS_GROUP_ENTITIES = AUTOS_GROUP_ORDER.map(
 
 export function isAutosGroupEntity(code: string): boolean {
   const entry = getTenantByCode(code);
-  return entry?.group === "autos";
+  return entry?.group === "autos" && entry.status === "active";
 }
 
-/** Retired entity codes — redirect in next.config. */
-export const RETIRED_TENANT_CODES = ["VM", "VMS", "VSS"] as const;
+/** Retired entity codes — redirect in next.config. VISP collapses into VSP. */
+export const RETIRED_TENANT_CODES = ["VM", "VMS", "VSS", "VISP"] as const;

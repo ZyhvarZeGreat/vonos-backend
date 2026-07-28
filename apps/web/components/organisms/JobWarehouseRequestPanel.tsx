@@ -20,8 +20,7 @@ interface JobWarehouseRequestPanelProps {
 /** Internal departments a VA job can request parts from. */
 const REQUEST_DEPARTMENTS: { code: string; label: string }[] = [
   { code: "VW", label: "Warehouse" },
-  { code: "VISP", label: "Spare Parts — Institute" },
-  { code: "VSP", label: "Spare Parts — Marketplace" },
+  { code: "VSP", label: "Vonos Spare Parts" },
 ];
 
 export function JobWarehouseRequestPanel({

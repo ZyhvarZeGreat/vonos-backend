@@ -27,7 +27,8 @@ export function downloadCsv(payload: CsvExportPayload): void {
       })
       .join(","),
   );
-  const csv = [header, ...lines].join("\n");
+  // BOM helps Excel open UTF-8 CSV correctly.
+  const csv = `\uFEFF${[header, ...lines].join("\n")}`;
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
@@ -37,4 +38,10 @@ export function downloadCsv(payload: CsvExportPayload): void {
     : `${payload.filename}.csv`;
   link.click();
   URL.revokeObjectURL(url);
+}
+
+/** Excel-friendly CSV (same as downloadCsv — Excel opens .csv natively). */
+export function downloadExcelCsv(payload: CsvExportPayload): void {
+  const base = payload.filename.replace(/\.csv$/i, "");
+  downloadCsv({ ...payload, filename: `${base}.csv` });
 }

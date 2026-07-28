@@ -51,7 +51,7 @@ export function JobsListView() {
   const queryClient = useQueryClient();
   const chrome = useHq6ListChrome("jobs");
   const { dateRange, setDateRange, search, setSearch, bounds } = useListPageFilters({
-    defaultDateRange: "all_time",
+    defaultDateRange: "last_7_days",
   });
   const [activeTab, setActiveTab] = useState("all");
   const [statusFilter, setStatusFilter] = useState("");

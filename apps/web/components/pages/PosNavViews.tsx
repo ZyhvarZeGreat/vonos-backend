@@ -18,7 +18,6 @@ import {
   formatDebitCell,
 } from "@/lib/utils/ledgerAmountStyles";
 import { cn } from "@/lib/utils/cn";
-import { useUiStore } from "@/stores/uiStore";
 import type { AccountTransaction, PaymentRecord } from "@vonos/types";
 import { CatalogMetaListView } from "@/components/pages/CatalogMetaListView";
 import { PosTerminalView } from "@/components/pages/PosTerminalView";
@@ -51,10 +50,9 @@ interface AccountBookRow {
 }
 
 export function AccountBookView({ accountId }: { accountId?: string }) {
-  const openExportModal = useUiStore((state) => state.openExportModal);
   const { tenantId } = useRouteTenant();
   const { dateRange, setDateRange, search, setSearch, bounds } = useListPageFilters({
-    defaultDateRange: "all_time",
+    defaultDateRange: "last_7_days",
   });
   const [typeFilter, setTypeFilter] = useState("");
 
@@ -163,12 +161,6 @@ export function AccountBookView({ accountId }: { accountId?: string }) {
           ],
         },
       ]}
-      onExport={() =>
-        openExportModal({
-          title: "Export Account Book",
-          subtitle: "Download ledger lines as CSV",
-        })
-      }
     >
       <ServerPaginatedTable
         items={filtered}
@@ -199,7 +191,6 @@ interface PaymentRow {
 
 export function PaymentsListView() {
   const { tenantId } = useRouteTenant();
-  const openExportModal = useUiStore((state) => state.openExportModal);
   const { dateRange, setDateRange, search, setSearch, bounds } = useListPageFilters();
   const [typeFilter, setTypeFilter] = useState("");
   const [accountFilter, setAccountFilter] = useState("");
@@ -318,12 +309,6 @@ export function PaymentsListView() {
           options: accountOptions,
         },
       ]}
-      onExport={() =>
-        openExportModal({
-          title: "Export Payments",
-          subtitle: "Download payment list as CSV",
-        })
-      }
     >
       <ServerPaginatedTable
         items={filtered}

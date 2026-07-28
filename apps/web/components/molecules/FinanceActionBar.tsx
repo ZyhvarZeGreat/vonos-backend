@@ -3,9 +3,8 @@
 import { useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { CreditCard, Plus, Receipt, ShoppingCart } from "lucide-react";
-import { Button } from "@/components/atoms/Button";
-import { Select } from "@/components/atoms/Select";
 import { useRouteTenant } from "@/lib/hooks/useRouteTenant";
+import { useIsVaHq6 } from "@/lib/hooks/useIsVaHq6";
 import { getTenantByCode, type TenantCode } from "@/lib/registries/tenants";
 import {
   getVagViewUnit,
@@ -13,6 +12,7 @@ import {
   VAG_VIEW_UNITS,
 } from "@/lib/registries/vagViewUnits";
 import { useAdminEntityStore } from "@/stores/adminEntityStore";
+import { cn } from "@/lib/utils/cn";
 
 export interface FinanceActionBarProps {
   /** VAG group finance — uses admin viewing entity (or local pick). */
@@ -37,6 +37,7 @@ export function FinanceActionBar({
   className,
 }: FinanceActionBarProps) {
   const router = useRouter();
+  const isHq6 = useIsVaHq6();
   const { tenantCode: routeTenantCode } = useRouteTenant({ adminFallback: null });
   const viewingCode = useAdminEntityStore((s) => s.viewingCode);
   const setViewingCode = useAdminEntityStore((s) => s.setViewingCode);
@@ -56,7 +57,7 @@ export function FinanceActionBar({
       return `Actions open in ${activeTenant.name}'s workspace (sales, purchases, expenses, payments).`;
     }
     if (groupMode) {
-      return "Pick an entity above (or here), then open that department's payments, expenses, sales, or purchases page. Spare Parts opens VISP.";
+      return "Pick a module entity above (or here), then open that department's payments, expenses, sales, or purchases page. Spare Parts opens VSP.";
     }
     return null;
   }, [activeTenant, fixedTenantCode, groupMode]);
@@ -66,66 +67,97 @@ export function FinanceActionBar({
     router.push(`/${workspaceCode}/${suffix}`);
   };
 
+  const actionBtnClass = isHq6
+    ? "hq6-btn hq6-btn-outline disabled:cursor-not-allowed disabled:opacity-50"
+    : "inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-border bg-card px-3 text-sm font-medium text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-nav-hover)] disabled:cursor-not-allowed disabled:opacity-50";
+
   return (
     <div
-      className={
+      className={cn(
         className ??
-        "rounded-xl border border-border bg-card p-4 shadow-sm print:hidden"
-      }
+          (isHq6
+            ? "hq6-card hq6-finance-action-bar print:hidden"
+            : "rounded-xl border border-border bg-card p-5 shadow-sm print:hidden"),
+      )}
     >
-      <div className="flex flex-wrap items-end gap-3">
+      <div className="tw-flex tw-flex-wrap tw-items-center tw-gap-3">
         {needsEntity ? (
-          <div className="min-w-[220px] flex-1 sm:max-w-xs">
-            <Select
-              label="Entity for actions"
+          <div className="tw-min-w-[220px] tw-flex-1 sm:tw-max-w-xs">
+            <label
+              htmlFor="finance-action-entity"
+              className={
+                isHq6
+                  ? "tw-mb-1 tw-block tw-text-xs tw-font-semibold tw-uppercase tw-tracking-wide tw-text-[#6b7280]"
+                  : "mb-1.5 block text-sm font-medium text-foreground"
+              }
+            >
+              Entity for actions
+            </label>
+            <select
+              id="finance-action-entity"
+              className={isHq6 ? "form-control select2" : "form-control"}
               value={viewingCode ?? ""}
               onChange={(e) => setViewingCode(e.target.value || null)}
-              options={[{ value: "", label: "Select entity…" }, ...UNIT_OPTIONS]}
-            />
+            >
+              <option value="">Select entity…</option>
+              {UNIT_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
           </div>
         ) : null}
 
-        <div className="flex flex-wrap gap-2">
-          <Button
-            variant="secondary"
-            size="sm"
+        <div className="tw-flex tw-flex-wrap tw-gap-2">
+          <button
+            type="button"
+            className={actionBtnClass}
             disabled={blocked}
             onClick={() => goToEntity("payments")}
           >
-            <CreditCard className="mr-2 h-4 w-4" />
+            <CreditCard className="tw-h-4 tw-w-4" />
             Payments
-          </Button>
-          <Button
-            variant="secondary"
-            size="sm"
+          </button>
+          <button
+            type="button"
+            className={actionBtnClass}
             disabled={blocked}
             onClick={() => goToEntity("expenses")}
           >
-            <Receipt className="mr-2 h-4 w-4" />
+            <Receipt className="tw-h-4 tw-w-4" />
             Add Expense
-          </Button>
-          <Button
-            variant="secondary"
-            size="sm"
+          </button>
+          <button
+            type="button"
+            className={actionBtnClass}
             disabled={blocked}
             onClick={() => goToEntity("sales")}
           >
-            <Plus className="mr-2 h-4 w-4" />
+            <Plus className="tw-h-4 tw-w-4" />
             Add Sale
-          </Button>
-          <Button
-            variant="secondary"
-            size="sm"
+          </button>
+          <button
+            type="button"
+            className={actionBtnClass}
             disabled={blocked}
             onClick={() => goToEntity("purchase-orders")}
           >
-            <ShoppingCart className="mr-2 h-4 w-4" />
+            <ShoppingCart className="tw-h-4 tw-w-4" />
             Record Purchase
-          </Button>
+          </button>
         </div>
       </div>
       {helperText ? (
-        <p className="mt-3 text-xs text-muted">{helperText}</p>
+        <p
+          className={
+            isHq6
+              ? "tw-mt-3 tw-mb-0 tw-text-xs tw-leading-relaxed tw-text-[#6b7280]"
+              : "mt-3 text-xs text-muted"
+          }
+        >
+          {helperText}
+        </p>
       ) : null}
     </div>
   );

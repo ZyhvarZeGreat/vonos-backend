@@ -153,8 +153,10 @@ function contactsItems(code: string, config: TenantConfig): NavItem[] {
 }
 
 function productsItems(code: string, config: TenantConfig): NavItem[] {
-  const listSlug =
-    code === "VC"
+  // HQ6 Ultimate POS: all entities use /catalog like VA (cafe keeps menu-items alias too).
+  const listSlug = isHq6(config)
+    ? "catalog"
+    : code === "VC"
       ? "menu-items"
       : config.archetype === "stock"
         ? "inventory"

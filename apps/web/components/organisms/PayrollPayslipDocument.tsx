@@ -333,75 +333,100 @@ export function PayrollPayslipDocument({
 
       <section className="grid border-b border-neutral-800 sm:grid-cols-2">
         <div className="border-b border-neutral-800 sm:border-b-0 sm:border-r">
-          <div className="grid grid-cols-[1fr_auto_auto] gap-2 border-b border-neutral-800 bg-neutral-50 px-4 py-2 text-xs font-semibold text-neutral-900">
-            <span>Earnings</span>
-            <span className="w-16 text-right">Rate</span>
-            <span className="w-28 text-right">Amount</span>
-          </div>
-          <div className="min-h-[7rem] px-4 py-2 text-[13px] text-neutral-900">
-            {earnings.map((line) => (
-              <div
-                key={line.label}
-                className="mb-3 grid grid-cols-[1fr_auto_auto] items-start gap-2"
-              >
-                <div>
-                  <p>{line.label}</p>
-                  {line.detail ? (
-                    <p className="text-xs text-neutral-600">{line.detail}</p>
-                  ) : null}
-                </div>
-                <span className="w-16 text-right text-neutral-500">—</span>
-                <span className="w-28 text-right tabular-nums">
-                  {formatCurrency(line.amount, currency)}
-                </span>
-              </div>
-            ))}
-          </div>
-          <div className="flex items-center justify-between border-t border-neutral-800 px-4 py-2 text-[13px] font-semibold text-neutral-900">
-            <span>Total earnings</span>
-            <span className="tabular-nums">
-              {formatCurrency(totalEarnings, currency)}
-            </span>
-          </div>
+          <table className="w-full border-collapse text-[13px] text-neutral-900">
+            <thead>
+              <tr>
+                <th className="px-4 py-2 text-left text-xs font-semibold">
+                  Earnings
+                </th>
+                <th className="px-4 py-2 w-16 text-right text-xs font-semibold">
+                  Rate
+                </th>
+                <th className="px-4 py-2 w-28 text-right text-xs font-semibold">
+                  Amount
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {earnings.map((line) => (
+                <tr key={line.label} className="align-top">
+                  <td className="px-4 py-2">
+                    <div className="space-y-0.5">
+                      <p>{line.label}</p>
+                      {line.detail ? (
+                        <p className="text-xs text-neutral-600">{line.detail}</p>
+                      ) : null}
+                    </div>
+                  </td>
+                  <td className="px-4 py-2 text-right text-neutral-500">—</td>
+                  <td className="px-4 py-2 text-right tabular-nums">
+                    {formatCurrency(line.amount, currency)}
+                  </td>
+                </tr>
+              ))}
+              <tr className="border-t border-neutral-800">
+                <td className="px-4 py-2 font-semibold">Total earnings</td>
+                <td className="px-4 py-2" />
+                <td className="px-4 py-2 text-right tabular-nums font-semibold">
+                  {formatCurrency(totalEarnings, currency)}
+                </td>
+              </tr>
+            </tbody>
+          </table>
         </div>
 
         <div>
-          <div className="grid grid-cols-[1fr_auto_auto] gap-2 border-b border-neutral-800 bg-neutral-50 px-4 py-2 text-xs font-semibold text-neutral-900">
-            <span>Deductions</span>
-            <span className="w-16 text-right">Rate</span>
-            <span className="w-28 text-right">Amount</span>
-          </div>
-          <div className="min-h-[7rem] px-4 py-2 text-[13px] text-neutral-900">
-            {deductions.length === 0 ? (
-              <p className="text-neutral-500">No deductions</p>
-            ) : (
-              deductions.map((line, index) => (
-                <div
-                  key={`${line.label}-${index}`}
-                  className="mb-3 grid grid-cols-[1fr_auto_auto] items-start gap-2"
-                >
-                  <div>
-                    <p>{line.label}</p>
-                    {line.detail ? (
-                      <p className="text-xs text-neutral-600">{line.detail}</p>
-                    ) : null}
-                  </div>
-                  <span className="w-16 text-right text-neutral-500">—</span>
-                  <span className="w-28 text-right tabular-nums">
-                    {line.amount > 0
-                      ? formatCurrency(line.amount, currency)
-                      : ""}
-                  </span>
-                </div>
-              ))
-            )}
-          </div>
-          <div className="flex items-center justify-between border-t border-neutral-800 px-4 py-2 text-[13px] font-semibold text-neutral-900">
-            <span>Total deductions</span>
-            <span className="tabular-nums">
-              {formatCurrency(payroll.totalDeduction, currency)}
-            </span>
-          </div>
+          <table className="w-full border-collapse text-[13px] text-neutral-900">
+            <thead>
+              <tr>
+                <th className="px-4 py-2 text-left text-xs font-semibold">
+                  Deductions
+                </th>
+                <th className="px-4 py-2 w-16 text-right text-xs font-semibold">
+                  Rate
+                </th>
+                <th className="px-4 py-2 w-28 text-right text-xs font-semibold">
+                  Amount
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {deductions.length === 0 ? (
+                <tr>
+                  <td colSpan={3} className="px-4 py-3 text-neutral-500">
+                    No deductions
+                  </td>
+                </tr>
+              ) : (
+                deductions.map((line, index) => (
+                  <tr
+                    key={`${line.label}-${index}`}
+                    className="align-top"
+                  >
+                    <td className="px-4 py-2">
+                      <div className="space-y-0.5">
+                        <p>{line.label}</p>
+                        {line.detail ? (
+                          <p className="text-xs text-neutral-600">{line.detail}</p>
+                        ) : null}
+                      </div>
+                    </td>
+                    <td className="px-4 py-2 text-right text-neutral-500">—</td>
+                    <td className="px-4 py-2 text-right tabular-nums">
+                      {line.amount > 0 ? formatCurrency(line.amount, currency) : ""}
+                    </td>
+                  </tr>
+                ))
+              )}
+              <tr className="border-t border-neutral-800">
+                <td className="px-4 py-2 font-semibold">Total deductions</td>
+                <td className="px-4 py-2" />
+                <td className="px-4 py-2 text-right tabular-nums font-semibold">
+                  {formatCurrency(payroll.totalDeduction, currency)}
+                </td>
+              </tr>
+            </tbody>
+          </table>
         </div>
       </section>
 

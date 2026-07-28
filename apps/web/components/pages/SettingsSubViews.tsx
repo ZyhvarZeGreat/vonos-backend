@@ -94,6 +94,7 @@ function DefaultInvoiceSettingsView() {
             <MenuSelect
               value={schemeId}
               onChange={setSchemeId}
+              searchable={false}
               options={settings.schemes.map((scheme) => ({
                 value: scheme.id,
                 label: scheme.prefix
@@ -107,6 +108,7 @@ function DefaultInvoiceSettingsView() {
             <MenuSelect
               value={layoutId}
               onChange={setLayoutId}
+              searchable={false}
               options={settings.layouts.map((layout) => ({
                 value: layout.id,
                 label: `${layout.name} (${layout.design})`,
@@ -585,6 +587,7 @@ function DefaultBarcodeSettingsView() {
             <MenuSelect
               value={barcodeType}
               onChange={setBarcodeType}
+              searchable={false}
               options={[
                 { value: "C128", label: "C128" },
                 { value: "C39", label: "C39" },
@@ -600,6 +603,7 @@ function DefaultBarcodeSettingsView() {
             <MenuSelect
               value={stickerSheet}
               onChange={setStickerSheet}
+              searchable={false}
               options={[
                 { value: "20", label: "20 per sheet (4 × 5)" },
                 { value: "30", label: "30 per sheet (3 × 10)" },

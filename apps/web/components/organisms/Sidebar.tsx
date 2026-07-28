@@ -24,7 +24,6 @@ import {
   FileText,
   FolderTree,
   Grid3x3,
-  Headphones,
   Layers,
   Home,
   LayoutDashboard,
@@ -49,7 +48,6 @@ import {
   Settings,
   ShieldCheck,
   ShoppingCart,
-  Sparkles,
   Star,
   Tags,
   TrendingUp,
@@ -191,6 +189,11 @@ export interface SidebarProps {
   mobileOpen?: boolean;
   onMobileClose?: () => void;
   showPromo?: boolean;
+  /**
+   * Force Ultimate POS sidebar chrome even when `tenantCode` is not an
+   * operating tenant (e.g. VAG admin shell with code `"VAG"`).
+   */
+  forceHq6?: boolean;
   className?: string;
 }
 
@@ -207,6 +210,7 @@ export function Sidebar({
   mobileOpen = false,
   onMobileClose,
   showPromo = true,
+  forceHq6 = false,
   className,
 }: SidebarProps) {
   const router = useRouter();
@@ -222,7 +226,7 @@ export function Sidebar({
     () => dateRangePresetToApiBounds(dateRange, new Date(), customDateRange),
     [customDateRange, dateRange],
   );
-  const isHq6 = isHq6Tenant(tenantCode);
+  const isHq6 = forceHq6 || isHq6Tenant(tenantCode);
   const [isDesktop, setIsDesktop] = useState(false);
 
   useEffect(() => {
@@ -481,43 +485,15 @@ export function Sidebar({
             <p className="mb-4 text-sm leading-snug text-muted">
               Add two-step verification for an extra layer of protection at sign-in.
             </p>
-            <button
-              type="button"
-              className="mb-2 w-full rounded-lg bg-[var(--color-brand-primary)] py-2 text-base font-medium text-white transition-colors hover:bg-[var(--color-brand-primary-hover)]"
+            <Link
+              href={
+                tenantCode === "VAG"
+                  ? "/admin/security"
+                  : `/${tenantCode}/settings`
+              }
+              className="mb-2 block w-full rounded-lg bg-[var(--color-brand-primary)] py-2 text-center text-base font-medium text-white transition-colors hover:bg-[var(--color-brand-primary-hover)]"
             >
               Enable two-step verification
-            </button>
-            <button
-              type="button"
-              className="w-full rounded-lg border border-border bg-card py-2 text-base font-medium text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-surface-nav-hover)]"
-            >
-              Learn more
-            </button>
-          </div>
-        ) : null}
-
-        {/* Bottom links — not on VA HQ6 sidebar */}
-        {!effectiveCollapsed && tenantCode !== "VA" ? (
-          <div className="mt-2 flex flex-col gap-0.5">
-            <Link
-              href="#"
-              className={cn(
-                "flex items-center gap-3 rounded-md px-2 py-2 text-[var(--color-text-nav)] transition-colors hover:bg-[var(--color-surface-nav-hover)] hover:text-[var(--color-text-nav-active)]",
-                typographyRoles.navItem,
-              )}
-            >
-              <Headphones className="sidebar-icon" />
-              Support
-            </Link>
-            <Link
-              href="#"
-              className={cn(
-                "flex items-center gap-3 rounded-md px-2 py-2 text-[var(--color-text-nav)] transition-colors hover:bg-[var(--color-surface-nav-hover)] hover:text-[var(--color-text-nav-active)]",
-                typographyRoles.navItem,
-              )}
-            >
-              <Sparkles className="sidebar-icon" />
-              What&apos;s New?
             </Link>
           </div>
         ) : null}

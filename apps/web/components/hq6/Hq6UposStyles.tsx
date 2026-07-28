@@ -1,39 +1,41 @@
 "use client";
 
-import { useEffect } from "react";
-
-const UPOS_STYLESHEETS = [
-  "/upos/tailwind-app.css",
-  "/upos/vendor.css",
-  "/upos/app.css",
-  "/upos/bridge.css",
-  "/upos/hq6-users-lift.css",
-] as const;
+import { useLayoutEffect } from "react";
+import {
+  ensureUposStylesheets,
+  releaseUposStyles,
+  removeUposStylesheets,
+  retainUposStyles,
+  uposStyleConsumerCount,
+} from "@/lib/upos/styles";
 
 /**
- * Loads Ultimate POS vendor + app CSS for HQ6 tenants.
- * These are the real UPOS stylesheets (copied from UltimatePOS-V7.1/public/css).
+ * Loads Ultimate POS vendor + app CSS for HQ6 / admin shells.
+ * Removes stylesheets when the last consumer unmounts so auth pages
+ * are not broken by leftover AdminLTE rules.
  */
-export function Hq6UposStyles() {
-  useEffect(() => {
-    const created: HTMLLinkElement[] = [];
-    for (const href of UPOS_STYLESHEETS) {
-      const id = `upos-css-${href.replace(/\W+/g, "-")}`;
-      if (document.getElementById(id)) continue;
-      const link = document.createElement("link");
-      link.id = id;
-      link.rel = "stylesheet";
-      link.href = href;
-      document.head.appendChild(link);
-      created.push(link);
-    }
+export function Hq6UposStyles({
+  onReady,
+}: {
+  onReady?: () => void;
+} = {}) {
+  useLayoutEffect(() => {
+    retainUposStyles();
     document.documentElement.classList.add("upos-hq6");
+
+    let cancelled = false;
+    void ensureUposStylesheets().then(() => {
+      if (!cancelled) onReady?.();
+    });
+
     return () => {
+      cancelled = true;
+      releaseUposStyles();
+      if (uposStyleConsumerCount() > 0) return;
       document.documentElement.classList.remove("upos-hq6");
-      // Keep stylesheets cached across navigations within HQ6;
-      // only remove class so non-HQ6 routes aren't forced into UPOS skin.
+      removeUposStylesheets();
     };
-  }, []);
+  }, [onReady]);
 
   return null;
 }

@@ -915,6 +915,7 @@ export function AddPurchaseView() {
             <MenuSelect
               value={form.supplierId}
               placeholder="Select supplier…"
+              searchable
               onChange={(supplierId) => patchForm({ supplierId })}
               options={[
                 { value: "", label: "Select supplier…" },

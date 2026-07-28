@@ -636,12 +636,13 @@ export function AddSaleForm({
                 <span>
                   Customer <span className="req">*</span>:
                 </span>
-                <div className="input-group" style={{ display: "flex", width: "100%" }}>
-                  <span className="input-group-addon" style={{ display: "flex", alignItems: "center" }}>
-                    <i className="fa fa-user" aria-hidden />
-                  </span>
-                  <div className="min-w-0 flex-1">
+                <div className="tw-flex tw-w-full tw-items-stretch tw-gap-2">
+                  <div className="input-group hq6-input-group-select tw-min-w-0 tw-flex-1">
+                    <span className="input-group-addon">
+                      <i className="fa fa-user" aria-hidden />
+                    </span>
                     <AsyncMenuSelect
+                      className="hq6-input-group-select-field"
                       value={form.customerId}
                       selectedLabel={form.customerName || "Walk-In Customer"}
                       placeholder="Walk-In Customer"
@@ -671,23 +672,22 @@ export function AddSaleForm({
                         }
                       }}
                     />
+                    <span className="input-group-btn">
+                      <button
+                        type="button"
+                        className="btn btn-default bg-white btn-flat"
+                        title="Add customer"
+                        onClick={() => setQuickCustomerOpen((open) => !open)}
+                      >
+                        <i className="fa fa-plus-circle text-primary fa-lg" aria-hidden />
+                      </button>
+                    </span>
                   </div>
-                  <span className="input-group-btn">
-                    <button
-                      type="button"
-                      className="btn btn-default bg-white btn-flat"
-                      title="Add customer"
-                      onClick={() => setQuickCustomerOpen((open) => !open)}
-                    >
-                      <i className="fa fa-plus-circle text-primary fa-lg" aria-hidden />
-                    </button>
-                  </span>
                   <button
                     type="button"
-                    className="hq6-btn hq6-btn-blue shrink-0"
+                    className="hq6-btn hq6-btn-blue tw-shrink-0"
                     title="Customer info"
                     onClick={() => setCustomerInfoOpen((open) => !open)}
-                    style={{ marginLeft: 4 }}
                   >
                     <Info className="h-4 w-4" />
                   </button>

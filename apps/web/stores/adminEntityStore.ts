@@ -12,7 +12,7 @@ import {
 
 /**
  * `null` = consolidated group view.
- * Otherwise a VAG view unit (VA, VW, or SP = VISP+VSP combined).
+ * Otherwise a VAG view unit (VA, VW, or SP = VSP primary + VISP data).
  */
 export type AdminViewingCode = VagViewUnitId | null;
 

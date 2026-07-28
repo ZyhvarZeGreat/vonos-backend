@@ -16,10 +16,15 @@ import { formatCurrency, formatNumber } from "@/lib/utils/formatCurrency";
 export interface ItemRecordModalProps {
   itemId: string | null;
   onClose: () => void;
+  showBack?: boolean;
 }
 
 /** Product / item detail modal for reports (and other list contexts). */
-export function ItemRecordModal({ itemId, onClose }: ItemRecordModalProps) {
+export function ItemRecordModal({
+  itemId,
+  onClose,
+  showBack = false,
+}: ItemRecordModalProps) {
   const isHq6 = useIsVaHq6();
   const { tenantId } = useRouteTenant();
 
@@ -34,14 +39,19 @@ export function ItemRecordModal({ itemId, onClose }: ItemRecordModalProps) {
   if (isHq6) {
     if (itemId && isLoading) {
       return (
-        <Hq6Modal open onClose={onClose} title="View Product" size="2xl">
-          <p className="py-8 text-center text-sm text-muted">Loading…</p>
+        <Hq6Modal open onClose={onClose} title="View Product" size="2xl" showBack={showBack}>
+          <div className="space-y-3 py-2" aria-busy>
+            <div className="h-4 w-1/3 animate-pulse rounded bg-gray-200" />
+            <div className="h-3 w-full animate-pulse rounded bg-gray-200" />
+            <div className="mt-4 h-40 w-full animate-pulse rounded-lg bg-gray-100" />
+            <p className="pt-2 text-center text-sm text-muted">Loading…</p>
+          </div>
         </Hq6Modal>
       );
     }
     if (itemId && error) {
       return (
-        <Hq6Modal open onClose={onClose} title="View Product" size="2xl">
+        <Hq6Modal open onClose={onClose} title="View Product" size="2xl" showBack={showBack}>
           <p className="py-8 text-center text-sm text-error">
             Could not load this product.
           </p>
@@ -63,6 +73,7 @@ export function ItemRecordModal({ itemId, onClose }: ItemRecordModalProps) {
       title={item ? item.name : "Product details"}
       subtitle={item?.sku ? `SKU ${item.sku}` : undefined}
       onClose={onClose}
+      showBack={showBack}
       isLoading={isLoading}
       error={error ? "Could not load this product." : null}
     >

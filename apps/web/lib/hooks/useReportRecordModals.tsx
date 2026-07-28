@@ -12,7 +12,7 @@ import { ReportRowDetailModal } from "@/components/organisms/ReportRowDetailModa
 import { SaleRecordModal } from "@/components/organisms/SaleRecordModal";
 import { Hq6PurchaseViewModal } from "@/components/hq6/Hq6PurchaseViewModal";
 import { useIsVaHq6 } from "@/lib/hooks/useIsVaHq6";
-import { useTenantId } from "@/lib/hooks/useRouteTenant";
+import { useRouteTenant, useTenantId } from "@/lib/hooks/useRouteTenant";
 import {
   prefetchCustomerListModals,
   prefetchExpenseListModals,
@@ -22,6 +22,7 @@ import {
   prefetchPurchaseListModals,
   prefetchSaleListModals,
 } from "@/lib/query/prefetchListModals";
+import { getTenantByCode, isTenantCode } from "@/lib/registries/tenants";
 import { reportRowRecordId } from "@/lib/utils/recordDetailPath";
 
 type ReportRecordRow = ReportsTableRow & {
@@ -30,6 +31,8 @@ type ReportRecordRow = ReportsTableRow & {
   itemId?: string | number;
   customerId?: string | number;
   recordType?: string;
+  tenantCode?: string;
+  entity?: string;
 };
 
 const PURCHASE_TYPES = new Set([
@@ -41,15 +44,16 @@ const PURCHASE_TYPES = new Set([
 
 /**
  * Opens report row details as modals — never navigates away to list/detail pages.
- * Covers sale, customer, item, purchase/movement, job, expense, and a generic
- * fallback for payment / ledger / other row shapes.
+ * Prefetches like invoice View (data warms before paint); modals show a skeleton
+ * while the query resolves. Back returns to the report table.
  */
 export function useReportRecordModals(options?: {
   /** Called before opening a modal (e.g. set admin viewing tenant). */
   onBeforeOpen?: () => void;
 }) {
   const isHq6 = useIsVaHq6();
-  const tenantId = useTenantId();
+  const scopedTenantId = useTenantId();
+  const { tenantId: routeTenantId } = useRouteTenant();
   const queryClient = useQueryClient();
   const [saleModalId, setSaleModalId] = useState<string | null>(null);
   const [customerModalId, setCustomerModalId] = useState<string | null>(null);
@@ -59,9 +63,18 @@ export function useReportRecordModals(options?: {
   const [expenseModalId, setExpenseModalId] = useState<string | null>(null);
   const [detailRow, setDetailRow] = useState<ReportsTableRow | null>(null);
 
+  const resolveTenantId = (row?: ReportRecordRow): string | null => {
+    const code = String(row?.tenantCode ?? row?.entity ?? "");
+    if (isTenantCode(code)) {
+      return getTenantByCode(code)?.tenantId ?? null;
+    }
+    return scopedTenantId ?? routeTenantId;
+  };
+
   const openReportRecord = (row: ReportRecordRow) => {
     const recordType = String(row.recordType ?? "");
     const recordId = reportRowRecordId(row);
+    const tenantId = resolveTenantId(row);
 
     if (recordType === "item") {
       const itemId =
@@ -185,6 +198,7 @@ export function useReportRecordModals(options?: {
         options?.onBeforeOpen?.();
         const saleId =
           action.payload.saleId != null ? String(action.payload.saleId) : "";
+        const tenantId = resolveTenantId();
         if (saleId) {
           if (tenantId) prefetchSaleListModals(queryClient, tenantId, saleId);
           setSaleModalId(saleId);
@@ -212,21 +226,25 @@ export function useReportRecordModals(options?: {
         saleId={saleModalId}
         listSlug="sales"
         showFullPageLink={false}
+        showBack
         onClose={() => setSaleModalId(null)}
       />
       <CustomerRecordModal
         customerId={customerModalId}
         showFullPageLink={false}
+        showBack
         onClose={() => setCustomerModalId(null)}
       />
       <ItemRecordModal
         itemId={itemModalId}
+        showBack
         onClose={() => setItemModalId(null)}
       />
       {isHq6 ? (
         <Hq6PurchaseViewModal
           open={Boolean(movementModalId)}
           purchaseId={movementModalId}
+          showBack
           onClose={() => setMovementModalId(null)}
         />
       ) : (
@@ -234,19 +252,23 @@ export function useReportRecordModals(options?: {
           movementId={movementModalId}
           listSlug="inbound"
           showFullPageLink={false}
+          showBack
           onClose={() => setMovementModalId(null)}
         />
       )}
       <JobRecordModal
         jobId={jobModalId}
+        showBack
         onClose={() => setJobModalId(null)}
       />
       <ExpenseRecordModal
         expenseId={expenseModalId}
+        showBack
         onClose={() => setExpenseModalId(null)}
       />
       <ReportRowDetailModal
         row={detailRow}
+        showBack
         onClose={() => setDetailRow(null)}
       />
     </>

@@ -10,24 +10,23 @@ export function KpiRowSkeleton({
 }) {
   return (
     <div
-      className={cn(
-        "grid grid-cols-1 gap-6 md:grid-cols-2",
-        count > 4 ? "lg:grid-cols-3" : "lg:grid-cols-4",
-        className,
-      )}
+      className={cn("hq6-kpi-row grid gap-4", className)}
+      style={{
+        gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 15.5rem), 1fr))",
+      }}
       aria-busy
       aria-label="Loading metrics"
     >
       {Array.from({ length: count }).map((_, index) => (
         <div
           key={index}
-          className="flex h-[var(--space-kpi-height)] flex-col justify-between rounded-xl border border-border bg-card p-5 shadow-sm"
+          className="hq6-kpi-card flex min-h-[var(--space-kpi-height)] flex-col justify-between rounded-xl border border-border bg-card p-5 shadow-sm"
         >
           <div className="flex items-center gap-3">
-            <Skeleton className="h-8 w-8 shrink-0 rounded-lg" />
+            <Skeleton className="h-9 w-9 shrink-0 rounded-lg" />
             <Skeleton className="h-4 w-28" />
           </div>
-          <div className="mt-auto flex items-baseline gap-2">
+          <div className="mt-3 flex items-baseline gap-2">
             <Skeleton className="h-9 w-24" />
             <Skeleton className="h-4 w-16" />
           </div>
@@ -204,38 +203,29 @@ export function DataTableSkeleton({
 }
 
 /**
- * Route-level list placeholder: keep title / filter / toolbar chrome as
- * empty structure (no shimmer). Only the table body rows use skeletons.
+ * Route-level list placeholder: text chrome only — TopProgressBar covers load.
+ * No row skeletons; keep the page readable while the chunk/data arrives.
  */
 export function Hq6ListRouteSkeleton({
-  rows = 10,
-  columns = 6,
+  title = "All products",
 }: {
   rows?: number;
   columns?: number;
+  title?: string;
 }) {
   return (
     <div className="hq6-page" aria-busy aria-label="Loading list">
       <section className="hq6-content-header">
-        <h1>
-          <span className="invisible select-none">Products</span>
-        </h1>
+        <h1 className="text-foreground">{title}</h1>
       </section>
 
-      <div className="hq6-card mb-4 min-h-[4.5rem] border border-[var(--hq6-border)] bg-white p-3" />
+      <div className="hq6-card mb-4 border border-[var(--hq6-border)] bg-white p-3">
+        <p className="text-sm text-muted">Filters and search appear when ready.</p>
+      </div>
 
       <div className="hq6-card hq6-products-box overflow-x-clip">
-        <div className="hq6-tab-row min-h-[2.75rem] border-b border-[var(--hq6-border)]" />
-        <div className="min-h-[3rem] border-b border-[var(--hq6-border)] px-3 py-2" />
-        <div className="hq6-table-wrap relative">
-          <DataTableSkeleton
-            rows={rows}
-            columns={columns}
-            embedded
-            skeletonHeaders={false}
-            withFilters={false}
-            withPagination={false}
-          />
+        <div className="min-h-[12rem] px-3 py-6">
+          <p className="text-sm text-muted">Loading records…</p>
         </div>
       </div>
     </div>

@@ -105,14 +105,21 @@ export function UposSidebar({
   return (
     <aside
       className={cn(
-        "side-bar tw-relative tw-hidden tw-h-full tw-bg-white tw-w-64 xl:tw-w-64 lg:tw-flex lg:tw-flex-col tw-shrink-0",
-        mobileOpen && "tw-flex small-view-side-active",
+        /*
+          Do not combine tw-hidden + tw-flex: UPOS CSS lists .tw-hidden after
+          .tw-flex, so the drawer stayed display:none on mobile. Desktop uses
+          lg:tw-flex; mobile uses small-view-side-active (+ !important CSS).
+        */
+        "side-bar tw-relative tw-h-full tw-bg-white tw-w-64 xl:tw-w-64 tw-shrink-0 tw-flex-col",
+        mobileOpen
+          ? "small-view-side-active tw-flex"
+          : "tw-hidden lg:tw-flex",
         className,
       )}
     >
       <Link
         href={homeHref}
-        className="tw-flex tw-items-center tw-justify-center tw-w-full tw-border-r tw-h-15 theme-logo-bg tw-shrink-0 tw-border-primary-500/30"
+        className="tw-relative tw-flex tw-items-center tw-justify-center tw-w-full tw-border-r tw-h-15 theme-logo-bg tw-shrink-0 tw-border-primary-500/30"
       >
         <p className="tw-text-lg tw-font-medium tw-text-white side-bar-heading tw-text-center">
           {tenantName ?? "Business"}{" "}
@@ -121,6 +128,16 @@ export function UposSidebar({
             title="Online"
           />
         </p>
+        {mobileOpen && onMobileClose ? (
+          <button
+            type="button"
+            className="hq6-sb-mobile-close"
+            aria-label="Close sidebar"
+            onClick={onMobileClose}
+          >
+            ×
+          </button>
+        ) : null}
       </Link>
 
       <div className="tw-px-3 tw-pt-2 tw-pb-1 tw-border-r tw-border-gray-200 tw-shrink-0">

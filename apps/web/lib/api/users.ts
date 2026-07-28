@@ -214,3 +214,15 @@ export async function createUser(
 
   return response.json();
 }
+
+export async function deactivateUser(
+  id: string,
+  options?: { tenantId?: string | null },
+): Promise<{ user: User }> {
+  const path = withTenantQuery(`/users/${id}`, options?.tenantId ?? undefined);
+  const response = await apiFetch(path, { method: "DELETE" });
+  if (!response.ok) {
+    return parseUserMutationError(response, "Failed to deactivate user");
+  }
+  return response.json();
+}

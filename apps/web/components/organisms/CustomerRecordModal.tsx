@@ -29,6 +29,7 @@ export interface CustomerRecordModalProps {
   onClose: () => void;
   /** When false, hide the "Open full page" link. */
   showFullPageLink?: boolean;
+  showBack?: boolean;
 }
 
 export function CustomerRecordModal({
@@ -36,6 +37,7 @@ export function CustomerRecordModal({
   initialCustomer = null,
   onClose,
   showFullPageLink = true,
+  showBack = false,
 }: CustomerRecordModalProps) {
   const router = useRouter();
   const { tenantId, tenantName, tenantCode } = useRouteTenant();
@@ -125,6 +127,7 @@ export function CustomerRecordModal({
             : undefined
         }
         onClose={onClose}
+        showBack={showBack}
         fullPageHref={
           showFullPageLink && customerId && tenantCode
             ? `/${tenantCode}/customers/${customerId}`

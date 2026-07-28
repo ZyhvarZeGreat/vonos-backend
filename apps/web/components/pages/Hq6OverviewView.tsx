@@ -6,6 +6,7 @@
  */
 import {
   useCallback,
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -13,7 +14,10 @@ import {
 } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ChartPanel } from "@/components/organisms/ChartPanel";
-import { DateRangeDropdown, getDateRangeLabel } from "@/components/molecules/DateRangeDropdown";
+import {
+  DateRangeDropdown,
+  getDateRangeLabel,
+} from "@/components/molecules/DateRangeDropdown";
 import { Spinner } from "@/components/atoms/Spinner";
 import {
   getVaHq6Home,
@@ -24,7 +28,6 @@ import {
 import { useListPageFilters } from "@/lib/hooks/useListPageFilters";
 import { useRouteTenant } from "@/lib/hooks/useRouteTenant";
 import { useAuthStore } from "@/stores/authStore";
-import type { CustomDateRange, DateRangePreset } from "@/stores/uiStore";
 import { formatHq6Currency } from "@/lib/utils/hq6Format";
 import { formatCurrencyCompact } from "@/lib/utils/formatCurrency";
 import { downloadCsv } from "@/lib/utils/exportCsv";
@@ -160,34 +163,6 @@ function Hq6HomeKpiCard({
           </div>
         </div>
       </div>
-    </div>
-  );
-}
-
-function Hq6FilterByDateButton({
-  value,
-  onChange,
-  customValue,
-  onCustomChange,
-}: {
-  value: DateRangePreset;
-  onChange: (value: DateRangePreset) => void;
-  customValue: CustomDateRange | null;
-  onCustomChange: (range: CustomDateRange | null) => void;
-}) {
-  const label = getDateRangeLabel(value, customValue);
-
-  return (
-    <div className="tw-mt-2 sm:tw-w-1/3 md:tw-w-1/4 tw-text-right tw-relative">
-      <DateRangeDropdown
-        value={value}
-        onChange={onChange}
-        customValue={customValue}
-        onCustomChange={onCustomChange}
-        triggerLabel={`Filter by date · ${label}`}
-        align="end"
-        className="hq6-home-date-filter"
-      />
     </div>
   );
 }
@@ -490,13 +465,18 @@ export function Hq6OverviewView() {
     useListPageFilters({
       unboundedAllTime: false,
       isolateDateRange: true,
-      defaultDateRange: "last_30_days",
+      defaultDateRange: "last_7_days",
     });
   const [locationCode, setLocationCode] = useState("");
   const [panelLocationCode, setPanelLocationCode] = useState("");
 
+  useEffect(() => {
+    setLocationCode("");
+    setPanelLocationCode("");
+  }, [tenantId]);
+
   const overviewQuery = useQuery({
-    queryKey: ["vaHq6Home", tenantId, bounds?.from, bounds?.to],
+    queryKey: ["hq6Home", tenantId, bounds?.from, bounds?.to],
     queryFn: () =>
       getVaHq6Home({
         from: bounds?.from,
@@ -554,36 +534,44 @@ export function Hq6OverviewView() {
       {/* Blade: tw-pb-6 tw-bg-gradient-to-r tw-from-*-800 tw-to-*-900 xl:tw-pb-0 */}
       <div className="tw-pb-6 theme-header-bg xl:tw-pb-0">
         <div className="tw-px-5 tw-pt-3">
-          <div className="sm:tw-flex sm:tw-items-center sm:tw-justify-between sm:tw-gap-12">
-            <div className="tw-mt-2 sm:tw-w-1/2 md:tw-w-1/2">
-              <h1 className="tw-text-2xl md:tw-text-4xl tw-tracking-tight tw-text-primary-800 tw-font-semibold text-white tw-mb-10 md:tw-mb-0">
+          <div className="tw-flex tw-flex-col tw-gap-3 sm:tw-flex-row sm:tw-items-center sm:tw-justify-between sm:tw-gap-4">
+            <div className="tw-min-w-0 sm:tw-flex-1">
+              <h1 className="tw-text-2xl lg:tw-text-4xl tw-tracking-tight tw-text-primary-800 tw-font-semibold text-white">
                 Welcome {firstName}, 👋
               </h1>
             </div>
 
-            <div className="tw-mt-2 sm:tw-w-1/3 md:tw-w-1/4">
-              <select
-                id="dashboard_location"
-                className="form-control select2"
-                value={locationCode}
-                onChange={(e) => setLocationCode(e.target.value)}
-                aria-label="Select location"
-              >
-                <option value="">Select location</option>
-                {locations.map((loc) => (
-                  <option key={loc.code} value={loc.code}>
-                    {loc.name}
-                  </option>
-                ))}
-              </select>
-            </div>
+            {/* Location + date: compact, side-by-side, right-aligned */}
+            <div className="hq6-home-filters tw-ml-auto tw-flex tw-w-auto tw-shrink-0 tw-items-center tw-justify-end tw-gap-2">
+              <div className="hq6-home-filter">
+                <select
+                  id="dashboard_location"
+                  className="form-control select2"
+                  value={locationCode}
+                  onChange={(e) => setLocationCode(e.target.value)}
+                  aria-label="Select location"
+                >
+                  <option value="">Select location</option>
+                  {locations.map((loc) => (
+                    <option key={loc.code} value={loc.code}>
+                      {loc.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
 
-            <Hq6FilterByDateButton
-              value={dateRange}
-              onChange={setDateRange}
-              customValue={customDateRange}
-              onCustomChange={setCustomDateRange}
-            />
+              <div className="hq6-home-filter">
+                <DateRangeDropdown
+                  id="dashboard_date_filter"
+                  value={dateRange}
+                  onChange={setDateRange}
+                  customValue={customDateRange}
+                  onCustomChange={setCustomDateRange}
+                  align="end"
+                  className="tw-w-full"
+                />
+              </div>
+            </div>
           </div>
 
           {/* Row 1 KPIs — Total Sales / Net / Invoice due / Total Sell Return */}

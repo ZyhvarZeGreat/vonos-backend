@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
+import { usePathname } from "next/navigation";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   ArrowDown,
@@ -29,6 +30,11 @@ import {
   type TableDensity,
 } from "@/lib/utils/tableColumnAlign";
 import { useTableViewPrefs } from "@/lib/hooks/useTableViewPrefs";
+import {
+  useListTableBridge,
+  useRegisterListTable,
+  type ListTableBridgeApi,
+} from "@/lib/listTableBridge";
 
 export interface ColumnConfig<T> {
   key: keyof T | string;
@@ -201,10 +207,15 @@ export function DataTable<T extends { id: string }>({
   toolbar,
   bulkActions,
 }: DataTableProps<T>) {
-  const prefs = useTableViewPrefs(tableId);
+  const listBridge = useListTableBridge();
+  const pathname = usePathname();
+  const resolvedTableId =
+    tableId ?? (listBridge ? `list:${pathname}` : undefined);
+  const colVisEnabled = enableColumnVisibility || Boolean(listBridge);
+  const prefs = useTableViewPrefs(resolvedTableId);
   const density = densityProp ?? prefs.density;
   const setDensity = onDensityChange ?? prefs.setDensity;
-  const showDensity = showDensityControl ?? Boolean(tableId || onDensityChange);
+  const showDensity = showDensityControl ?? Boolean(resolvedTableId || onDensityChange);
   const rowHeight = virtualRowHeight ?? TABLE_DENSITY_PX[density];
   const upos = (variant ?? (embedded ? "upos" : "default")) === "upos";
   const tableClassName = upos
@@ -236,7 +247,7 @@ export function DataTable<T extends { id: string }>({
   const columnsMenuRef = useRef<HTMLDivElement>(null);
 
   const [hiddenKeys, setHiddenKeys] = useState<Set<string>>(() => {
-    if (!enableColumnVisibility || !prefs.visibleColumnKeys) return new Set();
+    if (!colVisEnabled || !prefs.visibleColumnKeys) return new Set();
     const allowed = new Set(prefs.visibleColumnKeys);
     return new Set(
       columns
@@ -246,7 +257,7 @@ export function DataTable<T extends { id: string }>({
   });
 
   useEffect(() => {
-    if (!enableColumnVisibility || !prefs.visibleColumnKeys) return;
+    if (!colVisEnabled || !prefs.visibleColumnKeys) return;
     const allowed = new Set(prefs.visibleColumnKeys);
     setHiddenKeys(
       new Set(
@@ -255,7 +266,7 @@ export function DataTable<T extends { id: string }>({
           .map((c) => String(c.key)),
       ),
     );
-  }, [columns, enableColumnVisibility, prefs.visibleColumnKeys]);
+  }, [columns, colVisEnabled, prefs.visibleColumnKeys]);
 
   useEffect(() => {
     if (!columnsMenuOpen) return;
@@ -276,9 +287,9 @@ export function DataTable<T extends { id: string }>({
   const activeSortDirection = serverSort ? serverSort.sortDir : sortDirection;
 
   const visibleColumns = useMemo(() => {
-    if (!enableColumnVisibility) return columns;
+    if (!colVisEnabled) return columns;
     return columns.filter((c) => !hiddenKeys.has(String(c.key)));
-  }, [columns, enableColumnVisibility, hiddenKeys]);
+  }, [columns, colVisEnabled, hiddenKeys]);
 
   const filteredData = useMemo(() => {
     return data.filter((row) =>
@@ -339,6 +350,88 @@ export function DataTable<T extends { id: string }>({
     sortedData,
     useInternalPagination,
   ]);
+
+  const persistVisibleKeys = useCallback(
+    (nextHidden: Set<string>) => {
+      if (!colVisEnabled) return;
+      const visible = columns
+        .filter((c) => !nextHidden.has(String(c.key)))
+        .map((c) => String(c.key));
+      prefs.setVisibleColumnKeys(visible);
+    },
+    [colVisEnabled, columns, prefs],
+  );
+
+  const bridgeApi = useMemo<ListTableBridgeApi | null>(() => {
+    if (!listBridge) return null;
+    return {
+      getExportPayload: (filenameBase) => {
+        const exportCols = visibleColumns.filter(
+          (c) => String(c.key) !== "actions",
+        );
+        if (exportCols.length === 0) return null;
+        const rows = visibleData.map((row) => {
+          const record: Record<string, string | number | null | undefined> = {};
+          for (const col of exportCols) {
+            const key = String(col.key);
+            if (col.sortValue) {
+              const sorted = col.sortValue(row);
+              record[key] =
+                sorted === null || sorted === undefined ? "" : sorted;
+              continue;
+            }
+            record[key] = formatTableCellValue(
+              key,
+              row as Record<string, unknown>,
+            );
+          }
+          return record;
+        });
+        return {
+          filename: filenameBase,
+          columns: exportCols.map((c) => ({
+            key: String(c.key),
+            header: c.header,
+          })),
+          rows,
+        };
+      },
+      getColumns: () =>
+        columns.map((c) => ({
+          key: String(c.key),
+          label: c.header,
+          hideable: isColumnHideable(c),
+        })),
+      getVisibleKeys: () =>
+        columns
+          .filter((c) => !hiddenKeys.has(String(c.key)))
+          .map((c) => String(c.key)),
+      setVisibleKeys: (keys) => {
+        const allowed = new Set(keys);
+        const nextHidden = new Set(
+          columns
+            .filter((c) => isColumnHideable(c) && !allowed.has(String(c.key)))
+            .map((c) => String(c.key)),
+        );
+        setHiddenKeys(nextHidden);
+        persistVisibleKeys(nextHidden);
+      },
+      resetVisibleKeys: () => {
+        setHiddenKeys(new Set());
+        prefs.resetColumnVisibility();
+      },
+    };
+  }, [
+    columns,
+    hiddenKeys,
+    listBridge,
+    persistVisibleKeys,
+    prefs,
+    visibleColumns,
+    visibleData,
+  ]);
+
+  useRegisterListTable(bridgeApi);
 
   const rowVirtualizer = useVirtualizer({
     count: visibleData.length,
@@ -469,14 +562,6 @@ export function DataTable<T extends { id: string }>({
     offsetPagination?.onPageChange(1);
   }
 
-  function persistVisibleKeys(nextHidden: Set<string>) {
-    if (!enableColumnVisibility) return;
-    const visible = columns
-      .filter((c) => !nextHidden.has(String(c.key)))
-      .map((c) => String(c.key));
-    prefs.setVisibleColumnKeys(visible);
-  }
-
   function toggleColumnKey(key: string) {
     setHiddenKeys((prev) => {
       const next = new Set(prev);
@@ -536,7 +621,7 @@ export function DataTable<T extends { id: string }>({
 
   const selectedList = Array.from(selectedIds);
   const showBulkBar = selectable && selectedList.length > 0 && (bulkActions?.length ?? 0) > 0;
-  const showChrome = Boolean(toolbar) || showDensity || enableColumnVisibility;
+  const showChrome = Boolean(toolbar) || showDensity || colVisEnabled;
 
   // Sticky needs a real scrollport. When embedded (HQ6 wrap), the parent scrolls —
   // keep this layer overflow-visible so position:sticky isn't clipped. Otherwise
@@ -583,7 +668,7 @@ export function DataTable<T extends { id: string }>({
                 ))}
               </div>
             ) : null}
-            {enableColumnVisibility ? (
+            {colVisEnabled ? (
               <div className="relative" ref={columnsMenuRef}>
                 <button
                   type="button"
@@ -712,22 +797,36 @@ export function DataTable<T extends { id: string }>({
               </tr>
             </thead>
             <tbody>
-              {Array.from({ length: 8 }).map((_, rowIndex) => (
-                <tr key={rowIndex} className="border-b border-border last:border-0">
-                  {selectable ? (
-                    <td className="px-4 py-3">
-                      <Skeleton className="h-4 w-4 rounded" />
-                    </td>
-                  ) : null}
-                  {visibleColumns.map((column, colIndex) => (
-                    <td key={String(column.key)} className="px-4 py-3">
-                      <Skeleton
-                        className={cn("h-4", colIndex === 0 ? "w-32" : "w-20")}
-                      />
-                    </td>
-                  ))}
+              {upos ? (
+                <tr className="border-b border-border last:border-0">
+                  <td
+                    colSpan={visibleColumns.length + (selectable ? 1 : 0)}
+                    className="px-4 py-6 text-center text-muted"
+                  >
+                    Loading…
+                  </td>
                 </tr>
-              ))}
+              ) : (
+                Array.from({ length: 8 }).map((_, rowIndex) => (
+                  <tr
+                    key={rowIndex}
+                    className="border-b border-border last:border-0"
+                  >
+                    {selectable ? (
+                      <td className="px-4 py-3">
+                        <Skeleton className="h-4 w-4 rounded" />
+                      </td>
+                    ) : null}
+                    {visibleColumns.map((column, colIndex) => (
+                      <td key={String(column.key)} className="px-4 py-3">
+                        <Skeleton
+                          className={cn("h-4", colIndex === 0 ? "w-32" : "w-20")}
+                        />
+                      </td>
+                    ))}
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>

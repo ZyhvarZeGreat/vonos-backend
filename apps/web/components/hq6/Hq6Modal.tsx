@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useSyncExternalStore, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { X } from "lucide-react";
+import { ArrowLeft, X } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
 
 export interface Hq6ModalProps {
@@ -14,6 +14,13 @@ export interface Hq6ModalProps {
   size?: "sm" | "md" | "lg" | "xl" | "2xl";
   className?: string;
   bodyClassName?: string;
+  /**
+   * Optional back control (reports / deep links). Defaults to onClose when
+   * `showBack` is true and `onBack` is omitted.
+   */
+  showBack?: boolean;
+  onBack?: () => void;
+  backLabel?: string;
 }
 
 const SIZE_CLASS: Record<NonNullable<Hq6ModalProps["size"]>, string> = {
@@ -46,9 +53,13 @@ export function Hq6Modal({
   size = "md",
   className,
   bodyClassName,
+  showBack = false,
+  onBack,
+  backLabel = "Back",
 }: Hq6ModalProps) {
   const panelRef = useRef<HTMLDivElement>(null);
   const isClient = useIsClient();
+  const handleBack = onBack ?? onClose;
 
   useEffect(() => {
     if (!open) return;
@@ -90,7 +101,20 @@ export function Hq6Modal({
         )}
       >
         <div className="hq6-modal-header">
-          <h4 className="hq6-modal-title">{title}</h4>
+          <div className="tw-flex tw-min-w-0 tw-flex-1 tw-items-center tw-gap-2">
+            {showBack ? (
+              <button
+                type="button"
+                className="hq6-modal-btn hq6-modal-btn-close tw-inline-flex tw-shrink-0 tw-items-center tw-gap-1"
+                onClick={handleBack}
+                aria-label={backLabel}
+              >
+                <ArrowLeft className="h-4 w-4" />
+                <span className="tw-hidden sm:tw-inline">{backLabel}</span>
+              </button>
+            ) : null}
+            <h4 className="hq6-modal-title tw-min-w-0 tw-truncate">{title}</h4>
+          </div>
           <button
             type="button"
             className="hq6-modal-close"

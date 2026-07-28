@@ -18,11 +18,14 @@ export interface MenuSelectProps {
   placeholder?: string;
   className?: string;
   disabled?: boolean;
-  /** When false, hides the search field (default true). */
+  /** When false, uses a native UPOS select (default). Set true for searchable panels. */
   searchable?: boolean;
 }
 
-/** Select-like control with options that scroll inside the panel, not the page. */
+/**
+ * UPOS-aligned select. Non-searchable → native `select.form-control.select2`.
+ * Searchable → same chrome, portaled options panel.
+ */
 export function MenuSelect({
   id,
   value,
@@ -31,7 +34,7 @@ export function MenuSelect({
   placeholder = "Select…",
   className,
   disabled = false,
-  searchable = true,
+  searchable = false,
 }: MenuSelectProps) {
   const listId = useId();
   const [open, setOpen] = useState(false);
@@ -76,8 +79,35 @@ export function MenuSelect({
     };
   }, [open]);
 
+  if (!searchable) {
+    const hasEmptyOption = options.some((option) => option.value === "");
+    return (
+      <div className={cn("tw-relative tw-min-w-0 tw-w-full", className)}>
+        <select
+          id={id}
+          className="form-control select2"
+          value={value}
+          disabled={disabled}
+          aria-label={placeholder}
+          onChange={(event) => onChange(event.target.value)}
+        >
+          {!value && !hasEmptyOption ? (
+            <option value="" disabled>
+              {placeholder}
+            </option>
+          ) : null}
+          {options.map((option) => (
+            <option key={option.value || "__empty"} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      </div>
+    );
+  }
+
   return (
-    <div ref={anchorRef} className={cn("relative w-full", className)}>
+    <div ref={anchorRef} className={cn("tw-relative tw-min-w-0 tw-w-full", className)}>
       <button
         id={id}
         type="button"
@@ -86,48 +116,49 @@ export function MenuSelect({
         aria-expanded={open}
         aria-controls={listId}
         className={cn(
-          "inline-flex h-10 w-full items-center justify-between gap-2 rounded-md border border-border bg-surface px-3 text-left text-sm text-foreground",
-          "hover:bg-[var(--color-surface-muted)] disabled:cursor-not-allowed disabled:opacity-60",
-          !value && "text-muted",
+          "form-control select2 vonos-menu-select-trigger",
+          !value && "vonos-menu-select-placeholder",
         )}
         onClick={() => setOpen((current) => !current)}
       >
-        <span className="truncate">{selectedLabel}</span>
-        <ChevronDown className="h-4 w-4 shrink-0 text-muted" />
+        <span className="tw-min-w-0 tw-flex-1 tw-truncate tw-text-left">
+          {selectedLabel}
+        </span>
+        <ChevronDown className="tw-h-4 tw-w-4 tw-shrink-0 tw-opacity-60" />
       </button>
 
       <FloatingMenuPanel
         open={open}
         anchorRef={anchorRef}
         menuRef={menuRef}
-        className="overflow-hidden rounded-lg border border-border bg-card shadow-lg"
+        className="tw-overflow-hidden tw-rounded-lg tw-border tw-border-solid tw-border-gray-200 tw-bg-white tw-shadow-lg"
       >
         <div
-          className="flex max-h-[min(20rem,var(--vonos-floating-max-h,20rem))] flex-col"
+          className="tw-flex tw-max-h-[min(20rem,var(--vonos-floating-max-h,20rem))] tw-flex-col"
           style={{ width: menuWidth ? `${menuWidth}px` : "16rem" }}
         >
-          {searchable ? (
-            <div className="shrink-0 border-b border-border p-2">
-              <input
-                ref={inputRef}
-                type="search"
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                placeholder="Search…"
-                className="h-8 w-full rounded-md border border-border bg-surface px-2 text-sm outline-none focus:border-brand"
-                onClick={(event) => event.stopPropagation()}
-                onKeyDown={(event) => event.stopPropagation()}
-              />
-            </div>
-          ) : null}
+          <div className="tw-shrink-0 tw-border-b tw-border-solid tw-border-gray-200 tw-p-2.5">
+            <input
+              ref={inputRef}
+              type="search"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Search…"
+              className="form-control select2"
+              onClick={(event) => event.stopPropagation()}
+              onKeyDown={(event) => event.stopPropagation()}
+            />
+          </div>
           <div
             id={listId}
             role="listbox"
-            className="min-h-0 flex-1 overflow-y-auto overscroll-contain py-0.5"
+            className="tw-min-h-0 tw-flex-1 tw-overflow-y-auto tw-overscroll-contain tw-py-1"
             onWheel={(event) => event.stopPropagation()}
           >
             {filtered.length === 0 ? (
-              <p className="px-2.5 py-2 text-xs text-muted">No options</p>
+              <p className="tw-px-3.5 tw-py-2.5 tw-text-sm tw-text-gray-500">
+                No options
+              </p>
             ) : (
               filtered.map((option) => (
                 <button
@@ -136,8 +167,8 @@ export function MenuSelect({
                   role="option"
                   aria-selected={option.value === value}
                   className={cn(
-                    "flex w-full px-2.5 py-2 text-left text-sm text-foreground transition-colors hover:bg-[var(--color-surface-muted)]",
-                    option.value === value && "bg-[var(--color-surface-muted)]",
+                    "tw-flex tw-w-full tw-cursor-pointer tw-items-center tw-border-0 tw-bg-transparent tw-px-3.5 tw-py-2.5 tw-text-left tw-text-sm tw-leading-5 tw-text-gray-900 hover:tw-bg-gray-100",
+                    option.value === value && "tw-bg-gray-100 tw-font-medium",
                   )}
                   onClick={() => {
                     onChange(option.value);

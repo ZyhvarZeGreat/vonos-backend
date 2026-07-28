@@ -41,10 +41,12 @@ export function ReportRowDetailModal({
   row,
   title,
   onClose,
+  showBack = false,
 }: {
   row: ReportsTableRow | null;
   title?: string;
   onClose: () => void;
+  showBack?: boolean;
 }) {
   const currency =
     row?.currency != null && typeof row.currency === "string"
@@ -69,6 +71,7 @@ export function ReportRowDetailModal({
         row?.recordType ? String(row.recordType).replace(/_/g, " ") : undefined
       }
       onClose={onClose}
+      showBack={showBack}
     >
       {entries.length === 0 ? (
         <p className="py-6 text-center text-sm text-muted">No details available.</p>

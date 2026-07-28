@@ -52,14 +52,8 @@ export function warmPostLoginDestination(
       tenantCode: code,
       tenantId: tenant.tenantId,
     });
-    // Warm overview JS while the router resolves the soft navigation.
-    if (code === "VA") {
-      void import("@/components/pages/Hq6OverviewView");
-    } else if (code === "VW") {
-      void import("@/components/pages/WarehouseOverviewView");
-    } else {
-      void import("@/components/pages/TenantOverviewView");
-    }
+    // All entities share the HQ6 Ultimate POS home chunk.
+    void import("@/components/pages/Hq6OverviewView");
   }
 
   return destination;

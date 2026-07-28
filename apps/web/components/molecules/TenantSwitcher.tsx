@@ -2,10 +2,11 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { ChevronDown } from "lucide-react";
 import {
-  AUTOS_GROUP_ENTITIES,
+  AUTOS_GROUP_ORDER,
+  ENTITY_LIST,
   getTenantByCode,
 } from "@/lib/registries/tenants";
 import { iconForTenantCode } from "@/lib/registries/tenantIcons";
@@ -15,6 +16,7 @@ import { cn } from "@/lib/utils/cn";
 import { resolveEntitySwitchPath } from "@/lib/utils/tenantRoutes";
 import { useAuthStore } from "@/stores/authStore";
 import { useAdminEntityStore } from "@/stores/adminEntityStore";
+import { useTenantStore } from "@/stores/tenantStore";
 import type { TenantCode } from "@/lib/registries/tenants";
 import { useQueryClient } from "@tanstack/react-query";
 import { prefetchAdminEntity } from "@/lib/admin/prefetchAdminEntity";
@@ -29,6 +31,11 @@ export interface TenantSwitcherProps {
   className?: string;
 }
 
+/**
+ * Entity switcher for Vonos admin (`super_admin`).
+ * Topbar uses a native `form-control select2` (same as HQ6 home filters)
+ * so tablet/desktop stay readable; sidebar keeps the richer menu.
+ */
 export function TenantSwitcher({
   tenantCode,
   tenantName,
@@ -36,6 +43,7 @@ export function TenantSwitcher({
   className,
 }: TenantSwitcherProps) {
   const pathname = usePathname();
+  const router = useRouter();
   const role = useAuthStore((state) => state.role);
   const setAdminViewing = useAdminEntityStore((s) => s.setViewingCode);
   const queryClient = useQueryClient();
@@ -52,6 +60,17 @@ export function TenantSwitcher({
     () => dateRangePresetToApiBounds(dateRange, new Date(), customDateRange),
     [customDateRange, dateRange],
   );
+
+  const switchableEntities = useMemo(() => {
+    const autosCodes = new Set<string>(AUTOS_GROUP_ORDER);
+    const autos = AUTOS_GROUP_ORDER.map((code) => getTenantByCode(code)).filter(
+      (e): e is NonNullable<typeof e> => Boolean(e),
+    );
+    const rest = ENTITY_LIST.filter(
+      (e) => e.status === "active" && !autosCodes.has(e.code),
+    );
+    return [...autos, ...rest];
+  }, []);
 
   const warmEntityRoute = (code: TenantCode) => {
     const href = resolveEntitySwitchPath(code, pathname);
@@ -74,6 +93,7 @@ export function TenantSwitcher({
       warmedRef.current.delete(key);
     });
   };
+
   const displayName = tenantName ?? tenant?.name ?? tenantCode;
   const meta = tenant ? tenant.code : tenantCode;
   const isSidebar = variant === "sidebar";
@@ -97,37 +117,93 @@ export function TenantSwitcher({
     setOpen(false);
   }
 
-  const entityButtonContent = (
-    <>
-      <div
-        className={cn(
-          "flex shrink-0 items-center justify-center rounded-md",
-          isSidebar
-            ? "h-7 w-7 bg-white/15 text-white"
-            : "h-8 w-8 bg-white/20 text-white",
-        )}
-      >
-        <EntityIcon className={isSidebar ? "h-3.5 w-3.5" : "h-4 w-4"} />
-      </div>
-      <div className="min-w-0 flex-1">
-        <p
+  function navigateToEntity(code: string) {
+    if (code === "VAG") {
+      if (pathname.startsWith("/admin/overview")) return;
+      startSwitch("VAG", "Vonos Autos Group", "/admin/overview");
+      router.push("/admin/overview");
+      return;
+    }
+    const entry = getTenantByCode(code);
+    if (!entry || entry.code === tenantCode) return;
+    const href = resolveEntitySwitchPath(entry.code, pathname);
+    if (entry.tenantId) {
+      useTenantStore.getState().setActiveTenant(entry.tenantId);
+    }
+    queryClient.removeQueries({
+      predicate: (query) => query.queryKey[0] !== "tenantConfig",
+    });
+    startSwitch(entry.code, entry.name, href);
+    router.push(href);
+  }
+
+  /* ——— Topbar: native select (responsive, matches HQ6 filters) ——— */
+  if (!isSidebar) {
+    if (!canSwitchEntities) {
+      return (
+        <div
           className={cn(
-            typographyRoles.tenantTitle,
-            "truncate !text-white",
-            isSidebar && "!text-sm",
+            "flex min-w-0 max-w-[10rem] items-center gap-2 px-1 sm:max-w-[14rem]",
+            className,
           )}
         >
-          {isSidebar ? meta : displayName}
+          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-white/20 text-white">
+            <EntityIcon className="h-3.5 w-3.5" />
+          </span>
+          <span className="min-w-0 truncate text-sm font-medium text-white">
+            <span className="hidden lg:inline">{displayName}</span>
+            <span className="lg:hidden">{meta}</span>
+          </span>
+        </div>
+      );
+    }
+
+    return (
+      <div ref={rootRef} className={cn("relative min-w-0", className)}>
+        <label htmlFor="upos-entity-switcher" className="sr-only">
+          Switch entity
+        </label>
+        <select
+          id="upos-entity-switcher"
+          className="form-control select2 upos-header-entity-select"
+          value={onAdmin ? "VAG" : tenantCode}
+          aria-label={`Current entity: ${displayName}. Switch entity.`}
+          onMouseEnter={() => {
+            for (const entity of switchableEntities) {
+              warmEntityRoute(entity.code as TenantCode);
+            }
+          }}
+          onChange={(event) => navigateToEntity(event.target.value)}
+        >
+          {switchableEntities.map((entity) => (
+            <option key={entity.code} value={entity.code}>
+              {entity.code} — {entity.name.replace(/^Vonos\s+/i, "")}
+            </option>
+          ))}
+          <option value="VAG">VAG — Group overview</option>
+        </select>
+      </div>
+    );
+  }
+
+  /* ——— Sidebar: richer dropdown menu ——— */
+  const entityButtonContent = (
+    <>
+      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-white/15 text-white">
+        <EntityIcon className="h-3.5 w-3.5" />
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className={cn(typographyRoles.tenantTitle, "truncate !text-sm !text-white")}>
+          {meta}
         </p>
-        {!isSidebar ? (
-          <p className={cn(typographyRoles.tenantMeta, "truncate !text-white/70")}>
-            {meta}
-          </p>
-        ) : (
-          <p className={cn(typographyRoles.tenantMeta, "truncate !text-[11px] !text-white/70")}>
-            {displayName.replace(/^Vonos\s+/i, "")}
-          </p>
-        )}
+        <p
+          className={cn(
+            typographyRoles.tenantMeta,
+            "truncate !text-[11px] !text-white/70",
+          )}
+        >
+          {displayName.replace(/^Vonos\s+/i, "")}
+        </p>
       </div>
     </>
   );
@@ -138,10 +214,7 @@ export function TenantSwitcher({
         <button
           type="button"
           onClick={() => setOpen((value) => !value)}
-          className={cn(
-            "flex w-full items-center gap-2 rounded-md text-left transition-colors",
-            isSidebar ? "p-0 hover:bg-white/8" : "px-2 py-1.5 hover:bg-white/10",
-          )}
+          className="flex w-full items-center gap-2 rounded-md p-0 text-left transition-colors hover:bg-white/8"
           aria-expanded={open}
           aria-haspopup="listbox"
           aria-label={`Current entity: ${displayName}. Switch entity.`}
@@ -149,35 +222,24 @@ export function TenantSwitcher({
           {entityButtonContent}
           <ChevronDown
             className={cn(
-              "h-3.5 w-3.5 shrink-0 transition-transform text-white/60",
+              "h-3.5 w-3.5 shrink-0 text-white/60 transition-transform",
               open && "rotate-180",
-              isSidebar ? "" : "hidden sm:block",
             )}
           />
         </button>
       ) : (
-        <div
-          className={cn(
-            "flex w-full items-center gap-2 rounded-md text-left",
-            isSidebar ? "p-0" : "px-2 py-1.5",
-          )}
-        >
+        <div className="flex w-full items-center gap-2 rounded-md p-0 text-left">
           {entityButtonContent}
         </div>
       )}
 
       {open && canSwitchEntities ? (
-        <div
-          className={cn(
-            "absolute z-50 overflow-hidden rounded-xl border border-border bg-card text-foreground shadow-lg",
-            isSidebar ? "left-0 right-0 top-full mt-1.5" : "left-0 top-full mt-2 w-72",
-          )}
-        >
+        <div className="absolute left-0 right-0 top-full z-50 mt-1.5 overflow-hidden rounded-xl border border-border bg-card text-foreground shadow-lg">
           <div className="border-b border-border px-3 py-2">
             <p className={typographyRoles.caption}>Switch entity</p>
           </div>
           <div className="max-h-80 overflow-y-auto p-1">
-            {AUTOS_GROUP_ENTITIES.map((entity) => {
+            {switchableEntities.map((entity) => {
               const isActive = entity.code === tenantCode;
               const href = resolveEntitySwitchPath(entity.code, pathname);
               const Icon = iconForTenantCode(entity.code);
@@ -193,7 +255,7 @@ export function TenantSwitcher({
                     startSwitch(entity.code, entity.name, href);
                   }}
                   className={cn(
-                    "flex items-center gap-2.5 rounded-md px-2.5 py-2 transition-colors",
+                    "flex items-center gap-2.5 rounded-md px-2.5 py-2.5 transition-colors",
                     isActive
                       ? "bg-[var(--color-surface-nav-active)]"
                       : "hover:bg-[var(--color-surface-nav-hover)]",
@@ -220,7 +282,7 @@ export function TenantSwitcher({
                 if (pathname.startsWith("/admin/overview")) return;
                 startSwitch("VAG", "Vonos Autos Group", "/admin/overview");
               }}
-              className="mt-1 flex items-center gap-2.5 rounded-md border-t border-border px-2.5 py-2 transition-colors hover:bg-[var(--color-surface-nav-hover)]"
+              className="mt-1 flex items-center gap-2.5 rounded-md border-t border-border px-2.5 py-2.5 transition-colors hover:bg-[var(--color-surface-nav-hover)]"
             >
               <span
                 className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-white"
@@ -232,7 +294,12 @@ export function TenantSwitcher({
                 })()}
               </span>
               <span className="min-w-0 flex-1">
-                <p className={cn(typographyRoles.tenantTitle, "truncate text-sm font-medium")}>
+                <p
+                  className={cn(
+                    typographyRoles.tenantTitle,
+                    "truncate text-sm font-medium",
+                  )}
+                >
                   Vonos Autos Group
                 </p>
                 <p className={typographyRoles.tenantMeta}>Group overview</p>

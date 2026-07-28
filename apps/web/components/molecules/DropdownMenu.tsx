@@ -65,44 +65,46 @@ export function DropdownMenu({
   }, [open]);
 
   return (
-    <div ref={anchorRef} className={cn("relative inline-block", className)}>
+    <div ref={anchorRef} className={cn("tw-relative tw-inline-block", className)}>
       <div onClick={() => setOpen((current) => !current)}>{trigger}</div>
       <FloatingMenuPanel
         open={open}
         anchorRef={anchorRef}
         menuRef={menuRef}
         align={align}
-        className="min-w-[12rem] overflow-hidden rounded-lg border border-border bg-card shadow-lg"
+        className="tw-min-w-[15rem] tw-overflow-hidden tw-rounded-lg tw-border tw-border-solid tw-border-gray-200 tw-bg-white tw-shadow-lg"
       >
-        <div className="flex max-h-[min(20rem,var(--vonos-floating-max-h,20rem))] flex-col">
+        <div className="tw-flex tw-max-h-[min(20rem,var(--vonos-floating-max-h,20rem))] tw-flex-col">
           {searchable ? (
-            <div className="shrink-0 border-b border-border p-2">
+            <div className="tw-shrink-0 tw-border-b tw-border-solid tw-border-gray-200 tw-p-2.5">
               <input
                 ref={inputRef}
                 type="search"
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
                 placeholder="Search…"
-                className="h-8 w-full rounded-md border border-border bg-surface px-2 text-xs outline-none focus:border-brand"
+                className="form-control select2"
                 onClick={(event) => event.stopPropagation()}
                 onKeyDown={(event) => event.stopPropagation()}
               />
             </div>
           ) : null}
           <div
-            className="min-h-0 flex-1 overflow-y-auto overscroll-contain py-0.5"
+            className="tw-min-h-0 tw-flex-1 tw-overflow-y-auto tw-overscroll-contain tw-py-1"
             onWheel={(event) => event.stopPropagation()}
           >
             {filtered.length === 0 ? (
-              <p className="px-2.5 py-2 text-xs text-muted">No matches</p>
+              <p className="tw-px-3.5 tw-py-2.5 tw-text-sm tw-text-gray-500">
+                No matches
+              </p>
             ) : (
               filtered.map((option) => (
                 <button
                   key={option.value || "__empty"}
                   type="button"
                   className={cn(
-                    "flex w-full px-2.5 py-2 text-left text-xs text-foreground transition-colors hover:bg-[var(--color-surface-muted)]",
-                    value === option.value && "bg-[var(--color-surface-muted)]",
+                    "tw-flex tw-w-full tw-cursor-pointer tw-items-center tw-border-0 tw-bg-transparent tw-px-3.5 tw-py-2.5 tw-text-left tw-text-sm tw-leading-5 tw-text-gray-900 hover:tw-bg-gray-100",
+                    value === option.value && "tw-bg-gray-100 tw-font-medium",
                   )}
                   onClick={() => {
                     onSelect(option.value);

@@ -694,6 +694,39 @@ export function Hq6CommissionAgentsListView() {
     saveCommissionAgents(tenantCode, next);
   };
 
+  const exportAgentsCsv = () => {
+    const header = [
+      "Name",
+      "Email",
+      "Contact Number",
+      "Address",
+      "Sales Commission Percentage",
+    ];
+    const lines = [
+      header.join(","),
+      ...filtered.map((row) =>
+        [
+          row.name,
+          row.email,
+          row.phone,
+          row.address,
+          row.commissionPercent,
+        ]
+          .map((cell) => `"${String(cell).replace(/"/g, '""')}"`)
+          .join(","),
+      ),
+    ];
+    const blob = new Blob([lines.join("\n")], {
+      type: "text/csv;charset=utf-8",
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "commission-agents.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   const handleSave = (e?: FormEvent) => {
     e?.preventDefault();
     const trimmedFirst = firstName.trim();
@@ -867,11 +900,19 @@ export function Hq6CommissionAgentsListView() {
                                 aria-controls="sales_commission_agent_table"
                                 onClick={(e) => {
                                   e.preventDefault();
-                                  if (key === "print") window.print();
-                                  else
-                                    toast.info(
-                                      `${label} — export coming with API.`,
-                                    );
+                                  if (key === "print") {
+                                    window.print();
+                                    return;
+                                  }
+                                  if (key === "csv" || key === "excel") {
+                                    exportAgentsCsv();
+                                    return;
+                                  }
+                                  if (key === "pdf") {
+                                    window.print();
+                                    return;
+                                  }
+                                  // Column visibility — table already shows all columns.
                                 }}
                               >
                                 <span>

@@ -318,9 +318,19 @@ export function HrmPageView({
     activeTab !== "settings" &&
     activeTab !== "attendance";
 
-  return (
+  /** UPOS: brand = HRM (dashboard); other sections live in the secondary navbar. */
+  const hrmNavItems = useMemo(
+    () => visibleTabs.filter((tab) => tab.id !== "dashboard"),
+    [visibleTabs],
+  );
+
+  const shell = (
     <ListPageShell
-      tabs={visibleTabs.map((tab) => ({ id: tab.id, label: tab.label }))}
+      tabs={
+        isHq6
+          ? [{ id: activeTab, label: activeTab === "dashboard" ? "HRM" : (hrmNavItems.find((t) => t.id === activeTab)?.label ?? "HRM") }]
+          : visibleTabs.map((tab) => ({ id: tab.id, label: tab.label }))
+      }
       activeTab={activeTab}
       onTabChange={(id) => setActiveTab(id as HrmTab)}
       showImport={false}
@@ -333,5 +343,47 @@ export function HrmPageView({
     >
       {tabContent}
     </ListPageShell>
+  );
+
+  if (!isHq6) {
+    return shell;
+  }
+
+  // HQ6: module navbar owns section chrome. Child views (Payroll ListPageShell,
+  // ListCard essentials) already render their own box — nesting another shell
+  // smashes toolbars on tablet/mobile.
+  return (
+    <div className="hq6-page">
+      <nav className="navbar navbar-default hq6-hrm-module-nav" role="navigation">
+        <div className="container-fluid">
+          <div className="navbar-header">
+            <button
+              type="button"
+              className={
+                activeTab === "dashboard"
+                  ? "navbar-brand is-active"
+                  : "navbar-brand"
+              }
+              onClick={() => setActiveTab("dashboard")}
+            >
+              <i className="fa fas fa-users" aria-hidden /> HRM
+            </button>
+          </div>
+          <ul className="nav navbar-nav">
+            {hrmNavItems.map((tab) => (
+              <li
+                key={tab.id}
+                className={activeTab === tab.id ? "active" : undefined}
+              >
+                <button type="button" onClick={() => setActiveTab(tab.id)}>
+                  {tab.label}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </nav>
+      {tabContent}
+    </div>
   );
 }

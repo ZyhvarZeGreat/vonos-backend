@@ -19,6 +19,7 @@ import type { TenantCode } from "@/lib/registries/tenants";
 import { getTenantByCode } from "@/lib/registries/tenants";
 import { ledgerChartSubtitle } from "@/lib/utils/ledgerCharts";
 import { formatCurrency, formatCurrencyCompact, formatNumberCompact } from "@/lib/utils/formatCurrency";
+import type { CsvExportPayload } from "@/lib/utils/exportCsv";
 import { ChartPanelSkeleton } from "@/components/organisms/skeletons";
 import { ReportDetailSheet } from "@/components/organisms/ReportDetailSheet";
 import { HqReportPageSkeleton } from "@/components/organisms/HqReportPageLayout";
@@ -155,6 +156,68 @@ function entityRollupColumns(
   ];
 }
 
+function slugFilename(label: string): string {
+  return (
+    label
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "") || "export"
+  );
+}
+
+function chartExportPayload(chart: {
+  title: string;
+  series: Array<{ name: string; dataKey: string }>;
+  data: Array<{ label: string } & Record<string, string | number>>;
+}): CsvExportPayload {
+  const columns = [
+    { key: "label", header: "Label" },
+    ...chart.series.map((s) => ({ key: s.dataKey, header: s.name })),
+  ];
+  return {
+    filename: slugFilename(chart.title),
+    columns,
+    rows: chart.data.map((row) => {
+      const record: Record<string, string | number | null | undefined> = {
+        label: row.label,
+      };
+      for (const series of chart.series) {
+        const value = row[series.dataKey];
+        record[series.dataKey] =
+          typeof value === "number" || typeof value === "string" ? value : "";
+      }
+      return record;
+    }),
+  };
+}
+
+function tableExportPayload(
+  title: string,
+  columns: Array<{ key: string; header: string }>,
+  rows: Array<Record<string, unknown>>,
+): CsvExportPayload {
+  const exportCols = columns.filter((c) => c.key !== "actions");
+  return {
+    filename: slugFilename(title),
+    columns: exportCols,
+    rows: rows.map((row) => {
+      const record: Record<string, string | number | null | undefined> = {};
+      for (const col of exportCols) {
+        const raw = row[col.key];
+        if (typeof raw === "number" || typeof raw === "string") {
+          record[col.key] = raw;
+        } else if (raw == null) {
+          record[col.key] = "";
+        } else {
+          record[col.key] = String(raw);
+        }
+      }
+      return record;
+    }),
+  };
+}
+
 export function ReportsDashboardBody({
   tenantCode,
   dashboard,
@@ -284,14 +347,22 @@ export function ReportsDashboardBody({
               key={chart.id}
               className={
                 isHq6
-                  ? "hq6-card p-6 sm:p-8"
+                  ? "hq6-card min-h-[280px] p-6 sm:p-8"
                   : "rounded-xl border border-border bg-card p-6 shadow-card sm:p-8"
               }
             >
               <ChartHeader
                 title={chart.title}
                 subtitle={chart.subtitle ?? chartSubtitle}
-                onExport={() => openExportModal()}
+                onExport={() =>
+                  openExportModal(
+                    {
+                      title: `Export ${chart.title}`,
+                      subtitle: "Download chart series as CSV or PDF",
+                    },
+                    chartExportPayload(chart),
+                  )
+                }
                 dateRange={dateRange}
                 onDateRangeChange={setDateRange}
                 customDateRange={customDateRange}
@@ -323,7 +394,22 @@ export function ReportsDashboardBody({
           <ChartHeader
             title="By entity"
             subtitle="Roll-up for the selected report across all operating entities"
-            onExport={() => openExportModal()}
+            onExport={() => {
+              const byEntity = dashboard.byEntity;
+              if (!byEntity?.length) return;
+              const cols = entityRollupColumns(byEntity);
+              openExportModal(
+                {
+                  title: "Export by entity",
+                  subtitle: "Download entity roll-up as CSV or PDF",
+                },
+                tableExportPayload(
+                  "by-entity",
+                  cols,
+                  entityRollupRows(byEntity),
+                ),
+              );
+            }}
             dateRange={dateRange}
             onDateRangeChange={setDateRange}
             customDateRange={customDateRange}
@@ -382,7 +468,25 @@ export function ReportsDashboardBody({
                 ? "Click a row to open that entity's reports"
                 : "Click a row to view details"
             }
-            onExport={() => openExportModal()}
+            onExport={() => {
+              if (!dashboard.table) return;
+              openExportModal(
+                {
+                  title: onEntityReportsClick
+                    ? "Export by entity"
+                    : "Export detail",
+                  subtitle: "Download report rows as CSV or PDF",
+                },
+                tableExportPayload(
+                  onEntityReportsClick ? "by-entity" : "report-detail",
+                  dashboard.table.columns,
+                  dashboard.table.rows.map((row, index) => ({
+                    id: String(row.id ?? `row-${index}`),
+                    ...row,
+                  })),
+                ),
+              );
+            }}
             dateRange={dateRange}
             onDateRangeChange={setDateRange}
             customDateRange={customDateRange}
@@ -478,7 +582,6 @@ export function ReportsView({ tenantCode }: { tenantCode: TenantCode }) {
       }),
     enabled: Boolean(entry?.tenantId),
     staleTime: ROUTE_PREFETCH_STALE_MS,
-    placeholderData: (prev) => prev,
   });
 
   return (
@@ -658,8 +761,10 @@ export function VagGroupReportsView() {
       <div className="hq6-card px-4 py-3 text-sm">
         <p className="font-semibold text-[#111827]">Group roll-up</p>
         <p className="mt-1 text-[#6b7280]">
-          KPIs load first; charts fill in after. Pick an entity in the top-bar
-          switcher to open that location&apos;s reports (same as VA).
+          KPIs load first; charts fill in after. Use{" "}
+          <span className="font-medium text-[#111827]">Switch report entity</span>{" "}
+          above to change this roll-up without leaving VAG. The top-bar switcher
+          opens that entity&apos;s full dashboard.
         </p>
       </div>
 

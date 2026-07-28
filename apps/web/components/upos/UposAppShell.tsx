@@ -2,15 +2,22 @@
 
 /**
  * Ultimate POS app shell — converted from layouts/app.blade.php.
- * Replaces Vonos Sidebar + TopBar for the VA trial tenant only.
+ * Replaces Vonos Sidebar + TopBar for HQ6 operating tenants.
  */
-import { useEffect, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useState,
+  type ReactNode,
+} from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { UposSidebar, type UposNavSection } from "@/components/upos/UposSidebar";
 import { UposHeader } from "@/components/upos/UposHeader";
 import { AdminViewingBanner } from "@/components/molecules/AdminViewingBanner";
 import { PageTransition } from "@/components/atoms/PageTransition";
 import { Hq6UposStyles } from "@/components/hq6/Hq6UposStyles";
+import { ensureUposStylesheets } from "@/lib/upos/styles";
 import { prefetchRoute } from "@/lib/prefetch/routePrefetchRegistry";
 import { dateRangePresetToApiBounds } from "@/lib/utils/dateRange";
 import { useUiStore } from "@/stores/uiStore";
@@ -30,6 +37,13 @@ export interface UposAppShellProps {
   activeRoute?: string;
   isNavActive?: (pathname: string, route: string) => boolean;
   userName?: string;
+  /**
+   * `admin` = VAG Group shell (entity switcher, no POS tools, optional
+   * context bar). Same UPOS chrome as operating tenants.
+   */
+  variant?: "tenant" | "admin";
+  /** Rendered under the UPOS header (e.g. VAG entity context strip). */
+  contextBar?: ReactNode;
 }
 
 export function UposAppShell({
@@ -40,6 +54,8 @@ export function UposAppShell({
   activeRoute,
   isNavActive,
   userName,
+  variant = "tenant",
+  contextBar,
 }: UposAppShellProps) {
   const queryClient = useQueryClient();
   const tenantId = useTenantId();
@@ -49,8 +65,13 @@ export function UposAppShell({
   const [mobileOpen, setMobileOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const [showScrollTop, setShowScrollTop] = useState(false);
+  const [stylesReady, setStylesReady] = useState(false);
+  const isAdminShell = variant === "admin";
 
-  useEffect(() => {
+  const markStylesReady = useCallback(() => setStylesReady(true), []);
+
+  // Apply shell classes before paint; wait for CSS so login→dashboard isn't FOUC.
+  useLayoutEffect(() => {
     const prevBody = document.body.className;
     const prevHtmlOverflow = document.documentElement.style.overflow;
     document.documentElement.classList.add("upos-hq6", "upos-shell");
@@ -59,8 +80,30 @@ export function UposAppShell({
       localStorage.getItem("upos_sidebar_collapse") === "true";
     setCollapsed(collapse);
     document.body.className = cn(BODY_BASE, collapse && "sidebar-collapse");
+
+    let cancelled = false;
+    void ensureUposStylesheets().then(() => {
+      if (!cancelled) setStylesReady(true);
+    });
+    const failSafe = window.setTimeout(() => {
+      if (!cancelled) setStylesReady(true);
+    }, 2000);
+
     return () => {
-      document.body.className = prevBody;
+      cancelled = true;
+      window.clearTimeout(failSafe);
+      document.body.className = prevBody
+        .split(/\s+/)
+        .filter(
+          (c) =>
+            c &&
+            !c.startsWith("skin-") &&
+            c !== "hold-transition" &&
+            c !== "sidebar-mini" &&
+            c !== "sidebar-collapse" &&
+            !c.startsWith("tw-"),
+        )
+        .join(" ");
       document.documentElement.classList.remove("upos-hq6", "upos-shell");
       document.documentElement.style.overflow = prevHtmlOverflow;
     };
@@ -92,12 +135,30 @@ export function UposAppShell({
 
   return (
     <>
-      <Hq6UposStyles />
-      <div className="tw-flex thetop" style={{ minHeight: "100vh" }}>
+      <Hq6UposStyles onReady={markStylesReady} />
+      {!stylesReady ? (
+        <div
+          aria-busy="true"
+          aria-label="Loading workspace"
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 99999,
+            background: "#f3f4f6",
+          }}
+        />
+      ) : null}
+      <div
+        className="tw-flex thetop"
+        style={{
+          minHeight: "100vh",
+          visibility: stylesReady ? "visible" : "hidden",
+        }}
+      >
         {mobileOpen ? (
           <button
             type="button"
-            className="fixed inset-0 z-40 bg-black/40 lg:hidden"
+            className="upos-mobile-nav-backdrop tw-fixed tw-inset-0 lg:tw-hidden"
             aria-label="Close menu"
             onClick={() => setMobileOpen(false)}
           />
@@ -111,11 +172,12 @@ export function UposAppShell({
           mobileOpen={mobileOpen}
           onMobileClose={() => setMobileOpen(false)}
           onItemPrefetch={tenantId ? prefetchNavRoute : undefined}
-          className={cn(collapsed && "sidebar-collapse")}
+          /* Never apply desktop collapse while the mobile drawer is open */
+          className={cn(collapsed && !mobileOpen && "sidebar-collapse")}
         />
 
         <main className="tw-flex tw-flex-col tw-flex-1 tw-h-full tw-min-w-0 tw-bg-gray-100">
-          {authRole === "super_admin" ? (
+          {!isAdminShell && authRole === "super_admin" ? (
             <AdminViewingBanner
               tenantCode={tenantCode}
               tenantName={tenantName ?? tenantCode}
@@ -124,13 +186,17 @@ export function UposAppShell({
 
           <UposHeader
             tenantCode={tenantCode}
+            tenantName={tenantName}
             userName={userName}
+            variant={variant}
             onToggleMobile={() => setMobileOpen((v) => !v)}
             onToggleCollapse={() => setCollapsed((v) => !v)}
           />
 
+          {contextBar}
+
           <div
-            className="tw-flex-1 tw-overflow-y-auto tw-h-screen"
+            className="tw-flex-1 tw-min-w-0 tw-overflow-y-auto tw-overflow-x-auto"
             id="scrollable-container"
             onScroll={(e) => {
               setShowScrollTop(e.currentTarget.scrollTop > 200);

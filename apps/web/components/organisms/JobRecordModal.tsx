@@ -15,9 +15,11 @@ import { formatDate } from "@/lib/utils/formatDate";
 export function JobRecordModal({
   jobId,
   onClose,
+  showBack = false,
 }: {
   jobId: string | null;
   onClose: () => void;
+  showBack?: boolean;
 }) {
   const { tenantId } = useRouteTenant();
 
@@ -39,6 +41,7 @@ export function JobRecordModal({
           : undefined
       }
       onClose={onClose}
+      showBack={showBack}
       isLoading={isLoading}
       error={error ? "Could not load this job." : null}
     >

@@ -7,7 +7,11 @@ import { Button } from "@/components/atoms/Button";
 import { Input } from "@/components/atoms/Input";
 import { Modal, ModalFooter, ModalHeader } from "@/components/atoms/Modal";
 import { Select } from "@/components/atoms/Select";
-import { Hq6Modal, Hq6ModalSaveClose } from "@/components/hq6/Hq6Modal";
+import {
+  Hq6Field,
+  Hq6Modal,
+  Hq6ModalSaveClose,
+} from "@/components/hq6/Hq6Modal";
 import { createUser, inviteUser } from "@/lib/api/users";
 import { useIsVaHq6 } from "@/lib/hooks/useIsVaHq6";
 import {
@@ -37,6 +41,18 @@ function formatRole(role: Role): string {
     .join(" ");
 }
 
+function joinName(
+  prefix: string,
+  first: string,
+  middle: string,
+  last: string,
+): string {
+  return [prefix, first, middle, last]
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .join(" ");
+}
+
 export function InviteUserModal({
   open,
   onClose,
@@ -47,11 +63,17 @@ export function InviteUserModal({
   const actorRole = useAuthStore((state) => state.role);
   const isSuperAdmin = actorRole === "super_admin";
 
-  const [mode, setMode] = useState<AddUserMode>("invite");
+  /** UPOS Add User is create-with-password; invite is the secondary path. */
+  const [mode, setMode] = useState<AddUserMode>("direct");
+  const [prefix, setPrefix] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [middleName, setMiddleName] = useState("");
+  const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
-  const [name, setName] = useState("");
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [allowLogin, setAllowLogin] = useState(true);
   const [entityValue, setEntityValue] = useState(
     defaultTenantId ?? (allTenants ? "" : defaultTenantId ?? ""),
   );
@@ -59,6 +81,8 @@ export function InviteUserModal({
   const [inviteLink, setInviteLink] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [dismissed, setDismissed] = useState(false);
+
+  const fullName = joinName(prefix, firstName, middleName, lastName);
 
   const entityOptions = useMemo(() => {
     const options = [{ value: "", label: "Select entity…" }];
@@ -101,7 +125,7 @@ export function InviteUserModal({
 
   const basePayload = {
     email,
-    name,
+    name: fullName,
     role: resolvedRole,
     tenantId: allTenants ? resolvedTenantId : undefined,
   };
@@ -119,7 +143,7 @@ export function InviteUserModal({
         prependEntityInQueries(qc, ["users"], {
           id: optimisticTempId("user"),
           email: email.trim(),
-          name: name.trim(),
+          name: fullName.trim(),
           role: resolvedRole,
           status: "invited",
           tenantId: allTenants
@@ -179,7 +203,7 @@ export function InviteUserModal({
         prependEntityInQueries(qc, ["users"], {
           id: optimisticTempId("user"),
           email: email.trim(),
-          name: name.trim(),
+          name: fullName.trim(),
           role: resolvedRole,
           status: "active",
           tenantId: allTenants
@@ -235,7 +259,7 @@ export function InviteUserModal({
 
   const canSubmit =
     email.trim() &&
-    name.trim() &&
+    firstName.trim() &&
     (!allTenants || entityValue) &&
     !isPending &&
     (mode === "invite"
@@ -243,11 +267,16 @@ export function InviteUserModal({
       : password.length >= 8 && password === confirmPassword);
 
   const handleClose = () => {
-    setMode("invite");
+    setMode("direct");
+    setPrefix("");
+    setFirstName("");
+    setMiddleName("");
+    setLastName("");
     setEmail("");
-    setName("");
+    setUsername("");
     setPassword("");
     setConfirmPassword("");
+    setAllowLogin(true);
     setEntityValue(defaultTenantId ?? "");
     setRole(isSuperAdmin ? "manager" : "staff");
     setInviteLink(null);
@@ -264,13 +293,215 @@ export function InviteUserModal({
     }
   };
 
-  const formBody = (
-    <div className={cn("space-y-3.5", !isHq6 && "px-4 pb-2")}>
+  /** Matches Ultimate POS contact / tax-rate add modals (Hq6AddSupplierModal). */
+  const hq6FormBody = (
+    <div className="space-y-4">
+      {inviteLink ? (
+        <div className="rounded-lg border border-[#e5e7eb] bg-[#f9fafb] p-3 text-sm">
+          <p className="mb-1 font-semibold text-[#111827]">Invitation created</p>
+          <p className="mb-2 text-[#6b7280]">
+            Share this link so they can set their password:
+          </p>
+          <a
+            href={inviteLink}
+            className="block break-all text-[#3c8dbc] underline"
+            target="_blank"
+            rel="noreferrer"
+          >
+            {inviteLink}
+          </a>
+        </div>
+      ) : (
+        <>
+          <div className="flex flex-wrap items-center gap-4 text-sm text-[#111827]">
+            <label className="inline-flex items-center gap-2">
+              <input
+                type="radio"
+                name="add_user_mode"
+                checked={mode === "direct"}
+                onChange={() => {
+                  setMode("direct");
+                  setError(null);
+                }}
+              />
+              Create user
+            </label>
+            <label className="inline-flex items-center gap-2">
+              <input
+                type="radio"
+                name="add_user_mode"
+                checked={mode === "invite"}
+                onChange={() => {
+                  setMode("invite");
+                  setError(null);
+                }}
+              />
+              Send invite
+            </label>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-4">
+            <Hq6Field label="Prefix">
+              <input
+                className="hq6-modal-input"
+                placeholder="Mr / Mrs / Miss"
+                value={prefix}
+                onChange={(e) => setPrefix(e.target.value)}
+              />
+            </Hq6Field>
+            <Hq6Field label="First Name" required>
+              <input
+                className="hq6-modal-input"
+                placeholder="First Name"
+                value={firstName}
+                onChange={(e) => setFirstName(e.target.value)}
+              />
+            </Hq6Field>
+            <Hq6Field label="Middle name">
+              <input
+                className="hq6-modal-input"
+                placeholder="Middle name"
+                value={middleName}
+                onChange={(e) => setMiddleName(e.target.value)}
+              />
+            </Hq6Field>
+            <Hq6Field label="Last Name">
+              <input
+                className="hq6-modal-input"
+                placeholder="Last Name"
+                value={lastName}
+                onChange={(e) => setLastName(e.target.value)}
+              />
+            </Hq6Field>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Hq6Field label="Email" required>
+              <input
+                type="email"
+                className="hq6-modal-input"
+                placeholder="Email"
+                value={email}
+                onChange={(e) => {
+                  setEmail(e.target.value);
+                  if (!username) {
+                    setUsername(e.target.value.split("@")[0] ?? "");
+                  }
+                }}
+              />
+            </Hq6Field>
+            {allTenants ? (
+              <Hq6Field label="Entity" required>
+                <select
+                  className="hq6-modal-input"
+                  value={entityValue}
+                  onChange={(e) => {
+                    const next = e.target.value;
+                    setEntityValue(next);
+                    if (next === VAG_ENTITY_VALUE) {
+                      setRole("super_admin");
+                    } else if (role === "super_admin") {
+                      setRole("manager");
+                    }
+                  }}
+                >
+                  {entityOptions.map((opt) => (
+                    <option key={opt.value || "empty"} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </Hq6Field>
+            ) : (
+              <div />
+            )}
+          </div>
+
+          {mode === "direct" ? (
+            <>
+              <label className="inline-flex items-center gap-2 text-sm font-semibold text-[#374151]">
+                <input
+                  type="checkbox"
+                  className="input-icheck"
+                  checked={allowLogin}
+                  onChange={(e) => setAllowLogin(e.target.checked)}
+                />
+                Allow login
+              </label>
+              {allowLogin ? (
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <Hq6Field label="Username">
+                    <input
+                      className="hq6-modal-input"
+                      placeholder="Username"
+                      value={username}
+                      onChange={(e) => setUsername(e.target.value)}
+                    />
+                  </Hq6Field>
+                  <Hq6Field label="Password" required>
+                    <input
+                      type="password"
+                      className="hq6-modal-input"
+                      placeholder="Password"
+                      autoComplete="new-password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                    />
+                  </Hq6Field>
+                  <Hq6Field label="Confirm Password" required>
+                    <input
+                      type="password"
+                      className="hq6-modal-input"
+                      placeholder="Confirm Password"
+                      autoComplete="new-password"
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                    />
+                  </Hq6Field>
+                </div>
+              ) : null}
+              {passwordMismatch ? (
+                <p className="mb-0 text-sm text-[#dc2626]">
+                  Passwords do not match
+                </p>
+              ) : null}
+            </>
+          ) : null}
+
+          {entityValue !== VAG_ENTITY_VALUE ? (
+            <Hq6Field label="Role" required>
+              <select
+                className="hq6-modal-input"
+                value={role}
+                onChange={(e) => setRole(e.target.value as Role)}
+              >
+                {roleOptions.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            </Hq6Field>
+          ) : (
+            <p className="mb-0 text-xs text-[#6b7280]">
+              VAG users are created as Super Admin.
+            </p>
+          )}
+
+          {error ? <p className="mb-0 text-sm text-[#dc2626]">{error}</p> : null}
+        </>
+      )}
+    </div>
+  );
+
+  const legacyFormBody = (
+    <div className="space-y-3.5 px-4 pb-2">
       {inviteLink ? (
         <div className="rounded-lg border border-border bg-[var(--color-surface-muted)] p-3 text-sm">
           <p className="font-medium text-foreground">Invitation created</p>
           <p className="mt-1 text-muted">
-            Share this link with the person you invited so they can set their password:
+            Share this link with the person you invited so they can set their
+            password:
           </p>
           <a
             href={inviteLink}
@@ -310,8 +541,12 @@ export function InviteUserModal({
           </div>
           <Input
             label="Full name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
+            value={fullName}
+            onChange={(e) => {
+              setPrefix("");
+              setFirstName(e.target.value);
+              setLastName("");
+            }}
             placeholder="Jane Doe"
           />
           <Input
@@ -378,18 +613,19 @@ export function InviteUserModal({
         open={open && !dismissed}
         onClose={handleClose}
         title="Add user"
+        size="xl"
         footer={
           <Hq6ModalSaveClose
             onClose={handleClose}
             closeLabel={inviteLink ? "Done" : "Close"}
             onSave={inviteLink ? undefined : handleSubmit}
-            saveLabel={mode === "invite" ? "Send invite" : "Create user"}
+            saveLabel={mode === "invite" ? "Send invite" : "Save"}
             saving={isPending}
             saveDisabled={!canSubmit}
           />
         }
       >
-        {formBody}
+        {hq6FormBody}
       </Hq6Modal>
     );
   }
@@ -405,7 +641,7 @@ export function InviteUserModal({
         }
         onClose={handleClose}
       />
-      {formBody}
+      {legacyFormBody}
       <ModalFooter>
         <Button variant="secondary" size="sm" onClick={handleClose}>
           {inviteLink ? "Done" : "Cancel"}

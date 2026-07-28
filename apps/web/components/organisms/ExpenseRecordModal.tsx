@@ -13,9 +13,11 @@ import {
 export function ExpenseRecordModal({
   expenseId,
   onClose,
+  showBack = false,
 }: {
   expenseId: string | null;
   onClose: () => void;
+  showBack?: boolean;
 }) {
   const { tenantId } = useRouteTenant();
 
@@ -33,6 +35,7 @@ export function ExpenseRecordModal({
         open={Boolean(expenseId)}
         title="Expense details"
         onClose={onClose}
+        showBack={showBack}
         isLoading={isLoading}
         error={error ? "Could not load this expense." : null}
       >
@@ -41,5 +44,5 @@ export function ExpenseRecordModal({
     );
   }
 
-  return <ExpenseViewModal expense={expense} onClose={onClose} />;
+  return <ExpenseViewModal expense={expense} onClose={onClose} showBack={showBack} />;
 }

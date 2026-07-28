@@ -58,17 +58,21 @@ type ProductColKey = (typeof PRODUCT_COLUMNS)[number]["key"];
 
 /**
  * HQ6 Products list — literal UPOS product/index + product_list markup,
- * wired to Vonos catalog APIs. Route: /VA/catalog
+ * wired to Vonos catalog APIs. Used for /{tenant}/catalog (and inventory aliases).
  */
-export function Hq6ProductsListView() {
-  const { goToDetail, prefetchDetail } = useRecordNavigation("catalog");
+export function Hq6ProductsListView({
+  listSlug = "catalog",
+}: {
+  listSlug?: "catalog" | "inventory" | "menu-items";
+} = {}) {
+  const { goToDetail, prefetchDetail } = useRecordNavigation(listSlug);
   const tenantId = useTenantId();
   const { config, tenantCode } = useRouteTenant();
   const router = useRouter();
   const queryClient = useQueryClient();
   const exportList = useListExport();
   const { search, setSearch } = useListPageFilters();
-  const copy = hq6CopyForSlug("catalog");
+  const copy = hq6CopyForSlug(listSlug === "menu-items" ? "catalog" : listSlug);
   const [listTab, setListTab] = useState<"products" | "stock-report">("products");
   const [categoryFilter, setCategoryFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
@@ -83,6 +87,9 @@ export function Hq6ProductsListView() {
   const [locationModalOpen, setLocationModalOpen] = useState(false);
   const [deleteItem, setDeleteItem] = useState<Item | null>(null);
   const [bulkDeleteIds, setBulkDeleteIds] = useState<string[] | null>(null);
+  const [bulkDeactivateIds, setBulkDeactivateIds] = useState<string[] | null>(
+    null,
+  );
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const chrome = useHq6ListChrome("products");
   const [filtersOpen, setFiltersOpen] = useState(true);
@@ -596,9 +603,7 @@ export function Hq6ProductsListView() {
                           className="tw-dw-btn tw-dw-btn-xs tw-dw-btn-outline tw-dw-btn-warning"
                           id="deactivate-selected"
                           disabled={selectedIds.size === 0}
-                          onClick={() =>
-                            toast.info("Deactivate selected — wire when catalog status API is ready.")
-                          }
+                          onClick={() => setBulkDeactivateIds([...selectedIds])}
                         >
                           Deactivate Selected
                         </button>
@@ -734,7 +739,7 @@ export function Hq6ProductsListView() {
                               key={row.id}
                               role="row"
                               className={index % 2 === 0 ? "odd" : "even"}
-                              data-href={`/${tenantCode}/catalog/${row.id}`}
+                              data-href={`/${tenantCode}/${listSlug}/${row.id}`}
                               onMouseEnter={() => {
                                 prefetchDetail(row.id);
                                 if (tenantId) {
@@ -844,7 +849,7 @@ export function Hq6ProductsListView() {
                                           label: "Product stock history",
                                           onClick: () =>
                                             router.push(
-                                              `/${tenantCode}/catalog/${row.id}?view=stock_history`,
+                                              `/${tenantCode}/${listSlug}/${row.id}?view=stock_history`,
                                             ),
                                         },
                                         {
@@ -865,7 +870,7 @@ export function Hq6ProductsListView() {
                               {isColVisible("name") ? (
                                 <td className={sort?.sortBy === "name" ? "sorting_1" : undefined}>
                                   <a
-                                    href={`/${tenantCode}/catalog/${row.id}`}
+                                    href={`/${tenantCode}/${listSlug}/${row.id}`}
                                     onClick={(e) => {
                                       e.preventDefault();
                                       goToDetail(row.id);
@@ -1035,6 +1040,44 @@ export function Hq6ProductsListView() {
                 err instanceof Error
                   ? err.message
                   : "Failed to delete selected products",
+              );
+            }
+          })();
+        }}
+      />
+      <Hq6ConfirmModal
+        open={Boolean(bulkDeactivateIds?.length)}
+        onClose={() => setBulkDeactivateIds(null)}
+        title="Deactivate selected products?"
+        message={
+          bulkDeactivateIds
+            ? `Deactivate ${bulkDeactivateIds.length} selected product${
+                bulkDeactivateIds.length === 1 ? "" : "s"
+              }? They will be removed from the active catalog.`
+            : ""
+        }
+        confirmLabel="Deactivate"
+        danger
+        onConfirm={() => {
+          if (!tenantId || !bulkDeactivateIds?.length) return;
+          const ids = bulkDeactivateIds;
+          void (async () => {
+            try {
+              for (const id of ids) {
+                await deleteItemApi(tenantId, id);
+              }
+              toast.success(
+                `Deactivated ${ids.length} product${ids.length === 1 ? "" : "s"}`,
+              );
+              setBulkDeactivateIds(null);
+              setSelectedIds(new Set());
+              await queryClient.invalidateQueries({ queryKey: ["catalog"] });
+              await queryClient.invalidateQueries({ queryKey: ["items"] });
+            } catch (err) {
+              toast.error(
+                err instanceof Error
+                  ? err.message
+                  : "Failed to deactivate selected products",
               );
             }
           })();

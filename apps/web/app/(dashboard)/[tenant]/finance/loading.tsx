@@ -1,9 +1,4 @@
-import { DashboardBodySkeleton } from "@/components/organisms/skeletons";
-
+/** Finance route loading — keep shell; TopProgressBar + in-panel loaders handle data. */
 export default function TenantFinanceLoading() {
-  return (
-    <div className="mx-auto max-w-[var(--space-content-max)]">
-      <DashboardBodySkeleton financeChartCount={2} />
-    </div>
-  );
+  return <div className="min-h-[40vh]" aria-busy aria-label="Loading finance" />;
 }

@@ -1,9 +1,4 @@
-import { DashboardBodySkeleton } from "@/components/organisms/skeletons";
-
+/** Route segment loading — top progress bar handles indication; no full-page skeleton. */
 export default function AdminRouteLoading() {
-  return (
-    <div className="mx-auto max-w-[var(--space-content-max)]">
-      <DashboardBodySkeleton />
-    </div>
-  );
+  return <div className="min-h-[40vh]" aria-busy aria-label="Loading" />;
 }

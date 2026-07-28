@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import { Button } from "@/components/atoms/Button";
 import { Modal } from "@/components/atoms/Modal";
+import { Hq6Field, Hq6Modal, Hq6ModalSaveClose } from "@/components/hq6/Hq6Modal";
+import { useIsVaHq6 } from "@/lib/hooks/useIsVaHq6";
 
 export interface ExpiryEditPayload {
   movementId: string;
@@ -21,6 +23,7 @@ export function ReportExpiryEditModal({
   onClose: () => void;
   onSave: (payload: ExpiryEditPayload & { expDate: string }) => Promise<void>;
 }) {
+  const isHq6 = useIsVaHq6();
   const [expDate, setExpDate] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -34,8 +37,7 @@ export function ReportExpiryEditModal({
 
   if (!open) return null;
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const submit = async () => {
     setSaving(true);
     setError(null);
     try {
@@ -47,6 +49,47 @@ export function ReportExpiryEditModal({
       setSaving(false);
     }
   };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await submit();
+  };
+
+  if (isHq6) {
+    return (
+      <Hq6Modal
+        open
+        onClose={onClose}
+        title="Edit expiry date"
+        size="sm"
+        footer={
+          <Hq6ModalSaveClose
+            onSave={() => void submit()}
+            onClose={onClose}
+            saveLabel="Update"
+            saving={saving}
+            saveDisabled={!expDate}
+          />
+        }
+      >
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <p className="text-sm text-[#6b7280]">
+            {open.name ?? open.lineSku} — inbound line expiry.
+          </p>
+          <Hq6Field label="Expiry date" required>
+            <input
+              type="date"
+              required
+              className="form-control"
+              value={expDate}
+              onChange={(e) => setExpDate(e.target.value)}
+            />
+          </Hq6Field>
+          {error ? <p className="text-sm text-[#dc2626]">{error}</p> : null}
+        </form>
+      </Hq6Modal>
+    );
+  }
 
   return (
     <Modal open onClose={onClose} panelClassName="max-w-md rounded-xl border border-border p-6">

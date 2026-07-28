@@ -8,11 +8,16 @@
  * Markup/classes match the scraped page — not our generic list shell.
  */
 import { useCallback, useMemo, useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { Hq6ConfirmModal } from "@/components/hq6/Hq6ConfirmModal";
 import { Hq6DtSearchFilter } from "@/components/hq6/Hq6DtSearchFilter";
-import { getUsersPage, getAllUsers, type UserListRow } from "@/lib/api/users";
+import {
+  deactivateUser,
+  getUsersPage,
+  getAllUsers,
+  type UserListRow,
+} from "@/lib/api/users";
 import { useServerListPage } from "@/lib/hooks/useServerListPage";
 import { useListExport } from "@/lib/hooks/useListExport";
 import { useListPageFilters } from "@/lib/hooks/useListPageFilters";
@@ -93,6 +98,19 @@ export function Hq6UsersListView() {
   const [deleteTarget, setDeleteTarget] = useState<UserListRow | null>(null);
 
   const canInvite = authRole ? hasPermission(authRole, "manageUsers") : false;
+
+  const deactivateMutation = useMutation({
+    mutationFn: (row: UserListRow) =>
+      deactivateUser(row.id, { tenantId }),
+    onSuccess: async (_data, row) => {
+      toast.success(`Deactivated ${row.name}`);
+      setDeleteTarget(null);
+      await queryClient.invalidateQueries({ queryKey: ["users"] });
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || "Failed to deactivate user");
+    },
+  });
 
   const {
     items: users,
@@ -564,20 +582,19 @@ export function Hq6UsersListView() {
         danger
         onClose={() => setDeleteTarget(null)}
         onConfirm={() => {
-          if (deleteTarget) {
-            toast.info(
-              `Soft-delete for “${deleteTarget.name}” will use the users API when available.`,
-            );
+          if (deleteTarget && !deactivateMutation.isPending) {
+            deactivateMutation.mutate(deleteTarget);
           }
-          setDeleteTarget(null);
         }}
         title="Are you sure?"
         message={
           deleteTarget
-            ? `This will deactivate “${deleteTarget.name}” when the API is wired.`
+            ? `This will deactivate “${deleteTarget.name}” and revoke their access.`
             : "This user will be deactivated."
         }
-        confirmLabel="Yes, delete"
+        confirmLabel={
+          deactivateMutation.isPending ? "Deactivating…" : "Yes, deactivate"
+        }
       />
     </div>
   );

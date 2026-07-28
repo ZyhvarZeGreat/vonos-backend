@@ -7,12 +7,12 @@ import { removeEntityFromQueries } from "@/lib/query/optimistic";
 import {
   Calendar,
   CheckSquare,
-  Inbox,
   Pencil,
   Trash2,
   UserCheck,
   Users,
 } from "lucide-react";
+import { UposGradientActionButton } from "@/components/upos/UposNavTabs";
 import type {
   AttendanceByShiftRow,
   AttendanceRow,
@@ -120,9 +120,7 @@ function ListCard({
           ) : null}
         </div>
         {onAdd ? (
-          <button type="button" className="hq6-btn-blue" onClick={onAdd}>
-            {addLabel}
-          </button>
+          <UposGradientActionButton label={addLabel.replace(/^\+\s*/, "")} onClick={onAdd} />
         ) : null}
       </div>
       {filters}
@@ -556,12 +554,38 @@ export function HrmHolidayView() {
   const [search, setSearch] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
   const [name, setName] = useState("");
-  const [date, setDate] = useState("");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
   const [locationCode, setLocationCode] = useState("");
   const [note, setNote] = useState("");
   const [confirmDelete, setConfirmDelete] = useState<HolidayRow | null>(null);
   const tenantConfig = useTenantStore((s) => s.tenantConfig);
   const locations = businessLocationOptions(tenantConfig?.businessLocations);
+
+  function enumerateIsoDates(startIso: string, endIso: string): string[] {
+    const start = new Date(startIso);
+    const end = new Date(endIso);
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return [];
+
+    let startUTC = new Date(
+      Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), start.getUTCDate()),
+    );
+    let endUTC = new Date(Date.UTC(end.getUTCFullYear(), end.getUTCMonth(), end.getUTCDate()));
+
+    if (endUTC < startUTC) {
+      const tmp = startUTC;
+      startUTC = endUTC;
+      endUTC = tmp;
+    }
+
+    const dates: string[] = [];
+    const cursor = new Date(startUTC);
+    while (cursor <= endUTC) {
+      dates.push(cursor.toISOString().slice(0, 10));
+      cursor.setUTCDate(cursor.getUTCDate() + 1);
+    }
+    return dates;
+  }
 
   const list = useServerListPage<HolidayRow>({
     queryKey: ["hrm-holidays", tenantId],
@@ -577,13 +601,25 @@ export function HrmHolidayView() {
   });
 
   const createMutation = useAppMutation({
-    mutationFn: () =>
-      createHoliday(tenantId!, {
-        name: name.trim(),
-        date,
-        locationCode: locationCode || undefined,
-        note: note.trim() || undefined,
-      }),
+    mutationFn: async () => {
+      const start = startDate;
+      const end = endDate || startDate;
+      const dates = enumerateIsoDates(start, end);
+      if (dates.length === 0) throw new Error("Invalid date range");
+
+      let last: HolidayRow | null = null;
+      for (const isoDate of dates) {
+        last = await createHoliday(tenantId!, {
+          name: name.trim(),
+          date: isoDate,
+          locationCode: locationCode || undefined,
+          note: note.trim() || undefined,
+        });
+      }
+
+      if (!last) throw new Error("Failed to create holiday");
+      return last;
+    },
     invalidateKeys: [["hrm-holidays", tenantId]],
     onSuccess: () => {
       setModalOpen(false);
@@ -639,7 +675,8 @@ export function HrmHolidayView() {
       title="Holiday"
       onAdd={() => {
         setName("");
-        setDate("");
+        setStartDate("");
+        setEndDate("");
         setLocationCode("");
         setNote("");
         setModalOpen(true);
@@ -696,7 +733,7 @@ export function HrmHolidayView() {
             onSave={() => createMutation.mutate()}
             onClose={() => setModalOpen(false)}
             saving={createMutation.isPending}
-            saveDisabled={!name.trim() || !date}
+            saveDisabled={!name.trim() || !startDate || !endDate}
           />
         }
       >
@@ -708,14 +745,28 @@ export function HrmHolidayView() {
               onChange={(e) => setName(e.target.value)}
             />
           </Hq6Field>
-          <Hq6Field label="Date" required>
-            <input
-              type="date"
-              className="hq6-modal-input"
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-            />
-          </Hq6Field>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Hq6Field label="Start Date" required>
+              <input
+                type="date"
+                className="hq6-modal-input"
+                value={startDate}
+                onChange={(e) => {
+                  const next = e.target.value;
+                  setStartDate(next);
+                  setEndDate((prev) => prev || next);
+                }}
+              />
+            </Hq6Field>
+            <Hq6Field label="End Date" required>
+              <input
+                type="date"
+                className="hq6-modal-input"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+              />
+            </Hq6Field>
+          </div>
           <Hq6Field label="Business Location">
             <select
               className="hq6-modal-input"
@@ -1177,7 +1228,7 @@ export function HrmSalesTargetsView() {
       render: (r) => (
         <button
           type="button"
-          className="hq6-btn-blue"
+          className="hq6-btn hq6-btn-blue"
           onClick={() => {
             setSelected(r);
             setNote("");
@@ -1272,8 +1323,7 @@ type AttendanceTab =
   | "shifts"
   | "all"
   | "by-shift"
-  | "by-date"
-  | "import";
+  | "by-date";
 
 const ATTENDANCE_TABS: Array<{
   id: AttendanceTab;
@@ -1295,11 +1345,6 @@ const ATTENDANCE_TABS: Array<{
     id: "by-date",
     label: "Attendance by date",
     icon: <Calendar className="size-3.5" />,
-  },
-  {
-    id: "import",
-    label: "Import Attendance",
-    icon: <Inbox className="size-3.5" />,
   },
 ];
 
@@ -1413,7 +1458,7 @@ export function HrmAttendanceView() {
         <h2 className="text-lg font-semibold text-[#111827]">Attendance</h2>
         <button
           type="button"
-          className="hq6-btn-blue"
+          className="hq6-btn hq6-btn-blue"
           onClick={() => {
             setClockName("");
             setClockModal(true);
@@ -1458,16 +1503,13 @@ export function HrmAttendanceView() {
           {tab === "shifts" ? (
             <>
               <div className="mb-3 flex justify-end">
-                <button
-                  type="button"
-                  className="hq6-btn-blue"
+                <UposGradientActionButton
+                  label="Add"
                   onClick={() => {
                     setShiftName("");
                     setShiftModal(true);
                   }}
-                >
-                  + Add
-                </button>
+                />
               </div>
               <ServerPaginatedTable
                 items={shifts.items}
@@ -1509,13 +1551,6 @@ export function HrmAttendanceView() {
               error={byShiftQuery.error ? "Failed to load attendance by shift" : null}
               emptyState={{ message: "No data found" }}
             />
-          ) : null}
-
-          {tab === "import" ? (
-            <div className="rounded border border-dashed border-[#d2d6de] bg-[#fafafa] px-4 py-10 text-center text-sm text-[#777]">
-              Import attendance from CSV / Excel — coming soon. Use Clock In or
-              All Attendance for manual entries.
-            </div>
           ) : null}
         </div>
       </div>

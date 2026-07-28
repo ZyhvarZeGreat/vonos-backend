@@ -88,9 +88,12 @@ export interface CreatePayrollRequest {
   payrollGroupId?: string;
   designationId?: string;
   locationCode?: string;
+  /** Basic salary total (duration × amount per unit). */
   grossPay: number;
   totalAllowance?: number;
   totalDeduction?: number;
+  /** draft | final | paid — defaults to draft. */
+  status?: "draft" | "final" | "paid";
   payrollMonth: string;
   note?: string;
 }

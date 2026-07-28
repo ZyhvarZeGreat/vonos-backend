@@ -215,6 +215,8 @@ export function InvoicesListView() {
             ? `${invoiceKindLabel(previewDetail.kind)} — ${previewDetail.reference}`
             : "Invoice preview"
         }
+        showBack
+        onBack={() => setPreviewId(null)}
         onClose={() => setPreviewId(null)}
       >
         {previewDocument ?? (

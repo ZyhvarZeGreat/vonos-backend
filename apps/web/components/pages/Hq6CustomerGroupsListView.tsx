@@ -23,6 +23,7 @@ import {
 } from "@/lib/api/customerGroups";
 import { useServerListPage } from "@/lib/hooks/useServerListPage";
 import { HQ6_TABLE_PAGE_SIZE } from "@/lib/api/fetchAllPages";
+import { useListExport } from "@/lib/hooks/useListExport";
 import { useTenantId } from "@/lib/hooks/useRouteTenant";
 import { toast } from "@/stores/toastStore";
 
@@ -231,8 +232,24 @@ export function Hq6CustomerGroupsListView() {
     { key: "priceGroup", label: "Selling Price Group" },
   ];
 
-  const exportToast = (label: string) =>
-    toast.info(`${label} — export coming with API.`);
+  const exportList = useListExport();
+
+  const handleExport = useCallback(() => {
+    exportList(
+      "customer-groups",
+      [
+        { key: "name", header: "Customer Group Name" },
+        { key: "discountPercent", header: "Calculation Percentage (%)" },
+        { key: "priceGroup", header: "Selling Price Group" },
+      ],
+      items.map((row) => ({
+        name: row.name,
+        discountPercent: row.discountPercent ?? "",
+        priceGroup: "",
+      })),
+      "Export Customer Groups",
+    );
+  }, [exportList, items]);
 
   return (
     <div className="hq6-page hq6-customer-groups-page">
@@ -321,7 +338,7 @@ export function Hq6CustomerGroupsListView() {
                                   if (key === "print") chrome.setPrintOpen(true);
                                   else if (key === "colvis")
                                     chrome.setColumnsOpen(true);
-                                  else exportToast(label);
+                                  else handleExport();
                                 }}
                               >
                                 <span>

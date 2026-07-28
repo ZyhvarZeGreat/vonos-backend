@@ -15,7 +15,6 @@ import {
 import { DateRangeDropdown } from "@/components/molecules/DateRangeDropdown";
 import { DropdownMenu } from "@/components/molecules/DropdownMenu";
 import type { DateRangePreset, CustomDateRange } from "@/stores/uiStore";
-import { useUiStore } from "@/stores/uiStore";
 import { cn } from "@/lib/utils/cn";
 import { useIsVaHq6 } from "@/lib/hooks/useIsVaHq6";
 import { hq6CopyForSlug } from "@/lib/registries/hq6PageCopy";
@@ -23,6 +22,14 @@ import { parseTenantPath } from "@/lib/utils/tenantRoutes";
 import { Hq6PageFrame } from "@/components/hq6/Hq6Chrome";
 import { Hq6ColumnVisibilityModal } from "@/components/hq6/Hq6ColumnVisibilityModal";
 import { Hq6PrintModal } from "@/components/hq6/Hq6PrintModal";
+import { ExportDocumentModal } from "@/components/organisms/ExportDocumentModal";
+import {
+  ListTableBridgeProvider,
+  useListTableBridge,
+} from "@/lib/listTableBridge";
+import { downloadCsv, downloadExcelCsv } from "@/lib/utils/exportCsv";
+import { exportTablePdf } from "@/lib/utils/exportPdf";
+import { toast } from "@/stores/toastStore";
 
 export interface ListTab {
   id: string;
@@ -81,12 +88,93 @@ export interface ListPageShellProps {
   hq6Columns?: { key: string; label: string }[];
   hq6VisibleColumns?: string[];
   onHq6VisibleColumnsChange?: (keys: string[]) => void;
+  /** UPOS "Show N entries" — wire to server page size when provided */
+  pageSize?: number;
+  onPageSizeChange?: (size: number) => void;
 }
 
 export function ListPageShell(props: ListPageShellProps) {
   const isHq6 = useIsVaHq6();
-  if (isHq6) return <Hq6ListPageShell {...props} />;
-  return <DefaultListPageShell {...props} />;
+  return (
+    <ListTableBridgeProvider>
+      {isHq6 ? (
+        <Hq6ListPageShell {...props} />
+      ) : (
+        <DefaultListPageShell {...props} />
+      )}
+      <ExportDocumentModal />
+    </ListTableBridgeProvider>
+  );
+}
+
+function slugFilename(label: string): string {
+  return (
+    label
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "") || "export"
+  );
+}
+
+function useListTableActions(activeLabel: string, onExport?: () => void) {
+  const bridge = useListTableBridge();
+  const api = bridge?.api ?? null;
+  const exportFilename = slugFilename(activeLabel);
+
+  const payloadOrFallback = (preferCustom: boolean) => {
+    if (preferCustom && onExport) {
+      onExport();
+      return "custom" as const;
+    }
+    const payload = api?.getExportPayload(exportFilename);
+    if (payload && payload.rows.length > 0) return payload;
+    if (onExport) {
+      onExport();
+      return "custom" as const;
+    }
+    toast.error("No table data to export on this page.");
+    return null;
+  };
+
+  const runCsv = () => {
+    // Prefer live table rows when present; fall back to page-specific exporters
+    // (full-dataset / API) so empty onExport stubs never block CSV.
+    const result = payloadOrFallback(false);
+    if (!result || result === "custom") return;
+    downloadCsv(result);
+    toast.success("CSV export started");
+  };
+
+  const runExcel = () => {
+    const result = payloadOrFallback(false);
+    if (!result || result === "custom") return;
+    downloadExcelCsv(result);
+    toast.success("Excel CSV export started — open in Excel or Sheets");
+  };
+
+  const runPdf = () => {
+    const result = payloadOrFallback(false);
+    if (!result || result === "custom") return;
+    try {
+      exportTablePdf(result);
+      toast.success(
+        "PDF export opened — choose Save as PDF in the print dialog",
+      );
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "PDF export failed");
+    }
+  };
+
+  const runPrint = () => {
+    window.print();
+  };
+
+  const bridgeColumns = (api?.getColumns() ?? [])
+    .filter((c) => c.hideable)
+    .map((c) => ({ key: c.key, label: c.label }));
+
+  return { api, runCsv, runExcel, runPdf, runPrint, bridgeColumns };
 }
 
 function useCommittedSearch(
@@ -148,8 +236,9 @@ function Hq6ListPageShell({
   hq6Columns = [],
   hq6VisibleColumns,
   onHq6VisibleColumnsChange,
+  pageSize = 25,
+  onPageSizeChange,
 }: ListPageShellProps) {
-  const openExportModal = useUiStore((state) => state.openExportModal);
   const pathname = usePathname();
   const { section } = parseTenantPath(pathname);
   const copy = useMemo(() => hq6CopyForSlug(section), [section]);
@@ -162,18 +251,39 @@ function Hq6ListPageShell({
   const { localSearch, setLocalSearch } = useCommittedSearch(searchValue);
   const [printOpen, setPrintOpen] = useState(false);
   const [columnsOpen, setColumnsOpen] = useState(false);
-  const defaultColumnKeys = useMemo(
-    () => hq6Columns.map((c) => c.key),
-    [hq6Columns],
-  );
-  const visibleKeys = hq6VisibleColumns ?? defaultColumnKeys;
+  const [columnModalKeys, setColumnModalKeys] = useState<string[]>([]);
 
   const hasFilters =
     showDateRange || filterDropdowns.length > 0 || filterCheckboxes.length > 0;
 
   const multiTabs = tabs.length > 1;
   const activeLabel =
-    tabs.find((t) => t.id === activeTab)?.label ?? tabs[0]?.label;
+    tabs.find((t) => t.id === activeTab)?.label ?? tabs[0]?.label ?? "Export";
+
+  const { api, runCsv, runExcel, runPdf, runPrint, bridgeColumns } =
+    useListTableActions(activeLabel, onExport);
+
+  const columnOptions =
+    hq6Columns.length > 0 ? hq6Columns : bridgeColumns;
+  const defaultColumnKeys = useMemo(
+    () => columnOptions.map((c) => c.key),
+    [columnOptions],
+  );
+
+  const openColumnsModal = () => {
+    setColumnModalKeys(
+      hq6VisibleColumns ?? api?.getVisibleKeys() ?? defaultColumnKeys,
+    );
+    setColumnsOpen(true);
+  };
+
+  const applyColumnVisibility = (keys: string[]) => {
+    if (onHq6VisibleColumnsChange) {
+      onHq6VisibleColumnsChange(keys);
+      return;
+    }
+    api?.setVisibleKeys(keys);
+  };
 
   const filters = hasFilters ? (
     <div className="space-y-4">
@@ -211,6 +321,7 @@ function Hq6ListPageShell({
           <label key={filter.id} className="hq6-field">
             <span>{filter.label.replace(/:$/, "")}:</span>
             <select
+              className="form-control select2"
               value={filter.value}
               onChange={(e) => filter.onChange(e.target.value)}
             >
@@ -232,7 +343,7 @@ function Hq6ListPageShell({
   const showToolbar = showImport || showExport || showSearch;
 
   const box = (
-    <div className="box-primary tw-mb-4 tw-transition-all tw-duration-200 tw-bg-white tw-shadow-sm tw-rounded-xl tw-ring-1 hover:tw-shadow-md tw-ring-gray-200 overflow-x-clip">
+    <div className="box-primary tw-mb-4 tw-transition-all tw-duration-200 tw-bg-white tw-shadow-sm tw-rounded-xl tw-ring-1 hover:tw-shadow-md tw-ring-gray-200 min-w-0 overflow-hidden">
       <div className="tw-p-2 sm:tw-p-3">
       {multiTabs ? (
       <div className="hq6-tab-row">
@@ -266,62 +377,56 @@ function Hq6ListPageShell({
 
       {showToolbar ? (
       <div className="hq6-dt-toolbar">
-        <label className="hq6-show-entries">
-          Show{" "}
-          <select defaultValue={25}>
-            <option value={25}>25</option>
-            <option value={50}>50</option>
-            <option value={100}>100</option>
-            <option value={200}>200</option>
-            <option value={500}>500</option>
-            <option value={1000}>1,000</option>
-            <option value={-1}>All</option>
-          </select>{" "}
-          entries
-        </label>
+        {onPageSizeChange ? (
+          <label className="hq6-show-entries">
+            Show{" "}
+            <select
+              className="form-control select2"
+              value={pageSize}
+              onChange={(e) => onPageSizeChange(Number(e.target.value))}
+            >
+              <option value={25}>25</option>
+              <option value={50}>50</option>
+              <option value={100}>100</option>
+              <option value={200}>200</option>
+              <option value={500}>500</option>
+              <option value={1000}>1,000</option>
+            </select>{" "}
+            entries
+          </label>
+        ) : null}
         <div className="hq6-dt-toolbar-actions">
-          {showImport ? (
-            onImport ? (
-              <>
-                <input
-                  type="file"
-                  accept=".csv"
-                  className="hidden"
-                  id="hq6-list-import"
-                  onChange={(event) => {
-                    const file = event.target.files?.[0];
-                    if (file) void onImport(file);
-                    event.target.value = "";
-                  }}
-                />
-                <label
-                  htmlFor="hq6-list-import"
-                  className={cn(
-                    "tw-dw-btn tw-dw-btn-xs tw-dw-btn-outline tw-my-2",
-                    importDisabled && "pointer-events-none opacity-50",
-                  )}
-                >
-                  <Download className="h-3.5 w-3.5" />
-                  Import CSV
-                </label>
-              </>
-            ) : (
-              <button
-                type="button"
-                className="tw-dw-btn tw-dw-btn-xs tw-dw-btn-outline tw-my-2"
-                disabled
+          {showImport && onImport ? (
+            <>
+              <input
+                type="file"
+                accept=".csv"
+                className="hidden"
+                id="hq6-list-import"
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  if (file) void onImport(file);
+                  event.target.value = "";
+                }}
+              />
+              <label
+                htmlFor="hq6-list-import"
+                className={cn(
+                  "tw-dw-btn tw-dw-btn-xs tw-dw-btn-outline tw-my-2",
+                  importDisabled && "pointer-events-none opacity-50",
+                )}
               >
                 <Download className="h-3.5 w-3.5" />
                 Import CSV
-              </button>
-            )
+              </label>
+            </>
           ) : null}
           {showExport ? (
             <>
               <button
                 type="button"
                 className="tw-dw-btn tw-dw-btn-xs tw-dw-btn-outline tw-my-2"
-                onClick={onExport ?? (() => openExportModal())}
+                onClick={runCsv}
               >
                 <FileText className="h-3.5 w-3.5" />
                 Export CSV
@@ -329,7 +434,7 @@ function Hq6ListPageShell({
               <button
                 type="button"
                 className="tw-dw-btn tw-dw-btn-xs tw-dw-btn-outline tw-my-2"
-                onClick={onExport ?? (() => openExportModal())}
+                onClick={runExcel}
               >
                 <FileSpreadsheet className="h-3.5 w-3.5" />
                 Export Excel
@@ -342,19 +447,20 @@ function Hq6ListPageShell({
                 <Printer className="h-3.5 w-3.5" />
                 Print
               </button>
+              {columnOptions.length > 0 ? (
+                <button
+                  type="button"
+                  className="tw-dw-btn tw-dw-btn-xs tw-dw-btn-outline tw-my-2"
+                  onClick={openColumnsModal}
+                >
+                  <Columns3 className="h-3.5 w-3.5" />
+                  Column visibility
+                </button>
+              ) : null}
               <button
                 type="button"
                 className="tw-dw-btn tw-dw-btn-xs tw-dw-btn-outline tw-my-2"
-                onClick={() => setColumnsOpen(true)}
-                disabled={hq6Columns.length === 0}
-              >
-                <Columns3 className="h-3.5 w-3.5" />
-                Column visibility
-              </button>
-              <button
-                type="button"
-                className="tw-dw-btn tw-dw-btn-xs tw-dw-btn-outline tw-my-2"
-                onClick={onExport ?? (() => openExportModal())}
+                onClick={runPdf}
               >
                 <FileText className="h-3.5 w-3.5" />
                 Export PDF
@@ -391,7 +497,7 @@ function Hq6ListPageShell({
       </div>
       ) : null}
 
-      <div className={cn("hq6-table-wrap tw-py-2 sm:tw-px-5", contentClassName)}>{children}</div>
+      <div className={cn("hq6-table-wrap tw-py-2 sm:tw-px-5 overflow-x-auto", contentClassName)}>{children}</div>
       </div>
     </div>
   );
@@ -405,14 +511,27 @@ function Hq6ListPageShell({
           </div>
         ) : null}
         {box}
-        <Hq6PrintModal open={printOpen} onClose={() => setPrintOpen(false)} />
-        {hq6Columns.length > 0 ? (
+        <Hq6PrintModal
+          open={printOpen}
+          onClose={() => setPrintOpen(false)}
+          onPrint={runPrint}
+        />
+        {columnOptions.length > 0 ? (
           <Hq6ColumnVisibilityModal
             open={columnsOpen}
             onClose={() => setColumnsOpen(false)}
-            columns={hq6Columns}
-            visibleKeys={visibleKeys}
-            onChange={(keys) => onHq6VisibleColumnsChange?.(keys)}
+            columns={columnOptions}
+            visibleKeys={columnModalKeys}
+            onChange={applyColumnVisibility}
+            onReset={() => {
+              if (onHq6VisibleColumnsChange) {
+                onHq6VisibleColumnsChange(defaultColumnKeys);
+                setColumnModalKeys(defaultColumnKeys);
+                return;
+              }
+              api?.resetVisibleKeys();
+              setColumnModalKeys(defaultColumnKeys);
+            }}
           />
         ) : null}
       </div>
@@ -422,14 +541,27 @@ function Hq6ListPageShell({
   return (
     <Hq6PageFrame title={title} subtitle={subtitle} filters={filters}>
       {box}
-      <Hq6PrintModal open={printOpen} onClose={() => setPrintOpen(false)} />
-      {hq6Columns.length > 0 ? (
+      <Hq6PrintModal
+        open={printOpen}
+        onClose={() => setPrintOpen(false)}
+        onPrint={runPrint}
+      />
+      {columnOptions.length > 0 ? (
         <Hq6ColumnVisibilityModal
           open={columnsOpen}
           onClose={() => setColumnsOpen(false)}
-          columns={hq6Columns}
-          visibleKeys={visibleKeys}
-          onChange={(keys) => onHq6VisibleColumnsChange?.(keys)}
+          columns={columnOptions}
+          visibleKeys={columnModalKeys}
+          onChange={applyColumnVisibility}
+          onReset={() => {
+            if (onHq6VisibleColumnsChange) {
+              onHq6VisibleColumnsChange(defaultColumnKeys);
+              setColumnModalKeys(defaultColumnKeys);
+              return;
+            }
+            api?.resetVisibleKeys();
+            setColumnModalKeys(defaultColumnKeys);
+          }}
         />
       ) : null}
     </Hq6PageFrame>
@@ -461,13 +593,43 @@ function DefaultListPageShell({
   className,
   contentClassName,
   searchDebounceMs = 300,
+  hq6Columns = [],
+  hq6VisibleColumns,
+  onHq6VisibleColumnsChange,
 }: ListPageShellProps) {
-  const openExportModal = useUiStore((state) => state.openExportModal);
   const { localSearch, setLocalSearch } = useDebouncedSearch(
     searchValue,
     onSearchChange,
     searchDebounceMs,
   );
+  const [columnsOpen, setColumnsOpen] = useState(false);
+  const [columnModalKeys, setColumnModalKeys] = useState<string[]>([]);
+  const activeLabel =
+    tabs.find((t) => t.id === activeTab)?.label ?? tabs[0]?.label ?? "Export";
+  const { api, runCsv, runExcel, runPdf, runPrint, bridgeColumns } =
+    useListTableActions(activeLabel, onExport);
+
+  const columnOptions =
+    hq6Columns.length > 0 ? hq6Columns : bridgeColumns;
+  const defaultColumnKeys = useMemo(
+    () => columnOptions.map((c) => c.key),
+    [columnOptions],
+  );
+
+  const openColumnsModal = () => {
+    setColumnModalKeys(
+      hq6VisibleColumns ?? api?.getVisibleKeys() ?? defaultColumnKeys,
+    );
+    setColumnsOpen(true);
+  };
+
+  const applyColumnVisibility = (keys: string[]) => {
+    if (onHq6VisibleColumnsChange) {
+      onHq6VisibleColumnsChange(keys);
+      return;
+    }
+    api?.setVisibleKeys(keys);
+  };
 
   return (
     <div
@@ -495,8 +657,7 @@ function DefaultListPageShell({
           ))}
         </div>
         <div className="hidden items-center gap-3 pb-3 md:flex">
-          {showImport ? (
-            onImport ? (
+          {showImport && onImport ? (
               <>
                 <input
                   type="file"
@@ -522,27 +683,52 @@ function DefaultListPageShell({
                   Import CSV
                 </label>
               </>
-            ) : (
-              <button
-                type="button"
-                disabled
-                title="CSV import requires a backend upload endpoint (not yet available)"
-                className="inline-flex cursor-not-allowed items-center gap-2 rounded-lg border border-border bg-card px-3 py-1.5 text-sm font-medium text-muted opacity-60 shadow-sm"
-              >
-                <Download className="h-4 w-4 text-muted" />
-                Import CSV
-              </button>
-            )
           ) : null}
           {showExport ? (
-            <button
-              type="button"
-              onClick={onExport ?? (() => openExportModal())}
-              className="inline-flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-1.5 text-sm font-medium text-foreground shadow-sm hover:bg-[var(--color-surface-muted)]"
-            >
-              <Upload className="h-4 w-4 text-muted" />
-              Export
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={runCsv}
+                className="inline-flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-1.5 text-sm font-medium text-foreground shadow-sm hover:bg-[var(--color-surface-muted)]"
+              >
+                <FileText className="h-4 w-4 text-muted" />
+                CSV
+              </button>
+              <button
+                type="button"
+                onClick={runExcel}
+                className="inline-flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-1.5 text-sm font-medium text-foreground shadow-sm hover:bg-[var(--color-surface-muted)]"
+              >
+                <FileSpreadsheet className="h-4 w-4 text-muted" />
+                Excel
+              </button>
+              <button
+                type="button"
+                onClick={runPrint}
+                className="inline-flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-1.5 text-sm font-medium text-foreground shadow-sm hover:bg-[var(--color-surface-muted)]"
+              >
+                <Printer className="h-4 w-4 text-muted" />
+                Print
+              </button>
+              {columnOptions.length > 0 ? (
+                <button
+                  type="button"
+                  onClick={openColumnsModal}
+                  className="inline-flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-1.5 text-sm font-medium text-foreground shadow-sm hover:bg-[var(--color-surface-muted)]"
+                >
+                  <Columns3 className="h-4 w-4 text-muted" />
+                  Columns
+                </button>
+              ) : null}
+              <button
+                type="button"
+                onClick={runPdf}
+                className="inline-flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-1.5 text-sm font-medium text-foreground shadow-sm hover:bg-[var(--color-surface-muted)]"
+              >
+                <Upload className="h-4 w-4 text-muted" />
+                PDF
+              </button>
+            </>
           ) : null}
           {primaryAction}
         </div>
@@ -634,6 +820,25 @@ function DefaultListPageShell({
       ) : (
         children
       )}
+
+      {columnOptions.length > 0 ? (
+        <Hq6ColumnVisibilityModal
+          open={columnsOpen}
+          onClose={() => setColumnsOpen(false)}
+          columns={columnOptions}
+          visibleKeys={columnModalKeys}
+          onChange={applyColumnVisibility}
+          onReset={() => {
+            if (onHq6VisibleColumnsChange) {
+              onHq6VisibleColumnsChange(defaultColumnKeys);
+              setColumnModalKeys(defaultColumnKeys);
+              return;
+            }
+            api?.resetVisibleKeys();
+            setColumnModalKeys(defaultColumnKeys);
+          }}
+        />
+      ) : null}
     </div>
   );
 }

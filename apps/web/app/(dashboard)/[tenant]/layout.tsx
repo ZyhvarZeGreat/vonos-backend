@@ -12,6 +12,7 @@ import { useRecordTitle } from "@/lib/hooks/useRecordTitle";
 import { TenantShell } from "@/components/layouts/TenantShell";
 import { AdminViewingBanner } from "@/components/molecules/AdminViewingBanner";
 import { PageTransition } from "@/components/atoms/PageTransition";
+import { TopProgressBar } from "@/components/atoms/TopProgressBar";
 import { UposAppShell } from "@/components/upos/UposAppShell";
 import { isUposShellTenant } from "@/lib/utils/isHq6Tenant";
 import { useAuthStore } from "@/stores/authStore";
@@ -74,6 +75,7 @@ function TenantLayoutInner({ children }: { children: React.ReactNode }) {
         isNavActive={isNavRouteActive}
         userName={authName ?? authEmail ?? undefined}
       >
+        <TopProgressBar />
         {children}
       </UposAppShell>
     );
@@ -81,6 +83,7 @@ function TenantLayoutInner({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
+      <TopProgressBar />
       {mobileNavOpen ? (
         <button
           type="button"

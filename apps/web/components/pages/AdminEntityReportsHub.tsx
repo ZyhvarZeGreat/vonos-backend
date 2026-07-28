@@ -127,17 +127,21 @@ export function AdminEntityReportsHub({ tenantCode }: AdminEntityReportsHubProps
               Printable detail sheets for each report type available to this entity.
             </p>
           </div>
-          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
             {registryReports.map((entry) => (
               <Link
                 key={entry.id}
                 href={`/admin/reports/${tenantCode}/${entry.slug}`}
-                className="hq6-card flex items-start gap-3 p-4 transition-colors hover:border-[var(--color-brand-primary)]/40"
+                className="hq6-card hq6-report-link-card flex items-start gap-3 transition-colors hover:border-[var(--color-brand-primary)]/40"
               >
-                <FileBarChart className="mt-0.5 h-5 w-5 shrink-0 text-muted" />
-                <div>
-                  <p className="text-sm font-medium text-[#111827]">{entry.label}</p>
-                  <p className="mt-0.5 text-xs text-[#6b7280]">Open report sheet →</p>
+                <FileBarChart className="mt-0.5 h-6 w-6 shrink-0 text-[#6b7280]" />
+                <div className="min-w-0">
+                  <p className="text-base font-semibold text-[#111827]">
+                    {entry.label}
+                  </p>
+                  <p className="mt-1 text-sm text-[#6b7280]">
+                    Open report sheet →
+                  </p>
                 </div>
               </Link>
             ))}

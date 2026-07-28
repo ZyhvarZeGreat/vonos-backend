@@ -1,6 +1,10 @@
+"use client";
+
 import Image from "next/image";
 import Link from "next/link";
+import { useLayoutEffect } from "react";
 import { cn } from "@/lib/utils/cn";
+import { preloadUposStylesheets } from "@/lib/upos/styles";
 
 export interface AuthTemplateProps {
   title: string;
@@ -58,8 +62,28 @@ export function AuthTemplate({
   className,
   topRight,
 }: AuthTemplateProps) {
+  // Clear leftover UPOS/AdminLTE chrome after logout; preload dashboard CSS
+  // so post-login navigation does not flash unstyled content.
+  useLayoutEffect(() => {
+    document.documentElement.classList.remove("upos-hq6", "upos-shell");
+    document.body.className = document.body.className
+      .split(/\s+/)
+      .filter(
+        (c) =>
+          c &&
+          !c.startsWith("skin-") &&
+          c !== "hold-transition" &&
+          c !== "sidebar-mini" &&
+          c !== "sidebar-collapse" &&
+          !c.startsWith("tw-"),
+      )
+      .join(" ");
+    preloadUposStylesheets();
+  }, []);
+
   return (
     <div
+      data-auth-layout
       className="flex min-h-screen items-center justify-center bg-[var(--auth-blue)] p-4 sm:p-6 lg:p-10"
       style={AUTH_STYLE}
     >

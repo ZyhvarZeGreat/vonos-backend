@@ -526,10 +526,21 @@ export function FinanceView({ groupMode = false }: FinanceViewProps) {
             </button>
           ))}
         </div>
-        <Button variant="secondary" size="sm" onClick={handleExport}>
-          <Upload className="mr-2 h-4 w-4" />
-          Export
-        </Button>
+        {isHq6 ? (
+          <button
+            type="button"
+            className="hq6-btn hq6-btn-outline"
+            onClick={handleExport}
+          >
+            <Upload className="h-4 w-4" />
+            Export
+          </button>
+        ) : (
+          <Button variant="secondary" size="sm" onClick={handleExport}>
+            <Upload className="mr-2 h-4 w-4" />
+            Export
+          </Button>
+        )}
       </div>
 
       {activeTab === "overview" && (
@@ -702,19 +713,32 @@ export function FinanceView({ groupMode = false }: FinanceViewProps) {
         <div className="space-y-4">
           {!groupMode ? (
             <div className="flex justify-end">
-              <Button
-                size="sm"
-                onClick={() => {
-                  if (isHq6 && tenantCode) {
-                    router.push(`/${tenantCode}/add-expense`);
-                    return;
-                  }
-                  openAddExpenseModal();
-                }}
-              >
-                <Plus className="mr-2 h-4 w-4" />
-                Add Expense
-              </Button>
+              {isHq6 ? (
+                <button
+                  type="button"
+                  className="hq6-btn hq6-btn-blue"
+                  onClick={() => {
+                    if (tenantCode) {
+                      router.push(`/${tenantCode}/add-expense`);
+                      return;
+                    }
+                    openAddExpenseModal();
+                  }}
+                >
+                  <Plus className="h-4 w-4" />
+                  Add Expense
+                </button>
+              ) : (
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    openAddExpenseModal();
+                  }}
+                >
+                  <Plus className="mr-2 h-4 w-4" />
+                  Add Expense
+                </Button>
+              )}
             </div>
           ) : null}
           <ListPageShell

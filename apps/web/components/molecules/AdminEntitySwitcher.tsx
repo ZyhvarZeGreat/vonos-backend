@@ -1,35 +1,47 @@
 "use client";
 
-import { Building2, ChevronDown } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useMemo, useRef } from "react";
 import { usePathname } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import {
-  accentTenantCodeForVagUnit,
+  getVagViewUnit,
   VAG_VIEW_UNITS,
   type VagViewUnitId,
 } from "@/lib/registries/vagViewUnits";
-import { accentForTenantCode } from "@/lib/registries/tenantAccents";
-import { iconForTenantCode } from "@/lib/registries/tenantIcons";
-import { typographyRoles } from "@/lib/registries/typography";
+import { getTenantByCode, type TenantCode } from "@/lib/registries/tenants";
 import { cn } from "@/lib/utils/cn";
+import { tenantOverviewPath } from "@/lib/utils/authRedirect";
 import { prefetchAdminEntity } from "@/lib/admin/prefetchAdminEntity";
 import { dateRangePresetToApiBounds } from "@/lib/utils/dateRange";
 import {
   useAdminEntityStore,
   type AdminViewingCode,
 } from "@/stores/adminEntityStore";
+import { useTenantStore } from "@/stores/tenantStore";
 import { useUiStore } from "@/stores/uiStore";
+import { toast } from "@/stores/toastStore";
 
 export interface AdminEntitySwitcherProps {
   className?: string;
-  /** TopBar chrome (white-on-accent) vs context bar (light surface). */
+  /**
+   * `topbar` — leave VAG and open an entity’s full dashboard (`/{code}/overview`).
+   * `bar` — stay in VAG; change Reports / Finance / HRM viewing scope only.
+   */
   variant?: "topbar" | "bar";
 }
 
+function shortName(name: string): string {
+  return name.replace(/^Vonos\s+/i, "");
+}
+
+function parseScopeId(raw: string): AdminViewingCode {
+  return raw === "VA" || raw === "VW" || raw === "SP" ? raw : null;
+}
+
 /**
- * VAG viewing-unit switcher (Group / VA / VW / SP). Stays on the current
- * admin module — only the viewing scope changes.
+ * Two distinct switchers for VAG admin:
+ * - Topbar: VAG ↔ entity workspaces (full dashboards).
+ * - Bar: entity scope for Reports / Finance / HRM (stay on `/admin/*`).
  */
 export function AdminEntitySwitcher({
   className,
@@ -41,34 +53,10 @@ export function AdminEntitySwitcher({
   const setViewingCode = useAdminEntityStore((s) => s.setViewingCode);
   const dateRange = useUiStore((s) => s.dateRange);
   const customDateRange = useUiStore((s) => s.customDateRange);
-  const [open, setOpen] = useState(false);
-  const rootRef = useRef<HTMLDivElement>(null);
+  const beginEntitySwitch = useUiStore((s) => s.beginEntitySwitch);
   const warmedRef = useRef<Set<string>>(new Set());
   const isTopbar = variant === "topbar";
-
-  useEffect(() => {
-    function onDocClick(event: MouseEvent) {
-      if (rootRef.current && !rootRef.current.contains(event.target as Node)) {
-        setOpen(false);
-      }
-    }
-    document.addEventListener("mousedown", onDocClick);
-    return () => document.removeEventListener("mousedown", onDocClick);
-  }, []);
-
-  const activeUnit = viewingCode
-    ? VAG_VIEW_UNITS.find((u) => u.id === viewingCode)
-    : null;
-  const displayName = activeUnit?.name ?? "Vonos Autos Group";
-  const displayMeta = activeUnit
-    ? activeUnit.badge
-    : "All entities (Group)";
-  const ActiveIcon = viewingCode
-    ? iconForTenantCode(accentTenantCodeForVagUnit(viewingCode))
-    : Building2;
-  const activeAccent = viewingCode
-    ? accentForTenantCode(accentTenantCodeForVagUnit(viewingCode))
-    : accentForTenantCode("VAG");
+  const navigatingRef = useRef(false);
 
   const warmUnit = (unitId: VagViewUnitId) => {
     const unit = VAG_VIEW_UNITS.find((u) => u.id === unitId);
@@ -98,144 +86,173 @@ export function AdminEntitySwitcher({
     }
   };
 
-  const pick = (code: AdminViewingCode) => {
-    setViewingCode(code);
-    setOpen(false);
+  const refreshScopedQueries = () => {
+    void queryClient.invalidateQueries({
+      predicate: (query) => {
+        const root = query.queryKey[0];
+        return root !== "tenantConfig" && root !== "groupOverview";
+      },
+    });
   };
 
-  return (
-    <div ref={rootRef} className={cn("relative", className)}>
-      <button
-        type="button"
-        onClick={() => {
-          setOpen((v) => {
-            const next = !v;
-            if (next) warmAllUnits();
-            return next;
-          });
-        }}
-        className={cn(
-          "flex w-full items-center gap-2 rounded-md text-left transition-colors",
-          isTopbar ? "px-2 py-1.5 hover:bg-white/10" : "hq6-btn hq6-btn-outline",
-        )}
-        aria-expanded={open}
-        aria-haspopup="listbox"
-        aria-label={`Viewing: ${displayName}. Switch entity.`}
-      >
-        <span
-          className={cn(
-            "flex shrink-0 items-center justify-center rounded-md text-white",
-            isTopbar ? "h-8 w-8 bg-white/20" : "h-7 w-7",
-          )}
-          style={isTopbar ? undefined : { backgroundColor: activeAccent }}
-        >
-          <ActiveIcon className={isTopbar ? "h-4 w-4" : "h-3.5 w-3.5"} />
-        </span>
-        {isTopbar ? (
-          <div className="min-w-0 flex-1">
-            <p
-              className={cn(
-                typographyRoles.tenantTitle,
-                "truncate !text-white",
-              )}
-            >
-              {displayName}
-            </p>
-            <p
-              className={cn(
-                typographyRoles.tenantMeta,
-                "truncate !text-white/70",
-              )}
-            >
-              {displayMeta}
-            </p>
-          </div>
-        ) : (
-          <span className="inline-flex items-center gap-2">
-            Switch entity
-          </span>
-        )}
-        <ChevronDown
-          className={cn(
-            "h-3.5 w-3.5 shrink-0 transition-transform",
-            isTopbar ? "text-white/60 hidden sm:block" : "text-muted h-4 w-4",
-            open && "rotate-180",
-          )}
-        />
-      </button>
+  /** Hard navigate so admin → tenant layout switch always lands. */
+  const go = (href: string) => {
+    navigatingRef.current = true;
+    window.location.assign(href);
+  };
 
-      {open ? (
-        <div
-          className={cn(
-            "absolute z-50 overflow-hidden rounded-xl border border-border bg-card text-foreground shadow-lg",
-            isTopbar
-              ? "left-0 top-full mt-2 w-80"
-              : "right-0 top-full mt-2 w-80",
-          )}
-          role="listbox"
+  /** Topbar: leave VAG → entity overview (full dashboard). */
+  const enterEntityDashboard = (raw: string) => {
+    if (navigatingRef.current) return;
+
+    if (raw === "VAG" || raw === "") {
+      setViewingCode(null);
+      if (
+        pathname === "/admin/overview" ||
+        pathname.startsWith("/admin/overview/")
+      ) {
+        toast.info("Already on Group admin");
+        return;
+      }
+      beginEntitySwitch({
+        code: "VAG",
+        name: "Vonos Autos Group",
+        href: "/admin/overview",
+      });
+      toast.info("Opening Group admin");
+      go("/admin/overview");
+      return;
+    }
+
+    const enterCode = (raw === "SP" ? "VSP" : raw) as TenantCode;
+    const unit =
+      raw === "VA" || raw === "VW" || raw === "SP"
+        ? getVagViewUnit(raw)
+        : VAG_VIEW_UNITS.find((u) => u.enterCode === enterCode);
+    const enter = getTenantByCode(enterCode);
+    if (!enter || !unit) {
+      toast.error("Unknown entity");
+      return;
+    }
+
+    setViewingCode(null);
+    if (enter.tenantId) {
+      useTenantStore.getState().setActiveTenant(enter.tenantId);
+    }
+
+    const href = tenantOverviewPath(enter.code);
+    queryClient.removeQueries({
+      predicate: (query) => query.queryKey[0] !== "tenantConfig",
+    });
+    beginEntitySwitch({
+      code: enter.code,
+      name: unit.name,
+      href,
+    });
+    toast.success(`Opening ${unit.name} dashboard`);
+    go(href);
+  };
+
+  /** Context bar: change Reports / Finance / HRM scope inside VAG. */
+  const setModuleScope = (code: AdminViewingCode) => {
+    if (code === viewingCode) return;
+    setViewingCode(code);
+    refreshScopedQueries();
+    if (!code) {
+      toast.info("Module entity: Group (Reports / Finance / HRM / Stock)");
+      return;
+    }
+    const unit = getVagViewUnit(code);
+    toast.success(
+      `Module entity: ${shortName(unit.name)} (stay in VAG)`,
+    );
+  };
+
+  const topbarOptions = useMemo(
+    () => [
+      { value: "VAG", label: "VAG — Group admin" },
+      ...VAG_VIEW_UNITS.map((unit) => ({
+        value: unit.enterCode,
+        label: `${unit.badge} — ${shortName(unit.name)} dashboard`,
+      })),
+    ],
+    [],
+  );
+
+  const scopeOptions = useMemo(
+    () => [
+      {
+        value: "",
+        label: "Group — All entities (consolidated)",
+      },
+      ...VAG_VIEW_UNITS.map((unit) => ({
+        value: unit.id,
+        label: `${unit.badge} — ${shortName(unit.name)}${
+          unit.tenantCodes.length > 1
+            ? ` (${unit.tenantCodes.join(" + ")})`
+            : ""
+        }`,
+      })),
+    ],
+    [],
+  );
+
+  if (isTopbar) {
+    return (
+      <div
+        className={cn("tw-relative tw-z-20 tw-min-w-0", className)}
+        onMouseEnter={warmAllUnits}
+        title="Leaves VAG and opens that entity’s full dashboard"
+      >
+        {/*
+          Uncontrolled + defaultValue: a controlled value stuck on "VAG"/""
+          prevented native change from sticking and looked like a dead control.
+          Hard assign() crosses admin → tenant layouts reliably.
+          Hint lives in aria-label + option text — no stacked label (broke header).
+        */}
+        <select
+          id="upos-admin-workspace-switcher"
+          key={`workspace-${pathname}`}
+          className="form-control select2 upos-header-entity-select"
+          defaultValue="VAG"
+          aria-label="Open app: leave VAG and open an entity’s full dashboard"
+          onChange={(event) => {
+            const next = event.target.value;
+            if (next === "VAG") return;
+            enterEntityDashboard(next);
+          }}
         >
-          <div className="border-b border-border px-3 py-2">
-            <p className={typographyRoles.caption}>Switch entity</p>
-          </div>
-          <button
-            type="button"
-            role="option"
-            aria-selected={!viewingCode}
-            onClick={() => pick(null)}
-            className={cn(
-              "flex w-full items-center gap-2.5 px-3 py-2.5 text-left text-sm hover:bg-[var(--color-surface-nav-hover)]",
-              !viewingCode && "bg-[var(--color-surface-nav-active)]",
-            )}
-          >
-            <span
-              className="flex h-7 w-7 items-center justify-center rounded-md text-white"
-              style={{ backgroundColor: accentForTenantCode("VAG") }}
-            >
-              <Building2 className="h-3.5 w-3.5" />
-            </span>
-            <span>
-              <span className="block font-medium">All entities (Group)</span>
-              <span className="block text-xs text-muted">Consolidated view</span>
-            </span>
-          </button>
-          <div className="max-h-72 overflow-y-auto border-t border-border p-1">
-            {VAG_VIEW_UNITS.map((unit) => {
-              const Icon = iconForTenantCode(unit.enterCode);
-              const isActive = viewingCode === unit.id;
-              return (
-                <button
-                  key={unit.id}
-                  type="button"
-                  role="option"
-                  aria-selected={isActive}
-                  onMouseEnter={() => warmUnit(unit.id)}
-                  onFocus={() => warmUnit(unit.id)}
-                  onClick={() => pick(unit.id)}
-                  className={cn(
-                    "flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-sm hover:bg-[var(--color-surface-nav-hover)]",
-                    isActive && "bg-[var(--color-surface-nav-active)]",
-                  )}
-                >
-                  <span
-                    className="flex h-7 w-7 items-center justify-center rounded-md text-white"
-                    style={{
-                      backgroundColor: accentForTenantCode(unit.enterCode),
-                    }}
-                  >
-                    <Icon className="h-3.5 w-3.5" />
-                  </span>
-                  <span className="min-w-0">
-                    <span className="block truncate font-medium">{unit.name}</span>
-                    <span className="block text-xs text-muted">
-                      {unit.description ?? unit.badge}
-                    </span>
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      ) : null}
+          {topbarOptions.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className={cn("tw-relative tw-min-w-0", className)}
+      onMouseEnter={warmAllUnits}
+      title="Stay in VAG — scopes Reports, Finance, HRM, and Stock"
+    >
+      <select
+        id="upos-admin-report-entity"
+        className="form-control select2 upos-admin-entity-scope-select"
+        value={viewingCode ?? ""}
+        aria-label={`Module entity: ${
+          viewingCode ? getVagViewUnit(viewingCode).name : "All entities"
+        }. Stay in VAG — changes Reports, Finance, HRM, and Stock.`}
+        onChange={(event) => setModuleScope(parseScopeId(event.target.value))}
+      >
+        {scopeOptions.map((option) => (
+          <option key={option.value || "group"} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
     </div>
   );
 }

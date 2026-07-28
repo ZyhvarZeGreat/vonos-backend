@@ -15,9 +15,10 @@ import {
 import { useTenantStore } from "@/stores/tenantStore";
 
 /**
- * Route tenant = source of truth from the URL (`/VW/...`, `/VISP/...`).
+ * Route tenant = source of truth from the URL (`/VW/...`, `/VSP/...`).
  * On `/admin/*`, falls back to the admin viewing entity (or VA when a
  * concrete tenant is required and Group is selected).
+ * Combined SP → primary VSP for single-tenant modules.
  * Combined SP → primary VISP for single-tenant modules.
  */
 export function useRouteTenant(options?: { adminFallback?: TenantCode | null }) {

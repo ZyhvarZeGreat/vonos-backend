@@ -1,8 +1,8 @@
 "use client";
 
 import { Hq6PageFrame } from "@/components/hq6/Hq6Chrome";
+import { HrmActionBar } from "@/components/molecules/HrmActionBar";
 import { HrmPageView } from "@/components/pages/HrmPageView";
-import { HrView } from "@/components/pages/HrView";
 import {
   getVagViewUnit,
   isVagViewUnitId,
@@ -10,9 +10,10 @@ import {
 import { useAdminEntityStore } from "@/stores/adminEntityStore";
 
 /**
- * VAG HRM — same module as Vonos Automotive.
- * Entity / Spare Parts selected → that unit's HRM (SP uses VISP as primary).
- * Group view → cross-entity workforce.
+ * VAG HRM — same HrmPageView module as entity apps (`/{code}/hrm`).
+ * Module entity strip scopes which tenant’s HRM loads (SP → VSP).
+ * Group (no entity) falls back to Automotive (VA) via useRouteTenant.
+ * Add User stays on the group overview (HQ6 hides Users under HRM tabs).
  */
 export default function AdminHrmPage() {
   const viewingCode = useAdminEntityStore((s) => s.viewingCode);
@@ -21,55 +22,53 @@ export default function AdminHrmPage() {
       ? getVagViewUnit(viewingCode)
       : null;
 
-  if (viewingUnit) {
-    return (
-      <Hq6PageFrame
-        title={`HRM — ${viewingUnit.name}`}
-        subtitle="Entity HRM · switch above to change without leaving"
-      >
-        <div className="space-y-3">
-          <div className="hq6-card px-4 py-3 text-sm text-[#6b7280]">
-            HRM for{" "}
-            <span className="font-semibold text-[#111827]">{viewingUnit.name}</span>
-            {viewingUnit.description ? (
-              <>
-                {" "}
-                ({viewingUnit.description}). Primary workspace:{" "}
-                <span className="font-semibold text-[#111827]">
-                  /{viewingUnit.enterCode}/hrm
-                </span>
-                .
-              </>
-            ) : (
-              <>
-                {" "}
-                — same as{" "}
-                <span className="font-semibold text-[#111827]">
-                  /{viewingUnit.enterCode}/hrm
-                </span>
-                .
-              </>
-            )}{" "}
-            Switch entity above to change — stay on HRM.
-          </div>
-          <HrmPageView defaultTab="dashboard" forceFullTabs />
-        </div>
-      </Hq6PageFrame>
-    );
-  }
+  const title = viewingUnit ? `HRM — ${viewingUnit.name}` : "HRM";
+  const subtitle = viewingUnit
+    ? `Same module as /${viewingUnit.enterCode}/hrm · switch module entity above to change`
+    : "Group HRM · add users across entities · pick a module entity above for scoped HRM";
 
   return (
-    <Hq6PageFrame
-      title="HRM"
-      subtitle="Group workforce across all entities"
-    >
+    <Hq6PageFrame title={title} subtitle={subtitle}>
       <div className="space-y-3">
+        <HrmActionBar
+          groupMode
+          fixedTenantCode={viewingUnit?.enterCode}
+        />
         <div className="hq6-card px-4 py-3 text-sm text-[#6b7280]">
-          Group workforce across all entities. Pick Automotive, Warehouse, or Spare
-          Parts (VISP+VSP) in the top-bar switcher for that unit&apos;s full HRM —
-          no need to leave this page.
+          {viewingUnit ? (
+            <>
+              Showing the same HRM as{" "}
+              <span className="font-semibold text-[#111827]">
+                /{viewingUnit.enterCode}/hrm
+              </span>
+              {viewingUnit.tenantCodes.length > 1 ? (
+                <>
+                  {" "}
+                  (roll-up unit: {viewingUnit.tenantCodes.join(" + ")})
+                </>
+              ) : null}
+              . Use{" "}
+              <span className="font-semibold text-[#111827]">
+                Module entity
+              </span>{" "}
+              above to switch without leaving VAG. The top-bar{" "}
+              <span className="font-semibold text-[#111827]">Open app</span>{" "}
+              switcher opens that entity&apos;s full dashboard instead.
+            </>
+          ) : (
+            <>
+              Group overview — invite or create users for any entity below, then
+              browse Automotive (VA) HRM by default. Pick{" "}
+              <span className="font-semibold text-[#111827]">
+                Module entity
+              </span>{" "}
+              above for Warehouse or Spare Parts. Top-bar{" "}
+              <span className="font-semibold text-[#111827]">Open app</span>{" "}
+              leaves VAG for a full entity dashboard.
+            </>
+          )}
         </div>
-        <HrView allTenants />
+        <HrmPageView defaultTab="dashboard" forceFullTabs />
       </div>
     </Hq6PageFrame>
   );

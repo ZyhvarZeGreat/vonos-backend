@@ -19,7 +19,7 @@ import { getVehiclesPage } from "@/lib/api/vehicles";
 import { DEFAULT_TABLE_PAGE_SIZE, HQ6_TABLE_PAGE_SIZE } from "@/lib/api/fetchAllPages";
 import { ADMIN_ENTITY_STALE_MS } from "@/lib/admin/prefetchAdminEntity";
 import { ADMIN_DEFAULT_ENTITY } from "@/stores/adminEntityStore";
-import { getTenantByCode, type TenantCode } from "@/lib/registries/tenants";
+import { getTenantByCode, isTenantCode, type TenantCode } from "@/lib/registries/tenants";
 import { allNavRoutesForConfig, getTenantConfigByCode } from "@/lib/registries/tenantConfigs";
 import { dateRangePresetToApiBounds } from "@/lib/utils/dateRange";
 import type { DateRangeBounds } from "@/lib/utils/dateRange";
@@ -114,9 +114,10 @@ function prefetchTenantOverview(
   to: string,
   tenantCode?: string,
 ): void {
-  if (tenantCode === "VA") {
+  // All operating tenants use the same HQ6 home endpoint as VA.
+  if (tenantCode && isTenantCode(tenantCode)) {
     prefetchQuery(queryClient, {
-      queryKey: ["vaHq6Home", tenantId, from, to],
+      queryKey: ["hq6Home", tenantId, from, to],
       queryFn: () => getVaHq6Home({ from, to }),
     });
     return;

@@ -5,7 +5,6 @@ import {
   Package,
   Scissors,
   Shirt,
-  ShoppingBag,
   Wrench,
 } from "lucide-react";
 import type { TenantCode } from "@/lib/registries/tenants";
@@ -17,7 +16,7 @@ export const TENANT_ICON: Record<TenantCode, TenantIcon> = {
   VA: Car,
   VW: Package,
   VISP: Wrench,
-  VSP: ShoppingBag,
+  VSP: Wrench,
   VC: Coffee,
   VS: Scissors,
   VKW: Shirt,
@@ -27,7 +26,7 @@ export const VAG_ICON: TenantIcon = Building2;
 
 export function iconForTenantCode(code: string): TenantIcon {
   if (code === "VAG" || code === "admin") return VAG_ICON;
-  if (code === "SP") return TENANT_ICON.VISP;
+  if (code === "SP" || code === "VISP") return TENANT_ICON.VSP;
   if (code in TENANT_ICON) return TENANT_ICON[code as TenantCode];
   return Building2;
 }

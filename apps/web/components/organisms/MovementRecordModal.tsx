@@ -31,6 +31,7 @@ export interface MovementRecordModalProps {
   onClose: () => void;
   /** When false, hide the "Open full page" link (e.g. reports stay on-page). */
   showFullPageLink?: boolean;
+  showBack?: boolean;
 }
 
 function partyFromNotes(notes: string | null): string {
@@ -44,6 +45,7 @@ export function MovementRecordModal({
   listSlug = "inbound",
   onClose,
   showFullPageLink = true,
+  showBack = false,
 }: MovementRecordModalProps) {
   const { tenantId, tenantName, tenantCode } = useRouteTenant();
   const [docOpen, setDocOpen] = useState(false);
@@ -133,6 +135,7 @@ export function MovementRecordModal({
             : undefined
         }
         onClose={onClose}
+        showBack={showBack}
         fullPageHref={
           showFullPageLink && movementId && tenantCode
             ? `/${tenantCode}/${listSlug}/${movementId}`

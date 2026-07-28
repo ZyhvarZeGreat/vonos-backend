@@ -39,6 +39,8 @@ export interface SaleRecordModalProps {
   onClose: () => void;
   /** When false, hide the "Open full page" link (e.g. reports stay on-page). */
   showFullPageLink?: boolean;
+  /** Back control — returns to the calling list/report. */
+  showBack?: boolean;
 }
 
 export function SaleRecordModal({
@@ -47,6 +49,7 @@ export function SaleRecordModal({
   listSlug = "sales",
   onClose,
   showFullPageLink = true,
+  showBack = false,
 }: SaleRecordModalProps) {
   const isHq6 = useIsVaHq6();
   const { tenantId, tenantName, tenantCode } = useRouteTenant();
@@ -181,6 +184,7 @@ export function SaleRecordModal({
           open={Boolean(saleId)}
           saleId={saleId}
           initialSale={initialSale}
+          showBack={showBack}
           onClose={onClose}
           onPrintInvoice={() => setDocPreviewOpen(true)}
           onPackingSlip={() => setDocPreviewOpen(true)}
@@ -188,6 +192,8 @@ export function SaleRecordModal({
         <DocumentPreviewModal
           open={docPreviewOpen}
           title="Invoice preview"
+          showBack
+          onBack={() => setDocPreviewOpen(false)}
           onClose={() => setDocPreviewOpen(false)}
         >
           {saleId ? <Hq6SaleInvoicePreview saleId={saleId} /> : null}
@@ -211,6 +217,7 @@ export function SaleRecordModal({
             : undefined
         }
         onClose={onClose}
+        showBack={showBack}
         fullPageHref={
           showFullPageLink && saleId && tenantCode
             ? `/${tenantCode}/${listSlug}/${saleId}`

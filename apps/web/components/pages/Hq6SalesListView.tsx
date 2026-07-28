@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import {
@@ -16,6 +16,7 @@ import { DataTable, type ColumnConfig } from "@/components/organisms/DataTable";
 import { SaleRecordModal } from "@/components/organisms/SaleRecordModal";
 import { Hq6ActionsMenu } from "@/components/hq6/Hq6ActionsMenu";
 import { Hq6ConfirmModal } from "@/components/hq6/Hq6ConfirmModal";
+import { Hq6EditShippingModal } from "@/components/hq6/Hq6EditShippingModal";
 import { Hq6ListAmountFooter } from "@/components/hq6/Hq6ListAmountFooter";
 import {
   Hq6FilterDateRange,
@@ -26,7 +27,13 @@ import { Hq6SalesSummaryStrip } from "@/components/hq6/Hq6SalesSummaryStrip";
 import { Hq6StandardListShell, useHq6ListChrome } from "@/components/hq6/Hq6StandardListShell";
 import { Hq6ViewPaymentsModal } from "@/components/hq6/Hq6ViewPaymentsModal";
 import { Hq6InvoiceUrlModal } from "@/components/hq6/Hq6InvoiceUrlModal";
-import { deleteSale, getSalesPage } from "@/lib/api/sales";
+import {
+  deleteSale,
+  finalizeSale,
+  getSale,
+  getSaleInvoiceUrl,
+  getSalesPage,
+} from "@/lib/api/sales";
 import { getCustomers } from "@/lib/api/customers";
 import { useServerListPage, serverSortProps, withListSort } from "@/lib/hooks/useServerListPage";
 import { HQ6_TABLE_PAGE_SIZE } from "@/lib/api/fetchAllPages";
@@ -88,7 +95,7 @@ export function Hq6SalesListView({
     search,
     setSearch,
     bounds,
-  } = useListPageFilters({ defaultDateRange: "all_time" });
+  } = useListPageFilters({ defaultDateRange: "last_7_days" });
   const [statusFilter, setStatusFilter] = useState("");
   const [paymentStatusFilter, setPaymentStatusFilter] = useState("");
   const [locationFilter, setLocationFilter] = useState("");
@@ -98,7 +105,54 @@ export function Hq6SalesListView({
   const [deleteTarget, setDeleteTarget] = useState<Sale | null>(null);
   const [invoiceUrlSale, setInvoiceUrlSale] = useState<Sale | null>(null);
   const [paymentsSale, setPaymentsSale] = useState<Sale | null>(null);
+  const [shippingSale, setShippingSale] = useState<Sale | null>(null);
+  const [convertTarget, setConvertTarget] = useState<Sale | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [converting, setConverting] = useState(false);
+
+  const sendSaleNotification = useCallback(
+    async (row: Sale, kind: "quotation" | "draft") => {
+      if (!tenantId) return;
+      try {
+        const [urlRes, detail] = await Promise.all([
+          getSaleInvoiceUrl(tenantId, row.id),
+          getSale(row.id, tenantId).catch(() => null),
+        ]);
+        const origin =
+          typeof window !== "undefined" ? window.location.origin : "";
+        const link = urlRes.path ? `${origin}${urlRes.path}` : "";
+        const email = detail?.customerEmail?.trim() ?? "";
+        const label = kind === "quotation" ? "Quotation" : "Draft";
+        const subject = encodeURIComponent(`${label} ${row.reference}`);
+        const body = encodeURIComponent(
+          [
+            `Hello${row.customerName ? ` ${row.customerName}` : ""},`,
+            "",
+            `Please review your ${label.toLowerCase()} ${row.reference}.`,
+            link ? `View online: ${link}` : "",
+          ]
+            .filter(Boolean)
+            .join("\n"),
+        );
+        window.open(
+          `mailto:${encodeURIComponent(email)}?subject=${subject}&body=${body}`,
+          "_blank",
+        );
+        toast.success(
+          email
+            ? `${label} notification ready in your email client`
+            : `${label} notification opened — add the customer email to send`,
+        );
+      } catch (err) {
+        toast.error(
+          err instanceof Error
+            ? err.message
+            : "Failed to prepare notification",
+        );
+      }
+    },
+    [tenantId],
+  );
 
   const customersQuery = useQuery({
     queryKey: ["customers", tenantId, "sale-filter"],
@@ -245,13 +299,16 @@ export function Hq6SalesListView({
                 id: "print",
                 label: "Print",
                 icon: <Printer size={15} strokeWidth={1.75} />,
-                onClick: () => openRecord(row.id, row),
+                onClick: () => {
+                  openRecord(row.id, row);
+                  window.setTimeout(() => window.print(), 400);
+                },
               },
               {
                 id: "convert",
                 label: "Convert to Proforma Invoice",
                 icon: <RefreshCw size={15} strokeWidth={1.75} />,
-                onClick: () => openRecord(row.id, row),
+                onClick: () => setConvertTarget(row),
               },
               {
                 id: "delete",
@@ -278,10 +335,9 @@ export function Hq6SalesListView({
                   : "New draft notification",
                 icon: <Mail size={15} strokeWidth={1.75} />,
                 onClick: () =>
-                  toast.info(
-                    isQuotation
-                      ? "Quotation notification queued"
-                      : "Draft notification queued",
+                  void sendSaleNotification(
+                    row,
+                    isQuotation ? "quotation" : "draft",
                   ),
               },
               {
@@ -308,12 +364,15 @@ export function Hq6SalesListView({
               {
                 id: "edit_shipping",
                 label: "Edit Shipping",
-                onClick: () => openRecord(row.id, row),
+                onClick: () => setShippingSale(row),
               },
               {
                 id: "print",
                 label: "Print Invoice",
-                onClick: () => openRecord(row.id, row),
+                onClick: () => {
+                  openRecord(row.id, row);
+                  window.setTimeout(() => window.print(), 400);
+                },
               },
               {
                 id: "view_payments",
@@ -345,6 +404,7 @@ export function Hq6SalesListView({
       queryClient,
       router,
       saleStatus,
+      sendSaleNotification,
       tenantCode,
       tenantId,
     ],
@@ -894,6 +954,50 @@ export function Hq6SalesListView({
               }
               confirmLabel="Delete"
               danger
+              confirming={deleting}
+            />
+            <Hq6ConfirmModal
+              open={Boolean(convertTarget)}
+              onClose={() => setConvertTarget(null)}
+              confirming={converting}
+              onConfirm={() => {
+                if (!tenantId || !convertTarget || converting) return;
+                setConverting(true);
+                void finalizeSale(tenantId, convertTarget.id, {
+                  payments: [{ amount: 0, method: "cash" }],
+                })
+                  .then(async () => {
+                    toast.success(
+                      `Converted ${convertTarget.reference} to invoice`,
+                    );
+                    setConvertTarget(null);
+                    await queryClient.invalidateQueries({ queryKey: ["sales"] });
+                  })
+                  .catch((err) => {
+                    toast.error(
+                      err instanceof Error
+                        ? err.message
+                        : "Failed to convert to invoice",
+                    );
+                  })
+                  .finally(() => setConverting(false));
+              }}
+              title="Convert to Proforma Invoice?"
+              message={
+                convertTarget
+                  ? `Convert ${convertTarget.reference} into a finalized sale invoice? Stock will be deducted and the record will leave drafts/quotations.`
+                  : ""
+              }
+              confirmLabel="Convert"
+            />
+            <Hq6EditShippingModal
+              open={Boolean(shippingSale)}
+              tenantId={tenantId}
+              sale={shippingSale}
+              onClose={() => setShippingSale(null)}
+              onSaved={() => {
+                void queryClient.invalidateQueries({ queryKey: ["sales"] });
+              }}
             />
             <Hq6ViewPaymentsModal
               open={Boolean(paymentsSale)}

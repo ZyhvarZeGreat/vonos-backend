@@ -16,6 +16,7 @@ import {
   Hq6StandardListShell,
   useHq6ListChrome,
 } from "@/components/hq6/Hq6StandardListShell";
+import { MovementRecordModal } from "@/components/organisms/MovementRecordModal";
 import {
   deleteStockMovement,
   getAllStockMovements,
@@ -26,6 +27,7 @@ import { getSuppliers } from "@/lib/api/suppliers";
 import { HQ6_TABLE_PAGE_SIZE } from "@/lib/api/fetchAllPages";
 import { useListExport } from "@/lib/hooks/useListExport";
 import { useListPageFilters } from "@/lib/hooks/useListPageFilters";
+import { useListRecordModal } from "@/lib/hooks/useListRecordModal";
 import { useServerListPage } from "@/lib/hooks/useServerListPage";
 import { useRouteTenant, useTenantId } from "@/lib/hooks/useRouteTenant";
 import { formatHq6Currency, formatHq6DateTime } from "@/lib/utils/hq6Format";
@@ -48,7 +50,7 @@ export function Hq6PurchaseOrdersListView() {
     search,
     setSearch,
     bounds,
-  } = useListPageFilters({ defaultDateRange: "all_time" });
+  } = useListPageFilters({ defaultDateRange: "last_7_days" });
   const [localSearch, setLocalSearch] = useState(search);
   const [locationFilter, setLocationFilter] = useState("");
   const [supplierFilter, setSupplierFilter] = useState("");
@@ -367,6 +369,8 @@ export function Hq6PurchaseReturnsListView() {
   const { config } = useRouteTenant();
   const chrome = useHq6ListChrome("purchase-returns");
   const exportList = useListExport();
+  const { recordId, recordSeed, openRecord, closeRecord } =
+    useListRecordModal<StockMovementListRow>();
   const {
     dateRange,
     setDateRange,
@@ -375,7 +379,7 @@ export function Hq6PurchaseReturnsListView() {
     search,
     setSearch,
     bounds,
-  } = useListPageFilters({ defaultDateRange: "all_time" });
+  } = useListPageFilters({ defaultDateRange: "last_7_days" });
   const [localSearch, setLocalSearch] = useState(search);
 
   const apiFilters = useMemo(
@@ -479,14 +483,28 @@ export function Hq6PurchaseReturnsListView() {
         key: "actions",
         header: "Action",
         sortable: false,
-        render: () => (
+        render: (row) => (
           <Hq6ActionsMenu
-            items={[{ id: "view", label: "View", onClick: () => undefined }]}
+            items={[
+              {
+                id: "view",
+                label: "View",
+                onClick: () => openRecord(row.id, row),
+              },
+              {
+                id: "print",
+                label: "Print",
+                onClick: () => {
+                  openRecord(row.id, row);
+                  window.setTimeout(() => window.print(), 400);
+                },
+              },
+            ]}
           />
         ),
       },
     ],
-    [config?.businessLocations],
+    [config?.businessLocations, openRecord],
   );
 
   const columnOptions = columns
@@ -572,6 +590,13 @@ export function Hq6PurchaseReturnsListView() {
         isFetching={isFetching && !isLoading}
         error={error ? "Failed to load purchase returns" : null}
         emptyState={{ message: "No data available in table" }}
+        onRowClick={(row) => openRecord(row.id, row)}
+      />
+      <MovementRecordModal
+        movementId={recordId}
+        initialRow={recordSeed}
+        listSlug="outbound"
+        onClose={closeRecord}
       />
     </Hq6StandardListShell>
   );

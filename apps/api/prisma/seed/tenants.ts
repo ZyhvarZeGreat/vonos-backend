@@ -65,7 +65,7 @@ const transactionNavItems = (code: string) => [
 const vispConfig = {
   tenantId: 'tenant_visp_001',
   code: 'VISP',
-  name: 'Vonos Institute Spare Parts',
+  name: 'Vonos Spare Parts',
   archetype: 'transaction',
   navItems: transactionNavItems('VISP'),
   kpiCards: [
@@ -81,16 +81,16 @@ const vispConfig = {
 const vspConfig = {
   tenantId: 'tenant_vsp_001',
   code: 'VSP',
-  name: 'Vonos SP Marketplace',
+  name: 'Vonos Spare Parts',
   archetype: 'transaction',
   navItems: transactionNavItems('VSP'),
   kpiCards: [
-    { label: "Today's Orders", icon: 'receipt', metricKey: 'todaySales', color: '#059669' },
-    { label: 'Listings', icon: 'package', metricKey: 'totalSku', color: '#2563eb' },
+    { label: "Today's Sales", icon: 'receipt', metricKey: 'todaySales', color: '#059669' },
+    { label: 'Returns', icon: 'rotate-ccw', metricKey: 'returns', color: '#2563eb' },
     { label: 'Low Stock', icon: 'alert-triangle', metricKey: 'lowStock', color: '#9333ea' },
     { label: 'Revenue', icon: 'wallet', metricKey: 'revenue', color: '#e11d48' },
   ],
-  terminology: { sale: 'Order', customer: 'Buyer', return: 'Return' },
+  terminology: { sale: 'Sale', customer: 'Customer', return: 'Return' },
   enabledModules: [...RETAIL_CATALOG_ENABLED_MODULES],
 };
 
@@ -267,8 +267,8 @@ const tenants: Array<{
 }> = [
   { id: 'tenant_vw_001', code: 'VW', name: 'Vonos Warehouse', archetype: 'stock', config: withCatalog(warehouseConfig) },
   { id: 'tenant_vkw_001', code: 'VKW', name: 'Vonos Kids Wear', archetype: 'stock', config: withCatalog(kidsWearConfig) },
-  { id: 'tenant_visp_001', code: 'VISP', name: 'Vonos Institute Spare Parts', archetype: 'transaction', config: withCatalog(vispConfig) },
-  { id: 'tenant_vsp_001', code: 'VSP', name: 'Vonos SP Marketplace', archetype: 'transaction', config: withCatalog(vspConfig) },
+  { id: 'tenant_visp_001', code: 'VISP', name: 'Vonos Spare Parts', archetype: 'transaction', config: withCatalog(vispConfig) },
+  { id: 'tenant_vsp_001', code: 'VSP', name: 'Vonos Spare Parts', archetype: 'transaction', config: withCatalog(vspConfig) },
   { id: 'tenant_vc_001', code: 'VC', name: 'Vonos Cafe', archetype: 'transaction', config: withCatalog(cafeConfig) },
   { id: 'tenant_va_001', code: 'VA', name: 'Vonos Automotive', archetype: 'job', config: withCatalog(automotiveConfig) },
   { id: 'tenant_vm_001', code: 'VM', name: 'Vonos Mechanics', archetype: 'job', config: withCatalog(mechanicsConfig) },

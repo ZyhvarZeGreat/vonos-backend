@@ -1,9 +1,11 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   NotFoundException,
   Param,
+  Patch,
   Post,
   Query,
   Req,
@@ -68,5 +70,21 @@ export class UsersController {
   @Roles('admin', 'super_admin')
   create(@Req() request: AuthedRequest, @Body() body: CreateUserRequest) {
     return this.usersService.createUser(request.user, body);
+  }
+
+  @Patch(':id')
+  @Roles('admin', 'super_admin')
+  updateStatus(
+    @Req() request: AuthedRequest,
+    @Param('id') id: string,
+    @Body() body: { status: 'active' | 'suspended' },
+  ) {
+    return this.usersService.updateUserStatus(request.user, id, body.status);
+  }
+
+  @Delete(':id')
+  @Roles('admin', 'super_admin')
+  deactivate(@Req() request: AuthedRequest, @Param('id') id: string) {
+    return this.usersService.deactivateUser(request.user, id);
   }
 }

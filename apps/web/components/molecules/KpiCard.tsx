@@ -63,7 +63,7 @@ export function KpiCard({
   return (
     <article
       className={cn(
-        "flex h-[var(--space-kpi-height)] flex-col justify-between rounded-xl border border-border bg-card p-5 shadow-sm",
+        "hq6-kpi-card flex min-h-[var(--space-kpi-height)] flex-col justify-between rounded-xl border border-border bg-card p-5 shadow-sm",
         className,
       )}
       aria-busy={isLoading || undefined}
@@ -71,19 +71,21 @@ export function KpiCard({
       <div className="flex items-center gap-3">
         <div
           className={cn(
-            "flex h-8 w-8 items-center justify-center rounded-lg",
+            "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg",
             tintStyle.bg,
             tintStyle.fg,
           )}
         >
           <Icon className="h-4 w-4" />
         </div>
-        <span className="text-base font-semibold text-foreground">{label}</span>
+        <span className="text-sm font-semibold leading-snug text-foreground sm:text-base">
+          {label}
+        </span>
       </div>
-      <div className="mt-auto flex items-baseline gap-2">
+      <div className="mt-3 flex flex-wrap items-baseline gap-x-2 gap-y-1">
         {showZeroSpinner ? (
           <>
-            <span className="font-heading text-3xl font-semibold tracking-tight text-foreground">
+            <span className="font-heading text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
               0
             </span>
             <Spinner size="sm" className="text-muted" />
@@ -96,7 +98,7 @@ export function KpiCard({
           </>
         ) : (
           <>
-            <span className="font-heading text-3xl font-semibold tracking-tight text-foreground">
+            <span className="font-heading text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
               {typeof value === "number" ? formatNumberCompact(value) : value}
             </span>
             {delta !== undefined ? (

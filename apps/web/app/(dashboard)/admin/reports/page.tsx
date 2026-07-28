@@ -24,7 +24,7 @@ export default function AdminReportsPage() {
     return (
       <Hq6PageFrame
         title={`Reports — ${viewingUnit.name}`}
-        subtitle="Entity reports · switch above to change without leaving"
+        subtitle="Entity reports · Switch report entity above scopes Reports / Finance / HRM"
       >
         <div className="space-y-3">
           <div className="hq6-card px-4 py-3 text-sm text-[#6b7280]">
@@ -45,7 +45,8 @@ export default function AdminReportsPage() {
                 — same as /{viewingUnit.enterCode}/reports.
               </>
             )}{" "}
-            Switch entity above to change without leaving Reports.
+            Use <span className="font-semibold text-[#111827]">Switch report entity</span>{" "}
+            above to change Reports / Finance / HRM scope without leaving VAG.
           </div>
           <EntityReportsView tenantCode={viewingUnit.enterCode} />
         </div>

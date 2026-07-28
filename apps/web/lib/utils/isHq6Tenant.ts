@@ -9,11 +9,11 @@ export function isHq6Tenant(tenantCode: string | null | undefined): boolean {
 }
 
 /**
- * VA trial: full Ultimate POS app shell (sidebar + header + content wrapper)
- * replaces Vonos Sidebar/TopBar. Other tenants keep the existing shell.
+ * Full Ultimate POS app shell (sidebar + header + content wrapper)
+ * for every operating HQ6 tenant — same chrome as VA.
  */
 export function isUposShellTenant(
   tenantCode: string | null | undefined,
 ): boolean {
-  return tenantCode === "VA";
+  return isHq6Tenant(tenantCode);
 }

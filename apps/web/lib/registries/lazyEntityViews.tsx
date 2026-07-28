@@ -2,14 +2,10 @@
 
 import dynamic from "next/dynamic";
 import type { ComponentType } from "react";
-import { DataTableSkeleton } from "@/components/organisms/skeletons";
 
+/** Route chunk loading — chrome stays up; TopProgressBar covers progress. */
 function PageChunkFallback() {
-  return (
-    <div className="space-y-6">
-      <DataTableSkeleton rows={8} columns={5} />
-    </div>
-  );
+  return <div className="min-h-[40vh]" aria-busy aria-label="Loading page" />;
 }
 
 type AnyComponent = ComponentType<Record<string, unknown>>;

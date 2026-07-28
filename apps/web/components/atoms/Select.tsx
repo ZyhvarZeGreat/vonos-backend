@@ -17,12 +17,12 @@ export interface SelectProps {
   name?: string;
   value?: string | number | readonly string[];
   disabled?: boolean;
-  /** When false, hides the search field (default true). */
+  /** When false, uses native UPOS select (default). Set true for searchable lists. */
   searchable?: boolean;
   onChange?: (event: React.ChangeEvent<HTMLSelectElement>) => void;
 }
 
-/** Form select with searchable options (wraps MenuSelect). */
+/** Form select — native UPOS chrome by default; optional searchable panel. */
 export function Select({
   label,
   options,
@@ -32,7 +32,7 @@ export function Select({
   name,
   value,
   disabled,
-  searchable = true,
+  searchable = false,
   onChange,
 }: SelectProps) {
   const selectId = id ?? label?.toLowerCase().replace(/\s+/g, "-");
@@ -56,7 +56,7 @@ export function Select({
         options={options}
         disabled={disabled}
         searchable={searchable}
-        className={cn(error && "[&>button]:border-error", className)}
+        className={cn(error && "vonos-menu-select-error", className)}
         onChange={(next) => {
           if (!onChange) return;
           onChange({

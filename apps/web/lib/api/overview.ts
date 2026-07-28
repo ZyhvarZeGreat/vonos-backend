@@ -20,7 +20,7 @@ export async function getOverviewDashboard(params?: {
   return response.json();
 }
 
-/** VA HQ6 home — finance KPIs + charts (prefer over full dashboard for /VA/overview). */
+/** HQ6 home — finance KPIs + charts for any operating tenant overview. */
 export async function getVaHq6Home(params?: {
   from?: string;
   to?: string;
@@ -35,7 +35,7 @@ export async function getVaHq6Home(params?: {
   if (params?.to) search.set("to", params.to);
   const qs = search.toString();
   const response = await apiFetch(`/overview/hq6-home${qs ? `?${qs}` : ""}`);
-  if (!response.ok) throw new Error("Failed to fetch VA HQ6 home");
+  if (!response.ok) throw new Error("Failed to fetch HQ6 home");
   return response.json();
 }
 

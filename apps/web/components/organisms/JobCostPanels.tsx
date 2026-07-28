@@ -32,8 +32,7 @@ type PartSourceMode = "shop" | "internal" | "external";
 /** Internal departments a VA job can pull parts from. */
 const INTERNAL_DEPARTMENTS: { code: string; label: string }[] = [
   { code: "VW", label: "Warehouse" },
-  { code: "VISP", label: "Spare Parts — Institute" },
-  { code: "VSP", label: "Spare Parts — Marketplace" },
+  { code: "VSP", label: "Vonos Spare Parts" },
 ];
 
 const SOURCE_MODES: { id: PartSourceMode; label: string }[] = [

@@ -65,7 +65,7 @@ export function Hq6EssentialsTodoView() {
   const { detailPath } = useRecordNavigation("essentials-todo");
   const chrome = useHq6ListChrome("essentials-todo");
   const { dateRange, setDateRange, customDateRange, setCustomDateRange, bounds } =
-    useListPageFilters({ defaultDateRange: "all_time" });
+    useListPageFilters({ defaultDateRange: "last_7_days" });
   const [localSearch, setLocalSearch] = useState("");
   const [assignedToFilter, setAssignedToFilter] = useState("");
   const [priorityFilter, setPriorityFilter] = useState("");
@@ -243,36 +243,6 @@ export function Hq6EssentialsTodoView() {
           <ul className="nav navbar-nav">
             <li className="active">
               <a href="#todo">To Do</a>
-            </li>
-            <li>
-              <a href="#document" onClick={(e) => e.preventDefault()}>
-                Document
-              </a>
-            </li>
-            <li>
-              <a href="#memos" onClick={(e) => e.preventDefault()}>
-                Memos
-              </a>
-            </li>
-            <li>
-              <a href="#reminders" onClick={(e) => e.preventDefault()}>
-                Reminders
-              </a>
-            </li>
-            <li>
-              <a href="#messages" onClick={(e) => e.preventDefault()}>
-                Messages
-              </a>
-            </li>
-            <li>
-              <a href="#knowledge" onClick={(e) => e.preventDefault()}>
-                Knowledge Base
-              </a>
-            </li>
-            <li>
-              <a href="#settings" onClick={(e) => e.preventDefault()}>
-                Settings
-              </a>
             </li>
           </ul>
         </div>

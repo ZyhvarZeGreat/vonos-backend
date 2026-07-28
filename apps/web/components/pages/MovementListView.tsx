@@ -73,7 +73,7 @@ function MovementListViewBody({
   const isHq6 = useIsVaHq6();
   const exportList = useListExport();
   const { dateRange, setDateRange, search, setSearch, bounds } = useListPageFilters({
-    defaultDateRange: "all_time",
+    defaultDateRange: "last_7_days",
   });
   const [activeTab, setActiveTab] = useState(defaultStatus === "Pending" ? "pending" : "all");
   const [statusFilter, setStatusFilter] = useState("");

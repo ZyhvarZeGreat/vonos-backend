@@ -329,6 +329,7 @@ export function PaymentAccountTransferModal({
               <MenuSelect
                 value={toAccountId}
                 placeholder="Select account…"
+                searchable
                 onChange={setToAccountId}
                 options={[
                   { value: "", label: "Select account…" },

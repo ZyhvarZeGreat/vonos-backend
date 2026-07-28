@@ -6,7 +6,6 @@ import { refreshAccessToken } from "@/lib/api/auth";
 import { useAuthStore } from "@/stores/authStore";
 import { decodeAccessToken } from "@/lib/utils/jwt";
 import { isAuthSkipped } from "@/lib/utils/devAccess";
-import { PageShellSkeleton } from "@/components/organisms/skeletons";
 
 const PUBLIC_PREFIXES = ["/login", "/reset-password", "/invite", "/invoice"];
 const skipAuth = isAuthSkipped();
@@ -66,17 +65,33 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     return <>{children}</>;
   }
 
-  // Public auth pages need no API data — never flash the app shell skeleton.
+  // Public auth pages need no API data — show UI immediately (no spinner/skeleton).
   if (isPublicPath(pathname)) {
     return <>{children}</>;
   }
 
+  // Wait for persist hydrate without a fake app-shell skeleton.
   if (!hydrated) {
-    return <PageShellSkeleton />;
+    return (
+      <div
+        aria-busy="true"
+        aria-label="Loading"
+        style={{
+          minHeight: "100vh",
+          background: isPublicPath(pathname) ? "#0b5ed7" : "#f3f4f6",
+        }}
+      />
+    );
   }
 
   if (!isAuthenticated) {
-    return null;
+    return (
+      <div
+        aria-busy="true"
+        aria-label="Redirecting to login"
+        style={{ minHeight: "100vh", background: "#0b5ed7" }}
+      />
+    );
   }
 
   return <>{children}</>;
