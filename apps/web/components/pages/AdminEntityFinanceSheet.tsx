@@ -29,8 +29,8 @@ import {
   buildLedgerReportSections,
   flattenLedgerSectionsForExport,
 } from "@/lib/utils/ledgerReportSheet";
+import { useListPageFilters } from "@/lib/hooks/useListPageFilters";
 import { useUiStore, type DateRangePreset } from "@/stores/uiStore";
-import { dateRangePresetToApiBounds } from "@/lib/utils/dateRange";
 import { formatCurrency, formatCurrencyCompact } from "@/lib/utils/formatCurrency";
 import type { ColumnConfig } from "@/components/organisms/DataTable";
 import { tenantOverviewPath } from "@/lib/utils/authRedirect";
@@ -112,15 +112,22 @@ export interface AdminEntityFinanceSheetProps {
 }
 
 /**
- * Entity (or combined SP) finance while staying on /admin/finance.
+ * Entity finance while staying on /admin/finance.
  * Change entity via the Viewing switcher — no trip back to Group required.
  */
 export function AdminEntityFinanceSheet({ unitId }: AdminEntityFinanceSheetProps) {
   const unit = getVagViewUnit(unitId);
   const setViewingCode = useAdminEntityStore((s) => s.setViewingCode);
-  const dateRange = useUiStore((state) => state.dateRange);
-  const setDateRange = useUiStore((state) => state.setDateRange);
   const openExportModal = useUiStore((state) => state.openExportModal);
+  const {
+    dateRange,
+    setDateRange,
+    bounds,
+  } = useListPageFilters({
+    defaultDateRange: "last_7_days",
+    isolateDateRange: true,
+    unboundedAllTime: false,
+  });
   const {
     openReportRecord,
     modals: recordModals,
@@ -132,7 +139,6 @@ export function AdminEntityFinanceSheet({ unitId }: AdminEntityFinanceSheetProps
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("");
-  const bounds = useMemo(() => dateRangePresetToApiBounds(dateRange), [dateRange]);
   const periodLabel = ledgerChartSubtitle(dateRange);
 
   useEffect(() => {

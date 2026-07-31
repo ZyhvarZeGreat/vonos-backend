@@ -1,5 +1,7 @@
 "use client";
 
+import { settingsBrandingSchema } from "@/lib/validation/schemas";
+import { parseForm } from "@/lib/validation/parseForm";
 import { useAppMutation } from "@/lib/hooks/useAppMutation";
 import { useEffect, useState } from "react";
 import Link from "next/link";
@@ -56,6 +58,14 @@ function DefaultSettingsView() {
   const saveMutation = useAppMutation({
     mutationFn: async () => {
       if (!tenantId) throw new Error("No tenant selected");
+      if (activeTab === "branding") {
+        const valid = parseForm(
+          settingsBrandingSchema,
+          { displayName },
+          { toast: false },
+        );
+        if (!valid) throw new Error("Entity display name is required.");
+      }
       return updateTenantConfig(tenantId, {
         name: displayName.trim() || undefined,
         terminology: {

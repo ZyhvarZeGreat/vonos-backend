@@ -42,6 +42,7 @@ import {
   formatHq6PaymentStatus,
 } from "@/lib/utils/hq6Format";
 import { businessLocationName } from "@/lib/utils/locationLabels";
+import { entitySaleLocations } from "@/lib/hooks/useBusinessLocationOptions";
 import { cn } from "@/lib/utils/cn";
 import { toast } from "@/stores/toastStore";
 import { hq6PaymentBadgeClass } from "@/lib/utils/hq6PaymentBadge";
@@ -61,7 +62,10 @@ export function Hq6ExpensesListView() {
     search,
     setSearch,
     bounds,
-  } = useListPageFilters({ defaultDateRange: "last_7_days" });
+  } = useListPageFilters({
+    defaultDateRange: "last_7_days",
+    isolateDateRange: true,
+  });
   const [localSearch, setLocalSearch] = useState(search);
   const [locationFilter, setLocationFilter] = useState("");
   const [expenseForFilter, setExpenseForFilter] = useState("");
@@ -399,7 +403,7 @@ export function Hq6ExpensesListView() {
               value={locationFilter}
               onChange={setLocationFilter}
               emptyLabel="All locations"
-              options={(config?.businessLocations ?? []).map((loc) => ({
+              options={entitySaleLocations(config).map((loc) => ({
                 value: loc.code,
                 label: loc.name,
               }))}

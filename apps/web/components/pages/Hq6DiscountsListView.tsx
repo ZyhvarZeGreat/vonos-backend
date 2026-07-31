@@ -21,12 +21,15 @@ import {
   getDiscountsPage,
   updateDiscount,
 } from "@/lib/api/discounts";
+import { getAllCatalogMeta } from "@/lib/api/catalogMeta";
 import { useAppMutation } from "@/lib/hooks/useAppMutation";
 import { useBusinessLocationOptions } from "@/lib/hooks/useBusinessLocationOptions";
 import { useRouteTenant, useTenantId } from "@/lib/hooks/useRouteTenant";
 import { useServerListPage } from "@/lib/hooks/useServerListPage";
 import { HQ6_TABLE_PAGE_SIZE } from "@/lib/api/fetchAllPages";
 import { useListExport } from "@/lib/hooks/useListExport";
+import { useQuery } from "@tanstack/react-query";
+import type { Brand, ProductCategory, SellingPriceGroup } from "@vonos/types";
 import {
   optimisticTempId,
   patchEntityInQueries,
@@ -65,6 +68,54 @@ export function Hq6DiscountsListView() {
   const [form, setForm] = useState(emptyDiscountForm);
   const [localSearch, setLocalSearch] = useState("");
   const chrome = useHq6ListChrome("discounts");
+
+  const categoriesQuery = useQuery({
+    queryKey: ["catalog-meta", "categories", tenantId, "discount-form"],
+    queryFn: () =>
+      getAllCatalogMeta(tenantId!, "categories") as Promise<ProductCategory[]>,
+    enabled: Boolean(tenantId),
+    staleTime: 5 * 60_000,
+  });
+  const brandsQuery = useQuery({
+    queryKey: ["catalog-meta", "brands", tenantId, "discount-form"],
+    queryFn: () =>
+      getAllCatalogMeta(tenantId!, "brands") as Promise<Brand[]>,
+    enabled: Boolean(tenantId),
+    staleTime: 5 * 60_000,
+  });
+  const priceGroupsQuery = useQuery({
+    queryKey: ["catalog-meta", "price-groups", tenantId, "discount-form"],
+    queryFn: () =>
+      getAllCatalogMeta(tenantId!, "price-groups") as Promise<
+        SellingPriceGroup[]
+      >,
+    enabled: Boolean(tenantId),
+    staleTime: 5 * 60_000,
+  });
+
+  const brandSelectOptions = useMemo(
+    () =>
+      (brandsQuery.data ?? [])
+        .map((b) => b.name?.trim())
+        .filter((n): n is string => Boolean(n))
+        .sort((a, b) => a.localeCompare(b)),
+    [brandsQuery.data],
+  );
+  const categorySelectOptions = useMemo(
+    () =>
+      (categoriesQuery.data ?? [])
+        .map((c) => c.name?.trim())
+        .filter((n): n is string => Boolean(n))
+        .sort((a, b) => a.localeCompare(b)),
+    [categoriesQuery.data],
+  );
+  const priceGroupSelectOptions = useMemo(
+    () =>
+      (priceGroupsQuery.data ?? [])
+        .map((g) => ({ value: g.id, label: g.name }))
+        .sort((a, b) => a.label.localeCompare(b.label)),
+    [priceGroupsQuery.data],
+  );
 
   const {
     items,
@@ -396,6 +447,11 @@ export function Hq6DiscountsListView() {
                     onChange={(e) => patchForm({ brand: e.target.value })}
                   >
                     <option value="">Please Select</option>
+                    {brandSelectOptions.map((name) => (
+                      <option key={name} value={name}>
+                        {name}
+                      </option>
+                    ))}
                   </select>
                 </Hq6Field>
                 <Hq6Field label="Category">
@@ -405,6 +461,11 @@ export function Hq6DiscountsListView() {
                     onChange={(e) => patchForm({ category: e.target.value })}
                   >
                     <option value="">Please Select</option>
+                    {categorySelectOptions.map((name) => (
+                      <option key={name} value={name}>
+                        {name}
+                      </option>
+                    ))}
                   </select>
                 </Hq6Field>
                 <Hq6Field label="Location" required>
@@ -486,6 +547,11 @@ export function Hq6DiscountsListView() {
                     }
                   >
                     <option value="all">All</option>
+                    {priceGroupSelectOptions.map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </option>
+                    ))}
                   </select>
                 </Hq6Field>
                 <label className="flex items-end gap-2 pb-2 text-sm text-[#111827]">

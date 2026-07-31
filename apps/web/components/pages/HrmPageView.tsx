@@ -33,7 +33,13 @@ import { tenantListPath } from "@/lib/utils/tenantRoutes";
 
 export { HRM_TABS, HRM_SLUG_TO_TAB, type HrmTab } from "@/lib/registries/hrmTabs";
 
-function HrmDashboardPanel({ onOpenPayroll }: { onOpenPayroll: () => void }) {
+function HrmDashboardPanel({
+  onOpenPayroll,
+  summaryOnly,
+}: {
+  onOpenPayroll: () => void;
+  summaryOnly?: boolean;
+}) {
   const { tenantId, tenantCode } = useRouteTenant();
   const isHq6 = useIsVaHq6();
   const payrollHref = tenantCode
@@ -94,7 +100,7 @@ function HrmDashboardPanel({ onOpenPayroll }: { onOpenPayroll: () => void }) {
             </table>
           </div>
         </div>
-        {isHq6 && payrollHref ? (
+        {summaryOnly ? null : isHq6 && payrollHref ? (
           <Link
             href={payrollHref}
             className="hq6-btn shrink-0 bg-[var(--hq6-success,#5cb85c)] text-white hover:opacity-90"
@@ -287,7 +293,12 @@ export function HrmPageView({
   const tabContent = (() => {
     switch (activeTab) {
       case "dashboard":
-        return <HrmDashboardPanel onOpenPayroll={() => setActiveTab("payroll")} />;
+        return (
+          <HrmDashboardPanel
+            onOpenPayroll={() => setActiveTab("payroll")}
+            summaryOnly={summaryOnly}
+          />
+        );
       case "leave-type":
         return <HrmLeaveTypeView />;
       case "leave":

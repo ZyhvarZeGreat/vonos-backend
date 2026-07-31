@@ -109,6 +109,7 @@ export class SalesController {
       notes?: string;
       customerId?: string;
       jobId?: string;
+      replaceSaleId?: string;
       payments?: Array<{
         amount: number;
         method?: string;

@@ -1,5 +1,7 @@
 "use client";
 
+import { paymentAmountSchema } from "@/lib/validation/schemas";
+import { parseForm } from "@/lib/validation/parseForm";
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -107,11 +109,9 @@ export function Hq6PaySupplierModal({
 
   const handleSave = async () => {
     if (!tenantId || !supplier) return;
-    const value = Number(amount);
-    if (!Number.isFinite(value) || value <= 0) {
-      toast.error("Enter a payment amount greater than zero");
-      return;
-    }
+    const valid = parseForm(paymentAmountSchema, { amount });
+    if (!valid) return;
+    const value = Number(valid.amount);
     setSaving(true);
     try {
       const result = await paySupplierDue(tenantId, supplier.id, {

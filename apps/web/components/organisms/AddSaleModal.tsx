@@ -6,6 +6,7 @@ import { Modal, ModalHeader } from "@/components/atoms/Modal";
 import { AddSaleForm } from "@/components/organisms/AddSaleForm";
 import { useIsVaHq6 } from "@/lib/hooks/useIsVaHq6";
 import { useRouteTenant, useTenantId } from "@/lib/hooks/useRouteTenant";
+import { getSaleInvoiceUrl } from "@/lib/api/sales";
 import { getTenantConfigById } from "@/lib/registries/tenantConfigs";
 import { ENTITY_LIST } from "@/lib/registries/tenants";
 import { useUiStore } from "@/stores/uiStore";
@@ -92,7 +93,7 @@ export function AddSaleModal() {
       initialJobId={saleJobId}
       variant="modal"
       onCancel={handleClose}
-      onSuccess={async () => {
+      onSuccess={async (sale, options) => {
         await queryClient.invalidateQueries({ queryKey: ["sales"] });
         await queryClient.invalidateQueries({ queryKey: ["items"] });
         await queryClient.invalidateQueries({ queryKey: ["catalog"] });
@@ -107,6 +108,15 @@ export function AddSaleModal() {
           queryKey: ["ledgerChartEntries"],
         });
         handleClose();
+        if (!tenantId) return;
+        try {
+          const { path } = await getSaleInvoiceUrl(tenantId, sale.id);
+          router.push(
+            options?.print ? `${path}?print_on_load=true` : path,
+          );
+        } catch {
+          /* stay on current page */
+        }
       }}
     />
   );

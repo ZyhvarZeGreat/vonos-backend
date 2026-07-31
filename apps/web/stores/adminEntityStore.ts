@@ -12,7 +12,7 @@ import {
 
 /**
  * `null` = consolidated group view.
- * Otherwise a VAG view unit (VA, VW, or SP = VSP primary + VISP data).
+ * Otherwise a VAG view unit (VA, VP, VW, VISP, or VSP).
  */
 export type AdminViewingCode = VagViewUnitId | null;
 
@@ -26,7 +26,7 @@ function normalizeViewingCode(
 ): AdminViewingCode {
   if (!code) return null;
   if (isVagViewUnitId(code)) return code;
-  // Migrate persisted VISP/VSP → combined SP; map any tenant → unit
+  // Migrate persisted combined SP → VSP; map any tenant → unit
   return vagViewUnitIdForTenantCode(code);
 }
 

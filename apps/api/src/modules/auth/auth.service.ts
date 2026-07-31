@@ -10,9 +10,11 @@ import type {
   ForgotPasswordResponse,
   InviteDetails,
   LoginSuccessResponse,
+  LoginUser,
   TwoFactorChallengeResponse,
   TwoFactorSetupResponse,
 } from '@vonos/types';
+import { isFullAccessTenantRole } from '@vonos/types';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { CacheService } from '../../common/cache/cache.service';
 import { invalidateTenantDashboardCache } from '../../common/cache/cacheInvalidation';
@@ -22,7 +24,9 @@ import {
 } from '../../common/utils/auth-token';
 import {
   hashPassword,
+  isStrongPassword,
   needsPasswordRehash,
+  STRONG_PASSWORD_HINT,
   verifyPassword,
 } from '../../common/utils/password';
 import { resolvePrimaryWebOrigin } from '../../common/utils/webOrigin';
@@ -53,6 +57,7 @@ interface ChallengeTokenPayload {
 }
 
 interface LoginDto {
+  /** Email address or username. */
   email: string;
   password: string;
 }
@@ -76,7 +81,7 @@ export class AuthService {
   async login(
     body: LoginDto,
   ): Promise<TwoFactorChallengeResponse | SessionResult> {
-    const user = await this.findActiveUserByEmail(body.email);
+    const user = await this.findActiveUserByLogin(body.email);
     if (!user || !(await verifyPassword(body.password, user.passwordHash))) {
       throw new UnauthorizedException('Invalid credentials');
     }
@@ -214,8 +219,8 @@ export class AuthService {
   }
 
   async resetPassword(rawToken: string, password: string): Promise<void> {
-    if (password.length < 8) {
-      throw new BadRequestException('Password must be at least 8 characters');
+    if (!isStrongPassword(password)) {
+      throw new BadRequestException(STRONG_PASSWORD_HINT);
     }
 
     const token = await this.findValidToken(rawToken, 'password_reset');
@@ -266,8 +271,8 @@ export class AuthService {
     password: string,
     name?: string,
   ): Promise<SessionResult> {
-    if (password.length < 8) {
-      throw new BadRequestException('Password must be at least 8 characters');
+    if (!isStrongPassword(password)) {
+      throw new BadRequestException(STRONG_PASSWORD_HINT);
     }
 
     const token = await this.findValidToken(rawToken, 'invite');
@@ -379,7 +384,16 @@ export class AuthService {
     return payload;
   }
 
-  private async issueSession(user: User): Promise<SessionResult> {
+  private async issueSession(
+    user: User & {
+      tenantRole?: {
+        id: string;
+        name: string;
+        permissions: string[];
+        locked: boolean;
+      } | null;
+    },
+  ): Promise<SessionResult> {
     const { raw, hash } = generateOpaqueToken();
     // One Neon write on the critical path. lastLoginAt is best-effort.
     await this.prisma.authToken.create({
@@ -397,16 +411,39 @@ export class AuthService {
       })
       .catch(() => undefined);
 
+    let tenantRole = user.tenantRole ?? null;
+    if (!tenantRole && user.tenantRoleId) {
+      tenantRole = await this.prisma.tenantRole.findFirst({
+        where: { id: user.tenantRoleId, deletedAt: null },
+        select: {
+          id: true,
+          name: true,
+          permissions: true,
+          locked: true,
+        },
+      });
+    }
+
+    const loginUser: LoginUser = {
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      role: user.role,
+      tenantId: user.tenantId,
+      tenantRoleId: tenantRole?.id ?? user.tenantRoleId ?? null,
+      tenantRoleName: tenantRole?.name ?? null,
+      tenantRolePermissions: tenantRole
+        ? isFullAccessTenantRole(tenantRole)
+          ? ['*']
+          : tenantRole.permissions
+        : [],
+      tenantRoleLocked: tenantRole?.locked ?? false,
+    };
+
     return {
       accessToken: this.signAccessToken(user),
       refreshTokenRaw: raw,
-      user: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        role: user.role,
-        tenantId: user.tenantId,
-      },
+      user: loginUser,
     };
   }
 
@@ -438,6 +475,29 @@ export class AuthService {
       throw new UnauthorizedException('Invalid challenge token');
     }
     return payload;
+  }
+
+  private async findActiveUserByLogin(identifier: string) {
+    const normalized = identifier.trim().toLowerCase();
+    if (!normalized) return null;
+
+    const user = normalized.includes('@')
+      ? await this.prisma.user.findFirst({
+          where: {
+            email: { equals: normalized, mode: 'insensitive' },
+            deletedAt: null,
+            status: 'active',
+          },
+        })
+      : await this.prisma.user.findFirst({
+          where: {
+            username: { equals: normalized, mode: 'insensitive' },
+            deletedAt: null,
+            status: 'active',
+          },
+        });
+
+    return user ?? null;
   }
 
   private async findActiveUserByEmail(email: string) {

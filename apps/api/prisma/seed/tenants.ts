@@ -65,7 +65,7 @@ const transactionNavItems = (code: string) => [
 const vispConfig = {
   tenantId: 'tenant_visp_001',
   code: 'VISP',
-  name: 'Vonos Spare Parts',
+  name: 'Vonos Institute Spare Parts',
   archetype: 'transaction',
   navItems: transactionNavItems('VISP'),
   kpiCards: [
@@ -81,7 +81,7 @@ const vispConfig = {
 const vspConfig = {
   tenantId: 'tenant_vsp_001',
   code: 'VSP',
-  name: 'Vonos Spare Parts',
+  name: 'Vonos SP Marketplace',
   archetype: 'transaction',
   navItems: transactionNavItems('VSP'),
   kpiCards: [
@@ -161,7 +161,7 @@ const mechanicsConfig = {
 const automotiveConfig = {
   tenantId: 'tenant_va_001',
   code: 'VA',
-  name: 'Vonos Automotive',
+  name: 'Vonos Mechanic',
   archetype: 'job',
   navItems: [
     { label: 'Overview', icon: 'layout-dashboard', route: '/VA/overview', pageType: 'dashboard' },
@@ -170,6 +170,75 @@ const automotiveConfig = {
     { label: 'Requisitions', icon: 'clipboard-list', route: '/VA/requisitions', pageType: 'list' },
     { label: 'Customers', icon: 'users', route: '/VA/customers', pageType: 'list' },
     ...adminNavTail('VA'),
+  ],
+  kpiCards: [
+    { label: 'Open Jobs', icon: 'wrench', metricKey: 'openJobs', color: '#059669' },
+    { label: 'In Shop', icon: 'car', metricKey: 'inShop', color: '#2563eb' },
+    { label: 'Parts Pending', icon: 'package', metricKey: 'partsPending', color: '#9333ea' },
+    { label: 'Revenue', icon: 'wallet', metricKey: 'revenue', color: '#e11d48' },
+  ],
+  terminology: {
+    job: 'Job',
+    vehicle: 'Vehicle',
+    customer: 'Customer',
+    requisition: 'Parts Requisition',
+    sale: 'Sale',
+  },
+  enabledModules: [
+    'jobs',
+    'vehicles',
+    'requisitions',
+    'customers',
+    'suppliers',
+    'purchases',
+    'movements',
+    'sales',
+    'returns',
+    'inventory',
+    'paymentAccounts',
+    'pos',
+    'quotations',
+    'discounts',
+    'shipments',
+    'bulkImport',
+    'reports',
+    'finance',
+    'hrm',
+  ],
+};
+
+const paintingConfig = {
+  tenantId: 'tenant_vp_001',
+  code: 'VP',
+  name: 'Vonos Painting',
+  archetype: 'job',
+  navItems: [
+    {
+      label: 'Overview',
+      icon: 'layout-dashboard',
+      route: '/VP/overview',
+      pageType: 'dashboard',
+    },
+    { label: 'Jobs', icon: 'wrench', route: '/VP/jobs', pageType: 'list' },
+    {
+      label: 'Vehicles',
+      icon: 'car',
+      route: '/VP/vehicles',
+      pageType: 'list',
+    },
+    {
+      label: 'Requisitions',
+      icon: 'clipboard-list',
+      route: '/VP/requisitions',
+      pageType: 'list',
+    },
+    {
+      label: 'Customers',
+      icon: 'users',
+      route: '/VP/customers',
+      pageType: 'list',
+    },
+    ...adminNavTail('VP'),
   ],
   kpiCards: [
     { label: 'Open Jobs', icon: 'wrench', metricKey: 'openJobs', color: '#059669' },
@@ -267,10 +336,11 @@ const tenants: Array<{
 }> = [
   { id: 'tenant_vw_001', code: 'VW', name: 'Vonos Warehouse', archetype: 'stock', config: withCatalog(warehouseConfig) },
   { id: 'tenant_vkw_001', code: 'VKW', name: 'Vonos Kids Wear', archetype: 'stock', config: withCatalog(kidsWearConfig) },
-  { id: 'tenant_visp_001', code: 'VISP', name: 'Vonos Spare Parts', archetype: 'transaction', config: withCatalog(vispConfig) },
-  { id: 'tenant_vsp_001', code: 'VSP', name: 'Vonos Spare Parts', archetype: 'transaction', config: withCatalog(vspConfig) },
+  { id: 'tenant_visp_001', code: 'VISP', name: 'Vonos Institute Spare Parts', archetype: 'transaction', config: withCatalog(vispConfig) },
+  { id: 'tenant_vsp_001', code: 'VSP', name: 'Vonos SP Marketplace', archetype: 'transaction', config: withCatalog(vspConfig) },
   { id: 'tenant_vc_001', code: 'VC', name: 'Vonos Cafe', archetype: 'transaction', config: withCatalog(cafeConfig) },
-  { id: 'tenant_va_001', code: 'VA', name: 'Vonos Automotive', archetype: 'job', config: withCatalog(automotiveConfig) },
+  { id: 'tenant_va_001', code: 'VA', name: 'Vonos Mechanic', archetype: 'job', config: withCatalog(automotiveConfig) },
+  { id: 'tenant_vp_001', code: 'VP', name: 'Vonos Painting', archetype: 'job', config: withCatalog(paintingConfig) },
   { id: 'tenant_vm_001', code: 'VM', name: 'Vonos Mechanics', archetype: 'job', config: withCatalog(mechanicsConfig) },
   { id: 'tenant_vms_001', code: 'VMS', name: 'Vonos Mech Shop', archetype: 'job', config: withCatalog(mechShopConfig) },
   { id: 'tenant_vs_001', code: 'VS', name: 'Vonos Saloon', archetype: 'appointment', config: withCatalog(saloonConfig) },
@@ -345,19 +415,25 @@ export async function seedTenantsAndUsers(prisma: PrismaClient): Promise<void> {
       id: 'user_va_admin',
       email: 'admin@va.vonos',
       tenantId: 'tenant_va_001',
-      name: 'Automotive Admin',
+      name: 'Mechanic Admin',
+    },
+    {
+      id: 'user_vp_admin',
+      email: 'admin@vp.vonos',
+      tenantId: 'tenant_vp_001',
+      name: 'Painting Admin',
     },
     {
       id: 'user_vm_admin',
       email: 'admin@vm.vonos',
       tenantId: 'tenant_va_001',
-      name: 'Automotive Admin (legacy VM login)',
+      name: 'Mechanic Admin (legacy VM login)',
     },
     {
       id: 'user_vms_admin',
       email: 'admin@vms.vonos',
       tenantId: 'tenant_va_001',
-      name: 'Automotive Admin (legacy VMS login)',
+      name: 'Mechanic Admin (legacy VMS login)',
     },
     { id: 'user_vs_admin', email: 'admin@vs.vonos', tenantId: 'tenant_vs_001', name: 'Saloon Admin' },
   ];

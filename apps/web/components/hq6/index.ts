@@ -18,6 +18,9 @@ export { Hq6ColumnVisibilityModal } from "./Hq6ColumnVisibilityModal";
 export { Hq6PrintModal } from "./Hq6PrintModal";
 export { Hq6ConfirmModal } from "./Hq6ConfirmModal";
 export { Hq6ContactEditModal, Hq6PayContactModal } from "./Hq6ContactModals";
+export { Hq6AddContactModal } from "./Hq6AddContactModal";
+export type { Hq6ContactType } from "./Hq6AddContactModal";
+export { Hq6AddCustomerModal } from "./Hq6AddCustomerModal";
 export { Hq6AddSupplierModal } from "./Hq6AddSupplierModal";
 export { Hq6EditSupplierModal } from "./Hq6EditSupplierModal";
 export {

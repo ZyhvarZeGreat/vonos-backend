@@ -162,6 +162,7 @@ model Tenant {
   invoices            Invoice[]
   discounts           Discount[]
   variationTemplates  VariationTemplate[]
+  tenantRoles         TenantRole[]
 }
 
 model Appointment {
@@ -191,12 +192,17 @@ model Appointment {
 model User {
   id           String     @id @default(cuid())
   email        String     @unique
+  /// Optional login handle (case-insensitive unique when set).
+  username     String?    @unique
   passwordHash String
   name         String
   role         Role
   status       UserStatus @default(invited)
   tenantId     String?
   tenant       Tenant?    @relation(fields: [tenantId], references: [id])
+  /// HQ6 / Ultimate POS job role (permission matrix) — optional; JWT `role` remains the coarse capability.
+  tenantRoleId String?
+  tenantRole   TenantRole? @relation(fields: [tenantRoleId], references: [id])
   tokenVersion Int        @default(0)
   totpSecret   String?
   totpEnabled  Boolean    @default(false)
@@ -220,6 +226,27 @@ model User {
   @@index([tenantId])
   @@index([tenantId, role])
   @@index([tenantId, status])
+  @@index([tenantId, name])
+  @@index([tenantRoleId])
+}
+
+/// Per-tenant job roles with Ultimate POS–style permission keys (HQ6 Roles page).
+model TenantRole {
+  id             String    @id @default(cuid())
+  tenantId       String
+  tenant         Tenant    @relation(fields: [tenantId], references: [id])
+  name           String
+  permissions    String[]  @default([])
+  isServiceStaff Boolean   @default(false)
+  /// Admin / system roles cannot be deleted or renamed away from Admin semantics.
+  locked         Boolean   @default(false)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  deletedAt      DateTime?
+  users          User[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
   @@index([tenantId, name])
 }
 
@@ -252,6 +279,7 @@ model Item {
   weight             String?
   /// Free-text car model fitment (e.g. "Camry 2018") — used for part suggestions.
   carModel           String?
+  imageUrl           String?
   enableImei         Boolean     @default(false)
   preparationMinutes Int?
   quantity           Int         @default(0)
@@ -359,6 +387,13 @@ model Supplier {
   notes           String?
   /** HQ6 contact tax / VAT registration number. */
   taxNumber       String?
+  /** Supplier bank / account details (Ultimate POS contact bank fields). */
+  accountHolderName String?
+  bankName          String?
+  bankBranch        String?
+  bankCode          String?
+  bankAccountNo     String?
+  taxPayerId        String?
   /** HQ6 contact active/inactive — independent of purchase-activity rollup. */
   status          String   @default("active")
   openingBalance  Decimal  @default(0)
@@ -661,17 +696,19 @@ model VariationTemplate {
 }
 
 model SaleLine {
-  id             String   @id @default(cuid())
-  saleId         String
-  sale           Sale     @relation(fields: [saleId], references: [id], onDelete: Cascade)
-  itemId         String?
-  sku            String
-  name           String
-  quantity       Decimal
-  unitPrice      Decimal
-  lineTotal      Decimal
-  discountAmount Decimal?
-  createdAt      DateTime @default(now())
+  id               String   @id @default(cuid())
+  saleId           String
+  sale             Sale     @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  itemId           String?
+  sku              String
+  name             String
+  quantity         Decimal
+  unitPrice        Decimal
+  lineTotal        Decimal
+  discountAmount   Decimal?
+  sourceTenantCode String?
+  supplierId       String?
+  createdAt        DateTime @default(now())
 
   @@index([saleId])
   @@index([itemId])
@@ -1297,7 +1334,10 @@ model Employee {
   tenant          Tenant        @relation(fields: [tenantId], references: [id])
   name            String
   employeeCode    String?
+  /// Primary / legacy single location (first of locationCodes when set).
   locationCode    String?
+  /// Work locations this staff member is allocated to (entity business location codes).
+  locationCodes   String[]      @default([])
   payrollGroupId  String?
   payrollGroup    PayrollGroup? @relation(fields: [payrollGroupId], references: [id])
   designationId   String

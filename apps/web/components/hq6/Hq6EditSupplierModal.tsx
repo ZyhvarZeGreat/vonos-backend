@@ -17,12 +17,18 @@ import {
   modalKeys,
 } from "@/lib/query/modalQueryKeys";
 import { patchEntityInQueries } from "@/lib/query/optimistic";
+import {
+  firstValidationError,
+  sanitizePersonNameInput,
+  validateEmail,
+  validatePersonName,
+  validatePhone,
+} from "@/lib/utils/formValidation";
 import { toast } from "@/stores/toastStore";
 
 type ContactKind = "individual" | "business";
 
 function formFromSupplier(supplier: SupplierListRow) {
-  // Suppliers are business contacts in HQ6; name is the company name.
   const businessName = (supplier.businessName ?? supplier.name).trim();
   const contactName = supplier.contactName?.trim() ?? "";
 
@@ -32,7 +38,6 @@ function formFromSupplier(supplier: SupplierListRow) {
     businessName,
     prefix: "",
     firstName: contactName,
-    middleName: "",
     lastName: "",
     mobile: supplier.phone ?? "",
     alternateNumber: "",
@@ -48,13 +53,17 @@ function formFromSupplier(supplier: SupplierListRow) {
     address2: "",
     city: "",
     state: "",
+    accountHolderName: supplier.accountHolderName ?? "",
+    accountNumber: supplier.bankAccountNo ?? "",
+    bankName: supplier.bankName ?? "",
+    bankCode: supplier.bankCode ?? "",
   };
 }
 
 type EditForm = ReturnType<typeof formFromSupplier>;
 
 /**
- * HQ6 “Edit contact” — suppliers (Ultimate POS contacts modal).
+ * HQ6 “Edit contact” — suppliers (no middle name; account details).
  */
 export function Hq6EditSupplierModal({
   open,
@@ -100,12 +109,7 @@ export function Hq6EditSupplierModal({
 
   const handleUpdate = async () => {
     if (!tenantId || !supplier || !form) return;
-    const composed = [
-      form.prefix,
-      form.firstName,
-      form.middleName,
-      form.lastName,
-    ]
+    const composed = [form.prefix, form.firstName, form.lastName]
       .map((p) => p.trim())
       .filter(Boolean)
       .join(" ");
@@ -114,16 +118,29 @@ export function Hq6EditSupplierModal({
       form.contactKind === "business"
         ? business || composed
         : composed || form.firstName.trim();
-    if (!name) {
-      toast.error(
-        form.contactKind === "business"
+    const validationError = firstValidationError(
+      form.contactKind === "business"
+        ? !business
           ? "Business Name is required"
-          : "First Name is required",
-      );
-      return;
-    }
-    if (!form.mobile.trim()) {
-      toast.error("Mobile is required");
+          : null
+        : validatePersonName(form.firstName, "First name"),
+      validatePersonName(form.prefix, "Prefix", { required: false }),
+      validatePersonName(form.lastName, "Last name", { required: false }),
+      !name
+        ? form.contactKind === "business"
+          ? "Business Name is required"
+          : "First Name is required"
+        : null,
+      validatePhone(form.mobile, { required: true, label: "Mobile" }),
+      validatePhone(form.alternateNumber, {
+        required: false,
+        label: "Alternate number",
+      }),
+      validatePhone(form.landline, { required: false, label: "Landline" }),
+      validateEmail(form.email, { required: false }),
+    );
+    if (validationError) {
+      toast.error(validationError);
       return;
     }
     const balance = Number(form.openingBalance);
@@ -156,6 +173,12 @@ export function Hq6EditSupplierModal({
       ]
         .filter(Boolean)
         .join(" | ") || undefined;
+    const accountPatch = {
+      accountHolderName: form.accountHolderName.trim() || null,
+      bankName: form.bankName.trim() || null,
+      bankCode: form.bankCode.trim() || null,
+      bankAccountNo: form.accountNumber.trim() || null,
+    };
     const patch = {
       name,
       contactName: composed || null,
@@ -167,6 +190,7 @@ export function Hq6EditSupplierModal({
       assignedToUserId: form.assignedToUserId || null,
       notes: notes ?? null,
       businessName: business || null,
+      ...accountPatch,
     };
     const opt = withOptimistic(queryClient, {
       keys: [["suppliers"]],
@@ -187,6 +211,7 @@ export function Hq6EditSupplierModal({
         openingBalance: balance,
         assignedToUserId: form.assignedToUserId || undefined,
         notes,
+        ...accountPatch,
       });
       opt.onSuccess(undefined, undefined);
       toast.success("Supplier updated");
@@ -224,13 +249,13 @@ export function Hq6EditSupplierModal({
         <p className="py-6 text-center text-sm text-muted">Loading…</p>
       ) : (
         <div className="space-y-4">
-          <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
+          <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
             <Hq6Field label="Contact type" required>
               <select className="hq6-modal-input" value="supplier" disabled>
                 <option value="supplier">Suppliers</option>
               </select>
             </Hq6Field>
-            <div className="flex items-end gap-6 pb-1 text-sm text-[#111827]">
+            <div className="flex items-center justify-center gap-6 self-center text-sm text-[#111827]">
               <label className="inline-flex items-center gap-2">
                 <input
                   type="radio"
@@ -270,7 +295,9 @@ export function Hq6EditSupplierModal({
                 className="hq6-modal-input"
                 placeholder="Mr / Mrs / Miss"
                 value={form.prefix}
-                onChange={(e) => setField("prefix", e.target.value)}
+                onChange={(e) =>
+                  setField("prefix", sanitizePersonNameInput(e.target.value))
+                }
               />
             </Hq6Field>
             <Hq6Field
@@ -280,14 +307,12 @@ export function Hq6EditSupplierModal({
               <input
                 className="hq6-modal-input"
                 value={form.firstName}
-                onChange={(e) => setField("firstName", e.target.value)}
-              />
-            </Hq6Field>
-            <Hq6Field label="Middle name">
-              <input
-                className="hq6-modal-input"
-                value={form.middleName}
-                onChange={(e) => setField("middleName", e.target.value)}
+                onChange={(e) =>
+                  setField(
+                    "firstName",
+                    sanitizePersonNameInput(e.target.value),
+                  )
+                }
               />
             </Hq6Field>
             <Hq6Field label="Last Name">
@@ -295,7 +320,9 @@ export function Hq6EditSupplierModal({
                 className="hq6-modal-input"
                 placeholder="Last Name"
                 value={form.lastName}
-                onChange={(e) => setField("lastName", e.target.value)}
+                onChange={(e) =>
+                  setField("lastName", sanitizePersonNameInput(e.target.value))
+                }
               />
             </Hq6Field>
           </div>
@@ -437,6 +464,44 @@ export function Hq6EditSupplierModal({
               </Hq6Field>
             </div>
           ) : null}
+
+          <div className="space-y-3 border-t border-[#e5e7eb] pt-4">
+            <h5 className="text-sm font-semibold text-[#111827]">
+              Account Details
+            </h5>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Hq6Field label="Account Name">
+                <input
+                  className="hq6-modal-input"
+                  value={form.accountHolderName}
+                  onChange={(e) =>
+                    setField("accountHolderName", e.target.value)
+                  }
+                />
+              </Hq6Field>
+              <Hq6Field label="Account Number">
+                <input
+                  className="hq6-modal-input"
+                  value={form.accountNumber}
+                  onChange={(e) => setField("accountNumber", e.target.value)}
+                />
+              </Hq6Field>
+              <Hq6Field label="Bank Name">
+                <input
+                  className="hq6-modal-input"
+                  value={form.bankName}
+                  onChange={(e) => setField("bankName", e.target.value)}
+                />
+              </Hq6Field>
+              <Hq6Field label="Bank Identifier Code">
+                <input
+                  className="hq6-modal-input"
+                  value={form.bankCode}
+                  onChange={(e) => setField("bankCode", e.target.value)}
+                />
+              </Hq6Field>
+            </div>
+          </div>
         </div>
       )}
     </Hq6Modal>

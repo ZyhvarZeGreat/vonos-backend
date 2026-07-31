@@ -82,6 +82,7 @@ export class UsersController {
       email?: string;
       name?: string;
       role?: InviteUserRequest['role'];
+      tenantRoleId?: string | null;
       status?: 'active' | 'suspended' | 'invited';
       password?: string;
     },

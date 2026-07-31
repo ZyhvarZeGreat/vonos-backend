@@ -67,7 +67,7 @@ export const TENANT_MIGRATION_SOURCES: Record<TenantCode, TenantMigrationSource>
     tenantId: "tenant_va_001",
     legacyDatabase: "vonomglk_Quotation + vonomglk_OPS",
     dumpFiles: ["vonomglk_Quotation.sql", "vonomglk_OPS.sql", "localhost.sql"],
-    legacyBusinessName: "Vonos Automotive (merged Mechanics + Mech Shop)",
+    legacyBusinessName: "Vonos Mechanic (merged Mechanics + Mech Shop)",
     dataInApp: [
       "Jobs",
       "Job materials",
@@ -83,6 +83,25 @@ export const TENANT_MIGRATION_SOURCES: Record<TenantCode, TenantMigrationSource>
     importWrapper: "./scripts/migrate_va.sh",
     operatorNotes:
       "HQ6 reference (automotive only). Composite import: Quotation (VM-) then OPS (VMS-). HRM: --hrm-only flag.",
+  },
+  VP: {
+    tenantId: "tenant_vp_001",
+    legacyDatabase: "—",
+    dumpFiles: [],
+    legacyBusinessName: "Cloned from VA (no legacy import yet)",
+    dataInApp: [
+      "Jobs",
+      "Job materials",
+      "Customers",
+      "Vehicles",
+      "Parts requisitions",
+      "Finance ledger",
+      "Expenses",
+      "Payroll",
+      "Payroll groups",
+      "Pay components",
+    ],
+    operatorNotes: "Seed/config only until VA-based import is prepared.",
   },
   VS: {
     tenantId: "tenant_vs_001",

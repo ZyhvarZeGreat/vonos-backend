@@ -36,6 +36,7 @@ import { InvoiceSettingsModule } from './modules/invoice-settings/invoice-settin
 import { DiscountsModule } from './modules/discounts/discounts.module';
 import { VariationsModule } from './modules/variations/variations.module';
 import { InvoicesModule } from './modules/invoices/invoices.module';
+import { TenantRolesModule } from './modules/tenant-roles/tenant-roles.module';
 
 @Module({
   imports: [
@@ -78,6 +79,7 @@ import { InvoicesModule } from './modules/invoices/invoices.module';
     DiscountsModule,
     VariationsModule,
     InvoicesModule,
+    TenantRolesModule,
   ],
   controllers: [AppController, HealthController],
   providers: [

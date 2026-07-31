@@ -814,8 +814,23 @@ table.ajax_view tbody tr{
 }
 
 .product-thumbnail-small{
+    display: inline-block;
+    box-sizing: border-box;
     height: 50px;
     width: 50px;
+    min-width: 50px;
+    min-height: 50px;
+    max-width: 50px;
+    max-height: 50px;
+    object-fit: cover;
+    vertical-align: middle;
+    flex-shrink: 0;
+}
+
+.product-thumbnail-placeholder{
+    background: #f3f4f6;
+    border: 1px solid #e5e7eb;
+    border-radius: 2px;
 }
 
 table.table-text-center td, table.table-text-center th{

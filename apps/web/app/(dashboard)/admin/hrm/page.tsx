@@ -1,18 +1,17 @@
 "use client";
 
 import { Hq6PageFrame } from "@/components/hq6/Hq6Chrome";
-import { HrmActionBar } from "@/components/molecules/HrmActionBar";
 import { HrmPageView } from "@/components/pages/HrmPageView";
 import {
   getVagViewUnit,
   isVagViewUnitId,
 } from "@/lib/registries/vagViewUnits";
 import { useAdminEntityStore } from "@/stores/adminEntityStore";
+import Link from "next/link";
 
 /**
- * VAG Group HRM — summary dashboard only (full HRM lives in each entity app).
- * “Show info for” scopes which tenant’s summary loads (SP → VSP).
- * Add / invite users stays on Group admin.
+ * VAG Group HRM summary. User/role actions live in the sidebar under HRM:
+ * Manage users · Add users · Add roles.
  */
 export default function AdminHrmPage() {
   const viewingCode = useAdminEntityStore((s) => s.viewingCode);
@@ -23,34 +22,35 @@ export default function AdminHrmPage() {
 
   const title = viewingUnit ? `HRM — ${viewingUnit.name}` : "HRM";
   const subtitle = viewingUnit
-    ? `Group summary for ${viewingUnit.name} · full HRM is in that business app`
-    : "Group HRM summary · invite users here · open an app for full HRM modules";
+    ? `Group summary for ${viewingUnit.name}`
+    : "Group HRM summary";
 
   return (
     <Hq6PageFrame title={title} subtitle={subtitle}>
       <div className="space-y-3">
-        <HrmActionBar
-          groupMode
-          fixedTenantCode={viewingUnit?.enterCode}
-        />
         <div className="hq6-card px-4 py-3 text-sm text-[#6b7280]">
-          Group admin shows the <span className="font-semibold text-[#111827]">HRM summary</span>{" "}
-          only. Leave, payroll, attendance, and other modules open inside each
-          business via{" "}
-          <span className="font-semibold text-[#111827]">Open app</span> in the
-          top bar
-          {viewingUnit ? (
-            <>
-              {" "}
-              (or go to{" "}
-              <span className="font-semibold text-[#111827]">
-                /{viewingUnit.enterCode}/hrm
-              </span>
-              ).
-            </>
-          ) : (
-            <>.</>
-          )}
+          Use the sidebar under <span className="font-semibold text-[#111827]">HRM</span>
+          :{" "}
+          <Link href="/admin/hrm/users" className="tw-text-[#3c8dbc] tw-underline">
+            Manage users
+          </Link>
+          ,{" "}
+          <Link
+            href="/admin/hrm/users/new/edit"
+            className="tw-text-[#3c8dbc] tw-underline"
+          >
+            Add users
+          </Link>
+          ,{" "}
+          <Link
+            href="/admin/hrm/roles/new/edit"
+            className="tw-text-[#3c8dbc] tw-underline"
+          >
+            Add roles
+          </Link>
+          . Same forms and roles as each business app — pick a business in{" "}
+          <span className="font-semibold text-[#111827]">Show info for</span>{" "}
+          first.
         </div>
         <HrmPageView defaultTab="dashboard" summaryOnly />
       </div>

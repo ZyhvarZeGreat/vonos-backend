@@ -1,4 +1,5 @@
 import { apiFetch, withTenantQuery } from "@/lib/api/client";
+import { throwApiError } from "@/lib/api/parseApiError";
 import type {
   SupplierListRow,
   SupplierFilters,
@@ -156,6 +157,12 @@ export interface CreateSupplierRequest {
   taxNumber?: string | null;
   openingBalance?: number;
   assignedToUserId?: string;
+  accountHolderName?: string | null;
+  bankName?: string | null;
+  bankBranch?: string | null;
+  bankCode?: string | null;
+  bankAccountNo?: string | null;
+  taxPayerId?: string | null;
 }
 
 export type UpdateSupplierRequest = Partial<CreateSupplierRequest>;
@@ -166,7 +173,7 @@ export async function createSupplier(body: CreateSupplierRequest): Promise<Suppl
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  if (!response.ok) throw new Error("Failed to create supplier");
+  if (!response.ok) return throwApiError(response, "Failed to create supplier");
   return response.json();
 }
 
@@ -179,7 +186,7 @@ export async function updateSupplier(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  if (!response.ok) throw new Error("Failed to update supplier");
+  if (!response.ok) return throwApiError(response, "Failed to update supplier");
   return response.json();
 }
 
@@ -197,8 +204,7 @@ export async function setSupplierStatus(
     },
   );
   if (!response.ok) {
-    const body = (await response.json().catch(() => null)) as { message?: string } | null;
-    throw new Error(body?.message ?? "Failed to update supplier status");
+    return throwApiError(response, "Failed to update supplier status");
   }
   return response.json();
 }
@@ -243,8 +249,7 @@ export async function deleteSupplier(tenantId: string, id: string): Promise<void
     method: "DELETE",
   });
   if (!response.ok) {
-    const body = (await response.json().catch(() => null)) as { message?: string } | null;
-    throw new Error(body?.message ?? "Failed to delete supplier");
+    return throwApiError(response, "Failed to delete supplier");
   }
 }
 
@@ -262,8 +267,7 @@ export async function paySupplierDue(
     },
   );
   if (!response.ok) {
-    const body = (await response.json().catch(() => null)) as { message?: string } | null;
-    throw new Error(body?.message ?? "Failed to record payment");
+    return throwApiError(response, "Failed to record payment");
   }
   return response.json();
 }

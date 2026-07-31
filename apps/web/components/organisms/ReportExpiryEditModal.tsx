@@ -1,5 +1,7 @@
 "use client";
 
+import { expiryDateFormSchema } from "@/lib/validation/schemas";
+import { parseForm } from "@/lib/validation/parseForm";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/atoms/Button";
 import { Modal } from "@/components/atoms/Modal";
@@ -38,10 +40,16 @@ export function ReportExpiryEditModal({
   if (!open) return null;
 
   const submit = async () => {
+    const valid = parseForm(
+      expiryDateFormSchema,
+      { expDate },
+      { setError },
+    );
+    if (!valid) return;
     setSaving(true);
     setError(null);
     try {
-      await onSave({ ...open, expDate });
+      await onSave({ ...open, expDate: valid.expDate });
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Update failed");

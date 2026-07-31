@@ -3,6 +3,10 @@
 import { Info } from "lucide-react";
 import type { TenantConfig } from "@vonos/types";
 import { cn } from "@/lib/utils/cn";
+import {
+  DEFAULT_HQ6_TAX_OPTIONS,
+  type Hq6TaxOption,
+} from "@/lib/utils/hq6TaxOptions";
 
 type FormState = {
   name: string;
@@ -54,11 +58,14 @@ export interface Hq6AddProductFormBodyProps {
   unitOptions: Opt[];
   brandOptions: Opt[];
   categoryOptions: Opt[];
+  taxOptions?: Hq6TaxOption[];
   locations: NonNullable<TenantConfig["businessLocations"]>;
   error: string | null;
   isPending: boolean;
   saveMode: ProductSaveMode;
   isEdit: boolean;
+  /** Job-centric tenants: hide stock qty / opening stock (price list only). */
+  priceCatalogOnly?: boolean;
   onCancel?: () => void;
   onSubmit: (mode: ProductSaveMode) => void;
   imageName: string;
@@ -105,11 +112,13 @@ export function Hq6AddProductFormBody({
   unitOptions,
   brandOptions,
   categoryOptions,
+  taxOptions,
   locations,
   error,
   isPending,
   saveMode,
   isEdit,
+  priceCatalogOnly = false,
   onCancel,
   onSubmit,
   imageName,
@@ -314,42 +323,60 @@ export function Hq6AddProductFormBody({
 
             <div className="clearfix" />
 
-            <div className="col-sm-4">
-              <div className="form-group">
-                <br />
-                <label>
-                  <input
-                    type="checkbox"
-                    className="input-icheck"
-                    checked={form.manageStock}
-                    onChange={(e) => setField("manageStock", e.target.checked)}
-                  />{" "}
-                  <strong>Manage Stock?</strong>
-                </label>
-                <Tip title="Enable stock management at product level" />
+            {!priceCatalogOnly ? (
+              <>
+                <div className="col-sm-4">
+                  <div className="form-group">
+                    <br />
+                    <label>
+                      <input
+                        type="checkbox"
+                        className="input-icheck"
+                        checked={form.manageStock}
+                        onChange={(e) =>
+                          setField("manageStock", e.target.checked)
+                        }
+                      />{" "}
+                      <strong>Manage Stock?</strong>
+                    </label>
+                    <Tip title="Enable stock management at product level" />
+                    <p className="help-block">
+                      <i>Enable stock management at product level</i>
+                    </p>
+                  </div>
+                </div>
+
+                {form.manageStock ? (
+                  <div className="col-sm-4" id="alert_quantity_div">
+                    <div className="form-group">
+                      <label htmlFor="alert_quantity">
+                        Alert quantity:{" "}
+                        <Tip title="Low stock alert quantity" />
+                      </label>
+                      <input
+                        id="alert_quantity"
+                        className="form-control input_number"
+                        placeholder="Alert quantity"
+                        min={0}
+                        value={form.alertQuantity}
+                        onChange={(e) =>
+                          setField("alertQuantity", e.target.value)
+                        }
+                      />
+                    </div>
+                  </div>
+                ) : null}
+              </>
+            ) : (
+              <div className="col-sm-8">
                 <p className="help-block">
-                  <i>Enable stock management at product level</i>
+                  <i>
+                    Products are priced for jobs/sales — choose quantity when
+                    adding a sale line.
+                  </i>
                 </p>
               </div>
-            </div>
-
-            {form.manageStock ? (
-              <div className="col-sm-4" id="alert_quantity_div">
-                <div className="form-group">
-                  <label htmlFor="alert_quantity">
-                    Alert quantity: <Tip title="Low stock alert quantity" />
-                  </label>
-                  <input
-                    id="alert_quantity"
-                    className="form-control input_number"
-                    placeholder="Alert quantity"
-                    min={0}
-                    value={form.alertQuantity}
-                    onChange={(e) => setField("alertQuantity", e.target.value)}
-                  />
-                </div>
-              </div>
-            ) : null}
+            )}
 
             <div className="clearfix" />
 
@@ -606,7 +633,11 @@ export function Hq6AddProductFormBody({
                   value={form.applicableTax}
                   onChange={(e) => setField("applicableTax", e.target.value)}
                 >
-                  <option value="none">None</option>
+                  {(taxOptions ?? DEFAULT_HQ6_TAX_OPTIONS).map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
                 </select>
               </div>
             </div>
@@ -737,20 +768,22 @@ export function Hq6AddProductFormBody({
         ) : null}
         {!isEdit ? (
           <>
-            <button
-              type="button"
-              className={cn(
-                "tw-dw-btn tw-text-white",
-                "hq6-btn-opening-stock",
-              )}
-              style={{ marginRight: 8, background: "#7c3aed" }}
-              disabled={isPending}
-              onClick={() => onSubmit("saveOpeningStock")}
-            >
-              {isPending && saveMode === "saveOpeningStock"
-                ? "Saving…"
-                : "Save & Add Opening Stock"}
-            </button>
+            {!priceCatalogOnly ? (
+              <button
+                type="button"
+                className={cn(
+                  "tw-dw-btn tw-text-white",
+                  "hq6-btn-opening-stock",
+                )}
+                style={{ marginRight: 8, background: "#7c3aed" }}
+                disabled={isPending}
+                onClick={() => onSubmit("saveOpeningStock")}
+              >
+                {isPending && saveMode === "saveOpeningStock"
+                  ? "Saving…"
+                  : "Save & Add Opening Stock"}
+              </button>
+            ) : null}
             <button
               type="button"
               className="tw-dw-btn tw-text-white"

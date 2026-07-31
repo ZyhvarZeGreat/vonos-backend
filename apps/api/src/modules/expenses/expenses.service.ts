@@ -249,7 +249,9 @@ export class ExpensesService {
       row.expenseDate,
       'expense',
       toNumber(row.totalAmount),
-    );
+    ).catch((err: unknown) => {
+      console.error('[expenses] daily finance rollup failed', err);
+    });
     this.invalidateCaches();
     return this.serializeExpense(row);
   }

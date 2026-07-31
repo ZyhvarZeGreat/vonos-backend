@@ -17,6 +17,11 @@ import { UposHeader } from "@/components/upos/UposHeader";
 import { AdminViewingBanner } from "@/components/molecules/AdminViewingBanner";
 import { PageTransition } from "@/components/atoms/PageTransition";
 import { Hq6UposStyles } from "@/components/hq6/Hq6UposStyles";
+import { CreateRecordModal } from "@/components/organisms/CreateRecordModal";
+import { AddSaleModal } from "@/components/organisms/AddSaleModal";
+import { AddProductModal } from "@/components/organisms/AddProductModal";
+import { AddExpenseModal } from "@/components/organisms/AddExpenseModal";
+import { ExportDocumentModal } from "@/components/organisms/ExportDocumentModal";
 import { ensureUposStylesheets } from "@/lib/upos/styles";
 import { prefetchRoute } from "@/lib/prefetch/routePrefetchRegistry";
 import { dateRangePresetToApiBounds } from "@/lib/utils/dateRange";
@@ -240,6 +245,14 @@ export function UposAppShell({
           </div>
         </main>
       </div>
+      {/* Global create/export modals — previously only mounted in TopBar,
+          which UPOS shell does not use. Without these, Add Customer/Supplier
+          and store-driven finance/export actions update uiStore with no UI. */}
+      <CreateRecordModal />
+      <AddSaleModal />
+      <AddProductModal />
+      <AddExpenseModal />
+      <ExportDocumentModal />
     </>
   );
 }

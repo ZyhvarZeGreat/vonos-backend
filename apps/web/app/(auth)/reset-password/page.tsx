@@ -5,6 +5,8 @@ import { Button } from "@/components/atoms/Button";
 import { Input } from "@/components/atoms/Input";
 import { AuthFooterLink, AuthTemplate } from "@/components/templates/AuthTemplate";
 import { requestPasswordReset } from "@/lib/api/auth";
+import { parseForm } from "@/lib/validation/parseForm";
+import { requestResetEmailSchema } from "@/lib/validation/schemas";
 
 export default function ResetPasswordPage() {
   const [email, setEmail] = useState("");
@@ -14,10 +16,16 @@ export default function ResetPasswordPage() {
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
+    const valid = parseForm(
+      requestResetEmailSchema,
+      { email },
+      { setError },
+    );
+    if (!valid) return;
     setError(null);
     setLoading(true);
     try {
-      const result = await requestPasswordReset(email);
+      const result = await requestPasswordReset(valid.email);
       void result;
       setSent(true);
     } catch (err) {

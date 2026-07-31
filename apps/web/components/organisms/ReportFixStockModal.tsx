@@ -5,6 +5,8 @@ import { Button } from "@/components/atoms/Button";
 import { Modal } from "@/components/atoms/Modal";
 import { Hq6Field, Hq6Modal, Hq6ModalSaveClose } from "@/components/hq6/Hq6Modal";
 import { useIsVaHq6 } from "@/lib/hooks/useIsVaHq6";
+import { parseForm } from "@/lib/validation/parseForm";
+import { openingStockSchema } from "@/lib/validation/schemas";
 
 export interface FixStockPayload {
   itemId: string;
@@ -38,10 +40,19 @@ export function ReportFixStockModal({
   if (!open) return null;
 
   const submit = async () => {
+    const valid = parseForm(
+      openingStockSchema,
+      { quantity },
+      { setError },
+    );
+    if (!valid) return;
     setSaving(true);
     setError(null);
     try {
-      await onSave({ ...open, quantity: Math.max(0, Math.trunc(quantity)) });
+      await onSave({
+        ...open,
+        quantity: Math.max(0, Math.trunc(Number(valid.quantity))),
+      });
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Fix failed");

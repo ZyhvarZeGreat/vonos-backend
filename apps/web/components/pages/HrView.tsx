@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { EntityContextBanner } from "@/components/molecules/EntityContextBanner";
 import { EntityColorBadge } from "@/components/atoms/EntityColorBadge";
 import { Button } from "@/components/atoms/Button";
@@ -15,10 +16,10 @@ import {
 } from "@/lib/api/hrm";
 import { getAllTenantUsersPage, getUsersPage, type UserListRow } from "@/lib/api/users";
 import { useServerListPage } from "@/lib/hooks/useServerListPage";
+import { useRecordNavigation } from "@/lib/hooks/useRecordNavigation";
 import { useRouteTenant } from "@/lib/hooks/useRouteTenant";
 import { useListPageFilters } from "@/lib/hooks/useListPageFilters";
-import { hasPermission } from "@/lib/utils/permissions";
-import { useAuthStore } from "@/stores/authStore";
+import { useHq6Permissions } from "@/lib/hooks/useHq6Permissions";
 import { useIsVaHq6 } from "@/lib/hooks/useIsVaHq6";
 import { Hq6UsersListView } from "@/components/pages/Hq6UsersListView";
 import { formatCurrency } from "@/lib/utils/formatCurrency";
@@ -60,7 +61,10 @@ const workforceColumns: ColumnConfig<WorkforceMember>[] = [
   {
     key: "locationCode",
     header: "Location",
-    render: (r) => r.locationCode ?? "—",
+    render: (r) =>
+      (r.locationCodes && r.locationCodes.length > 0
+        ? r.locationCodes.join(", ")
+        : r.locationCode) ?? "—",
   },
   {
     key: "payrollCount",
@@ -155,16 +159,26 @@ export function UsersView(props: HrViewProps) {
 }
 
 function HrViewBody({ allTenants = false, embedded = false }: HrViewProps) {
+  const router = useRouter();
   const { tenantId, tenantName, tenantCode } = useRouteTenant();
+  const { detailPath } = useRecordNavigation("users");
   const isHq6 = useIsVaHq6();
-  const authRole = useAuthStore((state) => state.role);
+  const { requireCan } = useHq6Permissions();
   const { search, setSearch } = useListPageFilters();
   const [activeTab, setActiveTab] = useState<HrTab>("workforce");
   const [roleFilter, setRoleFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [inviteOpen, setInviteOpen] = useState(false);
 
-  const canInvite = authRole ? hasPermission(authRole, "manageUsers") : false;
+  const addUserHref = `${detailPath("new")}/edit`;
+  const goToAddUser = () => {
+    if (!requireCan("user.create")) return;
+    router.push(addUserHref);
+  };
+  const openInvite = () => {
+    if (!requireCan("user.create")) return;
+    setInviteOpen(true);
+  };
 
   const {
     items: workforce,
@@ -368,18 +382,27 @@ function HrViewBody({ allTenants = false, embedded = false }: HrViewProps) {
         </p>
       ) : null}
 
-      {canInvite && activeTab === "app-access" ? (
-        <div className="flex justify-end">
+      {activeTab === "app-access" ? (
+        <div className="flex justify-end gap-2">
+          {!allTenants && !isHq6 ? (
+            <Button size="sm" onClick={goToAddUser}>
+              Add User
+            </Button>
+          ) : null}
           {isHq6 ? (
             <button
               type="button"
               className="hq6-btn hq6-btn-blue"
-              onClick={() => setInviteOpen(true)}
+              onClick={openInvite}
             >
               Invite staff
             </button>
           ) : (
-            <Button size="sm" onClick={() => setInviteOpen(true)}>
+            <Button
+              size="sm"
+              variant={allTenants ? "primary" : "secondary"}
+              onClick={openInvite}
+            >
               Invite staff
             </Button>
           )}
@@ -414,6 +437,17 @@ function HrViewBody({ allTenants = false, embedded = false }: HrViewProps) {
             : "Human resource management"
         }
         hq6PageChrome={!embedded}
+        primaryAction={
+          !allTenants && activeTab === "app-access" && isHq6 ? (
+            <button
+              type="button"
+              className="hq6-btn hq6-btn-blue"
+              onClick={goToAddUser}
+            >
+              Add User
+            </button>
+          ) : undefined
+        }
         filterDropdowns={
           activeTab === "app-access"
             ? [
@@ -478,7 +512,11 @@ function HrViewBody({ allTenants = false, embedded = false }: HrViewProps) {
             isLoading={usersLoading}
             isFetching={usersFetching}
             error={usersError ? "Could not load app users." : null}
-            emptyState={{ message: "No staff with app login yet. Use Invite staff to add users." }}
+            emptyState={{
+              message: allTenants
+                ? "No staff with app login yet. Use Invite staff to add users."
+                : "No staff with app login yet. Use Add User to create one with a work location.",
+            }}
           />
         )}
       </ListPageShell>

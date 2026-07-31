@@ -385,6 +385,17 @@ h6,
   transform: scale(0.97);
 }
 
+/* Auth login — keep spinner circular (UPOS/svg quirks + flex squash). */
+[data-auth-layout] button[aria-busy="true"] svg {
+  flex-shrink: 0;
+  width: 1rem !important;
+  height: 1rem !important;
+  max-width: 1rem;
+  max-height: 1rem;
+  aspect-ratio: 1;
+  overflow: visible;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .motion-backdrop-in,
   .motion-dialog-in,

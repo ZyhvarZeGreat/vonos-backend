@@ -116,8 +116,19 @@ function ItemDetailView({
   }
 
   if (showStockHistory) {
+    const unitLabel = item.unit?.toLowerCase() === "single" ? "sng" : (item.unit ?? "");
+    const purchases = stockHistory.filter((r) => r.quantityChange > 0);
+    const sells = stockHistory.filter((r) => r.quantityChange < 0);
+    const totalPurchase = purchases.reduce((s, r) => s + r.quantity, 0);
+    const totalSold = sells.reduce((s, r) => s + r.quantity, 0);
+    const currentStock = item.quantity;
+    const locationLabel =
+      tenantConfig?.businessLocations?.find((l) => l.code === item.locationCode)?.name ??
+      item.locationCode ??
+      "—";
+
     return (
-      <Hq6PageFrame title={item.name} subtitle={`Product stock history · ${item.sku}`}>
+      <Hq6PageFrame title="Product stock history" subtitle={item.name}>
         <div className="mb-4">
           <button
             type="button"
@@ -127,6 +138,53 @@ function ItemDetailView({
             Back to product
           </button>
         </div>
+
+        {/* Product / Location selectors */}
+        <section className="rounded-lg border border-[#e5e7eb] bg-white p-4 mb-4">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <div>
+              <label className="mb-1 block text-xs font-medium text-[#6b7280]">Product:</label>
+              <div className="rounded border border-[#d1d5db] bg-[#f9fafb] px-3 py-2 text-sm">
+                {item.name} – {item.sku}
+              </div>
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-[#6b7280]">Business Location:</label>
+              <div className="rounded border border-[#d1d5db] bg-[#f9fafb] px-3 py-2 text-sm">
+                {locationLabel}
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* Summary cards */}
+        <section className="rounded-lg border border-[#e5e7eb] bg-white p-4 mb-4">
+          <h3 className="mb-3 text-sm font-semibold text-[#111827]">
+            {item.sku} ({item.name})
+          </h3>
+          <div className="grid grid-cols-3 gap-6 text-sm">
+            <div>
+              <h4 className="mb-2 font-semibold text-[#111827]">Quantities In</h4>
+              <div className="flex justify-between"><span>Total Purchase</span><span>{totalPurchase.toFixed(2)} {unitLabel}</span></div>
+              <div className="flex justify-between text-[#6b7280]"><span>Opening Stock</span><span>0.00 {unitLabel}</span></div>
+              <div className="flex justify-between text-[#6b7280]"><span>Total Sell Return</span><span>0.00 {unitLabel}</span></div>
+              <div className="flex justify-between text-[#6b7280]"><span>Stock Transfers (In)</span><span>0.00 {unitLabel}</span></div>
+            </div>
+            <div>
+              <h4 className="mb-2 font-semibold text-[#111827]">Quantities Out</h4>
+              <div className="flex justify-between"><span>Total Sold</span><span>{totalSold.toFixed(2)} {unitLabel}</span></div>
+              <div className="flex justify-between text-[#6b7280]"><span>Total Stock Adjustment</span><span>0.00 {unitLabel}</span></div>
+              <div className="flex justify-between text-[#6b7280]"><span>Total Purchase Return</span><span>0.00 {unitLabel}</span></div>
+              <div className="flex justify-between text-[#6b7280]"><span>Stock Transfers (Out)</span><span>0.00 {unitLabel}</span></div>
+            </div>
+            <div>
+              <h4 className="mb-2 font-semibold text-[#111827]">Totals</h4>
+              <div className="flex justify-between font-medium"><span>Current stock</span><span>{currentStock.toFixed(2)} {unitLabel}</span></div>
+            </div>
+          </div>
+        </section>
+
+        {/* History table */}
         <section className="rounded-lg border border-[#e5e7eb] bg-white p-4">
           {historyLoading ? (
             <p className="text-sm text-[#6b7280]">Loading stock history…</p>
@@ -137,29 +195,27 @@ function ItemDetailView({
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-[#e5e7eb] text-left text-[#6b7280]">
-                    <th className="pb-2 pr-3 font-medium">Date</th>
-                    <th className="pb-2 pr-3 font-medium">Reference</th>
                     <th className="pb-2 pr-3 font-medium">Type</th>
-                    <th className="pb-2 pr-3 font-medium">Status</th>
-                    <th className="pb-2 pr-3 font-medium text-right">Qty</th>
-                    <th className="pb-2 font-medium text-right">Unit cost</th>
+                    <th className="pb-2 pr-3 font-medium text-right">Quantity change</th>
+                    <th className="pb-2 pr-3 font-medium text-right">New Quantity</th>
+                    <th className="pb-2 pr-3 font-medium">Date</th>
+                    <th className="pb-2 pr-3 font-medium">Reference No</th>
+                    <th className="pb-2 font-medium">Customer/Supplier information</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {stockHistory.map((row) => (
-                    <tr key={`${row.id}-${row.quantity}`} className="border-b border-[#f3f4f6]">
+                  {stockHistory.map((row, idx) => (
+                    <tr key={`${row.id}-${idx}`} className="border-b border-[#f3f4f6]">
+                      <td className="py-2 pr-3 capitalize">{row.type.replace(/_/g, " ")}</td>
+                      <td className={`py-2 pr-3 text-right tabular-nums font-medium ${row.quantityChange >= 0 ? "text-green-600" : "text-red-600"}`}>
+                        {row.quantityChange >= 0 ? "+" : ""}{row.quantityChange.toFixed(2)}
+                      </td>
+                      <td className="py-2 pr-3 text-right tabular-nums">{row.newQuantity.toFixed(2)}</td>
                       <td className="whitespace-nowrap py-2 pr-3">
                         {formatDateTime(row.date)}
                       </td>
                       <td className="py-2 pr-3">{row.reference}</td>
-                      <td className="py-2 pr-3 capitalize">{row.type}</td>
-                      <td className="py-2 pr-3">{row.status}</td>
-                      <td className="py-2 pr-3 text-right tabular-nums">{row.quantity}</td>
-                      <td className="py-2 text-right tabular-nums">
-                        {row.unitCost != null
-                          ? formatCurrency(row.unitCost, item.currency)
-                          : "—"}
-                      </td>
+                      <td className="py-2">{row.customerSupplierInfo ?? "—"}</td>
                     </tr>
                   ))}
                 </tbody>

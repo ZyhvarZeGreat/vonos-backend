@@ -84,8 +84,23 @@ html.upos-hq6 [data-hq6="true"] .hq6-page .nav-tabs.nav-justified > li {
   text-align: center;
 }
 html.upos-hq6 [data-hq6="true"] .hq6-page .product-thumbnail-small {
+  display: inline-block;
+  box-sizing: border-box;
+  height: 50px;
+  width: 50px;
+  min-width: 50px;
+  min-height: 50px;
+  max-width: 50px;
   max-height: 50px;
-  width: auto;
+  object-fit: cover;
+  vertical-align: middle;
+  flex-shrink: 0;
+}
+
+html.upos-hq6 [data-hq6="true"] .hq6-page .product-thumbnail-placeholder {
+  background: #f3f4f6;
+  border: 1px solid #e5e7eb;
+  border-radius: 2px;
 }
 html.upos-hq6 [data-hq6="true"] .hq6-page .dataTables_wrapper .row {
   display: flex;
@@ -1032,6 +1047,53 @@ html.upos-shell .border-border,
   background-color: #ffffff;
   color: #111827;
   z-index: 1100;
+}
+
+/* Searchable selects: cap height and scroll the options list only. */
+.vonos-floating-menu:has(.vonos-floating-menu-body),
+[data-vonos-floating-menu]:has(.vonos-floating-menu-body) {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Keep the animated shell + option list inside the viewport-capped panel. */
+.vonos-floating-menu > .vonos-floating-menu-shell,
+[data-vonos-floating-menu] > .vonos-floating-menu-shell,
+.vonos-floating-menu > .motion-pop-in,
+[data-vonos-floating-menu] > .motion-pop-in {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: 100%;
+  overflow: hidden;
+}
+
+.vonos-floating-menu-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: 100%;
+  overflow: hidden;
+}
+
+.vonos-floating-menu-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto !important;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Row/actions menus scroll the whole panel (no search header). */
+.vonos-floating-menu.hq6-actions-menu-portal,
+[data-vonos-floating-menu].hq6-actions-menu-portal,
+.vonos-floating-menu.overflow-auto,
+[data-vonos-floating-menu].overflow-auto {
+  overflow: auto !important;
 }
 
 html.upos-hq6 .vonos-floating-menu.border,

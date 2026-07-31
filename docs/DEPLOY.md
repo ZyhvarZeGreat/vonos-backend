@@ -32,10 +32,10 @@ Do **not** deploy the API to Vercel serverless for production (reports and Prism
    ```
    postgresql://USER:PASS@ep-xxx-pooler.eu-west-2.aws.neon.tech/neondb?sslmode=require
    ```
-   Prisma will auto-append `pgbouncer=true` and `connection_limit=5` when the host contains `-pooler`.
+   Prisma will auto-append `pgbouncer=true` and `connection_limit` (default **15** on Neon pooler) when the host contains `-pooler`.
 4. **Avoid Neon bottlenecks (P1001 / slow lists):**
    - Always use the **pooler** URL for the API (never the direct host for app traffic).
-   - Keep `PRISMA_CONNECTION_LIMIT` at **5–10** per API process. Higher values stampede Neon and cause `Can't reach database server`.
+   - Set `PRISMA_CONNECTION_LIMIT` to **15** per API process for multi-user use (override via env). Stay at or under **~20** per process on Neon Launch/Scale; multiply only if you know your Neon plan’s max connections.
    - Prefer **Scale to zero off** (or a paid compute that stays warm) for staging/prod — cold wake + parallel overview/report queries is what makes dashboards feel stuck.
    - Ensure Upstash Redis is set so overview/ledger/report caches actually hit.
 5. Apply migrations (from your machine, once):
@@ -63,7 +63,7 @@ Do **not** deploy the API to Vercel serverless for production (reports and Prism
    |----------|--------|
    | `DATABASE_URL` | Neon pooled URL from step 1 |
    | `JWT_SECRET` | `openssl rand -base64 32` |
-   | `JWT_ACCESS_EXPIRES` | `2h` |
+   | `JWT_ACCESS_EXPIRES` | `3h` |
    | `JWT_REFRESH_EXPIRES` | `7d` |
    | `WEB_ORIGIN` | Your Vercel URL (step 3), e.g. `https://vonos-web.vercel.app` |
    | `NODE_ENV` | `production` |

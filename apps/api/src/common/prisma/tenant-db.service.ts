@@ -2,7 +2,10 @@ import { BadRequestException, Inject, Injectable, Scope } from '@nestjs/common';
 import { REQUEST } from '@nestjs/core';
 import type { Request } from 'express';
 import type { AuthenticatedUser } from '../decorators/roles.decorator';
-import { assertBusinessLocation } from '../utils/businessLocation';
+import {
+  assertBusinessLocation,
+  assertProductStockLocation,
+} from '../utils/businessLocation';
 import { PrismaService, type TenantScopedPrisma } from './prisma.service';
 
 type VonosRequest = Request & {
@@ -54,9 +57,13 @@ export class TenantDbService {
     const tenantId = this.requireTenantId();
     const tenant = await this.prisma.tenant.findUnique({
       where: { id: tenantId },
-      select: { config: true },
+      select: { code: true, config: true },
     });
-    return assertBusinessLocation(tenant?.config, locationCode);
+    const config = {
+      ...((tenant?.config as object | null) ?? {}),
+      code: tenant?.code,
+    };
+    return assertBusinessLocation(config, locationCode);
   }
 
   /**
@@ -70,9 +77,13 @@ export class TenantDbService {
     const tenantId = this.requireTenantId();
     const tenant = await this.prisma.tenant.findUnique({
       where: { id: tenantId },
-      select: { config: true },
+      select: { code: true, config: true },
     });
+    const config = {
+      ...((tenant?.config as object | null) ?? {}),
+      code: tenant?.code,
+    };
     return (locationCode?: string | null) =>
-      assertBusinessLocation(tenant?.config, locationCode);
+      assertProductStockLocation(config, locationCode);
   }
 }

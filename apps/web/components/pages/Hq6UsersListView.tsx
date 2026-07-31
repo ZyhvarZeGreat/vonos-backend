@@ -23,21 +23,25 @@ import { useListExport } from "@/lib/hooks/useListExport";
 import { useListPageFilters } from "@/lib/hooks/useListPageFilters";
 import { useRecordNavigation } from "@/lib/hooks/useRecordNavigation";
 import { useTenantId } from "@/lib/hooks/useRouteTenant";
+import { useHq6Permissions } from "@/lib/hooks/useHq6Permissions";
 import { prefetchUserDetail } from "@/lib/query/prefetchListDetails";
-import { hasPermission } from "@/lib/utils/permissions";
-import { useAuthStore } from "@/stores/authStore";
 import { toast } from "@/stores/toastStore";
 import type { User } from "@vonos/types";
 
 const PAGE_SIZE_OPTIONS = [25, 50, 100, 200, 500, 1000, -1] as const;
 const USERS_PAGE_SIZE = 50;
 
-function formatRole(role: User["role"]): string {
+function formatJwtRole(role: User["role"]): string {
   return role
     .split("_")
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ")
     .toUpperCase();
+}
+
+function roleLabelFor(row: User): string {
+  if (row.tenantRoleName) return row.tenantRoleName.toUpperCase();
+  return formatJwtRole(row.role);
 }
 
 function usernameOf(row: UserListRow): string {
@@ -91,13 +95,11 @@ export function Hq6UsersListView() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const { detailPath, prefetchDetail } = useRecordNavigation("users");
-  const authRole = useAuthStore((state) => state.role);
+  const { requireCan } = useHq6Permissions();
   const { search, setSearch } = useListPageFilters();
   const [localSearch, setLocalSearch] = useState(search);
   const [columnsOpen, setColumnsOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<UserListRow | null>(null);
-
-  const canInvite = authRole ? hasPermission(authRole, "manageUsers") : false;
 
   const deactivateMutation = useMutation({
     mutationFn: (row: UserListRow) =>
@@ -163,7 +165,7 @@ export function Hq6UsersListView() {
         filtered.map((row) => ({
           username: usernameOf(row),
           name: row.name,
-          role: formatRole(row.role),
+          role: roleLabelFor(row),
           email: row.email,
         })),
         "Export Users",
@@ -208,20 +210,19 @@ export function Hq6UsersListView() {
           <div className="tw-p-2 sm:tw-p-3">
             <div className="box-header tw-flex tw-items-center tw-justify-between tw-gap-3">
               <h3 className="box-title">All users</h3>
-              {canInvite ? (
-                <div className="box-tools tw-flex tw-items-center">
+              <div className="box-tools tw-flex tw-items-center">
                   <a
                     href={`${detailPath("new")}/edit`}
                     className="tw-dw-btn tw-bg-gradient-to-r tw-from-indigo-600 tw-to-blue-500 tw-font-bold tw-text-white tw-border-none tw-rounded-full"
                     onClick={(e) => {
                       e.preventDefault();
+                      if (!requireCan("user.create")) return;
                       router.push(`${detailPath("new")}/edit`);
                     }}
                   >
                     {PlusIcon} Add
                   </a>
                 </div>
-              ) : null}
             </div>
 
             <div className="tw-flow-root tw-border-gray-200">
@@ -271,6 +272,7 @@ export function Hq6UsersListView() {
                               aria-controls="users_table"
                               onClick={(e) => {
                                 e.preventDefault();
+                                if (!requireCan("view_export_buttons")) return;
                                 handleExport();
                               }}
                             >
@@ -287,6 +289,7 @@ export function Hq6UsersListView() {
                               aria-controls="users_table"
                               onClick={(e) => {
                                 e.preventDefault();
+                                if (!requireCan("view_export_buttons")) return;
                                 handleExport();
                               }}
                             >
@@ -303,6 +306,7 @@ export function Hq6UsersListView() {
                               aria-controls="users_table"
                               onClick={(e) => {
                                 e.preventDefault();
+                                if (!requireCan("view_export_buttons")) return;
                                 window.print();
                               }}
                             >
@@ -334,6 +338,7 @@ export function Hq6UsersListView() {
                               aria-controls="users_table"
                               onClick={(e) => {
                                 e.preventDefault();
+                                if (!requireCan("view_export_buttons")) return;
                                 handleExport();
                               }}
                             >
@@ -451,7 +456,7 @@ export function Hq6UsersListView() {
                                   <UsernameCell row={row} />
                                 </td>
                                 <td>{row.name}</td>
-                                <td>{formatRole(row.role)}</td>
+                                <td>{roleLabelFor(row)}</td>
                                 <td>{row.email}</td>
                                 <td>
                                   {/* ManageUserController action HTML order */}
@@ -460,8 +465,11 @@ export function Hq6UsersListView() {
                                     className="tw-dw-btn tw-dw-btn-xs tw-dw-btn-outline tw-dw-btn-primary"
                                     onClick={(e) => {
                                       e.preventDefault();
+                                      if (!requireCan("user.update")) return;
                                       warmUser(row);
-                                      router.push(`${detailPath(row.id)}/edit`);
+                                      router.push(
+                                        `${detailPath(row.id)}/edit`,
+                                      );
                                     }}
                                   >
                                     <i
@@ -476,18 +484,23 @@ export function Hq6UsersListView() {
                                     className="tw-dw-btn tw-dw-btn-xs tw-dw-btn-outline tw-dw-btn-info"
                                     onClick={(e) => {
                                       e.preventDefault();
+                                      if (!requireCan("user.view", "view")) return;
                                       warmUser(row);
                                       router.push(detailPath(row.id));
                                     }}
                                   >
-                                    <i className="fa fa-eye" aria-hidden /> View
+                                    <i className="fa fa-eye" aria-hidden />{" "}
+                                    View
                                   </a>
                                   &nbsp;
                                   <button
                                     type="button"
                                     data-href={detailPath(row.id)}
                                     className="tw-dw-btn tw-dw-btn-outline tw-dw-btn-xs tw-dw-btn-error delete_user_button"
-                                    onClick={() => setDeleteTarget(row)}
+                                    onClick={() => {
+                                      if (!requireCan("user.delete")) return;
+                                      setDeleteTarget(row);
+                                    }}
                                   >
                                     <i
                                       className="glyphicon glyphicon-trash"

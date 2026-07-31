@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAppMutation } from "@/lib/hooks/useAppMutation";
+import { parseForm } from "@/lib/validation/parseForm";
+import { expenseFormSchema } from "@/lib/validation/schemas";
 import { Button } from "@/components/atoms/Button";
 import { Input } from "@/components/atoms/Input";
 import { Modal, ModalFooter, ModalHeader } from "@/components/atoms/Modal";
@@ -60,16 +62,21 @@ export function AddExpenseModal() {
   const mutation = useAppMutation({
     mutationFn: async () => {
       if (!tenantId) throw new Error("No business selected");
-      const parsed = Number(amount);
-      if (!Number.isFinite(parsed) || parsed <= 0) {
-        throw new Error("Enter a valid amount");
+      const valid = parseForm(expenseFormSchema, {
+        amount,
+        description,
+        category,
+        date,
+      });
+      if (!valid) {
+        throw new Error("Enter a valid amount and description");
       }
-      if (!description.trim()) throw new Error("Description is required");
+      const parsed = Number(valid.amount);
       return createManualExpense(tenantId, {
         type: "expense",
         amount: parsed,
         category,
-        description: description.trim(),
+        description: String(valid.description).trim(),
         date,
       });
     },

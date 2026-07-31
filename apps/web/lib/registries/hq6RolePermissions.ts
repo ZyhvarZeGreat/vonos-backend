@@ -1,12 +1,12 @@
 /** HQ6 Ultimate POS role permission matrix — from ui-walkthrough edit role. */
 
-export type Hq6RolePermissionType = "checkbox" | "radio";
+export type Hq6RolePermissionType = "checkbox";
 
 export interface Hq6RolePermissionOption {
   key: string;
   label: string;
   type: Hq6RolePermissionType;
-  /** Radio exclusive group id (Ultimate POS `radio_option[group]`). */
+  /** @deprecated Former radio exclusive group — all options are checkboxes now. */
   group?: string;
 }
 
@@ -50,17 +50,29 @@ export const HQ6_ROLE_PERMISSION_MODULES: Hq6RolePermissionModule[] = [
     label: "Roles",
     permissions: [
       { key: "roles.view", label: "View role", type: "checkbox" },
-      { key: "roles.create", label: "Add Role", type: "checkbox" },
-      { key: "roles.update", label: "Edit Role", type: "checkbox" },
-      { key: "roles.delete", label: "Delete role", type: "checkbox" },
+      {
+        key: "roles.create",
+        label: "Add Role (VAG only)",
+        type: "checkbox",
+      },
+      {
+        key: "roles.update",
+        label: "Edit Role (VAG only)",
+        type: "checkbox",
+      },
+      {
+        key: "roles.delete",
+        label: "Delete role (VAG only)",
+        type: "checkbox",
+      },
     ],
   },
   {
     id: "supplier",
     label: "Supplier",
     permissions: [
-      { key: "supplier.view", label: "View all supplier", type: "radio", group: "supplier_view" },
-      { key: "supplier.view_own", label: "View own supplier", type: "radio", group: "supplier_view" },
+      { key: "supplier.view", label: "View all supplier", type: "checkbox", group: "supplier_view" },
+      { key: "supplier.view_own", label: "View own supplier", type: "checkbox", group: "supplier_view" },
       { key: "supplier.create", label: "Add supplier", type: "checkbox" },
       { key: "supplier.update", label: "Edit supplier", type: "checkbox" },
       { key: "supplier.delete", label: "Delete supplier", type: "checkbox" },
@@ -70,13 +82,13 @@ export const HQ6_ROLE_PERMISSION_MODULES: Hq6RolePermissionModule[] = [
     id: "customer",
     label: "Customer",
     permissions: [
-      { key: "customer.view", label: "View all customer", type: "radio", group: "customer_view" },
-      { key: "customer.view_own", label: "View own customer", type: "radio", group: "customer_view" },
-      { key: "customer_with_no_sell_one_month", label: "View customers with no sell from one month only", type: "radio", group: "customer_view_by_sell" },
-      { key: "customer_with_no_sell_three_month", label: "View customers with no sell from three months only", type: "radio", group: "customer_view_by_sell" },
-      { key: "customer_with_no_sell_six_month", label: "View customers with no sell from six months only", type: "radio", group: "customer_view_by_sell" },
-      { key: "customer_with_no_sell_one_year", label: "View customers with no sell from one year only", type: "radio", group: "customer_view_by_sell" },
-      { key: "customer_irrespective_of_sell", label: "View customers irrespective of their sell", type: "radio", group: "customer_view_by_sell" },
+      { key: "customer.view", label: "View all customer", type: "checkbox", group: "customer_view" },
+      { key: "customer.view_own", label: "View own customer", type: "checkbox", group: "customer_view" },
+      { key: "customer_with_no_sell_one_month", label: "View customers with no sell from one month only", type: "checkbox", group: "customer_view_by_sell" },
+      { key: "customer_with_no_sell_three_month", label: "View customers with no sell from three months only", type: "checkbox", group: "customer_view_by_sell" },
+      { key: "customer_with_no_sell_six_month", label: "View customers with no sell from six months only", type: "checkbox", group: "customer_view_by_sell" },
+      { key: "customer_with_no_sell_one_year", label: "View customers with no sell from one year only", type: "checkbox", group: "customer_view_by_sell" },
+      { key: "customer_irrespective_of_sell", label: "View customers irrespective of their sell", type: "checkbox", group: "customer_view_by_sell" },
       { key: "customer.create", label: "Add customer", type: "checkbox" },
       { key: "customer.update", label: "Edit customer", type: "checkbox" },
       { key: "customer.delete", label: "Delete customer", type: "checkbox" },
@@ -98,8 +110,8 @@ export const HQ6_ROLE_PERMISSION_MODULES: Hq6RolePermissionModule[] = [
     id: "purchase_stock_adjustment",
     label: "Purchase & Stock Adjustment",
     permissions: [
-      { key: "purchase.view", label: "View all Purchase & Stock Adjustment", type: "radio", group: "purchase_view" },
-      { key: "view_own_purchase", label: "View own Purchase & Stock Adjustment", type: "radio", group: "purchase_view" },
+      { key: "purchase.view", label: "View all Purchase & Stock Adjustment", type: "checkbox", group: "purchase_view" },
+      { key: "view_own_purchase", label: "View own Purchase & Stock Adjustment", type: "checkbox", group: "purchase_view" },
       { key: "purchase.create", label: "Add purchase & Stock Adjustment", type: "checkbox" },
       { key: "purchase.update", label: "Edit purchase & Stock Adjustment", type: "checkbox" },
       { key: "purchase.delete", label: "Delete purchase & Stock Adjustment", type: "checkbox" },
@@ -113,8 +125,8 @@ export const HQ6_ROLE_PERMISSION_MODULES: Hq6RolePermissionModule[] = [
     id: "purchase_order",
     label: "Purchase Order",
     permissions: [
-      { key: "purchase_order.view_all", label: "View all purchase order", type: "radio", group: "purchase_order_view" },
-      { key: "purchase_order.view_own", label: "View own purchase order", type: "radio", group: "purchase_order_view" },
+      { key: "purchase_order.view_all", label: "View all purchase order", type: "checkbox", group: "purchase_order_view" },
+      { key: "purchase_order.view_own", label: "View own purchase order", type: "checkbox", group: "purchase_order_view" },
       { key: "purchase_order.create", label: "Create purchase order", type: "checkbox" },
       { key: "purchase_order.update", label: "Edit purchase order", type: "checkbox" },
       { key: "purchase_order.delete", label: "Delete purchase order", type: "checkbox" },
@@ -146,8 +158,8 @@ export const HQ6_ROLE_PERMISSION_MODULES: Hq6RolePermissionModule[] = [
     id: "sell",
     label: "Sell",
     permissions: [
-      { key: "direct_sell.view", label: "View all sell", type: "radio", group: "sell_view" },
-      { key: "view_own_sell_only", label: "View own sell only", type: "radio", group: "sell_view" },
+      { key: "direct_sell.view", label: "View all sell", type: "checkbox", group: "sell_view" },
+      { key: "view_own_sell_only", label: "View own sell only", type: "checkbox", group: "sell_view" },
       { key: "view_paid_sells_only", label: "View paid sells only", type: "checkbox" },
       { key: "view_due_sells_only", label: "View due sells only", type: "checkbox" },
       { key: "view_partial_sells_only", label: "View partially paid sells only", type: "checkbox" },
@@ -171,8 +183,8 @@ export const HQ6_ROLE_PERMISSION_MODULES: Hq6RolePermissionModule[] = [
     id: "draft",
     label: "Draft",
     permissions: [
-      { key: "draft.view_all", label: "View all drafts", type: "radio", group: "draft_view" },
-      { key: "draft.view_own", label: "View own drafts", type: "radio", group: "draft_view" },
+      { key: "draft.view_all", label: "View all drafts", type: "checkbox", group: "draft_view" },
+      { key: "draft.view_own", label: "View own drafts", type: "checkbox", group: "draft_view" },
       { key: "draft.update", label: "Edit draft", type: "checkbox" },
       { key: "draft.delete", label: "Delete draft", type: "checkbox" },
     ],
@@ -181,8 +193,8 @@ export const HQ6_ROLE_PERMISSION_MODULES: Hq6RolePermissionModule[] = [
     id: "quotation",
     label: "Quotation",
     permissions: [
-      { key: "quotation.view_all", label: "View all quotations", type: "radio", group: "quotation_view" },
-      { key: "quotation.view_own", label: "View own quotations", type: "radio", group: "quotation_view" },
+      { key: "quotation.view_all", label: "View all quotations", type: "checkbox", group: "quotation_view" },
+      { key: "quotation.view_own", label: "View own quotations", type: "checkbox", group: "quotation_view" },
       { key: "quotation.update", label: "Edit quotation", type: "checkbox" },
       { key: "quotation.delete", label: "Delete quotation", type: "checkbox" },
     ],
@@ -191,8 +203,8 @@ export const HQ6_ROLE_PERMISSION_MODULES: Hq6RolePermissionModule[] = [
     id: "shipments",
     label: "Shipments",
     permissions: [
-      { key: "access_shipping", label: "Access all shipments", type: "radio", group: "shipping_view" },
-      { key: "access_own_shipping", label: "Access own shipments", type: "radio", group: "shipping_view" },
+      { key: "access_shipping", label: "Access all shipments", type: "checkbox", group: "shipping_view" },
+      { key: "access_own_shipping", label: "Access own shipments", type: "checkbox", group: "shipping_view" },
       { key: "access_pending_shipments_only", label: "Access pending shipments only", type: "checkbox" },
       { key: "access_commission_agent_shipping", label: "Commission agent can access their own shipments", type: "checkbox" },
     ],
@@ -275,8 +287,8 @@ export const HQ6_ROLE_PERMISSION_MODULES: Hq6RolePermissionModule[] = [
     id: "expense",
     label: "Expense",
     permissions: [
-      { key: "all_expense.access", label: "Access all expenses", type: "radio", group: "expense_view" },
-      { key: "view_own_expense", label: "View own expense only", type: "radio", group: "expense_view" },
+      { key: "all_expense.access", label: "Access all expenses", type: "checkbox", group: "expense_view" },
+      { key: "view_own_expense", label: "View own expense only", type: "checkbox", group: "expense_view" },
       { key: "expense.add", label: "Add Expense", type: "checkbox" },
       { key: "expense.edit", label: "Edit Expense", type: "checkbox" },
       { key: "expense.delete", label: "Delete Expense", type: "checkbox" },
@@ -294,15 +306,33 @@ export const HQ6_ROLE_PERMISSION_MODULES: Hq6RolePermissionModule[] = [
     ],
   },
   {
+    id: "app_modules",
+    label: "App modules (all entities)",
+    permissions: [
+      { key: "app.jobs.view", label: "View jobs", type: "checkbox" },
+      { key: "app.jobs.create", label: "Create / edit jobs", type: "checkbox" },
+      { key: "app.vehicles.view", label: "View vehicles", type: "checkbox" },
+      { key: "app.appointments.view", label: "View appointments", type: "checkbox" },
+      { key: "app.appointments.create", label: "Create / edit appointments", type: "checkbox" },
+      { key: "app.services.view", label: "View services", type: "checkbox" },
+      { key: "app.requisitions.view", label: "View requisitions", type: "checkbox" },
+      { key: "app.requisitions.approve", label: "Approve requisitions", type: "checkbox" },
+      { key: "app.tables.view", label: "View tables", type: "checkbox" },
+      { key: "app.kitchen.view", label: "View kitchen display", type: "checkbox" },
+      { key: "app.finance.view", label: "View finance", type: "checkbox" },
+      { key: "app.reports.view", label: "View reports", type: "checkbox" },
+    ],
+  },
+  {
     id: "essentials",
     label: "Essentials",
     permissions: [
       { key: "essentials.crud_leave_type", label: "Add/Edit/View/Delete leave type", type: "checkbox" },
-      { key: "essentials.crud_all_leave", label: "Add/Edit/View/Delete all leave", type: "radio", group: "leave_crud" },
-      { key: "essentials.crud_own_leave", label: "Add/View own leave", type: "radio", group: "leave_crud" },
+      { key: "essentials.crud_all_leave", label: "Add/Edit/View/Delete all leave", type: "checkbox", group: "leave_crud" },
+      { key: "essentials.crud_own_leave", label: "Add/View own leave", type: "checkbox", group: "leave_crud" },
       { key: "essentials.approve_leave", label: "Approve Leave", type: "checkbox" },
-      { key: "essentials.crud_all_attendance", label: "Add/Edit/View/Delete all attendance", type: "radio", group: "attendance_crud" },
-      { key: "essentials.view_own_attendance", label: "View own attendance", type: "radio", group: "attendance_crud" },
+      { key: "essentials.crud_all_attendance", label: "Add/Edit/View/Delete all attendance", type: "checkbox", group: "attendance_crud" },
+      { key: "essentials.view_own_attendance", label: "View own attendance", type: "checkbox", group: "attendance_crud" },
       { key: "essentials.allow_users_for_attendance_from_web", label: "Allow users to enter their own attendance from web", type: "checkbox" },
       { key: "essentials.allow_users_for_attendance_from_api", label: "Allow users to enter their own attendance from api", type: "checkbox" },
       { key: "essentials.view_allowance_and_deduction", label: "View Pay Component", type: "checkbox" },
@@ -400,5 +430,167 @@ export function loadStoredRoles(tenantCode: string): Hq6StoredRole[] {
 export function saveStoredRoles(tenantCode: string, roles: Hq6StoredRole[]): void {
   if (typeof window === "undefined") return;
   window.localStorage.setItem(hq6RoleStorageKey(tenantCode), JSON.stringify(roles));
+}
+
+/** Maps app user id → HQ6 role id (Roles page assignments). */
+export function hq6UserRoleStorageKey(tenantCode: string): string {
+  return `vonos.hq6.userRoles.${tenantCode}`;
+}
+
+export type Hq6UserRoleAssignments = Record<string, string>;
+
+export function loadUserRoleAssignments(tenantCode: string): Hq6UserRoleAssignments {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = window.localStorage.getItem(hq6UserRoleStorageKey(tenantCode));
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+    const out: Hq6UserRoleAssignments = {};
+    for (const [userId, roleId] of Object.entries(parsed)) {
+      if (typeof roleId === "string" && roleId.trim()) {
+        out[userId] = roleId;
+      }
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+export function saveUserRoleAssignments(
+  tenantCode: string,
+  assignments: Hq6UserRoleAssignments,
+): void {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(
+    hq6UserRoleStorageKey(tenantCode),
+    JSON.stringify(assignments),
+  );
+}
+
+export function getAssignedHq6RoleId(
+  tenantCode: string,
+  userId: string,
+): string | null {
+  const id = loadUserRoleAssignments(tenantCode)[userId];
+  return id ?? null;
+}
+
+export function setAssignedHq6RoleId(
+  tenantCode: string,
+  userId: string,
+  roleId: string,
+): void {
+  const next = { ...loadUserRoleAssignments(tenantCode), [userId]: roleId };
+  saveUserRoleAssignments(tenantCode, next);
+}
+
+export function getAssignedHq6Role(
+  tenantCode: string,
+  userId: string,
+): Hq6StoredRole | null {
+  const roleId = getAssignedHq6RoleId(tenantCode, userId);
+  if (!roleId) return null;
+  return loadStoredRoles(tenantCode).find((r) => r.id === roleId) ?? null;
+}
+
+export function findHq6RoleById(
+  tenantCode: string,
+  roleId: string,
+): Hq6StoredRole | null {
+  return loadStoredRoles(tenantCode).find((r) => r.id === roleId) ?? null;
+}
+
+/**
+ * Resolve which HQ6 role to show for a user: explicit assignment, then
+ * match JWT role name against stored roles (Admin / MANAGER / …).
+ */
+export function resolveHq6RoleForUser(
+  tenantCode: string,
+  userId: string,
+  jwtRole: string,
+): Hq6StoredRole | null {
+  const assigned = getAssignedHq6Role(tenantCode, userId);
+  if (assigned) return assigned;
+
+  const roles = loadStoredRoles(tenantCode);
+  const normalized = jwtRole.toLowerCase().replace(/_/g, " ");
+  const byName = roles.find((r) => r.name.toLowerCase() === normalized);
+  if (byName) return byName;
+
+  if (jwtRole === "admin") {
+    return roles.find((r) => r.locked || r.name.toLowerCase() === "admin") ?? null;
+  }
+  if (jwtRole === "manager") {
+    return (
+      roles.find((r) => {
+        const n = r.name.toLowerCase();
+        return n === "manager" || n === "manager1" || n.includes("manager");
+      }) ?? null
+    );
+  }
+  return null;
+}
+
+export function hq6RoleHasPermission(
+  role: Hq6StoredRole,
+  permissionKey: string,
+): boolean {
+  if (isFullAccessHq6Role(role)) return true;
+  return role.permissions.includes(permissionKey);
+}
+
+export function isFullAccessHq6Role(role: Hq6StoredRole): boolean {
+  if (role.locked) return true;
+  const name = role.name.trim().toLowerCase();
+  return name === "admin";
+}
+
+/**
+ * Maps an HQ6 Roles-page role onto the JWT Role enum required by the API.
+ * Prefer permission signals; fall back to role name heuristics.
+ */
+export function mapHq6RoleToJwtRole(
+  role: Hq6StoredRole,
+): "admin" | "manager" | "staff" | "viewer" {
+  if (isFullAccessHq6Role(role)) return "admin";
+
+  const perms = new Set(role.permissions);
+  const name = role.name.trim().toLowerCase();
+
+  if (
+    perms.has("user.create") ||
+    perms.has("user.delete") ||
+    perms.has("roles.create") ||
+    perms.has("roles.delete") ||
+    perms.has("business_settings.access")
+  ) {
+    return "admin";
+  }
+
+  if (
+    perms.has("essentials.approve_leave") ||
+    perms.has("purchase.update_status") ||
+    perms.has("user.update") ||
+    name.includes("manager") ||
+    name.includes("supervisor") ||
+    name.includes("head of")
+  ) {
+    return "manager";
+  }
+
+  if (
+    name.includes("intern") ||
+    name.includes("cleaner") ||
+    name.includes("security") ||
+    name.includes("viewer") ||
+    name === "nysc intern"
+  ) {
+    return "viewer";
+  }
+
+  // Custom role with no permissions yet — operational staff default.
+  return "staff";
 }
 

@@ -3,13 +3,14 @@ import type { TenantCode } from "@/lib/registries/tenants";
 
 /**
  * Per-entity accent — drives --color-brand-accent per tenant shell.
- * Autos Group: VA, VW, VSP (VISP collapsed into VSP — same teal).
+ * Autos Group: VA, VP, VW, VISP, VSP (institute vs marketplace are distinct).
  */
 export const TENANT_ACCENT: Record<TenantCode, string> = {
   VW: "#2563EB", // blue — Warehouse
-  VA: "#16A34A", // green — Automotive (merged VM + VMS)
-  VISP: "#0D9488", // teal — legacy alias → VSP
-  VSP: "#0D9488", // teal — Vonos Spare Parts (VISP+VSP)
+  VA: "#16A34A", // green — Mechanic (merged VM + VMS)
+  VP: "#EA580C", // orange — Painting (distinct from Mechanic green)
+  VISP: "#0D9488", // teal — Institute Spare Parts
+  VSP: "#0891B2", // cyan — SP Marketplace (distinct from VISP)
   VC: "#DC2626", // red — Cafe
   VKW: "#F59E0B", // amber — Kids Wear
   VS: "#DB2777", // pink — Saloon
@@ -23,7 +24,7 @@ export const ENTITY_COLOR_LEGEND = (
 export const VAG_ACCENT = "#1E293B";
 
 export function accentForTenantCode(code: string): string {
-  if (code === "SP" || code === "VISP") return TENANT_ACCENT.VSP;
+  if (code === "SP") return TENANT_ACCENT.VSP;
   if (code in TENANT_ACCENT) {
     return TENANT_ACCENT[code as TenantCode];
   }

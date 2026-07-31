@@ -32,6 +32,7 @@ import { useServerListPage } from "@/lib/hooks/useServerListPage";
 import { useRouteTenant, useTenantId } from "@/lib/hooks/useRouteTenant";
 import { formatHq6Currency, formatHq6DateTime } from "@/lib/utils/hq6Format";
 import { businessLocationName } from "@/lib/utils/locationLabels";
+import { entitySaleLocations } from "@/lib/hooks/useBusinessLocationOptions";
 import { toast } from "@/stores/toastStore";
 
 /** Exact UPOS purchase_order/index — Action · Date · Reference No · Location · Supplier · Status · Quantity Remaining · Shipping Status · Added By */
@@ -50,7 +51,10 @@ export function Hq6PurchaseOrdersListView() {
     search,
     setSearch,
     bounds,
-  } = useListPageFilters({ defaultDateRange: "last_7_days" });
+  } = useListPageFilters({
+    defaultDateRange: "last_7_days",
+    isolateDateRange: true,
+  });
   const [localSearch, setLocalSearch] = useState(search);
   const [locationFilter, setLocationFilter] = useState("");
   const [supplierFilter, setSupplierFilter] = useState("");
@@ -275,7 +279,7 @@ export function Hq6PurchaseOrdersListView() {
             label="Business Location"
             value={locationFilter}
             onChange={setLocationFilter}
-            options={(config?.businessLocations ?? []).map((loc) => ({
+            options={entitySaleLocations(config).map((loc) => ({
               value: loc.code,
               label: loc.name,
             }))}
@@ -379,7 +383,10 @@ export function Hq6PurchaseReturnsListView() {
     search,
     setSearch,
     bounds,
-  } = useListPageFilters({ defaultDateRange: "last_7_days" });
+  } = useListPageFilters({
+    defaultDateRange: "last_7_days",
+    isolateDateRange: true,
+  });
   const [localSearch, setLocalSearch] = useState(search);
 
   const apiFilters = useMemo(

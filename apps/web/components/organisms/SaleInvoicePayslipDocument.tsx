@@ -9,6 +9,7 @@ import {
   formatHq6PaymentMethod,
   formatHq6PaymentStatus,
 } from "@/lib/utils/hq6Format";
+import { saleVehicleFields } from "@/lib/utils/saleVehicleFields";
 import { cn } from "@/lib/utils/cn";
 
 export interface SaleInvoicePayslipDocumentProps {
@@ -29,7 +30,7 @@ export interface SaleInvoicePayslipDocumentProps {
 
 type TermsSection = { heading: string | null; paragraphs: string[] };
 
-/** Split ALL-CAPS headings + body into readable document sections (no monospace). */
+/** Split ALL-CAPS labels + body — labels render inline, same size as body (no big headers). */
 export function formatTermsSections(raw: string): TermsSection[] {
   const lines = raw
     .replace(/\r\n/g, "\n")
@@ -68,57 +69,66 @@ export function formatTermsSections(raw: string): TermsSection[] {
   return sections;
 }
 
+/**
+ * HQ6 fine-print T&Cs: one dense justified block.
+ * Section labels are bold inline text at the same font size — never large headers.
+ */
 export function FormattedTermsBlock({
   title,
   body,
   className,
+  finePrint = false,
 }: {
   title?: string | null;
   body: string;
   className?: string;
+  finePrint?: boolean;
 }) {
   const sections = formatTermsSections(body);
+  const size = finePrint
+    ? "text-[8px] leading-[1.35] text-neutral-700"
+    : "text-[11px] leading-relaxed text-neutral-700";
+
   return (
-    <div className={cn("space-y-3 text-[11px] leading-relaxed text-neutral-700", className)}>
+    <div className={cn(size, "space-y-1.5", className)}>
       {title ? (
-        <h3 className="text-[12px] font-bold tracking-wide text-neutral-900">
+        <p className={cn("font-bold text-neutral-900", finePrint && "text-[8px]")}>
           {title}
-        </h3>
+        </p>
       ) : null}
-      {sections.map((section, index) => (
-        <div key={`${section.heading ?? "p"}-${index}`} className="space-y-1.5">
-          {section.heading ? (
-            <h4 className="text-[11px] font-bold uppercase tracking-wide text-neutral-900">
-              {section.heading}
-            </h4>
-          ) : null}
-          {section.paragraphs.map((para, paraIndex) => (
-            <p key={paraIndex} className="text-justify">
-              {para}
-            </p>
-          ))}
-        </div>
-      ))}
+      {sections.map((section, index) => {
+        const text = section.paragraphs.join(" ").trim();
+        if (!section.heading && !text) return null;
+        return (
+          <p key={`${section.heading ?? "p"}-${index}`} className="text-justify">
+            {section.heading ? (
+              <strong className="font-bold text-neutral-900">
+                {section.heading}
+                {section.heading.endsWith(":") || section.heading.endsWith("-")
+                  ? " "
+                  : ": "}
+              </strong>
+            ) : null}
+            {text}
+          </p>
+        );
+      })}
     </div>
   );
 }
 
-function MetaItem({ label, value }: { label: string; value?: string | null }) {
+function MetaRow({ label, value }: { label: string; value?: string | null }) {
   if (!value?.trim()) return null;
   return (
-    <div className="grid grid-cols-[7.5rem_minmax(0,1fr)] gap-x-2 text-[12px] leading-5">
-      <dt className="font-bold text-neutral-800">{label}</dt>
-      <dd className="min-w-0 break-words text-neutral-900">{value}</dd>
+    <div className="text-[12px] leading-5 text-neutral-900">
+      <span className="font-bold">{label}:</span> {value}
     </div>
   );
 }
 
-const thClass =
-  "border border-neutral-800 bg-neutral-100 px-2 py-2 text-center text-[11px] font-bold uppercase tracking-wide text-neutral-900";
-const tdClass = "border border-neutral-800 px-2 py-2 text-[12px] text-neutral-900";
-const tdCenter = `${tdClass} text-center`;
-const tdRight = `${tdClass} text-right tabular-nums`;
-const tdLeft = `${tdClass} text-left`;
+function qtyLabel(qty: number): string {
+  return qty.toFixed(2);
+}
 
 function documentHeading(
   kind: "invoice" | "packing_slip" | "delivery_note",
@@ -127,22 +137,15 @@ function documentHeading(
   if (kind === "packing_slip") return "Packing Slip";
   if (kind === "delivery_note") return "Delivery Note";
   const status = (sale.paymentStatus ?? "").toLowerCase();
-  if (status === "paid") return "Tax Invoice — Paid";
-  if (status === "partial") return "Tax Invoice — Partially Paid";
+  if (status === "paid") return "Invoice PAID";
+  if (status === "partial") return "Invoice PARTIAL";
   if (sale.recordStatus === "quotation") return "Quotation";
-  return "Tax Invoice";
-}
-
-function saleStatusLabel(recordStatus?: string | null): string {
-  if (recordStatus === "draft") return "Draft";
-  if (recordStatus === "quotation") return "Quotation";
-  if (recordStatus === "completed") return "Final";
-  if (!recordStatus) return "Final";
-  return recordStatus.charAt(0).toUpperCase() + recordStatus.slice(1);
+  return "Invoice";
 }
 
 /**
- * Official sale invoice print layout (payslip-inspired shell, document typography).
+ * HQ6 sale print layout — invoice / packing slip / delivery note.
+ * Terms & disclaimer always render as fine print (all document kinds).
  */
 export function SaleInvoicePayslipDocument({
   sale,
@@ -161,9 +164,17 @@ export function SaleInvoicePayslipDocument({
 }: SaleInvoicePayslipDocumentProps) {
   const currency = sale.currency || "NGN";
   const showMoney = kind === "invoice";
+  const isPacking = kind === "packing_slip";
+  const isDelivery = kind === "delivery_note";
   const customerDisplay = [sale.customerName, sale.vehicleLabel]
     .filter(Boolean)
     .join(" ");
+  const { plateNumber, carModelYear } = saleVehicleFields({
+    customerName: sale.customerName,
+    vehicleLabel: sale.vehicleLabel,
+  });
+  const salesPerson =
+    sale.createdByName || sale.serviceStaffEmployeeName || null;
   const heading = documentHeading(kind, sale);
 
   const lines = sale.lines.map((line, index) => ({
@@ -182,122 +193,172 @@ export function SaleInvoicePayslipDocument({
   const totalPaid = sale.totalPaid ?? 0;
   const showPaymentTable = showMoney && payments.length > 0;
   const invoiceNo = sale.reference.replace(/^#/, "");
+  const dateLabel = formatDate(sale.date ?? sale.createdAt);
+
+  const thClass =
+    "border border-neutral-300 bg-[#f3f4f6] px-2 py-1.5 text-left text-[11px] font-semibold text-neutral-600";
+  const tdClass =
+    "border border-neutral-300 px-2 py-1.5 text-[12px] text-neutral-900 align-top";
 
   return (
     <article
       className={cn(
         "invoice-document mx-auto max-w-[210mm] bg-white text-neutral-900 shadow-sm print:max-w-none print:shadow-none",
-        "border border-neutral-300 print:border-neutral-400",
         className,
       )}
     >
-      {/* Letterhead */}
-      <header className="border-b border-neutral-300 px-7 pb-5 pt-6">
-        <div className="flex items-start justify-between gap-6">
-          <div className="flex min-w-0 items-start gap-4">
-            <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-full border border-neutral-200 bg-white">
-              <Image
-                src="/brand/vonos-autos-logo.png"
-                alt=""
-                fill
-                className="object-contain p-1.5"
-                sizes="56px"
-                priority
-              />
-            </div>
-            <div className="min-w-0 pt-0.5">
-              <p className="text-[17px] font-bold tracking-tight text-neutral-900">
-                {tenantName}
+      {/* Letterhead — invoice: title center + logo right; packing/delivery: logo left + title right */}
+      <header className="px-7 pb-4 pt-6">
+        {showMoney ? (
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0 flex-1 space-y-1">
+              <p className="text-center text-[22px] font-bold tracking-tight text-neutral-800 sm:text-left">
+                {heading}
               </p>
-              <p className="mt-1 max-w-sm text-[11px] leading-relaxed text-neutral-600">
-                {tenantAddress?.trim() || "Vonos Autos Group"}
+              <MetaRow label="Invoice No." value={invoiceNo} />
+              <MetaRow
+                label="Total Paid"
+                value={formatCurrency(totalPaid || totalPayable, currency)}
+              />
+              <MetaRow label="Date" value={dateLabel} />
+              <MetaRow label="Vehicle Time in (Date entered)" value={dateLabel} />
+            </div>
+            <div className="shrink-0 text-right">
+              <div className="ml-auto flex justify-end gap-3">
+                <div className="text-right">
+                  <p className="text-[15px] font-bold text-neutral-900">
+                    {tenantName}
+                  </p>
+                  {tenantAddress ? (
+                    <p className="text-[11px] text-neutral-600">{tenantAddress}</p>
+                  ) : null}
+                  {tenantMobile ? (
+                    <p className="text-[11px] text-neutral-600">
+                      Mobile: {tenantMobile}
+                    </p>
+                  ) : null}
+                  {tenantEmail ? (
+                    <p className="text-[11px] text-neutral-600">
+                      Email: {tenantEmail}
+                    </p>
+                  ) : null}
+                  {sale.serviceStaffEmployeeName ? (
+                    <p className="mt-1 text-[11px] text-neutral-700">
+                      <span className="font-bold">Service staff:</span>{" "}
+                      {sale.serviceStaffEmployeeName}
+                    </p>
+                  ) : null}
+                </div>
+                <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-full border border-neutral-200 bg-white">
+                  <Image
+                    src="/brand/vonos-autos-logo.png"
+                    alt=""
+                    fill
+                    className="object-contain p-1.5"
+                    sizes="64px"
+                    priority
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="flex items-start justify-between gap-6">
+            <div className="flex min-w-0 items-start gap-3">
+              <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-full border border-neutral-200 bg-white">
+                <Image
+                  src="/brand/vonos-autos-logo.png"
+                  alt=""
+                  fill
+                  className="object-contain p-1.5"
+                  sizes="64px"
+                  priority
+                />
+              </div>
+              <div className="min-w-0 pt-1">
+                <p className="text-[16px] font-bold text-neutral-900">
+                  {tenantName}
+                </p>
+                {tenantAddress ? (
+                  <p className="text-[11px] text-neutral-600">{tenantAddress}</p>
+                ) : null}
                 {tenantMobile ? (
-                  <>
-                    <br />
-                    Tel: {tenantMobile}
-                  </>
+                  <p className="text-[11px] text-neutral-600">
+                    Mobile: {tenantMobile}
+                  </p>
                 ) : null}
                 {tenantEmail ? (
-                  <>
-                    <br />
-                    {tenantEmail}
-                  </>
+                  <p className="text-[11px] text-neutral-600">
+                    Email: {tenantEmail}
+                  </p>
                 ) : null}
+              </div>
+            </div>
+            <div className="shrink-0 text-right">
+              <p className="text-[26px] font-bold leading-none text-neutral-500">
+                {heading}
+              </p>
+              <p className="mt-3 text-[13px] font-bold text-neutral-900">
+                Invoice No. {invoiceNo}
+              </p>
+              <p className="text-[12px] text-neutral-600">
+                <span className="text-neutral-500">Date</span> {dateLabel}
               </p>
             </div>
           </div>
-          <div className="shrink-0 text-right">
-            <p className="text-[15px] font-bold tracking-wide text-neutral-900">
-              {heading}
-            </p>
-            <p className="mt-2 text-[12px] text-neutral-600">
-              No. <span className="font-bold text-neutral-900">#{invoiceNo}</span>
-            </p>
-            <p className="text-[12px] text-neutral-600">
-              Date{" "}
-              <span className="font-bold text-neutral-900">
-                {formatDate(sale.date ?? sale.createdAt)}
-              </span>
-            </p>
-          </div>
-        </div>
+        )}
       </header>
 
-      {/* Parties */}
-      <section className="grid gap-6 border-b border-neutral-300 px-7 py-5 sm:grid-cols-2">
-        <div>
-          <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.08em] text-neutral-800">
-            Bill to
-          </p>
-          <dl className="space-y-1.5">
-            <MetaItem label="Customer" value={customerDisplay || "—"} />
-            <MetaItem label="Mobile" value={sale.customerPhone} />
-            <MetaItem label="Vehicle" value={sale.vehicleLabel} />
-            <MetaItem label="Status" value={saleStatusLabel(sale.recordStatus)} />
-          </dl>
-        </div>
-        <div>
-          <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.08em] text-neutral-800">
-            Business details
-          </p>
-          <dl className="space-y-1.5">
-            <MetaItem
-              label="Location"
-              value={locationLabel ?? sale.locationCode}
+      {/* Customer / shipping */}
+      <section
+        className={cn(
+          "gap-6 px-7 pb-4",
+          isPacking ? "grid sm:grid-cols-2" : "block",
+        )}
+      >
+        <div className="space-y-0.5">
+          <MetaRow label="Customer" value={customerDisplay || "—"} />
+          <MetaRow label="Mobile" value={sale.customerPhone ?? "NILL"} />
+          <MetaRow label="Plate Number" value={plateNumber} />
+          <MetaRow label="Car Model & Year" value={carModelYear} />
+          <MetaRow label="Sales Person" value={salesPerson} />
+          {showMoney && locationLabel ? (
+            <MetaRow label="Business Location" value={locationLabel} />
+          ) : null}
+          {showMoney ? (
+            <MetaRow
+              label="Payment"
+              value={formatHq6PaymentStatus(sale.paymentStatus)}
             />
-            <MetaItem
-              label="Attended by"
-              value={sale.serviceStaffEmployeeName || sale.createdByName}
-            />
-            {showMoney ? (
-              <>
-                <MetaItem
-                  label="Payment"
-                  value={formatHq6PaymentStatus(sale.paymentStatus)}
-                />
-                <MetaItem
-                  label="Amount paid"
-                  value={formatCurrency(totalPaid || totalPayable, currency)}
-                />
-              </>
-            ) : null}
-          </dl>
+          ) : null}
         </div>
+        {isPacking ? (
+          <div>
+            <p className="text-[12px] font-bold text-neutral-900">
+              Shipping Address:
+            </p>
+            <p className="mt-1 whitespace-pre-wrap text-[12px] text-neutral-700">
+              {sale.shippingAddress?.trim() || ""}
+            </p>
+          </div>
+        ) : null}
       </section>
 
-      {/* Line items — Word-style bordered table */}
-      <section className="px-7 py-5">
-        <table className="w-full border-collapse border border-neutral-800 text-[12px]">
+      {/* Line items — bordered tabular grid (HQ6 packing slip / invoice) */}
+      <section className="px-7 py-2">
+        <table className="w-full border-collapse border border-neutral-300 text-[12px]">
           <thead>
             <tr>
-              <th className={`${thClass} w-10`}>#</th>
+              <th className={`${thClass} w-10 text-center`}>#</th>
               <th className={thClass}>Product</th>
-              <th className={`${thClass} w-16`}>Qty</th>
+              <th className={`${thClass} w-28 text-right`}>Quantity</th>
               {showMoney ? (
                 <>
-                  <th className={`${thClass} w-[7.5rem]`}>Unit price</th>
-                  <th className={`${thClass} w-[7rem]`}>Discount</th>
-                  <th className={`${thClass} w-[7.5rem]`}>Subtotal</th>
+                  <th className={`${thClass} w-[7rem] text-right`}>Unit Price</th>
+                  <th className={`${thClass} w-[7rem] text-right`}>
+                    item discount
+                  </th>
+                  <th className={`${thClass} w-[7.5rem] text-right`}>Subtotal</th>
                 </>
               ) : null}
             </tr>
@@ -307,133 +368,147 @@ export function SaleInvoicePayslipDocument({
               <tr>
                 <td
                   colSpan={showMoney ? 6 : 3}
-                  className={`${tdCenter} text-neutral-500`}
+                  className={`${tdClass} text-center text-neutral-500`}
                 >
                   No line items
                 </td>
               </tr>
             ) : (
               lines.map((line) => (
-                <tr key={line.index} className="align-top">
-                  <td className={`${tdCenter} tabular-nums`}>{line.index}</td>
-                  <td className={`${tdLeft} font-semibold`}>{line.name}</td>
-                  <td className={`${tdCenter} tabular-nums`}>{line.qty}</td>
+                <tr key={line.index}>
+                  <td className={`${tdClass} text-center tabular-nums`}>
+                    {line.index}
+                  </td>
+                  <td className={tdClass}>{line.name}</td>
+                  <td className={`${tdClass} text-right tabular-nums`}>
+                    {qtyLabel(line.qty)}
+                  </td>
                   {showMoney ? (
                     <>
-                      <td className={tdRight}>
-                        {formatCurrency(line.unitPrice, currency)}
+                      <td className={`${tdClass} text-right tabular-nums`}>
+                        {line.unitPrice.toLocaleString("en-NG", {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        })}
                       </td>
-                      <td className={tdRight}>
-                        {formatCurrency(line.discount, currency)}
+                      <td className={`${tdClass} text-right tabular-nums`}>
+                        {line.discount.toLocaleString("en-NG", {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        })}
                       </td>
-                      <td className={`${tdRight} font-semibold`}>
-                        {formatCurrency(line.subtotal, currency)}
+                      <td className={`${tdClass} text-right tabular-nums`}>
+                        {line.subtotal.toLocaleString("en-NG", {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        })}
                       </td>
                     </>
                   ) : null}
                 </tr>
               ))
             )}
-            {showMoney && lines.length > 0 ? (
-              <tr className="bg-neutral-50">
-                <td
-                  colSpan={2}
-                  className={`${tdLeft} font-bold text-neutral-900`}
-                >
-                  Total
-                </td>
-                <td className={`${tdCenter} font-bold tabular-nums`}>
-                  {totalQty.toFixed(2)}
-                </td>
-                <td className={tdRight} />
-                <td className={tdRight} />
-                <td className={`${tdRight} font-bold`}>
-                  {formatCurrency(lineTotal, currency)}
-                </td>
-              </tr>
-            ) : null}
           </tbody>
         </table>
       </section>
 
       {showMoney ? (
-        <section className="grid gap-6 border-t border-neutral-300 px-7 py-5 sm:grid-cols-2">
-          <div className="space-y-4">
-            <div>
-              <p className="text-[11px] font-bold text-neutral-800">
-                Amount in words
-              </p>
-              <p className="mt-1 text-[12px] leading-relaxed text-neutral-900">
-                {amountToWords(totalPayable)}
-              </p>
-            </div>
-            <div>
-              <p className="text-[11px] font-bold text-neutral-800">
-                Authorized signatory
-              </p>
-              <div className="mt-10 w-44 border-b border-neutral-800" />
-            </div>
+        <section className="grid gap-6 px-7 py-4 sm:grid-cols-2">
+          <div>
+            <p className="text-[12px] font-bold text-neutral-800">
+              Authorized Signatory
+            </p>
+            <div className="mt-12 w-48 border-b border-neutral-400" />
           </div>
-          <div className="sm:justify-self-end sm:w-full sm:max-w-[260px]">
-            <table className="w-full border-collapse border border-neutral-800 text-[12px]">
-              <tbody>
-                <tr>
-                  <td className={`${tdLeft} font-bold`}>Subtotal</td>
-                  <td className={tdRight}>
-                    {formatCurrency(lineTotal, currency)}
-                  </td>
-                </tr>
-                <tr>
-                  <td className={`${tdLeft} font-bold`}>Discount</td>
-                  <td className={tdRight}>
-                    − {formatCurrency(discountAmount, currency)}
-                  </td>
-                </tr>
-                <tr className="bg-neutral-50">
-                  <td className={`${tdLeft} text-[13px] font-bold`}>
-                    Total due
-                  </td>
-                  <td className={`${tdRight} text-[13px] font-bold`}>
-                    {formatCurrency(totalPayable, currency)}
-                  </td>
-                </tr>
-              </tbody>
-            </table>
+          <div className="space-y-1 text-right text-[12px] sm:justify-self-end">
+            <p>
+              <span className="text-neutral-600">Total Quantity:</span>{" "}
+              <span className="font-medium tabular-nums">
+                {totalQty.toFixed(2)}
+              </span>
+            </p>
+            <p>
+              <span className="text-neutral-600">Subtotal:</span>{" "}
+              <span className="font-medium tabular-nums">
+                {formatCurrency(lineTotal, currency)}
+              </span>
+            </p>
+            {discountAmount > 0 ? (
+              <p>
+                <span className="text-neutral-600">Discount:</span>{" "}
+                <span className="font-medium tabular-nums">
+                  − {formatCurrency(discountAmount, currency)}
+                </span>
+              </p>
+            ) : null}
+            <p className="text-[15px] font-bold">
+              Total: {formatCurrency(totalPayable, currency)}
+            </p>
+            <p className="text-[11px] italic text-neutral-600">
+              ({amountToWords(totalPayable)})
+            </p>
           </div>
         </section>
       ) : null}
 
+      {isDelivery ? (
+        <section className="space-y-3 px-7 py-4 text-[12px]">
+          <p className="font-medium text-neutral-800">
+            Above mentioned items received in good condition
+          </p>
+          <div className="grid gap-6 sm:grid-cols-3">
+            <div>
+              <p className="font-bold">Received by:</p>
+              <div className="mt-8 border-b border-neutral-400" />
+            </div>
+            <div>
+              <p className="font-bold">Date:</p>
+              <div className="mt-8 border-b border-neutral-400" />
+            </div>
+            <div>
+              <p className="font-bold">Authorized Signatory</p>
+              <div className="mt-8 border-b border-neutral-400" />
+            </div>
+          </div>
+        </section>
+      ) : null}
+
+      {isPacking ? (
+        <section className="px-7 py-4">
+          <p className="text-[12px] font-bold text-neutral-800">
+            Authorized Signatory
+          </p>
+          <div className="mt-10 w-48 border-b border-neutral-400" />
+        </section>
+      ) : null}
+
       {showPaymentTable ? (
-        <section className="border-t border-neutral-300 px-7 py-5">
-          <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.08em] text-neutral-800">
+        <section className="px-7 py-4">
+          <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-neutral-700">
             Payments received
           </p>
-          <table className="w-full border-collapse border border-neutral-800 text-[12px]">
+          <table className="w-full border-collapse text-[11px]">
             <thead>
-              <tr>
-                <th className={`${thClass} w-10`}>#</th>
-                <th className={thClass}>Date</th>
-                <th className={thClass}>Reference</th>
-                <th className={thClass}>Amount</th>
-                <th className={thClass}>Mode</th>
-                <th className={thClass}>Note</th>
+              <tr className="border-b border-neutral-300">
+                <th className="py-1 text-left font-semibold">#</th>
+                <th className="py-1 text-left font-semibold">Date</th>
+                <th className="py-1 text-left font-semibold">Reference</th>
+                <th className="py-1 text-right font-semibold">Amount</th>
+                <th className="py-1 text-left font-semibold">Mode</th>
               </tr>
             </thead>
             <tbody>
               {payments.map((pay, index) => (
-                <tr key={pay.id} className="align-top">
-                  <td className={`${tdCenter} tabular-nums`}>{index + 1}</td>
-                  <td className={`${tdCenter} whitespace-nowrap`}>
+                <tr key={pay.id} className="border-b border-neutral-100">
+                  <td className="py-1">{index + 1}</td>
+                  <td className="py-1">
                     {pay.paidOn ? formatDate(pay.paidOn) : "—"}
                   </td>
-                  <td className={tdCenter}>{pay.paymentRefNo ?? invoiceNo}</td>
-                  <td className={`${tdRight} font-semibold`}>
+                  <td className="py-1">{pay.paymentRefNo ?? invoiceNo}</td>
+                  <td className="py-1 text-right tabular-nums">
                     {formatCurrency(pay.amount, pay.currency || currency)}
                   </td>
-                  <td className={tdCenter}>
-                    {formatHq6PaymentMethod(pay.method)}
-                  </td>
-                  <td className={tdLeft}>{pay.note?.trim() || "—"}</td>
+                  <td className="py-1">{formatHq6PaymentMethod(pay.method)}</td>
                 </tr>
               ))}
             </tbody>
@@ -441,29 +516,32 @@ export function SaleInvoicePayslipDocument({
         </section>
       ) : null}
 
-      {/* Footer / terms */}
-      <footer className="space-y-4 border-t border-neutral-300 px-7 py-5">
+      {/* Fine-print footer — always (invoice, packing slip, delivery note) */}
+      <footer className="space-y-2 border-t border-neutral-200 px-7 py-4">
         {sale.notes?.trim() ? (
-          <p className="text-[12px] text-neutral-800">
-            <span className="font-bold text-neutral-800">Note: </span>
+          <p className="text-[11px] text-neutral-800">
+            <span className="font-bold">Note: </span>
             {sale.notes.trim()}
           </p>
         ) : null}
 
         {disclaimer ? (
-          <p className="text-[11px] leading-relaxed text-neutral-600">
+          <p className="text-[8px] italic leading-[1.35] text-neutral-600">
             {disclaimer}
           </p>
         ) : null}
         {supportLine ? (
-          <p className="text-[11px] font-medium text-neutral-800">{supportLine}</p>
+          <p className="text-[8px] font-bold italic text-neutral-900">
+            {supportLine}
+          </p>
         ) : null}
 
-        {termsBody && showMoney ? (
-          <div className="border-t border-neutral-200 pt-4">
+        {termsBody ? (
+          <div className="pt-0.5">
             <FormattedTermsBlock
               title={termsTitle ?? "Terms and conditions"}
               body={termsBody}
+              finePrint
             />
           </div>
         ) : null}

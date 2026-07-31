@@ -9,6 +9,10 @@ import { SaleRecordModal } from "@/components/organisms/SaleRecordModal";
 import { StatusPill } from "@/components/atoms/StatusPill";
 import { Hq6ActionsMenu } from "@/components/hq6/Hq6ActionsMenu";
 import {
+  Hq6PrintInvoiceModal,
+  type Hq6PrintDocKind,
+} from "@/components/hq6/Hq6PrintInvoiceModal";
+import {
   Hq6FilterDateRange,
   Hq6FilterGrid,
   Hq6FilterSelect,
@@ -21,6 +25,7 @@ import { HQ6_TABLE_PAGE_SIZE } from "@/lib/api/fetchAllPages";
 import { useListPageFilters } from "@/lib/hooks/useListPageFilters";
 import { useListRecordModal } from "@/lib/hooks/useListRecordModal";
 import { useRouteTenant, useTenantId } from "@/lib/hooks/useRouteTenant";
+import { entitySaleLocations } from "@/lib/hooks/useBusinessLocationOptions";
 import { prefetchSaleListModals } from "@/lib/query/prefetchListModals";
 import { saleSeedFromReturnRow } from "@/lib/utils/listModalSeeds";
 import { formatHq6Currency, formatHq6DateTime } from "@/lib/utils/hq6Format";
@@ -45,11 +50,18 @@ export function Hq6ReturnsListView() {
     search,
     setSearch,
     bounds,
-  } = useListPageFilters({ defaultDateRange: "last_7_days" });
+  } = useListPageFilters({
+    defaultDateRange: "last_7_days",
+    isolateDateRange: true,
+  });
   const [statusFilter, setStatusFilter] = useState("");
   const [locationFilter, setLocationFilter] = useState("");
   const [customerFilter, setCustomerFilter] = useState("");
   const [localSearch, setLocalSearch] = useState(search);
+  const [printDoc, setPrintDoc] = useState<{
+    sale: Sale;
+    kind: Hq6PrintDocKind;
+  } | null>(null);
   const chrome = useHq6ListChrome("returns");
 
   const customersQuery = useQuery({
@@ -177,25 +189,37 @@ export function Hq6ReturnsListView() {
         key: "actions",
         header: "Action",
         sortable: false,
-        render: (row) => (
-          <Hq6ActionsMenu
-            items={[
-              {
-                id: "view",
-                label: "View",
-                onClick: () => openRecord(row.id, saleSeedFromReturnRow(row)),
-              },
-              {
-                id: "print",
-                label: "Print",
-                onClick: () => {
-                  openRecord(row.id, saleSeedFromReturnRow(row));
-                  window.setTimeout(() => window.print(), 400);
+        render: (row) => {
+          const seed = saleSeedFromReturnRow(row);
+          return (
+            <Hq6ActionsMenu
+              items={[
+                {
+                  id: "view",
+                  label: "View",
+                  onClick: () => openRecord(row.id, seed),
                 },
-              },
-            ]}
-          />
-        ),
+                {
+                  id: "print",
+                  label: "Print Invoice",
+                  onClick: () => setPrintDoc({ sale: seed, kind: "invoice" }),
+                },
+                {
+                  id: "packing_slip",
+                  label: "Packing Slip",
+                  onClick: () =>
+                    setPrintDoc({ sale: seed, kind: "packing_slip" }),
+                },
+                {
+                  id: "delivery_note",
+                  label: "Delivery Note",
+                  onClick: () =>
+                    setPrintDoc({ sale: seed, kind: "delivery_note" }),
+                },
+              ]}
+            />
+          );
+        },
       },
     ],
     [openRecord],
@@ -228,7 +252,7 @@ export function Hq6ReturnsListView() {
         label="Business Location"
         value={locationFilter}
         onChange={setLocationFilter}
-        options={(config?.businessLocations ?? []).map((loc) => ({
+        options={entitySaleLocations(config).map((loc) => ({
           value: loc.code,
           label: loc.name,
         }))}
@@ -277,12 +301,21 @@ export function Hq6ReturnsListView() {
         isBusy: isPaging,
       }}
       modals={
-        <SaleRecordModal
-          saleId={recordId}
-          initialSale={recordSeed}
-          listSlug="returns"
-          onClose={closeRecord}
-        />
+        <>
+          <SaleRecordModal
+            saleId={recordId}
+            initialSale={recordSeed}
+            listSlug="returns"
+            onClose={closeRecord}
+          />
+          <Hq6PrintInvoiceModal
+            open={Boolean(printDoc)}
+            saleId={printDoc?.sale.id ?? null}
+            initialSale={printDoc?.sale ?? null}
+            kind={printDoc?.kind ?? "invoice"}
+            onClose={() => setPrintDoc(null)}
+          />
+        </>
       }
     >
       <DataTable

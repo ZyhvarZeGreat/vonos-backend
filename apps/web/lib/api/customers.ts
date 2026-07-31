@@ -13,6 +13,7 @@ import type {
   UpdateCustomerInput,
 } from "@vonos/types";
 import { apiFetch, withTenantQuery } from "@/lib/api/client";
+import { throwApiError } from "@/lib/api/parseApiError";
 import {
   DEFAULT_TABLE_PAGE_SIZE,
   EXPORT_PAGE_SIZE,
@@ -157,8 +158,7 @@ export async function createCustomer(
     body: JSON.stringify(input),
   });
   if (!response.ok) {
-    const body = (await response.json().catch(() => null)) as { message?: string } | null;
-    throw new Error(body?.message ?? "Failed to create customer");
+    return throwApiError(response, "Failed to create customer");
   }
   return response.json();
 }
@@ -174,8 +174,7 @@ export async function updateCustomer(
     body: JSON.stringify(input),
   });
   if (!response.ok) {
-    const body = (await response.json().catch(() => null)) as { message?: string } | null;
-    throw new Error(body?.message ?? "Failed to update customer");
+    return throwApiError(response, "Failed to update customer");
   }
   return response.json();
 }
@@ -194,8 +193,7 @@ export async function setCustomerStatus(
     },
   );
   if (!response.ok) {
-    const body = (await response.json().catch(() => null)) as { message?: string } | null;
-    throw new Error(body?.message ?? "Failed to update customer status");
+    return throwApiError(response, "Failed to update customer status");
   }
   return response.json();
 }
@@ -205,8 +203,7 @@ export async function deleteCustomer(tenantId: string, id: string): Promise<void
     method: "DELETE",
   });
   if (!response.ok) {
-    const body = (await response.json().catch(() => null)) as { message?: string } | null;
-    throw new Error(body?.message ?? "Failed to delete customer");
+    return throwApiError(response, "Failed to delete customer");
   }
 }
 
@@ -224,8 +221,7 @@ export async function payCustomerDue(
     },
   );
   if (!response.ok) {
-    const body = (await response.json().catch(() => null)) as { message?: string } | null;
-    throw new Error(body?.message ?? "Failed to record payment");
+    return throwApiError(response, "Failed to record payment");
   }
   return response.json();
 }

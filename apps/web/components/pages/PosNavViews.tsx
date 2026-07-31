@@ -53,6 +53,7 @@ export function AccountBookView({ accountId }: { accountId?: string }) {
   const { tenantId } = useRouteTenant();
   const { dateRange, setDateRange, search, setSearch, bounds } = useListPageFilters({
     defaultDateRange: "last_7_days",
+    isolateDateRange: true,
   });
   const [typeFilter, setTypeFilter] = useState("");
 

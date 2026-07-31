@@ -21,6 +21,8 @@ import { useServerListPage } from "@/lib/hooks/useServerListPage";
 import { HQ6_TABLE_PAGE_SIZE } from "@/lib/api/fetchAllPages";
 import { useListExport } from "@/lib/hooks/useListExport";
 import { useTenantId } from "@/lib/hooks/useRouteTenant";
+import { parseForm } from "@/lib/validation/parseForm";
+import { expenseCategoryFormSchema } from "@/lib/validation/schemas";
 import {
   optimisticTempId,
   patchEntityInQueries,
@@ -264,6 +266,11 @@ export function Hq6ExpenseCategoriesListView() {
             footer={
               <Hq6ModalSaveClose
                 onSave={() => {
+                  const valid = parseForm(expenseCategoryFormSchema, {
+                    name: editName,
+                    code: editCode,
+                  });
+                  if (!valid) return;
                   if (modalMode === "edit") updateMutation.mutate();
                   else createMutation.mutate();
                 }}

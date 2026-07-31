@@ -171,7 +171,7 @@ export function Hq6SaleViewModal({
             onClick={() => onPackingSlip?.()}
             disabled={!onPackingSlip}
           >
-            <FileText className="h-3.5 w-3.5" />
+            <FileText className="mr-1.5 h-3.5 w-3.5" />
             Packing Slip
           </button>
           <button
@@ -180,7 +180,7 @@ export function Hq6SaleViewModal({
             onClick={() => onPrintInvoice?.()}
             disabled={!onPrintInvoice}
           >
-            <Printer className="h-3.5 w-3.5" />
+            <Printer className="mr-1.5 h-3.5 w-3.5" />
             Print Invoice
           </button>
           <button

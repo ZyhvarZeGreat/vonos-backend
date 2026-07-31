@@ -1,26 +1,31 @@
 "use client";
 
+import { saleCustomerSchema } from "@/lib/validation/schemas";
+import { parseForm } from "@/lib/validation/parseForm";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Calendar, Info, Minus, Plus, Trash2, X } from "lucide-react";
+import { Info, Minus, Plus, Trash2, X } from "lucide-react";
 import type { Customer, Sale, TenantConfig } from "@vonos/types";
 import { Button } from "@/components/atoms/Button";
 import { Input } from "@/components/atoms/Input";
 import { Select } from "@/components/atoms/Select";
 import { AsyncMenuSelect } from "@/components/molecules/AsyncMenuSelect";
+import { MenuSelect } from "@/components/molecules/MenuSelect";
 import {
   ProductItemSearch,
   type CatalogPartPick,
 } from "@/components/molecules/ProductItemSearch";
+import { Hq6AddSupplierModal } from "@/components/hq6/Hq6AddSupplierModal";
 import { createCustomer, getCustomerContact, getCustomers } from "@/lib/api/customers";
 import { getJob, getJobs } from "@/lib/api/jobs";
 import { createSale, deleteSale, getSale } from "@/lib/api/sales";
 import { getPaymentAccountsPage } from "@/lib/api/paymentAccounts";
 import { getServiceStaff } from "@/lib/api/hrm";
+import { getSuppliers } from "@/lib/api/suppliers";
 import { TYPEAHEAD_PAGE_SIZE } from "@/lib/api/fetchAllPages";
 import {
   assertBusinessLocationSelected,
-  useBusinessLocationOptions,
+  useEntitySaleLocationOptions,
 } from "@/lib/hooks/useBusinessLocationOptions";
 import { useAppMutation } from "@/lib/hooks/useAppMutation";
 import { useIsVaHq6 } from "@/lib/hooks/useIsVaHq6";
@@ -45,6 +50,9 @@ export interface SaleLineDraft {
   sourceLabel?: string;
   sourceTenantCode?: string;
   createPurchase?: boolean;
+  /** Optional supplier for custom / purchase lines. */
+  supplierId?: string;
+  supplierName?: string;
 }
 
 function lineSubtotal(line: SaleLineDraft): number {
@@ -145,13 +153,13 @@ export interface AddSaleFormProps {
   tenantId: string;
   tenantConfig: TenantConfig | null | undefined;
   presetStatus?: SaleFormPresetStatus;
-  /** Pre-select a job (VA: sale is the job's commercial record). */
+  /** Optional job to prefill (Automotive). Job link is not required to save. */
   initialJobId?: string | null;
   /** Load an existing sale/draft/quotation for edit (create-replace). */
   editSaleId?: string | null;
   /** `page` = full Add Sale screen; `modal` = compact dialog body */
   variant?: "page" | "modal";
-  onSuccess?: (sale: Sale) => void;
+  onSuccess?: (sale: Sale, options?: { print?: boolean }) => void;
   onCancel?: () => void;
 }
 
@@ -166,13 +174,29 @@ export function AddSaleForm({
   onCancel,
 }: AddSaleFormProps) {
   const router = useRouter();
-  const { options: businessLocationOptions, required: locationRequired } =
-    useBusinessLocationOptions(tenantConfig);
+  const {
+    options: businessLocationOptions,
+    required: locationRequired,
+    locations: saleLocations,
+    defaultCode: defaultLocationCode,
+  } = useEntitySaleLocationOptions(tenantConfig);
   const isProvisional = presetStatus === "draft" || presetStatus === "quotation";
-  const showLocationField = (tenantConfig?.businessLocations?.length ?? 0) > 0;
-  const requiresJob = tenantConfig?.archetype === "job";
+  const showLocationField = saleLocations.length > 0;
+  const isJobTenant = tenantConfig?.archetype === "job";
+  /** VA / VP can source stock from VW, VISP, VSP on sale. */
+  const allowCrossEntitySource =
+    tenantConfig?.code === "VA" || tenantConfig?.code === "VP";
+  const includeWarehouseSearch = allowCrossEntitySource || !isJobTenant;
+  /** Job link is optional — only used for stock skip / prefill when chosen. */
+  const showJobField = isJobTenant;
 
-  const [form, setForm] = useState(() => emptyForm(presetStatus));
+  const [form, setForm] = useState(() => {
+    const base = emptyForm(presetStatus);
+    if (defaultLocationCode) {
+      return { ...base, locationCode: defaultLocationCode };
+    }
+    return base;
+  });
   const [lines, setLines] = useState<SaleLineDraft[]>([]);
   const [additionalExpenses, setAdditionalExpenses] = useState<
     Array<{ key: string; name: string; amount: string }>
@@ -186,8 +210,27 @@ export function AddSaleForm({
   const [quickCustomerOpen, setQuickCustomerOpen] = useState(false);
   const [quickCustomerName, setQuickCustomerName] = useState("");
   const [customerInfoOpen, setCustomerInfoOpen] = useState(false);
+  const [addSupplierForLineKey, setAddSupplierForLineKey] = useState<
+    string | null
+  >(null);
   const jobPrefillDone = useRef(false);
   const editPrefillDone = useRef(false);
+
+  const { data: supplierOptions = [] } = useQuery({
+    queryKey: ["suppliers", "sale-line", tenantId],
+    queryFn: () => getSuppliers(tenantId!, { limit: 100 }),
+    enabled: Boolean(tenantId) && lines.some((l) => l.createPurchase),
+  });
+
+  // Default to this entity's location once config loads (or if empty / foreign).
+  useEffect(() => {
+    if (!defaultLocationCode) return;
+    const allowed = new Set(saleLocations.map((l) => l.code));
+    setForm((prev) => {
+      if (prev.locationCode && allowed.has(prev.locationCode)) return prev;
+      return { ...prev, locationCode: defaultLocationCode };
+    });
+  }, [defaultLocationCode, saleLocations]);
 
   const { data: editSale } = useQuery({
     queryKey: ["sale", "edit", editSaleId],
@@ -351,6 +394,7 @@ export function AddSaleForm({
         return;
       }
       const job = await getJob(jobId);
+      const allowed = new Set(saleLocations.map((l) => l.code));
       setForm((prev) => ({
         ...prev,
         jobId: job.id,
@@ -358,7 +402,10 @@ export function AddSaleForm({
         invoiceNo: prev.invoiceNo.trim() || job.reference,
         customerId: job.customerId ?? job.customer?.id ?? "",
         customerName: job.customer?.name ?? job.customerName ?? "",
-        locationCode: job.locationCode ?? prev.locationCode,
+        locationCode:
+          job.locationCode && allowed.has(job.locationCode)
+            ? job.locationCode
+            : prev.locationCode || defaultLocationCode,
       }));
       const materialLines: SaleLineDraft[] = job.materials.map((row) => ({
         key: `mat-${row.id}`,
@@ -393,7 +440,7 @@ export function AddSaleForm({
         ]);
       }
     },
-    [patchForm],
+    [patchForm, saleLocations, defaultLocationCode],
   );
 
   useEffect(() => {
@@ -410,7 +457,7 @@ export function AddSaleForm({
         ? `custom:${pick.name.toLowerCase()}`
         : pick.itemId
           ? `item:${pick.itemId}`
-          : `sku:${pick.sku}`;
+          : `sku:${pick.sourceTenantCode ?? "local"}:${pick.sku}`;
       const existing = prev.find((row) => row.key === matchKey);
       if (existing) {
         return prev.map((row) =>
@@ -480,6 +527,7 @@ export function AddSaleForm({
       return createSale(tenantId, {
         reference,
         jobId: form.jobId.trim() || undefined,
+        replaceSaleId: editSaleId || undefined,
         customerId: form.customerId || undefined,
         customerName: form.customerName.trim() || undefined,
         locationCode: form.locationCode.trim() || undefined,
@@ -508,6 +556,7 @@ export function AddSaleForm({
           discountAmount: line.discount > 0 ? line.discount : undefined,
           createPurchase: line.createPurchase || undefined,
           sourceTenantCode: line.sourceTenantCode,
+          supplierId: line.createPurchase ? line.supplierId || undefined : undefined,
         })),
         payments: isProvisional
           ? []
@@ -538,6 +587,13 @@ export function AddSaleForm({
           : presetStatus === "quotation"
             ? "Quotation saved"
             : "Sale recorded",
+    progressLabel: editSaleId
+      ? "Updating sale"
+      : presetStatus === "draft"
+        ? "Saving draft"
+        : presetStatus === "quotation"
+          ? "Saving quotation"
+          : "Saving sale",
     invalidateKeys: [
       ["sales"],
       ["items"],
@@ -546,25 +602,34 @@ export function AddSaleForm({
       ["job"],
       ["ledgerTablePage"],
       ["ledgerSummary"],
+      ["stock-movements"],
+      ["paymentAccounts"],
+      ["suppliers"],
     ],
-    onSuccess: (sale) => {
-      if (printAfterSaveRef.current) {
-        window.print();
-      }
+    onSuccess: async (sale) => {
+      const shouldPrint = printAfterSaveRef.current;
       printAfterSaveRef.current = false;
       setForm(emptyForm(presetStatus));
       setLines([]);
       setError(null);
-      onSuccess?.(sale);
+      try {
+        await onSuccess?.(sale, { print: shouldPrint });
+      } catch {
+        // Sale already saved — invoice redirect must not fail the mutation.
+      }
     },
     onError: (err: Error) => setError(err.message),
   });
 
   const quickCustomerMutation = useAppMutation({
     mutationFn: async () => {
-      const name = quickCustomerName.trim();
-      if (!name) throw new Error("Enter a customer name");
-      return createCustomer(tenantId, { name });
+      const valid = parseForm(
+        saleCustomerSchema,
+        { customerName: quickCustomerName },
+        { toast: false },
+      );
+      if (!valid) throw new Error("Enter a customer name");
+      return createCustomer(tenantId, { name: valid.customerName });
     },
     successMessage: "Customer created",
     invalidateKeys: [["customers"]],
@@ -600,6 +665,9 @@ export function AddSaleForm({
         <div className="row" style={{ marginBottom: 12 }}>
           <div className="col-sm-3">
             <div className="form-group" style={{ marginBottom: 0 }}>
+              <label htmlFor="select_location_id" className="hq6-form-label">
+                Business Location:<span className="req">*</span>
+              </label>
               <div className="input-group">
                 <span className="input-group-addon">
                   <i className="fa fa-map-marker" aria-hidden />
@@ -610,6 +678,7 @@ export function AddSaleForm({
                   value={form.locationCode}
                   onChange={(e) => patchForm({ locationCode: e.target.value })}
                   aria-label="Business location"
+                  required
                 >
                   {businessLocationOptions.length > 0 ? (
                     businessLocationOptions.map((opt) => (
@@ -774,7 +843,6 @@ export function AddSaleForm({
                   value={form.saleDate}
                   onChange={(e) => patchForm({ saleDate: e.target.value })}
                 />
-                <Calendar className="hq6-form-input-icon" aria-hidden />
               </div>
             </label>
 
@@ -828,7 +896,6 @@ export function AddSaleForm({
                   value={form.vehicleTimeIn}
                   onChange={(e) => patchForm({ vehicleTimeIn: e.target.value })}
                 />
-                <Calendar className="hq6-form-input-icon" aria-hidden />
               </div>
             </label>
 
@@ -843,7 +910,6 @@ export function AddSaleForm({
                     patchForm({ vehicleReleaseDate: e.target.value })
                   }
                 />
-                <Calendar className="hq6-form-input-icon" aria-hidden />
               </div>
             </label>
 
@@ -918,6 +984,7 @@ export function AddSaleForm({
                 <tr>
                   <th style={{ width: "2rem" }}>#</th>
                   <th>Product</th>
+                  <th style={{ width: "7.5rem" }}>Source</th>
                   <th>Quantity</th>
                   <th>Unit Price</th>
                   <th>Discount</th>
@@ -932,7 +999,7 @@ export function AddSaleForm({
               <tbody>
                 {lines.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="text-center text-[#9ca3af]">
+                    <td colSpan={10} className="text-center text-[#9ca3af]">
                       &nbsp;
                     </td>
                   </tr>
@@ -942,12 +1009,54 @@ export function AddSaleForm({
                     const pretax = lineSubtotal(line);
                     const taxAmt = (pretax * taxPct) / 100;
                     const withTax = pretax + taxAmt;
+                    const sourceCode =
+                      line.sourceTenantCode ||
+                      (line.createPurchase ? "Purchase" : tenantConfig?.code || "Own");
                     return (
                       <tr key={line.key}>
                         <td>{index + 1}</td>
                         <td className="hq6-sale-line-product">
                           <div className="font-medium">{line.name}</div>
                           <div className="text-xs text-[#6b7280]">{line.sku}</div>
+                          {line.createPurchase ? (
+                            <div className="mt-2 space-y-1">
+                              <div className="text-xs text-amber-600">
+                                Will add to Purchases
+                              </div>
+                              <div className="flex flex-wrap items-center gap-1">
+                                <MenuSelect
+                                  value={line.supplierId ?? ""}
+                                  placeholder="Supplier (optional)"
+                                  searchable
+                                  onChange={(supplierId) => {
+                                    const match = supplierOptions.find(
+                                      (s) => s.id === supplierId,
+                                    );
+                                    updateLine(line.key, {
+                                      supplierId: supplierId || undefined,
+                                      supplierName: match?.name,
+                                    });
+                                  }}
+                                  options={[
+                                    { value: "", label: "No supplier" },
+                                    ...supplierOptions.map((s) => ({
+                                      value: s.id,
+                                      label: s.name,
+                                    })),
+                                  ]}
+                                />
+                                <button
+                                  type="button"
+                                  className="btn btn-default btn-xs"
+                                  onClick={() =>
+                                    setAddSupplierForLineKey(line.key)
+                                  }
+                                >
+                                  + Supplier
+                                </button>
+                              </div>
+                            </div>
+                          ) : null}
                           <textarea
                             className="hq6-form-input mt-1"
                             rows={2}
@@ -959,6 +1068,28 @@ export function AddSaleForm({
                               })
                             }
                           />
+                        </td>
+                        <td>
+                          <div className="text-xs font-semibold text-[#374151]">
+                            {sourceCode}
+                          </div>
+                          {line.availableQty != null && !line.createPurchase ? (
+                            <div
+                              className={
+                                line.availableQty <= 5
+                                  ? "text-xs font-medium text-amber-600"
+                                  : "text-xs text-[#6b7280]"
+                              }
+                            >
+                              {line.availableQty} left
+                            </div>
+                          ) : null}
+                          {line.sourceLabel &&
+                          line.sourceLabel !== sourceCode ? (
+                            <div className="text-[11px] text-[#9ca3af]">
+                              {line.sourceLabel}
+                            </div>
+                          ) : null}
                         </td>
                         <td>
                           <div className="hq6-form-qty">
@@ -1088,11 +1219,16 @@ export function AddSaleForm({
                 tenantId={tenantId}
                 tenantCode={tenantConfig?.code}
                 retailOnly={false}
-                includeWarehouse
+                includeWarehouse={includeWarehouseSearch}
+                pickSourceAfterSelect={allowCrossEntitySource}
                 allowCustom
-                businessLocations={tenantConfig?.businessLocations}
+                showStockQty={includeWarehouseSearch}
+                showLeadingIcon={false}
+                showSearchButton={false}
+                businessLocations={saleLocations}
                 onSelect={addLineFromPick}
                 placeholder="Enter Product name / SKU / Scan bar code"
+                className="hq6-product-search-embedded"
               />
               <span className="input-group-btn">
                 <button
@@ -1379,7 +1515,6 @@ export function AddSaleForm({
                     value={form.paidOn}
                     onChange={(e) => patchForm({ paidOn: e.target.value })}
                   />
-                  <Calendar className="hq6-form-input-icon" aria-hidden />
                 </div>
               </label>
               <label className="hq6-form-label">
@@ -1471,6 +1606,20 @@ export function AddSaleForm({
             {printLabel}
           </button>
         </div>
+
+        <Hq6AddSupplierModal
+          open={Boolean(addSupplierForLineKey)}
+          tenantId={tenantId}
+          onClose={() => setAddSupplierForLineKey(null)}
+          onSaved={(result) => {
+            if (addSupplierForLineKey && result?.supplierId) {
+              updateLine(addSupplierForLineKey, {
+                supplierId: result.supplierId,
+              });
+            }
+            setAddSupplierForLineKey(null);
+          }}
+        />
       </div>
     );
   }
@@ -1500,17 +1649,17 @@ export function AddSaleForm({
         </div>
       ) : null}
 
-      {requiresJob ? (
+      {showJobField ? (
         <div className="max-w-xl rounded-lg border border-border bg-card p-4">
           <label className="mb-1 block text-xs font-medium text-muted">
-            Job <span className="text-red-600">*</span>
+            Job <span className="font-normal text-muted">(optional)</span>
           </label>
           <AsyncMenuSelect
             value={form.jobId}
             selectedLabel={
               form.jobReference
                 ? `${form.jobReference}${form.customerName ? ` · ${form.customerName}` : ""}`
-                : "Select job…"
+                : "No job linked"
             }
             placeholder="Search job reference or customer…"
             loadOptions={loadJobOptions}
@@ -1521,8 +1670,9 @@ export function AddSaleForm({
             }}
           />
           <p className="mt-2 text-xs text-muted">
-            For Automotive, the sale is the job&apos;s commercial record. Parts
-            already issued on the job are not deducted again.
+            Optional — link a job to prefill customer/parts. Sales can be saved
+            and updated without a job. If linked, parts already issued on the
+            job are not deducted again.
           </p>
         </div>
       ) : null}
@@ -1720,6 +1870,7 @@ export function AddSaleForm({
               <tr className="border-b border-border text-left text-muted">
                 <th className="px-3 py-2 font-medium">#</th>
                 <th className="px-3 py-2 font-medium">Product</th>
+                <th className="px-3 py-2 font-medium">Source</th>
                 <th className="px-3 py-2 font-medium">Quantity</th>
                 <th className="px-3 py-2 font-medium">Unit Price</th>
                 <th className="px-3 py-2 font-medium">Discount</th>
@@ -1730,7 +1881,7 @@ export function AddSaleForm({
             <tbody>
               {lines.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-3 py-8 text-center text-muted">
+                  <td colSpan={8} className="px-3 py-8 text-center text-muted">
                     Search and add products below
                   </td>
                 </tr>
@@ -1744,26 +1895,66 @@ export function AddSaleForm({
                       <td className="px-3 py-2">
                         <div className="font-medium text-foreground">{line.name}</div>
                         <div className="text-xs text-muted">{line.sku}</div>
-                        {line.sourceLabel ? (
-                          <div className="text-xs text-muted">{line.sourceLabel}</div>
-                        ) : null}
-                        {line.availableQty != null && !line.createPurchase ? (
-                          <div
-                            className={
-                              line.availableQty <= 5
-                                ? "text-xs font-medium text-amber-600"
-                                : "text-xs text-muted"
-                            }
-                          >
-                            {line.availableQty} in stock
-                          </div>
-                        ) : null}
                         {line.createPurchase ? (
-                          <div className="text-xs text-amber-600">
-                            Will add to Purchases
+                          <div className="mt-2 space-y-1">
+                            <div className="text-xs text-amber-600">
+                              Will add to Purchases
+                            </div>
+                            <div className="flex flex-wrap items-center gap-1">
+                              <MenuSelect
+                                value={line.supplierId ?? ""}
+                                placeholder="Supplier (optional)"
+                                searchable
+                                onChange={(supplierId) => {
+                                  const match = supplierOptions.find(
+                                    (s) => s.id === supplierId,
+                                  );
+                                  updateLine(line.key, {
+                                    supplierId: supplierId || undefined,
+                                    supplierName: match?.name,
+                                  });
+                                }}
+                                options={[
+                                  { value: "", label: "No supplier" },
+                                  ...supplierOptions.map((s) => ({
+                                    value: s.id,
+                                    label: s.name,
+                                  })),
+                                ]}
+                              />
+                              <Button
+                                type="button"
+                                variant="secondary"
+                                size="sm"
+                                onClick={() =>
+                                  setAddSupplierForLineKey(line.key)
+                                }
+                              >
+                                + Supplier
+                              </Button>
+                            </div>
                           </div>
                         ) : null}
                       </td>
+                    <td className="px-3 py-2 text-xs">
+                      <div className="font-semibold text-foreground">
+                        {line.sourceTenantCode ||
+                          (line.createPurchase
+                            ? "Purchase"
+                            : tenantConfig?.code || "Own")}
+                      </div>
+                      {line.availableQty != null && !line.createPurchase ? (
+                        <div
+                          className={
+                            line.availableQty <= 5
+                              ? "font-medium text-amber-600"
+                              : "text-muted"
+                          }
+                        >
+                          {line.availableQty} left
+                        </div>
+                      ) : null}
+                    </td>
                     <td className="px-3 py-2">
                       <input
                         type="number"
@@ -1838,11 +2029,19 @@ export function AddSaleForm({
             tenantId={tenantId}
             tenantCode={tenantConfig?.code}
             retailOnly={false}
-            includeWarehouse
+            includeWarehouse={includeWarehouseSearch}
+            pickSourceAfterSelect={allowCrossEntitySource}
             allowCustom
-            businessLocations={tenantConfig?.businessLocations}
+            showStockQty={includeWarehouseSearch}
+            businessLocations={saleLocations}
             onSelect={addLineFromPick}
-            placeholder="Search own products or warehouse parts…"
+            placeholder={
+              allowCrossEntitySource
+                ? "Search parts (own / VW / VISP / VSP) or add custom…"
+                : isJobTenant
+                  ? "Search products by name or SKU…"
+                  : "Search own products or warehouse parts…"
+            }
           />
         </div>
       </section>
@@ -2052,6 +2251,20 @@ export function AddSaleForm({
           Save and print
         </Button>
       </div>
+
+      <Hq6AddSupplierModal
+        open={Boolean(addSupplierForLineKey)}
+        tenantId={tenantId}
+        onClose={() => setAddSupplierForLineKey(null)}
+        onSaved={(result) => {
+          if (addSupplierForLineKey && result?.supplierId) {
+            updateLine(addSupplierForLineKey, {
+              supplierId: result.supplierId,
+            });
+          }
+          setAddSupplierForLineKey(null);
+        }}
+      />
     </div>
   );
 }

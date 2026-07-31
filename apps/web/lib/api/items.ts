@@ -8,6 +8,7 @@ import type {
   CsvImportResult,
 } from "@vonos/types";
 import { apiFetch, withTenantQuery } from "@/lib/api/client";
+import { throwApiError } from "@/lib/api/parseApiError";
 import {
   DEFAULT_TABLE_PAGE_SIZE,
   EXPORT_PAGE_SIZE,
@@ -172,7 +173,10 @@ export interface ItemStockHistoryRow {
   type: string;
   status: string;
   quantity: number;
+  quantityChange: number;
+  newQuantity: number;
   unitCost: number | null;
+  customerSupplierInfo: string | null;
 }
 
 export async function getItemStockHistory(
@@ -188,8 +192,7 @@ export async function deleteItem(tenantId: string, id: string): Promise<void> {
     method: "DELETE",
   });
   if (!response.ok) {
-    const body = (await response.json().catch(() => null)) as { message?: string } | null;
-    throw new Error(body?.message ?? "Failed to delete product");
+    return throwApiError(response, "Failed to delete product");
   }
 }
 
@@ -207,6 +210,7 @@ export interface CreateItemRequest {
   category?: string;
   subCategory?: string;
   description?: string;
+  imageUrl?: string;
   barcodeType?: string;
   unit?: string;
   weight?: string;

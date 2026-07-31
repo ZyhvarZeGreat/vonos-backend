@@ -105,7 +105,7 @@ export function Hq6TrialBalanceView() {
   const [locationCode, setLocationCode] = useState("");
   const [endDate, setEndDate] = useState(todayInputValue);
   const locations = config?.businessLocations ?? [];
-  const businessName = config?.name?.trim() || "Vonos Automotive";
+  const businessName = config?.name?.trim() || "Vonos Mechanic";
 
   const { data, isLoading, isFetching, error } = useQuery({
     queryKey: [

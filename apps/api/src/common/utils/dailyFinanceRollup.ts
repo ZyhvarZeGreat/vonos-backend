@@ -122,27 +122,42 @@ export async function applyDailyFinanceDelta(
 ): Promise<void> {
   const day = dayStart(date);
   const delta = deltaForType(type, amount);
+  const id = rollupId(tenantId, day);
 
-  await db.tenantDailyFinance.upsert({
-    where: { tenantId_date: { tenantId, date: day } },
-    create: {
-      id: rollupId(tenantId, day),
-      tenantId,
-      date: day,
-      revenue: delta.revenue,
-      costs: delta.costs,
-      expenses: delta.expenses,
-      net: delta.net,
-      currency,
-    },
-    update: {
-      revenue: { increment: delta.revenue },
-      costs: { increment: delta.costs },
-      expenses: { increment: delta.expenses },
-      net: { increment: delta.net },
-      currency,
-    },
-  });
+  // Concurrent creates race on @@unique([tenantId, date]) / deterministic id —
+  // retry so the second writer updates instead of crashing the process.
+  for (let attempt = 0; attempt < 5; attempt++) {
+    try {
+      await db.tenantDailyFinance.upsert({
+        where: { tenantId_date: { tenantId, date: day } },
+        create: {
+          id,
+          tenantId,
+          date: day,
+          revenue: delta.revenue,
+          costs: delta.costs,
+          expenses: delta.expenses,
+          net: delta.net,
+          currency,
+        },
+        update: {
+          revenue: { increment: delta.revenue },
+          costs: { increment: delta.costs },
+          expenses: { increment: delta.expenses },
+          net: { increment: delta.net },
+          currency,
+        },
+      });
+      return;
+    } catch (error) {
+      const isUniqueRace =
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002';
+      if (!isUniqueRace || attempt === 4) {
+        throw error;
+      }
+    }
+  }
 }
 
 export async function sumDailyFinanceRollup(

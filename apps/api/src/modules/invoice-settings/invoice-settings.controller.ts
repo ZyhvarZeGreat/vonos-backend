@@ -36,43 +36,43 @@ export class InvoiceSettingsController {
   }
 
   @Patch()
-  @Roles('admin', 'manager')
+  @Roles('admin', 'manager', 'super_admin')
   updateSettings(@Body() body: UpdateInvoiceSettingsInput) {
     return this.service.updateSettings(body);
   }
 
   @Post('schemes')
-  @Roles('admin', 'manager')
+  @Roles('admin', 'manager', 'super_admin')
   createScheme(@Body() body: CreateInvoiceSchemeInput) {
     return this.service.createScheme(body);
   }
 
   @Patch('schemes/:id')
-  @Roles('admin', 'manager')
+  @Roles('admin', 'manager', 'super_admin')
   updateScheme(@Param('id') id: string, @Body() body: UpdateInvoiceSchemeInput) {
     return this.service.updateScheme(id, body);
   }
 
   @Delete('schemes/:id')
-  @Roles('admin', 'manager')
+  @Roles('admin', 'manager', 'super_admin')
   deleteScheme(@Param('id') id: string) {
     return this.service.deleteScheme(id);
   }
 
   @Post('layouts')
-  @Roles('admin', 'manager')
+  @Roles('admin', 'manager', 'super_admin')
   createLayout(@Body() body: CreateInvoiceLayoutInput) {
     return this.service.createLayout(body);
   }
 
   @Patch('layouts/:id')
-  @Roles('admin', 'manager')
+  @Roles('admin', 'manager', 'super_admin')
   updateLayout(@Param('id') id: string, @Body() body: UpdateInvoiceLayoutInput) {
     return this.service.updateLayout(id, body);
   }
 
   @Delete('layouts/:id')
-  @Roles('admin', 'manager')
+  @Roles('admin', 'manager', 'super_admin')
   deleteLayout(@Param('id') id: string) {
     return this.service.deleteLayout(id);
   }
@@ -83,19 +83,19 @@ export class InvoiceSettingsController {
   }
 
   @Post('printers')
-  @Roles('admin', 'manager')
+  @Roles('admin', 'manager', 'super_admin')
   createPrinter(@Body() body: CreateReceiptPrinterInput) {
     return this.service.createPrinter(body);
   }
 
   @Patch('printers/:id')
-  @Roles('admin', 'manager')
+  @Roles('admin', 'manager', 'super_admin')
   updatePrinter(@Param('id') id: string, @Body() body: UpdateReceiptPrinterInput) {
     return this.service.updatePrinter(id, body);
   }
 
   @Delete('printers/:id')
-  @Roles('admin', 'manager')
+  @Roles('admin', 'manager', 'super_admin')
   deletePrinter(@Param('id') id: string) {
     return this.service.deletePrinter(id);
   }

@@ -1,5 +1,6 @@
 import type { CreateSaleRequest, CreateSaleReturnRequest, Sale, SaleDetail, SaleFilters, SaleViewBundle, CsvImportResult, UpdateSaleShippingRequest } from "@vonos/types";
 import { apiFetch, withTenantQuery } from "@/lib/api/client";
+import { throwApiError } from "@/lib/api/parseApiError";
 import {
   DEFAULT_TABLE_PAGE_SIZE,
   EXPORT_PAGE_SIZE,
@@ -148,7 +149,9 @@ export async function createSale(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  if (!response.ok) throw new Error("Failed to create sale");
+  if (!response.ok) {
+    return throwApiError(response, "Failed to create sale");
+  }
   return response.json();
 }
 
@@ -193,13 +196,7 @@ export async function createSaleReturn(
     body: JSON.stringify(body),
   });
   if (!response.ok) {
-    const payload = (await response.json().catch(() => null)) as
-      | { message?: string | string[] }
-      | null;
-    const message = Array.isArray(payload?.message)
-      ? payload.message.join(", ")
-      : payload?.message;
-    throw new Error(message || "Failed to create return");
+    return throwApiError(response, "Failed to create return");
   }
   return response.json();
 }
@@ -224,8 +221,7 @@ export async function deleteSale(tenantId: string, id: string): Promise<void> {
     method: "DELETE",
   });
   if (!response.ok) {
-    const body = (await response.json().catch(() => null)) as { message?: string } | null;
-    throw new Error(body?.message ?? "Failed to delete sale");
+    return throwApiError(response, "Failed to delete sale");
   }
 }
 
@@ -275,10 +271,7 @@ export async function updateSalePayment(
     },
   );
   if (!response.ok) {
-    const err = (await response.json().catch(() => null)) as {
-      message?: string;
-    } | null;
-    throw new Error(err?.message ?? "Failed to update payment");
+    return throwApiError(response, "Failed to update payment");
   }
   return response.json();
 }
@@ -293,10 +286,7 @@ export async function deleteSalePayment(
     { method: "DELETE" },
   );
   if (!response.ok) {
-    const err = (await response.json().catch(() => null)) as {
-      message?: string;
-    } | null;
-    throw new Error(err?.message ?? "Failed to delete payment");
+    return throwApiError(response, "Failed to delete payment");
   }
 }
 

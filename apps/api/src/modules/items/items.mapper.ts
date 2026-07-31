@@ -11,6 +11,7 @@ export type ItemWithStock = {
   category: string | null;
   subCategory?: string | null;
   description?: string | null;
+  imageUrl?: string | null;
   barcodeType?: string | null;
   unit?: string | null;
   weight?: string | null;
@@ -54,6 +55,7 @@ export function serializeItem(row: ItemWithStock): Item {
     category: row.category,
     subCategory: row.subCategory ?? null,
     description: row.description ?? null,
+    imageUrl: row.imageUrl ?? null,
     barcodeType: row.barcodeType ?? null,
     unit: row.unit ?? null,
     weight: row.weight ?? null,

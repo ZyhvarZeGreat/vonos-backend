@@ -1,5 +1,7 @@
 "use client";
 
+import { moveStockSchema } from "@/lib/validation/schemas";
+import { parseForm } from "@/lib/validation/parseForm";
 import { useEffect, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -79,11 +81,9 @@ export function Hq6MoveProductModal({
       toast.error("Choose a different destination location");
       return;
     }
-    const quantity = Number(qty);
-    if (!Number.isFinite(quantity) || quantity <= 0) {
-      toast.error("Enter a valid quantity");
-      return;
-    }
+    const valid = parseForm(moveStockSchema, { quantity: qty });
+    if (!valid) return;
+    const quantity = Number(valid.quantity);
     if (quantity > fromQty) {
       toast.error(`Only ${fromQty} available at source location`);
       return;

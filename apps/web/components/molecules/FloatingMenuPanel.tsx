@@ -24,34 +24,33 @@ function menuPosition(anchor: HTMLElement, align: Align): CSSProperties {
     spaceBelow < Math.min(160, estimatedMenuHeight) && rect.top > spaceBelow;
 
   const maxHeight = openUpward
-    ? Math.max(120, rect.top - gap - 8)
-    : Math.max(120, window.innerHeight - rect.bottom - gap - 8);
+    ? Math.max(140, rect.top - gap - 8)
+    : Math.max(140, window.innerHeight - rect.bottom - gap - 8);
 
   const vertical = openUpward
     ? { bottom: window.innerHeight - rect.top + gap }
     : { top: rect.bottom + gap };
 
-  if (align === "end") {
-    return {
-      position: "fixed",
-      ...vertical,
-      left: rect.right,
-      transform: "translateX(-100%)",
-      zIndex: FLOATING_MENU_Z,
-      visibility: "visible" as const,
-      maxHeight,
-      ["--vonos-floating-max-h" as string]: `${maxHeight}px`,
-    };
-  }
-
-  return {
+  const base: CSSProperties = {
     position: "fixed",
     ...vertical,
-    left: Math.min(rect.left, window.innerWidth - 16),
     zIndex: FLOATING_MENU_Z,
     visibility: "visible" as const,
     maxHeight,
     ["--vonos-floating-max-h" as string]: `${maxHeight}px`,
+  };
+
+  if (align === "end") {
+    return {
+      ...base,
+      left: rect.right,
+      transform: "translateX(-100%)",
+    };
+  }
+
+  return {
+    ...base,
+    left: Math.min(rect.left, window.innerWidth - 16),
   };
 }
 
@@ -107,7 +106,7 @@ export function FloatingMenuPanel({
       style={style}
       className={cn("vonos-floating-menu", className)}
     >
-      <div className="motion-pop-in">{children}</div>
+      <div className="motion-pop-in vonos-floating-menu-shell">{children}</div>
     </div>,
     document.body,
   );

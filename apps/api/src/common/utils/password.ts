@@ -54,3 +54,16 @@ export async function verifyPassword(
 export function isDevPasswordHash(passwordHash: string): boolean {
   return passwordHash.startsWith('dev:');
 }
+
+/** New passwords: ≥8 chars, letter, number, and symbol — keep in sync with web Zod schemas. */
+export function isStrongPassword(password: string): boolean {
+  if (!password || password.length < 8) return false;
+  if (!/[A-Za-z]/.test(password)) return false;
+  if (!/\d/.test(password)) return false;
+  if (!/[^A-Za-z0-9]/.test(password)) return false;
+  return true;
+}
+
+export const STRONG_PASSWORD_HINT =
+  'Password must be at least 8 characters and include a letter, a number, and a symbol';
+

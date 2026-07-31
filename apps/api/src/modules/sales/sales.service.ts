@@ -4,6 +4,7 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import type {
   CsvImportResult,
   PaymentStatus,
@@ -46,6 +47,7 @@ import {
   toNumber,
 } from '../../common/utils/serializers';
 import { encodePublicInvoiceToken } from '../../common/utils/publicInvoiceToken';
+import { recordPaymentAccountTxn } from '../../common/utils/recordPaymentAccountTxn';
 
 function normalizeCreateStatus(
   status?: SaleStatus | 'final',
@@ -63,6 +65,7 @@ type SaleLineInput = {
   discountAmount?: number;
   createPurchase?: boolean;
   sourceTenantCode?: string;
+  supplierId?: string;
 };
 
 function computeLineTotal(line: {
@@ -86,6 +89,8 @@ function buildSaleLineRows(lines: SaleLineInput[]) {
       unitPrice: line.unitPrice,
       lineTotal,
       discountAmount: discountAmount > 0 ? discountAmount : null,
+      sourceTenantCode: line.sourceTenantCode?.trim() || null,
+      supplierId: line.supplierId?.trim() || null,
     };
   });
 }
@@ -478,6 +483,8 @@ export class SalesService {
     customerName?: string;
     customerId?: string;
     jobId?: string;
+    /** When editing via create-then-archive, exclude this sale from the one-sale-per-job check. */
+    replaceSaleId?: string;
     locationCode?: string;
     paymentMethod?: string;
     cleanerUserId?: string;
@@ -501,11 +508,6 @@ export class SalesService {
     }>;
   }): Promise<SaleDetail> {
     const tenantId = this.tenantDb.requireTenantId();
-    const tenant = await this.prisma.tenant.findFirst({
-      where: { id: tenantId, deletedAt: null },
-      select: { archetype: true, code: true },
-    });
-    const isJobTenant = tenant?.archetype === 'job';
 
     const createdBy = await this.auditService.createdByFields();
     let locationCode = await this.tenantDb.resolveBusinessLocation(
@@ -539,12 +541,6 @@ export class SalesService {
       }>;
     } | null = null;
 
-    if (isJobTenant && !jobId) {
-      throw new BadRequestException(
-        'Select a job — for Automotive, every sale is linked to a job',
-      );
-    }
-
     if (jobId) {
       linkedJob = await this.tenantDb.db.job.findFirst({
         where: { id: jobId, tenantId, deletedAt: null },
@@ -577,8 +573,14 @@ export class SalesService {
         throw new BadRequestException('Job not found');
       }
       jobReference = linkedJob.reference;
+      const replaceSaleId = body.replaceSaleId?.trim() || null;
       const existingForJob = await this.tenantDb.db.sale.findFirst({
-        where: { tenantId, jobId, deletedAt: null },
+        where: {
+          tenantId,
+          jobId,
+          deletedAt: null,
+          ...(replaceSaleId ? { id: { not: replaceSaleId } } : {}),
+        },
         select: { id: true, reference: true },
       });
       if (existingForJob) {
@@ -671,12 +673,29 @@ export class SalesService {
       body.reference?.trim() ||
       (jobReference ? jobReference : `SALE-${Date.now().toString(36).toUpperCase()}`);
 
-    const row = await this.prisma.$transaction(async (tx) => {
+    let row;
+    try {
+      row = await this.prisma.$transaction(
+      async (tx) => {
       if (!isProvisional && !skipStock) {
+        const sellingTenant = await tx.tenant.findFirst({
+          where: { id: tenantId, deletedAt: null },
+          select: { code: true },
+        });
+        const sellingCode = sellingTenant?.code?.toUpperCase() ?? '';
+
         for (let index = 0; index < workingLines.length; index++) {
           const line = workingLines[index]!;
           const qty = Math.max(1, Math.round(line.quantity));
-          const needsPurchase = Boolean(line.createPurchase) || !line.itemId;
+          const sourceCode = line.sourceTenantCode?.trim().toUpperCase();
+          const isCrossSource =
+            Boolean(sourceCode) &&
+            sourceCode !== sellingCode &&
+            !line.createPurchase &&
+            Boolean(line.itemId);
+          const needsPurchase =
+            !isCrossSource &&
+            (Boolean(line.createPurchase) || !line.itemId);
           if (!needsPurchase) continue;
 
           const sku =
@@ -720,6 +739,14 @@ export class SalesService {
             },
           ];
           const purchaseRollups = movementLineRollups(purchaseLines);
+          let supplierId: string | null = line.supplierId?.trim() || null;
+          if (supplierId) {
+            const supplier = await tx.supplier.findFirst({
+              where: { id: supplierId, tenantId, deletedAt: null },
+              select: { id: true },
+            });
+            if (!supplier) supplierId = null;
+          }
           await tx.stockMovement.create({
             data: {
               tenantId,
@@ -728,6 +755,7 @@ export class SalesService {
               status: 'Received',
               locationCode: locationCode ?? undefined,
               paymentStatus: 'due',
+              supplierId,
               lines: purchaseLines,
               itemCount: purchaseRollups.itemCount,
               grandTotal: purchaseRollups.grandTotal,
@@ -737,18 +765,78 @@ export class SalesService {
             },
           });
 
-          workingLines[index] = { ...line, itemId: item.id, sku, quantity: qty };
+          workingLines[index] = {
+            ...line,
+            itemId: item.id,
+            sku,
+            quantity: qty,
+            sourceTenantCode: undefined,
+          };
         }
 
         for (const line of workingLines) {
+          if (!line.itemId && !line.sourceTenantCode) continue;
+          const qty = Math.max(1, Math.round(line.quantity));
+          const sourceCode = line.sourceTenantCode?.trim().toUpperCase();
+          const isCrossSource =
+            Boolean(sourceCode) && sourceCode !== sellingCode;
+
+          if (isCrossSource) {
+            const sourceTenant = await tx.tenant.findFirst({
+              where: { code: sourceCode!, deletedAt: null },
+              select: { id: true, code: true },
+            });
+            if (!sourceTenant) {
+              throw new BadRequestException(
+                `Source entity ${sourceCode} not found for ${line.sku}`,
+              );
+            }
+            const item = await tx.item.findFirst({
+              where: {
+                deletedAt: null,
+                tenantId: sourceTenant.id,
+                OR: [
+                  ...(line.itemId ? [{ id: line.itemId }] : []),
+                  { sku: line.sku.trim() },
+                ],
+              },
+            });
+            if (!item) {
+              throw new BadRequestException(
+                `Item ${line.sku} not found at ${sourceCode}`,
+              );
+            }
+            const currentQty = toNumber(item.quantity);
+            if (currentQty < qty) {
+              throw new BadRequestException(
+                `Insufficient stock at ${sourceCode} for ${line.sku} (have ${currentQty}, need ${qty})`,
+              );
+            }
+            const nextQuantity = currentQty - qty;
+            await tx.item.update({
+              where: { id: item.id },
+              data: {
+                quantity: nextQuantity,
+                status: computeStockStatus(nextQuantity, item.reorderPoint),
+              },
+            });
+            await adjustItemLocationStock(tx, {
+              tenantId: sourceTenant.id,
+              itemId: item.id,
+              locationCode: item.locationCode,
+              binLocation: item.binLocation,
+              delta: -qty,
+            });
+            continue;
+          }
+
           if (!line.itemId) continue;
           const item = await tx.item.findFirst({
-            where: { id: line.itemId, deletedAt: null },
+            where: { id: line.itemId, tenantId, deletedAt: null },
           });
           if (!item) {
             throw new BadRequestException(`Item not found: ${line.sku}`);
           }
-          const qty = Math.max(1, Math.round(line.quantity));
           const currentQty = toNumber(item.quantity);
           const nextQuantity = currentQty - qty;
           await tx.item.update({
@@ -850,7 +938,7 @@ export class SalesService {
 
         for (const payment of resolvedPayments) {
           if (payment.amount <= 0) continue;
-          await tx.payment.create({
+          const createdPayment = await tx.payment.create({
             data: {
               tenantId,
               amount: payment.amount,
@@ -866,11 +954,45 @@ export class SalesService {
               createdByName: createdBy.createdByName ?? null,
             },
           });
+          if (payment.accountId) {
+            await recordPaymentAccountTxn(tx, {
+              tenantId,
+              accountId: payment.accountId,
+              type: 'credit',
+              subType: 'sale_payment',
+              amount: payment.amount,
+              operationDate: saleDate,
+              refNo: createdPayment.paymentRefNo,
+              note: payment.note ?? `Sale payment — ${sale.reference}`,
+              paymentMethod: payment.method ?? 'cash',
+              saleId: sale.id,
+              paymentId: createdPayment.id,
+              invoiceId: invoice.id,
+              createdByName: createdBy.createdByName ?? null,
+            });
+          }
         }
       }
 
       return sale;
-    });
+    },
+      {
+        /** Neon pooler + stock/purchase side-effects need more than the 5s default. */
+        maxWait: 15_000,
+        timeout: 60_000,
+      },
+    );
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2028'
+      ) {
+        throw new BadRequestException(
+          'Sale save timed out — please try again',
+        );
+      }
+      throw error;
+    }
 
     const saleTotal = toNumber(row.total);
     await this.auditService.log({
@@ -928,7 +1050,8 @@ export class SalesService {
     if (paidTotal <= 0) paymentStatus = 'due';
     else if (paidTotal < total) paymentStatus = 'partial';
 
-    const row = await this.prisma.$transaction(async (tx) => {
+    const row = await this.prisma.$transaction(
+      async (tx) => {
       if (!existing.jobId) {
         for (const line of existing.lines) {
           if (!line.itemId) continue;
@@ -995,7 +1118,7 @@ export class SalesService {
 
       for (const payment of paymentRows) {
         if (payment.amount <= 0) continue;
-        await tx.payment.create({
+        const createdPayment = await tx.payment.create({
           data: {
             tenantId,
             amount: payment.amount,
@@ -1010,10 +1133,31 @@ export class SalesService {
             createdByName: existing.createdByName ?? null,
           },
         });
+        if (payment.accountId) {
+          await recordPaymentAccountTxn(tx, {
+            tenantId,
+            accountId: payment.accountId,
+            type: 'credit',
+            subType: 'sale_payment',
+            amount: payment.amount,
+            operationDate: existing.date,
+            refNo: createdPayment.paymentRefNo,
+            note: payment.note ?? `Sale payment — ${sale.reference}`,
+            paymentMethod: payment.method ?? 'cash',
+            saleId: sale.id,
+            paymentId: createdPayment.id,
+            createdByName: existing.createdByName ?? null,
+          });
+        }
       }
 
       return sale;
-    });
+    },
+      {
+        maxWait: 15_000,
+        timeout: 60_000,
+      },
+    );
 
     await this.auditService.log({
       action: 'updated',
@@ -1147,7 +1291,8 @@ export class SalesService {
     const lineData = buildSaleLineRows(returnLineRows);
     const notes = body.notes?.trim() || null;
 
-    const row = await this.prisma.$transaction(async (tx) => {
+    const row = await this.prisma.$transaction(
+      async (tx) => {
       if (body.disposition === 'restocked') {
         for (const line of returnLineRows) {
           if (!line.itemId) continue;
@@ -1221,7 +1366,12 @@ export class SalesService {
       });
 
       return sale;
-    });
+    },
+      {
+        maxWait: 15_000,
+        timeout: 60_000,
+      },
+    );
 
     await this.auditService.log({
       action: 'created',
@@ -1738,6 +1888,8 @@ export class SalesService {
       unitPrice: { toString(): string };
       lineTotal: { toString(): string };
       discountAmount: { toString(): string } | null;
+      sourceTenantCode?: string | null;
+      supplierId?: string | null;
     }>;
   }): SaleDetail {
     const base = this.toSale(row);
@@ -1753,6 +1905,8 @@ export class SalesService {
       discountAmount: line.discountAmount
         ? toNumber(line.discountAmount)
         : null,
+      sourceTenantCode: line.sourceTenantCode ?? null,
+      supplierId: line.supplierId ?? null,
     }));
     return {
       ...base,
@@ -1834,6 +1988,7 @@ export async function warmDefaultSalesListPages(
                 shippingStatus: true,
                 shippingAddress: true,
                 trackingNumber: true,
+                _count: { select: { lines: true } },
                 date: true,
                 createdByUserId: true,
                 createdByName: true,
@@ -1889,7 +2044,7 @@ export async function warmDefaultSalesListPages(
               shippingStatus: row.shippingStatus,
               shippingAddress: row.shippingAddress,
               trackingNumber: row.trackingNumber,
-              itemCount: 0,
+              itemCount: row._count?.lines ?? 0,
               date: toIso(row.date).slice(0, 10),
               createdByUserId: row.createdByUserId,
               createdByName: row.createdByName,

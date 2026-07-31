@@ -47,6 +47,8 @@ export type AppMutationOptions<
   >["mutationFn"];
   successMessage?: MessageResolver<TData, TVariables>;
   errorMessage?: string | ((error: TError, variables: TVariables) => string);
+  /** Shown on the global 0–100% write progress chip (default: "Saving"). */
+  progressLabel?: string;
   invalidateNotifications?: boolean;
   /**
    * Optimistic cache updates: snapshot → update → rollback on error →
@@ -76,6 +78,7 @@ export function useAppMutation<
   const {
     successMessage,
     errorMessage,
+    progressLabel,
     invalidateNotifications = true,
     optimistic,
     invalidateKeys,
@@ -95,6 +98,7 @@ export function useAppMutation<
     ...rest,
     meta: {
       suppressErrorToast: true,
+      progressLabel: progressLabel ?? "Saving",
       ...rest.meta,
     },
     onMutate: async (variables, context) => {

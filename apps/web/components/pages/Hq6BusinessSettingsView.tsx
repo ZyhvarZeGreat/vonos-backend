@@ -17,6 +17,8 @@ import {
   type Hq6ModuleKey,
 } from "@/lib/registries/hq6BusinessSettings";
 import { cn } from "@/lib/utils/cn";
+import { parseForm } from "@/lib/validation/parseForm";
+import { settingsBrandingSchema } from "@/lib/validation/schemas";
 import { useTenantStore } from "@/stores/tenantStore";
 
 const HQ6_SETTINGS_NAV = [
@@ -240,12 +242,18 @@ export function Hq6BusinessSettingsView() {
   const saveMutation = useAppMutation({
     mutationFn: async () => {
       if (!tenantId) throw new Error("No tenant selected");
+      const valid = parseForm(
+        settingsBrandingSchema,
+        { displayName },
+        { toast: false },
+      );
+      if (!valid) throw new Error("Entity display name is required.");
       const enabledModules = applyHq6ModulesToEnabled(
         config?.enabledModules ?? [],
         draft.modules,
       );
       return updateTenantConfig(tenantId, {
-        name: displayName.trim() || undefined,
+        name: valid.displayName.trim() || undefined,
         businessSettings: draft,
         enabledModules,
       });

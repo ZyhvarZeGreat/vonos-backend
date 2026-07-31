@@ -86,9 +86,7 @@ export function Hq6CustomersListView() {
     useRecordNavigation("customers");
   const tenantId = useTenantId();
   const openCreateModal = useUiStore((state) => state.openCreateModal);
-  const { search, setSearch } = useListPageFilters({
-    defaultDateRange: "last_7_days",
-  });
+  const { search, setSearch } = useListPageFilters();
   const [localSearch, setLocalSearch] = useState(search);
   const [filtersOpen, setFiltersOpen] = useState(true);
   const chrome = useHq6ListChrome("customers");

@@ -3,12 +3,16 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery} from "@tanstack/react-query";
 import type { Item, ItemLocationStockInput, ProductUnit, TenantConfig } from "@vonos/types";
+import {
+  PRODUCT_STOCK_BUSINESS_LOCATIONS,
+  isProductStockTenant,
+} from "@vonos/types";
 import { Button } from "@/components/atoms/Button";
 import { Input } from "@/components/atoms/Input";
 import { Select } from "@/components/atoms/Select";
 import { Hq6AddProductFormBody } from "@/components/organisms/Hq6AddProductFormBody";
 import { createItem, updateItem } from "@/lib/api/items";
-import { getCatalogMeta } from "@/lib/api/catalogMeta";
+import { getAllCatalogMeta } from "@/lib/api/catalogMeta";
 import { useAppMutation } from "@/lib/hooks/useAppMutation";
 import {
   optimisticTempId,
@@ -16,6 +20,10 @@ import {
   prependEntityInQueries,
 } from "@/lib/query/optimistic";
 import { useIsVaHq6 } from "@/lib/hooks/useIsVaHq6";
+import { parseForm } from "@/lib/validation/parseForm";
+import { productFormSchema } from "@/lib/validation/schemas";
+import { hq6TaxSelectOptions } from "@/lib/utils/hq6TaxOptions";
+import type { ProductCategory, Brand } from "@vonos/types";
 
 export type ProductSaveMode = "save" | "saveAnother" | "saveOpeningStock";
 
@@ -28,7 +36,7 @@ type LocationDetail = {
   quantity: string;
 };
 
-function emptyForm() {
+function emptyForm(manageStock = true) {
   return {
     name: "",
     sku: "",
@@ -38,7 +46,7 @@ function emptyForm() {
     brand: "",
     category: "",
     subCategory: "",
-    manageStock: true,
+    manageStock,
     alertQuantity: "",
     description: "",
     enableImei: false,
@@ -89,9 +97,13 @@ export function AddProductForm({
   onCancel,
 }: AddProductFormProps) {
   const isHq6 = useIsVaHq6();
-  const locations = tenantConfig?.businessLocations ?? [];
+  const locations = isProductStockTenant(tenantConfig?.code)
+    ? PRODUCT_STOCK_BUSINESS_LOCATIONS
+    : (tenantConfig?.businessLocations ?? []);
+  /** Job-centric (VA): products are a price list — quantity is chosen on the sale. */
+  const priceCatalogOnly = tenantConfig?.archetype === "job";
 
-  const [form, setForm] = useState(emptyForm);
+  const [form, setForm] = useState(() => emptyForm(!priceCatalogOnly));
   const [locationDetails, setLocationDetails] = useState<LocationDetail[]>([]);
   const [selectedLocationCodes, setSelectedLocationCodes] = useState<string[]>(
     [],
@@ -102,12 +114,22 @@ export function AddProductForm({
   const [brochureName, setBrochureName] = useState("");
 
   useEffect(() => {
+    if (!editFrom && !duplicateFrom) {
+      setForm((prev) =>
+        prev.manageStock === !priceCatalogOnly
+          ? prev
+          : { ...prev, manageStock: !priceCatalogOnly },
+      );
+    }
+  }, [priceCatalogOnly, editFrom, duplicateFrom]);
+
+  useEffect(() => {
     const source = editFrom ?? duplicateFrom;
     if (!source) return;
     const isDuplicate = Boolean(duplicateFrom) && !editFrom;
     setForm({
-      ...emptyForm(),
-      name: isDuplicate ? `${source.name} (copy)` : source.name,
+      ...emptyForm(!priceCatalogOnly),
+      name: isDuplicate ? `Copy ${source.name}` : source.name,
       sku: isDuplicate ? `${source.sku}-COPY` : source.sku,
       brand: source.brandName ?? "",
       category: source.category ?? "",
@@ -117,6 +139,7 @@ export function AddProductForm({
       carModel: source.carModel ?? "",
       purchaseExcTax: String(source.costPrice ?? ""),
       sellingExcTax: String(source.sellPrice ?? source.costPrice ?? ""),
+      manageStock: priceCatalogOnly ? false : true,
       alertQuantity:
         source.reorderPoint != null ? String(source.reorderPoint) : "",
       enableImei: Boolean(source.enableImei),
@@ -126,7 +149,7 @@ export function AddProductForm({
           : "",
       notForSelling: source.availableForRetail === false,
     });
-  }, [duplicateFrom, editFrom]);
+  }, [duplicateFrom, editFrom, priceCatalogOnly]);
 
   useEffect(() => {
     if (locations.length === 0) return;
@@ -146,22 +169,25 @@ export function AddProductForm({
   const metaStaleMs = 10 * 60_000;
 
   const { data: categories = [] } = useQuery({
-    queryKey: ["catalog-meta", tenantId, "categories"],
-    queryFn: () => getCatalogMeta(tenantId, "categories"),
+    queryKey: ["catalog-meta", tenantId, "categories", "all"],
+    queryFn: () =>
+      getAllCatalogMeta(tenantId, "categories") as Promise<ProductCategory[]>,
     enabled: Boolean(tenantId),
     staleTime: metaStaleMs,
   });
 
   const { data: brands = [] } = useQuery({
-    queryKey: ["catalog-meta", tenantId, "brands"],
-    queryFn: () => getCatalogMeta(tenantId, "brands"),
+    queryKey: ["catalog-meta", tenantId, "brands", "all"],
+    queryFn: () =>
+      getAllCatalogMeta(tenantId, "brands") as Promise<Brand[]>,
     enabled: Boolean(tenantId),
     staleTime: metaStaleMs,
   });
 
   const { data: units = [] } = useQuery({
-    queryKey: ["catalog-meta", tenantId, "units"],
-    queryFn: () => getCatalogMeta(tenantId, "units") as Promise<ProductUnit[]>,
+    queryKey: ["catalog-meta", tenantId, "units", "all"],
+    queryFn: () =>
+      getAllCatalogMeta(tenantId, "units") as Promise<ProductUnit[]>,
     enabled: Boolean(tenantId),
     staleTime: metaStaleMs,
   });
@@ -183,6 +209,11 @@ export function AddProductForm({
       ...brands.map((row) => ({ value: row.name, label: row.name })),
     ],
     [brands],
+  );
+
+  const taxOptions = useMemo(
+    () => hq6TaxSelectOptions(tenantId),
+    [tenantId],
   );
 
   const unitOptions = useMemo(() => {
@@ -323,6 +354,7 @@ export function AddProductForm({
       return createItem(tenantId, payload);
     },
     successMessage: editFrom ? "Product updated" : "Product created",
+    progressLabel: editFrom ? "Updating product" : "Saving product",
     optimistic: {
       keys: [["items"], ["catalog"], ["catalog-meta"]],
       update: (qc, mode) => {
@@ -421,19 +453,18 @@ export function AddProductForm({
   const submit = (mode: ProductSaveMode) => {
     setSaveMode(mode);
     setError(null);
-    if (!form.name.trim()) {
-      setError("Product name is required");
-      return;
-    }
-    if (!form.unit.trim()) {
-      setError("Unit is required");
-      return;
-    }
     const costPrice = Number(form.purchaseExcTax || form.sellingExcTax || 0);
-    if (!Number.isFinite(costPrice) || costPrice < 0) {
-      setError("Enter a valid purchase / selling price");
-      return;
-    }
+    const valid = parseForm(
+      productFormSchema,
+      {
+        name: form.name,
+        unit: form.unit,
+        costPrice,
+        sku: form.sku,
+      },
+      { setError },
+    );
+    if (!valid) return;
     mutation.mutate(mode);
   };
 
@@ -453,11 +484,13 @@ export function AddProductForm({
         unitOptions={unitOptions}
         brandOptions={brandOptions}
         categoryOptions={categoryOptions}
+        taxOptions={taxOptions}
         locations={locations}
         error={error}
         isPending={mutation.isPending}
         saveMode={saveMode}
         isEdit={Boolean(editFrom)}
+        priceCatalogOnly={priceCatalogOnly}
         onCancel={onCancel}
         onSubmit={submit}
         imageName={imageName}
@@ -559,28 +592,37 @@ export function AddProductForm({
           ) : null}
         </div>
 
-        <label className="flex items-center gap-2 text-sm text-foreground">
-          <input
-            type="checkbox"
-            checked={form.manageStock}
-            onChange={(e) => setField("manageStock", e.target.checked)}
-          />
-          Manage Stock?
-        </label>
-        <p className="text-xs text-muted">
-          Enable stock management at product level.
-        </p>
-        {form.manageStock ? (
-          <div className="max-w-xs">
-            <Input
-              label="Alert quantity"
-              type="number"
-              min="0"
-              value={form.alertQuantity}
-              onChange={(e) => setField("alertQuantity", e.target.value)}
-            />
-          </div>
-        ) : null}
+        {!priceCatalogOnly ? (
+          <>
+            <label className="flex items-center gap-2 text-sm text-foreground">
+              <input
+                type="checkbox"
+                checked={form.manageStock}
+                onChange={(e) => setField("manageStock", e.target.checked)}
+              />
+              Manage Stock?
+            </label>
+            <p className="text-xs text-muted">
+              Enable stock management at product level.
+            </p>
+            {form.manageStock ? (
+              <div className="max-w-xs">
+                <Input
+                  label="Alert quantity"
+                  type="number"
+                  min="0"
+                  value={form.alertQuantity}
+                  onChange={(e) => setField("alertQuantity", e.target.value)}
+                />
+              </div>
+            ) : null}
+          </>
+        ) : (
+          <p className="text-xs text-muted">
+            Mechanics products are priced services/parts — set quantity when
+            creating a sale.
+          </p>
+        )}
 
         <label className="block text-sm">
           <span className="mb-1 block text-muted">Product Description</span>
@@ -710,7 +752,7 @@ export function AddProductForm({
             label="Applicable Tax"
             value={form.applicableTax}
             onChange={(e) => setField("applicableTax", e.target.value)}
-            options={[{ value: "none", label: "None" }]}
+            options={taxOptions}
           />
           <Select
             label="Selling Price Tax Type *"
@@ -813,17 +855,19 @@ export function AddProductForm({
             Cancel
           </Button>
         ) : null}
-        <Button
-          size="sm"
-          variant="secondary"
-          className="bg-violet-700 text-white hover:bg-violet-800"
-          isLoading={mutation.isPending && saveMode === "saveOpeningStock"}
-          loadingText="Saving…"
-          disabled={mutation.isPending}
-          onClick={() => submit("saveOpeningStock")}
-        >
-          Save & Add Opening Stock
-        </Button>
+        {!priceCatalogOnly ? (
+          <Button
+            size="sm"
+            variant="secondary"
+            className="bg-violet-700 text-white hover:bg-violet-800"
+            isLoading={mutation.isPending && saveMode === "saveOpeningStock"}
+            loadingText="Saving…"
+            disabled={mutation.isPending}
+            onClick={() => submit("saveOpeningStock")}
+          >
+            Save & Add Opening Stock
+          </Button>
+        ) : null}
         <Button
           size="sm"
           variant="secondary"

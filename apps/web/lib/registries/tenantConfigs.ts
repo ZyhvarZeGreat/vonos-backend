@@ -54,7 +54,7 @@ const transactionNavItems = (code: string) => [
 export const vispTenantConfig: TenantConfig = withCatalog({
   tenantId: "tenant_visp_001",
   code: "VISP",
-  name: "Vonos Spare Parts",
+  name: "Vonos Institute Spare Parts",
   archetype: "transaction",
   navItems: transactionNavItems("VISP"),
   kpiCards: [
@@ -70,7 +70,7 @@ export const vispTenantConfig: TenantConfig = withCatalog({
 export const vspTenantConfig: TenantConfig = withCatalog({
   tenantId: "tenant_vsp_001",
   code: "VSP",
-  name: "Vonos Spare Parts",
+  name: "Vonos SP Marketplace",
   archetype: "transaction",
   navItems: transactionNavItems("VSP"),
   kpiCards: [
@@ -108,13 +108,42 @@ export const cafeTenantConfig: TenantConfig = withCatalog({
 export const automotiveTenantConfig: TenantConfig = withCatalog({
   tenantId: "tenant_va_001",
   code: "VA",
-  name: "Vonos Automotive",
+  name: "Vonos Mechanic",
   archetype: "job",
   // Flat fallback only — live sidebar uses posNavSectionsForConfig (HQ6 groups).
   navItems: [
     { label: "Home", icon: "home", route: "/VA/overview", pageType: "dashboard" },
     { label: "Customers", icon: "users", route: "/VA/customers", pageType: "list" },
     ...adminNavTail("VA"),
+  ],
+  kpiCards: [
+    { label: "Open Jobs", icon: "wrench", metricKey: "openJobs", color: "#059669" },
+    { label: "In Shop", icon: "car", metricKey: "inShop", color: "#2563eb" },
+    { label: "Pending QC", icon: "shield-check", metricKey: "pendingQc", color: "#f59e0b" },
+    { label: "Parts Pending", icon: "package", metricKey: "partsPending", color: "#9333ea" },
+    { label: "Revenue", icon: "wallet", metricKey: "revenue", color: "#e11d48" },
+  ],
+  terminology: {
+    job: "Job",
+    vehicle: "Vehicle",
+    customer: "Customer",
+    requisition: "Parts Requisition",
+    sale: "Sale",
+  },
+  enabledModules: [...HQ6_POS_ENABLED_MODULES, "jobs", "vehicles", "requisitions"],
+});
+
+/** Painting is a cloned (jobs-centric) variant of Automotive. */
+export const paintingTenantConfig: TenantConfig = withCatalog({
+  tenantId: "tenant_vp_001",
+  code: "VP",
+  name: "Vonos Painting",
+  archetype: "job",
+  // Flat fallback only — live sidebar uses posNavSectionsForConfig (HQ6 groups).
+  navItems: [
+    { label: "Home", icon: "home", route: "/VP/overview", pageType: "dashboard" },
+    { label: "Customers", icon: "users", route: "/VP/customers", pageType: "list" },
+    ...adminNavTail("VP"),
   ],
   kpiCards: [
     { label: "Open Jobs", icon: "wrench", metricKey: "openJobs", color: "#059669" },
@@ -222,6 +251,7 @@ export const TENANT_CONFIGS: Record<string, TenantConfig> = {
   tenant_vsp_001: vspTenantConfig,
   tenant_vc_001: cafeTenantConfig,
   tenant_va_001: automotiveTenantConfig,
+  tenant_vp_001: paintingTenantConfig,
   tenant_vm_001: mechanicsTenantConfig,
   tenant_vms_001: mechShopTenantConfig,
   tenant_vs_001: saloonTenantConfig,

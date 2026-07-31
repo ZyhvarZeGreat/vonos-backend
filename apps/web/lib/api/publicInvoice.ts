@@ -1,18 +1,19 @@
 import { apiUrl } from "@/lib/api/client";
+import type { SaleDetail, SalePaymentViewRow } from "@vonos/types";
 
-export type PublicInvoicePayment = {
-  id: string;
-  amount: number;
-  currency: string;
-  method: string | null;
-  paymentRefNo: string | null;
-  paidOn: string | null;
-  note: string | null;
-  accountName: string | null;
-};
+export type PublicInvoicePayment = SalePaymentViewRow;
 
 export type PublicInvoice = {
   token: string;
+  businessName: string;
+  businessLocation: string | null;
+  businessLocationAddress: string | null;
+  businessAddress: string | null;
+  businessMobile: string | null;
+  businessEmail: string | null;
+  sale: SaleDetail;
+  payments: PublicInvoicePayment[];
+  /** Legacy flat fields */
   reference: string;
   date: string;
   paymentStatus: string | null;
@@ -21,10 +22,6 @@ export type PublicInvoice = {
   customerName: string;
   customerPhone: string | null;
   customerEmail: string | null;
-  businessName: string;
-  businessLocation: string | null;
-  businessMobile: string | null;
-  businessEmail: string | null;
   lines: Array<{
     sku: string;
     name: string;
@@ -32,14 +29,16 @@ export type PublicInvoice = {
     unitPrice: number;
     lineTotal: number;
   }>;
-  payments: PublicInvoicePayment[];
 };
 
 /** Unauthenticated public invoice fetch (HQ6 share link). */
 export async function getPublicInvoice(token: string): Promise<PublicInvoice> {
-  const response = await fetch(apiUrl(`/public/invoices/${encodeURIComponent(token)}`), {
-    credentials: "omit",
-  });
+  const response = await fetch(
+    apiUrl(`/public/invoices/${encodeURIComponent(token)}`),
+    {
+      credentials: "omit",
+    },
+  );
   if (!response.ok) throw new Error("Invoice not found");
   return response.json();
 }

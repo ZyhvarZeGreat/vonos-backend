@@ -43,9 +43,17 @@ export function RequisitionRecordModal({
 }: RequisitionRecordModalProps) {
   const { tenantId, tenantCode } = useRouteTenant();
   const role = useAuthStore((state) => state.role);
+  const tenantRolePermissions = useAuthStore((s) => s.tenantRolePermissions);
+  const tenantRoleLocked = useAuthStore((s) => s.tenantRoleLocked);
+  const tenantRoleName = useAuthStore((s) => s.tenantRoleName);
   const queryClient = useQueryClient();
-  const canApprove = role ? hasPermission(role, "approveReject") : false;
-  const canCreate = role ? hasPermission(role, "createRecord") : false;
+  const permCtx = {
+    tenantRolePermissions,
+    tenantRoleLocked,
+    tenantRoleName,
+  };
+  const canApprove = role ? hasPermission(role, "approveReject", permCtx) : false;
+  const canCreate = role ? hasPermission(role, "createRecord", permCtx) : false;
 
   const { data: fetched, isLoading, error } = useQuery({
     queryKey: modalKeys.requisition(tenantId, requisitionId),

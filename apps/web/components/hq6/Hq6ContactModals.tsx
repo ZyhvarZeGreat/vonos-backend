@@ -1,5 +1,7 @@
 "use client";
 
+import { paymentAmountSchema } from "@/lib/validation/schemas";
+import { parseForm } from "@/lib/validation/parseForm";
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { Customer } from "@vonos/types";
@@ -21,6 +23,13 @@ import {
   modalKeys,
 } from "@/lib/query/modalQueryKeys";
 import { formatHq6Currency, formatHq6DateTime } from "@/lib/utils/hq6Format";
+import {
+  firstValidationError,
+  sanitizePersonNameInput,
+  validateEmail,
+  validatePersonName,
+  validatePhone,
+} from "@/lib/utils/formValidation";
 import { toast } from "@/stores/toastStore";
 
 const PAYMENT_METHODS = [
@@ -148,16 +157,28 @@ export function Hq6ContactEditModal({
       contactKind === "business"
         ? businessName.trim() || personName
         : personName;
-    if (!name) {
-      toast.error(
-        contactKind === "business"
+    const validationError = firstValidationError(
+      contactKind === "individual"
+        ? validatePersonName(firstName, "First name")
+        : null,
+      validatePersonName(prefix, "Prefix", { required: false }),
+      validatePersonName(middleName, "Middle name", { required: false }),
+      validatePersonName(lastName, "Last name", { required: false }),
+      !name
+        ? contactKind === "business"
           ? "Business Name is required"
-          : "First Name is required",
-      );
-      return;
-    }
-    if (!mobile.trim()) {
-      toast.error("Mobile is required");
+          : "First Name is required"
+        : null,
+      validatePhone(mobile, { required: true, label: "Mobile" }),
+      validatePhone(alternateNumber, {
+        required: false,
+        label: "Alternate number",
+      }),
+      validatePhone(landline, { required: false, label: "Landline" }),
+      validateEmail(email, { required: false }),
+    );
+    if (validationError) {
+      toast.error(validationError);
       return;
     }
     const balance = Number(openingBalance);
@@ -202,13 +223,13 @@ export function Hq6ContactEditModal({
       }
     >
       <div className="space-y-4">
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className="grid gap-3 sm:grid-cols-2 sm:items-center">
           <Hq6Field label="Contact type" required>
             <select className="hq6-modal-input" value="customer" disabled>
               <option value="customer">Customers</option>
             </select>
           </Hq6Field>
-          <div className="flex items-end gap-6 pb-1 text-sm text-[#111827]">
+          <div className="flex items-center justify-center gap-6 self-center text-sm text-[#111827]">
             <label className="inline-flex items-center gap-2">
               <input
                 type="radio"
@@ -276,28 +297,36 @@ export function Hq6ContactEditModal({
             <input
               className="hq6-modal-input"
               value={prefix}
-              onChange={(e) => setPrefix(e.target.value)}
+              onChange={(e) =>
+                setPrefix(sanitizePersonNameInput(e.target.value))
+              }
             />
           </Hq6Field>
           <Hq6Field label="First Name" required>
             <input
               className="hq6-modal-input"
               value={firstName}
-              onChange={(e) => setFirstName(e.target.value)}
+              onChange={(e) =>
+                setFirstName(sanitizePersonNameInput(e.target.value))
+              }
             />
           </Hq6Field>
           <Hq6Field label="Middle name">
             <input
               className="hq6-modal-input"
               value={middleName}
-              onChange={(e) => setMiddleName(e.target.value)}
+              onChange={(e) =>
+                setMiddleName(sanitizePersonNameInput(e.target.value))
+              }
             />
           </Hq6Field>
           <Hq6Field label="Last Name">
             <input
               className="hq6-modal-input"
               value={lastName}
-              onChange={(e) => setLastName(e.target.value)}
+              onChange={(e) =>
+                setLastName(sanitizePersonNameInput(e.target.value))
+              }
             />
           </Hq6Field>
         </div>
@@ -474,11 +503,9 @@ export function Hq6PayContactModal({
 
   const handleSave = async () => {
     if (!tenantId || !customer) return;
-    const value = Number(amount);
-    if (!Number.isFinite(value) || value <= 0) {
-      toast.error("Enter a payment amount greater than zero");
-      return;
-    }
+    const valid = parseForm(paymentAmountSchema, { amount });
+    if (!valid) return;
+    const value = Number(valid.amount);
     setSaving(true);
     try {
       const result = await payCustomerDue(tenantId, customer.id, {

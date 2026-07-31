@@ -40,6 +40,7 @@ import {
   refreshSupplierPurchaseRollups,
   supplierActivityStatus,
 } from '../../common/utils/supplierRollups';
+import { recordPaymentAccountTxn } from '../../common/utils/recordPaymentAccountTxn';
 
 export interface SupplierKpiSummary {
   totalSuppliers: number;
@@ -60,6 +61,12 @@ function serializeSupplier(row: {
   locationCode: string | null;
   notes: string | null;
   taxNumber?: string | null;
+  accountHolderName?: string | null;
+  bankName?: string | null;
+  bankBranch?: string | null;
+  bankCode?: string | null;
+  bankAccountNo?: string | null;
+  taxPayerId?: string | null;
   status?: string | null;
   openingBalance?: { toString(): string } | number | null;
   assignedToUserId?: string | null;
@@ -80,6 +87,12 @@ function serializeSupplier(row: {
     locationCode: row.locationCode,
     notes: row.notes,
     taxNumber: row.taxNumber?.trim() || null,
+    accountHolderName: row.accountHolderName?.trim() || null,
+    bankName: row.bankName?.trim() || null,
+    bankBranch: row.bankBranch?.trim() || null,
+    bankCode: row.bankCode?.trim() || null,
+    bankAccountNo: row.bankAccountNo?.trim() || null,
+    taxPayerId: row.taxPayerId?.trim() || null,
     openingBalance: toNumber(row.openingBalance ?? 0),
     assignedToUserId: row.assignedToUserId ?? null,
     assignedToName: row.assignedToUser?.name ?? null,
@@ -296,6 +309,12 @@ export class SuppliersService {
     taxNumber?: string | null;
     openingBalance?: number;
     assignedToUserId?: string;
+    accountHolderName?: string | null;
+    bankName?: string | null;
+    bankBranch?: string | null;
+    bankCode?: string | null;
+    bankAccountNo?: string | null;
+    taxPayerId?: string | null;
   }): Promise<SupplierListRow> {
     const tenantId = this.tenantDb.requireTenantId();
     const createdBy = await this.auditService.createdByFields();
@@ -315,6 +334,12 @@ export class SuppliersService {
         taxNumber: body.taxNumber?.trim() || null,
         openingBalance: body.openingBalance ?? 0,
         assignedToUserId: body.assignedToUserId ?? null,
+        accountHolderName: body.accountHolderName?.trim() || null,
+        bankName: body.bankName?.trim() || null,
+        bankBranch: body.bankBranch?.trim() || null,
+        bankCode: body.bankCode?.trim() || null,
+        bankAccountNo: body.bankAccountNo?.trim() || null,
+        taxPayerId: body.taxPayerId?.trim() || null,
         ...createdBy,
       },
       include: { assignedToUser: { select: { name: true } } },
@@ -342,6 +367,12 @@ export class SuppliersService {
       openingBalance: number;
       assignedToUserId: string;
       status: 'active' | 'inactive';
+      accountHolderName: string | null;
+      bankName: string | null;
+      bankBranch: string | null;
+      bankCode: string | null;
+      bankAccountNo: string | null;
+      taxPayerId: string | null;
     }>,
   ): Promise<SupplierListRow> {
     const tenantId = this.tenantDb.requireTenantId();
@@ -356,6 +387,24 @@ export class SuppliersService {
         ...body,
         ...(body.taxNumber !== undefined
           ? { taxNumber: body.taxNumber?.trim() || null }
+          : {}),
+        ...(body.accountHolderName !== undefined
+          ? { accountHolderName: body.accountHolderName?.trim() || null }
+          : {}),
+        ...(body.bankName !== undefined
+          ? { bankName: body.bankName?.trim() || null }
+          : {}),
+        ...(body.bankBranch !== undefined
+          ? { bankBranch: body.bankBranch?.trim() || null }
+          : {}),
+        ...(body.bankCode !== undefined
+          ? { bankCode: body.bankCode?.trim() || null }
+          : {}),
+        ...(body.bankAccountNo !== undefined
+          ? { bankAccountNo: body.bankAccountNo?.trim() || null }
+          : {}),
+        ...(body.taxPayerId !== undefined
+          ? { taxPayerId: body.taxPayerId?.trim() || null }
           : {}),
       },
       include: { assignedToUser: { select: { name: true } } },
@@ -547,6 +596,24 @@ export class SuppliersService {
             createdByName: createdBy.createdByName ?? null,
           },
         });
+
+        if (dto.accountId?.trim()) {
+          await recordPaymentAccountTxn(tx, {
+            tenantId,
+            accountId: dto.accountId.trim(),
+            type: 'debit',
+            subType: 'purchase_payment',
+            amount: apply,
+            operationDate: paidOn,
+            refNo: movement.reference,
+            note:
+              dto.note?.trim() ||
+              `Supplier payment — ${supplier.name} (${movement.reference})`,
+            paymentMethod: method,
+            paymentId: payment.id,
+            createdByName: createdBy.createdByName ?? null,
+          });
+        }
 
         await tx.ledgerEntry.create({
           data: {

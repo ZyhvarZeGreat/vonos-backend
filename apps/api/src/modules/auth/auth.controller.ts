@@ -18,6 +18,7 @@ import { REFRESH_COOKIE_NAME } from './auth.constants';
 import { AuthService, type SessionResult } from './auth.service';
 
 interface LoginDto {
+  /** Email address or username. */
   email: string;
   password: string;
 }
@@ -164,18 +165,43 @@ export class AuthController {
     return this.authService.disableTwoFactor(user.sub, body.code);
   }
 
-  private setRefreshCookie(res: Response, token: string): void {
-    const secure = process.env.NODE_ENV === 'production';
-    res.cookie(REFRESH_COOKIE_NAME, token, {
+  /**
+   * Cross-origin (Vercel web → Railway API) needs SameSite=None + Secure so
+   * credentialed POSTs to /auth/refresh include the cookie. Same-site local
+   * (localhost:3000 → :3001 can still be treated cross-site by port; we detect
+   * explicitly via COOKIE_SAMESITE or fall back to production = none).
+   */
+  private refreshCookieBase() {
+    const sameSiteEnv = process.env.COOKIE_SAMESITE?.toLowerCase();
+    const crossOrigin =
+      sameSiteEnv === 'none' ||
+      (sameSiteEnv !== 'lax' && process.env.NODE_ENV === 'production');
+    return {
       httpOnly: true,
-      secure,
-      sameSite: 'lax',
-      path: '/auth',
+      secure: crossOrigin || process.env.NODE_ENV === 'production',
+      sameSite: (crossOrigin ? 'none' : 'lax') as 'none' | 'lax',
+      path: '/',
+    };
+  }
+
+  private setRefreshCookie(res: Response, token: string): void {
+    res.cookie(REFRESH_COOKIE_NAME, token, {
+      ...this.refreshCookieBase(),
+      // Root path so /auth/refresh always receives the cookie (and any
+      // future auth routes under a global prefix still work).
       maxAge: 7 * 24 * 60 * 60 * 1000,
     });
   }
 
   private clearRefreshCookie(res: Response): void {
+    const base = this.refreshCookieBase();
+    res.clearCookie(REFRESH_COOKIE_NAME, base);
+    // Also clear legacy path-scoped / SameSite=Lax cookies from earlier deploys.
     res.clearCookie(REFRESH_COOKIE_NAME, { path: '/auth' });
+    res.clearCookie(REFRESH_COOKIE_NAME, {
+      path: '/',
+      sameSite: 'lax',
+      secure: process.env.NODE_ENV === 'production',
+    });
   }
 }

@@ -26,9 +26,18 @@ export function LocationsView() {
 function DefaultLocationsView() {
   const { tenantId, tenantCode, tenantName, config } = useRouteTenant();
   const authRole = useAuthStore((state) => state.role);
+  const tenantRolePermissions = useAuthStore((s) => s.tenantRolePermissions);
+  const tenantRoleLocked = useAuthStore((s) => s.tenantRoleLocked);
+  const tenantRoleName = useAuthStore((s) => s.tenantRoleName);
   const setTenantConfig = useTenantStore((state) => state.setTenantConfig);
+  const permCtx = {
+    tenantRolePermissions,
+    tenantRoleLocked,
+    tenantRoleName,
+  };
   const canEdit = authRole
-    ? hasPermission(authRole, "editSettings") || hasPermission(authRole, "createRecord")
+    ? hasPermission(authRole, "editSettings", permCtx) ||
+      hasPermission(authRole, "createRecord", permCtx)
     : false;
 
   const [branches, setBranches] = useState<BusinessLocation[]>(

@@ -7,15 +7,21 @@ import { useServerListPage, withListSort, hq6ListPaginationProps } from "@/lib/h
 import { HQ6_TABLE_PAGE_SIZE } from "@/lib/api/fetchAllPages";
 import { getCatalogPage, getCatalogListSummary } from "@/lib/api/catalog";
 import { deleteItem as deleteItemApi, getAllItems } from "@/lib/api/items";
-import { getCatalogMeta } from "@/lib/api/catalogMeta";
+import { getAllCatalogMeta } from "@/lib/api/catalogMeta";
 import { useListExport } from "@/lib/hooks/useListExport";
-import type { Brand, Item, ProductUnit, StockStatus } from "@vonos/types";
+import type { Brand, Item, ProductCategory, ProductUnit, StockStatus } from "@vonos/types";
+import {
+  BUSINESS_LOCATION_PRESETS,
+  PRODUCT_STOCK_BUSINESS_LOCATIONS,
+} from "@vonos/types";
 import { formatCurrency } from "@/lib/utils/formatCurrency";
 import { useRecordNavigation } from "@/lib/hooks/useRecordNavigation";
 import { useRouteTenant, useTenantId } from "@/lib/hooks/useRouteTenant";
 import { useListPageFilters } from "@/lib/hooks/useListPageFilters";
+import { useHq6Permissions } from "@/lib/hooks/useHq6Permissions";
 import { ItemLocationCell } from "@/components/molecules/ItemLocationCell";
-import { locationFilterOptions } from "@/lib/utils/locationLabels";
+import { ProductThumbnail } from "@/components/atoms/ProductThumbnail";
+import { productStockLocationFilterOptions } from "@/lib/utils/locationLabels";
 import { toast } from "@/stores/toastStore";
 import { cn } from "@/lib/utils/cn";
 import { compositeListCursorFrom } from "@/lib/utils/pagination";
@@ -38,6 +44,47 @@ import {
 import { useHq6ListChrome } from "@/components/hq6/Hq6StandardListShell";
 import { prefetchCatalogDetail } from "@/lib/query/prefetchListDetails";
 import { hq6CopyForSlug } from "@/lib/registries/hq6PageCopy";
+
+const TAX_RATES_STORAGE_PREFIX = "vonos:hq6-tax-rates:";
+const DEFAULT_TAX_FILTER_OPTIONS = [
+  { value: "vat", label: "VAT (7.5%)" },
+  { value: "wht-vat", label: "WHT/VAT (15.5%)" },
+];
+
+function taxFilterOptionsForTenant(tenantId: string | null): {
+  value: string;
+  label: string;
+}[] {
+  if (!tenantId || typeof window === "undefined") {
+    return DEFAULT_TAX_FILTER_OPTIONS;
+  }
+  try {
+    const raw = window.localStorage.getItem(
+      `${TAX_RATES_STORAGE_PREFIX}${tenantId}`,
+    );
+    if (!raw) return DEFAULT_TAX_FILTER_OPTIONS;
+    const parsed = JSON.parse(raw) as Array<{
+      id?: string;
+      name?: string;
+      rate?: number;
+      forTaxGroupOnly?: boolean;
+    }>;
+    if (!Array.isArray(parsed) || parsed.length === 0) {
+      return DEFAULT_TAX_FILTER_OPTIONS;
+    }
+    return parsed
+      .filter((row) => row.id && row.name && !row.forTaxGroupOnly)
+      .map((row) => ({
+        value: String(row.id),
+        label:
+          typeof row.rate === "number"
+            ? `${row.name} (${row.rate}%)`
+            : String(row.name),
+      }));
+  } catch {
+    return DEFAULT_TAX_FILTER_OPTIONS;
+  }
+}
 
 const PRODUCT_COLUMNS = [
   { key: "image", label: "Product image", always: true },
@@ -69,9 +116,11 @@ export function Hq6ProductsListView({
   const { goToDetail, prefetchDetail } = useRecordNavigation(listSlug);
   const tenantId = useTenantId();
   const { config, tenantCode } = useRouteTenant();
+  const priceCatalogOnly = config?.archetype === "job";
   const router = useRouter();
   const queryClient = useQueryClient();
   const exportList = useListExport();
+  const { requireCan } = useHq6Permissions();
   const { search, setSearch } = useListPageFilters();
   const copy = hq6CopyForSlug(listSlug === "menu-items" ? "catalog" : listSlug);
   const [listTab, setListTab] = useState<"products" | "stock-report">("products");
@@ -81,6 +130,7 @@ export function Hq6ProductsListView({
   const [typeFilter, setTypeFilter] = useState("");
   const [unitFilter, setUnitFilter] = useState("");
   const [brandFilter, setBrandFilter] = useState("");
+  const [taxFilter, setTaxFilter] = useState("");
   const [notForSelling, setNotForSelling] = useState(false);
   const [localSearch, setLocalSearch] = useState(search);
   const [viewItem, setViewItem] = useState<Item | null>(null);
@@ -95,6 +145,27 @@ export function Hq6ProductsListView({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const chrome = useHq6ListChrome("products");
   const [filtersOpen, setFiltersOpen] = useState(true);
+
+  // Moves: product homes (VW/VISP/VSP) + VA/VP as move destinations only.
+  // `Hq6MoveProductModal` already blocks negative stock via `qty > available at source`.
+  const moveLocations = useMemo(() => {
+    const presets = [
+      ...PRODUCT_STOCK_BUSINESS_LOCATIONS,
+      ...(BUSINESS_LOCATION_PRESETS.VA ?? []),
+      ...(BUSINESS_LOCATION_PRESETS.VP ?? []),
+    ];
+
+    const map = new Map<string, string>();
+    for (const loc of presets) {
+      if (!loc.code || loc.code === "ALL") continue;
+      map.set(loc.code, loc.name);
+    }
+
+    return Array.from(map.entries()).map(([code, name]) => ({
+      code,
+      name,
+    }));
+  }, []);
 
   const apiFilters = useMemo(() => {
     const next: {
@@ -177,31 +248,56 @@ export function Hq6ProductsListView({
     },
   });
 
-  const categoryOptions = useMemo(
-    () => (config?.itemCategories ?? []).map((c) => ({ value: c, label: c })),
-    [config?.itemCategories],
+  const locationOptions = useMemo(
+    () => productStockLocationFilterOptions(),
+    [],
   );
-  const locationOptions = useMemo(() => locationFilterOptions(config), [config]);
+  const productLocations = PRODUCT_STOCK_BUSINESS_LOCATIONS;
 
+  const categoriesQuery = useQuery({
+    queryKey: ["catalog-meta", "categories", tenantId, "product-filter-all"],
+    queryFn: () =>
+      getAllCatalogMeta(tenantId!, "categories") as Promise<ProductCategory[]>,
+    enabled: Boolean(tenantId),
+    staleTime: 5 * 60_000,
+  });
   const brandsQuery = useQuery({
-    queryKey: ["catalog-meta", "brands", tenantId, "product-filter"],
-    queryFn: () => getCatalogMeta(tenantId!, "brands") as Promise<Brand[]>,
+    queryKey: ["catalog-meta", "brands", tenantId, "product-filter-all"],
+    queryFn: () =>
+      getAllCatalogMeta(tenantId!, "brands") as Promise<Brand[]>,
     enabled: Boolean(tenantId),
     staleTime: 5 * 60_000,
   });
   const unitsQuery = useQuery({
-    queryKey: ["catalog-meta", "units", tenantId, "product-filter"],
-    queryFn: () => getCatalogMeta(tenantId!, "units") as Promise<ProductUnit[]>,
+    queryKey: ["catalog-meta", "units", tenantId, "product-filter-all"],
+    queryFn: () =>
+      getAllCatalogMeta(tenantId!, "units") as Promise<ProductUnit[]>,
     enabled: Boolean(tenantId),
     staleTime: 5 * 60_000,
   });
 
+  const categoryOptions = useMemo(() => {
+    const names = new Set<string>();
+    for (const row of categoriesQuery.data ?? []) {
+      const name = row.name?.trim();
+      if (name) names.add(name);
+    }
+    for (const name of config?.itemCategories ?? []) {
+      const trimmed = name.trim();
+      if (trimmed) names.add(trimmed);
+    }
+    return [...names]
+      .sort((a, b) => a.localeCompare(b))
+      .map((name) => ({ value: name, label: name }));
+  }, [categoriesQuery.data, config?.itemCategories]);
+
   const brandOptions = useMemo(
     () =>
-      (brandsQuery.data ?? []).map((b) => ({
-        value: b.name,
-        label: b.name,
-      })),
+      (brandsQuery.data ?? [])
+        .map((b) => b.name?.trim())
+        .filter((name): name is string => Boolean(name))
+        .sort((a, b) => a.localeCompare(b))
+        .map((name) => ({ value: name, label: name })),
     [brandsQuery.data],
   );
   const unitOptions = useMemo(
@@ -211,6 +307,10 @@ export function Hq6ProductsListView({
         label: u.shortName ? `${u.name} (${u.shortName})` : u.name,
       })),
     [unitsQuery.data],
+  );
+  const taxOptions = useMemo(
+    () => taxFilterOptionsForTenant(tenantId ?? null),
+    [tenantId],
   );
 
   const visibleItems = useMemo(() => {
@@ -240,7 +340,9 @@ export function Hq6ProductsListView({
             { key: "name", header: "Product" },
             { key: "category", header: "Category" },
             { key: "brand", header: "Brand" },
-            { key: "quantity", header: "Current Stock" },
+            ...(priceCatalogOnly
+              ? []
+              : [{ key: "quantity", header: "Current Stock" }]),
             { key: "costPrice", header: "Unit Purchase Price" },
             { key: "sellPrice", header: "Selling Price" },
           ],
@@ -249,7 +351,7 @@ export function Hq6ProductsListView({
             name: row.name,
             category: row.category ?? "",
             brand: row.brandName ?? "",
-            quantity: row.quantity,
+            ...(priceCatalogOnly ? {} : { quantity: row.quantity }),
             costPrice: row.costPrice,
             sellPrice: row.sellPrice ?? row.costPrice,
           })),
@@ -257,26 +359,31 @@ export function Hq6ProductsListView({
         );
       })();
     },
-    [apiFilters, exportList, tenantId],
+    [apiFilters, exportList, priceCatalogOnly, tenantId],
   );
 
   const columnOptions = useMemo(
     () =>
-      PRODUCT_COLUMNS.filter((c) => !("always" in c && c.always)).map((c) => ({
+      PRODUCT_COLUMNS.filter((c) => {
+        if ("always" in c && c.always) return false;
+        if (priceCatalogOnly && c.key === "quantity") return false;
+        return true;
+      }).map((c) => ({
         key: c.key,
         label: c.label,
       })),
-    [],
+    [priceCatalogOnly],
   );
 
   const isColVisible = useCallback(
     (key: ProductColKey) => {
+      if (priceCatalogOnly && key === "quantity") return false;
       const def = PRODUCT_COLUMNS.find((c) => c.key === key);
       if (def && "always" in def && def.always) return true;
       if (!chrome.visibleColumnKeys) return true;
       return chrome.visibleColumnKeys.includes(key);
     },
-    [chrome.visibleColumnKeys],
+    [chrome.visibleColumnKeys, priceCatalogOnly],
   );
 
   const allSelected =
@@ -423,9 +530,15 @@ export function Hq6ProductsListView({
                         className="form-control select2"
                         style={{ width: "100%" }}
                         id="product_list_filter_tax_id"
-                        defaultValue=""
+                        value={taxFilter}
+                        onChange={(e) => setTaxFilter(e.target.value)}
                       >
                         <option value="">All</option>
+                        {taxOptions.map((o) => (
+                          <option key={o.value} value={o.value}>
+                            {o.label}
+                          </option>
+                        ))}
                       </select>
                     </div>
                   </div>
@@ -518,13 +631,17 @@ export function Hq6ProductsListView({
                   active: listTab === "products",
                   onClick: () => setListTab("products"),
                 },
-                {
-                  id: "product_stock_report",
-                  label: "Stock Report",
-                  iconClass: "fa fa-hourglass-half",
-                  active: listTab === "stock-report",
-                  onClick: () => setListTab("stock-report"),
-                },
+                ...(!priceCatalogOnly
+                  ? [
+                      {
+                        id: "product_stock_report",
+                        label: "Stock Report",
+                        iconClass: "fa fa-hourglass-half",
+                        active: listTab === "stock-report",
+                        onClick: () => setListTab("stock-report" as const),
+                      },
+                    ]
+                  : []),
               ]}
             >
               {listTab === "products" ? (
@@ -534,6 +651,7 @@ export function Hq6ProductsListView({
                       label="Add"
                       icon="plus"
                       onClick={() => {
+                        if (!requireCan("product.create")) return;
                         if (!tenantCode) return;
                         router.push(`/${tenantCode}/add-product`);
                       }}
@@ -541,7 +659,10 @@ export function Hq6ProductsListView({
                     <UposGradientActionButton
                       label="Download Excel"
                       icon="download"
-                      onClick={() => handleExport("excel")}
+                      onClick={() => {
+                        if (!requireCan("view_export_buttons")) return;
+                        handleExport("excel");
+                      }}
                     />
                   </UposTabPaneActions>
 
@@ -578,7 +699,10 @@ export function Hq6ProductsListView({
                           className="tw-dw-btn tw-dw-btn-outline tw-dw-btn-xs tw-dw-btn-error"
                           id="delete-selected"
                           disabled={selectedIds.size === 0}
-                          onClick={() => setBulkDeleteIds([...selectedIds])}
+                          onClick={() => {
+                            if (!requireCan("product.delete")) return;
+                            setBulkDeleteIds([...selectedIds]);
+                          }}
                         >
                           Delete Selected
                         </button>
@@ -799,11 +923,9 @@ export function Hq6ProductsListView({
                                       }}
                                     />
                                     &nbsp;&nbsp;
-                                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                                    <img
-                                      src="/img/default.png"
-                                      alt="Product image"
-                                      className="product-thumbnail-small"
+                                    <ProductThumbnail
+                                      src={row.imageUrl}
+                                      alt={row.name}
                                     />
                                   </div>
                                 </td>
@@ -829,40 +951,62 @@ export function Hq6ProductsListView({
                                         {
                                           id: "edit",
                                           label: "Edit",
-                                          onClick: () =>
+                                          onClick: () => {
+                                            if (!requireCan("product.update"))
+                                              return;
                                             router.push(
                                               `/${tenantCode}/add-product?edit=${row.id}`,
-                                            ),
+                                            );
+                                          },
                                         },
                                         {
                                           id: "delete",
                                           label: "Delete",
-                                          danger: true,
-                                          onClick: () => setDeleteItem(row),
+                                          danger: true as const,
+                                          onClick: () => {
+                                            if (!requireCan("product.delete"))
+                                              return;
+                                            setDeleteItem(row);
+                                          },
                                         },
-                                        {
-                                          id: "opening_stock",
-                                          label: "Add or edit opening stock",
-                                          dividerBefore: true,
-                                          onClick: () => setStockItem(row),
-                                        },
-                                        {
-                                          id: "move_product",
-                                          label: "Move product",
-                                          onClick: () => setMoveItem(row),
-                                        },
-                                        {
-                                          id: "stock_history",
-                                          label: "Product stock history",
-                                          onClick: () =>
-                                            router.push(
-                                              `/${tenantCode}/${listSlug}/${row.id}?view=stock_history`,
-                                            ),
-                                        },
+                                        ...(!priceCatalogOnly
+                                          ? [
+                                              {
+                                                id: "opening_stock",
+                                                label:
+                                                  "Add or edit opening stock",
+                                                dividerBefore: true as const,
+                                                onClick: () => {
+                                                  if (
+                                                    !requireCan(
+                                                      "product.opening_stock",
+                                                    )
+                                                  )
+                                                    return;
+                                                  setStockItem(row);
+                                                },
+                                              },
+                                              {
+                                                id: "move_product",
+                                                label: "Move product",
+                                                onClick: () => setMoveItem(row),
+                                              },
+                                              {
+                                                id: "stock_history",
+                                                label: "Product stock history",
+                                                onClick: () =>
+                                                  router.push(
+                                                    `/${tenantCode}/${listSlug}/${row.id}?view=stock_history`,
+                                                  ),
+                                              },
+                                            ]
+                                          : []),
                                         {
                                           id: "duplicate",
                                           label: "Duplicate Product",
                                           onClick: () => {
+                                            if (!requireCan("product.create"))
+                                              return;
                                             if (!tenantCode) return;
                                             router.push(
                                               `/${tenantCode}/add-product?d=${row.id}`,
@@ -880,7 +1024,7 @@ export function Hq6ProductsListView({
                                     href={`/${tenantCode}/${listSlug}/${row.id}`}
                                     onClick={(e) => {
                                       e.preventDefault();
-                                      goToDetail(row.id);
+                                      setViewItem(row);
                                     }}
                                   >
                                     {row.name}
@@ -891,7 +1035,8 @@ export function Hq6ProductsListView({
                                 <td>
                                   <ItemLocationCell
                                     item={row}
-                                    locations={config?.businessLocations}
+                                    locations={productLocations}
+                                    productStockMode
                                   />
                                 </td>
                               ) : null}
@@ -971,10 +1116,7 @@ export function Hq6ProductsListView({
         onClose={() => setMoveItem(null)}
         tenantId={tenantId}
         item={moveItem}
-        locations={(config?.businessLocations ?? []).map((loc) => ({
-          code: loc.code,
-          name: loc.name,
-        }))}
+        locations={moveLocations}
         onSaved={() => {
           void queryClient.invalidateQueries({ queryKey: ["catalog"] });
         }}

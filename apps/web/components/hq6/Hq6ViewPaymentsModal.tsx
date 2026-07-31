@@ -1,5 +1,7 @@
 "use client";
 
+import { paymentAmountSchema } from "@/lib/validation/schemas";
+import { parseForm } from "@/lib/validation/parseForm";
 import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Eye, Mail, Pencil, Printer, Trash2 } from "lucide-react";
@@ -140,10 +142,13 @@ export function Hq6ViewPaymentsModal({
     mutationFn: async () => {
       if (!tenantId || !recordId || !editing) throw new Error("Missing payment");
       if (kind !== "sale") throw new Error("Purchase payment edit is not available yet");
-      const amount = Number(editAmount);
-      if (!Number.isFinite(amount) || amount <= 0) {
-        throw new Error("Enter a valid amount");
-      }
+      const valid = parseForm(
+        paymentAmountSchema,
+        { amount: editAmount },
+        { toast: false },
+      );
+      if (!valid) throw new Error("Enter a valid amount");
+      const amount = Number(valid.amount);
       return updateSalePayment(tenantId, recordId, editing.id, {
         amount,
         method: editMethod,

@@ -8,21 +8,44 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter, useSearchParams } from "next/navigation";
 import type { User } from "@vonos/types";
 import { EmptyState } from "@/components/atoms/EmptyState";
+import { PasswordField } from "@/components/atoms/PasswordField";
+import { TagCombobox } from "@/components/molecules/TagCombobox";
 import { Hq6ConfirmModal } from "@/components/hq6/Hq6ConfirmModal";
 import { createUser, deactivateUser, getUser, inviteUser, updateUser } from "@/lib/api/users";
 import {
   createDesignation,
   createEmployee,
+  createPayroll,
   getDesignations,
 } from "@/lib/api/hrm";
 import { useRecordNavigation } from "@/lib/hooks/useRecordNavigation";
 import { useTenantId, useRouteTenant } from "@/lib/hooks/useRouteTenant";
-import { BUSINESS_LOCATION_PRESETS } from "@vonos/types";
+import { mapTenantRoleToJwtRole } from "@vonos/types";
+import { getTenantRoles } from "@/lib/api/tenantRoles";
 import { DETAIL_RECORD_STALE_MS } from "@/lib/query/prefetchListDetails";
 import { cn } from "@/lib/utils/cn";
+import {
+  firstValidationError,
+  sanitizePersonNameInput,
+  validateEmail,
+  validatePassword,
+  validatePasswordConfirm,
+  validatePersonName,
+  validateUsername,
+} from "@/lib/utils/formValidation";
 import { toast } from "@/stores/toastStore";
+import { withWriteProgress } from "@/stores/mutationBusyStore";
 
-function formatRole(role: User["role"]): string {
+/** Autos work locations only — short entity codes (not Cafe / Kids Wear / etc.). */
+const WORK_LOCATION_OPTIONS = [
+  { value: "VW", label: "Vonos Warehouse" },
+  { value: "VM", label: "Vonos Mechanic" },
+  { value: "VP", label: "Vonos Painting" },
+  { value: "VISP", label: "Vonos Institute Spare Parts" },
+  { value: "VSP", label: "Vonos Spare Parts" },
+] as const;
+
+function formatJwtRole(role: User["role"]): string {
   return role
     .split("_")
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
@@ -49,6 +72,77 @@ function avatarUrl(name: string): string {
   return `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=e5e7eb&color=374151`;
 }
 
+async function linkUserToPayroll(args: {
+  tenantId: string;
+  userId: string;
+  name: string;
+  designationName: string;
+  locationCodes: string[];
+  basicSalary: string;
+  salaryPeriod: string;
+}): Promise<void> {
+  const {
+    tenantId,
+    userId,
+    name,
+    designationName,
+    locationCodes,
+    basicSalary,
+    salaryPeriod,
+  } = args;
+
+  const designations = await getDesignations(tenantId);
+  const desired = designationName.trim();
+  let designationId =
+    desired.length > 0
+      ? designations.find(
+          (d) => d.name.trim().toLowerCase() === desired.toLowerCase(),
+        )?.id
+      : undefined;
+
+  if (!designationId) {
+    const fallbackId = designations[0]?.id;
+    if (fallbackId) {
+      designationId = fallbackId;
+    } else {
+      const createdDes = await createDesignation(tenantId, {
+        name: desired || "Staff",
+      });
+      designationId = createdDes.id;
+    }
+  }
+
+  const employee = await createEmployee(tenantId, {
+    name,
+    userId,
+    designationId,
+    locationCodes,
+    locationCode: locationCodes[0],
+    isServiceStaff: false,
+  });
+
+  const basic = Number.parseFloat(basicSalary);
+  const base = Number.isFinite(basic) ? basic : 0;
+  const grossPay =
+    salaryPeriod === "week"
+      ? base * 4
+      : salaryPeriod === "day"
+        ? base * 30
+        : base;
+
+  const now = new Date();
+  const payrollMonth = new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1),
+  );
+  const payrollMonthIso = payrollMonth.toISOString().slice(0, 10);
+
+  await createPayroll(tenantId, {
+    employeeRecordId: employee.id,
+    grossPay,
+    payrollMonth: payrollMonthIso,
+  });
+}
+
 /**
  * `/users/:id` (view) · `/users/:id/edit` · `/users/new/edit` (create)
  */
@@ -66,25 +160,22 @@ export function Hq6UserDetailView({
   const { config } = useRouteTenant();
   const { listPath, detailPath } = useRecordNavigation("users");
 
-  const payrollLocations = useMemo(() => {
-    const fromConfig = config?.businessLocations ?? [];
-    const vag = BUSINESS_LOCATION_PRESETS.VAG ?? [];
-    const codes = new Set(fromConfig.map((l) => l.code));
-    const merged = [...fromConfig];
-    for (const loc of vag) {
-      if (!codes.has(loc.code)) merged.push(loc);
-    }
-    if (!merged.some((l) => l.code === "ALL")) {
-      merged.unshift({ code: "ALL", name: "All Locations" });
-    }
-    if (!merged.some((l) => l.code === "VISP")) {
-      merged.push({
-        code: "VISP",
-        name: "Vonos Institute Spare Parts",
-      });
-    }
-    return merged;
-  }, [config?.businessLocations]);
+  const { data: hq6Roles = [] } = useQuery({
+    queryKey: ["tenant-roles", tenantId],
+    queryFn: () => getTenantRoles(tenantId!),
+    enabled: Boolean(tenantId),
+  });
+
+  const defaultLocationCodes = useMemo(() => {
+    const code = config?.code?.trim();
+    if (!code) return [] as string[];
+    // Map current tenant → work-location code used in the combobox.
+    const mapped = code === "VA" || code === "VMS" ? "VM" : code;
+    const allowed = new Set(
+      WORK_LOCATION_OPTIONS.map((o) => o.value as string),
+    );
+    return allowed.has(mapped) ? [mapped] : ([] as string[]);
+  }, [config?.code]);
   const isCreate = recordId === "new" || recordId === "create";
   const isEdit = mode === "edit" || isCreate;
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -105,6 +196,12 @@ export function Hq6UserDetailView({
   });
 
   const initial = useMemo(() => {
+    const defaultHq6RoleId =
+      hq6Roles.find((r) => r.name.toUpperCase() === "MANAGER")?.id ??
+      hq6Roles.find((r) => !r.locked)?.id ??
+      hq6Roles[0]?.id ??
+      "";
+
     if (isCreate || !user) {
       return {
         surname: "",
@@ -112,7 +209,7 @@ export function Hq6UserDetailView({
         lastName: "",
         email: "",
         username: "",
-        role: "staff" as User["role"],
+        hq6RoleId: defaultHq6RoleId,
         isActive: true,
         allowLogin: true,
         password: "",
@@ -139,7 +236,7 @@ export function Hq6UserDetailView({
         taxPayerId: "",
         department: "",
         designation: "",
-        primaryLocation: "",
+        locationCodes: defaultLocationCodes,
         basicSalary: "",
         salaryPeriod: "month",
       };
@@ -150,8 +247,8 @@ export function Hq6UserDetailView({
       firstName: parts.first,
       lastName: parts.last,
       email: user.email,
-      username: user.email.split("@")[0] ?? "",
-      role: user.role,
+      username: user.username ?? user.email.split("@")[0] ?? "",
+      hq6RoleId: user.tenantRoleId ?? defaultHq6RoleId,
       isActive: user.status === "active",
       allowLogin: user.status === "active" || user.status === "invited",
       password: "",
@@ -178,11 +275,11 @@ export function Hq6UserDetailView({
       taxPayerId: "",
       department: "",
       designation: "",
-      primaryLocation: "",
+      locationCodes: defaultLocationCodes,
       basicSalary: "",
       salaryPeriod: "month",
     };
-  }, [isCreate, user]);
+  }, [isCreate, user, hq6Roles, defaultLocationCodes]);
 
   const [form, setForm] = useState(initial);
   useEffect(() => setForm(initial), [initial]);
@@ -205,6 +302,19 @@ export function Hq6UserDetailView({
       toast.error(err.message || "Failed to deactivate user");
     },
   });
+
+  const displayRoleName = useMemo(() => {
+    if (isEdit && form.hq6RoleId) {
+      const match = hq6Roles.find((r) => r.id === form.hq6RoleId);
+      if (match) return match.name;
+    }
+    if (user?.tenantRoleName) return user.tenantRoleName;
+    if (user?.tenantRoleId) {
+      const match = hq6Roles.find((r) => r.id === user.tenantRoleId);
+      if (match) return match.name;
+    }
+    return user ? formatJwtRole(user.role) : "";
+  }, [isEdit, form.hq6RoleId, hq6Roles, user]);
 
   if (!tenantId) {
     return (
@@ -245,16 +355,24 @@ export function Hq6UserDetailView({
 
   const handleSave = async (e: FormEvent) => {
     e.preventDefault();
-    if (!form.firstName.trim() || !form.email.trim()) {
-      toast.error("First name and email are required.");
-      return;
-    }
-    if (
-      form.allowLogin &&
-      form.password &&
-      form.password !== form.confirmPassword
-    ) {
-      toast.error("Passwords do not match.");
+    const validationError = firstValidationError(
+      validatePersonName(form.surname, "Prefix", { required: false }),
+      validatePersonName(form.firstName, "First name"),
+      validatePersonName(form.lastName, "Last name", { required: false }),
+      validateEmail(form.email),
+      validateUsername(form.username, { required: false }),
+      form.allowLogin && form.password
+        ? validatePassword(form.password, {
+            required: isCreate,
+            strong: true,
+          })
+        : null,
+      form.allowLogin && form.password
+        ? validatePasswordConfirm(form.password, form.confirmPassword)
+        : null,
+    );
+    if (validationError) {
+      toast.error(validationError);
       return;
     }
 
@@ -263,12 +381,27 @@ export function Hq6UserDetailView({
       .filter(Boolean)
       .join(" ");
 
+    const selectedHq6 = form.hq6RoleId
+      ? hq6Roles.find((r) => r.id === form.hq6RoleId) ?? null
+      : null;
+    if (!selectedHq6) {
+      toast.error("Select a role from the Roles list.");
+      return;
+    }
+    if (isCreate && !form.locationCodes.length) {
+      toast.error("Select at least one work location (entity).");
+      return;
+    }
+    const jwtRole = mapTenantRoleToJwtRole(selectedHq6);
+
     setSaving(true);
     try {
+      await withWriteProgress(async () => {
       if (isCreate) {
         if (form.allowLogin) {
-          if (!form.password || form.password.length < 8) {
-            toast.error("Password must be at least 8 characters.");
+          const pwdErr = validatePassword(form.password, { strong: true });
+          if (pwdErr) {
+            toast.error(pwdErr);
             setSaving(false);
             return;
           }
@@ -276,54 +409,83 @@ export function Hq6UserDetailView({
             {
               email: form.email.trim(),
               name,
-              role: form.role,
+              role: jwtRole,
+              tenantRoleId: selectedHq6.id,
               password: form.password,
+              username: form.username.trim() || undefined,
               tenantId: tenantId ?? undefined,
             },
             { tenantId },
           );
           if (tenantId && created.user?.id) {
             try {
-              let designations = await getDesignations(tenantId);
-              let designationId = designations[0]?.id;
-              if (!designationId) {
-                const createdDes = await createDesignation(tenantId, {
-                  name: "Staff",
-                });
-                designationId = createdDes.id;
-              }
-              const locationCode =
-                form.primaryLocation === "ALL"
-                  ? "VISP"
-                  : form.primaryLocation || "VISP";
-              await createEmployee(tenantId, {
-                name,
+              await linkUserToPayroll({
+                tenantId,
                 userId: created.user.id,
-                designationId,
-                locationCode,
-                isServiceStaff: false,
+                name,
+                designationName: form.designation,
+                locationCodes: form.locationCodes,
+                basicSalary: form.basicSalary,
+                salaryPeriod: form.salaryPeriod,
               });
               await queryClient.invalidateQueries({ queryKey: ["employees"] });
+              await queryClient.invalidateQueries({ queryKey: ["payrolls"] });
               await queryClient.invalidateQueries({ queryKey: ["hrm"] });
+              toast.success(`Created ${name} (linked to payroll)`);
             } catch (payrollErr) {
               console.error("[user→payroll]", payrollErr);
-              toast.info(
-                "User created, but payroll employee link failed — add them under HRM.",
+              const detail =
+                payrollErr instanceof Error
+                  ? payrollErr.message
+                  : "Unknown error";
+              toast.warning(
+                `Created ${name}, but payroll setup failed: ${detail}. Add them under HRM / Payroll.`,
               );
             }
+          } else {
+            toast.success(`Created ${name}`);
           }
-          toast.success(`Created ${name} (linked to payroll)`);
         } else {
           const invited = await inviteUser(
             {
               email: form.email.trim(),
               name,
-              role: form.role,
+              role: jwtRole,
+              tenantRoleId: selectedHq6.id,
               tenantId: tenantId ?? undefined,
             },
             { tenantId },
           );
-          toast.success(`Invited ${name}`);
+
+          if (tenantId && invited.user?.id) {
+            try {
+              await linkUserToPayroll({
+                tenantId,
+                userId: invited.user.id,
+                name,
+                designationName: form.designation,
+                locationCodes: form.locationCodes,
+                basicSalary: form.basicSalary,
+                salaryPeriod: form.salaryPeriod,
+              });
+              await queryClient.invalidateQueries({ queryKey: ["employees"] });
+              await queryClient.invalidateQueries({ queryKey: ["payrolls"] });
+              await queryClient.invalidateQueries({ queryKey: ["hrm"] });
+              toast.success(`Invited ${name} (linked to payroll)`);
+            } catch (payrollErr) {
+              console.error("[invite→payroll]", payrollErr);
+              const detail =
+                payrollErr instanceof Error
+                  ? payrollErr.message
+                  : "Unknown error";
+              toast.warning(
+                `Invited ${name}, but payroll setup failed: ${detail}. Add them under HRM / Payroll.`,
+              );
+            }
+          } else {
+            toast.success(`Invited ${name}`);
+          }
+
           if (invited.devInviteUrl && typeof window !== "undefined") {
             console.info("[invite]", invited.devInviteUrl);
           }
@@ -334,7 +496,9 @@ export function Hq6UserDetailView({
           {
             email: form.email.trim(),
             name,
-            role: form.role,
+            role: jwtRole,
+            tenantRoleId: selectedHq6.id,
+            username: form.username.trim() || null,
             status: form.isActive ? "active" : "suspended",
             ...(form.allowLogin && form.password
               ? { password: form.password }
@@ -349,6 +513,7 @@ export function Hq6UserDetailView({
       }
       await queryClient.invalidateQueries({ queryKey: ["users"] });
       router.push(listPath);
+      }, isCreate ? "Creating user" : "Updating user");
     } catch (err) {
       toast.error(
         err instanceof Error
@@ -388,13 +553,20 @@ export function Hq6UserDetailView({
                                 className="form-control"
                                 placeholder="Mr / Mrs / Miss"
                                 value={form.surname}
-                                onChange={(e) => patch("surname", e.target.value)}
+                                onChange={(e) =>
+                                  patch(
+                                    "surname",
+                                    sanitizePersonNameInput(e.target.value),
+                                  )
+                                }
                               />
                             </div>
                           </div>
                           <div className="col-md-5">
                             <div className="form-group">
-                              <label htmlFor="first_name">First Name:*</label>
+                              <label htmlFor="first_name">
+                                First Name:<span className="req">*</span>
+                              </label>
                               <input
                                 id="first_name"
                                 className="form-control"
@@ -402,7 +574,10 @@ export function Hq6UserDetailView({
                                 placeholder="First Name"
                                 value={form.firstName}
                                 onChange={(e) =>
-                                  patch("firstName", e.target.value)
+                                  patch(
+                                    "firstName",
+                                    sanitizePersonNameInput(e.target.value),
+                                  )
                                 }
                               />
                             </div>
@@ -416,7 +591,10 @@ export function Hq6UserDetailView({
                                 placeholder="Last Name"
                                 value={form.lastName}
                                 onChange={(e) =>
-                                  patch("lastName", e.target.value)
+                                  patch(
+                                    "lastName",
+                                    sanitizePersonNameInput(e.target.value),
+                                  )
                                 }
                               />
                             </div>
@@ -424,7 +602,9 @@ export function Hq6UserDetailView({
                           <div className="clearfix" />
                           <div className="col-md-4">
                             <div className="form-group">
-                              <label htmlFor="email">Email:*</label>
+                              <label htmlFor="email">
+                                Email:<span className="req">*</span>
+                              </label>
                               <input
                                 id="email"
                                 type="email"
@@ -510,25 +690,33 @@ export function Hq6UserDetailView({
                             <div className="user_auth_fields">
                               <div className="col-md-4">
                                 <div className="form-group">
-                                  <label htmlFor="username">Username:</label>
+                                  <label htmlFor="username">
+                                    Email or Username:
+                                  </label>
                                   <input
                                     id="username"
                                     className="form-control"
-                                    placeholder="Username"
+                                    placeholder="Email or username"
+                                    autoComplete="username"
                                     value={form.username}
                                     onChange={(e) =>
                                       patch("username", e.target.value)
                                     }
                                   />
+                                  <p className="help-block">
+                                    Login ID — they can sign in with this or their email.
+                                  </p>
                                 </div>
                               </div>
                               <div className="col-md-4">
                                 <div className="form-group">
-                                  <label htmlFor="password">Password:</label>
-                                  <input
+                                  <PasswordField
                                     id="password"
-                                    type="password"
-                                    className="form-control"
+                                    label="Password:"
+                                    requiredMark={isCreate}
+                                    showStrength={Boolean(
+                                      form.allowLogin && form.password,
+                                    )}
                                     placeholder="Password"
                                     value={form.password}
                                     onChange={(e) =>
@@ -539,13 +727,10 @@ export function Hq6UserDetailView({
                               </div>
                               <div className="col-md-4">
                                 <div className="form-group">
-                                  <label htmlFor="confirm_password">
-                                    Confirm Password:
-                                  </label>
-                                  <input
+                                  <PasswordField
                                     id="confirm_password"
-                                    type="password"
-                                    className="form-control"
+                                    label="Confirm Password:"
+                                    requiredMark={isCreate}
                                     placeholder="Confirm Password"
                                     value={form.confirmPassword}
                                     onChange={(e) =>
@@ -558,22 +743,27 @@ export function Hq6UserDetailView({
                           ) : null}
                           <div className="col-md-4">
                             <div className="form-group">
-                              <label htmlFor="role">Role:*</label>
+                              <label htmlFor="role">
+                                Role:<span className="req">*</span>
+                              </label>
                               <select
                                 id="role"
                                 className="form-control"
-                                value={form.role}
+                                value={form.hq6RoleId}
                                 onChange={(e) =>
-                                  patch(
-                                    "role",
-                                    e.target.value as User["role"],
-                                  )
+                                  patch("hq6RoleId", e.target.value)
                                 }
+                                required
                               >
-                                <option value="admin">Admin</option>
-                                <option value="manager">Manager</option>
-                                <option value="staff">Staff</option>
-                                <option value="viewer">Viewer</option>
+                                {hq6Roles.length === 0 ? (
+                                  <option value="">No roles — create one under Roles</option>
+                                ) : (
+                                  hq6Roles.map((r) => (
+                                    <option key={r.id} value={r.id}>
+                                      {r.name}
+                                    </option>
+                                  ))
+                                )}
                               </select>
                             </div>
                           </div>
@@ -981,25 +1171,24 @@ export function Hq6UserDetailView({
                     <div className="tw-flow-root">
                       <div className="tw-py-2 tw-align-middle sm:tw-px-5">
                         <div className="row">
-                          <div className="col-md-4">
+                          <div className="col-md-6">
                             <div className="form-group">
-                              <label htmlFor="primary_location">
-                                Primary work location:
+                              <label htmlFor="work_locations">
+                                Work locations:<span className="req">*</span>
                               </label>
-                              <select
-                                id="primary_location"
-                                className="form-control"
-                                value={form.primaryLocation || "VISP"}
-                                onChange={(e) =>
-                                  patch("primaryLocation", e.target.value)
+                              <TagCombobox
+                                id="work_locations"
+                                values={form.locationCodes}
+                                options={[...WORK_LOCATION_OPTIONS]}
+                                placeholder="Add work location…"
+                                onChange={(locationCodes) =>
+                                  setForm((prev) => ({ ...prev, locationCodes }))
                                 }
-                              >
-                                {payrollLocations.map((loc) => (
-                                  <option key={loc.code} value={loc.code}>
-                                    {loc.name} ({loc.code})
-                                  </option>
-                                ))}
-                              </select>
+                              />
+                              <p className="help-block">
+                                VW, VM, VP, VISP, VSP — pick from the list; remove
+                                tags with ×.
+                              </p>
                             </div>
                           </div>
                           <div className="col-md-4">
@@ -1092,7 +1281,7 @@ export function Hq6UserDetailView({
             alt=""
           />
           <h2 className="hq6-user-show-name">{displayName}</h2>
-          <p className="hq6-user-show-role">{user ? formatRole(user.role) : ""}</p>
+          <p className="hq6-user-show-role">{displayRoleName}</p>
 
           <dl className="hq6-user-show-meta">
             <div className="hq6-user-show-meta-row">
@@ -1161,7 +1350,7 @@ export function Hq6UserDetailView({
                   <strong>Allowed contacts:</strong> All
                 </p>
                 <p>
-                  <strong>Role:</strong> {user ? formatRole(user.role) : "—"}
+                  <strong>Role:</strong> {displayRoleName || "—"}
                 </p>
                 <p>
                   <strong>Username:</strong> {username}

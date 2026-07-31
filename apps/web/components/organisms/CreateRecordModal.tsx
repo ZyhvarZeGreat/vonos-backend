@@ -34,8 +34,15 @@ import {
   modalKeys,
 } from "@/lib/query/modalQueryKeys";
 import { useUiStore } from "@/stores/uiStore";
-import { Hq6AddCustomerModal } from "@/components/hq6/Hq6AddCustomerModal";
-import { Hq6AddSupplierModal } from "@/components/hq6/Hq6AddSupplierModal";
+import { Hq6AddContactModal } from "@/components/hq6/Hq6AddContactModal";
+import { parseForm } from "@/lib/validation/parseForm";
+import {
+  contactQuickSchema,
+  createItemQuickSchema,
+  moneyAmountSchema,
+  requiredTextSchema,
+} from "@/lib/validation/schemas";
+import { z } from "zod";
 
 function resetOnClose() {
   return {
@@ -195,16 +202,20 @@ export function CreateRecordModal() {
       const locationCode = form.locationCode.trim() || undefined;
 
       if (isItemFlow(flow)) {
-        const cost = Number(form.costPrice);
-        if (!form.sku.trim() || !form.name.trim()) {
-          throw new Error("SKU and name are required");
-        }
-        if (!Number.isFinite(cost) || cost < 0) {
-          throw new Error("Enter a valid cost price");
-        }
+        const valid = parseForm(
+          createItemQuickSchema,
+          {
+            sku: form.sku,
+            name: form.name,
+            costPrice: form.costPrice,
+          },
+          { toast: false },
+        );
+        if (!valid) throw new Error("SKU, name, and cost price are required");
+        const cost = Number(valid.costPrice);
         return createItem(tenantId, {
-          sku: form.sku.trim(),
-          name: form.name.trim(),
+          sku: valid.sku.trim(),
+          name: valid.name.trim(),
           category: form.category.trim() || undefined,
           quantity: Number(form.quantity) || 0,
           costPrice: cost,
@@ -250,12 +261,23 @@ export function CreateRecordModal() {
       }
 
       if (flow === "job") {
-        if (!form.reference.trim() || !form.description.trim()) {
+        const jobValid = parseForm(
+          z.object({
+            reference: requiredTextSchema("Reference"),
+            description: requiredTextSchema("Description"),
+          }),
+          {
+            reference: form.reference,
+            description: form.description,
+          },
+          { toast: false },
+        );
+        if (!jobValid) {
           throw new Error("Reference and description are required");
         }
         return createJob(tenantId, {
-          reference: form.reference.trim(),
-          description: form.description.trim(),
+          reference: jobValid.reference.trim(),
+          description: jobValid.description.trim(),
           customerName: form.customerName.trim() || undefined,
           locationCode,
           hasQuote: form.hasQuote,
@@ -265,21 +287,34 @@ export function CreateRecordModal() {
       }
 
       if (flow === "sale") {
-        if (!form.reference.trim() || !form.name.trim()) {
-          throw new Error("Reference and item name are required");
+        const saleValid = parseForm(
+          z.object({
+            reference: requiredTextSchema("Reference"),
+            name: requiredTextSchema("Item name"),
+            quantity: moneyAmountSchema("Quantity", { allowZero: false }),
+            unitPrice: moneyAmountSchema("Unit price", { allowZero: true, min: 0 }),
+          }),
+          {
+            reference: form.reference,
+            name: form.name,
+            quantity: form.lineQuantity,
+            unitPrice: form.unitPrice,
+          },
+          { toast: false },
+        );
+        if (!saleValid) {
+          throw new Error("Reference, item name, quantity, and unit price are required");
         }
-        const qty = Number(form.lineQuantity);
-        const price = Number(form.unitPrice);
-        if (!Number.isFinite(qty) || qty <= 0) throw new Error("Invalid quantity");
-        if (!Number.isFinite(price) || price < 0) throw new Error("Invalid unit price");
+        const qty = Number(saleValid.quantity);
+        const price = Number(saleValid.unitPrice);
         return createSale(tenantId, {
-          reference: form.reference.trim(),
+          reference: saleValid.reference.trim(),
           customerName: form.customerName.trim() || undefined,
           locationCode,
           lines: [
             {
               sku: form.sku.trim() || "SKU",
-              name: form.name.trim(),
+              name: saleValid.name.trim(),
               quantity: qty,
               unitPrice: price,
             },
@@ -288,9 +323,18 @@ export function CreateRecordModal() {
       }
 
       if (flow === "supplier") {
-        if (!form.name.trim()) throw new Error("Supplier name is required");
+        const valid = parseForm(
+          contactQuickSchema,
+          {
+            name: form.name,
+            email: form.email,
+            phone: form.phone,
+          },
+          { toast: false },
+        );
+        if (!valid) throw new Error("Supplier name is required");
         return createSupplier({
-          name: form.name.trim(),
+          name: valid.name.trim(),
           contactName: form.contactName.trim() || undefined,
           email: form.email.trim() || undefined,
           phone: form.phone.trim() || undefined,
@@ -300,9 +344,18 @@ export function CreateRecordModal() {
       }
 
       if (flow === "customer") {
-        if (!form.name.trim()) throw new Error("Customer name is required");
+        const valid = parseForm(
+          contactQuickSchema,
+          {
+            name: form.name,
+            email: form.email,
+            phone: form.phone,
+          },
+          { toast: false },
+        );
+        if (!valid) throw new Error("Customer name is required");
         return createCustomer(tenantId, {
-          name: form.name.trim(),
+          name: valid.name.trim(),
           email: form.email.trim() || undefined,
           phone: form.phone.trim() || undefined,
           customerGroupId: form.customerGroupId.trim() || undefined,
@@ -373,20 +426,12 @@ export function CreateRecordModal() {
   if (isHq6 && (isItemFlow(createFlow) || createFlow === "sale")) return null;
 
   // HQ6 suppliers / customers use the Ultimate POS “Add a new contact” modal.
-  if (isHq6 && createFlow === "supplier") {
+  if (isHq6 && (createFlow === "supplier" || createFlow === "customer")) {
     return (
-      <Hq6AddSupplierModal
+      <Hq6AddContactModal
         open={open}
         tenantId={tenantId}
-        onClose={handleClose}
-      />
-    );
-  }
-  if (isHq6 && createFlow === "customer") {
-    return (
-      <Hq6AddCustomerModal
-        open={open}
-        tenantId={tenantId}
+        defaultType={createFlow === "supplier" ? "supplier" : "customer"}
         onClose={handleClose}
       />
     );

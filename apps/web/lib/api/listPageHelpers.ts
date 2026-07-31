@@ -1,4 +1,5 @@
 import { apiFetch, withTenantQuery } from "@/lib/api/client";
+import { throwApiError } from "@/lib/api/parseApiError";
 import {
   DEFAULT_TABLE_PAGE_SIZE,
   fetchListPage,
@@ -57,13 +58,10 @@ export async function fetchJsonListPage<T extends { id: string }>(
     });
     const response = await apiFetch(url);
     if (!response.ok) {
-      const body = (await response.json().catch(() => null)) as
-        | { message?: string | string[] }
-        | null;
-      const message = Array.isArray(body?.message)
-        ? body.message.join(", ")
-        : body?.message;
-      throw new Error(message ?? `Failed to fetch list (${response.status})`);
+      return throwApiError(
+        response,
+        `Failed to fetch list (${response.status})`,
+      );
     }
     return response.json();
   }, cursor, limit);

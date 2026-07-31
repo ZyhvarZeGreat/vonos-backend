@@ -3,19 +3,24 @@
 import { useEffect, useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
-import { ArrowRight, Eye, EyeOff, Mail } from "lucide-react";
+import { ArrowRight, Mail } from "lucide-react";
 import { Button } from "@/components/atoms/Button";
 import { Input } from "@/components/atoms/Input";
+import { PasswordField } from "@/components/atoms/PasswordField";
 import { AuthFooterLink, AuthTemplate } from "@/components/templates/AuthTemplate";
 import { isTwoFactorChallenge, login, verifyTwoFactor } from "@/lib/api/auth";
 import { warmPostLoginDestination } from "@/lib/prefetch/warmPostLogin";
 import { getPostLoginPath } from "@/lib/utils/authRedirect";
+import { validateUsername } from "@/lib/utils/formValidation";
 import { preloadUposStylesheets } from "@/lib/upos/styles";
 import { useAuthStore } from "@/stores/authStore";
 import { toast } from "@/stores/toastStore";
 
 const authFieldClass =
-  "h-12 rounded-lg border-0 bg-[var(--auth-blue-soft,#e8f1fb)] px-4 pr-11 text-sm text-foreground placeholder:text-muted focus:border-transparent focus:ring-2 focus:ring-[var(--auth-blue,#0b5ed7)]/25";
+  "box-border block h-12 w-full rounded-lg border border-[var(--auth-blue,#1d4ed8)]/15 bg-[var(--auth-blue-soft,#eff6ff)] px-4 pr-11 text-sm text-foreground placeholder:text-muted focus:border-transparent focus:ring-2 focus:ring-[var(--auth-blue,#1d4ed8)]/30";
+
+const authSubmitClass =
+  "h-12 w-full gap-2 rounded-full bg-[var(--auth-red,#dc2626)] text-base font-semibold text-white shadow-md shadow-[var(--auth-red,#dc2626)]/25 hover:bg-[var(--auth-red-hover,#b91c1c)] border-0 disabled:opacity-60";
 
 export function LoginForm() {
   const router = useRouter();
@@ -29,7 +34,6 @@ export function LoginForm() {
   const [, startTransition] = useTransition();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
   const [totpCode, setTotpCode] = useState("");
   const [challengeToken, setChallengeToken] = useState<string | null>(null);
   const [challengeEmail, setChallengeEmail] = useState<string | null>(null);
@@ -76,6 +80,10 @@ export function LoginForm() {
       name: string;
       tenantId: string | null;
       role: import("@vonos/types").Role;
+      tenantRoleId?: string | null;
+      tenantRoleName?: string | null;
+      tenantRolePermissions?: string[];
+      tenantRoleLocked?: boolean;
     };
   }) {
     setAuth({
@@ -85,6 +93,10 @@ export function LoginForm() {
       tenantId: result.user.tenantId,
       role: result.user.role,
       token: result.accessToken,
+      tenantRoleId: result.user.tenantRoleId ?? null,
+      tenantRoleName: result.user.tenantRoleName ?? null,
+      tenantRolePermissions: result.user.tenantRolePermissions ?? [],
+      tenantRoleLocked: result.user.tenantRoleLocked ?? false,
     });
     const redirect = searchParams.get("redirect");
     const requested =
@@ -108,6 +120,24 @@ export function LoginForm() {
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     setError(null);
+    if (!hydrated) {
+      const message = "Still loading session — try again in a moment.";
+      setError(message);
+      toast.error(message);
+      return;
+    }
+    const loginIdError = validateUsername(email, { required: true });
+    if (loginIdError) {
+      setError(loginIdError);
+      toast.error(loginIdError);
+      return;
+    }
+    if (!password) {
+      const message = "Password is required.";
+      setError(message);
+      toast.error(message);
+      return;
+    }
     setLoading(true);
     try {
       const result = await login(email, password);
@@ -155,7 +185,7 @@ export function LoginForm() {
         footer={
           <button
             type="button"
-            className="text-sm font-medium text-[var(--auth-blue,#0b5ed7)] underline-offset-4 hover:underline"
+            className="text-sm font-medium text-[var(--auth-blue,#1d4ed8)] underline-offset-4 hover:underline"
             onClick={() => {
               setChallengeToken(null);
               setChallengeEmail(null);
@@ -181,12 +211,13 @@ export function LoginForm() {
           {error ? <p className="text-sm text-error">{error}</p> : null}
           <Button
             type="submit"
-            className="h-12 w-full rounded-lg text-base"
+            className={authSubmitClass}
             isLoading={loading}
+            loadingText="Verifying…"
             disabled={totpCode.length < 6}
           >
             Verify and continue
-            <ArrowRight className="h-4 w-4" />
+            <ArrowRight className="h-4 w-4 shrink-0" />
           </Button>
         </form>
       </AuthTemplate>
@@ -194,56 +225,50 @@ export function LoginForm() {
   }
 
   return (
-    <AuthTemplate title="Dashboard Log In" subtitle="Use the email and password from your invitation">
+    <AuthTemplate
+      title="Dashboard Log In"
+      subtitle="Sign in with your email or username and password"
+    >
       <form onSubmit={handleSubmit} className="space-y-5">
         <div className="relative">
           <Input
-            label="EMAIL ADDRESS"
-            type="email"
-            autoComplete="email"
+            label="EMAIL OR USERNAME"
+            type="text"
+            autoComplete="username"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            placeholder="you@company.com"
+            placeholder="you@company.com or username"
             required
             className={authFieldClass}
           />
           <Mail
-            className="pointer-events-none absolute right-3.5 bottom-3 h-4 w-4 text-[var(--auth-blue,#0b5ed7)]/70"
+            className="pointer-events-none absolute right-3.5 bottom-3 h-4 w-4 text-[var(--auth-blue,#1d4ed8)]/70"
             aria-hidden
           />
         </div>
-        <div className="relative">
-          <Input
-            label="PASSWORD"
-            type={showPassword ? "text" : "password"}
-            autoComplete="current-password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="Min 8 characters"
-            required
-            className={authFieldClass}
-          />
-          <button
-            type="button"
-            className="absolute right-3 bottom-2.5 rounded-md p-1 text-[var(--auth-blue,#0b5ed7)]/70 hover:text-[var(--auth-blue,#0b5ed7)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--auth-blue,#0b5ed7)]/30"
-            onClick={() => setShowPassword((prev) => !prev)}
-            aria-label={showPassword ? "Hide password" : "Show password"}
-            aria-pressed={showPassword}
-          >
-            {showPassword ? (
-              <EyeOff className="h-4 w-4" aria-hidden />
-            ) : (
-              <Eye className="h-4 w-4" aria-hidden />
-            )}
-          </button>
-        </div>
+        <PasswordField
+          id="login_password"
+          label="PASSWORD"
+          inputClassName={authFieldClass}
+          autoComplete="current-password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          placeholder="Your password"
+          required
+        />
         <div className="flex justify-end">
           <AuthFooterLink href="/reset-password">Forgot Password?</AuthFooterLink>
         </div>
         {error ? <p className="text-sm text-error">{error}</p> : null}
-        <Button type="submit" className="h-12 w-full rounded-lg text-base" isLoading={loading}>
+        <Button
+          type="submit"
+          className={authSubmitClass}
+          isLoading={loading}
+          loadingText="Signing in…"
+          disabled={!hydrated || loading}
+        >
           Log In
-          <ArrowRight className="h-4 w-4" />
+          <ArrowRight className="h-4 w-4 shrink-0" />
         </Button>
       </form>
     </AuthTemplate>

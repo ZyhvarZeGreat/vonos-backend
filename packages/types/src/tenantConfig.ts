@@ -20,6 +20,15 @@ export const KpiCardSchema = z.object({
 export const BusinessLocationSchema = z.object({
   code: z.string(),
   name: z.string(),
+  /** Street / landmark shown on invoices and location lists. */
+  landmark: z.string().optional(),
+  city: z.string().optional(),
+  zipCode: z.string().optional(),
+  state: z.string().optional(),
+  country: z.string().optional(),
+  mobile: z.string().optional(),
+  alternateNumber: z.string().optional(),
+  email: z.string().optional(),
 });
 
 export const TenantConfigSchema = z.object({

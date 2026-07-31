@@ -28,6 +28,7 @@ import { buildCompositeCursorQuery } from '../../common/utils/pagination';
 import type { PaginatedList } from '../../common/utils/paginatedList';
 import { parseCsv, pickCsvField } from '../../common/utils/csvImport';
 import { refreshCustomerFinancialRollups } from '../../common/utils/customerRollups';
+import { recordPaymentAccountTxn } from '../../common/utils/recordPaymentAccountTxn';
 import { tokenizedSearchWhere } from '../../common/utils/listSearch';
 import { toIso, toNumber } from '../../common/utils/serializers';
 import { AuditService } from '../audit/audit.service';
@@ -516,6 +517,23 @@ export class CustomersService {
             createdByName: createdBy.createdByName ?? null,
           },
         });
+
+        if (dto.accountId?.trim()) {
+          await recordPaymentAccountTxn(tx, {
+            tenantId,
+            accountId: dto.accountId.trim(),
+            type: 'credit',
+            subType: 'sale_payment',
+            amount: apply,
+            operationDate: paidOn,
+            refNo: sale.reference,
+            note: dto.note?.trim() || `Contact payment — ${customer.name}`,
+            paymentMethod: method,
+            saleId: sale.id,
+            paymentId: payment.id,
+            createdByName: createdBy.createdByName ?? null,
+          });
+        }
 
         await tx.ledgerEntry.create({
           data: {

@@ -9,6 +9,13 @@ export interface Supplier {
   locationCode: string | null;
   notes: string | null;
   taxNumber?: string | null;
+  /** Supplier bank / account details. */
+  accountHolderName?: string | null;
+  bankName?: string | null;
+  bankBranch?: string | null;
+  bankCode?: string | null;
+  bankAccountNo?: string | null;
+  taxPayerId?: string | null;
   openingBalance?: number;
   assignedToUserId?: string | null;
   assignedToName?: string | null;

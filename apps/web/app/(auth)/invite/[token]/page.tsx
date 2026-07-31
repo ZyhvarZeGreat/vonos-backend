@@ -7,6 +7,10 @@ import { Button } from "@/components/atoms/Button";
 import { Input } from "@/components/atoms/Input";
 import { AuthFooterLink, AuthTemplate } from "@/components/templates/AuthTemplate";
 import { acceptInvite, getInvite } from "@/lib/api/auth";
+import { PasswordField } from "@/components/atoms/PasswordField";
+import { parseForm } from "@/lib/validation/parseForm";
+import { acceptInviteFormSchema } from "@/lib/validation/schemas";
+import { sanitizePersonNameInput } from "@/lib/utils/formValidation";
 import { getPostLoginPath } from "@/lib/utils/authRedirect";
 import { useAuthStore } from "@/stores/authStore";
 
@@ -34,18 +38,16 @@ export default function AcceptInvitePage() {
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
-    if (password !== confirm) {
-      setError("Passwords do not match");
-      return;
-    }
-    if (password.length < 8) {
-      setError("Password must be at least 8 characters");
-      return;
-    }
+    const valid = parseForm(
+      acceptInviteFormSchema,
+      { name, password, confirmPassword: confirm },
+      { setError },
+    );
+    if (!valid) return;
     setError(null);
     setLoading(true);
     try {
-      const result = await acceptInvite(params.token, password, name);
+      const result = await acceptInvite(params.token, valid.password, valid.name);
       setAuth({
         userId: result.user.id,
         email: result.user.email,
@@ -53,6 +55,10 @@ export default function AcceptInvitePage() {
         tenantId: result.user.tenantId,
         role: result.user.role,
         token: result.accessToken,
+        tenantRoleId: result.user.tenantRoleId ?? null,
+        tenantRoleName: result.user.tenantRoleName ?? null,
+        tenantRolePermissions: result.user.tenantRolePermissions ?? [],
+        tenantRoleLocked: result.user.tenantRoleLocked ?? false,
       });
       router.replace(getPostLoginPath(result.user.role, result.user.tenantId));
     } catch (err) {
@@ -93,23 +99,20 @@ export default function AcceptInvitePage() {
           <Input
             label="Full name"
             value={name}
-            onChange={(e) => setName(e.target.value)}
+            onChange={(e) => setName(sanitizePersonNameInput(e.target.value))}
             required
           />
-          <Input
+          <PasswordField
             label="Password"
-            type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            minLength={8}
+            showStrength
             required
           />
-          <Input
+          <PasswordField
             label="Confirm password"
-            type="password"
             value={confirm}
             onChange={(e) => setConfirm(e.target.value)}
-            minLength={8}
             required
           />
           {error && inviteEmail ? <p className="text-sm text-error">{error}</p> : null}

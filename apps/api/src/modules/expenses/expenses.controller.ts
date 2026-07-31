@@ -60,7 +60,7 @@ export class ExpensesController {
   }
 
   @Post()
-  @Roles('admin', 'manager')
+  @Roles('admin', 'manager', 'super_admin')
   create(@Body() dto: CreateExpenseRequest) {
     return this.service.createExpense(dto);
   }
@@ -79,19 +79,19 @@ export class ExpensesController {
   }
 
   @Post('categories')
-  @Roles('admin', 'manager')
+  @Roles('admin', 'manager', 'super_admin')
   createCategory(@Body() dto: CreateExpenseCategoryRequest) {
     return this.service.createCategory(dto);
   }
 
   @Patch('categories/:id')
-  @Roles('admin', 'manager')
+  @Roles('admin', 'manager', 'super_admin')
   updateCategory(@Param('id') id: string, @Body() dto: UpdateExpenseCategoryRequest) {
     return this.service.updateCategory(id, dto);
   }
 
   @Delete('categories/:id')
-  @Roles('admin')
+  @Roles('admin', 'super_admin')
   deleteCategory(@Param('id') id: string) {
     return this.service.deleteCategory(id);
   }
@@ -102,7 +102,7 @@ export class ExpensesController {
   }
 
   @Patch(':id')
-  @Roles('admin', 'manager')
+  @Roles('admin', 'manager', 'super_admin')
   update(
     @Param('id') id: string,
     @Body() dto: UpdateExpenseRequest,
@@ -111,7 +111,7 @@ export class ExpensesController {
   }
 
   @Delete(':id')
-  @Roles('admin', 'manager')
+  @Roles('admin', 'manager', 'super_admin')
   delete(@Param('id') id: string) {
     return this.service.deleteExpense(id);
   }

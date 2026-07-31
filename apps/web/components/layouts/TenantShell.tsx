@@ -105,7 +105,25 @@ export function TenantShell({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (configQuery.data) {
-      setTenantConfig(configQuery.data);
+      const fallback = getTenantConfigByCode(tenantCode);
+      const apiLocs = configQuery.data.businessLocations ?? [];
+      const merged =
+        apiLocs.length > 0
+          ? configQuery.data
+          : {
+              ...configQuery.data,
+              businessLocations:
+                fallback?.businessLocations ?? apiLocs,
+              itemCategories:
+                configQuery.data.itemCategories?.length
+                  ? configQuery.data.itemCategories
+                  : (fallback?.itemCategories ?? []),
+              storageLocations:
+                configQuery.data.storageLocations?.length
+                  ? configQuery.data.storageLocations
+                  : (fallback?.storageLocations ?? []),
+            };
+      setTenantConfig(merged);
       return;
     }
     if (skipAuth && registryEntry) {

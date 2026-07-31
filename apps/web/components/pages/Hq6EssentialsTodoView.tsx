@@ -18,7 +18,10 @@ import { useRecordNavigation } from "@/lib/hooks/useRecordNavigation";
 import { useTenantId } from "@/lib/hooks/useRouteTenant";
 import { HQ6_TODO_FILTERS } from "@/lib/registries/hq6Filters";
 import { formatHq6DateTime } from "@/lib/utils/hq6Format";
+import { parseForm } from "@/lib/validation/parseForm";
+import { requiredTextSchema } from "@/lib/validation/schemas";
 import { toast } from "@/stores/toastStore";
+import { z } from "zod";
 
 interface TodoRow {
   id: string;
@@ -65,7 +68,10 @@ export function Hq6EssentialsTodoView() {
   const { detailPath } = useRecordNavigation("essentials-todo");
   const chrome = useHq6ListChrome("essentials-todo");
   const { dateRange, setDateRange, customDateRange, setCustomDateRange, bounds } =
-    useListPageFilters({ defaultDateRange: "last_7_days" });
+    useListPageFilters({
+      defaultDateRange: "last_7_days",
+      isolateDateRange: true,
+    });
   const [localSearch, setLocalSearch] = useState("");
   const [assignedToFilter, setAssignedToFilter] = useState("");
   const [priorityFilter, setPriorityFilter] = useState("");
@@ -321,11 +327,12 @@ export function Hq6EssentialsTodoView() {
                 onClose={() => setAddOpen(false)}
                 onSave={() => {
                   if (!tenantId) return;
-                  const trimmed = task.trim();
-                  if (!trimmed) {
-                    toast.error("Enter a task");
-                    return;
-                  }
+                  const valid = parseForm(
+                    z.object({ task: requiredTextSchema("Task") }),
+                    { task },
+                  );
+                  if (!valid) return;
+                  const trimmed = valid.task;
                   const now = new Date().toISOString();
                   const nextRow: TodoRow = {
                     id: crypto.randomUUID(),

@@ -131,10 +131,10 @@ export function MenuSelect({
         open={open}
         anchorRef={anchorRef}
         menuRef={menuRef}
-        className="tw-overflow-hidden tw-rounded-lg tw-border tw-border-solid tw-border-gray-200 tw-bg-white tw-shadow-lg"
+        className="tw-rounded-lg tw-border tw-border-solid tw-border-gray-200 tw-bg-white tw-shadow-lg"
       >
         <div
-          className="tw-flex tw-max-h-[min(20rem,var(--vonos-floating-max-h,20rem))] tw-flex-col"
+          className="vonos-floating-menu-body"
           style={{ width: menuWidth ? `${menuWidth}px` : "16rem" }}
         >
           <div className="tw-shrink-0 tw-border-b tw-border-solid tw-border-gray-200 tw-p-2.5">
@@ -152,7 +152,7 @@ export function MenuSelect({
           <div
             id={listId}
             role="listbox"
-            className="tw-min-h-0 tw-flex-1 tw-overflow-y-auto tw-overscroll-contain tw-py-1"
+            className="vonos-floating-menu-list tw-py-1"
             onWheel={(event) => event.stopPropagation()}
           >
             {filtered.length === 0 ? (

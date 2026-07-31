@@ -56,6 +56,8 @@ export interface Employee {
   name: string;
   employeeCode: string | null;
   locationCode: string | null;
+  /** Allocated business location codes (multi-select). */
+  locationCodes: string[];
   payrollGroupId: string | null;
   payrollGroupName: string | null;
   designationId: string;
@@ -135,7 +137,9 @@ export interface UpdateDesignationRequest {
 export interface CreateEmployeeRequest {
   name: string;
   employeeCode?: string;
+  /** @deprecated Prefer locationCodes for multi-location allocation. */
   locationCode?: string;
+  locationCodes?: string[];
   payrollGroupId?: string;
   designationId: string;
   userId?: string;
@@ -174,6 +178,7 @@ export interface WorkforceMember {
   employeeName: string;
   employeeId: string | null;
   locationCode: string | null;
+  locationCodes?: string[];
   designationId?: string | null;
   designationName?: string | null;
   payrollGroupId?: string | null;

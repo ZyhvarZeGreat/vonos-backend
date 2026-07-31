@@ -18,6 +18,7 @@ import { Hq6ExpenseCategoriesListView } from "@/components/pages/Hq6ExpenseCateg
 import { Hq6ExpensesListView } from "@/components/pages/Hq6ExpensesListView";
 import { formatCurrency } from "@/lib/utils/formatCurrency";
 import { useTenantId, useRouteTenant } from "@/lib/hooks/useRouteTenant";
+import { entitySaleLocations, defaultEntityLocationCode } from "@/lib/hooks/useBusinessLocationOptions";
 import { useServerListPage } from "@/lib/hooks/useServerListPage";
 import { useListPageFilters } from "@/lib/hooks/useListPageFilters";
 import { useExpensePageTabs } from "@/lib/hooks/useExpensePageTabs";
@@ -38,6 +39,7 @@ import {
   updateExpenseCategory,
 } from "@/lib/api/expenses";
 import { getPaymentAccounts } from "@/lib/api/paymentAccounts";
+import { hq6TaxSelectOptions } from "@/lib/utils/hq6TaxOptions";
 import {
   optimisticTempId,
   patchEntityInQueries,
@@ -94,7 +96,10 @@ function ExpensesListViewBody() {
   const router = useRouter();
   const exportList = useListExport();
   const { tabs, activeTab, onTabChange } = useExpensePageTabs("expenses");
-  const { dateRange, setDateRange, search, setSearch, bounds } = useListPageFilters();
+  const { dateRange, setDateRange, search, setSearch, bounds } = useListPageFilters({
+    defaultDateRange: "last_7_days",
+    isolateDateRange: true,
+  });
   const [viewExpense, setViewExpense] = useState<Expense | null>(null);
   const [exporting, setExporting] = useState(false);
 
@@ -436,6 +441,11 @@ export function AddExpenseView() {
     staleTime: MODAL_REF_STALE_MS,
   });
 
+  const taxOptions = useMemo(
+    () => hq6TaxSelectOptions(tenantId),
+    [tenantId],
+  );
+
   const { data: existing, isLoading: loadingExpense } = useQuery({
     queryKey: ["expense", tenantId, editId],
     queryFn: () => getExpense(tenantId!, editId!),
@@ -445,6 +455,15 @@ export function AddExpenseView() {
   useEffect(() => {
     if (existing) setForm(expenseToForm(existing));
   }, [existing]);
+
+  useEffect(() => {
+    if (existing || form.locationCode) return;
+    const code = defaultEntityLocationCode(
+      entitySaleLocations(config),
+      config?.code ?? tenantCode,
+    );
+    if (code) setForm((prev) => ({ ...prev, locationCode: code }));
+  }, [config, existing, form.locationCode, tenantCode]);
 
   const saveMutation = useAppMutation({
     mutationFn: async () => {
@@ -489,7 +508,7 @@ export function AddExpenseView() {
     }
   };
 
-  const locations = config?.businessLocations ?? [];
+  const locations = entitySaleLocations(config);
   const paymentDue = Math.max(
     0,
     (Number(form.totalAmount) || 0) - (Number(form.taxAmount) || 0),
@@ -610,7 +629,11 @@ export function AddExpenseView() {
                 <i className="fa fa-info-circle text-info" aria-hidden />
               </span>
               <select className="hq6-form-input" defaultValue="none">
-                <option value="none">None</option>
+                {taxOptions.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
               </select>
             </label>
             <label className="hq6-form-label">

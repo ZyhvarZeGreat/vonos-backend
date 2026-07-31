@@ -42,7 +42,8 @@ export function Button({
   return (
     <button
       className={cn(
-        "inline-flex items-center justify-center gap-2 font-medium motion-press disabled:cursor-not-allowed disabled:opacity-50",
+        "inline-flex items-center justify-center gap-2 font-medium disabled:cursor-not-allowed disabled:opacity-50",
+        !isLoading && "motion-press",
         variantClasses[variant],
         sizeClasses[size],
         className,
@@ -53,8 +54,13 @@ export function Button({
     >
       {isLoading ? (
         <>
-          <Spinner size={size === "lg" ? "md" : "sm"} />
-          <span>{loadingText ?? children}</span>
+          <Spinner
+            size={size === "lg" ? "md" : "sm"}
+            className="text-current"
+          />
+          <span className="truncate">
+            {loadingText ?? (typeof children === "string" ? children : "Please wait…")}
+          </span>
         </>
       ) : (
         children

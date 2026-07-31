@@ -42,19 +42,19 @@ export class CustomerGroupsController {
   }
 
   @Post()
-  @Roles('admin', 'manager')
+  @Roles('admin', 'manager', 'super_admin')
   create(@Body() dto: CreateCustomerGroupRequest) {
     return this.service.create(dto);
   }
 
   @Patch(':id')
-  @Roles('admin', 'manager')
+  @Roles('admin', 'manager', 'super_admin')
   update(@Param('id') id: string, @Body() dto: UpdateCustomerGroupRequest) {
     return this.service.update(id, dto);
   }
 
   @Delete(':id')
-  @Roles('admin')
+  @Roles('admin', 'super_admin')
   remove(@Param('id') id: string) {
     return this.service.remove(id);
   }

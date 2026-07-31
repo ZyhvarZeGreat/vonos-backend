@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Trash2 } from "lucide-react";
 import { Button } from "@/components/atoms/Button";
@@ -14,7 +14,7 @@ import { createSale } from "@/lib/api/sales";
 import { useAppMutation } from "@/lib/hooks/useAppMutation";
 import {
   assertBusinessLocationSelected,
-  useBusinessLocationOptions,
+  useEntitySaleLocationOptions,
 } from "@/lib/hooks/useBusinessLocationOptions";
 import { useRouteTenant } from "@/lib/hooks/useRouteTenant";
 import { useIsVaHq6 } from "@/lib/hooks/useIsVaHq6";
@@ -28,6 +28,9 @@ interface SaleLineDraft {
   name: string;
   quantity: number;
   unitPrice: number;
+  sourceTenantCode?: string;
+  sourceLabel?: string;
+  availableQty?: number;
 }
 
 function lineSubtotal(line: SaleLineDraft): number {
@@ -43,29 +46,40 @@ export function PosTerminalView() {
 function PosTerminalViewBody() {
   const router = useRouter();
   const { tenantId, tenantCode, config } = useRouteTenant();
-  const { options: businessLocationOptions, required: locationRequired } =
-    useBusinessLocationOptions(config);
+  const {
+    options: businessLocationOptions,
+    required: locationRequired,
+    defaultCode,
+  } = useEntitySaleLocationOptions(config);
 
   const [customerName, setCustomerName] = useState("");
-  const [locationCode, setLocationCode] = useState("");
+  const [locationCode, setLocationCode] = useState(defaultCode);
   const [paymentMethod, setPaymentMethod] = useState("cash");
   const [lines, setLines] = useState<SaleLineDraft[]>([]);
   const [error, setError] = useState<string | null>(null);
 
-  const showLocationField = (config?.businessLocations?.length ?? 0) > 0;
+  const showLocationField = businessLocationOptions.some((o) => o.value);
+
+  useEffect(() => {
+    if (defaultCode && !locationCode) setLocationCode(defaultCode);
+  }, [defaultCode, locationCode]);
   const total = useMemo(
     () => lines.reduce((sum, line) => sum + lineSubtotal(line), 0),
     [lines],
   );
 
+  const allowCrossEntitySource =
+    config?.code === "VA" || config?.code === "VP";
+
   const addLineFromItem = (pick: CatalogPartPick) => {
     if (!pick.itemId) return;
     const itemId = pick.itemId;
+    const matchKey = `${pick.sourceTenantCode ?? "local"}:${itemId}`;
     setLines((prev) => {
-      const existing = prev.find((row) => row.itemId === itemId);
+      const existing = prev.find((row) => row.key === matchKey);
       if (existing) {
         return prev.map((row) =>
-          row.itemId === itemId
+          row.key === matchKey
             ? { ...row, quantity: row.quantity + 1 }
             : row,
         );
@@ -73,12 +87,15 @@ function PosTerminalViewBody() {
       return [
         ...prev,
         {
-          key: itemId,
+          key: matchKey,
           itemId,
           sku: pick.sku,
           name: pick.name,
           quantity: 1,
           unitPrice: pick.sellPrice || pick.costPrice || 0,
+          sourceTenantCode: pick.sourceTenantCode,
+          sourceLabel: pick.sourceLabel,
+          availableQty: pick.availableQty,
         },
       ];
     });
@@ -114,6 +131,7 @@ function PosTerminalViewBody() {
           name: line.name,
           quantity: line.quantity,
           unitPrice: line.unitPrice,
+          sourceTenantCode: line.sourceTenantCode,
         })),
         payments: [{ amount: total, method: paymentMethod }],
       });
@@ -125,6 +143,7 @@ function PosTerminalViewBody() {
       ["catalog"],
       ["ledgerTablePage"],
       ["ledgerSummary"],
+      ["paymentAccounts"],
     ],
     onSuccess: (sale) => {
       resetCart();
@@ -145,8 +164,9 @@ function PosTerminalViewBody() {
             <ProductItemSearch
               tenantId={tenantId}
               tenantCode={config?.code}
-              retailOnly
+              retailOnly={!allowCrossEntitySource}
               includeWarehouse
+              pickSourceAfterSelect={allowCrossEntitySource}
               allowCustom={false}
               onSelect={addLineFromItem}
             />
@@ -176,6 +196,14 @@ function PosTerminalViewBody() {
                       <td className="px-3 py-2">
                         <div className="font-medium text-foreground">{line.name}</div>
                         <div className="text-xs text-muted">{line.sku}</div>
+                        {line.sourceTenantCode || line.sourceLabel ? (
+                          <div className="text-xs text-muted">
+                            {line.sourceTenantCode ?? line.sourceLabel}
+                            {line.availableQty != null
+                              ? ` · ${line.availableQty} left`
+                              : ""}
+                          </div>
+                        ) : null}
                       </td>
                       <td className="px-3 py-2">
                         <input

@@ -1,10 +1,10 @@
 "use client";
 
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AddSaleForm } from "@/components/organisms/AddSaleForm";
 import { Hq6FormShell } from "@/components/hq6/Hq6Chrome";
-import { getSale } from "@/lib/api/sales";
+import { getSale, getSaleInvoiceUrl } from "@/lib/api/sales";
 import { useIsVaHq6 } from "@/lib/hooks/useIsVaHq6";
 import { useRouteTenant, useTenantId } from "@/lib/hooks/useRouteTenant";
 import { hq6CopyForSlug } from "@/lib/registries/hq6PageCopy";
@@ -20,8 +20,9 @@ function AddSalePage({
   slug: string;
 }) {
   const tenantId = useTenantId();
-  const { config } = useRouteTenant();
+  const { config, tenantCode } = useRouteTenant();
   const queryClient = useQueryClient();
+  const router = useRouter();
   const isHq6 = useIsVaHq6();
   const copy = hq6CopyForSlug(slug);
   const searchParams = useSearchParams();
@@ -57,12 +58,24 @@ function AddSalePage({
       editSaleId={editSaleId}
       initialJobId={jobId}
       variant="page"
-      onSuccess={async () => {
+      onSuccess={async (sale, options) => {
         await queryClient.invalidateQueries({ queryKey: ["sales"] });
         await queryClient.invalidateQueries({ queryKey: ["items"] });
         await queryClient.invalidateQueries({ queryKey: ["catalog"] });
         await queryClient.invalidateQueries({ queryKey: ["ledgerTablePage"] });
         await queryClient.invalidateQueries({ queryKey: ["ledgerSummary"] });
+
+        try {
+          const { path } = await getSaleInvoiceUrl(tenantId, sale.id);
+          const target = options?.print
+            ? `${path}?print_on_load=true`
+            : path;
+          router.push(target);
+        } catch {
+          if (tenantCode) {
+            router.push(`/${tenantCode}/sales`);
+          }
+        }
       }}
     />
   );

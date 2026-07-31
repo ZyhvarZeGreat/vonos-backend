@@ -2,7 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { Hq6Modal, Hq6Field, Hq6ModalSaveClose } from "@/components/hq6/Hq6Modal";
+import { parseForm } from "@/lib/validation/parseForm";
+import { requiredTextSchema } from "@/lib/validation/schemas";
 import { toast } from "@/stores/toastStore";
+import { z } from "zod";
 
 type GlobalModalId =
   | "todays-profit"
@@ -98,10 +101,11 @@ function TaskModal({ open, onClose }: { open: boolean; onClose: () => void }) {
         <Hq6ModalSaveClose
           onClose={onClose}
           onSave={() => {
-            if (!task.trim()) {
-              toast.error("Task is required");
-              return;
-            }
+            const valid = parseForm(
+              z.object({ task: requiredTextSchema("Task") }),
+              { task },
+            );
+            if (!valid) return;
             toast.success("To-do saved locally");
             onClose();
           }}

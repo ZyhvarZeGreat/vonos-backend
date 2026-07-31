@@ -81,6 +81,8 @@ export class RolesGuard implements CanActivate {
     const request = context
       .switchToHttp()
       .getRequest<{ user: AuthenticatedUser }>();
+    // VAG can act on any tenant-scoped write that managers/admins can.
+    if (request.user.role === 'super_admin') return true;
     return required.includes(request.user.role);
   }
 }

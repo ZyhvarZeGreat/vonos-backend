@@ -4,6 +4,7 @@ import type { Notification } from "@vonos/types";
 import { create } from "zustand";
 import type { CreateFlowKey } from "@/lib/registries/createFlows";
 import type { CsvExportPayload } from "@/lib/utils/exportCsv";
+import { startNavigationProgress } from "@/stores/navigationBusyStore";
 
 export type ActiveModal = "create" | "export" | "addExpense" | "addSale" | "addProduct" | null;
 
@@ -123,7 +124,8 @@ export const useUiStore = create<UiState>((set) => ({
   salePresetStatus: null,
   saleJobId: null,
   productDuplicateFromId: null,
-  dateRange: "last_7_days",
+  /** Default all-time so Roles/Users/HRM never inherit a short window. Transaction + finance pages isolate their own `last_7_days`. */
+  dateRange: "all_time",
   customDateRange: null,
   entitySwitch: null,
   toggleSidebar: () =>
@@ -190,9 +192,11 @@ export const useUiStore = create<UiState>((set) => ({
       dateRange: customDateRange ? "custom" : "all_time",
       customDateRange,
     }),
-  beginEntitySwitch: (target) =>
+  beginEntitySwitch: (target) => {
+    startNavigationProgress();
     set({
       entitySwitch: { ...target, startedAt: Date.now() },
-    }),
+    });
+  },
   clearEntitySwitch: () => set({ entitySwitch: null }),
 }));

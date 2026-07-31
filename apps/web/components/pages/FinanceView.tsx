@@ -39,8 +39,8 @@ import { formatCurrency, formatCurrencyCompact } from "@/lib/utils/formatCurrenc
 import {
   ledgerChartSubtitle,
 } from "@/lib/utils/ledgerCharts";
-import { dateRangePresetToApiBounds } from "@/lib/utils/dateRange";
 import { DateRangeDropdown } from "@/components/molecules/DateRangeDropdown";
+import { useListPageFilters } from "@/lib/hooks/useListPageFilters";
 import { useUiStore, type DateRangePreset } from "@/stores/uiStore";
 import { useAdminEntityStore } from "@/stores/adminEntityStore";
 import type { CsvExportPayload } from "@/lib/utils/exportCsv";
@@ -184,10 +184,17 @@ export function FinanceView({ groupMode = false }: FinanceViewProps) {
   const financeCopy = hq6CopyForSlug("finance");
   const openExportModal = useUiStore((state) => state.openExportModal);
   const openAddExpenseModal = useUiStore((state) => state.openAddExpenseModal);
-  const dateRange = useUiStore((state) => state.dateRange);
-  const setDateRange = useUiStore((state) => state.setDateRange);
-  const customDateRange = useUiStore((state) => state.customDateRange);
-  const setCustomDateRange = useUiStore((state) => state.setCustomDateRange);
+  const {
+    dateRange,
+    setDateRange,
+    customDateRange,
+    setCustomDateRange,
+    bounds,
+  } = useListPageFilters({
+    defaultDateRange: "last_7_days",
+    isolateDateRange: true,
+    unboundedAllTime: false,
+  });
   const { tenantId, tenantName, tenantCode } = useRouteTenant({
     adminFallback: null,
   });
@@ -202,19 +209,14 @@ export function FinanceView({ groupMode = false }: FinanceViewProps) {
     modals: recordModals,
   } = useReportRecordModals();
 
-  const bounds = useMemo(
-    () => dateRangePresetToApiBounds(dateRange, new Date(), customDateRange),
-    [customDateRange, dateRange],
-  );
-
   const viewingEntity = Boolean(groupMode && viewingCode);
 
   const summaryQuery = useQuery({
-    queryKey: ["ledgerSummary", groupMode ? "group" : tenantId, bounds.from, bounds.to],
+    queryKey: ["ledgerSummary", groupMode ? "group" : tenantId, bounds?.from, bounds?.to],
     queryFn: () =>
       groupMode
-        ? getGroupLedgerSummary(bounds.from, bounds.to)
-        : getLedgerSummary(tenantId!, bounds.from, bounds.to),
+        ? getGroupLedgerSummary(bounds?.from, bounds?.to)
+        : getLedgerSummary(tenantId!, bounds?.from, bounds?.to),
     enabled:
       !viewingEntity &&
       (groupMode || Boolean(tenantId)) &&

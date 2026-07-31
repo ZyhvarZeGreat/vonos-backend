@@ -34,7 +34,10 @@ import { useServerListPage } from "@/lib/hooks/useServerListPage";
 import { HQ6_TABLE_PAGE_SIZE } from "@/lib/api/fetchAllPages";
 import { useTenantId } from "@/lib/hooks/useRouteTenant";
 import { hq6CopyForSlug } from "@/lib/registries/hq6PageCopy";
+import { parseForm } from "@/lib/validation/parseForm";
+import { requiredTextSchema } from "@/lib/validation/schemas";
 import { toast } from "@/stores/toastStore";
+import { z } from "zod";
 
 interface MetaRow {
   id: string;
@@ -162,23 +165,25 @@ export function Hq6CatalogMetaListView({ kind }: { kind: CatalogMetaKind }) {
   };
 
   const saveEdit = async () => {
-    if (!tenantId || !editTarget || !editForm.name.trim()) {
-      toast.error("Name is required");
-      return;
-    }
+    if (!tenantId || !editTarget) return;
+    const valid = parseForm(
+      z.object({ name: requiredTextSchema("Name") }),
+      { name: editForm.name },
+    );
+    if (!valid) return;
     const targetId = editTarget.id;
     const opt = withOptimistic(queryClient, {
       keys: [["catalog-meta"]],
       update: (qc) => {
         patchEntityInQueries(qc, ["catalog-meta"], targetId, {
-          name: editForm.name.trim(),
+          name: valid.name.trim(),
         });
       },
     });
     setSaving(true);
     const ctx = await opt.onMutate(undefined);
     try {
-      const body: Record<string, unknown> = { name: editForm.name.trim() };
+      const body: Record<string, unknown> = { name: valid.name.trim() };
       if (kind === "units") {
         body.shortName = editForm.shortName.trim() || editForm.name.trim();
         body.allowDecimal = editForm.allowDecimal;

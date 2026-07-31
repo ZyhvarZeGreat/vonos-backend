@@ -31,6 +31,7 @@
     "prisma:explain-va-lists": "ts-node --compiler-options '{\"module\":\"CommonJS\"}' prisma/scripts/explain-va-lists.ts",
     "prisma:backfill-daily-finance": "ts-node --compiler-options '{\"module\":\"CommonJS\"}' prisma/scripts/backfill-daily-finance.ts",
     "prisma:refresh-entity-snapshots": "ts-node --compiler-options '{\"module\":\"CommonJS\"}' prisma/scripts/refresh-entity-snapshots.ts",
+    "prisma:sync-product-stock-locations": "ts-node --compiler-options '{\"module\":\"CommonJS\"}' prisma/scripts/sync-product-stock-locations.ts",
     "prisma:studio": "prisma studio"
   },
   "prisma": {

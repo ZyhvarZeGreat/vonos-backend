@@ -7,7 +7,7 @@
  * remain fully usable when logged in directly — they are simply hidden
  * from the group.
  */
-export const AUTOS_GROUP_CODES = ["VW", "VA", "VISP", "VSP"] as const;
+export const AUTOS_GROUP_CODES = ["VW", "VA", "VP", "VISP", "VSP"] as const;
 
 export type AutosGroupCode = (typeof AUTOS_GROUP_CODES)[number];
 

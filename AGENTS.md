@@ -10,13 +10,13 @@ sync strategy, engineering practices, per-entity page sets, and build order.
 
 Vonos Group operates **8 business entities** (7 operating tenants + VAG admin).
 Four legacy WordPress/cPanel sites were migrated; two former automotive installs
-(VM Mechanics + VMS Mech Shop) are **merged into Vonos Automotive (`VA`)**.
+(VM Mechanics + VMS Mech Shop) are **merged into Vonos Mechanic (`VA`)**.
 The former single **VSS** (Spare Shop) label is split into **VISP** (institute)
 and **VSP** (marketplace) — separate Ultimate POS installs and tenants.
 
 | Code | Entity                      | Status                   |
 |------|-----------------------------|--------------------------|
-| VA   | Vonos Automotive            | Existing (WP, merged VM+VMS) |
+| VA   | Vonos Mechanic              | Existing (WP, merged VM+VMS) |
 | VW   | Vonos Warehouse             | Existing (Ultimate POS — canonical: `audit.vonosautos.com` / `vonomglk_audit`, `Vonos warehouse.sql`; legacy `vonomglk_hq2` archive only) |
 | VISP | Vonos Institute Spare Parts | Existing (Ultimate POS, migrate) |
 | VSP  | Vonos SP Marketplace        | Existing (Ultimate POS, migrate) |
@@ -94,7 +94,7 @@ Every entity maps to one of 4 archetypes, defined by its **core atom**.
 |---------------------|-------------------------------------|----------------------------------|
 | Stock-centric        | Warehouse (VW), Kids Wear (VKW)     | Item / quantity-on-hand          |
 | Transaction-centric    | VISP, VSP, Cafe (VC)                | Sale / Order                     |
-| Job-centric            | Vonos Automotive (VA)               | Job (adaptive status stepper)    |
+| Job-centric            | Vonos Mechanic (VA)                 | Job (adaptive status stepper)    |
 | Appointment-centric    | Saloon (VS)                         | Scheduled booking                |
 
 VAG has no archetype — it is the unscoped aggregation view over all tenants.
@@ -374,9 +374,9 @@ from the start:
 ### Security
 - Forgot-password: token-based reset email.
 - **2FA (TOTP)** for Admin and Super Admin roles.
-- JWT: access token (~2h) + refresh token (~7 days, httpOnly
-  cookie). Role/tenant changes apply on next token refresh (acceptable at
-  this scale; `tokenVersion` field optional for immediate revocation).
+- JWT: access token (~3h) + refresh token (~7 days, httpOnly
+cookie). Role/tenant changes apply on next token refresh (acceptable at
+this scale; `tokenVersion` field optional for immediate revocation).
 - Deactivation, not deletion, for departing staff (`status: suspended`) —
   preserves audit trail.
 

@@ -83,13 +83,13 @@ export class HrmController {
   }
 
   @Post('designations')
-  @Roles('admin', 'manager')
+  @Roles('admin', 'manager', 'super_admin')
   createDesignation(@Body() dto: CreateDesignationRequest) {
     return this.service.createDesignation(dto);
   }
 
   @Patch('designations/:id')
-  @Roles('admin', 'manager')
+  @Roles('admin', 'manager', 'super_admin')
   updateDesignation(
     @Param('id') id: string,
     @Body() dto: UpdateDesignationRequest,
@@ -98,7 +98,7 @@ export class HrmController {
   }
 
   @Delete('designations/:id')
-  @Roles('admin', 'manager')
+  @Roles('admin', 'manager', 'super_admin')
   deleteDesignation(@Param('id') id: string) {
     return this.service.deleteDesignation(id);
   }
@@ -123,7 +123,7 @@ export class HrmController {
   }
 
   @Post('employees')
-  @Roles('admin', 'manager')
+  @Roles('admin', 'manager', 'super_admin')
   createEmployee(@Body() dto: CreateEmployeeRequest) {
     return this.service.createEmployee(dto);
   }
@@ -164,13 +164,13 @@ export class HrmController {
   }
 
   @Post('payroll')
-  @Roles('admin', 'manager')
+  @Roles('admin', 'manager', 'super_admin')
   createPayroll(@Body() dto: CreatePayrollRequest) {
     return this.service.createPayroll(dto);
   }
 
   @Patch('payroll/:id/deduction')
-  @Roles('admin', 'manager')
+  @Roles('admin', 'manager', 'super_admin')
   addPayrollDeduction(
     @Param('id') id: string,
     @Body() dto: UpdatePayrollDeductionRequest,
@@ -194,13 +194,13 @@ export class HrmController {
   }
 
   @Post('payroll-groups')
-  @Roles('admin', 'manager')
+  @Roles('admin', 'manager', 'super_admin')
   createPayrollGroup(@Body() dto: CreatePayrollGroupRequest) {
     return this.service.createPayrollGroup(dto);
   }
 
   @Patch('payroll-groups/:id')
-  @Roles('admin', 'manager')
+  @Roles('admin', 'manager', 'super_admin')
   updatePayrollGroup(
     @Param('id') id: string,
     @Body() dto: UpdatePayrollGroupRequest,
@@ -209,7 +209,7 @@ export class HrmController {
   }
 
   @Delete('payroll-groups/:id')
-  @Roles('admin', 'manager')
+  @Roles('admin', 'manager', 'super_admin')
   deletePayrollGroup(@Param('id') id: string) {
     return this.service.deletePayrollGroup(id);
   }
@@ -230,7 +230,7 @@ export class HrmController {
   }
 
   @Post('pay-components')
-  @Roles('admin', 'manager')
+  @Roles('admin', 'manager', 'super_admin')
   createPayComponent(@Body() dto: CreatePayComponentRequest) {
     return this.service.createPayComponent(dto);
   }
@@ -253,7 +253,7 @@ export class HrmController {
   }
 
   @Post('leave-types')
-  @Roles('admin', 'manager')
+  @Roles('admin', 'manager', 'super_admin')
   createLeaveType(
     @Body() dto: { name: string; maxLeaveCount?: number },
   ) {
@@ -261,7 +261,7 @@ export class HrmController {
   }
 
   @Patch('leave-types/:id')
-  @Roles('admin', 'manager')
+  @Roles('admin', 'manager', 'super_admin')
   updateLeaveType(
     @Param('id') id: string,
     @Body() dto: { name?: string; maxLeaveCount?: number },
@@ -270,7 +270,7 @@ export class HrmController {
   }
 
   @Delete('leave-types/:id')
-  @Roles('admin', 'manager')
+  @Roles('admin', 'manager', 'super_admin')
   deleteLeaveType(@Param('id') id: string) {
     return this.essentials.deleteLeaveType(id);
   }
@@ -293,7 +293,7 @@ export class HrmController {
   }
 
   @Post('leaves')
-  @Roles('admin', 'manager')
+  @Roles('admin', 'manager', 'super_admin')
   createLeave(
     @Body()
     dto: {
@@ -311,7 +311,7 @@ export class HrmController {
   }
 
   @Delete('leaves/:id')
-  @Roles('admin', 'manager')
+  @Roles('admin', 'manager', 'super_admin')
   deleteLeave(@Param('id') id: string) {
     return this.essentials.deleteLeave(id);
   }
@@ -332,7 +332,7 @@ export class HrmController {
   }
 
   @Post('holidays')
-  @Roles('admin', 'manager')
+  @Roles('admin', 'manager', 'super_admin')
   createHoliday(
     @Body()
     dto: {
@@ -346,7 +346,7 @@ export class HrmController {
   }
 
   @Delete('holidays/:id')
-  @Roles('admin', 'manager')
+  @Roles('admin', 'manager', 'super_admin')
   deleteHoliday(@Param('id') id: string) {
     return this.essentials.deleteHoliday(id);
   }
@@ -367,7 +367,7 @@ export class HrmController {
   }
 
   @Post('attendance/shifts')
-  @Roles('admin', 'manager')
+  @Roles('admin', 'manager', 'super_admin')
   createShift(@Body() dto: { name: string }) {
     return this.essentials.createShift(dto);
   }
@@ -395,7 +395,7 @@ export class HrmController {
   }
 
   @Post('attendance/clock-in')
-  @Roles('admin', 'manager', 'staff')
+  @Roles('admin', 'manager', 'staff', 'super_admin')
   clockIn(
     @Body() dto: { employeeName: string; shiftId?: string; date?: string },
   ) {
@@ -418,7 +418,7 @@ export class HrmController {
   }
 
   @Post('sales-targets')
-  @Roles('admin', 'manager')
+  @Roles('admin', 'manager', 'super_admin')
   upsertSalesTarget(
     @Body() dto: { userName: string; userId?: string; note?: string },
   ) {

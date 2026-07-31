@@ -4,9 +4,11 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { Button } from "@/components/atoms/Button";
-import { Input } from "@/components/atoms/Input";
 import { AuthFooterLink, AuthTemplate } from "@/components/templates/AuthTemplate";
 import { resetPassword, validateResetToken } from "@/lib/api/auth";
+import { PasswordField } from "@/components/atoms/PasswordField";
+import { parseForm } from "@/lib/validation/parseForm";
+import { resetPasswordFormSchema } from "@/lib/validation/schemas";
 
 export default function ResetPasswordConfirmPage() {
   const params = useParams<{ token: string }>();
@@ -26,18 +28,16 @@ export default function ResetPasswordConfirmPage() {
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
-    if (password !== confirm) {
-      setError("Passwords do not match");
-      return;
-    }
-    if (password.length < 8) {
-      setError("Password must be at least 8 characters");
-      return;
-    }
+    const valid = parseForm(
+      resetPasswordFormSchema,
+      { password, confirmPassword: confirm },
+      { setError },
+    );
+    if (!valid) return;
     setError(null);
     setLoading(true);
     try {
-      await resetPassword(params.token, password);
+      await resetPassword(params.token, valid.password);
       setDone(true);
       setTimeout(() => router.replace("/login"), 2000);
     } catch (err) {
@@ -72,20 +72,17 @@ export default function ResetPasswordConfirmPage() {
         </div>
       ) : (
         <form onSubmit={handleSubmit} className="space-y-4">
-          <Input
+          <PasswordField
             label="New password"
-            type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            minLength={8}
+            showStrength
             required
           />
-          <Input
+          <PasswordField
             label="Confirm password"
-            type="password"
             value={confirm}
             onChange={(e) => setConfirm(e.target.value)}
-            minLength={8}
             required
           />
           {error && email ? <p className="text-sm text-error">{error}</p> : null}

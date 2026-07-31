@@ -1,5 +1,7 @@
 "use client";
 
+import { customerGroupFormSchema } from "@/lib/validation/schemas";
+import { parseForm } from "@/lib/validation/parseForm";
 import { useCallback, useMemo, useState, type FormEvent } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { withOptimistic } from "@/lib/hooks/useAppMutation";
@@ -25,6 +27,9 @@ import { useServerListPage } from "@/lib/hooks/useServerListPage";
 import { HQ6_TABLE_PAGE_SIZE } from "@/lib/api/fetchAllPages";
 import { useListExport } from "@/lib/hooks/useListExport";
 import { useTenantId } from "@/lib/hooks/useRouteTenant";
+import { useQuery } from "@tanstack/react-query";
+import { getAllCatalogMeta } from "@/lib/api/catalogMeta";
+import type { SellingPriceGroup } from "@vonos/types";
 import { toast } from "@/stores/toastStore";
 
 const PAGE_SIZES = [25, 50, 100, 200, 500, 1000, -1] as const;
@@ -63,9 +68,28 @@ export function Hq6CustomerGroupsListView() {
     "percentage",
   );
   const [discountPercent, setDiscountPercent] = useState("0");
+  const [priceGroupId, setPriceGroupId] = useState("");
   const [saving, setSaving] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<CustomerGroup | null>(null);
   const [deleting, setDeleting] = useState(false);
+
+  const priceGroupsQuery = useQuery({
+    queryKey: ["catalog-meta", "price-groups", tenantId, "customer-group-form"],
+    queryFn: () =>
+      getAllCatalogMeta(tenantId!, "price-groups") as Promise<
+        SellingPriceGroup[]
+      >,
+    enabled: Boolean(tenantId),
+    staleTime: 5 * 60_000,
+  });
+  const priceGroupOptions = useMemo(
+    () =>
+      (priceGroupsQuery.data ?? []).map((g) => ({
+        value: g.id,
+        label: g.name,
+      })),
+    [priceGroupsQuery.data],
+  );
 
   const {
     items,
@@ -101,6 +125,7 @@ export function Hq6CustomerGroupsListView() {
     setName("");
     setPriceCalcType("percentage");
     setDiscountPercent("0");
+    setPriceGroupId("");
     setFormOpen(true);
   }, []);
 
@@ -109,6 +134,7 @@ export function Hq6CustomerGroupsListView() {
     setName(row.name);
     setPriceCalcType("percentage");
     setDiscountPercent(String(row.discountPercent));
+    setPriceGroupId("");
     setFormOpen(true);
   }, []);
 
@@ -120,15 +146,13 @@ export function Hq6CustomerGroupsListView() {
   const handleSave = useCallback(
     async (e?: FormEvent) => {
       e?.preventDefault();
-      if (!tenantId || !name.trim()) {
-        toast.error("Customer group name is required");
-        return;
-      }
-      const pct = Number(discountPercent);
-      if (Number.isNaN(pct)) {
-        toast.error("Calculation percentage must be a number");
-        return;
-      }
+      if (!tenantId) return;
+      const valid = parseForm(customerGroupFormSchema, {
+        name,
+        calculationPercentage: discountPercent,
+      });
+      if (!valid) return;
+      const pct = Number(String(valid.calculationPercentage || "0").trim() || "0");
       const opt = withOptimistic<CustomerGroup, void>(queryClient, {
         keys: [["customer-groups"]],
         update: (qc) => {
@@ -586,9 +610,15 @@ export function Hq6CustomerGroupsListView() {
                         <select
                           id="selling_price_group_id"
                           className="form-control"
-                          disabled
+                          value={priceGroupId}
+                          onChange={(e) => setPriceGroupId(e.target.value)}
                         >
                           <option value="">None</option>
+                          {priceGroupOptions.map((opt) => (
+                            <option key={opt.value} value={opt.value}>
+                              {opt.label}
+                            </option>
+                          ))}
                         </select>
                       </div>
                     )}

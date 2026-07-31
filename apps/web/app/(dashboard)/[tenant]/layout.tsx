@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import { useParams, usePathname } from "next/navigation";
 import { Sidebar } from "@/components/organisms/Sidebar";
 import { TopBar } from "@/components/organisms/TopBar";
@@ -17,6 +17,7 @@ import { UposAppShell } from "@/components/upos/UposAppShell";
 import { isUposShellTenant } from "@/lib/utils/isHq6Tenant";
 import { useAuthStore } from "@/stores/authStore";
 import { useUiStore } from "@/stores/uiStore";
+import { PrivilegeRouteGuard } from "@/components/guards/PrivilegeRouteGuard";
 
 export default function TenantLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -38,7 +39,10 @@ function TenantLayoutInner({ children }: { children: React.ReactNode }) {
   const authName = useAuthStore((state) => state.name);
   const authEmail = useAuthStore((state) => state.email);
   const authRole = useAuthStore((state) => state.role);
-  const navSections = navSectionsForTenant(params.tenant, config);
+  const navSections = useMemo(
+    () => navSectionsForTenant(params.tenant, config),
+    [params.tenant, config],
+  );
   const useUposShell = isUposShellTenant(params.tenant);
 
   const { section, recordId } = parseTenantPath(pathname);
@@ -76,6 +80,7 @@ function TenantLayoutInner({ children }: { children: React.ReactNode }) {
         userName={authName ?? authEmail ?? undefined}
       >
         <TopProgressBar />
+        <PrivilegeRouteGuard tenantCode={params.tenant} />
         {children}
       </UposAppShell>
     );
@@ -84,6 +89,7 @@ function TenantLayoutInner({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex h-screen overflow-hidden bg-background">
       <TopProgressBar />
+      <PrivilegeRouteGuard tenantCode={params.tenant} />
       {mobileNavOpen ? (
         <button
           type="button"

@@ -1,5 +1,7 @@
 "use client";
 
+import { paymentAmountSchema } from "@/lib/validation/schemas";
+import { parseForm } from "@/lib/validation/parseForm";
 import { useMemo, useState, type ReactNode } from "react";
 import {
   ArrowDownCircle,
@@ -20,10 +22,13 @@ import {
   Wallet,
 } from "lucide-react";
 import type { ContactLedgerEntry } from "@vonos/types";
+import { PRODUCT_STOCK_BUSINESS_LOCATIONS } from "@vonos/types";
 import { cn } from "@/lib/utils/cn";
 import { formatHq6Currency, formatHq6Date } from "@/lib/utils/hq6Format";
 import { downloadCsv } from "@/lib/utils/exportCsv";
 import { toast } from "@/stores/toastStore";
+import { useRouteTenant } from "@/lib/hooks/useRouteTenant";
+import { entitySaleLocations } from "@/lib/hooks/useBusinessLocationOptions";
 import {
   Hq6Field,
   Hq6Modal,
@@ -141,6 +146,12 @@ export function Hq6ContactDetailShell({
   const [ledgerFormat, setLedgerFormat] =
     useState<(typeof LEDGER_FORMATS)[number]>("Format 1");
   const [locationFilter, setLocationFilter] = useState("");
+  const { config } = useRouteTenant();
+  const locationFilterOptions = useMemo(() => {
+    const own = entitySaleLocations(config);
+    if (own.length > 0) return own;
+    return PRODUCT_STOCK_BUSINESS_LOCATIONS;
+  }, [config]);
   const [discountOpen, setDiscountOpen] = useState(false);
   const [discountDate, setDiscountDate] = useState(() =>
     new Date().toISOString().slice(0, 10),
@@ -325,6 +336,7 @@ export function Hq6ContactDetailShell({
               onLedgerFormatChange={setLedgerFormat}
               locationFilter={locationFilter}
               onLocationFilterChange={setLocationFilter}
+              locationOptions={locationFilterOptions}
               rangeLabel={rangeLabel}
               yearRangeTo={yearRangeTo(year)}
               money={money}
@@ -369,11 +381,11 @@ export function Hq6ContactDetailShell({
         footer={
           <Hq6ModalSaveClose
             onSave={async () => {
-              const amount = Number(discountAmount);
-              if (!Number.isFinite(amount) || amount <= 0) {
-                toast.error("Enter a valid amount");
-                return;
-              }
+              const valid = parseForm(paymentAmountSchema, {
+                amount: discountAmount,
+              });
+              if (!valid) return;
+              const amount = Number(valid.amount);
               setDiscountSaving(true);
               try {
                 // Ledger discount API parity — recorded locally until backend endpoint lands.
@@ -442,6 +454,7 @@ function LedgerPanel({
   onLedgerFormatChange,
   locationFilter,
   onLocationFilterChange,
+  locationOptions = [],
   rangeLabel,
   yearRangeTo,
   money,
@@ -455,6 +468,7 @@ function LedgerPanel({
   onLedgerFormatChange: (v: (typeof LEDGER_FORMATS)[number]) => void;
   locationFilter: string;
   onLocationFilterChange: (v: string) => void;
+  locationOptions?: Array<{ code: string; name: string }>;
   rangeLabel: string;
   yearRangeTo: string;
   money: (n: number | undefined) => string;
@@ -489,6 +503,11 @@ function LedgerPanel({
             onChange={(e) => onLocationFilterChange(e.target.value)}
           >
             <option value="">All locations</option>
+            {locationOptions.map((loc) => (
+              <option key={loc.code} value={loc.code}>
+                {loc.code} — {loc.name}
+              </option>
+            ))}
           </select>
         </label>
         <div className="ml-auto flex items-center gap-2 text-[#6b7280]">

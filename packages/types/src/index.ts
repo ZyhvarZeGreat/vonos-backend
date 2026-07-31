@@ -1,5 +1,6 @@
 export * from "./listQuery";
 export * from "./role";
+export * from "./tenantRole";
 export * from "./user";
 export * from "./item";
 export * from "./notification";

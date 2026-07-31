@@ -26,6 +26,9 @@ import {
   prependEntityInQueries,
 } from "@/lib/query/optimistic";
 import { useTenantId } from "@/lib/hooks/useRouteTenant";
+import { parseForm } from "@/lib/validation/parseForm";
+import { requiredTextSchema } from "@/lib/validation/schemas";
+import { z } from "zod";
 
 const KIND_SINGULAR: Record<CatalogMetaKind, string> = {
   categories: "Category",
@@ -171,8 +174,13 @@ export function CatalogMetaCreateBar({ kind }: { kind: CatalogMetaKind }) {
     successMessage: `${singular} added`,
     mutationFn: async () => {
       if (!tenantId) throw new Error("No tenant");
-      const trimmed = name.trim();
-      if (!trimmed) throw new Error("Name is required");
+      const valid = parseForm(
+        z.object({ name: requiredTextSchema("Name") }),
+        { name },
+        { toast: false },
+      );
+      if (!valid) throw new Error("Name is required");
+      const trimmed = valid.name;
 
       if (kind === "categories") {
         const body: CreateProductCategoryInput = {

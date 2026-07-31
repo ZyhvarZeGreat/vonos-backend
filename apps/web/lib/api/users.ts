@@ -3,9 +3,12 @@ import type {
   CreateUserResponse,
   InviteUserRequest,
   InviteUserResponse,
+  UpdateUserRequest,
+  UpdateUserResponse,
   User,
 } from "@vonos/types";
 import { apiFetch, withTenantQuery } from "@/lib/api/client";
+import { throwApiError } from "@/lib/api/parseApiError";
 import {
   DEFAULT_TABLE_PAGE_SIZE,
   EXPORT_PAGE_SIZE,
@@ -160,19 +163,6 @@ export async function getUser(id: string, tenantId?: string | null): Promise<Use
   return response.json();
 }
 
-async function parseUserMutationError(
-  response: Response,
-  fallback: string,
-): Promise<never> {
-  const body = (await response.json().catch(() => null)) as
-    | { message?: string | string[] }
-    | null;
-  const message = Array.isArray(body?.message)
-    ? body.message.join(", ")
-    : body?.message;
-  throw new Error(message ?? fallback);
-}
-
 export async function inviteUser(
   payload: InviteUserRequest,
   options?: { tenantId?: string | null },
@@ -188,7 +178,7 @@ export async function inviteUser(
   });
 
   if (!response.ok) {
-    return parseUserMutationError(response, "Failed to send invite");
+    return throwApiError(response, "Failed to send invite");
   }
 
   return response.json();
@@ -209,7 +199,7 @@ export async function createUser(
   });
 
   if (!response.ok) {
-    return parseUserMutationError(response, "Failed to create user");
+    return throwApiError(response, "Failed to create user");
   }
 
   return response.json();
@@ -217,22 +207,16 @@ export async function createUser(
 
 export async function updateUser(
   id: string,
-  payload: {
-    email?: string;
-    name?: string;
-    role?: User["role"];
-    status?: User["status"];
-    password?: string;
-  },
+  payload: UpdateUserRequest,
   options?: { tenantId?: string | null },
-): Promise<{ user: User }> {
+): Promise<UpdateUserResponse> {
   const path = withTenantQuery(`/users/${id}`, options?.tenantId ?? undefined);
   const response = await apiFetch(path, {
     method: "PATCH",
     body: JSON.stringify(payload),
   });
   if (!response.ok) {
-    return parseUserMutationError(response, "Failed to update user");
+    return throwApiError(response, "Failed to update user");
   }
   return response.json();
 }
@@ -244,7 +228,7 @@ export async function deactivateUser(
   const path = withTenantQuery(`/users/${id}`, options?.tenantId ?? undefined);
   const response = await apiFetch(path, { method: "DELETE" });
   if (!response.ok) {
-    return parseUserMutationError(response, "Failed to deactivate user");
+    return throwApiError(response, "Failed to deactivate user");
   }
   return response.json();
 }

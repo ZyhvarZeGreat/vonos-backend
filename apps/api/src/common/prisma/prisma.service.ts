@@ -4,9 +4,9 @@ import { withTransientDbRetry } from './transientDbRetry';
 
 const CONNECT_MAX_ATTEMPTS = 5;
 const CONNECT_RETRY_DELAY_MS = 2_000;
-/** Neon pooler: keep low to avoid P1001/P2024 stampedes. Override via PRISMA_CONNECTION_LIMIT. */
-const DEFAULT_CONNECTION_LIMIT = 10;
-const NEON_POOLER_CONNECTION_LIMIT = 5;
+/** Neon pooler: sized for multi-user concurrent API traffic. Override via PRISMA_CONNECTION_LIMIT. */
+const DEFAULT_CONNECTION_LIMIT = 20;
+const NEON_POOLER_CONNECTION_LIMIT = 15;
 const DEFAULT_POOL_TIMEOUT_S = 60;
 
 function resolveDatabaseUrl(url?: string): string | undefined {
@@ -49,6 +49,7 @@ function resolveDatabaseUrl(url?: string): string | undefined {
 
 const tenantScopedModels = new Set([
   'Item',
+  'ItemLocationStock',
   'Job',
   'LedgerEntry',
   'Supplier',
@@ -79,6 +80,18 @@ const tenantScopedModels = new Set([
   'AttendanceShift',
   'Attendance',
   'SalesTarget',
+  'TenantRole',
+  'Discount',
+  'VariationTemplate',
+  'ProductCategory',
+  'Brand',
+  'ProductUnit',
+  'Warranty',
+  'SellingPriceGroup',
+  'Invoice',
+  'InvoiceLayout',
+  'InvoiceScheme',
+  'ReceiptPrinter',
 ]);
 
 const modelsWithoutSoftDelete = new Set([

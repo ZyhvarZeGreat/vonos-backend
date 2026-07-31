@@ -39,12 +39,13 @@ export function defaultHq6BusinessSettings(
 ): Hq6BusinessSettings {
   const useAutoContactLabels =
     tenantCode === "VA" ||
+    tenantCode === "VP" ||
     tenantCode === "VW" ||
     tenantCode === "VISP" ||
     tenantCode === "VSP";
 
   const skuPrefix =
-    tenantCode === "VA"
+    tenantCode === "VA" || tenantCode === "VP"
       ? "VONOS AUTO-"
       : tenantCode === "VW"
         ? "VONOS WH-"

@@ -13,9 +13,17 @@ const sizeClasses = {
 } as const;
 
 export function Spinner({ className, size = "md" }: SpinnerProps) {
+  const px = size === "lg" ? 32 : size === "sm" ? 14 : 16;
   return (
     <Loader2
-      className={cn("animate-spin", sizeClasses[size], className)}
+      className={cn(
+        "animate-spin shrink-0",
+        sizeClasses[size],
+        className,
+      )}
+      width={px}
+      height={px}
+      strokeWidth={2.25}
       aria-hidden
     />
   );

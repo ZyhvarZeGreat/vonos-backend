@@ -3,13 +3,13 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 
-/** Legacy /admin/users → /admin/hrm (matches VA HRM naming). */
+/** Legacy /admin/users → Manage users under VAG HRM. */
 export default function AdminUsersRedirectPage() {
   const router = useRouter();
   useEffect(() => {
-    router.replace("/admin/hrm");
+    router.replace("/admin/hrm/users");
   }, [router]);
   return (
-    <p className="text-sm text-muted">Redirecting to HRM…</p>
+    <p className="text-sm text-muted">Redirecting to Manage users…</p>
   );
 }

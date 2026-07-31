@@ -1,14 +1,15 @@
-/** Overview route — keep text chrome; TopProgressBar handles indication. */
+import { Spinner } from "@/components/atoms/Spinner";
+
+/** Overview route — shell stays; show loader while the segment resolves. */
 export default function TenantOverviewLoading() {
   return (
     <div
-      className="mx-auto space-y-6 p-4 sm:p-6"
+      className="flex min-h-[40vh] flex-col items-center justify-center gap-3 p-8"
       aria-busy
       aria-label="Loading overview"
     >
-      <h1 className="text-xl font-semibold text-foreground">Overview</h1>
-      <p className="text-sm text-muted">Dashboard metrics load in a moment.</p>
-      <div className="min-h-[40vh]" />
+      <Spinner size="lg" />
+      <p className="text-sm text-muted">Loading overview…</p>
     </div>
   );
 }

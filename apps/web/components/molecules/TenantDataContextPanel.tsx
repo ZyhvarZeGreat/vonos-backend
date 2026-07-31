@@ -131,6 +131,7 @@ function getArchetype(code: TenantCode): "stock" | "transaction" | "job" | "appo
     VSP: "transaction",
     VC: "transaction",
     VA: "job",
+    VP: "job",
     VS: "appointment",
   };
   return map[code];

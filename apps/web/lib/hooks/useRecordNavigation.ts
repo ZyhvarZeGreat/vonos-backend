@@ -1,13 +1,32 @@
 "use client";
 
-import { useParams, useRouter } from "next/navigation";
+import { useParams, usePathname, useRouter } from "next/navigation";
+import { startNavigationProgress } from "@/stores/navigationBusyStore";
+import { useRouteTenant } from "@/lib/hooks/useRouteTenant";
 
 export function useRecordNavigation(listSlug: string) {
   const params = useParams<{ tenant: string }>();
+  const pathname = usePathname();
   const router = useRouter();
-  const tenant = params.tenant;
+  const { tenantCode } = useRouteTenant({ adminFallback: null });
 
-  const detailPath = (recordId: string) => `/${tenant}/${listSlug}/${recordId}`;
+  /** VAG admin HRM hosts the same user/role forms under /admin/hrm/*. */
+  const adminHrm =
+    Boolean(pathname?.startsWith("/admin/hrm")) &&
+    (listSlug === "users" || listSlug === "roles");
+
+  const tenant = params.tenant || tenantCode || "";
+
+  const detailPath = (recordId: string) => {
+    if (adminHrm) {
+      return `/admin/hrm/${listSlug}/${recordId}`;
+    }
+    return `/${tenant}/${listSlug}/${recordId}`;
+  };
+
+  const listPath = adminHrm
+    ? `/admin/hrm/${listSlug}`
+    : `/${tenant}/${listSlug}`;
 
   return {
     detailPath,
@@ -16,10 +35,14 @@ export function useRecordNavigation(listSlug: string) {
       router.prefetch(detailPath(recordId));
     },
     goToDetail: (recordId: string) => {
+      startNavigationProgress();
       router.prefetch(detailPath(recordId));
       router.push(detailPath(recordId));
     },
-    listPath: `/${tenant}/${listSlug}`,
-    goToList: () => router.push(`/${tenant}/${listSlug}`),
+    listPath,
+    goToList: () => {
+      startNavigationProgress();
+      router.push(listPath);
+    },
   };
 }

@@ -151,6 +151,7 @@ export class ItemsController {
       category?: string;
       subCategory?: string;
       description?: string;
+      imageUrl?: string;
       barcodeType?: string;
       unit?: string;
       weight?: string;

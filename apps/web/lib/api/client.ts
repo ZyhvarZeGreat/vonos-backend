@@ -1,3 +1,4 @@
+import type { LoginSuccessResponse } from "@vonos/types";
 import { useAuthStore } from "@/stores/authStore";
 import { resolveViewingTenantId } from "./viewingTenant";
 
@@ -26,7 +27,79 @@ function buildAuthHeaders(): Record<string, string> {
   return headers;
 }
 
-/** Authenticated fetch against the NestJS API. */
+function applySession(result: LoginSuccessResponse): void {
+  useAuthStore.getState().setAuth({
+    userId: result.user.id,
+    email: result.user.email,
+    name: result.user.name,
+    tenantId: result.user.tenantId,
+    role: result.user.role,
+    token: result.accessToken,
+    tenantRoleId: result.user.tenantRoleId ?? null,
+    tenantRoleName: result.user.tenantRoleName ?? null,
+    tenantRolePermissions: result.user.tenantRolePermissions ?? [],
+    tenantRoleLocked: result.user.tenantRoleLocked ?? false,
+  });
+}
+
+function redirectToLogin(): void {
+  if (typeof window === "undefined") return;
+  const path = window.location.pathname;
+  if (
+    path === "/login" ||
+    path.startsWith("/login/") ||
+    path.startsWith("/invite") ||
+    path.startsWith("/reset-password") ||
+    path.startsWith("/invoice")
+  ) {
+    return;
+  }
+  const redirect = encodeURIComponent(path + window.location.search);
+  window.location.replace(`/login?redirect=${redirect}`);
+}
+
+/** Single-flight refresh so parallel 401s share one /auth/refresh. */
+let refreshInFlight: Promise<boolean> | null = null;
+
+async function tryRefreshSession(): Promise<boolean> {
+  if (refreshInFlight) return refreshInFlight;
+
+  refreshInFlight = (async () => {
+    try {
+      const response = await fetch(apiUrl("/auth/refresh"), {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+      });
+      if (!response.ok) return false;
+      const result = (await response.json()) as LoginSuccessResponse;
+      if (!result?.accessToken || !result?.user) return false;
+      applySession(result);
+      return true;
+    } catch {
+      return false;
+    } finally {
+      refreshInFlight = null;
+    }
+  })();
+
+  return refreshInFlight;
+}
+
+function isAuthPath(path: string): boolean {
+  const normalized = path.startsWith("/") ? path : `/${path}`;
+  return (
+    normalized === "/auth/refresh" ||
+    normalized.startsWith("/auth/login") ||
+    normalized.startsWith("/auth/logout") ||
+    normalized.startsWith("/auth/verify-2fa") ||
+    normalized.startsWith("/auth/invite") ||
+    normalized.startsWith("/auth/forgot-password") ||
+    normalized.startsWith("/auth/reset-password")
+  );
+}
+
+/** Authenticated fetch against the NestJS API. Retries once after refresh on 401. */
 export async function apiFetch(
   path: string,
   init?: RequestInit,
@@ -38,7 +111,37 @@ export async function apiFetch(
   if (init?.body && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
   }
-  return fetch(apiUrl(path), { ...init, headers, credentials: "include" });
+
+  const response = await fetch(apiUrl(path), {
+    ...init,
+    headers,
+    credentials: "include",
+  });
+
+  if (response.status !== 401 || isAuthPath(path)) {
+    return response;
+  }
+
+  const refreshed = await tryRefreshSession();
+  if (!refreshed) {
+    useAuthStore.getState().clearAuth();
+    redirectToLogin();
+    return response;
+  }
+
+  const retryHeaders = new Headers(init?.headers);
+  for (const [key, value] of Object.entries(buildAuthHeaders())) {
+    retryHeaders.set(key, value);
+  }
+  if (init?.body && !retryHeaders.has("Content-Type")) {
+    retryHeaders.set("Content-Type", "application/json");
+  }
+
+  return fetch(apiUrl(path), {
+    ...init,
+    headers: retryHeaders,
+    credentials: "include",
+  });
 }
 
 /** Append tenantId query param for super-admin entity scoping. */

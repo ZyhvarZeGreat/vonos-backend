@@ -6,7 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import type { InviteUserResponse, User } from '@vonos/types';
-import { ROLES } from '@vonos/types';
+import { mapTenantRoleToJwtRole, ROLES } from '@vonos/types';
 import type { AuthenticatedUser } from '../../common/decorators/roles.decorator';
 import { generateOpaqueToken } from '../../common/utils/auth-token';
 import { buildCompositeCursorQuery } from '../../common/utils/pagination';
@@ -14,7 +14,7 @@ import {
   listPageFilterKey,
   withListPageCache,
 } from '../../common/utils/listPageCache';
-import { devPasswordHash, hashPassword } from '../../common/utils/password';
+import { devPasswordHash, hashPassword, isStrongPassword, STRONG_PASSWORD_HINT } from '../../common/utils/password';
 import { TenantDbService } from '../../common/prisma/tenant-db.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { CacheService } from '../../common/cache/cache.service';
@@ -126,6 +126,9 @@ export class UsersService {
       },
       orderBy: [{ name: 'asc' }, { id: 'asc' }],
       take: pagination.take,
+      include: {
+        tenantRole: { select: { id: true, name: true } },
+      },
     });
 
     return rows.map((row) => this.toUser(row));
@@ -149,6 +152,9 @@ export class UsersService {
           { tenantId },
           ...(legacyLink ? [{ id }] : []),
         ],
+      },
+      include: {
+        tenantRole: { select: { id: true, name: true } },
       },
     });
     if (!row) throw new NotFoundException('User not found');
@@ -217,7 +223,10 @@ export class UsersService {
           : {}),
         ...(pagination.where ?? {}),
       },
-      include: { tenant: { select: { code: true, name: true } } },
+      include: {
+        tenant: { select: { code: true, name: true } },
+        tenantRole: { select: { id: true, name: true } },
+      },
       orderBy: [{ name: 'asc' }, { id: 'asc' }],
       take: pagination.take,
     });
@@ -256,10 +265,16 @@ export class UsersService {
       email: string;
       name: string;
       role: User['role'];
+      tenantRoleId?: string | null;
       tenantId?: string | null;
     },
   ): Promise<InviteUserResponse> {
     const assignment = await this.resolveUserAssignment(actor, body);
+    const roleBinding = await this.resolveTenantRoleBinding(
+      assignment.targetTenantId,
+      body.tenantRoleId,
+      assignment.role,
+    );
 
     const existing = await this.prisma.user.findFirst({
       where: {
@@ -275,11 +290,16 @@ export class UsersService {
     const user = await this.prisma.user.create({
       data: {
         email: assignment.email,
+        username: await this.resolveUniqueUsername(undefined, assignment.email),
         name: assignment.name,
-        role: assignment.role,
+        role: roleBinding.jwtRole,
+        tenantRoleId: roleBinding.tenantRoleId,
         status: 'invited',
         tenantId: assignment.targetTenantId,
         passwordHash: devPasswordHash('invite-placeholder-not-for-login'),
+      },
+      include: {
+        tenantRole: { select: { id: true, name: true } },
       },
     });
 
@@ -312,13 +332,20 @@ export class UsersService {
       name: string;
       role: User['role'];
       password: string;
+      username?: string | null;
+      tenantRoleId?: string | null;
       tenantId?: string | null;
     },
   ): Promise<{ user: User }> {
     const assignment = await this.resolveUserAssignment(actor, body);
+    const roleBinding = await this.resolveTenantRoleBinding(
+      assignment.targetTenantId,
+      body.tenantRoleId,
+      assignment.role,
+    );
 
-    if (!body.password || body.password.length < 8) {
-      throw new BadRequestException('Password must be at least 8 characters');
+    if (!body.password || !isStrongPassword(body.password)) {
+      throw new BadRequestException(STRONG_PASSWORD_HINT);
     }
 
     const existing = await this.prisma.user.findFirst({
@@ -331,15 +358,25 @@ export class UsersService {
       throw new ConflictException('A user with this email already exists');
     }
 
+    const username = await this.resolveUniqueUsername(
+      body.username,
+      assignment.email,
+    );
+
     const passwordHash = await hashPassword(body.password);
     const user = await this.prisma.user.create({
       data: {
         email: assignment.email,
+        username,
         name: assignment.name,
-        role: assignment.role,
+        role: roleBinding.jwtRole,
+        tenantRoleId: roleBinding.tenantRoleId,
         status: 'active',
         tenantId: assignment.targetTenantId,
         passwordHash,
+      },
+      include: {
+        tenantRole: { select: { id: true, name: true } },
       },
     });
 
@@ -354,6 +391,8 @@ export class UsersService {
       email?: string;
       name?: string;
       role?: User['role'];
+      username?: string | null;
+      tenantRoleId?: string | null;
       status?: User['status'];
       password?: string;
     },
@@ -363,7 +402,9 @@ export class UsersService {
     const data: {
       email?: string;
       name?: string;
+      username?: string | null;
       role?: User['role'];
+      tenantRoleId?: string | null;
       status?: User['status'];
       passwordHash?: string;
       tokenVersion?: { increment: number };
@@ -391,7 +432,27 @@ export class UsersService {
       data.email = email;
     }
 
-    if (body.role !== undefined) {
+    if (body.username !== undefined) {
+      if (body.username === null || body.username.trim() === '') {
+        data.username = null;
+      } else {
+        data.username = await this.resolveUniqueUsername(
+          body.username,
+          body.email ?? row.email,
+          row.id,
+        );
+      }
+    }
+
+    if (body.tenantRoleId !== undefined) {
+      const roleBinding = await this.resolveTenantRoleBinding(
+        row.tenantId,
+        body.tenantRoleId,
+        body.role ?? row.role,
+      );
+      data.tenantRoleId = roleBinding.tenantRoleId;
+      data.role = roleBinding.jwtRole;
+    } else if (body.role !== undefined) {
       if (!ROLES.includes(body.role)) {
         throw new BadRequestException('Invalid role');
       }
@@ -417,8 +478,8 @@ export class UsersService {
     }
 
     if (body.password !== undefined && body.password.length > 0) {
-      if (body.password.length < 8) {
-        throw new BadRequestException('Password must be at least 8 characters');
+      if (!isStrongPassword(body.password)) {
+        throw new BadRequestException(STRONG_PASSWORD_HINT);
       }
       data.passwordHash = await hashPassword(body.password);
       data.tokenVersion = { increment: 1 };
@@ -431,6 +492,9 @@ export class UsersService {
     const updated = await this.prisma.user.update({
       where: { id: row.id },
       data,
+      include: {
+        tenantRole: { select: { id: true, name: true } },
+      },
     });
     this.invalidateUserCaches(row.tenantId);
     return { user: this.toUser(updated) };
@@ -561,26 +625,93 @@ export class UsersService {
     return { email, name, role: body.role, targetTenantId };
   }
 
+  private async resolveTenantRoleBinding(
+    tenantId: string | null,
+    tenantRoleId: string | null | undefined,
+    fallbackRole: User['role'],
+  ): Promise<{
+    jwtRole: User['role'];
+    tenantRoleId: string | null;
+  }> {
+    if (tenantRoleId === undefined) {
+      return { jwtRole: fallbackRole, tenantRoleId: null };
+    }
+    if (tenantRoleId === null || tenantRoleId === '') {
+      return { jwtRole: fallbackRole, tenantRoleId: null };
+    }
+    if (!tenantId) {
+      throw new BadRequestException(
+        'Tenant job roles can only be assigned to tenant-scoped users',
+      );
+    }
+    const role = await this.prisma.tenantRole.findFirst({
+      where: { id: tenantRoleId, tenantId, deletedAt: null },
+    });
+    if (!role) {
+      throw new BadRequestException('Invalid tenant role');
+    }
+    const jwtRole = mapTenantRoleToJwtRole(role);
+    if (fallbackRole === 'super_admin') {
+      return { jwtRole: 'super_admin', tenantRoleId: role.id };
+    }
+    return { jwtRole, tenantRoleId: role.id };
+  }
+
   private toUser(row: {
     id: string;
     email: string;
+    username?: string | null;
     name: string;
     role: User['role'];
     status: User['status'];
     tenantId: string | null;
+    tenantRoleId?: string | null;
+    tenantRole?: { id: string; name: string } | null;
     createdAt: Date;
     lastLoginAt: Date | null;
   }): User {
     return {
       id: row.id,
       email: row.email,
+      username: row.username ?? null,
       name: row.name,
       role: row.role,
       status: row.status,
       tenantId: row.tenantId,
+      tenantRoleId: row.tenantRoleId ?? row.tenantRole?.id ?? null,
+      tenantRoleName: row.tenantRole?.name ?? null,
       createdAt: toIso(row.createdAt),
       lastLoginAt: row.lastLoginAt ? toIso(row.lastLoginAt) : null,
     };
+  }
+
+  /** Normalize + ensure username uniqueness (case-insensitive). */
+  private async resolveUniqueUsername(
+    raw: string | null | undefined,
+    email: string,
+    excludeUserId?: string,
+  ): Promise<string> {
+    const fromEmail = email.trim().split('@')[0]?.toLowerCase() ?? '';
+    let candidate = (raw?.trim() || fromEmail).toLowerCase();
+    candidate = candidate.replace(/[^a-z0-9._-]/g, '');
+    if (!candidate) {
+      throw new BadRequestException('Username is required');
+    }
+    if (candidate.includes('@')) {
+      throw new BadRequestException('Username cannot contain @');
+    }
+
+    const clash = await this.prisma.user.findFirst({
+      where: {
+        username: { equals: candidate, mode: 'insensitive' },
+        deletedAt: null,
+        ...(excludeUserId ? { NOT: { id: excludeUserId } } : {}),
+      },
+    });
+    if (clash) {
+      throw new ConflictException('A user with this username already exists');
+    }
+    return candidate;
   }
 
   private daysFromNow(days: number): Date {

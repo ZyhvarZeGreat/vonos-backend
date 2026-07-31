@@ -6,6 +6,7 @@ import type {
   UpdatePaymentAccountRequest,
 } from "@vonos/types";
 import { apiFetch, withTenantQuery } from "@/lib/api/client";
+import { throwApiError } from "@/lib/api/parseApiError";
 import {
   DEFAULT_TABLE_PAGE_SIZE,
   EXPORT_PAGE_SIZE,
@@ -61,8 +62,7 @@ export async function createPaymentAccount(
     body: JSON.stringify(dto),
   });
   if (!response.ok) {
-    const text = await response.text();
-    throw new Error(text || "Failed to create payment account");
+    return throwApiError(response, "Failed to create payment account");
   }
   return response.json();
 }
@@ -78,8 +78,7 @@ export async function updatePaymentAccount(
     body: JSON.stringify(dto),
   });
   if (!response.ok) {
-    const text = await response.text();
-    throw new Error(text || "Failed to update payment account");
+    return throwApiError(response, "Failed to update payment account");
   }
   return response.json();
 }
@@ -93,8 +92,7 @@ export async function closePaymentAccount(
     { method: "POST" },
   );
   if (!response.ok) {
-    const text = await response.text();
-    throw new Error(text || "Failed to close payment account");
+    return throwApiError(response, "Failed to close payment account");
   }
   return response.json();
 }
@@ -113,8 +111,7 @@ export async function depositPaymentAccount(
     },
   );
   if (!response.ok) {
-    const text = await response.text();
-    throw new Error(text || "Failed to deposit");
+    return throwApiError(response, "Failed to deposit");
   }
   return response.json();
 }
@@ -129,8 +126,7 @@ export async function transferPaymentAccounts(
     body: JSON.stringify(dto),
   });
   if (!response.ok) {
-    const text = await response.text();
-    throw new Error(text || "Failed to transfer funds");
+    return throwApiError(response, "Failed to transfer funds");
   }
   return response.json();
 }

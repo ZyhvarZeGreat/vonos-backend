@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Calendar, Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2 } from "lucide-react";
 import type { MovementStatus } from "@vonos/types";
 import { Button } from "@/components/atoms/Button";
 import { MenuSelect } from "@/components/molecules/MenuSelect";
@@ -18,6 +18,10 @@ import {
 import { getSuppliers } from "@/lib/api/suppliers";
 import { useIsVaHq6 } from "@/lib/hooks/useIsVaHq6";
 import { useRouteTenant, useTenantId } from "@/lib/hooks/useRouteTenant";
+import {
+  defaultEntityLocationCode,
+  entitySaleLocations,
+} from "@/lib/hooks/useBusinessLocationOptions";
 import { hq6CopyForSlug } from "@/lib/registries/hq6PageCopy";
 import { cn } from "@/lib/utils/cn";
 import { formatHq6Currency } from "@/lib/utils/hq6Format";
@@ -161,7 +165,7 @@ export function AddPurchaseView() {
   const editId = searchParams.get("edit");
   const qc = useQueryClient();
 
-  const businessLocations = config?.businessLocations ?? [];
+  const businessLocations = entitySaleLocations(config);
 
   const { data: suppliers = [] } = useQuery({
     queryKey: ["suppliers", tenantId],
@@ -214,9 +218,12 @@ export function AddPurchaseView() {
 
   useEffect(() => {
     if (prefillDone || form.locationCode) return;
-    const first = businessLocations[0]?.code;
+    const first = defaultEntityLocationCode(
+      businessLocations,
+      config?.code ?? tenantCode,
+    );
     if (first) patchForm({ locationCode: first });
-  }, [businessLocations, form.locationCode, prefillDone]);
+  }, [businessLocations, config?.code, form.locationCode, prefillDone, tenantCode]);
 
   const netTotal = useMemo(
     () => lines.reduce((sum, line) => sum + lineTotal(line), 0),
@@ -386,7 +393,6 @@ export function AddPurchaseView() {
                   value={form.date}
                   onChange={(e) => patchForm({ date: e.target.value })}
                 />
-                <Calendar className="hq6-form-input-icon" aria-hidden />
               </div>
             </label>
             <label className="hq6-form-label">
@@ -808,7 +814,6 @@ export function AddPurchaseView() {
                   value={form.paidOn}
                   onChange={(e) => patchForm({ paidOn: e.target.value })}
                 />
-                <Calendar className="hq6-form-input-icon" aria-hidden />
               </div>
             </label>
             <label className="hq6-form-label">

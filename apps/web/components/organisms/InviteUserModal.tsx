@@ -1,10 +1,12 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { useAppMutation } from "@/lib/hooks/useAppMutation";
+import { useEffect, useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useRouter } from "next/navigation";
 import type { Role, User } from "@vonos/types";
 import { Button } from "@/components/atoms/Button";
 import { Input } from "@/components/atoms/Input";
+import { PasswordField } from "@/components/atoms/PasswordField";
 import { Modal, ModalFooter, ModalHeader } from "@/components/atoms/Modal";
 import { Select } from "@/components/atoms/Select";
 import {
@@ -12,6 +14,7 @@ import {
   Hq6Modal,
   Hq6ModalSaveClose,
 } from "@/components/hq6/Hq6Modal";
+import { getTenantRoles } from "@/lib/api/tenantRoles";
 import { createUser, inviteUser } from "@/lib/api/users";
 import { useIsVaHq6 } from "@/lib/hooks/useIsVaHq6";
 import {
@@ -20,7 +23,18 @@ import {
 } from "@/lib/query/optimistic";
 import { AUTOS_GROUP_ENTITIES } from "@/lib/registries/tenants";
 import { cn } from "@/lib/utils/cn";
+import {
+  firstValidationError,
+  sanitizePersonNameInput,
+  validateEmail,
+  validatePassword,
+  validatePasswordConfirm,
+  validatePersonName,
+  validateUsername,
+} from "@/lib/utils/formValidation";
+import { isStrongPassword } from "@/lib/validation/schemas";
 import { useAuthStore } from "@/stores/authStore";
+import { useAppMutation } from "@/lib/hooks/useAppMutation";
 
 const VAG_ENTITY_VALUE = "__vag__";
 
@@ -59,6 +73,7 @@ export function InviteUserModal({
   allTenants = false,
   defaultTenantId,
 }: InviteUserModalProps) {
+  const router = useRouter();
   const isHq6 = useIsVaHq6();
   const actorRole = useAuthStore((state) => state.role);
   const isSuperAdmin = actorRole === "super_admin";
@@ -78,6 +93,7 @@ export function InviteUserModal({
     defaultTenantId ?? (allTenants ? "" : defaultTenantId ?? ""),
   );
   const [role, setRole] = useState<Role>(isSuperAdmin ? "manager" : "staff");
+  const [tenantRoleId, setTenantRoleId] = useState("");
   const [inviteLink, setInviteLink] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [dismissed, setDismissed] = useState(false);
@@ -120,6 +136,33 @@ export function InviteUserModal({
     return entityValue || null;
   }, [allTenants, defaultTenantId, entityValue]);
 
+  const entityCode = useMemo(() => {
+    if (!resolvedTenantId) return null;
+    return (
+      AUTOS_GROUP_ENTITIES.find((e) => e.tenantId === resolvedTenantId)?.code ??
+      null
+    );
+  }, [resolvedTenantId]);
+
+  const rolesQuery = useQuery({
+    queryKey: ["tenant-roles", resolvedTenantId, "invite-modal"],
+    queryFn: () => getTenantRoles(resolvedTenantId!),
+    enabled: open && Boolean(resolvedTenantId),
+    staleTime: 60_000,
+  });
+
+  const tenantRoleOptions = useMemo(() => {
+    const rows = rolesQuery.data ?? [];
+    return [
+      { value: "", label: rows.length ? "Select role…" : "No roles yet — add one" },
+      ...rows.map((r) => ({ value: r.id, label: r.name })),
+    ];
+  }, [rolesQuery.data]);
+
+  useEffect(() => {
+    setTenantRoleId("");
+  }, [resolvedTenantId]);
+
   const resolvedRole =
     entityValue === VAG_ENTITY_VALUE ? ("super_admin" as const) : role;
 
@@ -128,6 +171,10 @@ export function InviteUserModal({
     name: fullName,
     role: resolvedRole,
     tenantId: allTenants ? resolvedTenantId : undefined,
+    tenantRoleId:
+      entityValue === VAG_ENTITY_VALUE
+        ? null
+        : tenantRoleId.trim() || null,
   };
 
   const inviteMutation = useAppMutation({
@@ -151,6 +198,7 @@ export function InviteUserModal({
               ? null
               : entityValue || null
             : (defaultTenantId ?? null),
+          tenantRoleId: basePayload.tenantRoleId,
           createdAt: now,
           lastLoginAt: null,
         } satisfies User);
@@ -211,6 +259,7 @@ export function InviteUserModal({
               ? null
               : entityValue || null
             : (defaultTenantId ?? null),
+          tenantRoleId: basePayload.tenantRoleId,
           createdAt: now,
           lastLoginAt: null,
         } satisfies User);
@@ -264,7 +313,7 @@ export function InviteUserModal({
     !isPending &&
     (mode === "invite"
       ? true
-      : password.length >= 8 && password === confirmPassword);
+      : isStrongPassword(password) && password === confirmPassword);
 
   const handleClose = () => {
     setMode("direct");
@@ -279,6 +328,7 @@ export function InviteUserModal({
     setAllowLogin(true);
     setEntityValue(defaultTenantId ?? "");
     setRole(isSuperAdmin ? "manager" : "staff");
+    setTenantRoleId("");
     setInviteLink(null);
     setError(null);
     setDismissed(false);
@@ -286,12 +336,124 @@ export function InviteUserModal({
   };
 
   const handleSubmit = () => {
+    const validationError = firstValidationError(
+      validatePersonName(prefix, "Prefix", { required: false }),
+      validatePersonName(firstName, "First name"),
+      validatePersonName(middleName, "Middle name", { required: false }),
+      validatePersonName(lastName, "Last name", { required: false }),
+      validateEmail(email),
+      validateUsername(username, { required: false }),
+      mode === "direct"
+        ? validatePassword(password, { strong: true })
+        : null,
+      mode === "direct"
+        ? validatePasswordConfirm(password, confirmPassword)
+        : null,
+    );
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
     if (mode === "invite") {
       inviteMutation.mutate();
     } else {
       createMutation.mutate();
     }
   };
+
+  const openAddRole = () => {
+    if (!entityCode) return;
+    onClose();
+    router.push(`/${entityCode}/roles/new/edit`);
+  };
+
+  const rolePicker =
+    entityValue !== VAG_ENTITY_VALUE ? (
+      <>
+        {resolvedTenantId ? (
+          <div className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
+            <Hq6Field label="Role" required>
+              <select
+                className="hq6-modal-input"
+                value={tenantRoleId}
+                onChange={(e) => setTenantRoleId(e.target.value)}
+                disabled={rolesQuery.isLoading}
+              >
+                {tenantRoleOptions.map((opt) => (
+                  <option key={opt.value || "empty"} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            </Hq6Field>
+            <button
+              type="button"
+              className="hq6-btn hq6-btn-outline tw-mb-0 tw-h-[38px] tw-shrink-0"
+              onClick={openAddRole}
+              disabled={!entityCode}
+            >
+              Add role
+            </button>
+          </div>
+        ) : null}
+        <Hq6Field label="Access level">
+          <select
+            className="hq6-modal-input"
+            value={role}
+            onChange={(e) => setRole(e.target.value as Role)}
+          >
+            {roleOptions.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+        </Hq6Field>
+        <p className="mb-0 text-xs text-[#6b7280]">
+          Role sets HQ6 privileges. Access level is the system fallback when no
+          role is selected.
+        </p>
+      </>
+    ) : (
+      <p className="mb-0 text-xs text-[#6b7280]">
+        VAG users are created as Super Admin.
+      </p>
+    );
+
+  const legacyRolePicker =
+    entityValue !== VAG_ENTITY_VALUE ? (
+      <>
+        {resolvedTenantId ? (
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+            <div className="min-w-0 flex-1">
+              <Select
+                label="Role"
+                value={tenantRoleId}
+                onChange={(e) => setTenantRoleId(e.target.value)}
+                options={tenantRoleOptions}
+                disabled={rolesQuery.isLoading}
+              />
+            </div>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              className="shrink-0"
+              onClick={openAddRole}
+              disabled={!entityCode}
+            >
+              Add role
+            </Button>
+          </div>
+        ) : null}
+        <Select
+          label="Access level"
+          value={role}
+          onChange={(e) => setRole(e.target.value as Role)}
+          options={roleOptions}
+        />
+      </>
+    ) : null;
 
   /** Matches Ultimate POS contact / tax-rate add modals (Hq6AddSupplierModal). */
   const hq6FormBody = (
@@ -346,7 +508,9 @@ export function InviteUserModal({
                 className="hq6-modal-input"
                 placeholder="Mr / Mrs / Miss"
                 value={prefix}
-                onChange={(e) => setPrefix(e.target.value)}
+                onChange={(e) =>
+                  setPrefix(sanitizePersonNameInput(e.target.value))
+                }
               />
             </Hq6Field>
             <Hq6Field label="First Name" required>
@@ -354,7 +518,9 @@ export function InviteUserModal({
                 className="hq6-modal-input"
                 placeholder="First Name"
                 value={firstName}
-                onChange={(e) => setFirstName(e.target.value)}
+                onChange={(e) =>
+                  setFirstName(sanitizePersonNameInput(e.target.value))
+                }
               />
             </Hq6Field>
             <Hq6Field label="Middle name">
@@ -362,7 +528,9 @@ export function InviteUserModal({
                 className="hq6-modal-input"
                 placeholder="Middle name"
                 value={middleName}
-                onChange={(e) => setMiddleName(e.target.value)}
+                onChange={(e) =>
+                  setMiddleName(sanitizePersonNameInput(e.target.value))
+                }
               />
             </Hq6Field>
             <Hq6Field label="Last Name">
@@ -370,7 +538,9 @@ export function InviteUserModal({
                 className="hq6-modal-input"
                 placeholder="Last Name"
                 value={lastName}
-                onChange={(e) => setLastName(e.target.value)}
+                onChange={(e) =>
+                  setLastName(sanitizePersonNameInput(e.target.value))
+                }
               />
             </Hq6Field>
           </div>
@@ -430,30 +600,29 @@ export function InviteUserModal({
               </label>
               {allowLogin ? (
                 <div className="grid gap-3 sm:grid-cols-3">
-                  <Hq6Field label="Username">
+                  <Hq6Field label="Email or Username">
                     <input
                       className="hq6-modal-input"
-                      placeholder="Username"
+                      placeholder="Email or username"
                       value={username}
                       onChange={(e) => setUsername(e.target.value)}
                     />
                   </Hq6Field>
                   <Hq6Field label="Password" required>
-                    <input
-                      type="password"
-                      className="hq6-modal-input"
+                    <PasswordField
+                      id="invite_password"
+                      inputClassName="hq6-modal-input"
+                      showStrength={Boolean(password)}
                       placeholder="Password"
-                      autoComplete="new-password"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                     />
                   </Hq6Field>
                   <Hq6Field label="Confirm Password" required>
-                    <input
-                      type="password"
-                      className="hq6-modal-input"
+                    <PasswordField
+                      id="invite_confirm_password"
+                      inputClassName="hq6-modal-input"
                       placeholder="Confirm Password"
-                      autoComplete="new-password"
                       value={confirmPassword}
                       onChange={(e) => setConfirmPassword(e.target.value)}
                     />
@@ -468,25 +637,7 @@ export function InviteUserModal({
             </>
           ) : null}
 
-          {entityValue !== VAG_ENTITY_VALUE ? (
-            <Hq6Field label="Role" required>
-              <select
-                className="hq6-modal-input"
-                value={role}
-                onChange={(e) => setRole(e.target.value as Role)}
-              >
-                {roleOptions.map((opt) => (
-                  <option key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
-            </Hq6Field>
-          ) : (
-            <p className="mb-0 text-xs text-[#6b7280]">
-              VAG users are created as Super Admin.
-            </p>
-          )}
+          {rolePicker}
 
           {error ? <p className="mb-0 text-sm text-[#dc2626]">{error}</p> : null}
         </>
@@ -544,7 +695,7 @@ export function InviteUserModal({
             value={fullName}
             onChange={(e) => {
               setPrefix("");
-              setFirstName(e.target.value);
+              setFirstName(sanitizePersonNameInput(e.target.value));
               setLastName("");
             }}
             placeholder="Jane Doe"
@@ -558,22 +709,27 @@ export function InviteUserModal({
           />
           {mode === "direct" ? (
             <>
-              <Input
+              <PasswordField
+                id="legacy_password"
                 label="Password"
-                type="password"
+                requiredMark
+                showStrength={Boolean(password)}
+                inputClassName="hq6-modal-input"
+                placeholder="Letter, number, and symbol"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="At least 8 characters"
-                autoComplete="new-password"
               />
-              <Input
+              <PasswordField
+                id="legacy_confirm_password"
                 label="Confirm password"
-                type="password"
+                requiredMark
+                inputClassName="hq6-modal-input"
+                placeholder="Re-enter password"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
-                placeholder="Re-enter password"
-                error={passwordMismatch ? "Passwords do not match" : undefined}
-                autoComplete="new-password"
+                error={
+                  passwordMismatch ? "Passwords do not match" : undefined
+                }
               />
             </>
           ) : null}
@@ -593,14 +749,7 @@ export function InviteUserModal({
               options={entityOptions}
             />
           ) : null}
-          {entityValue !== VAG_ENTITY_VALUE ? (
-            <Select
-              label="Role"
-              value={role}
-              onChange={(e) => setRole(e.target.value as Role)}
-              options={roleOptions}
-            />
-          ) : null}
+          {legacyRolePicker}
           {error ? <p className="text-sm text-error">{error}</p> : null}
         </>
       )}
@@ -612,7 +761,7 @@ export function InviteUserModal({
       <Hq6Modal
         open={open && !dismissed}
         onClose={handleClose}
-        title="Add user"
+        title="Create user"
         size="xl"
         footer={
           <Hq6ModalSaveClose
@@ -633,7 +782,7 @@ export function InviteUserModal({
   return (
     <Modal open={open && !dismissed} onClose={handleClose} panelClassName="max-w-lg">
       <ModalHeader
-        title="Add user"
+        title="Create user"
         subtitle={
           mode === "invite"
             ? "Send an email invite so they set their own password."

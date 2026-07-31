@@ -22,6 +22,7 @@ import type {
   SalesTargetRow,
 } from "@vonos/types";
 import { apiFetch, withTenantQuery } from "@/lib/api/client";
+import { throwApiError } from "@/lib/api/parseApiError";
 import {
   DEFAULT_TABLE_PAGE_SIZE,
   EXPORT_PAGE_SIZE,
@@ -266,7 +267,7 @@ export async function createDesignation(
     method: "POST",
     body: JSON.stringify(dto),
   });
-  if (!res.ok) throw new Error("Failed to create designation");
+  if (!res.ok) return throwApiError(res, "Failed to create designation");
   return res.json();
 }
 
@@ -320,7 +321,7 @@ export async function createEmployee(
     method: "POST",
     body: JSON.stringify(dto),
   });
-  if (!res.ok) throw new Error("Failed to create employee");
+  if (!res.ok) return throwApiError(res, "Failed to create employee");
   return res.json();
 }
 
@@ -386,7 +387,7 @@ export async function createPayroll(
     method: "POST",
     body: JSON.stringify(dto),
   });
-  if (!res.ok) throw new Error("Failed to create payroll");
+  if (!res.ok) return throwApiError(res, "Failed to create payroll");
   return res.json();
 }
 
@@ -408,13 +409,7 @@ export async function addPayrollDeduction(
     },
   );
   if (!res.ok) {
-    const body = (await res.json().catch(() => null)) as
-      | { message?: string | string[] }
-      | null;
-    const message = Array.isArray(body?.message)
-      ? body.message.join(", ")
-      : body?.message;
-    throw new Error(message ?? "Failed to add deduction");
+    return throwApiError(res, "Failed to add deduction");
   }
   return res.json();
 }
@@ -432,11 +427,11 @@ export async function getPayrollGroups(
   const res = await apiFetch(url);
   const body: unknown = await res.json().catch(() => null);
   if (!res.ok) {
-    const err = body as { message?: string | string[] } | null;
+    const err = body as { message?: string | string[]; error?: string } | null;
     const message = Array.isArray(err?.message)
-      ? err.message.join(", ")
-      : err?.message;
-    throw new Error(message ?? "Failed to fetch payroll groups");
+      ? err.message.join(" ")
+      : err?.message || err?.error;
+    throw new Error(message || "Failed to fetch payroll groups");
   }
   return asArray<PayrollGroup>(body);
 }
@@ -450,13 +445,7 @@ export async function createPayrollGroup(
     body: JSON.stringify(dto),
   });
   if (!res.ok) {
-    const body = (await res.json().catch(() => null)) as
-      | { message?: string | string[] }
-      | null;
-    const message = Array.isArray(body?.message)
-      ? body.message.join(", ")
-      : body?.message;
-    throw new Error(message ?? "Failed to create payroll group");
+    return throwApiError(res, "Failed to create payroll group");
   }
   return res.json();
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import { MenuSelect } from "@/components/molecules/MenuSelect";
+import { RequiredMark } from "@/components/atoms/RequiredMark";
 import { cn } from "@/lib/utils/cn";
 
 export interface SelectOption {
@@ -17,6 +18,7 @@ export interface SelectProps {
   name?: string;
   value?: string | number | readonly string[];
   disabled?: boolean;
+  required?: boolean;
   /** When false, uses native UPOS select (default). Set true for searchable lists. */
   searchable?: boolean;
   onChange?: (event: React.ChangeEvent<HTMLSelectElement>) => void;
@@ -32,6 +34,7 @@ export function Select({
   name,
   value,
   disabled,
+  required,
   searchable = false,
   onChange,
 }: SelectProps) {
@@ -48,6 +51,12 @@ export function Select({
       {label ? (
         <label htmlFor={selectId} className="text-sm font-medium text-foreground">
           {label}
+          {required ? (
+            <>
+              {" "}
+              <RequiredMark />
+            </>
+          ) : null}
         </label>
       ) : null}
       <MenuSelect

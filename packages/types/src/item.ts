@@ -28,6 +28,7 @@ export interface Item {
   category: string | null;
   subCategory?: string | null;
   description?: string | null;
+  imageUrl?: string | null;
   barcodeType?: string | null;
   unit?: string | null;
   weight?: string | null;

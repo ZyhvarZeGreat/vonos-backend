@@ -74,6 +74,7 @@ function MovementListViewBody({
   const exportList = useListExport();
   const { dateRange, setDateRange, search, setSearch, bounds } = useListPageFilters({
     defaultDateRange: "last_7_days",
+    isolateDateRange: true,
   });
   const [activeTab, setActiveTab] = useState(defaultStatus === "Pending" ? "pending" : "all");
   const [statusFilter, setStatusFilter] = useState("");

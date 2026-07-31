@@ -13,6 +13,7 @@ import {
   Rows4,
 } from "lucide-react";
 import { EmptyState } from "@/components/atoms/EmptyState";
+import { Hq6LoadProgress } from "@/components/hq6/Hq6LoadProgress";
 import { KanbanSkeleton, CalendarGridSkeleton } from "@/components/organisms/skeletons";
 import { Input } from "@/components/atoms/Input";
 import { Select } from "@/components/atoms/Select";
@@ -22,6 +23,7 @@ import { assertDisplayModeImplemented } from "@/lib/registries/displayModes";
 import { formatTableCellValue } from "@/lib/utils/formatDisplay";
 import { cn } from "@/lib/utils/cn";
 import { Skeleton } from "@/components/atoms/Skeleton";
+import { useSimulatedLoadPercent } from "@/lib/hooks/useSimulatedLoadPercent";
 import {
   columnCellClassName,
   resolveColumnAlign,
@@ -583,6 +585,12 @@ export function DataTable<T extends { id: string }>({
     prefs.resetColumnVisibility();
   }
 
+  const showBodyLoading = isLoading || (isFetching && data.length === 0);
+  const showFetchOverlay = isFetching && !showBodyLoading && data.length > 0;
+  const loadPercent = useSimulatedLoadPercent(
+    displayMode === "table" && (showBodyLoading || showFetchOverlay),
+  );
+
   if (
     (isLoading || (isFetching && data.length === 0)) &&
     displayMode !== "table"
@@ -614,7 +622,6 @@ export function DataTable<T extends { id: string }>({
     );
   }
 
-  const showBodyLoading = isLoading || (isFetching && data.length === 0);
   const showPaginationBar =
     offsetPagination ||
     (useInternalPagination && sortedData.length > 0);
@@ -801,9 +808,12 @@ export function DataTable<T extends { id: string }>({
                 <tr className="border-b border-border last:border-0">
                   <td
                     colSpan={visibleColumns.length + (selectable ? 1 : 0)}
-                    className="px-4 py-6 text-center text-muted"
+                    className="px-4 py-4 text-center"
                   >
-                    Loading…
+                    <Hq6LoadProgress
+                      percent={loadPercent}
+                      label="Loading"
+                    />
                   </td>
                 </tr>
               ) : (
@@ -852,6 +862,17 @@ export function DataTable<T extends { id: string }>({
               : undefined
           }
         >
+          {showFetchOverlay ? (
+            <div className="pointer-events-none absolute inset-0 z-20 flex items-start justify-center bg-white/70 pt-10 no-print">
+              <div className="rounded-md border border-[#e5e7eb] bg-white px-4 py-3 shadow-md">
+                <Hq6LoadProgress
+                  percent={loadPercent}
+                  label="Loading"
+                  compact
+                />
+              </div>
+            </div>
+          ) : null}
           <table className={tableClassName}>
             <thead className={theadClassName}>
               <tr>

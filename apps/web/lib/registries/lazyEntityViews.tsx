@@ -2,10 +2,20 @@
 
 import dynamic from "next/dynamic";
 import type { ComponentType } from "react";
+import { Spinner } from "@/components/atoms/Spinner";
 
-/** Route chunk loading — chrome stays up; TopProgressBar covers progress. */
+/** Route chunk loading — chrome stays up; show an in-page loader + TopProgressBar. */
 function PageChunkFallback() {
-  return <div className="min-h-[40vh]" aria-busy aria-label="Loading page" />;
+  return (
+    <div
+      className="flex min-h-[40vh] flex-col items-center justify-center gap-3 p-8"
+      aria-busy
+      aria-label="Loading page"
+    >
+      <Spinner size="lg" />
+      <p className="text-sm text-muted">Loading…</p>
+    </div>
+  );
 }
 
 type AnyComponent = ComponentType<Record<string, unknown>>;

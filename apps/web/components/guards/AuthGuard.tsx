@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { refreshAccessToken } from "@/lib/api/auth";
 import { useAuthStore } from "@/stores/authStore";
 import { decodeAccessToken } from "@/lib/utils/jwt";
+import { getPostLoginPath } from "@/lib/utils/authRedirect";
 import { isAuthSkipped } from "@/lib/utils/devAccess";
 
 const PUBLIC_PREFIXES = ["/login", "/reset-password", "/invite", "/invoice"];
@@ -33,29 +34,46 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
       const expiresSoon =
         decoded?.exp != null && decoded.exp * 1000 < Date.now() + 2 * 60 * 1000;
       if (!decoded || expiresSoon) {
-        void refreshAccessToken().then((result) => {
-          if (!result) {
-            if (!decoded) state.clearAuth();
-            return;
-          }
-          state.setAuth({
-            userId: result.user.id,
-            email: result.user.email,
-            name: result.user.name,
-            tenantId: result.user.tenantId,
-            role: result.user.role,
-            token: result.accessToken,
+        void refreshAccessToken()
+          .then((result) => {
+            if (!result) {
+              // Only wipe session when the access token is already unusable.
+              if (!decodeAccessToken(useAuthStore.getState().token ?? "")) {
+                useAuthStore.getState().clearAuth();
+              }
+              return;
+            }
+            useAuthStore.getState().setAuth({
+              userId: result.user.id,
+              email: result.user.email,
+              name: result.user.name,
+              tenantId: result.user.tenantId,
+              role: result.user.role,
+              token: result.accessToken,
+              tenantRoleId: result.user.tenantRoleId ?? null,
+              tenantRoleName: result.user.tenantRoleName ?? null,
+              tenantRolePermissions: result.user.tenantRolePermissions ?? [],
+              tenantRoleLocked: result.user.tenantRoleLocked ?? false,
+            });
+          })
+          .catch(() => {
+            if (!decodeAccessToken(useAuthStore.getState().token ?? "")) {
+              useAuthStore.getState().clearAuth();
+            }
           });
-        });
       }
     }
 
-    if (isPublicPath(pathname)) {
-      // LoginForm already replaces after setAuth — avoid a second navigation race.
+    if (pathname === "/login" && state.isAuthenticated && state.role) {
+      router.replace(getPostLoginPath(state.role, state.tenantId));
       return;
     }
 
-    if (!isAuthenticated) {
+    if (isPublicPath(pathname)) {
+      return;
+    }
+
+    if (!state.isAuthenticated) {
       const redirect = encodeURIComponent(pathname);
       router.replace(`/login?redirect=${redirect}`);
     }
@@ -78,7 +96,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
         aria-label="Loading"
         style={{
           minHeight: "100vh",
-          background: isPublicPath(pathname) ? "#0b5ed7" : "#f3f4f6",
+          background: "#f3f4f6",
         }}
       />
     );

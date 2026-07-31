@@ -1,15 +1,11 @@
 "use client";
 
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-  type FormEvent,
-} from "react";
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Monitor, Plus } from "lucide-react";
+import type { TenantRole } from "@vonos/types";
 import { DataTable, type ColumnConfig } from "@/components/organisms/DataTable";
 import { Hq6ActionsMenu } from "@/components/hq6/Hq6ActionsMenu";
 import { Hq6ConfirmModal } from "@/components/hq6/Hq6ConfirmModal";
@@ -20,13 +16,25 @@ import {
   Hq6ModalSaveClose,
 } from "@/components/hq6/Hq6Modal";
 import { Hq6StandardListShell, useHq6ListChrome } from "@/components/hq6/Hq6StandardListShell";
+import {
+  deleteTenantRole,
+  getTenantRoles,
+  importTenantRoles,
+} from "@/lib/api/tenantRoles";
 import { useRecordNavigation } from "@/lib/hooks/useRecordNavigation";
-import { useRouteTenant } from "@/lib/hooks/useRouteTenant";
+import { useRouteTenant, useTenantId } from "@/lib/hooks/useRouteTenant";
 import {
   loadStoredRoles,
-  saveStoredRoles,
-  type Hq6StoredRole,
+  hq6RoleStorageKey,
 } from "@/lib/registries/hq6RolePermissions";
+import { useHq6Permissions } from "@/lib/hooks/useHq6Permissions";
+import {
+  firstValidationError,
+  sanitizePersonNameInput,
+  validateEmail,
+  validatePersonName,
+  validatePhone,
+} from "@/lib/utils/formValidation";
 import { toast } from "@/stores/toastStore";
 
 interface PosRegisterRow {
@@ -210,26 +218,64 @@ export function Hq6PosListView() {
 /** Ultimate POS — role/index.blade.php + ui-audit/02_roles (direct HTML lift). */
 export function Hq6RolesListView() {
   const router = useRouter();
+  const queryClient = useQueryClient();
+  const tenantId = useTenantId();
   const { tenantCode } = useRouteTenant();
   const { detailPath, listPath } = useRecordNavigation("roles");
   const [localSearch, setLocalSearch] = useState("");
   const [committedSearch, setCommittedSearch] = useState("");
-  const [roles, setRoles] = useState<Hq6StoredRole[]>([]);
-  const [deleteRole, setDeleteRole] = useState<Hq6StoredRole | null>(null);
+  const [deleteRole, setDeleteRole] = useState<TenantRole | null>(null);
   const [pageSize, setPageSize] = useState(50);
   const [pageIndex, setPageIndex] = useState(0);
+  const [migratedLocal, setMigratedLocal] = useState(false);
+  const { isVag } = useHq6Permissions();
+  // Role definitions are VAG-only (API + UI). Tenant users may view/assign roles.
+  const canCreateRole = isVag;
+  const canUpdateRole = isVag;
+  const canDeleteRole = isVag;
 
+  const { data: roles = [] } = useQuery({
+    queryKey: ["tenant-roles", tenantId, committedSearch],
+    queryFn: () =>
+      getTenantRoles(tenantId!, {
+        search: committedSearch || undefined,
+      }),
+    enabled: Boolean(tenantId),
+  });
+
+  // One-time: push browser-local roles into DB (VAG only — import is super_admin).
   useEffect(() => {
-    if (!tenantCode) return;
-    setRoles(loadStoredRoles(tenantCode));
-  }, [tenantCode]);
+    if (!tenantId || !tenantCode || migratedLocal || !isVag) return;
+    const local = loadStoredRoles(tenantCode);
+    const hasCustom = local.some((r) => r.permissions.length > 0);
+    if (!hasCustom) {
+      setMigratedLocal(true);
+      return;
+    }
+    void (async () => {
+      try {
+        await importTenantRoles(tenantId, {
+          roles: local.map((r) => ({
+            name: r.name,
+            permissions: r.permissions,
+            isServiceStaff: r.isServiceStaff,
+            locked: r.locked,
+          })),
+        });
+        if (typeof window !== "undefined") {
+          window.localStorage.removeItem(hq6RoleStorageKey(tenantCode));
+        }
+        await queryClient.invalidateQueries({ queryKey: ["tenant-roles"] });
+        toast.info("Imported role permissions from this browser into the database.");
+      } catch {
+        // Keep localStorage; user can retry by refreshing.
+      } finally {
+        setMigratedLocal(true);
+      }
+    })();
+  }, [tenantId, tenantCode, migratedLocal, queryClient, isVag]);
 
-  const filtered = useMemo(() => {
-    if (!committedSearch.trim()) return roles;
-    const q = committedSearch.toLowerCase();
-    return roles.filter((r) => r.name.toLowerCase().includes(q));
-  }, [committedSearch, roles]);
-
+  const filtered = roles;
   const total = filtered.length;
   const effectiveSize = pageSize <= 0 ? Math.max(total, 1) : pageSize;
   const pageCount = Math.max(1, Math.ceil(Math.max(total, 1) / effectiveSize));
@@ -243,18 +289,30 @@ export function Hq6RolesListView() {
   const from = visible.length === 0 ? 0 : safePage * effectiveSize + 1;
   const to = safePage * effectiveSize + visible.length;
 
+  const deleteMutation = useMutation({
+    mutationFn: (role: TenantRole) => {
+      if (!tenantId) throw new Error("No tenant");
+      return deleteTenantRole(tenantId, role.id);
+    },
+    onSuccess: async (_data, role) => {
+      toast.success(`Role “${role.name}” deleted.`);
+      setDeleteRole(null);
+      await queryClient.invalidateQueries({ queryKey: ["tenant-roles"] });
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || "Failed to delete role");
+      setDeleteRole(null);
+    },
+  });
+
   const handleDelete = () => {
-    if (!deleteRole || !tenantCode) return;
+    if (!deleteRole) return;
     if (deleteRole.locked || deleteRole.name === "Admin") {
       toast.info(`“${deleteRole.name}” cannot be deleted.`);
       setDeleteRole(null);
       return;
     }
-    const next = roles.filter((role) => role.id !== deleteRole.id);
-    saveStoredRoles(tenantCode, next);
-    setRoles(next);
-    toast.success(`Role “${deleteRole.name}” deleted.`);
-    setDeleteRole(null);
+    deleteMutation.mutate(deleteRole);
   };
 
   const pageNumbers = useMemo(() => {
@@ -300,18 +358,20 @@ export function Hq6RolesListView() {
           <div className="tw-p-2 sm:tw-p-3">
             <div className="box-header">
               <h3 className="box-title">All roles</h3>
-              <div className="box-tools">
-                <a
-                  className="tw-dw-btn tw-bg-gradient-to-r tw-from-indigo-600 tw-to-blue-500 tw-font-bold tw-text-white tw-border-none tw-rounded-full"
-                  href={`${detailPath("new")}/edit`}
-                  onClick={(e) => {
-                    e.preventDefault();
-                    router.push(`${detailPath("new")}/edit`);
-                  }}
-                >
-                  {PlusIcon} Add
-                </a>
-              </div>
+              {canCreateRole ? (
+                <div className="box-tools">
+                  <a
+                    className="tw-dw-btn tw-bg-gradient-to-r tw-from-indigo-600 tw-to-blue-500 tw-font-bold tw-text-white tw-border-none tw-rounded-full"
+                    href={`${detailPath("new")}/edit`}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      router.push(`${detailPath("new")}/edit`);
+                    }}
+                  >
+                    {PlusIcon} Add
+                  </a>
+                </div>
+              ) : null}
             </div>
 
             <div className="tw-flow-root tw-border-gray-200">
@@ -386,6 +446,9 @@ export function Hq6RolesListView() {
                           >
                             Roles
                           </th>
+                          <th className="sorting_disabled" rowSpan={1} colSpan={1}>
+                            Privileges
+                          </th>
                           <th
                             className="sorting_disabled"
                             rowSpan={1}
@@ -396,9 +459,9 @@ export function Hq6RolesListView() {
                         </tr>
                       </thead>
                       <tbody>
-                        {visible.length === 0 ? (
+                          {visible.length === 0 ? (
                           <tr className="odd">
-                            <td colSpan={2} className="dataTables_empty">
+                            <td colSpan={3} className="dataTables_empty">
                               No data available in table
                             </td>
                           </tr>
@@ -406,6 +469,11 @@ export function Hq6RolesListView() {
                           visible.map((row, index) => {
                             const locked =
                               row.locked || row.name === "Admin";
+                            const privilegeLabel = locked
+                              ? "Full access"
+                              : `${row.permissions.length} privilege${
+                                  row.permissions.length === 1 ? "" : "s"
+                                }`;
                             return (
                               <tr
                                 key={row.id}
@@ -414,37 +482,54 @@ export function Hq6RolesListView() {
                               >
                                 <td className="sorting_1">{row.name}</td>
                                 <td>
+                                  <span
+                                    className={
+                                      locked || row.permissions.length > 0
+                                        ? "tw-text-gray-800"
+                                        : "tw-text-gray-400"
+                                    }
+                                  >
+                                    {privilegeLabel}
+                                  </span>
+                                </td>
+                                <td>
                                   {locked ? null : (
                                     <>
-                                      <a
-                                        href={`${detailPath(row.id)}/edit`}
-                                        className="tw-dw-btn tw-dw-btn-xs tw-dw-btn-outline tw-dw-btn-primary"
-                                        onClick={(e) => {
-                                          e.preventDefault();
-                                          router.push(
-                                            `${detailPath(row.id)}/edit`,
-                                          );
-                                        }}
-                                      >
-                                        <i
-                                          className="glyphicon glyphicon-edit"
-                                          aria-hidden
-                                        />{" "}
-                                        Edit
-                                      </a>
-                                      &nbsp;
-                                      <button
-                                        type="button"
-                                        data-href={`${listPath}/${row.id}`}
-                                        className="tw-dw-btn tw-dw-btn-outline tw-dw-btn-xs tw-dw-btn-error delete_role_button"
-                                        onClick={() => setDeleteRole(row)}
-                                      >
-                                        <i
-                                          className="glyphicon glyphicon-trash"
-                                          aria-hidden
-                                        />{" "}
-                                        Delete
-                                      </button>
+                                      {canUpdateRole ? (
+                                        <>
+                                          <a
+                                            href={`${detailPath(row.id)}/edit`}
+                                            className="tw-dw-btn tw-dw-btn-xs tw-dw-btn-outline tw-dw-btn-primary"
+                                            onClick={(e) => {
+                                              e.preventDefault();
+                                              router.push(
+                                                `${detailPath(row.id)}/edit`,
+                                              );
+                                            }}
+                                          >
+                                            <i
+                                              className="glyphicon glyphicon-edit"
+                                              aria-hidden
+                                            />{" "}
+                                            Edit
+                                          </a>
+                                          &nbsp;
+                                        </>
+                                      ) : null}
+                                      {canDeleteRole ? (
+                                        <button
+                                          type="button"
+                                          data-href={`${listPath}/${row.id}`}
+                                          className="tw-dw-btn tw-dw-btn-outline tw-dw-btn-xs tw-dw-btn-error delete_role_button"
+                                          onClick={() => setDeleteRole(row)}
+                                        >
+                                          <i
+                                            className="glyphicon glyphicon-trash"
+                                            aria-hidden
+                                          />{" "}
+                                          Delete
+                                        </button>
+                                      ) : null}
                                     </>
                                   )}
                                 </td>
@@ -729,11 +814,18 @@ export function Hq6CommissionAgentsListView() {
 
   const handleSave = (e?: FormEvent) => {
     e?.preventDefault();
-    const trimmedFirst = firstName.trim();
-    if (!trimmedFirst) {
-      toast.error("First name is required.");
+    const nameError = firstValidationError(
+      validatePersonName(surname, "Prefix", { required: false }),
+      validatePersonName(firstName, "First name"),
+      validatePersonName(lastName, "Last name", { required: false }),
+      validateEmail(email, { required: false }),
+      validatePhone(phone, { required: false, label: "Mobile" }),
+    );
+    if (nameError) {
+      toast.error(nameError);
       return;
     }
+    const trimmedFirst = firstName.trim();
     if (!commissionPercent.trim()) {
       toast.error("Sales Commission Percentage is required.");
       return;
@@ -1118,7 +1210,9 @@ export function Hq6CommissionAgentsListView() {
                             className="form-control"
                             placeholder="Mr / Mrs / Miss"
                             value={surname}
-                            onChange={(e) => setSurname(e.target.value)}
+                            onChange={(e) =>
+                              setSurname(sanitizePersonNameInput(e.target.value))
+                            }
                           />
                         </div>
                       </div>
@@ -1131,7 +1225,11 @@ export function Hq6CommissionAgentsListView() {
                             required
                             placeholder="First Name"
                             value={firstName}
-                            onChange={(e) => setFirstName(e.target.value)}
+                            onChange={(e) =>
+                              setFirstName(
+                                sanitizePersonNameInput(e.target.value),
+                              )
+                            }
                             autoFocus
                           />
                         </div>
@@ -1144,7 +1242,11 @@ export function Hq6CommissionAgentsListView() {
                             className="form-control"
                             placeholder="Last Name"
                             value={lastName}
-                            onChange={(e) => setLastName(e.target.value)}
+                            onChange={(e) =>
+                              setLastName(
+                                sanitizePersonNameInput(e.target.value),
+                              )
+                            }
                           />
                         </div>
                       </div>

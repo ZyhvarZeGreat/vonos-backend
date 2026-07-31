@@ -2,6 +2,7 @@ import type { JwtPayload, Role } from "@vonos/types";
 
 interface DecodedToken extends JwtPayload {
   exp?: number;
+  iat?: number;
 }
 
 function decodePart(value: string): unknown {

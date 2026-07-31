@@ -1,5 +1,7 @@
 "use client";
 
+import { variationFormSchema } from "@/lib/validation/schemas";
+import { parseForm } from "@/lib/validation/parseForm";
 import { useCallback, useMemo, useState, type FormEvent } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { withOptimistic } from "@/lib/hooks/useAppMutation";
@@ -129,21 +131,15 @@ export function Hq6VariationsListView() {
     async (e?: FormEvent) => {
       e?.preventDefault();
       if (!tenantId) return;
-      const cleaned = values.map((v) => v.trim()).filter(Boolean);
-      if (!name.trim()) {
-        toast.error("Variation name is required");
-        return;
-      }
-      if (cleaned.length === 0) {
-        toast.error("Add at least one variation value");
-        return;
-      }
+      const valid = parseForm(variationFormSchema, { name, values });
+      if (!valid) return;
+      const cleaned = valid.values.map((v) => v.trim()).filter(Boolean);
       const opt = withOptimistic<VariationTemplate, void>(queryClient, {
         keys: [["variations"]],
         update: (qc) => {
           if (editing) {
             patchEntityInQueries(qc, ["variations"], editing.id, {
-              name: name.trim(),
+              name: valid.name,
               values: cleaned,
             });
           } else if (tenantId) {
@@ -151,7 +147,7 @@ export function Hq6VariationsListView() {
             prependEntityInQueries(qc, ["variations"], {
               id: optimisticTempId("variation"),
               tenantId,
-              name: name.trim(),
+              name: valid.name,
               values: cleaned,
               createdAt: now,
               updatedAt: now,
@@ -168,14 +164,14 @@ export function Hq6VariationsListView() {
       try {
         if (editing) {
           const updated = await updateVariation(tenantId, editing.id, {
-            name: name.trim(),
+            name: valid.name,
             values: cleaned,
           });
           opt.onSuccess(updated, undefined);
           toast.success("Variation updated");
         } else {
           const created = await createVariation(tenantId, {
-            name: name.trim(),
+            name: valid.name,
             values: cleaned,
           });
           opt.onSuccess(created, undefined);

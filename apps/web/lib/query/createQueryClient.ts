@@ -24,8 +24,13 @@ export function createQueryClient() {
       },
     }),
     mutationCache: new MutationCache({
-      onMutate: () => {
-        useMutationBusyStore.getState().begin();
+      onMutate: (_variables, mutation) => {
+        const labelMeta = mutation.meta?.progressLabel;
+        const label =
+          typeof labelMeta === "string" && labelMeta.trim()
+            ? labelMeta.trim()
+            : "Saving";
+        useMutationBusyStore.getState().begin(label);
       },
       onSettled: () => {
         useMutationBusyStore.getState().end();

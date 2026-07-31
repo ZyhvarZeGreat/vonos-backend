@@ -1,15 +1,18 @@
 "use client";
 
+import Image from "next/image";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { ChevronDown, LayoutGrid } from "lucide-react";
 import {
   getVagViewUnit,
+  isVagViewUnitId,
   VAG_VIEW_UNITS,
   type VagViewUnitId,
 } from "@/lib/registries/vagViewUnits";
 import { getTenantByCode, type TenantCode } from "@/lib/registries/tenants";
+import { accentForTenantCode } from "@/lib/registries/tenantAccents";
 import { cn } from "@/lib/utils/cn";
 import { tenantOverviewPath } from "@/lib/utils/authRedirect";
 import { prefetchAdminEntity } from "@/lib/admin/prefetchAdminEntity";
@@ -20,7 +23,22 @@ import {
 } from "@/stores/adminEntityStore";
 import { useTenantStore } from "@/stores/tenantStore";
 import { useUiStore } from "@/stores/uiStore";
+import {
+  completeNavigationProgress,
+  startNavigationProgress,
+} from "@/stores/navigationBusyStore";
 import { toast } from "@/stores/toastStore";
+
+/** UPOS shell uses a prebuilt Tailwind CSS — arbitrary width classes are missing. */
+const OPEN_APP_BUTTON_STYLE = {
+  width: 200,
+  minWidth: 200,
+} as const;
+
+const OPEN_APP_MENU_STYLE = {
+  width: 420,
+  minWidth: 420,
+} as const;
 
 export interface AdminEntitySwitcherProps {
   className?: string;
@@ -36,7 +54,13 @@ function shortName(name: string): string {
 }
 
 function parseScopeId(raw: string): AdminViewingCode {
-  return raw === "VA" || raw === "VW" || raw === "SP" ? raw : null;
+  return raw === "VA" ||
+    raw === "VP" ||
+    raw === "VW" ||
+    raw === "VISP" ||
+    raw === "VSP"
+    ? raw
+    : null;
 }
 
 /**
@@ -49,6 +73,7 @@ export function AdminEntitySwitcher({
   variant = "topbar",
 }: AdminEntitySwitcherProps) {
   const pathname = usePathname();
+  const router = useRouter();
   const queryClient = useQueryClient();
   const viewingCode = useAdminEntityStore((s) => s.viewingCode);
   const setViewingCode = useAdminEntityStore((s) => s.setViewingCode);
@@ -108,18 +133,25 @@ export function AdminEntitySwitcher({
   };
 
   const refreshScopedQueries = () => {
-    void queryClient.invalidateQueries({
-      predicate: (query) => {
-        const root = query.queryKey[0];
-        return root !== "tenantConfig" && root !== "groupOverview";
-      },
-    });
+    startNavigationProgress();
+    void queryClient
+      .invalidateQueries({
+        predicate: (query) => {
+          const root = query.queryKey[0];
+          return root !== "tenantConfig" && root !== "groupOverview";
+        },
+      })
+      .finally(() => {
+        // Hand off to TopProgressBar's isFetching tracking.
+        window.setTimeout(() => completeNavigationProgress(), 120);
+      });
   };
 
-  /** Hard navigate so admin → tenant layout switch always lands. */
+  /** Soft navigate so top progress bar + entity chrome stay in sync. */
   const go = (href: string) => {
     navigatingRef.current = true;
-    window.location.assign(href);
+    startNavigationProgress();
+    router.push(href);
   };
 
   /** Topbar: leave VAG → entity overview (full dashboard). */
@@ -145,11 +177,10 @@ export function AdminEntitySwitcher({
       return;
     }
 
-    const enterCode = (raw === "SP" ? "VSP" : raw) as TenantCode;
-    const unit =
-      raw === "VA" || raw === "VW" || raw === "SP"
-        ? getVagViewUnit(raw)
-        : VAG_VIEW_UNITS.find((u) => u.enterCode === enterCode);
+    const enterCode = raw as TenantCode;
+    const unit = isVagViewUnitId(raw)
+      ? getVagViewUnit(raw)
+      : VAG_VIEW_UNITS.find((u) => u.enterCode === enterCode);
     const enter = getTenantByCode(enterCode);
     if (!enter || !unit) {
       toast.error("Unknown entity");
@@ -217,14 +248,15 @@ export function AdminEntitySwitcher({
         <button
           type="button"
           id="upos-admin-workspace-switcher"
-          className="tw-inline-flex tw-h-10 tw-min-w-[11.5rem] tw-items-center tw-justify-between tw-gap-2 tw-rounded-md tw-border tw-border-white/35 tw-bg-white tw-px-3.5 tw-py-2 tw-text-sm tw-font-medium tw-text-gray-900 tw-shadow-none hover:tw-bg-gray-50"
+          style={OPEN_APP_BUTTON_STYLE}
+          className="tw-inline-flex tw-h-10 tw-items-center tw-justify-between tw-gap-2 tw-rounded-md tw-border tw-border-white/35 tw-bg-white tw-px-4 tw-py-2 tw-text-sm tw-font-medium tw-text-gray-900 tw-shadow-none hover:tw-bg-gray-50"
           aria-expanded={menuOpen}
           aria-haspopup="menu"
           aria-label="Open an app — leave Group admin and open a business dashboard"
           onClick={() => setMenuOpen((open) => !open)}
         >
           <LayoutGrid className="tw-h-4 tw-w-4 tw-shrink-0 tw-text-gray-500" />
-          <span className="tw-whitespace-nowrap">Open app</span>
+          <span className="tw-flex-1 tw-truncate tw-text-left">Open app</span>
           <ChevronDown
             className={cn(
               "tw-h-4 tw-w-4 tw-shrink-0 tw-text-gray-500 tw-transition-transform",
@@ -237,9 +269,10 @@ export function AdminEntitySwitcher({
           <div
             role="menu"
             aria-labelledby="upos-admin-workspace-switcher"
-            className="tw-absolute tw-left-0 tw-top-[calc(100%+8px)] tw-z-50 tw-w-[22rem] tw-overflow-hidden tw-rounded-lg tw-border tw-border-gray-200 tw-bg-white tw-shadow-lg"
+            style={{ ...OPEN_APP_MENU_STYLE, top: "calc(100% + 8px)" }}
+            className="tw-absolute tw-left-0 tw-z-50 tw-overflow-hidden tw-rounded-lg tw-border tw-border-gray-200 tw-bg-white tw-shadow-lg"
           >
-            <div className="tw-border-b tw-border-gray-100 tw-bg-gray-50 tw-px-4 tw-py-3.5">
+            <div className="tw-border-b tw-border-gray-100 tw-bg-gray-50 tw-px-4 tw-py-3">
               <p className="tw-mb-0 tw-text-sm tw-font-semibold tw-text-gray-900">
                 Open a business app
               </p>
@@ -249,27 +282,52 @@ export function AdminEntitySwitcher({
                 <span className="tw-font-semibold">Show info for</span> below.
               </p>
             </div>
-            <ul className="tw-m-0 tw-list-none tw-space-y-0.5 tw-p-2.5">
-              {VAG_VIEW_UNITS.map((unit) => (
-                <li key={unit.id}>
-                  <button
-                    type="button"
-                    role="menuitem"
-                    className="tw-flex tw-w-full tw-items-center tw-justify-between tw-rounded-md tw-px-3.5 tw-py-3 tw-text-left tw-text-sm tw-text-gray-800 hover:tw-bg-gray-100"
-                    onClick={() => {
-                      setMenuOpen(false);
-                      enterEntityDashboard(unit.enterCode);
-                    }}
-                  >
-                    <span className="tw-font-medium">
-                      {shortName(unit.name)}
-                    </span>
-                    <span className="tw-text-[11px] tw-font-semibold tw-uppercase tw-tracking-wide tw-text-gray-400">
-                      {unit.enterCode}
-                    </span>
-                  </button>
-                </li>
-              ))}
+            <ul className="tw-m-0 tw-list-none tw-space-y-0.5 tw-p-3">
+              {VAG_VIEW_UNITS.map((unit) => {
+                const accent = accentForTenantCode(unit.enterCode);
+                return (
+                  <li key={unit.id}>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="tw-flex tw-w-full tw-items-center tw-gap-3 tw-rounded-md tw-px-4 tw-py-3 tw-text-left tw-text-sm tw-text-gray-800 hover:tw-bg-gray-100"
+                      onClick={() => {
+                        setMenuOpen(false);
+                        enterEntityDashboard(unit.enterCode);
+                      }}
+                    >
+                      <span
+                        className="tw-relative tw-flex tw-h-10 tw-w-10 tw-shrink-0 tw-items-center tw-justify-center tw-overflow-hidden tw-rounded-md tw-border tw-border-gray-200 tw-bg-white"
+                        style={{ boxShadow: `inset 0 0 0 2px ${accent}33` }}
+                      >
+                        <Image
+                          src="/brand/vonos-autos-mark.png"
+                          alt=""
+                          width={28}
+                          height={28}
+                          className="tw-object-contain"
+                        />
+                      </span>
+                      <span className="tw-min-w-0 tw-flex-1">
+                        <span className="tw-block tw-font-medium tw-text-gray-900">
+                          {shortName(unit.name)}
+                        </span>
+                        <span className="tw-mt-1 tw-block tw-text-xs tw-text-gray-500">
+                          {unit.tenantCodes.length > 1
+                            ? unit.tenantCodes.join(" · ")
+                            : unit.enterCode}
+                        </span>
+                      </span>
+                      <span
+                        className="tw-shrink-0 tw-rounded tw-px-2 tw-py-0.5 tw-text-[11px] tw-font-semibold tw-uppercase tw-tracking-wide tw-text-white"
+                        style={{ backgroundColor: accent }}
+                      >
+                        {unit.enterCode}
+                      </span>
+                    </button>
+                  </li>
+                );
+              })}
             </ul>
           </div>
         ) : null}

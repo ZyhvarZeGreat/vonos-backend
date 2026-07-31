@@ -3,10 +3,16 @@ import type { Role, UserStatus } from "./role";
 export interface User {
   id: string;
   email: string;
+  /** Login handle when set; login accepts email or username. */
+  username?: string | null;
   name: string;
   role: Role;
   status: UserStatus;
   tenantId: string | null;
+  /** HQ6 job role id when assigned. */
+  tenantRoleId?: string | null;
+  /** Display name of the assigned TenantRole. */
+  tenantRoleName?: string | null;
   createdAt: string;
   lastLoginAt: string | null;
 }
@@ -27,6 +33,10 @@ export interface LoginUser {
   name: string;
   role: Role;
   tenantId: string | null;
+  tenantRoleId?: string | null;
+  tenantRoleName?: string | null;
+  tenantRolePermissions?: string[];
+  tenantRoleLocked?: boolean;
 }
 
 export interface LoginSuccessResponse {
@@ -59,6 +69,8 @@ export interface InviteUserRequest {
   email: string;
   name: string;
   role: Role;
+  /** HQ6 job role — when set, JWT `role` is derived from its permissions. */
+  tenantRoleId?: string | null;
   /** Required for super_admin when not viewing a specific entity. Omit for tenant admins. */
   tenantId?: string | null;
 }
@@ -74,6 +86,10 @@ export interface CreateUserRequest {
   name: string;
   role: Role;
   password: string;
+  /** Optional login username (unique). Defaults to email local-part when omitted. */
+  username?: string | null;
+  /** HQ6 job role — when set, JWT `role` is derived from its permissions. */
+  tenantRoleId?: string | null;
   /** Required for super_admin when not viewing a specific entity. Omit for tenant admins. */
   tenantId?: string | null;
 }
@@ -86,6 +102,8 @@ export interface UpdateUserRequest {
   email?: string;
   name?: string;
   role?: Role;
+  username?: string | null;
+  tenantRoleId?: string | null;
   status?: UserStatus;
   /** Optional — when set, must be at least 8 characters. */
   password?: string;

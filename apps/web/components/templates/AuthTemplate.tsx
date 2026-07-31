@@ -17,13 +17,15 @@ export interface AuthTemplateProps {
 }
 
 const AUTH_STYLE = {
-  "--auth-blue": "#0b5ed7",
-  "--auth-blue-deep": "#084298",
-  "--auth-blue-mid": "#1a6fe0",
-  "--auth-blue-soft": "#e8f1fb",
-  "--auth-blue-title": "#5b9cf5",
-  "--color-brand-primary": "#0b5ed7",
-  "--color-brand-primary-hover": "#084298",
+  "--auth-blue": "#1d4ed8",
+  "--auth-blue-deep": "#0f172a",
+  "--auth-blue-mid": "#2563eb",
+  "--auth-blue-soft": "#eff6ff",
+  "--auth-blue-title": "#1e40af",
+  "--auth-red": "#dc2626",
+  "--auth-red-hover": "#b91c1c",
+  "--color-brand-primary": "#dc2626",
+  "--color-brand-primary-hover": "#b91c1c",
 } as React.CSSProperties;
 
 function AuthBrandMark({ className, inverse }: { className?: string; inverse?: boolean }) {
@@ -43,7 +45,7 @@ function AuthBrandMark({ className, inverse }: { className?: string; inverse?: b
         <p
           className={cn(
             "text-xl font-bold tracking-tight",
-            inverse ? "text-white" : "text-[var(--auth-blue,#0b5ed7)]",
+            inverse ? "text-white" : "text-[var(--auth-blue,#1d4ed8)]",
           )}
         >
           Vonos
@@ -91,19 +93,19 @@ export function AuthTemplate({
         {/* Left promotional panel */}
         <div className="relative hidden w-[48%] flex-col justify-between overflow-hidden bg-[var(--auth-blue-deep)] p-10 text-white lg:flex">
           <div
-            className="pointer-events-none absolute inset-0 opacity-40"
+            className="pointer-events-none absolute inset-0 opacity-50"
             aria-hidden
             style={{
               backgroundImage:
-                "radial-gradient(ellipse 80% 60% at 30% 40%, rgba(255,255,255,0.18), transparent 55%), linear-gradient(160deg, transparent 40%, rgba(0,0,0,0.25))",
+                "radial-gradient(ellipse 90% 70% at 20% 30%, rgba(37,99,235,0.55), transparent 55%), radial-gradient(ellipse 60% 50% at 85% 75%, rgba(220,38,38,0.28), transparent 50%), linear-gradient(165deg, transparent 35%, rgba(0,0,0,0.35))",
             }}
           />
           <div
-            className="pointer-events-none absolute -right-16 -top-16 h-64 w-64 rounded-full bg-white/10 blur-2xl"
+            className="pointer-events-none absolute -right-16 -top-16 h-64 w-64 rounded-full bg-[var(--auth-blue-mid)]/30 blur-2xl"
             aria-hidden
           />
           <div
-            className="pointer-events-none absolute -bottom-20 left-10 h-72 w-72 rounded-full bg-[var(--auth-blue-mid)]/50 blur-3xl"
+            className="pointer-events-none absolute -bottom-20 left-10 h-72 w-72 rounded-full bg-[var(--auth-red)]/25 blur-3xl"
             aria-hidden
           />
 
@@ -172,7 +174,7 @@ export function AuthFooterLink({
   return (
     <Link
       href={href}
-      className="font-medium text-[var(--auth-blue,#0b5ed7)] underline-offset-4 hover:underline"
+      className="font-medium text-[var(--auth-blue,#1d4ed8)] underline-offset-4 hover:underline"
     >
       {children}
     </Link>

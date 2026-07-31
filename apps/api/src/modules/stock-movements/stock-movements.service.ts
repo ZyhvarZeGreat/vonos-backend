@@ -33,6 +33,7 @@ import {
 } from '../../common/utils/stockQuantity';
 import { toIso, toNumber } from '../../common/utils/serializers';
 import { adjustItemLocationStock } from '../../common/utils/itemLocationStock';
+import { recordPaymentAccountTxn } from '../../common/utils/recordPaymentAccountTxn';
 import {
   relationStringOr,
   tokenizedSearchWhere,
@@ -599,6 +600,24 @@ export class StockMovementsService {
           createdByName: createdBy.createdByName ?? null,
         },
       });
+
+      if (dto.accountId?.trim()) {
+        await recordPaymentAccountTxn(tx, {
+          tenantId,
+          accountId: dto.accountId.trim(),
+          type: 'debit',
+          subType: 'purchase_payment',
+          amount: apply,
+          operationDate: paidOn,
+          refNo: movement.reference,
+          note:
+            dto.note?.trim() ||
+            `Purchase payment — ${movement.reference}`,
+          paymentMethod: method,
+          paymentId: payment.id,
+          createdByName: createdBy.createdByName ?? null,
+        });
+      }
 
       await tx.ledgerEntry.create({
         data: {

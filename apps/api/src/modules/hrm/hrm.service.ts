@@ -251,6 +251,12 @@ export class HrmService {
           employeeName: row.name,
           employeeId: row.employeeCode,
           locationCode: row.locationCode,
+          locationCodes:
+            row.locationCodes?.length > 0
+              ? row.locationCodes
+              : row.locationCode
+                ? [row.locationCode]
+                : [],
           designationId: row.designationId,
           designationName: row.designation.name,
           payrollGroupId: row.payrollGroupId,
@@ -523,7 +529,12 @@ export class HrmService {
           ? { designationId: filters.designationId }
           : {}),
         ...(filters.locationCode
-          ? { locationCode: filters.locationCode }
+          ? {
+              OR: [
+                { locationCode: filters.locationCode },
+                { locationCodes: { has: filters.locationCode } },
+              ],
+            }
           : {}),
         ...(filters.search
           ? {
@@ -573,12 +584,18 @@ export class HrmService {
     const isServiceStaff =
       dto.isServiceStaff ?? isServiceStaffDesignation(designation.name);
 
+    const locationCodes = normalizeLocationCodes(
+      dto.locationCodes,
+      dto.locationCode,
+    );
+
     const row = await this.tenantDb.db.employee.create({
       data: {
         tenantId,
         name,
         employeeCode: dto.employeeCode?.trim() || null,
-        locationCode: dto.locationCode?.trim() || null,
+        locationCode: locationCodes[0] ?? null,
+        locationCodes,
         payrollGroupId: dto.payrollGroupId?.trim() || null,
         designationId: dto.designationId,
         userId: dto.userId?.trim() || null,
@@ -1103,6 +1120,7 @@ export class HrmService {
     name: string;
     employeeCode: string | null;
     locationCode: string | null;
+    locationCodes?: string[];
     payrollGroupId: string | null;
     designationId: string;
     userId: string | null;
@@ -1117,12 +1135,19 @@ export class HrmService {
     designation: { name: string };
     payrollGroup: { name: string } | null;
   }): Employee {
+    const locationCodes =
+      row.locationCodes && row.locationCodes.length > 0
+        ? row.locationCodes
+        : row.locationCode
+          ? [row.locationCode]
+          : [];
     return {
       id: row.id,
       tenantId: row.tenantId,
       name: row.name,
       employeeCode: row.employeeCode,
-      locationCode: row.locationCode,
+      locationCode: locationCodes[0] ?? row.locationCode,
+      locationCodes,
       payrollGroupId: row.payrollGroupId,
       payrollGroupName: row.payrollGroup?.name ?? null,
       designationId: row.designationId,
@@ -1197,4 +1222,18 @@ export class HrmService {
       taxPayerId: bank?.taxPayerId ?? null,
     };
   }
+}
+
+function normalizeLocationCodes(
+  codes?: string[] | null,
+  fallback?: string | null,
+): string[] {
+  const fromArray = (codes ?? [])
+    .map((c) => c.trim())
+    .filter(Boolean);
+  if (fromArray.length > 0) {
+    return [...new Set(fromArray)];
+  }
+  const single = fallback?.trim();
+  return single ? [single] : [];
 }

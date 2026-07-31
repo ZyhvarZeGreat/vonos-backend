@@ -6,6 +6,7 @@ import type {
   TwoFactorSetupResponse,
 } from "@vonos/types";
 import { apiUrl } from "@/lib/api/client";
+import { throwApiError } from "@/lib/api/parseApiError";
 
 export type { InviteDetails, LoginResponse, LoginSuccessResponse };
 
@@ -28,14 +29,16 @@ export function isTwoFactorChallenge(
   return "requiresTwoFactor" in response && response.requiresTwoFactor === true;
 }
 
-export async function login(email: string, password: string): Promise<LoginResponse> {
+export async function login(
+  emailOrUsername: string,
+  password: string,
+): Promise<LoginResponse> {
   const response = await authFetch("/auth/login", {
     method: "POST",
-    body: JSON.stringify({ email, password }),
+    body: JSON.stringify({ email: emailOrUsername, password }),
   });
   if (!response.ok) {
-    const body = (await response.json().catch(() => null)) as { message?: string } | null;
-    throw new Error(body?.message ?? "Invalid email or password");
+    return throwApiError(response, "Invalid email/username or password");
   }
   return response.json() as Promise<LoginResponse>;
 }
@@ -49,8 +52,7 @@ export async function verifyTwoFactor(
     body: JSON.stringify({ challengeToken, code }),
   });
   if (!response.ok) {
-    const body = (await response.json().catch(() => null)) as { message?: string } | null;
-    throw new Error(body?.message ?? "Invalid authentication code");
+    return throwApiError(response, "Invalid authentication code");
   }
   return response.json() as Promise<LoginSuccessResponse>;
 }
@@ -88,8 +90,7 @@ export async function resetPassword(token: string, password: string): Promise<vo
     body: JSON.stringify({ token, password }),
   });
   if (!response.ok) {
-    const body = (await response.json().catch(() => null)) as { message?: string } | null;
-    throw new Error(body?.message ?? "Unable to reset password");
+    return throwApiError(response, "Unable to reset password");
   }
 }
 
@@ -109,8 +110,7 @@ export async function acceptInvite(
     body: JSON.stringify({ token, password, name }),
   });
   if (!response.ok) {
-    const body = (await response.json().catch(() => null)) as { message?: string } | null;
-    throw new Error(body?.message ?? "Unable to accept invite");
+    return throwApiError(response, "Unable to accept invite");
   }
   return response.json() as Promise<LoginSuccessResponse>;
 }
@@ -119,8 +119,7 @@ export async function setupTwoFactor(): Promise<TwoFactorSetupResponse> {
   const { apiFetch } = await import("@/lib/api/client");
   const response = await apiFetch("/auth/2fa/setup", { method: "POST" });
   if (!response.ok) {
-    const body = (await response.json().catch(() => null)) as { message?: string } | null;
-    throw new Error(body?.message ?? "Unable to start 2FA setup");
+    return throwApiError(response, "Unable to start 2FA setup");
   }
   return response.json() as Promise<TwoFactorSetupResponse>;
 }
@@ -132,8 +131,7 @@ export async function confirmTwoFactor(code: string): Promise<void> {
     body: JSON.stringify({ code }),
   });
   if (!response.ok) {
-    const body = (await response.json().catch(() => null)) as { message?: string } | null;
-    throw new Error(body?.message ?? "Invalid code");
+    return throwApiError(response, "Invalid code");
   }
 }
 
@@ -144,7 +142,6 @@ export async function disableTwoFactor(code: string): Promise<void> {
     body: JSON.stringify({ code }),
   });
   if (!response.ok) {
-    const body = (await response.json().catch(() => null)) as { message?: string } | null;
-    throw new Error(body?.message ?? "Unable to disable 2FA");
+    return throwApiError(response, "Unable to disable 2FA");
   }
 }

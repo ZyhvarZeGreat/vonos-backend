@@ -20,22 +20,12 @@ const nextConfig: NextConfig = {
       },
       {
         source: "/VSS/:path*",
-        destination: "/VSP/:path*",
-        permanent: true,
-      },
-      {
-        source: "/VISP/:path*",
-        destination: "/VSP/:path*",
-        permanent: true,
-      },
-      {
-        source: "/VISP",
-        destination: "/VSP",
+        destination: "/VISP/:path*",
         permanent: true,
       },
       {
         source: "/VSS",
-        destination: "/VSP",
+        destination: "/VISP",
         permanent: true,
       },
     ];

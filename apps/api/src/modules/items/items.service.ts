@@ -50,6 +50,7 @@ interface CreateItemDto {
   category?: string;
   subCategory?: string;
   description?: string;
+  imageUrl?: string;
   barcodeType?: string;
   unit?: string;
   weight?: string;
@@ -263,6 +264,7 @@ export class ItemsService {
         category: true,
         subCategory: true,
         description: true,
+        imageUrl: true,
         barcodeType: true,
         unit: true,
         weight: true,
@@ -337,13 +339,16 @@ export class ItemsService {
       type: string;
       status: string;
       quantity: number;
+      quantityChange: number;
+      newQuantity: number;
       unitCost: number | null;
+      customerSupplierInfo: string | null;
     }>
   > {
     const tenantId = this.tenantDb.requireTenantId();
     const item = await this.tenantDb.db.item.findFirst({
       where: { id, tenantId, deletedAt: null },
-      select: { id: true, sku: true },
+      select: { id: true, sku: true, quantity: true },
     });
     if (!item) throw new NotFoundException('Item not found');
 
@@ -358,6 +363,8 @@ export class ItemsService {
         type: true,
         status: true,
         lines: true,
+        notes: true,
+        supplier: { select: { name: true } },
       },
     });
 
@@ -368,29 +375,49 @@ export class ItemsService {
       type: string;
       status: string;
       quantity: number;
+      quantityChange: number;
+      newQuantity: number;
       unitCost: number | null;
+      customerSupplierInfo: string | null;
     }> = [];
+
+    let runningQty = item.quantity;
 
     for (const movement of movements) {
       const lines = Array.isArray(movement.lines)
         ? (movement.lines as Array<{
             itemId?: string;
             sku?: string;
+            name?: string;
             quantity?: number;
             unitCost?: number;
           }>)
         : [];
       for (const line of lines) {
         if (line.itemId !== item.id && line.sku !== item.sku) continue;
+        const qty = Number(line.quantity ?? 0);
+        const isInbound = movement.type === 'inbound';
+        const change = isInbound ? qty : -qty;
+        const newQty = runningQty;
+        runningQty -= change;
+
+        const info =
+          movement.supplier?.name ??
+          movement.notes ??
+          null;
+
         history.push({
           id: movement.id,
           date: movement.date.toISOString(),
           reference: movement.reference,
           type: movement.type,
           status: movement.status,
-          quantity: Number(line.quantity ?? 0),
+          quantity: qty,
+          quantityChange: change,
+          newQuantity: newQty,
           unitCost:
             line.unitCost != null ? toNumber(line.unitCost) : null,
+          customerSupplierInfo: info,
         });
       }
       if (history.length >= 100) break;
@@ -510,6 +537,7 @@ export class ItemsService {
         category: dto.category ?? null,
         subCategory: dto.subCategory?.trim() || null,
         description: dto.description?.trim() || null,
+        imageUrl: dto.imageUrl?.trim() || null,
         barcodeType: dto.barcodeType?.trim() || null,
         unit: dto.unit?.trim() || null,
         weight: dto.weight?.trim() || null,

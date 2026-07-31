@@ -115,6 +115,12 @@ export class SuppliersController {
       taxNumber?: string | null;
       openingBalance?: number;
       assignedToUserId?: string;
+      accountHolderName?: string | null;
+      bankName?: string | null;
+      bankBranch?: string | null;
+      bankCode?: string | null;
+      bankAccountNo?: string | null;
+      taxPayerId?: string | null;
     },
   ) {
     return this.suppliersService.create(body);
@@ -132,9 +138,16 @@ export class SuppliersController {
       phone: string;
       address: string;
       notes: string;
+      taxNumber: string | null;
       openingBalance: number;
       assignedToUserId: string;
       status: 'active' | 'inactive';
+      accountHolderName: string | null;
+      bankName: string | null;
+      bankBranch: string | null;
+      bankCode: string | null;
+      bankAccountNo: string | null;
+      taxPayerId: string | null;
     }>,
   ) {
     return this.suppliersService.update(id, body);

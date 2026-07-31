@@ -11,6 +11,11 @@ import type {
 import { Button } from "@/components/atoms/Button";
 import { Modal } from "@/components/atoms/Modal";
 import { MenuSelect } from "@/components/molecules/MenuSelect";
+import { parseForm } from "@/lib/validation/parseForm";
+import {
+  depositTransferSchema,
+  paymentAccountFormSchema,
+} from "@/lib/validation/schemas";
 
 export function PaymentAccountFormModal({
   open,
@@ -55,12 +60,18 @@ export function PaymentAccountFormModal({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const valid = parseForm(
+      paymentAccountFormSchema,
+      { name: form.name, accountNumber: form.accountNumber },
+      { setError },
+    );
+    if (!valid) return;
     setSaving(true);
     setError(null);
     setDismissed(true);
     try {
       await onSave({
-        name: form.name.trim(),
+        name: valid.name.trim(),
         accountNumber: form.accountNumber.trim() || undefined,
         accountType: form.accountType.trim() || undefined,
         accountSubType: form.accountSubType.trim() || undefined,
@@ -188,11 +199,17 @@ export function PaymentAccountDepositModal({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const valid = parseForm(
+      depositTransferSchema,
+      { amount },
+      { setError },
+    );
+    if (!valid) return;
     setSaving(true);
     setError(null);
     try {
       await onSave({
-        amount: Number(amount),
+        amount: Number(valid.amount),
         note: note.trim() || undefined,
         paymentMethod: paymentMethod.trim() || undefined,
         operationDate,
@@ -300,13 +317,23 @@ export function PaymentAccountTransferModal({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!toAccountId) {
+      setError("Select a destination account");
+      return;
+    }
+    const valid = parseForm(
+      depositTransferSchema,
+      { amount },
+      { setError },
+    );
+    if (!valid) return;
     setSaving(true);
     setError(null);
     try {
       await onSave({
         fromAccountId: fromAccount.id,
         toAccountId,
-        amount: Number(amount),
+        amount: Number(valid.amount),
         note: note.trim() || undefined,
         operationDate,
       });

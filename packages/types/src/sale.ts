@@ -46,6 +46,8 @@ export interface SaleLine {
   unitPrice: number;
   lineTotal: number;
   discountAmount: number | null;
+  sourceTenantCode?: string | null;
+  supplierId?: string | null;
 }
 
 /** List / summary shape */
@@ -178,6 +180,8 @@ export interface CreateSaleLineRequest {
   createPurchase?: boolean;
   /** Autos-group source when the part was picked from another entity (e.g. VW). */
   sourceTenantCode?: string;
+  /** Optional supplier for ad-hoc purchase lines (custom / not-in-catalog). */
+  supplierId?: string;
 }
 
 export interface CreateSalePaymentRequest {
@@ -191,8 +195,10 @@ export interface CreateSaleRequest {
   reference: string;
   customerName?: string;
   customerId?: string;
-  /** Required for job-centric tenants (VA) — sale is the job's commercial record. */
+  /** Optional link to a job (Automotive). Not required to create or update a sale. */
   jobId?: string;
+  /** When updating (create + archive old), ignore this sale id for one-sale-per-job. */
+  replaceSaleId?: string;
   locationCode?: string;
   paymentMethod?: string;
   cleanerUserId?: string;

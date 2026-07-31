@@ -7,9 +7,9 @@ function LoginFallback() {
   return (
     <AuthTemplate title="Welcome back" subtitle="Sign in to your Vonos account">
       <div className="space-y-5" aria-hidden>
-        <div className="h-12 rounded-lg bg-[var(--auth-blue-soft,#e8f1fb)]" />
-        <div className="h-12 rounded-lg bg-[var(--auth-blue-soft,#e8f1fb)]" />
-        <div className="h-12 rounded-lg bg-[var(--auth-blue,#0b5ed7)]/90" />
+        <div className="h-12 rounded-lg bg-[var(--auth-blue-soft,#eff6ff)]" />
+        <div className="h-12 rounded-lg bg-[var(--auth-blue-soft,#eff6ff)]" />
+        <div className="h-12 rounded-full bg-[var(--auth-red,#dc2626)]/90" />
       </div>
     </AuthTemplate>
   );

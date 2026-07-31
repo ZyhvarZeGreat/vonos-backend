@@ -3,10 +3,21 @@
 import { useEffect, useMemo, useState } from "react";
 import { ImageIcon, Printer } from "lucide-react";
 import type { Item, ItemLocationStock } from "@vonos/types";
+import {
+  PRODUCT_STOCK_BUSINESS_LOCATIONS,
+  isProductStockTenant,
+} from "@vonos/types";
 import { Hq6Modal, Hq6Field, Hq6ModalSaveClose } from "@/components/hq6/Hq6Modal";
 import { useRouteTenant } from "@/lib/hooks/useRouteTenant";
 import { formatHq6Currency } from "@/lib/utils/hq6Format";
+import { parseForm } from "@/lib/validation/parseForm";
+import { openingStockSchema } from "@/lib/validation/schemas";
 import { toast } from "@/stores/toastStore";
+
+function productLocationsForTenant(code: string | undefined) {
+  if (isProductStockTenant(code)) return PRODUCT_STOCK_BUSINESS_LOCATIONS;
+  return null;
+}
 
 function dash(value: string | number | null | undefined): string {
   if (value == null || value === "") return "--";
@@ -49,8 +60,11 @@ export function Hq6ViewProductModal({
   item: Item | null;
 }) {
   const { config } = useRouteTenant();
+  const priceCatalogOnly = config?.archetype === "job";
 
-  const locations = config?.businessLocations;
+  const locations =
+    productLocationsForTenant(config?.code) ??
+    config?.businessLocations;
 
   const locationName = (code: string | null | undefined) => {
     if (!code) return "--";
@@ -210,12 +224,15 @@ export function Hq6ViewProductModal({
               {dash(item.subCategory)}
             </div>
             <div>
-              <b>Manage Stock?: </b>Yes
+              <b>Manage Stock?: </b>
+              {priceCatalogOnly ? "No" : "Yes"}
             </div>
-            <div>
-              <b>Alert quantity: </b>
-              {item.reorderPoint != null ? String(item.reorderPoint) : "--"}
-            </div>
+            {!priceCatalogOnly ? (
+              <div>
+                <b>Alert quantity: </b>
+                {item.reorderPoint != null ? String(item.reorderPoint) : "--"}
+              </div>
+            ) : null}
           </div>
 
           <div className="hq6-product-view-meta-col">
@@ -295,41 +312,45 @@ export function Hq6ViewProductModal({
           </table>
         </div>
 
-        <div className="hq6-product-view-section-title">
-          <strong>Product Stock Details</strong>
-        </div>
-        <div className="hq6-product-view-table-wrap">
-          <table className="hq6-product-view-table">
-            <thead>
-              <tr>
-                <th>SKU</th>
-                <th>Product</th>
-                <th>Location</th>
-                <th>Unit Price</th>
-                <th>Current stock</th>
-                <th>Current Stock Value</th>
-                <th>Total unit sold</th>
-                <th>Total Unit Transfered</th>
-                <th>Total Unit Adjusted</th>
-              </tr>
-            </thead>
-            <tbody>
-              {stockRows.map((row, idx) => (
-                <tr key={`${row.location}-${idx}`}>
-                  <td>{row.sku}</td>
-                  <td>{row.product}</td>
-                  <td>{row.location}</td>
-                  <td>{formatHq6Currency(row.unitPrice, currency)}</td>
-                  <td>{qtyLabel(row.qty, item.unit)}</td>
-                  <td>{formatHq6Currency(row.value, currency)}</td>
-                  <td>{qtyLabel(row.sold, item.unit)}</td>
-                  <td>{qtyLabel(row.transferred, item.unit)}</td>
-                  <td>{qtyLabel(row.adjusted, item.unit)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        {!priceCatalogOnly ? (
+          <>
+            <div className="hq6-product-view-section-title">
+              <strong>Product Stock Details</strong>
+            </div>
+            <div className="hq6-product-view-table-wrap">
+              <table className="hq6-product-view-table">
+                <thead>
+                  <tr>
+                    <th>SKU</th>
+                    <th>Product</th>
+                    <th>Location</th>
+                    <th>Unit Price</th>
+                    <th>Current stock</th>
+                    <th>Current Stock Value</th>
+                    <th>Total unit sold</th>
+                    <th>Total Unit Transfered</th>
+                    <th>Total Unit Adjusted</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {stockRows.map((row, idx) => (
+                    <tr key={`${row.location}-${idx}`}>
+                      <td>{row.sku}</td>
+                      <td>{row.product}</td>
+                      <td>{row.location}</td>
+                      <td>{formatHq6Currency(row.unitPrice, currency)}</td>
+                      <td>{qtyLabel(row.qty, item.unit)}</td>
+                      <td>{formatHq6Currency(row.value, currency)}</td>
+                      <td>{qtyLabel(row.sold, item.unit)}</td>
+                      <td>{qtyLabel(row.transferred, item.unit)}</td>
+                      <td>{qtyLabel(row.adjusted, item.unit)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        ) : null}
       </div>
     </Hq6Modal>
   );
@@ -346,34 +367,52 @@ export function Hq6OpeningStockModal({
   item: Item | null;
   onSave?: (qty: number, locationCode: string) => Promise<void>;
 }) {
+  const { config } = useRouteTenant();
+  const stockLocations = useMemo(
+    () =>
+      productLocationsForTenant(config?.code) ??
+      config?.businessLocations ??
+      [],
+    [config?.code, config?.businessLocations],
+  );
   const [qty, setQty] = useState("");
+  const [unitCost, setUnitCost] = useState("");
+  const [date, setDate] = useState("");
+  const [note, setNote] = useState("");
   const [location, setLocation] = useState("");
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (open && item) {
       setQty(String(item.quantity ?? 0));
-      setLocation("");
+      setUnitCost(String(item.costPrice ?? 0));
+      setDate(new Date().toISOString().slice(0, 10));
+      setNote("");
+      setLocation(item.locationCode ?? stockLocations[0]?.code ?? "");
     }
-  }, [open, item]);
+  }, [open, item, stockLocations]);
+
+  const qtyNum = Number(qty) || 0;
+  const costNum = Number(unitCost) || 0;
+  const subtotal = qtyNum * costNum;
+  const locationLabel =
+    stockLocations.find((l) => l.code === location)?.name ?? location;
 
   return (
     <Hq6Modal
       open={open}
       onClose={onClose}
-      title="Add opening stock"
-      size="md"
+      title="Add Opening Stock"
+      size="xl"
       footer={
         <Hq6ModalSaveClose
           onClose={onClose}
           saving={saving}
           onSave={() => {
             void (async () => {
-              const n = Number(qty);
-              if (!Number.isFinite(n) || n < 0) {
-                toast.error("Enter a valid quantity");
-                return;
-              }
+              const valid = parseForm(openingStockSchema, { quantity: qty });
+              if (!valid) return;
+              const n = Number(valid.quantity);
               setSaving(true);
               try {
                 await onSave?.(n, location);
@@ -394,26 +433,100 @@ export function Hq6OpeningStockModal({
       {!item ? (
         <p className="text-sm text-muted">No product selected.</p>
       ) : (
-        <div className="space-y-3">
-          <p className="text-sm font-medium text-[#111827]">{item.name}</p>
-          <Hq6Field label="Quantity" required>
-            <input
-              type="number"
-              min={0}
-              step="0.01"
-              className="hq6-modal-input"
-              value={qty}
-              onChange={(e) => setQty(e.target.value)}
-            />
-          </Hq6Field>
-          <Hq6Field label="Business Location">
-            <input
-              className="hq6-modal-input"
-              placeholder="Location code (optional)"
-              value={location}
-              onChange={(e) => setLocation(e.target.value)}
-            />
-          </Hq6Field>
+        <div className="space-y-4">
+          <div className="text-sm text-[#6b7280]">
+            Location:{" "}
+            <span className="font-semibold text-[#111827]">
+              {locationLabel} ({location})
+            </span>
+          </div>
+
+          {/* Location selector */}
+          {stockLocations.length > 1 && (
+            <Hq6Field label="Business Location">
+              <select
+                className="hq6-modal-input"
+                value={location}
+                onChange={(e) => setLocation(e.target.value)}
+              >
+                {stockLocations.map((loc) => (
+                  <option key={loc.code} value={loc.code}>
+                    {loc.name} ({loc.code})
+                  </option>
+                ))}
+              </select>
+            </Hq6Field>
+          )}
+
+          {/* UPOS-style green header table */}
+          <div className="overflow-x-auto rounded border border-[#d1d5db]">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-[#28a745] text-white">
+                  <th className="px-3 py-2 text-left font-semibold">Product Name</th>
+                  <th className="px-3 py-2 text-center font-semibold">Quantity Remaining</th>
+                  <th className="px-3 py-2 text-center font-semibold">Unit Cost (Before Tax)</th>
+                  <th className="px-3 py-2 text-center font-semibold">Subtotal (Before Tax)</th>
+                  <th className="px-3 py-2 text-center font-semibold">Date</th>
+                  <th className="px-3 py-2 text-center font-semibold">Note</th>
+                  <th className="px-3 py-2 w-10" />
+                </tr>
+              </thead>
+              <tbody>
+                <tr className="border-b border-[#e5e7eb]">
+                  <td className="px-3 py-2 font-medium text-[#111827]">{item.name}</td>
+                  <td className="px-3 py-2">
+                    <input
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      className="hq6-modal-input w-24 text-center mx-auto block"
+                      value={qty}
+                      onChange={(e) => setQty(e.target.value)}
+                    />
+                  </td>
+                  <td className="px-3 py-2">
+                    <div className="flex items-center justify-center gap-1">
+                      <input
+                        type="number"
+                        min={0}
+                        step="0.01"
+                        className="hq6-modal-input w-28 text-right"
+                        value={unitCost}
+                        onChange={(e) => setUnitCost(e.target.value)}
+                      />
+                    </div>
+                  </td>
+                  <td className="px-3 py-2 text-center tabular-nums">
+                    {subtotal.toFixed(2)}
+                  </td>
+                  <td className="px-3 py-2">
+                    <input
+                      type="date"
+                      className="hq6-modal-input w-36 mx-auto block"
+                      value={date}
+                      onChange={(e) => setDate(e.target.value)}
+                    />
+                  </td>
+                  <td className="px-3 py-2">
+                    <textarea
+                      className="hq6-modal-input w-full"
+                      rows={1}
+                      value={note}
+                      onChange={(e) => setNote(e.target.value)}
+                    />
+                  </td>
+                  <td className="px-3 py-2 text-center">
+                    <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-[#6c757d] text-white text-xs cursor-default">+</span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div className="text-right text-sm font-semibold text-[#111827]">
+            Total Amount (Exc. Tax): {subtotal.toFixed(2)}
+          </div>
         </div>
       )}
     </Hq6Modal>
@@ -475,12 +588,18 @@ export function Hq6AddLocationModal({
           </select>
         </Hq6Field>
         <Hq6Field label="Business Location" required>
-          <input
+          <select
             className="hq6-modal-input"
             value={location}
             onChange={(e) => setLocation(e.target.value)}
-            placeholder="Location"
-          />
+          >
+            <option value="">Select location…</option>
+            {PRODUCT_STOCK_BUSINESS_LOCATIONS.map((loc) => (
+              <option key={loc.code} value={loc.code}>
+                {loc.code} — {loc.name}
+              </option>
+            ))}
+          </select>
         </Hq6Field>
       </div>
     </Hq6Modal>

@@ -10,12 +10,10 @@ import {
   FileEdit,
   FileText,
   History,
-  Link2,
   ListOrdered,
   Mail,
   Package,
   PackageCheck,
-  Pencil,
   PlusCircle,
   Power,
   Printer,
@@ -26,7 +24,6 @@ import {
   Trash2,
   Truck,
   UserX,
-  Wallet,
 } from "lucide-react";
 
 const ICON_CLASS = "h-3.5 w-3.5";
@@ -40,14 +37,18 @@ export function hq6ActionIcon(actionId: string): ReactNode | undefined {
     case "open":
     case "preview":
     case "view_record":
+    case "invoice_url":
+    case "quote_url":
       return <Eye className={ICON_CLASS} strokeWidth={1.75} />;
     case "edit":
-    case "edit_shipping":
     case "update_status":
     case "change_status":
     case "edit_expiry":
     case "fix_stock":
-      return <Pencil className={ICON_CLASS} strokeWidth={1.75} />;
+    case "file_edit":
+      return <FileEdit className={ICON_CLASS} strokeWidth={1.75} />;
+    case "edit_shipping":
+      return <Truck className={ICON_CLASS} strokeWidth={1.75} />;
     case "delete":
       return <Trash2 className={ICON_CLASS} strokeWidth={1.75} />;
     case "print":
@@ -63,7 +64,7 @@ export function hq6ActionIcon(actionId: string): ReactNode | undefined {
       return <Banknote className={ICON_CLASS} strokeWidth={1.75} />;
     case "view_payments":
     case "edit_payment":
-      return <Wallet className={ICON_CLASS} strokeWidth={1.75} />;
+      return <Banknote className={ICON_CLASS} strokeWidth={1.75} />;
     case "ledger":
       return <BookOpen className={ICON_CLASS} strokeWidth={1.75} />;
     case "sales":
@@ -83,12 +84,8 @@ export function hq6ActionIcon(actionId: string): ReactNode | undefined {
     case "sell_return":
     case "purchase_return":
       return <RotateCcw className={ICON_CLASS} strokeWidth={1.75} />;
-    case "invoice_url":
-    case "quote_url":
-      return <Link2 className={ICON_CLASS} strokeWidth={1.75} />;
     case "packing_slip":
     case "delivery_note":
-      return <Truck className={ICON_CLASS} strokeWidth={1.75} />;
     case "terms":
     case "terms_and_conditions":
       return <FileText className={ICON_CLASS} strokeWidth={1.75} />;
@@ -99,8 +96,6 @@ export function hq6ActionIcon(actionId: string): ReactNode | undefined {
       return <History className={ICON_CLASS} strokeWidth={1.75} />;
     case "items_received":
       return <PackageCheck className={ICON_CLASS} strokeWidth={1.75} />;
-    case "file_edit":
-      return <FileEdit className={ICON_CLASS} strokeWidth={1.75} />;
     case "checklist":
     case "todo":
       return <ClipboardList className={ICON_CLASS} strokeWidth={1.75} />;
@@ -116,6 +111,7 @@ export function hq6ActionIcon(actionId: string): ReactNode | undefined {
     case "book":
       return <BookOpen className={ICON_CLASS} strokeWidth={1.75} />;
     case "transfer":
+    case "move_product":
       return <RefreshCw className={ICON_CLASS} strokeWidth={1.75} />;
     case "deposit":
       return <Banknote className={ICON_CLASS} strokeWidth={1.75} />;
