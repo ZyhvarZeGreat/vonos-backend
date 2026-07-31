@@ -22,6 +22,10 @@ import {
   relationStringOr,
   tokenizedSearchWhere,
 } from '../../common/utils/listSearch';
+import {
+  softDeleteExpenseAccountTxns,
+  syncExpenseAccountDebit,
+} from '../../common/utils/recordPaymentAccountTxn';
 
 type ExpenseRow = {
   id: string;
@@ -39,6 +43,7 @@ type ExpenseRow = {
   paymentStatus: string;
   paymentDue: import('@prisma/client').Prisma.Decimal;
   note: string | null;
+  accountId: string | null;
   isRecurring: boolean;
   recurInterval: number | null;
   recurIntervalType: string | null;
@@ -49,12 +54,14 @@ type ExpenseRow = {
   category?: { name: string } | null;
   expenseForCustomer?: { name: string } | null;
   contactCustomer?: { name: string } | null;
+  account?: { name: string } | null;
 };
 
 const expenseInclude = {
   category: { select: { id: true, name: true } },
   expenseForCustomer: { select: { name: true } },
   contactCustomer: { select: { name: true } },
+  account: { select: { name: true } },
 } as const;
 
 @Injectable()
@@ -218,31 +225,63 @@ export class ExpensesService {
 
   async createExpense(dto: CreateExpenseRequest): Promise<Expense> {
     const tenantId = this.tenantDb.requireTenantId();
-    const row = await this.tenantDb.db.expense.create({
-      data: {
-        tenantId,
-        categoryId: dto.categoryId ?? null,
-        refNo: dto.refNo ?? null,
-        subCategory: dto.subCategory ?? null,
-        locationCode: dto.locationCode ?? null,
-        expenseForCustomerId: dto.expenseForCustomerId ?? null,
-        contactCustomerId: dto.contactCustomerId ?? null,
-        expenseFor: dto.expenseFor ?? null,
-        contactName: dto.contactName ?? null,
-        totalAmount: dto.totalAmount,
-        taxAmount: dto.taxAmount ?? 0,
-        paymentStatus: dto.paymentStatus ?? 'due',
-        paymentDue: dto.totalAmount,
-        note: dto.note ?? null,
-        isRecurring: dto.isRecurring ?? false,
-        recurInterval: dto.recurInterval ?? null,
-        recurIntervalType: dto.recurIntervalType ?? null,
-        expenseDate: dto.expenseDate ? new Date(dto.expenseDate) : new Date(),
-        createdById: this.tenantDb.getAuthUserId(),
-      },
-      include: expenseInclude,
+    const paymentStatus = dto.paymentStatus ?? 'due';
+    const accountId = dto.accountId?.trim() || null;
+    const shouldDebit =
+      Boolean(accountId) &&
+      paymentStatus !== 'due' &&
+      Number(dto.totalAmount) > 0;
+
+    const row = await this.tenantDb.db.$transaction(async (tx) => {
+      const created = await tx.expense.create({
+        data: {
+          tenantId,
+          categoryId: dto.categoryId ?? null,
+          refNo: dto.refNo ?? null,
+          subCategory: dto.subCategory ?? null,
+          locationCode: dto.locationCode ?? null,
+          expenseForCustomerId: dto.expenseForCustomerId ?? null,
+          contactCustomerId: dto.contactCustomerId ?? null,
+          expenseFor: dto.expenseFor ?? null,
+          contactName: dto.contactName ?? null,
+          totalAmount: dto.totalAmount,
+          taxAmount: dto.taxAmount ?? 0,
+          paymentStatus,
+          paymentDue:
+            paymentStatus === 'paid' ? 0 : dto.totalAmount,
+          note: dto.note ?? null,
+          accountId,
+          isRecurring: dto.isRecurring ?? false,
+          recurInterval: dto.recurInterval ?? null,
+          recurIntervalType: dto.recurIntervalType ?? null,
+          expenseDate: dto.expenseDate ? new Date(dto.expenseDate) : new Date(),
+          createdById: this.tenantDb.getAuthUserId(),
+        },
+        include: expenseInclude,
+      });
+
+      if (shouldDebit && accountId) {
+        await syncExpenseAccountDebit(tx, {
+          tenantId,
+          expenseId: created.id,
+          accountId,
+          amount: dto.totalAmount,
+          operationDate: created.expenseDate,
+          refNo: created.refNo,
+          note: dto.note ?? `Expense — ${created.refNo ?? created.id}`,
+          paymentMethod: dto.paymentMethod ?? null,
+        });
+      }
+
+      return created;
     });
-    await this.invoiceHub.ensureExpenseInvoice(this.tenantDb.db, row);
+    // Defer invoice + rollup so concurrent creates aren't serialized on extra
+    // round-trips (bench: 15 writers were ~22s with awaited invoice hub).
+    void this.invoiceHub
+      .ensureExpenseInvoice(this.tenantDb.db, row)
+      .catch((err: unknown) => {
+        console.error('[expenses] ensureExpenseInvoice failed', err);
+      });
     void applyDailyFinanceDelta(
       this.tenantDb.db,
       tenantId,
@@ -297,47 +336,75 @@ export class ExpensesService {
     const paymentDue =
       dto.paymentDue !== undefined
         ? dto.paymentDue
-        : paymentStatus === 'due' && dto.totalAmount !== undefined
-          ? updatedTotal
-          : toNumber(existing.paymentDue);
+        : paymentStatus === 'paid'
+          ? 0
+          : paymentStatus === 'due' && dto.totalAmount !== undefined
+            ? updatedTotal
+            : toNumber(existing.paymentDue);
+    const accountId =
+      dto.accountId !== undefined
+        ? dto.accountId || null
+        : existing.accountId;
 
     const prevTotal = toNumber(existing.totalAmount);
     const prevDate = existing.expenseDate;
 
-    const row = await this.tenantDb.db.expense.update({
-      where: { id },
-      data: {
-        ...(dto.categoryId !== undefined ? { categoryId: dto.categoryId } : {}),
-        ...(dto.refNo !== undefined ? { refNo: dto.refNo } : {}),
-        ...(dto.subCategory !== undefined ? { subCategory: dto.subCategory } : {}),
-        ...(dto.locationCode !== undefined ? { locationCode: dto.locationCode } : {}),
-        ...(dto.expenseForCustomerId !== undefined
-          ? { expenseForCustomerId: dto.expenseForCustomerId }
-          : {}),
-        ...(dto.contactCustomerId !== undefined
-          ? { contactCustomerId: dto.contactCustomerId }
-          : {}),
-        ...(dto.expenseFor !== undefined ? { expenseFor: dto.expenseFor } : {}),
-        ...(dto.contactName !== undefined ? { contactName: dto.contactName } : {}),
-        ...(dto.totalAmount !== undefined ? { totalAmount: dto.totalAmount } : {}),
-        ...(dto.taxAmount !== undefined ? { taxAmount: dto.taxAmount } : {}),
-        ...(dto.paymentStatus !== undefined
-          ? { paymentStatus: dto.paymentStatus }
-          : {}),
-        paymentDue,
-        ...(dto.note !== undefined ? { note: dto.note } : {}),
-        ...(dto.isRecurring !== undefined ? { isRecurring: dto.isRecurring } : {}),
-        ...(dto.recurInterval !== undefined
-          ? { recurInterval: dto.recurInterval }
-          : {}),
-        ...(dto.recurIntervalType !== undefined
-          ? { recurIntervalType: dto.recurIntervalType }
-          : {}),
-        ...(dto.expenseDate !== undefined
-          ? { expenseDate: new Date(dto.expenseDate) }
-          : {}),
-      },
-      include: expenseInclude,
+    const row = await this.tenantDb.db.$transaction(async (tx) => {
+      const updated = await tx.expense.update({
+        where: { id },
+        data: {
+          ...(dto.categoryId !== undefined ? { categoryId: dto.categoryId } : {}),
+          ...(dto.refNo !== undefined ? { refNo: dto.refNo } : {}),
+          ...(dto.subCategory !== undefined ? { subCategory: dto.subCategory } : {}),
+          ...(dto.locationCode !== undefined ? { locationCode: dto.locationCode } : {}),
+          ...(dto.expenseForCustomerId !== undefined
+            ? { expenseForCustomerId: dto.expenseForCustomerId }
+            : {}),
+          ...(dto.contactCustomerId !== undefined
+            ? { contactCustomerId: dto.contactCustomerId }
+            : {}),
+          ...(dto.expenseFor !== undefined ? { expenseFor: dto.expenseFor } : {}),
+          ...(dto.contactName !== undefined ? { contactName: dto.contactName } : {}),
+          ...(dto.totalAmount !== undefined ? { totalAmount: dto.totalAmount } : {}),
+          ...(dto.taxAmount !== undefined ? { taxAmount: dto.taxAmount } : {}),
+          ...(dto.paymentStatus !== undefined
+            ? { paymentStatus: dto.paymentStatus }
+            : {}),
+          paymentDue,
+          ...(dto.note !== undefined ? { note: dto.note } : {}),
+          ...(dto.accountId !== undefined
+            ? { accountId: dto.accountId || null }
+            : {}),
+          ...(dto.isRecurring !== undefined ? { isRecurring: dto.isRecurring } : {}),
+          ...(dto.recurInterval !== undefined
+            ? { recurInterval: dto.recurInterval }
+            : {}),
+          ...(dto.recurIntervalType !== undefined
+            ? { recurIntervalType: dto.recurIntervalType }
+            : {}),
+          ...(dto.expenseDate !== undefined
+            ? { expenseDate: new Date(dto.expenseDate) }
+            : {}),
+        },
+        include: expenseInclude,
+      });
+
+      const shouldDebit =
+        Boolean(accountId) &&
+        paymentStatus !== 'due' &&
+        updatedTotal > 0;
+      await syncExpenseAccountDebit(tx, {
+        tenantId,
+        expenseId: updated.id,
+        accountId: shouldDebit ? accountId : null,
+        amount: updatedTotal,
+        operationDate: updated.expenseDate,
+        refNo: updated.refNo,
+        note: updated.note ?? `Expense — ${updated.refNo ?? updated.id}`,
+        paymentMethod: dto.paymentMethod ?? null,
+      });
+
+      return updated;
     });
 
     let createdByName: string | null = null;
@@ -384,9 +451,12 @@ export class ExpensesService {
       where: { id, tenantId, deletedAt: null },
     });
     if (!existing) throw new NotFoundException('Expense not found');
-    await this.tenantDb.db.expense.update({
-      where: { id },
-      data: { deletedAt: new Date() },
+    await this.tenantDb.db.$transaction(async (tx) => {
+      await softDeleteExpenseAccountTxns(tx, { tenantId, expenseId: id });
+      await tx.expense.update({
+        where: { id },
+        data: { deletedAt: new Date() },
+      });
     });
     void applyDailyFinanceDelta(
       this.tenantDb.db,
@@ -513,6 +583,8 @@ export class ExpensesService {
       paymentStatus: row.paymentStatus,
       paymentDue: toNumber(row.paymentDue),
       note: row.note,
+      accountId: row.accountId,
+      accountName: row.account?.name ?? null,
       isRecurring: row.isRecurring,
       recurInterval: row.recurInterval,
       recurIntervalType: row.recurIntervalType,

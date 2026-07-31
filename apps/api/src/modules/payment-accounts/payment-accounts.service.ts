@@ -194,6 +194,10 @@ export class PaymentAccountsService {
       createdByName = user?.name ?? null;
     }
 
+    const openingBalance = Number(dto.openingBalance ?? 0);
+    const hasOpening =
+      Number.isFinite(openingBalance) && openingBalance > 0;
+
     const row = await this.tenantDb.db.paymentAccount.create({
       data: {
         tenantId,
@@ -210,6 +214,22 @@ export class PaymentAccountsService {
         createdByName,
       },
     });
+
+    if (hasOpening) {
+      await this.tenantDb.db.accountTransaction.create({
+        data: {
+          tenantId,
+          accountId: row.id,
+          type: 'credit',
+          subType: 'opening_balance',
+          amount: openingBalance,
+          operationDate: new Date(),
+          note: 'Opening balance',
+          createdByName,
+        },
+      });
+    }
+
     this.invalidateCaches();
     return this.serializeRow(row);
   }
@@ -262,6 +282,25 @@ export class PaymentAccountsService {
     const amount = Number(dto.amount);
     if (!Number.isFinite(amount) || amount <= 0) {
       throw new BadRequestException('Deposit amount must be greater than zero');
+    }
+
+    const fromAccountId = dto.fromAccountId?.trim();
+    if (fromAccountId) {
+      if (fromAccountId === account.id) {
+        throw new BadRequestException(
+          'Deposit from account must be a different payment account',
+        );
+      }
+      // Move money between payment accounts (balances update on both sides).
+      await this.fundTransfer({
+        fromAccountId,
+        toAccountId: account.id,
+        amount,
+        note: dto.note?.trim() || undefined,
+        operationDate: dto.operationDate,
+        refNo: dto.refNo?.trim() || undefined,
+      });
+      return this.getById(id);
     }
 
     const userId = this.tenantDb.getAuthUserId();
@@ -379,5 +418,106 @@ export class PaymentAccountsService {
       data: { deletedAt: new Date(), isClosed: true },
     });
     this.invalidateCaches();
+  }
+
+  /** Sale/customer payments with no payment account selected. */
+  async countUnlinkedPayments(): Promise<{ count: number }> {
+    const tenantId = this.tenantDb.requireTenantId();
+    const count = await this.tenantDb.db.payment.count({
+      where: {
+        tenantId,
+        deletedAt: null,
+        isReturn: false,
+        accountId: null,
+        saleId: { not: null },
+      },
+    });
+    return { count };
+  }
+
+  /**
+   * Link orphan credits to sale payments by paymentId only.
+   * Does NOT create new credits — after a ledger wipe, creating would
+   * re-fill accounts from historical payments and undo the clean slate.
+   */
+  async backfillSalePaymentCredits(): Promise<{
+    linkedOrphans: number;
+    createdCredits: number;
+    skipped: number;
+  }> {
+    const tenantId = this.tenantDb.requireTenantId();
+    const payments = await this.tenantDb.db.payment.findMany({
+      where: {
+        tenantId,
+        deletedAt: null,
+        isReturn: false,
+        accountId: { not: null },
+        saleId: { not: null },
+      },
+      select: {
+        id: true,
+        amount: true,
+        accountId: true,
+        saleId: true,
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    let linkedOrphans = 0;
+    let createdCredits = 0;
+    let skipped = 0;
+
+    for (const payment of payments) {
+      if (!payment.accountId) {
+        skipped += 1;
+        continue;
+      }
+
+      const existingLinked = await this.tenantDb.db.accountTransaction.findFirst({
+        where: {
+          tenantId,
+          paymentId: payment.id,
+          deletedAt: null,
+        },
+        select: { id: true },
+      });
+      if (existingLinked) {
+        skipped += 1;
+        continue;
+      }
+
+      const amount = toNumber(payment.amount);
+      const orphan = await this.tenantDb.db.accountTransaction.findFirst({
+        where: {
+          tenantId,
+          accountId: payment.accountId,
+          type: 'credit',
+          paymentId: null,
+          deletedAt: null,
+          amount,
+        },
+        orderBy: { operationDate: 'asc' },
+        select: { id: true },
+      });
+
+      if (orphan) {
+        await this.tenantDb.db.accountTransaction.update({
+          where: { id: orphan.id },
+          data: {
+            paymentId: payment.id,
+            saleId: payment.saleId,
+            subType: 'sale_payment',
+          },
+        });
+        linkedOrphans += 1;
+        continue;
+      }
+
+      // Intentionally do not create credits — accountant / new sales post fresh.
+      skipped += 1;
+    }
+
+    this.invalidateCaches();
+    return { linkedOrphans, createdCredits, skipped };
   }
 }

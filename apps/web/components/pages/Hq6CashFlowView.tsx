@@ -282,7 +282,12 @@ export function Hq6CashFlowView() {
                             {formatHq6Currency(totals.credit, currency)}
                           </span>
                         </td>
-                        <td colSpan={2} />
+                        <td />
+                        <td>
+                          <strong>
+                            {formatHq6Currency(totals.balance, currency)}
+                          </strong>
+                        </td>
                       </tr>
                     </tfoot>
                   ) : null}
@@ -292,6 +297,12 @@ export function Hq6CashFlowView() {
           </div>
         </div>
       </section>
+
+      <p className="tw-mt-2 tw-text-xs tw-text-[#6b7280]">
+        Cash flow lists movements across payment accounts (including fund
+        transfers). Account Balance is per-account running balance; Total
+        Balance is the combined balance of all payment accounts at that point.
+      </p>
 
       <p className="hq6-footer">
         Vonos Autos Head Office - V8.1 | Copyright © {new Date().getFullYear()}{" "}

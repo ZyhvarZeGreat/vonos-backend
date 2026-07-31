@@ -516,6 +516,13 @@ export function AddSaleForm({
     mutationFn: async () => {
       assertBusinessLocationSelected(locationRequired, form.locationCode);
       if (lines.length === 0) throw new Error("Add at least one product");
+      const isProvisional =
+        form.status === "draft" || form.status === "quotation";
+      if (!isProvisional && paidAmount > 0 && !form.paymentAccountId.trim()) {
+        throw new Error(
+          "Select a Payment Account so this money is posted to the account book",
+        );
+      }
       const reference =
         form.invoiceNo.trim() ||
         form.jobReference.trim() ||

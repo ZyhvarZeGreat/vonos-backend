@@ -133,7 +133,7 @@ export function Hq6ViewPaymentsModal({
       editing.paidOn ? editing.paidOn.slice(0, 16) : new Date().toISOString().slice(0, 16),
     );
     setEditRef(editing.paymentRefNo ?? "");
-    setEditAccountId("");
+    setEditAccountId(editing.accountId ?? "");
     setEditBankAccountNo("");
     setEditDocName("");
   }, [editing]);
@@ -149,6 +149,11 @@ export function Hq6ViewPaymentsModal({
       );
       if (!valid) throw new Error("Enter a valid amount");
       const amount = Number(valid.amount);
+      if (!editAccountId.trim()) {
+        throw new Error(
+          "Select a Payment Account so this payment stays on the account book",
+        );
+      }
       return updateSalePayment(tenantId, recordId, editing.id, {
         amount,
         method: editMethod,
@@ -169,6 +174,9 @@ export function Hq6ViewPaymentsModal({
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: paymentsQueryKey });
       await queryClient.invalidateQueries({ queryKey: ["sales"] });
+      await queryClient.invalidateQueries({
+        queryKey: ["payment-accounts", tenantId],
+      });
       setEditing(null);
     },
   });

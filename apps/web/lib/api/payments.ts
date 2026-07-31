@@ -13,6 +13,7 @@ const PAYMENTS_PATH = "/payments";
 
 export interface PaymentFilters {
   accountId?: string;
+  unlinkedOnly?: boolean;
   from?: string;
   to?: string;
   search?: string;
@@ -30,6 +31,7 @@ async function fetchPaymentsRaw(
   const tenantPath = withTenantQuery(PAYMENTS_PATH, tenantId);
   const url = appendListQuery(tenantPath, {
     accountId: filters?.accountId,
+    unlinkedOnly: filters?.unlinkedOnly ? "1" : undefined,
     from: filters?.from,
     to: filters?.to,
     search: filters?.search,

@@ -14,6 +14,7 @@ export class PaymentsController {
   @Get()
   list(
     @Query('accountId') accountId?: string,
+    @Query('unlinkedOnly') unlinkedOnly?: string,
     @Query('from') from?: string,
     @Query('to') to?: string,
     @Query('search') search?: string,
@@ -22,6 +23,10 @@ export class PaymentsController {
   ) {
     return this.service.listPayments({
       accountId,
+      unlinkedOnly:
+        unlinkedOnly === '1' ||
+        unlinkedOnly === 'true' ||
+        unlinkedOnly === 'yes',
       from,
       to,
       search,

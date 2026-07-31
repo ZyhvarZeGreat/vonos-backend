@@ -24,6 +24,8 @@ export interface Expense {
   paymentStatus: string;
   paymentDue: number;
   note: string | null;
+  accountId: string | null;
+  accountName: string | null;
   isRecurring: boolean;
   recurInterval: number | null;
   recurIntervalType: string | null;
@@ -65,6 +67,8 @@ export interface CreateExpenseRequest {
   taxAmount?: number;
   paymentStatus?: string;
   note?: string;
+  accountId?: string;
+  paymentMethod?: string;
   isRecurring?: boolean;
   recurInterval?: number;
   recurIntervalType?: string;
@@ -95,6 +99,8 @@ export interface UpdateExpenseRequest {
   paymentStatus?: string;
   paymentDue?: number;
   note?: string | null;
+  accountId?: string | null;
+  paymentMethod?: string | null;
   isRecurring?: boolean;
   recurInterval?: number | null;
   recurIntervalType?: string | null;

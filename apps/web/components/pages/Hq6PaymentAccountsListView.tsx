@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAppMutation, withOptimistic } from "@/lib/hooks/useAppMutation";
 import {
   optimisticTempId,
@@ -23,11 +23,13 @@ import {
   useHq6ListChrome,
 } from "@/components/hq6/Hq6StandardListShell";
 import {
+  backfillSalePaymentCredits,
   closePaymentAccount,
   createPaymentAccount,
   depositPaymentAccount,
   getAllPaymentAccounts,
   getPaymentAccountsPage,
+  getUnlinkedPaymentsCount,
   transferPaymentAccounts,
   updatePaymentAccount,
 } from "@/lib/api/paymentAccounts";
@@ -37,6 +39,8 @@ import { useListExport } from "@/lib/hooks/useListExport";
 import { useRouteTenant, useTenantId } from "@/lib/hooks/useRouteTenant";
 import { formatHq6Currency } from "@/lib/utils/hq6Format";
 import { UposGradientActionButton } from "@/components/upos/UposNavTabs";
+import { useAuthStore } from "@/stores/authStore";
+import { toast } from "sonner";
 
 const EXPORT_COLUMNS = [
   { key: "name", header: "Name" },
@@ -128,6 +132,42 @@ export function Hq6PaymentAccountsListView() {
 
   const queryClient = useQueryClient();
 
+  const { data: allAccounts = [] } = useQuery({
+    queryKey: ["payment-accounts", tenantId, "all-for-modals"],
+    queryFn: () => getAllPaymentAccounts(tenantId!),
+    enabled: Boolean(
+      tenantId && (depositAccount || transferAccount || formOpen),
+    ),
+    staleTime: 60_000,
+  });
+
+  const modalAccounts = allAccounts.length > 0 ? allAccounts : items;
+
+  const role = useAuthStore((s) => s.role);
+  const canBackfill = role === "admin" || role === "super_admin";
+
+  const { data: unlinkedMeta } = useQuery({
+    queryKey: ["payment-accounts", tenantId, "unlinked-count"],
+    queryFn: () => getUnlinkedPaymentsCount(tenantId!),
+    enabled: Boolean(tenantId),
+    staleTime: 30_000,
+  });
+  const unlinkedCount = unlinkedMeta?.count ?? 0;
+
+  const backfillMutation = useAppMutation({
+    mutationFn: () => backfillSalePaymentCredits(tenantId!),
+    invalidateKeys: [
+      ["payment-accounts", tenantId],
+      ["payments", tenantId],
+      ["account-book", tenantId],
+    ],
+    onSuccess: (result) => {
+      toast.success(
+        `Linked ${result.linkedOrphans} orphan credits, created ${result.createdCredits} missing credits (${result.skipped} already OK).`,
+      );
+    },
+  });
+
   const depositMutation = useAppMutation({
     mutationFn: (vars: {
       id: string;
@@ -135,12 +175,14 @@ export function Hq6PaymentAccountsListView() {
       note?: string;
       operationDate?: string;
       paymentMethod?: string;
+      fromAccountId?: string;
     }) =>
       depositPaymentAccount(tenantId!, vars.id, {
         amount: vars.amount,
         note: vars.note,
         operationDate: vars.operationDate,
         paymentMethod: vars.paymentMethod,
+        fromAccountId: vars.fromAccountId,
       }),
     invalidateKeys: [["payment-accounts", tenantId]],
   });
@@ -440,7 +482,7 @@ export function Hq6PaymentAccountsListView() {
                       accountDetails: createPayload.accountDetails ?? null,
                       note: createPayload.note ?? null,
                       isClosed: false,
-                      balance: 0,
+                      balance: Number(createPayload.openingBalance ?? 0) || 0,
                       currency: "NGN",
                       createdAt: now,
                       updatedAt: now,
@@ -478,6 +520,7 @@ export function Hq6PaymentAccountsListView() {
             />
             <PaymentAccountDepositModal
               account={depositAccount}
+              accounts={modalAccounts}
               onClose={() => setDepositAccount(null)}
               onSave={async (vars) => {
                 if (!depositAccount) return;
@@ -490,7 +533,7 @@ export function Hq6PaymentAccountsListView() {
             />
             <PaymentAccountTransferModal
               fromAccount={transferAccount}
-              accounts={items}
+              accounts={modalAccounts}
               onClose={() => setTransferAccount(null)}
               onSave={async (payload) => {
                 await transferMutation.mutateAsync(payload);
@@ -518,14 +561,40 @@ export function Hq6PaymentAccountsListView() {
       >
         {pane === "accounts" ? (
           <>
-            <div className="alert alert-danger" role="alert">
-              <ul>
-                <li>
-                  Total <b>0</b> payments not linked with any account. View
-                  Details
-                </li>
-              </ul>
-            </div>
+            {unlinkedCount > 0 ? (
+              <div className="alert alert-danger" role="alert">
+                <ul>
+                  <li>
+                    Total <b>{unlinkedCount}</b> payments not linked with any
+                    account.{" "}
+                    <button
+                      type="button"
+                      className="tw-underline tw-font-semibold"
+                      onClick={() =>
+                        router.push(`/${tenantCode}/payments?unlinked=1`)
+                      }
+                    >
+                      View Details
+                    </button>
+                    {canBackfill ? (
+                      <>
+                        {" · "}
+                        <button
+                          type="button"
+                          className="tw-underline tw-font-semibold"
+                          disabled={backfillMutation.isPending}
+                          onClick={() => backfillMutation.mutate()}
+                        >
+                          {backfillMutation.isPending
+                            ? "Linking…"
+                            : "Link orphan credits only"}
+                        </button>
+                      </>
+                    ) : null}
+                  </li>
+                </ul>
+              </div>
+            ) : null}
             <DataTable
               data={filteredItems}
               columns={columns}

@@ -411,7 +411,7 @@ function expenseToForm(expense: Expense): ExpenseFormState {
     recurInterval: expense.recurInterval != null ? String(expense.recurInterval) : "",
     recurIntervalType: expense.recurIntervalType ?? "days",
     paymentMethod: "cash",
-    paymentAccountId: "",
+    paymentAccountId: expense.accountId ?? "",
     paymentNote: "",
   };
 }
@@ -467,11 +467,24 @@ export function AddExpenseView() {
 
   const saveMutation = useAppMutation({
     mutationFn: async () => {
+      const amount = Number(form.totalAmount);
+      if (!Number.isFinite(amount) || amount <= 0) {
+        throw new Error("Enter a valid expense amount");
+      }
+      if (
+        form.paymentStatus !== "due" &&
+        amount > 0 &&
+        !form.paymentAccountId.trim()
+      ) {
+        throw new Error(
+          "Select a Payment Account so this expense is posted to the account book",
+        );
+      }
       const payload = {
         categoryId: form.categoryId || undefined,
         refNo: form.refNo || undefined,
         subCategory: form.subCategory || undefined,
-        totalAmount: Number(form.totalAmount),
+        totalAmount: amount,
         taxAmount: form.taxAmount ? Number(form.taxAmount) : undefined,
         note: form.note || undefined,
         expenseDate: form.expenseDate || undefined,
@@ -479,6 +492,8 @@ export function AddExpenseView() {
         expenseFor: form.expenseFor || undefined,
         contactName: form.contactName || undefined,
         paymentStatus: form.paymentStatus || undefined,
+        accountId: form.paymentAccountId || undefined,
+        paymentMethod: form.paymentMethod || undefined,
         isRecurring: form.isRecurring,
         recurInterval: form.isRecurring && form.recurInterval
           ? Number(form.recurInterval)
@@ -486,13 +501,17 @@ export function AddExpenseView() {
         recurIntervalType: form.isRecurring ? form.recurIntervalType : undefined,
       };
       if (isEdit && editId) {
-        return updateExpense(tenantId!, editId, payload);
+        return updateExpense(tenantId!, editId, {
+          ...payload,
+          accountId: form.paymentAccountId || null,
+        });
       }
       return createExpense(tenantId!, payload);
     },
     successMessage: isEdit ? "Expense updated" : "Expense created",
     invalidateKeys: [
       ["expenses", tenantId],
+      ["payment-accounts", tenantId],
       ...(editId ? [["expense", tenantId, editId] as const] : []),
     ],
     onSuccess: () => {
@@ -810,7 +829,12 @@ export function AddExpenseView() {
               </select>
             </label>
             <label className="hq6-form-label">
-              <span>Payment Account:</span>
+              <span>
+                Payment Account:
+                {form.paymentStatus !== "due" ? (
+                  <span className="req"> *</span>
+                ) : null}
+              </span>
               <select
                 className="hq6-form-input"
                 value={form.paymentAccountId}

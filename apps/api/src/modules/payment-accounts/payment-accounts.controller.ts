@@ -41,6 +41,17 @@ export class PaymentAccountsController {
     });
   }
 
+  @Get('unlinked-payments-count')
+  countUnlinkedPayments() {
+    return this.service.countUnlinkedPayments();
+  }
+
+  @Post('backfill-sale-payment-credits')
+  @Roles('admin', 'super_admin')
+  backfillSalePaymentCredits() {
+    return this.service.backfillSalePaymentCredits();
+  }
+
   @Post()
   @Roles('manager', 'admin', 'super_admin')
   create(@Body() dto: CreatePaymentAccountRequest) {

@@ -1,12 +1,22 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useSearchParams } from "next/navigation";
 import { Button } from "@/components/atoms/Button";
 import { EmptyState } from "@/components/atoms/EmptyState";
 import { type ColumnConfig } from "@/components/organisms/DataTable";
 import { ServerPaginatedTable } from "@/components/organisms/ServerPaginatedTable";
 import { ListPageShell } from "@/components/organisms/ListPageShell";
+import { PaymentAccountFormModal } from "@/components/organisms/PaymentAccountModals";
 import { getAccountBookPage, getPaymentsPage } from "@/lib/api/payments";
+import {
+  getPaymentAccount,
+  getPaymentAccounts,
+  updatePaymentAccount,
+} from "@/lib/api/paymentAccounts";
+import { updateSalePayment } from "@/lib/api/sales";
+import { useAppMutation } from "@/lib/hooks/useAppMutation";
 import { serverPaginationBarProps, useServerListPage } from "@/lib/hooks/useServerListPage";
 import { useListPageFilters } from "@/lib/hooks/useListPageFilters";
 import { useRouteTenant } from "@/lib/hooks/useRouteTenant";
@@ -18,9 +28,15 @@ import {
   formatDebitCell,
 } from "@/lib/utils/ledgerAmountStyles";
 import { cn } from "@/lib/utils/cn";
-import type { AccountTransaction, PaymentRecord } from "@vonos/types";
+import type {
+  AccountTransaction,
+  PaymentAccount,
+  PaymentRecord,
+} from "@vonos/types";
 import { CatalogMetaListView } from "@/components/pages/CatalogMetaListView";
 import { PosTerminalView } from "@/components/pages/PosTerminalView";
+import { Hq6Field, Hq6Modal } from "@/components/hq6/Hq6Modal";
+import { toast } from "@/stores/toastStore";
 
 export function createPosPlaceholderView(title: string, message?: string) {
   return function PosPlaceholderView() {
@@ -51,11 +67,19 @@ interface AccountBookRow {
 
 export function AccountBookView({ accountId }: { accountId?: string }) {
   const { tenantId } = useRouteTenant();
+  const queryClient = useQueryClient();
   const { dateRange, setDateRange, search, setSearch, bounds } = useListPageFilters({
     defaultDateRange: "last_7_days",
     isolateDateRange: true,
   });
   const [typeFilter, setTypeFilter] = useState("");
+  const [editOpen, setEditOpen] = useState(false);
+
+  const { data: account } = useQuery({
+    queryKey: ["payment-account", tenantId, accountId],
+    queryFn: () => getPaymentAccount(tenantId!, accountId!),
+    enabled: Boolean(tenantId && accountId),
+  });
 
   const apiFilters = useMemo(
     () => ({
@@ -140,42 +164,85 @@ export function AccountBookView({ accountId }: { accountId?: string }) {
   );
 
   return (
-    <ListPageShell
-      tabs={[{ id: "ledger", label: "Account Book" }]}
-      activeTab="ledger"
-      onTabChange={() => {}}
-      showImport={false}
-      searchValue={search}
-      onSearchChange={setSearch}
-      searchPlaceholder="Search ledger…"
-      dateRange={dateRange}
-      onDateRangeChange={setDateRange}
-      filterDropdowns={[
-        {
-          id: "type",
-          label: "Type",
-          value: typeFilter,
-          onChange: setTypeFilter,
-          options: [
-            { value: "debit", label: "Debit" },
-            { value: "credit", label: "Credit" },
-          ],
-        },
-      ]}
-    >
-      <ServerPaginatedTable
-        items={filtered}
-        columns={columns}
-        pagination={serverPaginationBarProps(listPage)}
-        isLoading={isLoading}
-        error={error ? "Failed to load account book" : null}
-        emptyState={{
-          message: accountId
-            ? "No ledger entries for this account."
-            : "Select an account from Payment Accounts to view its book.",
+    <>
+      <ListPageShell
+        tabs={[{ id: "ledger", label: "Account Book" }]}
+        activeTab="ledger"
+        onTabChange={() => {}}
+        showImport={false}
+        searchValue={search}
+        onSearchChange={setSearch}
+        searchPlaceholder="Search ledger…"
+        dateRange={dateRange}
+        onDateRangeChange={setDateRange}
+        primaryAction={
+          account ? (
+            <Button type="button" size="sm" onClick={() => setEditOpen(true)}>
+              Edit Account
+            </Button>
+          ) : null
+        }
+        filterDropdowns={[
+          {
+            id: "type",
+            label: "Type",
+            value: typeFilter,
+            onChange: setTypeFilter,
+            options: [
+              { value: "debit", label: "Debit" },
+              { value: "credit", label: "Credit" },
+            ],
+          },
+        ]}
+      >
+        {account ? (
+          <div className="mb-4 rounded-lg border border-border bg-card p-4 text-sm">
+            <p className="font-semibold text-foreground">{account.name}</p>
+            <p className="text-muted">
+              Account Type: {account.accountType ?? "—"} · Account Number:{" "}
+              {account.accountNumber}
+            </p>
+            <p
+              className={cn(
+                "mt-1 font-medium",
+                amountCellClassName("balance", account.balance),
+              )}
+            >
+              Balance: {formatCurrency(account.balance, account.currency)}
+            </p>
+          </div>
+        ) : null}
+        <ServerPaginatedTable
+          items={filtered}
+          columns={columns}
+          pagination={serverPaginationBarProps(listPage)}
+          isLoading={isLoading}
+          error={error ? "Failed to load account book" : null}
+          emptyState={{
+            message: accountId
+              ? "No ledger entries for this account."
+              : "Select an account from Payment Accounts to view its book.",
+          }}
+        />
+      </ListPageShell>
+      <PaymentAccountFormModal
+        open={editOpen && Boolean(account)}
+        account={account ?? null}
+        onClose={() => setEditOpen(false)}
+        onSave={async (payload) => {
+          if (!tenantId || !accountId) return;
+          await updatePaymentAccount(tenantId, accountId, payload);
+          await queryClient.invalidateQueries({
+            queryKey: ["payment-account", tenantId, accountId],
+          });
+          await queryClient.invalidateQueries({
+            queryKey: ["payment-accounts", tenantId],
+          });
+          toast.success("Account updated");
+          setEditOpen(false);
         }}
       />
-    </ListPageShell>
+    </>
   );
 }
 
@@ -192,21 +259,39 @@ interface PaymentRow {
 
 export function PaymentsListView() {
   const { tenantId } = useRouteTenant();
+  const queryClient = useQueryClient();
+  const searchParams = useSearchParams();
+  const unlinkedOnly =
+    searchParams.get("unlinked") === "1" ||
+    searchParams.get("unlinked") === "true";
   const { dateRange, setDateRange, search, setSearch, bounds } = useListPageFilters();
   const [typeFilter, setTypeFilter] = useState("");
   const [accountFilter, setAccountFilter] = useState("");
+  const [editing, setEditing] = useState<PaymentRecord | null>(null);
+  const [editAmount, setEditAmount] = useState("");
+  const [editMethod, setEditMethod] = useState("cash");
+  const [editNote, setEditNote] = useState("");
+  const [editPaidOn, setEditPaidOn] = useState("");
+  const [editAccountId, setEditAccountId] = useState("");
+
+  const { data: paymentAccounts = [] } = useQuery({
+    queryKey: ["payment-accounts", tenantId, "payments-edit"],
+    queryFn: () => getPaymentAccounts(tenantId!),
+    enabled: Boolean(editing && tenantId),
+  });
 
   const apiFilters = useMemo(
     () => ({
       from: bounds?.from,
       to: bounds?.to,
       search: search.trim() || undefined,
+      unlinkedOnly: unlinkedOnly || undefined,
     }),
-    [bounds?.from, bounds?.to, search],
+    [bounds?.from, bounds?.to, search, unlinkedOnly],
   );
 
   const listPage = useServerListPage<PaymentRecord>({
-    queryKey: ["payments", tenantId],
+    queryKey: ["payments", tenantId, unlinkedOnly ? "unlinked" : "all"],
     enabled: Boolean(tenantId),
     search,
     filters: {
@@ -249,6 +334,38 @@ export function PaymentsListView() {
     return next;
   }, [accountFilter, rows, typeFilter]);
 
+  const saveMutation = useAppMutation({
+    mutationFn: async () => {
+      if (!tenantId || !editing?.saleId) {
+        throw new Error("Only sale-linked payments can be edited here");
+      }
+      const amount = Number(editAmount);
+      if (!Number.isFinite(amount) || amount <= 0) {
+        throw new Error("Enter a valid amount");
+      }
+      if (!editAccountId.trim()) {
+        throw new Error(
+          "Select a Payment Account so this payment stays on the account book",
+        );
+      }
+      return updateSalePayment(tenantId, editing.saleId, editing.id, {
+        amount,
+        method: editMethod,
+        note: editNote.trim() || null,
+        paidOn: editPaidOn ? new Date(editPaidOn).toISOString() : null,
+        accountId: editAccountId || null,
+      });
+    },
+    successMessage: "Payment updated",
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["payments", tenantId] });
+      await queryClient.invalidateQueries({
+        queryKey: ["payment-accounts", tenantId],
+      });
+      setEditing(null);
+    },
+  });
+
   const columns: ColumnConfig<PaymentRow>[] = useMemo(
     () => [
       { key: "date", header: "Date" },
@@ -270,56 +387,164 @@ export function PaymentsListView() {
       {
         key: "action",
         header: "Action",
-        render: () => (
-          <Button variant="secondary" size="sm" className="text-sky-600">
-            Link Account
-          </Button>
-        ),
+        render: (row) => {
+          const record = data.find((p) => p.id === row.id);
+          const canEdit = Boolean(record?.saleId);
+          return (
+            <Button
+              variant="secondary"
+              size="sm"
+              className="text-sky-600"
+              disabled={!canEdit}
+              onClick={() => {
+                if (!record?.saleId) {
+                  toast.error("Expense / non-sale payments edit from Expenses.");
+                  return;
+                }
+                setEditing(record);
+                setEditAmount(String(record.amount));
+                setEditMethod(record.method ?? "cash");
+                setEditNote(record.note ?? "");
+                setEditPaidOn(
+                  record.paidOn
+                    ? record.paidOn.slice(0, 16)
+                    : new Date().toISOString().slice(0, 16),
+                );
+                setEditAccountId(record.accountId ?? "");
+              }}
+            >
+              Edit
+            </Button>
+          );
+        },
       },
     ],
-    [],
+    [data],
   );
 
   return (
-    <ListPageShell
-      tabs={[{ id: "all", label: "All Payments" }]}
-      activeTab="all"
-      onTabChange={() => {}}
-      showImport={false}
-      searchValue={search}
-      onSearchChange={setSearch}
-      searchPlaceholder="Search payments…"
-      dateRange={dateRange}
-      onDateRangeChange={setDateRange}
-      filterDropdowns={[
-        {
-          id: "type",
-          label: "Type",
-          value: typeFilter,
-          onChange: setTypeFilter,
-          options: [
-            { value: "Payment", label: "Payment" },
-            { value: "Return", label: "Return" },
-          ],
-        },
-        {
-          id: "account",
-          label: "Account",
-          value: accountFilter,
-          onChange: setAccountFilter,
-          options: accountOptions,
-        },
-      ]}
-    >
-      <ServerPaginatedTable
-        items={filtered}
-        columns={columns}
-        pagination={serverPaginationBarProps(listPage)}
-        isLoading={isLoading}
-        error={error ? "Failed to load payments" : null}
-        emptyState={{ message: "No payments recorded yet." }}
-      />
-    </ListPageShell>
+    <>
+      <ListPageShell
+        tabs={[{ id: "all", label: unlinkedOnly ? "Unlinked Payments" : "All Payments" }]}
+        activeTab="all"
+        onTabChange={() => {}}
+        showImport={false}
+        searchValue={search}
+        onSearchChange={setSearch}
+        searchPlaceholder="Search payments…"
+        dateRange={dateRange}
+        onDateRangeChange={setDateRange}
+        filterDropdowns={[
+          {
+            id: "type",
+            label: "Type",
+            value: typeFilter,
+            onChange: setTypeFilter,
+            options: [
+              { value: "Payment", label: "Payment" },
+              { value: "Return", label: "Return" },
+            ],
+          },
+          {
+            id: "account",
+            label: "Account",
+            value: accountFilter,
+            onChange: setAccountFilter,
+            options: accountOptions,
+          },
+        ]}
+      >
+        <ServerPaginatedTable
+          items={filtered}
+          columns={columns}
+          pagination={serverPaginationBarProps(listPage)}
+          isLoading={isLoading}
+          error={error ? "Failed to load payments" : null}
+          emptyState={{ message: "No payments recorded yet." }}
+        />
+      </ListPageShell>
+
+      <Hq6Modal
+        open={Boolean(editing)}
+        onClose={() => setEditing(null)}
+        title="Edit payment"
+        size="md"
+        footer={
+          <>
+            <button
+              type="button"
+              className="tw-dw-btn"
+              onClick={() => setEditing(null)}
+            >
+              Close
+            </button>
+            <button
+              type="button"
+              className="tw-dw-btn tw-dw-btn-primary"
+              disabled={saveMutation.isPending}
+              onClick={() => saveMutation.mutate()}
+            >
+              {saveMutation.isPending ? "Saving…" : "Update"}
+            </button>
+          </>
+        }
+      >
+        <div className="space-y-3">
+          <Hq6Field label="Amount *">
+            <input
+              type="number"
+              step="0.01"
+              className="form-control"
+              value={editAmount}
+              onChange={(e) => setEditAmount(e.target.value)}
+            />
+          </Hq6Field>
+          <Hq6Field label="Paid on *">
+            <input
+              type="datetime-local"
+              className="form-control"
+              value={editPaidOn}
+              onChange={(e) => setEditPaidOn(e.target.value)}
+            />
+          </Hq6Field>
+          <Hq6Field label="Payment Method *">
+            <select
+              className="form-control"
+              value={editMethod}
+              onChange={(e) => setEditMethod(e.target.value)}
+            >
+              <option value="cash">Cash</option>
+              <option value="card">Card</option>
+              <option value="bank_transfer">Bank Transfer</option>
+              <option value="cheque">Cheque</option>
+              <option value="other">Other</option>
+            </select>
+          </Hq6Field>
+          <Hq6Field label="Payment Account">
+            <select
+              className="form-control"
+              value={editAccountId}
+              onChange={(e) => setEditAccountId(e.target.value)}
+            >
+              <option value="">None</option>
+              {paymentAccounts.map((a: PaymentAccount) => (
+                <option key={a.id} value={a.id}>
+                  {a.name}
+                </option>
+              ))}
+            </select>
+          </Hq6Field>
+          <Hq6Field label="Payment note">
+            <textarea
+              className="form-control"
+              rows={3}
+              value={editNote}
+              onChange={(e) => setEditNote(e.target.value)}
+            />
+          </Hq6Field>
+        </div>
+      </Hq6Modal>
+    </>
   );
 }
 

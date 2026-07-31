@@ -14,7 +14,9 @@ import {
   createStockMovement,
   deleteStockMovement,
   getStockMovement,
+  payStockMovement,
 } from "@/lib/api/stockMovements";
+import { getPaymentAccounts } from "@/lib/api/paymentAccounts";
 import { getSuppliers } from "@/lib/api/suppliers";
 import { useIsVaHq6 } from "@/lib/hooks/useIsVaHq6";
 import { useRouteTenant, useTenantId } from "@/lib/hooks/useRouteTenant";
@@ -23,6 +25,10 @@ import {
   entitySaleLocations,
 } from "@/lib/hooks/useBusinessLocationOptions";
 import { hq6CopyForSlug } from "@/lib/registries/hq6PageCopy";
+import {
+  MODAL_REF_STALE_MS,
+  modalKeys,
+} from "@/lib/query/modalQueryKeys";
 import { cn } from "@/lib/utils/cn";
 import { formatHq6Currency } from "@/lib/utils/hq6Format";
 
@@ -57,7 +63,7 @@ interface PurchaseFormState {
   paymentAmount: string;
   paidOn: string;
   paymentMethod: string;
-  paymentAccount: string;
+  paymentAccountId: string;
   paymentNote: string;
 }
 
@@ -81,7 +87,7 @@ function emptyForm(): PurchaseFormState {
     paymentAmount: "0",
     paidOn: new Date().toISOString().slice(0, 16),
     paymentMethod: "cash",
-    paymentAccount: "",
+    paymentAccountId: "",
     paymentNote: "",
   };
 }
@@ -138,8 +144,8 @@ function buildNotes(form: PurchaseFormState): string | undefined {
       `Payment: ${payAmt.toFixed(2)} via ${form.paymentMethod} on ${form.paidOn || "—"}`,
     );
   }
-  if (form.paymentAccount.trim()) {
-    parts.push(`Payment account: ${form.paymentAccount.trim()}`);
+  if (form.paymentAccountId.trim()) {
+    parts.push(`Payment account id: ${form.paymentAccountId.trim()}`);
   }
   if (form.paymentNote.trim()) {
     parts.push(`Payment note: ${form.paymentNote.trim()}`);
@@ -171,6 +177,13 @@ export function AddPurchaseView() {
     queryKey: ["suppliers", tenantId],
     queryFn: () => getSuppliers(tenantId!),
     enabled: Boolean(tenantId),
+  });
+
+  const { data: paymentAccounts = [] } = useQuery({
+    queryKey: modalKeys.paymentAccounts(tenantId),
+    queryFn: () => getPaymentAccounts(tenantId!),
+    enabled: Boolean(tenantId),
+    staleTime: MODAL_REF_STALE_MS,
   });
 
   const { data: existing, isLoading: loadingExisting } = useQuery({
@@ -253,6 +266,11 @@ export function AddPurchaseView() {
   const mutation = useMutation({
     mutationFn: async () => {
       if (!tenantId) throw new Error("No tenant");
+      if (paymentAmount > 0 && !form.paymentAccountId.trim()) {
+        throw new Error(
+          "Select a Payment Account so this purchase payment posts to the account book",
+        );
+      }
       const status: MovementStatus = form.status;
       const created = await createStockMovement(tenantId, {
         type: "inbound",
@@ -277,6 +295,17 @@ export function AddPurchaseView() {
           unitCost: lineUnitCostBeforeTax(line),
         })),
       });
+      if (paymentAmount > 0) {
+        await payStockMovement(tenantId, created.id, {
+          amount: paymentAmount,
+          method: form.paymentMethod || "cash",
+          accountId: form.paymentAccountId || undefined,
+          note: form.paymentNote.trim() || undefined,
+          paidOn: form.paidOn
+            ? new Date(form.paidOn).toISOString()
+            : undefined,
+        });
+      }
       if (editId) {
         await deleteStockMovement(tenantId, editId);
       }
@@ -284,6 +313,7 @@ export function AddPurchaseView() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["stock-movements", tenantId] });
+      qc.invalidateQueries({ queryKey: ["payment-accounts", tenantId] });
       router.push(`/${tenantCode}/purchases`);
     },
   });
@@ -833,13 +863,24 @@ export function AddPurchaseView() {
               </select>
             </label>
             <label className="hq6-form-label">
-              <span>Payment Account</span>
-              <input
+              <span>
+                Payment Account
+                {paymentAmount > 0 ? <span className="req"> *</span> : null}
+              </span>
+              <select
                 className="hq6-form-input"
-                placeholder="None"
-                value={form.paymentAccount}
-                onChange={(e) => patchForm({ paymentAccount: e.target.value })}
-              />
+                value={form.paymentAccountId}
+                onChange={(e) =>
+                  patchForm({ paymentAccountId: e.target.value })
+                }
+              >
+                <option value="">None</option>
+                {paymentAccounts.map((acc) => (
+                  <option key={acc.id} value={acc.id}>
+                    {acc.name}
+                  </option>
+                ))}
+              </select>
             </label>
             <label className="hq6-form-label" style={{ gridColumn: "1 / -1" }}>
               <span>Payment note</span>

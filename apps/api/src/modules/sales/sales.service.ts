@@ -47,7 +47,11 @@ import {
   toNumber,
 } from '../../common/utils/serializers';
 import { encodePublicInvoiceToken } from '../../common/utils/publicInvoiceToken';
-import { recordPaymentAccountTxn } from '../../common/utils/recordPaymentAccountTxn';
+import {
+  recordPaymentAccountTxn,
+  softDeletePaymentAccountTxns,
+  syncSalePaymentAccountCredit,
+} from '../../common/utils/recordPaymentAccountTxn';
 
 function normalizeCreateStatus(
   status?: SaleStatus | 'final',
@@ -1554,25 +1558,44 @@ export class SalesService {
       throw new BadRequestException('Enter a valid payment amount');
     }
 
-    const updated = await this.tenantDb.db.payment.update({
-      where: { id: paymentId },
-      data: {
-        amount,
-        ...(body.method !== undefined
-          ? { method: body.method?.trim() || null }
-          : {}),
-        ...(body.note !== undefined ? { note: body.note?.trim() || null } : {}),
-        ...(body.paidOn !== undefined
-          ? { paidOn: body.paidOn ? new Date(body.paidOn) : null }
-          : {}),
-        ...(body.accountId !== undefined
-          ? { accountId: body.accountId || null }
-          : {}),
-        ...(body.paymentRefNo !== undefined
-          ? { paymentRefNo: body.paymentRefNo?.trim() || null }
-          : {}),
-      },
-      include: { account: { select: { name: true } } },
+    const updated = await this.tenantDb.db.$transaction(async (tx) => {
+      const row = await tx.payment.update({
+        where: { id: paymentId },
+        data: {
+          amount,
+          ...(body.method !== undefined
+            ? { method: body.method?.trim() || null }
+            : {}),
+          ...(body.note !== undefined ? { note: body.note?.trim() || null } : {}),
+          ...(body.paidOn !== undefined
+            ? { paidOn: body.paidOn ? new Date(body.paidOn) : null }
+            : {}),
+          ...(body.accountId !== undefined
+            ? { accountId: body.accountId || null }
+            : {}),
+          ...(body.paymentRefNo !== undefined
+            ? { paymentRefNo: body.paymentRefNo?.trim() || null }
+            : {}),
+        },
+        include: { account: { select: { name: true } } },
+      });
+
+      // Keep payment-account book in sync (amount/account changes used to wipe
+      // the link in the UI and never rewrite the ledger credit).
+      await syncSalePaymentAccountCredit(tx, {
+        tenantId,
+        paymentId: row.id,
+        accountId: row.accountId,
+        amount: toNumber(row.amount),
+        operationDate: row.paidOn ?? row.createdAt,
+        refNo: row.paymentRefNo,
+        note: row.note ?? `Sale payment`,
+        paymentMethod: row.method,
+        saleId: row.saleId,
+        createdByName: row.createdByName,
+      });
+
+      return row;
     });
 
     await this.syncSalePaymentStatus(saleId, tenantId);
@@ -1610,9 +1633,12 @@ export class SalesService {
     });
     if (!payment) throw new NotFoundException('Payment not found');
 
-    await this.tenantDb.db.payment.update({
-      where: { id: paymentId },
-      data: { deletedAt: new Date() },
+    await this.tenantDb.db.$transaction(async (tx) => {
+      await softDeletePaymentAccountTxns(tx, { tenantId, paymentId });
+      await tx.payment.update({
+        where: { id: paymentId },
+        data: { deletedAt: new Date() },
+      });
     });
     await this.syncSalePaymentStatus(saleId, tenantId);
     await this.auditService.log({

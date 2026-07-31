@@ -122,12 +122,20 @@ function PaymentAccountsListViewBody() {
   const queryClient = useQueryClient();
 
   const depositMutation = useAppMutation({
-    mutationFn: (vars: { id: string; amount: number; note?: string; operationDate?: string; paymentMethod?: string }) =>
+    mutationFn: (vars: {
+      id: string;
+      amount: number;
+      note?: string;
+      operationDate?: string;
+      paymentMethod?: string;
+      fromAccountId?: string;
+    }) =>
       depositPaymentAccount(tenantId!, vars.id, {
         amount: vars.amount,
         note: vars.note,
         operationDate: vars.operationDate,
         paymentMethod: vars.paymentMethod,
+        fromAccountId: vars.fromAccountId,
       }),
     invalidateKeys: [["payment-accounts", tenantId]],
   });
@@ -416,6 +424,7 @@ function PaymentAccountsListViewBody() {
 
       <PaymentAccountDepositModal
         account={depositAccount}
+        accounts={items}
         onClose={() => setDepositAccount(null)}
         onSave={async (payload) => {
           if (!depositAccount) return;

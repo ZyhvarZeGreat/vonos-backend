@@ -159,3 +159,26 @@ export async function getPaymentAccounts(
     fetchPaymentAccountsRaw(tenantId, cursor, limit),
   );
 }
+
+export async function getUnlinkedPaymentsCount(
+  tenantId: string,
+): Promise<{ count: number }> {
+  const response = await apiFetch(
+    withTenantQuery(`${LIST_PATH}/unlinked-payments-count`, tenantId),
+  );
+  if (!response.ok) throw new Error("Failed to count unlinked payments");
+  return response.json();
+}
+
+export async function backfillSalePaymentCredits(
+  tenantId: string,
+): Promise<{ linkedOrphans: number; createdCredits: number; skipped: number }> {
+  const response = await apiFetch(
+    withTenantQuery(`${LIST_PATH}/backfill-sale-payment-credits`, tenantId),
+    { method: "POST" },
+  );
+  if (!response.ok) {
+    return throwApiError(response, "Failed to backfill sale payment credits");
+  }
+  return response.json();
+}

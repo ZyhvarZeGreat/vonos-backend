@@ -66,14 +66,30 @@ function BalanceSheetBladeTable({ report }: { report: BalanceSheetReport }) {
                     </td>
                   </tr>
                 ) : (
-                  report.accountBalances.map((account) => (
-                    <tr key={account.id}>
-                      <td className="pl-20-td">{account.name}:</td>
+                  <>
+                    {report.accountBalances.map((account) => (
+                      <tr key={account.id}>
+                        <td className="pl-20-td">{account.name}:</td>
+                        <td>
+                          {formatHq6Currency(account.balance, currency)}
+                        </td>
+                      </tr>
+                    ))}
+                    <tr className="bg-gray">
+                      <th className="pl-20-td">Total Account Balances:</th>
                       <td>
-                        {formatHq6Currency(account.balance, currency)}
+                        <strong>
+                          {formatHq6Currency(
+                            report.accountBalances.reduce(
+                              (sum, a) => sum + a.balance,
+                              0,
+                            ),
+                            currency,
+                          )}
+                        </strong>
                       </td>
                     </tr>
-                  ))
+                  </>
                 )}
               </tbody>
             </table>
@@ -84,7 +100,7 @@ function BalanceSheetBladeTable({ report }: { report: BalanceSheetReport }) {
             <table className="table bg-gray mb-0 no-border">
               <tbody>
                 <tr>
-                  <th>Total Liability:</th>
+                  <th>Total Liability (Supplier Due):</th>
                   <td>
                     <span id="total_liabilty">
                       {formatHq6Currency(report.totalLiability, currency)}

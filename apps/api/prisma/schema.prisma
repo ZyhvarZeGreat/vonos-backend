@@ -857,6 +857,7 @@ model PaymentAccount {
 
   transactions AccountTransaction[]
   payments     Payment[]
+  expenses     Expense[]
 
   @@index([tenantId])
   @@index([tenantId, isClosed])
@@ -878,6 +879,7 @@ model AccountTransaction {
   paymentDetails String?
   saleId        String?
   paymentId     String?
+  expenseId     String?
   invoiceId     String?
   invoice       Invoice?        @relation(fields: [invoiceId], references: [id])
   createdByName   String?
@@ -887,6 +889,7 @@ model AccountTransaction {
   @@index([tenantId])
   @@index([accountId, operationDate])
   @@index([invoiceId])
+  @@index([expenseId])
 }
 
 model Payment {
@@ -1155,6 +1158,8 @@ model Expense {
   paymentStatus     String           @default("due")
   paymentDue        Decimal          @default(0)
   note              String?
+  accountId         String?
+  account           PaymentAccount?  @relation(fields: [accountId], references: [id])
   isRecurring       Boolean          @default(false)
   recurInterval     Int?
   recurIntervalType String?
@@ -1170,6 +1175,7 @@ model Expense {
   @@index([categoryId])
   @@index([expenseForCustomerId])
   @@index([contactCustomerId])
+  @@index([accountId])
   /// Partial (SQL): Expense_tenantId_expenseDate_id_active_idx
   /// ON ("tenantId", "expenseDate" DESC, id DESC) WHERE "deletedAt" IS NULL
 }

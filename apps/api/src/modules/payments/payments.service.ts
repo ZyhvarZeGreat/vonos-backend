@@ -22,6 +22,7 @@ export class PaymentsService {
 
   async listPayments(filters: {
     accountId?: string;
+    unlinkedOnly?: boolean;
     cursor?: string;
     limit?: number;
     from?: string;
@@ -31,6 +32,7 @@ export class PaymentsService {
     const tenantId = this.tenantDb.requireTenantId();
     const filterKey = listPageFilterKey({
       accountId: filters.accountId,
+      unlinkedOnly: filters.unlinkedOnly,
       from: filters.from,
       to: filters.to,
       search: filters.search,
@@ -49,6 +51,7 @@ export class PaymentsService {
   private async listPaymentsUncached(
     filters: {
       accountId?: string;
+      unlinkedOnly?: boolean;
       cursor?: string;
       limit?: number;
       from?: string;
@@ -68,7 +71,11 @@ export class PaymentsService {
       where: {
         tenantId,
         deletedAt: null,
-        ...(filters.accountId ? { accountId: filters.accountId } : {}),
+        ...(filters.unlinkedOnly
+          ? { accountId: null, saleId: { not: null }, isReturn: false }
+          : filters.accountId
+            ? { accountId: filters.accountId }
+            : {}),
         ...(filters.from || filters.to
           ? {
               createdAt: {

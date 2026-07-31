@@ -65,6 +65,8 @@ export interface CreatePaymentAccountRequest {
   accountDetails?: string;
   note?: string;
   currency?: string;
+  /** Creates an opening credit transaction when > 0. */
+  openingBalance?: number;
 }
 
 export interface UpdatePaymentAccountRequest {
@@ -84,6 +86,11 @@ export interface PaymentAccountDepositRequest {
   operationDate?: string;
   paymentMethod?: string;
   refNo?: string;
+  /**
+   * When set, funds move from this payment account into the deposit target
+   * (debit source + credit target). When omitted, external deposit credits only.
+   */
+  fromAccountId?: string;
 }
 
 export interface PaymentAccountTransferRequest {
