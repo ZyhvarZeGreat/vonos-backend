@@ -201,7 +201,7 @@ export function AdminEntitySwitcher({
       name: unit.name,
       href,
     });
-    toast.success(`Opening ${unit.name} dashboard`);
+    toast.success(`Now viewing: ${unit.name} (${enter.code})`);
     go(href);
   };
 

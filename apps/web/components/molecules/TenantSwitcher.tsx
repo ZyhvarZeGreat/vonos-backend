@@ -23,6 +23,10 @@ import { prefetchAdminEntity } from "@/lib/admin/prefetchAdminEntity";
 import { prefetchRoute } from "@/lib/prefetch/routePrefetchRegistry";
 import { dateRangePresetToApiBounds } from "@/lib/utils/dateRange";
 import { useUiStore } from "@/stores/uiStore";
+import { switchWorkingTenant } from "@/lib/api/auth";
+import { formatApiError } from "@/lib/utils/formatApiError";
+import { toast } from "@/stores/toastStore";
+import { completeNavigationProgress } from "@/stores/navigationBusyStore";
 
 export interface TenantSwitcherProps {
   tenantCode: string;
@@ -32,9 +36,9 @@ export interface TenantSwitcherProps {
 }
 
 /**
- * Entity switcher for Vonos admin (`super_admin`).
- * Topbar uses a native `form-control select2` (same as HQ6 home filters)
- * so tablet/desktop stay readable; sidebar keeps the richer menu.
+ * Entity / work-location switcher.
+ * - `super_admin`: all entities + VAG overview
+ * - Staff with multiple work-location clearances: only those entities (JWT re-scoped)
  */
 export function TenantSwitcher({
   tenantCode,
@@ -45,14 +49,20 @@ export function TenantSwitcher({
   const pathname = usePathname();
   const router = useRouter();
   const role = useAuthStore((state) => state.role);
+  const setAuth = useAuthStore((state) => state.setAuth);
+  const allowedTenantCodes = useAuthStore((state) => state.allowedTenantCodes);
   const setAdminViewing = useAdminEntityStore((s) => s.setViewingCode);
   const queryClient = useQueryClient();
   const dateRange = useUiStore((s) => s.dateRange);
   const customDateRange = useUiStore((s) => s.customDateRange);
   const beginEntitySwitch = useUiStore((s) => s.beginEntitySwitch);
-  const canSwitchEntities = role === "super_admin";
+  const clearEntitySwitch = useUiStore((s) => s.clearEntitySwitch);
+  const isSuperAdmin = role === "super_admin";
+  const canSwitchEntities =
+    isSuperAdmin || (allowedTenantCodes?.length ?? 0) > 1;
   const onAdmin = pathname.startsWith("/admin");
   const [open, setOpen] = useState(false);
+  const [switching, setSwitching] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const warmedRef = useRef<Set<string>>(new Set());
   const tenant = getTenantByCode(tenantCode);
@@ -62,6 +72,11 @@ export function TenantSwitcher({
   );
 
   const switchableEntities = useMemo(() => {
+    if (!isSuperAdmin) {
+      return (allowedTenantCodes ?? [])
+        .map((code) => getTenantByCode(code))
+        .filter((e): e is NonNullable<typeof e> => Boolean(e));
+    }
     const autosCodes = new Set<string>(AUTOS_GROUP_ORDER);
     const autos = AUTOS_GROUP_ORDER.map((code) => getTenantByCode(code)).filter(
       (e): e is NonNullable<typeof e> => Boolean(e),
@@ -70,7 +85,7 @@ export function TenantSwitcher({
       (e) => e.status === "active" && !autosCodes.has(e.code),
     );
     return [...autos, ...rest];
-  }, []);
+  }, [allowedTenantCodes, isSuperAdmin]);
 
   const warmEntityRoute = (code: TenantCode) => {
     const href = resolveEntitySwitchPath(code, pathname);
@@ -81,7 +96,7 @@ export function TenantSwitcher({
       tenantId: target?.tenantId,
       dateBounds,
     });
-    if (!onAdmin) return;
+    if (!onAdmin || !isSuperAdmin) return;
     const key = `${pathname}:${code}`;
     if (warmedRef.current.has(key)) return;
     warmedRef.current.add(key);
@@ -117,16 +132,74 @@ export function TenantSwitcher({
     setOpen(false);
   }
 
-  function navigateToEntity(code: string) {
+  function announceSwitch(code: string, name: string) {
+    toast.success(`Now viewing: ${name} (${code})`);
+  }
+
+  function applyStaffSession(result: Awaited<ReturnType<typeof switchWorkingTenant>>) {
+    setAuth({
+      userId: result.user.id,
+      email: result.user.email,
+      name: result.user.name,
+      tenantId: result.user.tenantId,
+      role: result.user.role,
+      token: result.accessToken,
+      tenantRoleId: result.user.tenantRoleId ?? null,
+      tenantRoleName: result.user.tenantRoleName ?? null,
+      tenantRolePermissions: result.user.tenantRolePermissions ?? [],
+      tenantRoleLocked: result.user.tenantRoleLocked ?? false,
+      allowedTenantCodes: result.user.allowedTenantCodes ?? [],
+    });
+    if (result.user.tenantId) {
+      useTenantStore.getState().setActiveTenant(result.user.tenantId);
+    }
+    queryClient.removeQueries({
+      predicate: (query) => query.queryKey[0] !== "tenantConfig",
+    });
+  }
+
+  async function navigateToEntity(code: string) {
     if (code === "VAG") {
-      if (pathname.startsWith("/admin/overview")) return;
+      if (!isSuperAdmin) return;
+      if (pathname.startsWith("/admin/overview")) {
+        toast.info("Already on Group overview");
+        return;
+      }
       startSwitch("VAG", "Vonos Autos Group", "/admin/overview");
+      announceSwitch("VAG", "Vonos Autos Group");
       router.push("/admin/overview");
       return;
     }
     const entry = getTenantByCode(code);
-    if (!entry || entry.code === tenantCode) return;
+    if (!entry || entry.code === tenantCode) {
+      if (entry?.code === tenantCode) {
+        toast.info(`Already viewing ${entry.name} (${entry.code})`);
+      }
+      return;
+    }
     const href = resolveEntitySwitchPath(entry.code, pathname);
+
+    if (!isSuperAdmin) {
+      if (switching) return;
+      setSwitching(true);
+      // Show progress immediately while JWT is re-scoped.
+      startSwitch(entry.code, entry.name, href);
+      toast.info(`Switching to ${entry.name}…`);
+      try {
+        const result = await switchWorkingTenant(entry.code);
+        applyStaffSession(result);
+        announceSwitch(entry.code, entry.name);
+        router.push(href);
+      } catch (error) {
+        clearEntitySwitch();
+        completeNavigationProgress();
+        toast.error(formatApiError(error, "Could not switch location"));
+      } finally {
+        setSwitching(false);
+      }
+      return;
+    }
+
     if (entry.tenantId) {
       useTenantStore.getState().setActiveTenant(entry.tenantId);
     }
@@ -134,6 +207,7 @@ export function TenantSwitcher({
       predicate: (query) => query.queryKey[0] !== "tenantConfig",
     });
     startSwitch(entry.code, entry.name, href);
+    announceSwitch(entry.code, entry.name);
     router.push(href);
   }
 
@@ -161,26 +235,35 @@ export function TenantSwitcher({
     return (
       <div ref={rootRef} className={cn("relative min-w-0", className)}>
         <label htmlFor="upos-entity-switcher" className="sr-only">
-          Switch entity
+          {isSuperAdmin ? "Switch entity" : "Switch location"}
         </label>
         <select
           id="upos-entity-switcher"
           className="form-control select2 upos-header-entity-select"
-          value={onAdmin ? "VAG" : tenantCode}
-          aria-label={`Current entity: ${displayName}. Switch entity.`}
+          value={onAdmin && isSuperAdmin ? "VAG" : tenantCode}
+          disabled={switching}
+          aria-label={
+            isSuperAdmin
+              ? `Current entity: ${displayName}. Switch entity.`
+              : `Current location: ${displayName}. Switch location.`
+          }
           onMouseEnter={() => {
             for (const entity of switchableEntities) {
               warmEntityRoute(entity.code as TenantCode);
             }
           }}
-          onChange={(event) => navigateToEntity(event.target.value)}
+          onChange={(event) => {
+            void navigateToEntity(event.target.value);
+          }}
         >
           {switchableEntities.map((entity) => (
             <option key={entity.code} value={entity.code}>
               {entity.code} — {entity.name.replace(/^Vonos\s+/i, "")}
             </option>
           ))}
-          <option value="VAG">VAG — Group overview</option>
+          {isSuperAdmin ? (
+            <option value="VAG">VAG — Group overview</option>
+          ) : null}
         </select>
       </div>
     );
@@ -217,7 +300,11 @@ export function TenantSwitcher({
           className="flex w-full items-center gap-2 rounded-md p-0 text-left transition-colors hover:bg-white/8"
           aria-expanded={open}
           aria-haspopup="listbox"
-          aria-label={`Current entity: ${displayName}. Switch entity.`}
+          aria-label={
+            isSuperAdmin
+              ? `Current entity: ${displayName}. Switch entity.`
+              : `Current location: ${displayName}. Switch location.`
+          }
         >
           {entityButtonContent}
           <ChevronDown
@@ -236,7 +323,9 @@ export function TenantSwitcher({
       {open && canSwitchEntities ? (
         <div className="absolute left-0 right-0 top-full z-50 mt-1.5 overflow-hidden rounded-xl border border-border bg-card text-foreground shadow-lg">
           <div className="border-b border-border px-3 py-2">
-            <p className={typographyRoles.caption}>Switch entity</p>
+            <p className={typographyRoles.caption}>
+              {isSuperAdmin ? "Switch entity" : "Switch location"}
+            </p>
           </div>
           <div className="max-h-80 overflow-y-auto p-1">
             {switchableEntities.map((entity) => {
@@ -250,9 +339,16 @@ export function TenantSwitcher({
                   href={href}
                   onMouseEnter={() => warmEntityRoute(entity.code as TenantCode)}
                   onFocus={() => warmEntityRoute(entity.code as TenantCode)}
-                  onClick={() => {
-                    if (isActive) return;
-                    startSwitch(entity.code, entity.name, href);
+                  onClick={(event) => {
+                    if (isActive) {
+                      event.preventDefault();
+                      toast.info(
+                        `Already viewing ${entity.name} (${entity.code})`,
+                      );
+                      return;
+                    }
+                    event.preventDefault();
+                    void navigateToEntity(entity.code);
                   }}
                   className={cn(
                     "flex items-center gap-2.5 rounded-md px-2.5 py-2.5 transition-colors",
@@ -276,35 +372,37 @@ export function TenantSwitcher({
                 </Link>
               );
             })}
-            <Link
-              href="/admin/overview"
-              onClick={() => {
-                if (pathname.startsWith("/admin/overview")) return;
-                startSwitch("VAG", "Vonos Autos Group", "/admin/overview");
-              }}
-              className="mt-1 flex items-center gap-2.5 rounded-md border-t border-border px-2.5 py-2.5 transition-colors hover:bg-[var(--color-surface-nav-hover)]"
-            >
-              <span
-                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-white"
-                style={{ backgroundColor: accentForTenantCode("VAG") }}
+            {isSuperAdmin ? (
+              <Link
+                href="/admin/overview"
+                onClick={(event) => {
+                  event.preventDefault();
+                  void navigateToEntity("VAG");
+                }}
+                className="mt-1 flex items-center gap-2.5 rounded-md border-t border-border px-2.5 py-2.5 transition-colors hover:bg-[var(--color-surface-nav-hover)]"
               >
-                {(() => {
-                  const Icon = iconForTenantCode("VAG");
-                  return <Icon className="h-3.5 w-3.5" />;
-                })()}
-              </span>
-              <span className="min-w-0 flex-1">
-                <p
-                  className={cn(
-                    typographyRoles.tenantTitle,
-                    "truncate text-sm font-medium",
-                  )}
+                <span
+                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-white"
+                  style={{ backgroundColor: accentForTenantCode("VAG") }}
                 >
-                  Vonos Autos Group
-                </p>
-                <p className={typographyRoles.tenantMeta}>Group overview</p>
-              </span>
-            </Link>
+                  {(() => {
+                    const Icon = iconForTenantCode("VAG");
+                    return <Icon className="h-3.5 w-3.5" />;
+                  })()}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <p
+                    className={cn(
+                      typographyRoles.tenantTitle,
+                      "truncate text-sm font-medium",
+                    )}
+                  >
+                    Vonos Autos Group
+                  </p>
+                  <p className={typographyRoles.tenantMeta}>Group overview</p>
+                </span>
+              </Link>
+            ) : null}
           </div>
         </div>
       ) : null}

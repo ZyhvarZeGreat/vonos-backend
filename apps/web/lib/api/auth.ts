@@ -58,8 +58,27 @@ export async function verifyTwoFactor(
 }
 
 export async function refreshAccessToken(): Promise<LoginSuccessResponse | null> {
-  const response = await authFetch("/auth/refresh", { method: "POST" });
+  const { useAuthStore } = await import("@/stores/authStore");
+  const preferredTenantId = useAuthStore.getState().tenantId;
+  const response = await authFetch("/auth/refresh", {
+    method: "POST",
+    body: JSON.stringify({ tenantId: preferredTenantId }),
+  });
   if (!response.ok) return null;
+  return response.json() as Promise<LoginSuccessResponse>;
+}
+
+export async function switchWorkingTenant(
+  tenantCode: string,
+): Promise<LoginSuccessResponse> {
+  const { apiFetch } = await import("@/lib/api/client");
+  const response = await apiFetch("/auth/switch-tenant", {
+    method: "POST",
+    body: JSON.stringify({ tenantCode }),
+  });
+  if (!response.ok) {
+    return throwApiError(response, "Unable to switch location");
+  }
   return response.json() as Promise<LoginSuccessResponse>;
 }
 

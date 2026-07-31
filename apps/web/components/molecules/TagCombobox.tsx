@@ -15,8 +15,7 @@ export interface TagComboboxProps {
 }
 
 /**
- * Multi-select: selected tags as a chip row + a plain select to add more
- * (no inline search — for short fixed option lists).
+ * Multi-select: selected tags render inside the input (chip field), not above it.
  */
 export function TagCombobox({
   id,
@@ -42,39 +41,76 @@ export function TagCombobox({
 
   return (
     <div
-      className={cn("tw-flex tw-min-w-0 tw-w-full tw-flex-col tw-gap-2", className)}
+      className={cn("form-control select2", className)}
+      style={{
+        display: "flex",
+        flexWrap: "wrap",
+        alignItems: "center",
+        gap: 6,
+        minHeight: 38,
+        height: "auto",
+        padding: "4px 8px",
+        boxSizing: "border-box",
+        cursor: disabled ? "not-allowed" : "text",
+        opacity: disabled ? 0.65 : 1,
+      }}
     >
-      {values.length > 0 ? (
-        <ul
-          className="tw-m-0 tw-flex tw-list-none tw-flex-wrap tw-gap-1.5 tw-p-0"
-          aria-label="Selected"
+      {values.map((code) => (
+        <span
+          key={code}
+          title={labelByValue.get(code) ?? code}
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 4,
+            borderRadius: 3,
+            background: "#eef2f6",
+            padding: "2px 8px",
+            fontSize: 12,
+            fontWeight: 600,
+            color: "#111827",
+            border: "1px solid #d2d6de",
+            lineHeight: 1.4,
+            maxWidth: "100%",
+          }}
         >
-          {values.map((code) => (
-            <li key={code}>
-              <span
-                title={labelByValue.get(code) ?? code}
-                className="tw-inline-flex tw-items-center tw-gap-1 tw-rounded tw-bg-[#eef2f6] tw-px-2 tw-py-1 tw-text-xs tw-font-semibold tw-text-[#111827] tw-ring-1 tw-ring-[#d2d6de]"
-              >
-                {code}
-                {!disabled ? (
-                  <button
-                    type="button"
-                    className="tw-inline-flex tw-size-3.5 tw-items-center tw-justify-center tw-rounded-sm tw-border-0 tw-bg-transparent tw-p-0 tw-text-[#697586] hover:tw-text-[#dd4b39]"
-                    aria-label={`Remove ${code}`}
-                    onClick={() => remove(code)}
-                  >
-                    <X className="tw-size-3" aria-hidden />
-                  </button>
-                ) : null}
-              </span>
-            </li>
-          ))}
-        </ul>
-      ) : null}
+          <span
+            style={{
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {code}
+          </span>
+          {!disabled ? (
+            <button
+              type="button"
+              aria-label={`Remove ${code}`}
+              onClick={() => remove(code)}
+              style={{
+                display: "inline-flex",
+                width: 14,
+                height: 14,
+                alignItems: "center",
+                justifyContent: "center",
+                border: 0,
+                background: "transparent",
+                padding: 0,
+                margin: 0,
+                cursor: "pointer",
+                color: "#697586",
+                flexShrink: 0,
+              }}
+            >
+              <X style={{ width: 12, height: 12 }} aria-hidden />
+            </button>
+          ) : null}
+        </span>
+      ))}
 
       <select
         id={id}
-        className="form-control select2"
         disabled={disabled || available.length === 0}
         value=""
         aria-label={placeholder}
@@ -82,9 +118,27 @@ export function TagCombobox({
           const next = e.target.value;
           if (next) add(next);
         }}
+        style={{
+          flex: "1 1 120px",
+          minWidth: 120,
+          border: 0,
+          outline: "none",
+          background: "transparent",
+          boxShadow: "none",
+          padding: "2px 0",
+          margin: 0,
+          height: 28,
+          fontSize: 13,
+          color: "#111827",
+          cursor: disabled ? "not-allowed" : "pointer",
+        }}
       >
         <option value="" disabled>
-          {available.length === 0 ? "All selected" : placeholder}
+          {available.length === 0
+            ? values.length > 0
+              ? "All selected"
+              : placeholder
+            : placeholder}
         </option>
         {available.map((opt) => (
           <option key={opt.value} value={opt.value}>

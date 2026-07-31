@@ -128,6 +128,25 @@ export class HrmController {
     return this.service.createEmployee(dto);
   }
 
+  @Patch('employees/by-user/:userId/locations')
+  @Roles('admin', 'manager', 'super_admin')
+  syncEmployeeLocations(
+    @Param('userId') userId: string,
+    @Body()
+    body: {
+      locationCodes?: string[];
+      locationCode?: string | null;
+      name?: string;
+    },
+  ) {
+    return this.service.syncEmployeeLocationsByUserId({
+      userId,
+      name: body.name,
+      locationCodes: body.locationCodes,
+      locationCode: body.locationCode,
+    });
+  }
+
   @Get('payroll')
   listPayrolls(
     @Query('cursor') cursor?: string,

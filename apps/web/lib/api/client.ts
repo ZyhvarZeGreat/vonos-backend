@@ -39,6 +39,7 @@ function applySession(result: LoginSuccessResponse): void {
     tenantRoleName: result.user.tenantRoleName ?? null,
     tenantRolePermissions: result.user.tenantRolePermissions ?? [],
     tenantRoleLocked: result.user.tenantRoleLocked ?? false,
+    allowedTenantCodes: result.user.allowedTenantCodes ?? [],
   });
 }
 
@@ -66,10 +67,12 @@ async function tryRefreshSession(): Promise<boolean> {
 
   refreshInFlight = (async () => {
     try {
+      const preferredTenantId = useAuthStore.getState().tenantId;
       const response = await fetch(apiUrl("/auth/refresh"), {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tenantId: preferredTenantId }),
       });
       if (!response.ok) return false;
       const result = (await response.json()) as LoginSuccessResponse;

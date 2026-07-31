@@ -94,7 +94,7 @@ export function TopProgressBar({ className }: { className?: string }) {
   /** Floating pill only for entity switch — table/print use local "Loading N%" UI. */
   const showFloatingLabel = Boolean(entitySwitch);
   const label = entitySwitch
-    ? `Loading ${entitySwitch.name}`
+    ? `Switching to ${entitySwitch.name}`
     : "Loading";
 
   return (

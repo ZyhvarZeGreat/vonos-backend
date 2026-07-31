@@ -61,9 +61,12 @@ export function hq6ActionIcon(actionId: string): ReactNode | undefined {
       return <Copy className={ICON_CLASS} strokeWidth={1.75} />;
     case "pay":
     case "add_payment":
-      return <Banknote className={ICON_CLASS} strokeWidth={1.75} />;
-    case "view_payments":
     case "edit_payment":
+      return <Banknote className={ICON_CLASS} strokeWidth={1.75} />;
+    // Distinct from "view" (Eye) — UPOS uses money for payment list actions.
+    case "view_payments":
+    case "view_payment":
+    case "payments":
       return <Banknote className={ICON_CLASS} strokeWidth={1.75} />;
     case "ledger":
       return <BookOpen className={ICON_CLASS} strokeWidth={1.75} />;

@@ -102,13 +102,15 @@ def pct(sorted_vals: list[int], p: float) -> int:
     return sorted_vals[idx]
 
 
-def summarize(sr: ScenarioResult, wall_ms: int) -> None:
+def summarize(sr: ScenarioResult, wall_ms: int, target_ms: int = 5000) -> None:
     lats = sorted(sr.latencies())
     avg = int(statistics.mean(lats)) if lats else 0
+    p95 = pct(lats, 95)
+    flag = "✓" if p95 <= target_ms and sr.fail_count == 0 else "✗"
     print(
-        f"  {sr.name}: {sr.ok_count}/{len(sr.hits)} ok | "
+        f"  [{flag}] {sr.name}: {sr.ok_count}/{len(sr.hits)} ok | "
         f"wall={wall_ms}ms avg={avg}ms p50={pct(lats,50)}ms "
-        f"p95={pct(lats,95)}ms max={lats[-1] if lats else 0}ms"
+        f"p95={p95}ms max={lats[-1] if lats else 0}ms  (target p95≤{target_ms}ms)"
     )
     fails = [h for h in sr.hits if not h.ok]
     for h in fails[:8]:
@@ -156,8 +158,8 @@ def main() -> int:
         return 1
     print(f"login ok ({ms}ms)")
 
-    # Warm + pick a sale for detail/print path
-    st, sales, ms = request("GET", "/sales?limit=20", token=tok)
+    # Warm + pick a sale for detail/print path (rows-only, matches HQ6 UI)
+    st, sales, ms = request("GET", "/sales?limit=20&includeSummary=0", token=tok)
     items = (sales.get("items") if isinstance(sales, dict) else None) or []
     sale_id = items[0]["id"] if items else None
     print(f"warm sales http={st} {ms}ms n={len(items)} sale_id={sale_id}")
@@ -165,12 +167,13 @@ def main() -> int:
     st, ledger, ms = request("GET", "/ledger?limit=20", token=tok)
     print(f"warm ledger http={st} {ms}ms")
 
+    # READS — same shapes the web app uses for list pages
     read_paths: list[tuple[str, str]] = [
-        ("sales_list", "/sales?limit=25"),
+        ("sales_list", "/sales?limit=25&includeSummary=0"),
         ("ledger_list", "/ledger?limit=25"),
         ("overview", "/overview/dashboard"),
         ("payment_accounts", "/payment-accounts"),
-        ("expenses", "/expenses?limit=25"),
+        ("expenses", "/expenses?limit=25&includeSummary=0"),
     ]
     if sale_id:
         read_paths.append(("sale_detail", f"/sales/{sale_id}"))
@@ -203,8 +206,8 @@ def main() -> int:
 
     # --- Scenario B: stampede on same hot endpoints ---
     stampede = [
-        ("sales_list", "/sales?limit=50"),
-        ("sale_detail", f"/sales/{sale_id}" if sale_id else "/sales?limit=10"),
+        ("sales_list", "/sales?limit=50&includeSummary=0"),
+        ("sale_detail", f"/sales/{sale_id}" if sale_id else "/sales?limit=10&includeSummary=0"),
         ("ledger_list", "/ledger?limit=50"),
     ]
     for label, path in stampede:

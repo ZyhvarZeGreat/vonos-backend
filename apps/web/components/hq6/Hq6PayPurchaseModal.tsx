@@ -1,5 +1,7 @@
 "use client";
 
+import { Hq6DateTimeInput } from "@/components/hq6/Hq6DateTimeInput";
+
 import { paymentAmountSchema } from "@/lib/validation/schemas";
 import { parseForm } from "@/lib/validation/parseForm";
 import { useEffect, useState } from "react";
@@ -152,11 +154,10 @@ export function Hq6PayPurchaseModal({
           </select>
         </Hq6Field>
         <Hq6Field label="Paid on" required>
-          <input
-            className="hq6-modal-input"
-            type="datetime-local"
+                <Hq6DateTimeInput
+                  className="hq6-modal-input"
             value={paidOn}
-            onChange={(e) => setPaidOn(e.target.value)}
+            onChange={(v) => setPaidOn(v)}
           />
         </Hq6Field>
         <Hq6Field label="Amount" required>

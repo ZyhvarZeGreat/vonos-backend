@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
@@ -83,6 +84,7 @@ export class AuthController {
   async refresh(
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
+    @Body() body?: { tenantId?: string | null },
   ): Promise<LoginSuccessResponse> {
     const refreshToken = req.cookies?.[REFRESH_COOKIE_NAME] as
       | string
@@ -91,9 +93,25 @@ export class AuthController {
       throw new UnauthorizedException('Missing refresh token');
     }
 
-    const result = await this.authService.refreshSession(refreshToken);
+    const result = await this.authService.refreshSession(
+      refreshToken,
+      body?.tenantId,
+    );
     this.setRefreshCookie(res, result.refreshTokenRaw);
     return stripRefreshToken(result);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('switch-tenant')
+  switchWorkingTenant(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: { tenantCode: string },
+  ): Promise<LoginSuccessResponse> {
+    const code = body?.tenantCode?.trim();
+    if (!code) {
+      throw new BadRequestException('tenantCode is required');
+    }
+    return this.authService.switchWorkingTenant(user.sub, code);
   }
 
   @Post('logout')

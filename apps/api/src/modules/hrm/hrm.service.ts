@@ -609,6 +609,64 @@ export class HrmService {
     return this.serializeEmployee(row);
   }
 
+  /**
+   * Sync work-location clearance for a login user (header location switcher).
+   * Creates a minimal employee row if none exists yet.
+   */
+  async syncEmployeeLocationsByUserId(args: {
+    userId: string;
+    name?: string;
+    locationCodes?: string[];
+    locationCode?: string | null;
+  }): Promise<Employee | null> {
+    const tenantId = this.tenantDb.requireTenantId();
+    const locationCodes = normalizeLocationCodes(
+      args.locationCodes,
+      args.locationCode,
+    );
+    if (locationCodes.length === 0) return null;
+
+    const existing = await this.tenantDb.db.employee.findFirst({
+      where: { userId: args.userId, tenantId, deletedAt: null },
+      orderBy: { updatedAt: 'desc' },
+    });
+
+    if (existing) {
+      const row = await this.tenantDb.db.employee.update({
+        where: { id: existing.id },
+        data: {
+          locationCodes,
+          locationCode: locationCodes[0] ?? null,
+          ...(args.name?.trim() ? { name: args.name.trim() } : {}),
+        },
+        include: {
+          designation: { select: { name: true } },
+          payrollGroup: { select: { name: true } },
+        },
+      });
+      return this.serializeEmployee(row);
+    }
+
+    const designation = await this.tenantDb.db.designation.findFirst({
+      where: { tenantId, deletedAt: null },
+      orderBy: { name: 'asc' },
+    });
+    if (!designation) {
+      throw new BadRequestException(
+        'Create a designation before assigning work locations',
+      );
+    }
+
+    return this.createEmployee({
+      name: args.name?.trim() || 'Staff',
+      userId: args.userId,
+      designationId: designation.id,
+      locationCodes,
+      locationCode: locationCodes[0],
+      isServiceStaff: false,
+    });
+  }
+
   async listPayrolls(filters: PayrollFilters & { includeSummary?: boolean } = {}): Promise<{
     items: Payroll[];
     totalCount?: number;

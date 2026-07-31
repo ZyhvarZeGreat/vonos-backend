@@ -17,6 +17,8 @@ interface AuthState {
   tenantRoleName: string | null;
   tenantRolePermissions: string[];
   tenantRoleLocked: boolean;
+  /** Entity codes cleared for this user (header location switcher). */
+  allowedTenantCodes: string[];
   token: string | null;
   isAuthenticated: boolean;
   hydrated: boolean;
@@ -31,6 +33,7 @@ interface AuthState {
     tenantRoleName?: string | null;
     tenantRolePermissions?: string[];
     tenantRoleLocked?: boolean;
+    allowedTenantCodes?: string[];
   }) => void;
   clearAuth: () => void;
   setHydrated: (hydrated: boolean) => void;
@@ -47,6 +50,7 @@ type PersistedAuth = Pick<
   | "tenantRoleName"
   | "tenantRolePermissions"
   | "tenantRoleLocked"
+  | "allowedTenantCodes"
   | "token"
   | "isAuthenticated"
 >;
@@ -69,6 +73,7 @@ export const useAuthStore = create<AuthState>()(
       tenantRoleName: null,
       tenantRolePermissions: [],
       tenantRoleLocked: false,
+      allowedTenantCodes: [],
       token: null,
       isAuthenticated: false,
       hydrated: false,
@@ -83,6 +88,7 @@ export const useAuthStore = create<AuthState>()(
         tenantRoleName = null,
         tenantRolePermissions = [],
         tenantRoleLocked = false,
+        allowedTenantCodes = [],
       }) => {
         const decoded = decodeAccessToken(token);
         if (!decoded) {
@@ -96,6 +102,7 @@ export const useAuthStore = create<AuthState>()(
             tenantRoleName: null,
             tenantRolePermissions: [],
             tenantRoleLocked: false,
+            allowedTenantCodes: [],
             token: null,
             isAuthenticated: false,
             hydrated: true,
@@ -112,6 +119,7 @@ export const useAuthStore = create<AuthState>()(
           tenantRoleName,
           tenantRolePermissions,
           tenantRoleLocked,
+          allowedTenantCodes,
           token,
           isAuthenticated: true,
           hydrated: true,
@@ -128,6 +136,7 @@ export const useAuthStore = create<AuthState>()(
           tenantRoleName: null,
           tenantRolePermissions: [],
           tenantRoleLocked: false,
+          allowedTenantCodes: [],
           token: null,
           isAuthenticated: false,
         }),
@@ -146,6 +155,7 @@ export const useAuthStore = create<AuthState>()(
         tenantRoleName: state.tenantRoleName,
         tenantRolePermissions: state.tenantRolePermissions,
         tenantRoleLocked: state.tenantRoleLocked,
+        allowedTenantCodes: state.allowedTenantCodes,
         token: state.token,
         isAuthenticated: state.isAuthenticated,
       }),
@@ -162,6 +172,7 @@ export const useAuthStore = create<AuthState>()(
         return {
           ...current,
           ...stored,
+          allowedTenantCodes: stored.allowedTenantCodes ?? [],
           hydrated: current.hydrated,
         };
       },

@@ -12,6 +12,7 @@ import { isTwoFactorChallenge, login, verifyTwoFactor } from "@/lib/api/auth";
 import { warmPostLoginDestination } from "@/lib/prefetch/warmPostLogin";
 import { getPostLoginPath } from "@/lib/utils/authRedirect";
 import { validateUsername } from "@/lib/utils/formValidation";
+import { welcomeFirstName } from "@/lib/utils/welcomeFirstName";
 import { preloadUposStylesheets } from "@/lib/upos/styles";
 import { useAuthStore } from "@/stores/authStore";
 import { toast } from "@/stores/toastStore";
@@ -72,20 +73,7 @@ export function LoginForm() {
     startTransition,
   ]);
 
-  function completeLogin(result: {
-    accessToken: string;
-    user: {
-      id: string;
-      email: string;
-      name: string;
-      tenantId: string | null;
-      role: import("@vonos/types").Role;
-      tenantRoleId?: string | null;
-      tenantRoleName?: string | null;
-      tenantRolePermissions?: string[];
-      tenantRoleLocked?: boolean;
-    };
-  }) {
+  function completeLogin(result: import("@vonos/types").LoginSuccessResponse) {
     setAuth({
       userId: result.user.id,
       email: result.user.email,
@@ -97,6 +85,7 @@ export function LoginForm() {
       tenantRoleName: result.user.tenantRoleName ?? null,
       tenantRolePermissions: result.user.tenantRolePermissions ?? [],
       tenantRoleLocked: result.user.tenantRoleLocked ?? false,
+      allowedTenantCodes: result.user.allowedTenantCodes ?? [],
     });
     const redirect = searchParams.get("redirect");
     const requested =
@@ -114,7 +103,7 @@ export function LoginForm() {
     startTransition(() => {
       router.replace(destination);
     });
-    toast.success(`Welcome back, ${result.user.name}`);
+    toast.success(`Welcome back, ${welcomeFirstName(result.user.name)}`);
   }
 
   async function handleSubmit(event: React.FormEvent) {

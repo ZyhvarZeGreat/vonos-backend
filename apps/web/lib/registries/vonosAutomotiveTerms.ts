@@ -15,14 +15,15 @@ export const VONOS_AUTOMOTIVE_SUPPORT_LINE =
 /**
  * Blank line between sections. Section labels on their own line are rendered
  * inline (bold, same font size) — not as large headers.
+ * Wording matches legacy HQ6 print (invoice / packing slip / delivery note).
  */
 export const VONOS_AUTOMOTIVE_TERMS_BODY = `These Terms and Conditions shall be the legal binding Agreement Between Vonos Automotive Engineering Limited, referred as "Vonos" and it's Customers both referred to as "Party". Customers are deemed to have read and agreed to this Terms and Conditions upon making payment or deposit as contained in this document. This agreement commences when a customer subscribe to our job Estimate and further make a payment or deposit for the job estimate. VONOS shall endeavor to render quality automotive services to Customers with tested and qualified Engineers and Technicians.
 
 ESTIMATES/QUOTATION
-Estimates/quotations show vehicle description, customer complaints, diagnosis, and costs for parts and labour. They are only binding once an invoice is paid and remain subject to amendments. VONOS reserves the right to vary the estimate prices based on motor part cost variations or additional costs arising from inadequacies from the customers end.
+This shows the vehicle description, customers complaint, initial diagnosis found, cost of spare parts, labor and time for the job. An Estimate/Quotation is only binding to the extent of the invoiced paid. All Estimates/Quotation is subject to amendments in writing or phone messages. VONOS reserve the right to vary the estimate prices and make additional charges in the event of a variation to the cost of motor parts and/ or services including where we incur further costs in the circumstances of Customer's inadequate, late, or incorrect disclosures in relation to the work required.
 
 INVOICE
-This shows the cost of services that is approved for job and amount paid or deposited. Making payment on the invoice is a clear acceptance of all these Terms and Conditions.
+This shows the cost of services that is approved for job, the amount paid or deposited either in full or part-payment for the job. Making payment on the invoice is a clear acceptance of all these Terms and Conditions.
 
 FAILURE TO PAY, LIEN & DEMURRAGE
 If VONOS have notified a Customer that his vehicle is ready for collection, and he fail to pay the total invoice amount within 48 hours, then the Company may exercise a lien right on the vehicle or other products at its possession until the payment is made. A demurrage fee of N500.00 per day will be charged after 48 hours of notification to collect a vehicle. If any amounts outstanding have not been paid within 6 months of providing notice to Customer, or if Vonos do not hear from him after making reasonable attempts to contact the Customer, then Vonos may take legal steps to sell or dispose of such vehicle after six months to recover the invoice amount and demurrage charges.

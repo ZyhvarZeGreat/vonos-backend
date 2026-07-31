@@ -65,10 +65,8 @@ export function UposHeader({
   const queryClient = useQueryClient();
   const tenantId = useTenantId();
   const clearAuth = useAuthStore((s) => s.clearAuth);
-  const authRole = useAuthStore((s) => s.role);
   const authName = useAuthStore((s) => s.name);
   const displayName = userName ?? authName ?? "User";
-  const isVonosAdmin = authRole === "super_admin";
   const isAdminHeader = variant === "admin";
   const showTenantTools = !isAdminHeader;
   const setNotifications = useUiStore((s) => s.setNotifications);
@@ -186,14 +184,14 @@ export function UposHeader({
               {/* VAG topbar: leave admin → full entity dashboard (not module scope). */}
               {isAdminHeader ? (
                 <AdminEntitySwitcher variant="topbar" />
-              ) : isVonosAdmin ? (
+              ) : (
                 <TenantSwitcher
                   tenantCode={tenantCode}
                   tenantName={tenantName}
                   variant="topbar"
                   className="tw-min-w-0 tw-w-[9.5rem] sm:tw-w-[12rem] md:tw-w-[14rem] lg:tw-w-[16rem]"
                 />
-              ) : null}
+              )}
               {isAdminHeader ? (
                 <span className="tw-hidden tw-shrink-0 tw-rounded tw-bg-white/15 tw-px-2 tw-py-1 tw-text-[11px] tw-font-semibold tw-uppercase tw-tracking-wide tw-text-white/90 lg:tw-inline-block">
                   Super Admin

@@ -19,7 +19,6 @@ import {
   modalKeys,
 } from "@/lib/query/modalQueryKeys";
 import {
-  businessLocationName,
   formatBusinessLocationAddress,
   resolveBusinessLocation,
 } from "@/lib/utils/locationLabels";
@@ -140,10 +139,13 @@ export function Hq6PrintInvoiceModal({
     tenantName ||
     config?.name ||
     "Vonos Autos";
-  const businessAddress =
-    (typeof business?.landmark === "string" && business.landmark) ||
-    (typeof business?.city === "string" && business.city) ||
-    "";
+  const businessAddress = [
+    typeof business?.landmark === "string" ? business.landmark : "",
+    typeof business?.city === "string" ? business.city : "",
+  ]
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .join(", ");
   const businessMobile =
     (typeof business?.mobile === "string" && business.mobile) ||
     (typeof business?.phone === "string" && business.phone) ||
@@ -155,17 +157,13 @@ export function Hq6PrintInvoiceModal({
     detailSale?.locationCode ?? titleSale?.locationCode ?? null,
     config?.businessLocations,
   );
-  const locationLabel =
-    location?.name ??
-    businessLocationName(
-      detailSale?.locationCode ?? titleSale?.locationCode ?? null,
-      config?.businessLocations,
-    );
   const locationAddress = formatBusinessLocationAddress(location);
+  // Letterhead uses the physical address only (e.g. ARK GARDEN, KUBWA) — not the
+  // location display name, which already appears as the business title.
   const letterheadAddress =
-    [locationLabel, locationAddress].filter(Boolean).join(", ") ||
+    locationAddress ||
     businessAddress ||
-    null;
+    "ARK GARDEN, KUBWA";
   const letterheadMobile = location?.mobile?.trim() || businessMobile || null;
   const letterheadEmail = location?.email?.trim() || businessEmail || null;
 
@@ -227,7 +225,6 @@ export function Hq6PrintInvoiceModal({
             tenantAddress={letterheadAddress}
             tenantMobile={letterheadMobile}
             tenantEmail={letterheadEmail}
-            locationLabel={locationLabel}
             payments={payments}
             termsBody={termsBody}
             termsTitle={VONOS_AUTOMOTIVE_TERMS_TITLE}

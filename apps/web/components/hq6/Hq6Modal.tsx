@@ -21,6 +21,8 @@ export interface Hq6ModalProps {
   showBack?: boolean;
   onBack?: () => void;
   backLabel?: string;
+  /** Hide title bar (still shows close / use for alert-style dialogs). */
+  hideHeader?: boolean;
 }
 
 const SIZE_CLASS: Record<NonNullable<Hq6ModalProps["size"]>, string> = {
@@ -56,6 +58,7 @@ export function Hq6Modal({
   showBack = false,
   onBack,
   backLabel = "Back",
+  hideHeader = false,
 }: Hq6ModalProps) {
   const panelRef = useRef<HTMLDivElement>(null);
   const isClient = useIsClient();
@@ -85,7 +88,7 @@ export function Hq6Modal({
       data-hq6="true"
       role="dialog"
       aria-modal="true"
-      aria-label={title}
+      aria-label={title || "Dialog"}
     >
       <button
         type="button"
@@ -100,30 +103,41 @@ export function Hq6Modal({
           SIZE_CLASS[size],
         )}
       >
-        <div className="hq6-modal-header">
-          <div className="tw-flex tw-min-w-0 tw-flex-1 tw-items-center tw-gap-2">
-            {showBack ? (
-              <button
-                type="button"
-                className="hq6-modal-btn hq6-modal-btn-close tw-inline-flex tw-shrink-0 tw-items-center tw-gap-1"
-                onClick={handleBack}
-                aria-label={backLabel}
-              >
-                <ArrowLeft className="h-4 w-4" />
-                <span className="tw-hidden sm:tw-inline">{backLabel}</span>
-              </button>
-            ) : null}
-            <h4 className="hq6-modal-title tw-min-w-0 tw-truncate">{title}</h4>
-          </div>
+        {hideHeader ? (
           <button
             type="button"
-            className="hq6-modal-close"
+            className="hq6-modal-close absolute right-3 top-3 z-20"
             aria-label="Close"
             onClick={onClose}
           >
             <X className="h-5 w-5" />
           </button>
-        </div>
+        ) : (
+          <div className="hq6-modal-header">
+            <div className="tw-flex tw-min-w-0 tw-flex-1 tw-items-center tw-gap-2">
+              {showBack ? (
+                <button
+                  type="button"
+                  className="hq6-modal-btn hq6-modal-btn-close tw-inline-flex tw-shrink-0 tw-items-center tw-gap-1"
+                  onClick={handleBack}
+                  aria-label={backLabel}
+                >
+                  <ArrowLeft className="h-4 w-4" />
+                  <span className="tw-hidden sm:tw-inline">{backLabel}</span>
+                </button>
+              ) : null}
+              <h4 className="hq6-modal-title tw-min-w-0 tw-truncate">{title}</h4>
+            </div>
+            <button
+              type="button"
+              className="hq6-modal-close"
+              aria-label="Close"
+              onClick={onClose}
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+        )}
         <div className={cn("hq6-modal-body", bodyClassName)}>{children}</div>
         {footer ? <div className="hq6-modal-footer">{footer}</div> : null}
       </div>

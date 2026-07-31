@@ -153,7 +153,9 @@ export function AddProductForm({
 
   useEffect(() => {
     if (locations.length === 0) return;
-    setSelectedLocationCodes(locations.map((loc) => loc.code));
+    // Location stock is optional — start with none selected so staff can
+    // add a product without rack/qty, then enable locations if needed.
+    setSelectedLocationCodes([]);
     setLocationDetails(
       locations.map((loc) => ({
         locationCode: loc.code,
@@ -266,7 +268,7 @@ export function AddProductForm({
     setError(null);
     setSaveMode("save");
     if (locations.length > 0) {
-      setSelectedLocationCodes(locations.map((loc) => loc.code));
+      setSelectedLocationCodes([]);
       setLocationDetails(
         locations.map((loc) => ({
           locationCode: loc.code,
@@ -571,7 +573,8 @@ export function AddProductForm({
           {locations.length > 0 ? (
             <div className="md:col-span-2 lg:col-span-3">
               <p className="mb-1 text-xs font-medium text-muted">
-                Business Locations
+                Business Locations{" "}
+                <span className="font-normal">(optional)</span>
               </p>
               <div className="flex flex-wrap gap-3 rounded-lg border border-border px-3 py-2">
                 {locations.map((loc) => (

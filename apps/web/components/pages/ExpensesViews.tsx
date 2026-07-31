@@ -1,5 +1,7 @@
 "use client";
 
+import { Hq6DateTimeInput } from "@/components/hq6/Hq6DateTimeInput";
+
 import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
@@ -632,13 +634,10 @@ export function AddExpenseView() {
                 <span className="input-group-addon">
                   <i className="fa fa-calendar" aria-hidden />
                 </span>
-                <input
-                  type="datetime-local"
+                <Hq6DateTimeInput
                   className="hq6-form-input"
                   value={form.expenseDate}
-                  onChange={(e) =>
-                    setForm({ ...form, expenseDate: e.target.value })
-                  }
+                  onChange={(v) => setForm({ ...form, expenseDate: v })}
                 />
               </div>
             </label>
@@ -801,13 +800,10 @@ export function AddExpenseView() {
               <span>
                 Paid on: <span className="req">*</span>
               </span>
-              <input
-                type="datetime-local"
-                className="hq6-form-input"
+                <Hq6DateTimeInput
+                  className="hq6-form-input"
                 value={form.expenseDate}
-                onChange={(e) =>
-                  setForm({ ...form, expenseDate: e.target.value })
-                }
+                onChange={(v) => setForm({ ...form, expenseDate: v })}
               />
             </label>
             <label className="hq6-form-label">

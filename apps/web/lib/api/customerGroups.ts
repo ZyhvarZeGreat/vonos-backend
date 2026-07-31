@@ -56,8 +56,10 @@ export async function getAllCustomerGroups(
 export async function getCustomerGroups(
   tenantId: string,
 ): Promise<CustomerGroup[]> {
-  return fetchFirstPage((cursor, limit) =>
-    fetchCustomerGroupsRaw(tenantId, cursor, limit),
+  // Contact / sale forms need the full small catalog, not the table page size (10).
+  return fetchFirstPage(
+    (cursor, limit) => fetchCustomerGroupsRaw(tenantId, cursor, limit),
+    200,
   );
 }
 

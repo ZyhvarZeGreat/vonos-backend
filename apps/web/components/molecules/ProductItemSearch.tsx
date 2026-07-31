@@ -136,7 +136,7 @@ export function ProductItemSearch({
     queryKey: ["item-search", tenantId, debounced, retailOnly],
     queryFn: async () => {
       if (!tenantId || debounced.length < 1) return [];
-      const rows = await getItems(tenantId, { search: debounced, limit: 25 });
+      const rows = await getItems(tenantId, { search: debounced, limit: 100 });
       return retailOnly
         ? rows.filter((row) => row.availableForRetail !== false)
         : rows;
@@ -233,7 +233,7 @@ export function ProductItemSearch({
         if (!existing.name && pick.name) existing.name = pick.name;
       }
     }
-    return Array.from(bySku.values()).slice(0, 40);
+    return Array.from(bySku.values());
   }, [flatPicks]);
 
   useEffect(() => {
@@ -349,7 +349,7 @@ export function ProductItemSearch({
         <ul
           id={listId}
           role="listbox"
-          className="hq6-product-search-dropdown absolute z-20 mt-1 max-h-72 w-full overflow-auto rounded-lg border border-border bg-card py-1 shadow-lg"
+          className="hq6-product-search-dropdown absolute z-20 mt-1 max-h-96 w-full overflow-y-auto overscroll-contain rounded-lg border border-border bg-card py-1 shadow-lg"
         >
           {pendingGroup ? (
             <>
@@ -450,7 +450,7 @@ export function ProductItemSearch({
                       </button>
                     </li>
                   ))
-                : flatPicks.slice(0, 40).map((pick) => (
+                : flatPicks.map((pick) => (
                     <li
                       key={`${pick.sourceTenantCode ?? "local"}:${pick.itemId ?? pick.sku}`}
                     >

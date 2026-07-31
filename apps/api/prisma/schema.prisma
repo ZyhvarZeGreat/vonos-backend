@@ -548,6 +548,11 @@ model Customer {
   status          String   @default("active")
   /** HQ6 contact tax / VAT registration number. */
   taxNumber       String?
+  /**
+   * Ultimate POS contact extras: kind, Contact ID, pay term, credit limit,
+   * full address, shipping address, custom fields 1–10, etc.
+   */
+  details         Json?
   createdByUserId String?
   createdByUser   User?    @relation("CustomerCreatedBy", fields: [createdByUserId], references: [id])
   createdByName   String?

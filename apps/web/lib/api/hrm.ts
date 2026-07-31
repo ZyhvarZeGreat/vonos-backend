@@ -325,6 +325,31 @@ export async function createEmployee(
   return res.json();
 }
 
+export async function syncEmployeeWorkLocations(
+  tenantId: string,
+  userId: string,
+  dto: {
+    locationCodes: string[];
+    locationCode?: string | null;
+    name?: string;
+  },
+): Promise<Employee | null> {
+  const res = await apiFetch(
+    withTenantQuery(
+      `${EMPLOYEES_PATH}/by-user/${encodeURIComponent(userId)}/locations`,
+      tenantId,
+    ),
+    {
+      method: "PATCH",
+      body: JSON.stringify(dto),
+    },
+  );
+  if (!res.ok) {
+    return throwApiError(res, "Failed to update work locations");
+  }
+  return res.json();
+}
+
 export async function getPayrollGroupsPage(
   tenantId: string,
   cursor: string | undefined,

@@ -28,6 +28,7 @@ import {
 import { useListPageFilters } from "@/lib/hooks/useListPageFilters";
 import { useRouteTenant } from "@/lib/hooks/useRouteTenant";
 import { useAuthStore } from "@/stores/authStore";
+import { welcomeFirstName } from "@/lib/utils/welcomeFirstName";
 import { formatHq6Currency } from "@/lib/utils/hq6Format";
 import { formatCurrencyCompact } from "@/lib/utils/formatCurrency";
 import { downloadCsv } from "@/lib/utils/exportCsv";
@@ -526,8 +527,8 @@ export function Hq6OverviewView() {
   ].filter(Boolean) as OverviewPanel[];
 
   const locations = config?.businessLocations ?? [];
-  // Blade: Session::get('user.first_name')
-  const firstName = userName.split(/\s+/)[0] || userName;
+  // Blade: Session::get('user.first_name') — skip Mr/Mrs/Miss prefixes
+  const firstName = welcomeFirstName(userName);
 
   return (
     <div className="hq6-page hq6-home">

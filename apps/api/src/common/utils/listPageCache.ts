@@ -3,6 +3,9 @@ import type { CacheService } from '../cache/cache.service';
 /** Short TTL — list pages change often; version bump invalidates earlier. */
 export const LIST_PAGE_CACHE_TTL_S = 180;
 
+/** In-flight loaders keyed by cache key — collapses concurrent identical misses. */
+const inflight = new Map<string, Promise<unknown>>();
+
 /** Stable cache segment from list filter bag (order-independent). */
 export function listPageFilterKey(
   parts: Record<string, string | number | boolean | null | undefined>,
@@ -16,6 +19,8 @@ export function listPageFilterKey(
 /**
  * Cache a tenant list page under `list:{resource}:{filterKey}`.
  * Keys are version-scoped so writes that bumpTenantVersion bust them.
+ * Concurrent identical misses share one loader (single-flight) so 15 users
+ * opening Sales at once hit Neon once, not 15×.
  */
 export async function withListPageCache<T>(
   cache: CacheService,
@@ -31,7 +36,25 @@ export async function withListPageCache<T>(
   );
   const hit = await cache.get<T>(cacheKey);
   if (hit != null) return hit;
-  const value = await loader();
-  await cache.set(cacheKey, value, ttlSeconds);
-  return value;
+
+  const existing = inflight.get(cacheKey);
+  if (existing) {
+    return existing as Promise<T>;
+  }
+
+  const pending = (async () => {
+    try {
+      // Re-check after winning the flight — another worker may have set Redis.
+      const again = await cache.get<T>(cacheKey);
+      if (again != null) return again;
+      const value = await loader();
+      await cache.set(cacheKey, value, ttlSeconds);
+      return value;
+    } finally {
+      inflight.delete(cacheKey);
+    }
+  })();
+
+  inflight.set(cacheKey, pending);
+  return pending;
 }

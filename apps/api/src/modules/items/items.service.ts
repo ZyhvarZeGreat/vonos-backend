@@ -911,7 +911,8 @@ export class ItemsService {
           sku,
           name,
           category: pickCsvField(row, 'category') || undefined,
-          quantity: Number(pickCsvField(row, 'quantity', 'stock') || '0') || 0,
+          // Product import creates catalog rows at qty 0; use Import Opening Stock for qty.
+          quantity: 0,
           costPrice,
           currency: pickCsvField(row, 'currency') || 'NGN',
           availableForRetail: true,
@@ -964,13 +965,14 @@ export class ItemsService {
           (locations[0]?.code ?? null);
 
         for (const variant of parsed.variants) {
+          // Catalog import always starts at 0 stock; opening stock is a separate import.
           const locationStock =
             locationCode && parsed.manageStock
               ? [
                   {
                     locationCode,
                     binLocation: variant.binLocation,
-                    quantity: variant.quantity,
+                    quantity: 0,
                   },
                 ]
               : undefined;
@@ -985,7 +987,7 @@ export class ItemsService {
             unit: parsed.unit,
             weight: parsed.weight,
             enableImei: parsed.enableImei,
-            quantity: locationStock ? undefined : variant.quantity,
+            quantity: locationStock ? undefined : 0,
             reorderPoint: parsed.alertQuantity,
             costPrice: variant.costPrice,
             sellPrice: variant.sellPrice,

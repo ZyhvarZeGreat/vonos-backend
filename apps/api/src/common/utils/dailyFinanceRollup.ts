@@ -6,6 +6,10 @@ import { toNumber } from './serializers';
 type TenantDailyFinanceTenantFilter = string | { in: string[] };
 
 type FinanceClient = {
+  $executeRaw?: (
+    query: TemplateStringsArray,
+    ...values: unknown[]
+  ) => Promise<number>;
   tenantDailyFinance: {
     count: (args: {
       where: {
@@ -124,8 +128,35 @@ export async function applyDailyFinanceDelta(
   const delta = deltaForType(type, amount);
   const id = rollupId(tenantId, day);
 
-  // Concurrent creates race on @@unique([tenantId, date]) / deterministic id —
-  // retry so the second writer updates instead of crashing the process.
+  // Atomic upsert — safe under concurrent expense/sale writes (no P2002 race).
+  if (typeof db.$executeRaw === 'function') {
+    await db.$executeRaw`
+      INSERT INTO "TenantDailyFinance" (
+        id, "tenantId", date, revenue, costs, expenses, net, currency, "updatedAt"
+      )
+      VALUES (
+        ${id},
+        ${tenantId},
+        ${day},
+        ${delta.revenue},
+        ${delta.costs},
+        ${delta.expenses},
+        ${delta.net},
+        ${currency},
+        NOW()
+      )
+      ON CONFLICT ("tenantId", date) DO UPDATE SET
+        revenue = "TenantDailyFinance".revenue + EXCLUDED.revenue,
+        costs = "TenantDailyFinance".costs + EXCLUDED.costs,
+        expenses = "TenantDailyFinance".expenses + EXCLUDED.expenses,
+        net = "TenantDailyFinance".net + EXCLUDED.net,
+        currency = EXCLUDED.currency,
+        "updatedAt" = NOW()
+    `;
+    return;
+  }
+
+  // Fallback for narrow clients without $executeRaw (retry Prisma upsert).
   for (let attempt = 0; attempt < 5; attempt++) {
     try {
       await db.tenantDailyFinance.upsert({

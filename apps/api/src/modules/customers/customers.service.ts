@@ -4,6 +4,7 @@ import type {
   ContactLedgerEntry,
   CreateCustomerInput,
   Customer,
+  CustomerContactDetails,
   CustomerFilters,
   CustomerProfile,
   CustomerTransactionHistoryEntry,
@@ -13,6 +14,8 @@ import type {
   PayContactDueResult,
   UpdateCustomerInput,
 } from '@vonos/types';
+import { parseCustomerContactDetails } from '@vonos/types';
+import { Prisma } from '@prisma/client';
 import { TenantDbService } from '../../common/prisma/tenant-db.service';
 import { CacheService } from '../../common/cache/cache.service';
 import { invalidateTenantDashboardCache } from '../../common/cache/cacheInvalidation';
@@ -112,6 +115,7 @@ function serializeCustomer(
     visitCount?: number | null;
     status?: string | null;
     taxNumber?: string | null;
+    details?: unknown;
     createdByUserId: string | null;
     createdByName: string | null;
     createdAt: Date;
@@ -133,6 +137,7 @@ function serializeCustomer(
   const openingBalance = toNumber(row.openingBalance ?? 0);
   const storedTotalSell = row.totalSell != null ? toNumber(row.totalSell) : null;
   const storedVisitCount = row.visitCount ?? null;
+  const details = parseCustomerContactDetails(row.details);
 
   return {
     id: row.id,
@@ -151,9 +156,13 @@ function serializeCustomer(
     createdByName: row.createdByName,
     createdAt: toIso(row.createdAt),
     updatedAt: toIso(row.updatedAt),
-    contactId: extras?.contactId ?? row.id.slice(0, 8).toUpperCase(),
-    businessName: row.name,
+    contactId:
+      details.contactId ??
+      extras?.contactId ??
+      row.id.slice(0, 8).toUpperCase(),
+    businessName: details.businessName ?? row.name,
     taxNumber: row.taxNumber?.trim() || null,
+    details,
     totalSell: extras?.totalSell ?? storedTotalSell ?? computed?.totalSell ?? 0,
     totalSellDue: extras?.totalSellDue ?? (row.totalSellDue != null ? toNumber(row.totalSellDue) : computed?.totalSellDue ?? 0),
     totalSellPaid: extras?.totalSellPaid ?? (row.totalSellPaid != null ? toNumber(row.totalSellPaid) : computed?.totalSellPaid ?? 0),
@@ -164,6 +173,14 @@ function serializeCustomer(
       | 'inactive',
     transactionHistory: extras?.transactionHistory ?? [],
   };
+}
+
+function toDetailsJson(
+  details: CustomerContactDetails | null | undefined,
+): Prisma.InputJsonValue | typeof Prisma.JsonNull | undefined {
+  if (details === undefined) return undefined;
+  if (details === null) return Prisma.JsonNull;
+  return details as unknown as Prisma.InputJsonValue;
 }
 
 @Injectable()
@@ -349,6 +366,9 @@ export class CustomersService {
       throw new BadRequestException('Customer name is required');
     }
     const createdBy = await this.auditService.createdByFields();
+    const detailsJson = toDetailsJson(
+      dto.details ? parseCustomerContactDetails(dto.details) : dto.details,
+    );
     const row = await this.tenantDb.db.customer.create({
       data: {
         tenantId,
@@ -360,6 +380,7 @@ export class CustomersService {
         openingBalance: dto.openingBalance ?? 0,
         status: dto.status ?? 'active',
         taxNumber: dto.taxNumber?.trim() || null,
+        ...(detailsJson !== undefined ? { details: detailsJson } : {}),
         ...createdBy,
       },
       include: {
@@ -389,6 +410,14 @@ export class CustomersService {
       throw new BadRequestException('Customer name is required');
     }
 
+    const detailsJson = toDetailsJson(
+      dto.details === undefined
+        ? undefined
+        : dto.details
+          ? parseCustomerContactDetails(dto.details)
+          : null,
+    );
+
     const row = await this.tenantDb.db.customer.update({
       where: { id },
       data: {
@@ -408,6 +437,7 @@ export class CustomersService {
         ...(dto.taxNumber !== undefined
           ? { taxNumber: dto.taxNumber?.trim() || null }
           : {}),
+        ...(detailsJson !== undefined ? { details: detailsJson } : {}),
       },
       include: {
         customerGroup: { select: { name: true } },

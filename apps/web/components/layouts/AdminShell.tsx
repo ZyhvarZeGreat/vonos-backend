@@ -54,6 +54,9 @@ export function AdminShell({
     : "VAG";
   const onGroupOverview =
     pathname === "/admin/overview" || pathname.startsWith("/admin/overview/");
+  /** Users assign entities on the form / list is group-wide — no second location select. */
+  const onHrmUsers = pathname.startsWith("/admin/hrm/users");
+  const showEntityContextBar = !onGroupOverview && !onHrmUsers;
 
   useEffect(() => {
     if (skipAuth) return;
@@ -99,7 +102,7 @@ export function AdminShell({
         isNavActive={isAdminNavActive}
         userName={authName ?? authEmail ?? undefined}
         contextBar={
-          !onGroupOverview ? <AdminEntityContextBar /> : undefined
+          showEntityContextBar ? <AdminEntityContextBar /> : undefined
         }
       >
         {!skipAuth && !hydrated ? (

@@ -17,6 +17,8 @@ import {
   createEmployee,
   createPayroll,
   getDesignations,
+  getEmployees,
+  syncEmployeeWorkLocations,
 } from "@/lib/api/hrm";
 import { useRecordNavigation } from "@/lib/hooks/useRecordNavigation";
 import { useTenantId, useRouteTenant } from "@/lib/hooks/useRouteTenant";
@@ -35,8 +37,10 @@ import {
 } from "@/lib/utils/formValidation";
 import { toast } from "@/stores/toastStore";
 import { withWriteProgress } from "@/stores/mutationBusyStore";
+import { primaryTenantIdFromWorkLocations } from "@/lib/utils/workLocationTenant";
+import { welcomeFirstName } from "@/lib/utils/welcomeFirstName";
 
-/** Autos work locations only — short entity codes (not Cafe / Kids Wear / etc.). */
+/** Autos entities — assigned on the form (VAG does not switch entity to add users). */
 const WORK_LOCATION_OPTIONS = [
   { value: "VW", label: "Vonos Warehouse" },
   { value: "VM", label: "Vonos Mechanic" },
@@ -52,6 +56,9 @@ function formatJwtRole(role: User["role"]): string {
     .join(" ");
 }
 
+const NAME_TITLE_RE =
+  /^(mr|mrs|miss|ms|dr|prof|sir|madam|madame|engr|eng|hon|rev|pastor|chief)\.?$/i;
+
 function splitName(full: string): {
   surname: string;
   first: string;
@@ -59,12 +66,24 @@ function splitName(full: string): {
 } {
   const parts = full.trim().split(/\s+/).filter(Boolean);
   if (parts.length === 0) return { surname: "", first: "", last: "" };
-  if (parts.length === 1) return { surname: "", first: parts[0]!, last: "" };
-  if (parts.length === 2) return { surname: "", first: parts[0]!, last: parts[1]! };
+
+  let surname = "";
+  let rest = parts;
+  if (NAME_TITLE_RE.test(parts[0]!)) {
+    surname = parts[0]!;
+    rest = parts.slice(1);
+  }
+
+  if (rest.length === 0) {
+    return { surname, first: welcomeFirstName(full, ""), last: "" };
+  }
+  if (rest.length === 1) {
+    return { surname, first: rest[0]!, last: "" };
+  }
   return {
-    surname: parts[0]!,
-    first: parts[1]!,
-    last: parts.slice(2).join(" "),
+    surname,
+    first: rest[0]!,
+    last: rest.slice(1).join(" "),
   };
 }
 
@@ -156,26 +175,9 @@ export function Hq6UserDetailView({
   const router = useRouter();
   const searchParams = useSearchParams();
   const queryClient = useQueryClient();
-  const tenantId = useTenantId();
+  const viewingTenantId = useTenantId();
   const { config } = useRouteTenant();
-  const { listPath, detailPath } = useRecordNavigation("users");
-
-  const { data: hq6Roles = [] } = useQuery({
-    queryKey: ["tenant-roles", tenantId],
-    queryFn: () => getTenantRoles(tenantId!),
-    enabled: Boolean(tenantId),
-  });
-
-  const defaultLocationCodes = useMemo(() => {
-    const code = config?.code?.trim();
-    if (!code) return [] as string[];
-    // Map current tenant → work-location code used in the combobox.
-    const mapped = code === "VA" || code === "VMS" ? "VM" : code;
-    const allowed = new Set(
-      WORK_LOCATION_OPTIONS.map((o) => o.value as string),
-    );
-    return allowed.has(mapped) ? [mapped] : ([] as string[]);
-  }, [config?.code]);
+  const { listPath, detailPath, goToList } = useRecordNavigation("users");
   const isCreate = recordId === "new" || recordId === "create";
   const isEdit = mode === "edit" || isCreate;
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -183,14 +185,59 @@ export function Hq6UserDetailView({
   const [activeTab, setActiveTab] = useState<"info" | "docs" | "activities">(
     "info",
   );
+  const [formLocationCodes, setFormLocationCodes] = useState<string[] | null>(
+    null,
+  );
+
+  const defaultLocationCodes = useMemo(() => {
+    const code = config?.code?.trim();
+    if (!code) {
+      // VAG add-user with no viewing entity: default home to Mechanic (VM→VA).
+      return ["VM"] as string[];
+    }
+    // Map current tenant → work-location code used in the combobox.
+    const mapped = code === "VA" || code === "VMS" ? "VM" : code;
+    const allowed = new Set(
+      WORK_LOCATION_OPTIONS.map((o) => o.value as string),
+    );
+    return allowed.has(mapped) ? [mapped] : (["VM"] as string[]);
+  }, [config?.code]);
+
+  /** Home entity for API calls: first selected entity, else viewing tenant. */
+  const homeTenantId = useMemo(() => {
+    const fromForm = primaryTenantIdFromWorkLocations(formLocationCodes);
+    if (fromForm) return fromForm;
+    return viewingTenantId;
+  }, [formLocationCodes, viewingTenantId]);
+
+  const tenantId = homeTenantId;
+
+  const { data: hq6Roles = [] } = useQuery({
+    queryKey: ["tenant-roles", tenantId],
+    queryFn: () => getTenantRoles(tenantId!),
+    enabled: Boolean(tenantId),
+  });
 
   const {
     data: user,
     isLoading,
     isError,
   } = useQuery({
-    queryKey: ["user", tenantId, recordId],
-    queryFn: () => getUser(recordId, tenantId),
+    queryKey: ["user", viewingTenantId ?? "any", recordId],
+    queryFn: () => getUser(recordId, viewingTenantId),
+    enabled: Boolean(recordId && !isCreate),
+    staleTime: DETAIL_RECORD_STALE_MS,
+  });
+
+  const { data: linkedEmployeeLocations } = useQuery({
+    queryKey: ["user-work-locations", tenantId, recordId],
+    queryFn: async () => {
+      const employees = await getEmployees(tenantId!);
+      const match = employees.find((row) => row.userId === recordId);
+      if (!match) return [] as string[];
+      if (match.locationCodes?.length) return match.locationCodes;
+      return match.locationCode ? [match.locationCode] : [];
+    },
     enabled: Boolean(tenantId && recordId && !isCreate),
     staleTime: DETAIL_RECORD_STALE_MS,
   });
@@ -202,6 +249,10 @@ export function Hq6UserDetailView({
       hq6Roles[0]?.id ??
       "";
 
+    const resolvedLocations =
+      linkedEmployeeLocations && linkedEmployeeLocations.length > 0
+        ? linkedEmployeeLocations
+        : defaultLocationCodes;
     if (isCreate || !user) {
       return {
         surname: "",
@@ -236,7 +287,7 @@ export function Hq6UserDetailView({
         taxPayerId: "",
         department: "",
         designation: "",
-        locationCodes: defaultLocationCodes,
+        locationCodes: isCreate ? defaultLocationCodes : resolvedLocations,
         basicSalary: "",
         salaryPeriod: "month",
       };
@@ -275,14 +326,24 @@ export function Hq6UserDetailView({
       taxPayerId: "",
       department: "",
       designation: "",
-      locationCodes: defaultLocationCodes,
+      locationCodes: resolvedLocations,
       basicSalary: "",
       salaryPeriod: "month",
     };
-  }, [isCreate, user, hq6Roles, defaultLocationCodes]);
+  }, [
+    isCreate,
+    user,
+    hq6Roles,
+    defaultLocationCodes,
+    linkedEmployeeLocations,
+  ]);
 
   const [form, setForm] = useState(initial);
   useEffect(() => setForm(initial), [initial]);
+
+  useEffect(() => {
+    setFormLocationCodes(form.locationCodes);
+  }, [form.locationCodes]);
 
   useEffect(() => {
     if (searchParams.get("action") === "delete" && !isCreate) {
@@ -296,7 +357,7 @@ export function Hq6UserDetailView({
       toast.success("User deactivated");
       await queryClient.invalidateQueries({ queryKey: ["users"] });
       setDeleteOpen(false);
-      router.push(listPath);
+      goToList();
     },
     onError: (err: Error) => {
       toast.error(err.message || "Failed to deactivate user");
@@ -316,11 +377,11 @@ export function Hq6UserDetailView({
     return user ? formatJwtRole(user.role) : "";
   }, [isEdit, form.hq6RoleId, hq6Roles, user]);
 
-  if (!tenantId) {
+  if (!isCreate && !viewingTenantId && isLoading) {
     return (
       <div className="hq6-page p-6" aria-busy>
-        <h1 className="text-xl font-semibold">Users</h1>
-        <p className="mt-2 text-sm text-muted">Connecting to entity…</p>
+        <h1 className="text-xl font-semibold">User</h1>
+        <p className="mt-2 text-sm text-muted">Loading profile…</p>
       </div>
     );
   }
@@ -338,7 +399,7 @@ export function Hq6UserDetailView({
         title="User not found"
         message="This user could not be loaded."
         ctaLabel="Back to users"
-        onCta={() => router.push(listPath)}
+        onCta={() => goToList()}
       />
     );
   }
@@ -389,7 +450,11 @@ export function Hq6UserDetailView({
       return;
     }
     if (isCreate && !form.locationCodes.length) {
-      toast.error("Select at least one work location (entity).");
+      toast.error("Select at least one entity this user belongs to.");
+      return;
+    }
+    if (isCreate && !tenantId) {
+      toast.error("Could not resolve the home entity from the selection.");
       return;
     }
     const jwtRole = mapTenantRoleToJwtRole(selectedHq6);
@@ -506,13 +571,27 @@ export function Hq6UserDetailView({
           },
           { tenantId },
         );
+        if (tenantId && form.locationCodes.length > 0) {
+          try {
+            await syncEmployeeWorkLocations(tenantId, recordId, {
+              locationCodes: form.locationCodes,
+              locationCode: form.locationCodes[0],
+              name,
+            });
+          } catch (locErr) {
+            console.error("[user→locations]", locErr);
+            toast.warning(
+              `Updated ${name}, but work locations failed to save. Re-edit locations if needed.`,
+            );
+          }
+        }
         toast.success(`Updated ${name}`);
         await queryClient.invalidateQueries({
-          queryKey: ["user", tenantId, recordId],
+          queryKey: ["user", viewingTenantId ?? "any", recordId],
         });
       }
       await queryClient.invalidateQueries({ queryKey: ["users"] });
-      router.push(listPath);
+      goToList();
       }, isCreate ? "Creating user" : "Updating user");
     } catch (err) {
       toast.error(
@@ -756,7 +835,11 @@ export function Hq6UserDetailView({
                                 required
                               >
                                 {hq6Roles.length === 0 ? (
-                                  <option value="">No roles — create one under Roles</option>
+                                  <option value="">
+                                    {tenantId
+                                      ? "No roles — create one under Roles"
+                                      : "Pick an entity below to load roles"}
+                                  </option>
                                 ) : (
                                   hq6Roles.map((r) => (
                                     <option key={r.id} value={r.id}>
@@ -765,6 +848,10 @@ export function Hq6UserDetailView({
                                   ))
                                 )}
                               </select>
+                              <p className="help-block">
+                                Role list comes from the first entity in
+                                Entities (below).
+                              </p>
                             </div>
                           </div>
                         </div>
@@ -1171,26 +1258,6 @@ export function Hq6UserDetailView({
                     <div className="tw-flow-root">
                       <div className="tw-py-2 tw-align-middle sm:tw-px-5">
                         <div className="row">
-                          <div className="col-md-6">
-                            <div className="form-group">
-                              <label htmlFor="work_locations">
-                                Work locations:<span className="req">*</span>
-                              </label>
-                              <TagCombobox
-                                id="work_locations"
-                                values={form.locationCodes}
-                                options={[...WORK_LOCATION_OPTIONS]}
-                                placeholder="Add work location…"
-                                onChange={(locationCodes) =>
-                                  setForm((prev) => ({ ...prev, locationCodes }))
-                                }
-                              />
-                              <p className="help-block">
-                                VW, VM, VP, VISP, VSP — pick from the list; remove
-                                tags with ×.
-                              </p>
-                            </div>
-                          </div>
                           <div className="col-md-4">
                             <div className="form-group">
                               <label htmlFor="basic_salary">Basic salary:</label>
@@ -1231,6 +1298,41 @@ export function Hq6UserDetailView({
               </div>
 
               <div className="col-md-12">
+                <div className="box-primary tw-mb-4 tw-transition-all tw-duration-200 tw-bg-white tw-shadow-sm tw-rounded-xl tw-ring-1 hover:tw-shadow-md tw-ring-gray-200">
+                  <div className="tw-p-2 sm:tw-p-3">
+                    <div className="box-header">
+                      <h3 className="box-title">Entities</h3>
+                    </div>
+                    <div className="tw-flow-root">
+                      <div className="tw-py-2 tw-align-middle sm:tw-px-5">
+                        <div className="form-group">
+                          <label htmlFor="work_locations">
+                            Entities this user belongs to:
+                            <span className="req">*</span>
+                          </label>
+                          <TagCombobox
+                            id="work_locations"
+                            values={form.locationCodes}
+                            options={[...WORK_LOCATION_OPTIONS]}
+                            placeholder="Add entity…"
+                            onChange={(locationCodes) =>
+                              setForm((prev) => ({ ...prev, locationCodes }))
+                            }
+                          />
+                          <p className="help-block">
+                            Assign one or more businesses here (no entity
+                            switcher needed). First selection is the home
+                            entity for role &amp; payroll. Multiple enables the
+                            header location switcher (VW, VM→VA, VP, VISP, VSP).
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="col-md-12">
                 <button
                   type="submit"
                   id="submit_user_button"
@@ -1242,7 +1344,7 @@ export function Hq6UserDetailView({
                 <button
                   type="button"
                   className="tw-dw-btn"
-                  onClick={() => router.push(listPath)}
+                  onClick={() => goToList()}
                 >
                   Cancel
                 </button>

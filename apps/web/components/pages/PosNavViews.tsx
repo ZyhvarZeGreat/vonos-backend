@@ -1,5 +1,7 @@
 "use client";
 
+import { Hq6DateTimeInput } from "@/components/hq6/Hq6DateTimeInput";
+
 import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "next/navigation";
@@ -35,6 +37,9 @@ import type {
 } from "@vonos/types";
 import { CatalogMetaListView } from "@/components/pages/CatalogMetaListView";
 import { PosTerminalView } from "@/components/pages/PosTerminalView";
+import { Hq6ImportContactsView } from "@/components/pages/Hq6ImportContactsView";
+import { Hq6ImportProductsView } from "@/components/pages/Hq6ImportProductsView";
+import { Hq6ImportOpeningStockView } from "@/components/pages/Hq6ImportOpeningStockView";
 import { Hq6Field, Hq6Modal } from "@/components/hq6/Hq6Modal";
 import { toast } from "@/stores/toastStore";
 
@@ -500,11 +505,10 @@ export function PaymentsListView() {
             />
           </Hq6Field>
           <Hq6Field label="Paid on *">
-            <input
-              type="datetime-local"
-              className="form-control"
+                <Hq6DateTimeInput
+                  className="form-control"
               value={editPaidOn}
-              onChange={(e) => setEditPaidOn(e.target.value)}
+              onChange={(v) => setEditPaidOn(v)}
             />
           </Hq6Field>
           <Hq6Field label="Payment Method *">
@@ -562,8 +566,9 @@ export const PosPlaceholderViews = {
   "update-price": createPosPlaceholderView("Update Price"),
   "print-labels": createPosPlaceholderView("Print Labels"),
   variations: createPosPlaceholderView("Variations"),
-  "import-products": createPosPlaceholderView("Import Products", "Bulk product import is not available yet."),
-  "import-opening-stock": createPosPlaceholderView("Import Opening Stock"),
+  "import-products": Hq6ImportProductsView,
+  "import-opening-stock": Hq6ImportOpeningStockView,
+  "import-contacts": Hq6ImportContactsView,
   "price-groups": () => <CatalogMetaListView kind="price-groups" />,
   units: () => <CatalogMetaListView kind="units" />,
   categories: () => <CatalogMetaListView kind="categories" />,

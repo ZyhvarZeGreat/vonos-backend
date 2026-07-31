@@ -54,6 +54,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
               tenantRoleName: result.user.tenantRoleName ?? null,
               tenantRolePermissions: result.user.tenantRolePermissions ?? [],
               tenantRoleLocked: result.user.tenantRoleLocked ?? false,
+              allowedTenantCodes: result.user.allowedTenantCodes ?? [],
             });
           })
           .catch(() => {

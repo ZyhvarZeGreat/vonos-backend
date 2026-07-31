@@ -2168,6 +2168,16 @@ html.upos-shell [data-hq6="true"] .hq6-page > .hq6-footer {
   background: #404040;
 }
 
+.hq6-modal-btn-cancel {
+  background: #fff;
+  color: #595959;
+  border: 1px solid #d1d5db;
+}
+
+.hq6-modal-btn-cancel:hover:not(:disabled) {
+  background: #f9fafb;
+}
+
 .hq6-modal-btn-print {
   background: #3b82f6;
   color: #fff;

@@ -1,5 +1,7 @@
 "use client";
 
+import { Hq6DateTimeInput } from "@/components/hq6/Hq6DateTimeInput";
+
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -417,11 +419,10 @@ export function AddPurchaseView() {
                 Purchase Date <span className="req">*</span>
               </span>
               <div className="hq6-form-input-wrap">
-                <input
-                  type="datetime-local"
+                <Hq6DateTimeInput
                   className="hq6-form-input"
                   value={form.date}
-                  onChange={(e) => patchForm({ date: e.target.value })}
+                  onChange={(v) => patchForm({ date: v })}
                 />
               </div>
             </label>
@@ -838,11 +839,10 @@ export function AddPurchaseView() {
                 Paid on <span className="req">*</span>
               </span>
               <div className="hq6-form-input-wrap">
-                <input
-                  type="datetime-local"
+                <Hq6DateTimeInput
                   className="hq6-form-input"
                   value={form.paidOn}
-                  onChange={(e) => patchForm({ paidOn: e.target.value })}
+                  onChange={(v) => patchForm({ paidOn: v })}
                 />
               </div>
             </label>

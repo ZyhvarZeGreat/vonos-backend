@@ -38,6 +38,7 @@ import { buildVaHq6HomeBundle } from './overviewFinance';
 
 const ENTITY_CACHE_TTL_S = 900;
 /** Keep Redis + L1 warm past Neon idle; 0 disables. Default 2 min. */
+const overviewInflight = new Map<string, Promise<OverviewDashboard>>();
 const DEFAULT_HOT_PATHS_WARM_INTERVAL_MS = 120_000;
 
 @Injectable()
@@ -133,48 +134,63 @@ export class OverviewService implements OnModuleInit, OnModuleDestroy {
       return cached;
     }
 
-    const tenant = await this.prisma.tenant.findUnique({
-      where: { id: tenantId },
-      select: { archetype: true, code: true },
-    });
-    if (!tenant) {
-      throw new BadRequestException('Tenant not found');
-    }
+    const existing = overviewInflight.get(cacheKey);
+    if (existing) return existing;
 
-    const db = this.tenantDb.db;
-    const archetype = tenant.archetype;
+    const pending = (async (): Promise<OverviewDashboard> => {
+      try {
+        const again = await this.cache.get<OverviewDashboard>(cacheKey);
+        if (again) return again;
 
-    let result: OverviewDashboard;
-    switch (archetype) {
-      case 'stock':
-        result = await buildStockOverview(db, tenantId, tenant.code, from, to);
-        break;
-      case 'transaction':
-        result = await buildTransactionOverview(
-          db,
-          tenantId,
-          tenant.code,
-          from,
-          to,
+        const tenant = await this.prisma.tenant.findUnique({
+          where: { id: tenantId },
+          select: { archetype: true, code: true },
+        });
+        if (!tenant) {
+          throw new BadRequestException('Tenant not found');
+        }
+
+        const db = this.tenantDb.db;
+        const archetype = tenant.archetype;
+
+        let result: OverviewDashboard;
+        switch (archetype) {
+          case 'stock':
+            result = await buildStockOverview(db, tenantId, tenant.code, from, to);
+            break;
+          case 'transaction':
+            result = await buildTransactionOverview(
+              db,
+              tenantId,
+              tenant.code,
+              from,
+              to,
+            );
+            break;
+          case 'job':
+            result = await buildJobOverview(db, tenantId, tenant.code, from, to);
+            break;
+          case 'appointment':
+            result = await buildAppointmentOverview(db, tenantId, from, to);
+            break;
+          default: {
+            const _exhaustive: never = archetype;
+            return _exhaustive;
+          }
+        }
+
+        await this.cache.set(cacheKey, result, ENTITY_CACHE_TTL_S);
+        this.logger.log(
+          `entity-overview ${Date.now() - startedAt}ms cache=miss tenant=${tenantId} archetype=${archetype}`,
         );
-        break;
-      case 'job':
-        result = await buildJobOverview(db, tenantId, tenant.code, from, to);
-        break;
-      case 'appointment':
-        result = await buildAppointmentOverview(db, tenantId, from, to);
-        break;
-      default: {
-        const _exhaustive: never = archetype;
-        return _exhaustive;
+        return result;
+      } finally {
+        overviewInflight.delete(cacheKey);
       }
-    }
+    })();
 
-    await this.cache.set(cacheKey, result, ENTITY_CACHE_TTL_S);
-    this.logger.log(
-      `entity-overview ${Date.now() - startedAt}ms cache=miss tenant=${tenantId} archetype=${archetype}`,
-    );
-    return result;
+    overviewInflight.set(cacheKey, pending);
+    return pending;
   }
 
   async stockAlertPanel(): Promise<OverviewPanel> {

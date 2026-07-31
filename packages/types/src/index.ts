@@ -12,6 +12,7 @@ export * from "./vehicle";
 export * from "./appointment";
 export * from "./sale";
 export * from "./customer";
+export * from "./customerContactDetails";
 export * from "./tenantConfig";
 export * from "./businessSettings";
 export * from "./group";

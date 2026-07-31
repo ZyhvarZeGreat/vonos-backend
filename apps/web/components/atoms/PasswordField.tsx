@@ -73,15 +73,25 @@ export function PasswordField({
         />
         <button
           type="button"
-          onClick={() => setShow((prev) => !prev)}
+          tabIndex={-1}
+          onMouseDown={(e) => {
+            // Avoid blur→toggle races that flip visibility twice.
+            e.preventDefault();
+          }}
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            setShow((prev) => !prev);
+          }}
           aria-label={show ? "Hide password" : "Show password"}
           aria-pressed={show}
           style={{
             position: "absolute",
             right: 10,
-            top: 0,
-            bottom: 0,
+            top: "50%",
+            transform: "translateY(-50%)",
             width: 36,
+            height: 36,
             display: "flex",
             alignItems: "center",
             justifyContent: "center",

@@ -2,15 +2,22 @@
 
 import type { ReactNode } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useTenantId } from "@/lib/hooks/useRouteTenant";
 import { AdminEntitySwitcher } from "@/components/molecules/AdminEntitySwitcher";
 
 /**
- * VAG HRM pages need a concrete business selected in “Show info for”
- * so the same VA user/role forms and APIs have a tenantId.
+ * VAG Users: no entity gate — add/edit assigns entities on the form itself.
+ * Roles still need a concrete “Show info for” business (roles are per-tenant).
  */
 export function AdminHrmTenantGate({ children }: { children: ReactNode }) {
   const tenantId = useTenantId();
+  const pathname = usePathname() ?? "";
+  const isUsersHrm = pathname.startsWith("/admin/hrm/users");
+
+  if (isUsersHrm) {
+    return <>{children}</>;
+  }
 
   if (!tenantId) {
     return (
@@ -19,8 +26,7 @@ export function AdminHrmTenantGate({ children }: { children: ReactNode }) {
           Select a business
         </h2>
         <p className="tw-mb-0 tw-text-sm tw-text-[#6b7280]">
-          Manage users, add users, and add roles use the same forms as each
-          app. Pick which business to work on first.
+          Roles are per entity. Pick which business to manage roles for.
         </p>
         <div className="tw-max-w-md">
           <label className="tw-mb-1 tw-block tw-text-xs tw-font-semibold tw-uppercase tw-tracking-wide tw-text-[#6b7280]">

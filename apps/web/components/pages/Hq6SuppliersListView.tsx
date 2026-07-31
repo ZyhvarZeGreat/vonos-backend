@@ -582,54 +582,54 @@ export function Hq6SuppliersListView() {
                                 >
                                   <td>
                                     <div className="btn-group">
-                                      <Hq6ActionsMenu
-                                        items={[
-                                          {
-                                            id: "pay",
-                                            label: "Pay",
-                                            onClick: () => {
+          <Hq6ActionsMenu
+            items={[
+              {
+                id: "pay",
+                label: "Pay",
+                onClick: () => {
                                               if (tenantId)
                                                 prefetchPaymentAccountsRef(
                                                   queryClient,
                                                   tenantId,
                                                 );
-                                              setPayTarget(row);
-                                            },
-                                          },
+                  setPayTarget(row);
+                },
+              },
                                           {
                                             id: "view",
                                             label: "View",
                                             onClick: () => goToDetail(row.id),
                                           },
-                                          {
-                                            id: "edit",
-                                            label: "Edit",
-                                            onClick: () => {
+              {
+                id: "edit",
+                label: "Edit",
+                onClick: () => {
                                               if (tenantId)
                                                 prefetchContactModalRefs(
                                                   queryClient,
                                                   tenantId,
                                                 );
                                               setEditTarget(row);
-                                            },
-                                          },
-                                          {
-                                            id: "delete",
-                                            label: "Delete",
-                                            danger: true,
-                                            onClick: () =>
+                },
+              },
+              {
+                id: "delete",
+                label: "Delete",
+                danger: true,
+                onClick: () =>
                                               router.push(
                                                 `${detailPath(row.id)}?action=delete`,
                                               ),
-                                          },
-                                          {
-                                            id: "deactivate",
+              },
+              {
+                id: "deactivate",
                                             label:
                                               row.status === "inactive"
                                                 ? "Activate"
                                                 : "Deactivate",
-                                            onClick: () => {
-                                              if (!tenantId) return;
+                onClick: () => {
+                  if (!tenantId) return;
                                               const next =
                                                 row.status === "inactive"
                                                   ? "active"
@@ -639,58 +639,58 @@ export function Hq6SuppliersListView() {
                                                 row.id,
                                                 next,
                                               )
-                                                .then(async () => {
-                                                  toast.success(
-                                                    next === "inactive"
-                                                      ? "Supplier deactivated"
-                                                      : "Supplier activated",
-                                                  );
-                                                  await invalidate();
-                                                })
-                                                .catch((err) =>
-                                                  toast.error(
-                                                    err instanceof Error
-                                                      ? err.message
-                                                      : "Failed to update status",
-                                                  ),
-                                                );
-                                            },
-                                          },
-                                          {
-                                            id: "ledger",
-                                            label: "Ledger",
+                    .then(async () => {
+                      toast.success(
+                        next === "inactive"
+                          ? "Supplier deactivated"
+                          : "Supplier activated",
+                      );
+                      await invalidate();
+                    })
+                    .catch((err) =>
+                      toast.error(
+                        err instanceof Error
+                          ? err.message
+                          : "Failed to update status",
+                      ),
+                    );
+                },
+              },
+              {
+                id: "ledger",
+                label: "Ledger",
                                             dividerBefore: true,
                                             onClick: () =>
                                               router.push(
                                                 `${detailPath(row.id)}?view=ledger`,
                                               ),
-                                          },
-                                          {
-                                            id: "purchases",
-                                            label: "Purchases",
-                                            onClick: () =>
+              },
+              {
+                id: "purchases",
+                label: "Purchases",
+                onClick: () =>
                                               router.push(
                                                 `${detailPath(row.id)}?view=purchase`,
                                               ),
-                                          },
-                                          {
-                                            id: "stock_report",
-                                            label: "Stock Report",
-                                            onClick: () =>
+              },
+              {
+                id: "stock_report",
+                label: "Stock Report",
+                onClick: () =>
                                               router.push(
                                                 `${detailPath(row.id)}?view=stock_report`,
                                               ),
-                                          },
-                                          {
-                                            id: "documents",
-                                            label: "Documents & Note",
-                                            onClick: () =>
+              },
+              {
+                id: "documents",
+                label: "Documents & Note",
+                onClick: () =>
                                               router.push(
                                                 `${detailPath(row.id)}?view=documents_and_notes`,
                                               ),
-                                          },
-                                        ]}
-                                      />
+              },
+            ]}
+          />
                                     </div>
                                   </td>
                                   {showCol("contactId") ? (
@@ -823,7 +823,7 @@ export function Hq6SuppliersListView() {
                                 ))}
                               </tr>
                             </tfoot>
-                          ) : null}
+              ) : null}
                         </table>
                       </div>
 
@@ -834,7 +834,7 @@ export function Hq6SuppliersListView() {
                         aria-live="polite"
                       >
                         {`Showing ${from} to ${to} of ${(totalCount ?? to).toLocaleString()} entries`}
-                      </div>
+            </div>
                       <div
                         className="dataTables_paginate paging_simple_numbers"
                         id="contact_table_paginate"

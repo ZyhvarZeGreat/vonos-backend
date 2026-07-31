@@ -1,5 +1,7 @@
 "use client";
 
+import { Hq6DateTimeInput } from "@/components/hq6/Hq6DateTimeInput";
+
 import { saleCustomerSchema } from "@/lib/validation/schemas";
 import { parseForm } from "@/lib/validation/parseForm";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -844,11 +846,10 @@ export function AddSaleForm({
                 Sale Date <span className="req">*</span>:
               </span>
               <div className="hq6-form-input-wrap">
-                <input
-                  type="datetime-local"
+                <Hq6DateTimeInput
                   className="hq6-form-input"
                   value={form.saleDate}
-                  onChange={(e) => patchForm({ saleDate: e.target.value })}
+                  onChange={(v) => patchForm({ saleDate: v })}
                 />
               </div>
             </label>
@@ -897,11 +898,10 @@ export function AddSaleForm({
                 Vehicle Time In (Date entered) <span className="req">*</span>
               </span>
               <div className="hq6-form-input-wrap">
-                <input
-                  type="datetime-local"
+                <Hq6DateTimeInput
                   className="hq6-form-input"
                   value={form.vehicleTimeIn}
-                  onChange={(e) => patchForm({ vehicleTimeIn: e.target.value })}
+                  onChange={(v) => patchForm({ vehicleTimeIn: v })}
                 />
               </div>
             </label>
@@ -909,13 +909,10 @@ export function AddSaleForm({
             <label className="hq6-form-label">
               <span>Vehicle Release Date:</span>
               <div className="hq6-form-input-wrap">
-                <input
-                  type="datetime-local"
+                <Hq6DateTimeInput
                   className="hq6-form-input"
                   value={form.vehicleReleaseDate}
-                  onChange={(e) =>
-                    patchForm({ vehicleReleaseDate: e.target.value })
-                  }
+                  onChange={(v) => patchForm({ vehicleReleaseDate: v })}
                 />
               </div>
             </label>
@@ -1516,11 +1513,10 @@ export function AddSaleForm({
                   Paid on <span className="req">*</span>
                 </span>
                 <div className="hq6-form-input-wrap">
-                  <input
-                    type="datetime-local"
-                    className="hq6-form-input"
+                <Hq6DateTimeInput
+                  className="hq6-form-input"
                     value={form.paidOn}
-                    onChange={(e) => patchForm({ paidOn: e.target.value })}
+                    onChange={(v) => patchForm({ paidOn: v })}
                   />
                 </div>
               </label>

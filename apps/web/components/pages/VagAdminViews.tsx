@@ -27,6 +27,7 @@ import {
   formatNumberCompact,
 } from "@/lib/utils/formatCurrency";
 import { useAuthStore } from "@/stores/authStore";
+import { welcomeFirstName } from "@/lib/utils/welcomeFirstName";
 import type { GroupOverviewAlert, ReportsKpi } from "@vonos/types";
 import {
   Hq6IconShoppingCart,
@@ -191,7 +192,7 @@ function GroupEntityCard({
  */
 export function VagGroupOverview() {
   const userName = useAuthStore((s) => s.name) ?? "Admin";
-  const firstName = userName.split(/\s+/)[0] || userName;
+  const firstName = welcomeFirstName(userName, "Admin");
   const { dateRange, setDateRange, customDateRange, setCustomDateRange, bounds } =
     useListPageFilters({
       defaultDateRange: "last_7_days",

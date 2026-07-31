@@ -1,10 +1,13 @@
 "use client";
 
+import { Hq6DateTimeInput } from "@/components/hq6/Hq6DateTimeInput";
+
 import { paymentAmountSchema } from "@/lib/validation/schemas";
 import { parseForm } from "@/lib/validation/parseForm";
 import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Eye, Mail, Pencil, Printer, Trash2 } from "lucide-react";
+import { Hq6ConfirmModal } from "@/components/hq6/Hq6ConfirmModal";
 import { Hq6Field, Hq6Modal } from "@/components/hq6/Hq6Modal";
 import {
   deleteSalePayment,
@@ -70,6 +73,20 @@ const METHOD_OPTIONS = [
   { value: "other", label: "Other" },
 ];
 
+function extractBankAccountNo(note: string | null | undefined): string {
+  if (!note) return "";
+  const match = note.match(/Bank Account No:\s*(.+?)(?:\s*\||$)/i);
+  return match?.[1]?.trim() ?? "";
+}
+
+function stripBankAccountFromNote(note: string | null | undefined): string {
+  if (!note) return "";
+  return note
+    .replace(/\s*\|\s*Bank Account No:\s*.+$/i, "")
+    .replace(/^Bank Account No:\s*.+$/i, "")
+    .trim();
+}
+
 /** HQ6 “View Payments” modal for sales or purchases. */
 export function Hq6ViewPaymentsModal({
   open,
@@ -91,6 +108,7 @@ export function Hq6ViewPaymentsModal({
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState<SalePaymentRow | null>(null);
   const [viewing, setViewing] = useState<SalePaymentRow | null>(null);
+  const [deleting, setDeleting] = useState<SalePaymentRow | null>(null);
   const [printRow, setPrintRow] = useState<SalePaymentRow | null>(null);
   const [editAmount, setEditAmount] = useState("");
   const [editMethod, setEditMethod] = useState("cash");
@@ -128,13 +146,15 @@ export function Hq6ViewPaymentsModal({
     if (!editing) return;
     setEditAmount(String(editing.amount));
     setEditMethod(editing.method ?? "cash");
-    setEditNote(editing.note ?? "");
+    setEditNote(stripBankAccountFromNote(editing.note));
     setEditPaidOn(
-      editing.paidOn ? editing.paidOn.slice(0, 16) : new Date().toISOString().slice(0, 16),
+      editing.paidOn
+        ? editing.paidOn.slice(0, 16)
+        : new Date().toISOString().slice(0, 16),
     );
     setEditRef(editing.paymentRefNo ?? "");
     setEditAccountId(editing.accountId ?? "");
-    setEditBankAccountNo("");
+    setEditBankAccountNo(extractBankAccountNo(editing.note));
     setEditDocName("");
   }, [editing]);
 
@@ -191,6 +211,7 @@ export function Hq6ViewPaymentsModal({
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: paymentsQueryKey });
       await queryClient.invalidateQueries({ queryKey: ["sales"] });
+      setDeleting(null);
     },
   });
 
@@ -278,8 +299,10 @@ export function Hq6ViewPaymentsModal({
             <div className="space-y-1">
               {context.invoiceNo ? (
                 <p>
-                  <span className="font-semibold">Reference No:</span> #
-                  {context.invoiceNo}
+                  <span className="font-semibold">
+                    {kind === "sale" ? "Invoice No:" : "Reference No:"}
+                  </span>{" "}
+                  #{context.invoiceNo}
                 </p>
               ) : null}
               {context.date ? (
@@ -368,12 +391,14 @@ export function Hq6ViewPaymentsModal({
                     <td className="py-2 pr-3">{row.note ?? ""}</td>
                     <td className="py-2 pr-3">{row.accountName ?? "—"}</td>
                     <td className="py-2">
-                      <div className="flex flex-wrap items-center gap-1">
+                      {/* UPOS: outline edit (info) / delete (error) / view (primary) */}
+                      <div className="flex flex-wrap items-center gap-1.5">
                         {kind === "sale" ? (
                           <button
                             type="button"
-                            className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-[#3b82f6] text-white"
+                            className="tw-dw-btn tw-dw-btn-xs tw-dw-btn-outline tw-dw-btn-info"
                             title="Edit payment"
+                            aria-label="Edit payment"
                             onClick={() => setEditing(row)}
                           >
                             <Pencil className="h-3.5 w-3.5" />
@@ -382,37 +407,23 @@ export function Hq6ViewPaymentsModal({
                         {kind === "sale" ? (
                           <button
                             type="button"
-                            className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-[#ef4444] text-white"
+                            className="tw-dw-btn tw-dw-btn-xs tw-dw-btn-outline tw-dw-btn-error"
                             title="Delete payment"
+                            aria-label="Delete payment"
                             disabled={deleteMutation.isPending}
-                            onClick={() => {
-                              if (
-                                window.confirm(
-                                  "Delete this payment? Sale payment status will be recalculated.",
-                                )
-                              ) {
-                                deleteMutation.mutate(row.id);
-                              }
-                            }}
+                            onClick={() => setDeleting(row)}
                           >
                             <Trash2 className="h-3.5 w-3.5" />
                           </button>
                         ) : null}
                         <button
                           type="button"
-                          className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-[#8b5cf6] text-white"
+                          className="tw-dw-btn tw-dw-btn-xs tw-dw-btn-outline tw-dw-btn-primary"
                           title="View payment"
+                          aria-label="View payment"
                           onClick={() => setViewing(row)}
                         >
                           <Eye className="h-3.5 w-3.5" />
-                        </button>
-                        <button
-                          type="button"
-                          className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-[#0ea5e9] text-white"
-                          title="Print payment"
-                          onClick={() => printPaymentDoc(row)}
-                        >
-                          <Printer className="h-3.5 w-3.5" />
                         </button>
                       </div>
                     </td>
@@ -539,11 +550,10 @@ export function Hq6ViewPaymentsModal({
               </select>
             </Hq6Field>
             <Hq6Field label="Paid on" required>
-              <input
-                className="hq6-modal-input"
-                type="datetime-local"
+                <Hq6DateTimeInput
+                  className="hq6-modal-input"
                 value={editPaidOn}
-                onChange={(e) => setEditPaidOn(e.target.value)}
+                onChange={(v) => setEditPaidOn(v)}
               />
             </Hq6Field>
             <Hq6Field label="Amount" required>
@@ -574,33 +584,32 @@ export function Hq6ViewPaymentsModal({
             </p>
           </Hq6Field>
 
-          <div className="grid gap-3 sm:grid-cols-2">
-            <Hq6Field label="Payment Account">
-              <select
-                className="hq6-modal-input"
-                value={editAccountId}
-                onChange={(e) => setEditAccountId(e.target.value)}
-              >
-                <option value="">None</option>
-                {paymentAccounts.map((acc) => (
-                  <option key={acc.id} value={acc.id}>
-                    {acc.name}
-                    {typeof acc.balance === "number"
-                      ? ` (Balance: ${acc.balance.toLocaleString()})`
-                      : ""}
-                  </option>
-                ))}
-              </select>
-            </Hq6Field>
-            <Hq6Field label="Bank Account No">
-              <input
-                className="hq6-modal-input"
-                placeholder="Bank Account No"
-                value={editBankAccountNo}
-                onChange={(e) => setEditBankAccountNo(e.target.value)}
-              />
-            </Hq6Field>
-          </div>
+          <Hq6Field label="Payment Account">
+            <select
+              className="hq6-modal-input"
+              value={editAccountId}
+              onChange={(e) => setEditAccountId(e.target.value)}
+            >
+              <option value="">None</option>
+              {paymentAccounts.map((acc) => (
+                <option key={acc.id} value={acc.id}>
+                  {acc.name}
+                  {typeof acc.balance === "number"
+                    ? ` (Balance: ${acc.balance.toLocaleString()})`
+                    : ""}
+                </option>
+              ))}
+            </select>
+          </Hq6Field>
+
+          <Hq6Field label="Bank Account No">
+            <input
+              className="hq6-modal-input"
+              placeholder="Bank Account No"
+              value={editBankAccountNo}
+              onChange={(e) => setEditBankAccountNo(e.target.value)}
+            />
+          </Hq6Field>
 
           <Hq6Field label="Payment Note">
             <textarea
@@ -644,28 +653,23 @@ export function Hq6ViewPaymentsModal({
       >
         {viewing ? (
           <div className="space-y-4 text-sm text-[#111827]">
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid gap-6 sm:grid-cols-2">
               <div className="space-y-1">
-                <p>
-                  <span className="font-normal">Customer:</span>{" "}
-                  <span className="font-semibold">
-                    {context?.customerName ?? context?.supplierName ?? "—"}
-                  </span>
+                <p>Customer:</p>
+                <p className="font-semibold">
+                  {context?.customerName ?? context?.supplierName ?? "—"}
                 </p>
                 {context?.customerPhone ? (
-                  <p>{context.customerPhone}</p>
+                  <p>Mobile: {context.customerPhone}</p>
                 ) : null}
               </div>
               <div className="space-y-1">
-                <p>
-                  <span className="font-normal">Business:</span>{" "}
-                  <span className="font-semibold">
-                    {context?.businessName ?? "—"}
-                  </span>
+                <p>Business:</p>
+                <p className="font-semibold">
+                  {[context?.businessName, context?.businessLocation]
+                    .filter(Boolean)
+                    .join(" ") || "—"}
                 </p>
-                {context?.businessLocation ? (
-                  <p>{context.businessLocation}</p>
-                ) : null}
                 {context?.businessMobile ? (
                   <p>Mobile: {context.businessMobile}</p>
                 ) : null}
@@ -677,42 +681,48 @@ export function Hq6ViewPaymentsModal({
             <div className="grid gap-4 border-t border-[#e5e7eb] pt-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <p>
-                  Amount :{" "}
-                  <span className="font-semibold">
-                    {formatHq6Currency(viewing.amount, viewing.currency)}
-                  </span>
+                  <span className="font-semibold">Amount :</span>{" "}
+                  {formatHq6Currency(viewing.amount, viewing.currency)}
                 </p>
                 <p>
-                  Payment Method :{" "}
-                  <span className="font-semibold">
-                    {formatHq6PaymentMethod(viewing.method)}
-                  </span>
+                  <span className="font-semibold">Payment Method :</span>{" "}
+                  {formatHq6PaymentMethod(viewing.method)}
                 </p>
                 <p>
-                  Payment Note :{" "}
-                  <span className="font-semibold">{viewing.note || ""}</span>
+                  <span className="font-semibold">Payment Note :</span>{" "}
+                  {viewing.note || ""}
                 </p>
               </div>
               <div className="space-y-2">
                 <p>
-                  Reference No:{" "}
-                  <span className="font-semibold">
-                    {viewing.paymentRefNo ?? context?.invoiceNo ?? "—"}
-                  </span>
+                  <span className="font-semibold">Reference No:</span>{" "}
+                  {viewing.paymentRefNo ?? context?.invoiceNo ?? "—"}
                 </p>
                 <p>
-                  Paid on:{" "}
-                  <span className="font-semibold">
-                    {viewing.paidOn
-                      ? formatHq6DateTime(viewing.paidOn)
-                      : "—"}
-                  </span>
+                  <span className="font-semibold">Paid on:</span>{" "}
+                  {viewing.paidOn ? formatHq6DateTime(viewing.paidOn) : "—"}
                 </p>
               </div>
             </div>
           </div>
         ) : null}
       </Hq6Modal>
+
+      <Hq6ConfirmModal
+        open={Boolean(deleting)}
+        onClose={() => setDeleting(null)}
+        alertStyle
+        title="Are you sure ?"
+        message="This payment will be deleted."
+        confirmLabel="OK"
+        cancelLabel="Cancel"
+        danger
+        confirming={deleteMutation.isPending}
+        onConfirm={() => {
+          if (!deleting) return;
+          deleteMutation.mutate(deleting.id);
+        }}
+      />
     </>
   );
 }

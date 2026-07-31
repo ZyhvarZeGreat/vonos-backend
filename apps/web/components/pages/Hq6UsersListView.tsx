@@ -16,6 +16,8 @@ import {
   deactivateUser,
   getUsersPage,
   getAllUsers,
+  getAllTenantUsersPage,
+  getAllTenantUsers,
   type UserListRow,
 } from "@/lib/api/users";
 import { useServerListPage } from "@/lib/hooks/useServerListPage";
@@ -23,6 +25,7 @@ import { useListExport } from "@/lib/hooks/useListExport";
 import { useListPageFilters } from "@/lib/hooks/useListPageFilters";
 import { useRecordNavigation } from "@/lib/hooks/useRecordNavigation";
 import { useTenantId } from "@/lib/hooks/useRouteTenant";
+import { usePathname } from "next/navigation";
 import { useHq6Permissions } from "@/lib/hooks/useHq6Permissions";
 import { prefetchUserDetail } from "@/lib/query/prefetchListDetails";
 import { toast } from "@/stores/toastStore";
@@ -92,6 +95,10 @@ const PlusIcon = (
 
 export function Hq6UsersListView() {
   const tenantId = useTenantId();
+  const pathname = usePathname() ?? "";
+  const isAdminHrm = pathname.startsWith("/admin/hrm/users");
+  /** VAG HRM users list is group-wide — no entity switch required. */
+  const useAllTenants = isAdminHrm;
   const router = useRouter();
   const queryClient = useQueryClient();
   const { detailPath, prefetchDetail } = useRecordNavigation("users");
@@ -103,7 +110,7 @@ export function Hq6UsersListView() {
 
   const deactivateMutation = useMutation({
     mutationFn: (row: UserListRow) =>
-      deactivateUser(row.id, { tenantId }),
+      deactivateUser(row.id, { tenantId: tenantId ?? row.tenantId ?? null }),
     onSuccess: async (_data, row) => {
       toast.success(`Deactivated ${row.name}`);
       setDeleteTarget(null);
@@ -129,23 +136,30 @@ export function Hq6UsersListView() {
     error,
     goToPage,
   } = useServerListPage<UserListRow>({
-    queryKey: ["users", tenantId, "hq6"],
-    enabled: Boolean(tenantId),
+    queryKey: ["users", useAllTenants ? "all" : tenantId, "hq6"],
+    enabled: useAllTenants || Boolean(tenantId),
     defaultPageSize: USERS_PAGE_SIZE,
     search,
     fetchPage: (cursor, limit, _sort, opts) =>
-      getUsersPage(tenantId!, cursor, limit, {
-        search: search.trim() || undefined,
-        includeSummary: opts?.includeSummary,
-      }),
+      useAllTenants
+        ? getAllTenantUsersPage(cursor, limit, {
+            search: search.trim() || undefined,
+            includeSummary: opts?.includeSummary,
+          })
+        : getUsersPage(tenantId!, cursor, limit, {
+            search: search.trim() || undefined,
+            includeSummary: opts?.includeSummary,
+          }),
   });
 
   const exportList = useListExport();
 
   const handleExport = useCallback(() => {
-    if (!tenantId) return;
+    if (!useAllTenants && !tenantId) return;
     void (async () => {
-      const rows = await getAllUsers(tenantId);
+      const rows = useAllTenants
+        ? await getAllTenantUsers()
+        : await getAllUsers(tenantId!);
       const q = search.trim().toLowerCase();
       const filtered = q
         ? rows.filter(
@@ -171,7 +185,7 @@ export function Hq6UsersListView() {
         "Export Users",
       );
     })();
-  }, [exportList, search, tenantId]);
+  }, [exportList, search, tenantId, useAllTenants]);
 
   const warmUser = (row: UserListRow) => {
     prefetchDetail(row.id);

@@ -37,6 +37,11 @@ export interface LoginUser {
   tenantRoleName?: string | null;
   tenantRolePermissions?: string[];
   tenantRoleLocked?: boolean;
+  /**
+   * Entity codes this user may work in (from admin work-location clearance).
+   * When length > 1, the header shows a location switcher.
+   */
+  allowedTenantCodes?: string[];
 }
 
 export interface LoginSuccessResponse {

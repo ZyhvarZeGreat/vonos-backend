@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
   UnauthorizedException,
@@ -36,11 +37,24 @@ import {
   verifyTotpCode,
 } from '../../common/utils/totp';
 import {
+  normalizeWorkLocationToTenantCode,
+  uniqueTenantCodesFromWorkLocations,
+} from '../../common/utils/workLocationTenantCodes';
+import {
   PASSWORD_RESET_HOURS,
   REFRESH_TOKEN_DAYS,
   ROLES_REQUIRING_2FA,
 } from './auth.constants';
 import { AuthMailService } from './auth-mail.service';
+
+type SessionUser = User & {
+  tenantRole?: {
+    id: string;
+    name: string;
+    permissions: string[];
+    locked: boolean;
+  } | null;
+};
 
 interface AccessTokenPayload {
   sub: string;
@@ -137,7 +151,10 @@ export class AuthService {
     return this.issueSession(user);
   }
 
-  async refreshSession(refreshTokenRaw: string): Promise<SessionResult> {
+  async refreshSession(
+    refreshTokenRaw: string,
+    preferredTenantId?: string | null,
+  ): Promise<SessionResult> {
     const tokenHash = hashOpaqueToken(refreshTokenRaw);
     const stored = await this.prisma.authToken.findFirst({
       where: {
@@ -162,7 +179,69 @@ export class AuthService {
       data: { usedAt: new Date() },
     });
 
-    return this.issueSession(stored.user);
+    const activeTenantId = await this.resolveActiveTenantIdForSession(
+      stored.user,
+      preferredTenantId,
+    );
+    return this.issueSession(stored.user, { activeTenantId });
+  }
+
+  /**
+   * Re-issue access token scoped to a cleared work location (entity).
+   * Home `User.tenantId` is unchanged — only the JWT / session tenant switches.
+   */
+  async switchWorkingTenant(
+    userId: string,
+    tenantCode: string,
+  ): Promise<LoginSuccessResponse> {
+    const user = await this.prisma.user.findFirst({
+      where: { id: userId, deletedAt: null, status: 'active' },
+      include: {
+        tenantRole: {
+          select: {
+            id: true,
+            name: true,
+            permissions: true,
+            locked: true,
+          },
+        },
+      },
+    });
+    if (!user) throw new UnauthorizedException('User not found');
+    if (user.role === 'super_admin') {
+      throw new BadRequestException(
+        'Super admins use the entity switcher, not work-location switch',
+      );
+    }
+
+    const allowedCodes = await this.resolveAllowedTenantCodes(user);
+    const mapped = normalizeWorkLocationToTenantCode(tenantCode);
+    if (!mapped || !allowedCodes.includes(mapped)) {
+      throw new ForbiddenException(
+        'You do not have clearance for that location',
+      );
+    }
+
+    const tenant = await this.prisma.tenant.findFirst({
+      where: { code: mapped, deletedAt: null },
+      select: { id: true, code: true },
+    });
+    if (!tenant) throw new NotFoundException('Location not found');
+
+    const loginUser = await this.buildLoginUser(user, {
+      activeTenantId: tenant.id,
+      allowedTenantCodes: allowedCodes,
+    });
+
+    return {
+      accessToken: this.signAccessToken({
+        id: user.id,
+        tenantId: tenant.id,
+        role: user.role,
+        tokenVersion: user.tokenVersion,
+      }),
+      user: loginUser,
+    };
   }
 
   async logout(refreshTokenRaw?: string): Promise<void> {
@@ -385,14 +464,8 @@ export class AuthService {
   }
 
   private async issueSession(
-    user: User & {
-      tenantRole?: {
-        id: string;
-        name: string;
-        permissions: string[];
-        locked: boolean;
-      } | null;
-    },
+    user: SessionUser,
+    options?: { activeTenantId?: string | null },
   ): Promise<SessionResult> {
     const { raw, hash } = generateOpaqueToken();
     // One Neon write on the critical path. lastLoginAt is best-effort.
@@ -411,6 +484,35 @@ export class AuthService {
       })
       .catch(() => undefined);
 
+    const allowedTenantCodes = await this.resolveAllowedTenantCodes(user);
+    const activeTenantId =
+      options?.activeTenantId !== undefined
+        ? options.activeTenantId
+        : user.tenantId;
+    const loginUser = await this.buildLoginUser(user, {
+      activeTenantId,
+      allowedTenantCodes,
+    });
+
+    return {
+      accessToken: this.signAccessToken({
+        id: user.id,
+        tenantId: loginUser.tenantId,
+        role: user.role,
+        tokenVersion: user.tokenVersion,
+      }),
+      refreshTokenRaw: raw,
+      user: loginUser,
+    };
+  }
+
+  private async buildLoginUser(
+    user: SessionUser,
+    options: {
+      activeTenantId?: string | null;
+      allowedTenantCodes?: string[];
+    },
+  ): Promise<LoginUser> {
     let tenantRole = user.tenantRole ?? null;
     if (!tenantRole && user.tenantRoleId) {
       tenantRole = await this.prisma.tenantRole.findFirst({
@@ -424,12 +526,19 @@ export class AuthService {
       });
     }
 
-    const loginUser: LoginUser = {
+    const allowedTenantCodes =
+      options.allowedTenantCodes ??
+      (await this.resolveAllowedTenantCodes(user));
+
+    return {
       id: user.id,
       email: user.email,
       name: user.name,
       role: user.role,
-      tenantId: user.tenantId,
+      tenantId:
+        options.activeTenantId !== undefined
+          ? options.activeTenantId
+          : user.tenantId,
       tenantRoleId: tenantRole?.id ?? user.tenantRoleId ?? null,
       tenantRoleName: tenantRole?.name ?? null,
       tenantRolePermissions: tenantRole
@@ -438,13 +547,60 @@ export class AuthService {
           : tenantRole.permissions
         : [],
       tenantRoleLocked: tenantRole?.locked ?? false,
+      allowedTenantCodes:
+        user.role === 'super_admin' ? [] : allowedTenantCodes,
     };
+  }
 
-    return {
-      accessToken: this.signAccessToken(user),
-      refreshTokenRaw: raw,
-      user: loginUser,
-    };
+  /** Entity codes from linked employee work locations + home tenant. */
+  private async resolveAllowedTenantCodes(
+    user: Pick<User, 'id' | 'tenantId' | 'role'>,
+  ): Promise<string[]> {
+    if (user.role === 'super_admin') return [];
+
+    const [employee, homeTenant] = await Promise.all([
+      this.prisma.employee.findFirst({
+        where: { userId: user.id, deletedAt: null },
+        select: { locationCodes: true, locationCode: true },
+        orderBy: { updatedAt: 'desc' },
+      }),
+      user.tenantId
+        ? this.prisma.tenant.findFirst({
+            where: { id: user.tenantId, deletedAt: null },
+            select: { code: true },
+          })
+        : Promise.resolve(null),
+    ]);
+
+    const workLocations = [
+      ...(employee?.locationCodes ?? []),
+      ...(employee?.locationCode ? [employee.locationCode] : []),
+    ];
+
+    return uniqueTenantCodesFromWorkLocations(
+      workLocations,
+      homeTenant?.code ?? null,
+    );
+  }
+
+  private async resolveActiveTenantIdForSession(
+    user: Pick<User, 'id' | 'tenantId' | 'role'>,
+    preferredTenantId?: string | null,
+  ): Promise<string | null> {
+    if (user.role === 'super_admin') return user.tenantId;
+    if (!preferredTenantId || preferredTenantId === user.tenantId) {
+      return user.tenantId;
+    }
+
+    const preferred = await this.prisma.tenant.findFirst({
+      where: { id: preferredTenantId, deletedAt: null },
+      select: { id: true, code: true },
+    });
+    if (!preferred) return user.tenantId;
+
+    const allowed = await this.resolveAllowedTenantCodes(user);
+    if (!allowed.includes(preferred.code)) return user.tenantId;
+    return preferred.id;
   }
 
   private signAccessToken(

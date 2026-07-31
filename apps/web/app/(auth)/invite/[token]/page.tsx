@@ -59,6 +59,7 @@ export default function AcceptInvitePage() {
         tenantRoleName: result.user.tenantRoleName ?? null,
         tenantRolePermissions: result.user.tenantRolePermissions ?? [],
         tenantRoleLocked: result.user.tenantRoleLocked ?? false,
+        allowedTenantCodes: result.user.allowedTenantCodes ?? [],
       });
       router.replace(getPostLoginPath(result.user.role, result.user.tenantId));
     } catch (err) {

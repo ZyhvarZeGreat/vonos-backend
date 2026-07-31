@@ -1,3 +1,5 @@
+import type { CustomerContactDetails } from "./customerContactDetails";
+
 export interface Customer {
   id: string;
   tenantId: string;
@@ -27,6 +29,8 @@ export interface Customer {
   totalSellReturn?: number;
   totalAdvance?: number;
   status?: "active" | "inactive";
+  /** Ultimate POS contact form extras */
+  details?: CustomerContactDetails | null;
 }
 
 export interface CustomerFilters {
@@ -58,6 +62,7 @@ export interface CreateCustomerInput {
   openingBalance?: number;
   status?: "active" | "inactive";
   taxNumber?: string | null;
+  details?: CustomerContactDetails | null;
 }
 
 export interface UpdateCustomerInput {
@@ -69,6 +74,7 @@ export interface UpdateCustomerInput {
   openingBalance?: number;
   status?: "active" | "inactive";
   taxNumber?: string | null;
+  details?: CustomerContactDetails | null;
 }
 
 export interface PayContactDueRequest {

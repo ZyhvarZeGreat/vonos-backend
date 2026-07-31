@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAppMutation } from "@/lib/hooks/useAppMutation";
 import { parseForm } from "@/lib/validation/parseForm";
 import { expenseFormSchema } from "@/lib/validation/schemas";
@@ -10,17 +10,15 @@ import { Button } from "@/components/atoms/Button";
 import { Input } from "@/components/atoms/Input";
 import { Modal, ModalFooter, ModalHeader } from "@/components/atoms/Modal";
 import { Select } from "@/components/atoms/Select";
+import { getExpenseCategories } from "@/lib/api/expenses";
 import { createManualExpense } from "@/lib/api/ledger";
 import { useIsVaHq6 } from "@/lib/hooks/useIsVaHq6";
 import { useRouteTenant, useTenantId } from "@/lib/hooks/useRouteTenant";
 import { ENTITY_LIST } from "@/lib/registries/tenants";
 import { useUiStore } from "@/stores/uiStore";
 
-const EXPENSE_CATEGORIES = [
-  { value: "rent", label: "Rent" },
-  { value: "utilities", label: "Utilities" },
-  { value: "supplies", label: "Supplies" },
-  { value: "payroll", label: "Payroll" },
+const FALLBACK_CATEGORIES = [
+  { value: "MISCELLANEOUS", label: "MISCELLANEOUS" },
   { value: "other", label: "Other" },
 ];
 
@@ -46,11 +44,33 @@ export function AddExpenseModal() {
     return hit ? hit.name.replace(/^Vonos\s+/i, "") : null;
   }, [tenantId]);
 
+  const { data: dbCategories = [] } = useQuery({
+    queryKey: ["expense-categories", tenantId],
+    queryFn: () => getExpenseCategories(tenantId!),
+    enabled: Boolean(open && tenantId),
+  });
+
+  const categoryOptions = useMemo(() => {
+    if (dbCategories.length === 0) return FALLBACK_CATEGORIES;
+    return dbCategories.map((c) => ({
+      value: c.name,
+      label: c.code ? `${c.name} (${c.code})` : c.name,
+    }));
+  }, [dbCategories]);
+
   const [amount, setAmount] = useState("");
-  const [category, setCategory] = useState("other");
+  const [category, setCategory] = useState("");
   const [description, setDescription] = useState("");
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const first = categoryOptions[0]?.value;
+    if (first && !categoryOptions.some((o) => o.value === category)) {
+      setCategory(first);
+    }
+  }, [open, categoryOptions, category]);
 
   // HQ6 entity apps: Add Expense is a full page — except VAG admin in-place flow.
   useEffect(() => {
@@ -123,19 +143,17 @@ export function AddExpenseModal() {
           step="0.01"
           value={amount}
           onChange={(e) => setAmount(e.target.value)}
-          placeholder="0.00"
         />
         <Select
           label="Category"
           value={category}
           onChange={(e) => setCategory(e.target.value)}
-          options={EXPENSE_CATEGORIES}
+          options={categoryOptions}
         />
         <Input
           label="Description"
           value={description}
           onChange={(e) => setDescription(e.target.value)}
-          placeholder="e.g. Monthly rent"
         />
         <Input
           label="Date"
@@ -143,19 +161,17 @@ export function AddExpenseModal() {
           value={date}
           onChange={(e) => setDate(e.target.value)}
         />
-        {error ? <p className="text-sm text-error">{error}</p> : null}
+        {error ? <p className="text-sm text-red-600">{error}</p> : null}
       </div>
       <ModalFooter>
-        <Button variant="secondary" size="sm" onClick={handleClose}>
+        <Button variant="ghost" onClick={handleClose}>
           Cancel
         </Button>
         <Button
-          size="sm"
-          isLoading={mutation.isPending}
-          loadingText="Saving…"
           onClick={() => mutation.mutate()}
+          disabled={mutation.isPending || !tenantId}
         >
-          Add Expense
+          {mutation.isPending ? "Saving…" : "Add expense"}
         </Button>
       </ModalFooter>
     </Modal>

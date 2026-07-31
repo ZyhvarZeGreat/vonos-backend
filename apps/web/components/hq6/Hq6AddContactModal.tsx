@@ -26,10 +26,36 @@ import {
   sanitizePersonNameInput,
 } from "@/lib/utils/formValidation";
 import { contactFormSchema } from "@/lib/validation/schemas";
-import type { Customer, SupplierListRow } from "@vonos/types";
+import type {
+  Customer,
+  CustomerContactDetails,
+  SupplierListRow,
+} from "@vonos/types";
+import {
+  CONTACT_CUSTOM_FIELD_KEYS,
+  CONTACT_CUSTOM_FIELD_LABELS,
+} from "@vonos/types";
 import { toast } from "@/stores/toastStore";
 
 export type Hq6ContactType = "customer" | "supplier" | "both";
+
+function emptyCustomFields(): Record<
+  (typeof CONTACT_CUSTOM_FIELD_KEYS)[number],
+  string
+> {
+  return {
+    customField1: "",
+    customField2: "",
+    customField3: "",
+    customField4: "",
+    customField5: "",
+    customField6: "",
+    customField7: "",
+    customField8: "",
+    customField9: "",
+    customField10: "",
+  };
+}
 
 function resetAddContactForm(defaultType: Hq6ContactType) {
   return {
@@ -49,12 +75,21 @@ function resetAddContactForm(defaultType: Hq6ContactType) {
     assignedToUserId: "",
     taxNumber: "",
     openingBalance: "0",
-    payTerm: "",
-    creditLimit: "",
+    payTermNumber: "",
+    payTermType: "" as "" | "days" | "months",
+    creditLimit: "10000",
     address1: "",
     address2: "",
     city: "",
     state: "",
+    country: "",
+    zipCode: "",
+    landmark: "",
+    streetName: "",
+    buildingNumber: "",
+    additionalNumber: "",
+    shippingAddress: "",
+    ...emptyCustomFields(),
     accountHolderName: "",
     accountNumber: "",
     bankName: "",
@@ -83,6 +118,72 @@ function resolveDisplayName(form: FormState, includeMiddle: boolean): string {
   return composed || form.firstName.trim();
 }
 
+function buildContactDetails(form: FormState): CustomerContactDetails {
+  const payTermRaw = form.payTermNumber.trim();
+  const payTermNumber =
+    payTermRaw === "" ? null : Number.parseInt(payTermRaw, 10);
+  const creditRaw = form.creditLimit.trim();
+  const creditLimit =
+    creditRaw === "" ? null : Number.parseFloat(creditRaw);
+
+  const custom: Partial<CustomerContactDetails> = {};
+  for (const key of CONTACT_CUSTOM_FIELD_KEYS) {
+    const value = form[key].trim();
+    custom[key] = value || null;
+  }
+
+  return {
+    contactKind: form.contactKind,
+    contactId: form.contactId.trim() || null,
+    businessName:
+      form.contactKind === "business"
+        ? form.businessName.trim() || null
+        : null,
+    prefix: form.prefix.trim() || null,
+    firstName: form.firstName.trim() || null,
+    middleName: form.middleName.trim() || null,
+    lastName: form.lastName.trim() || null,
+    alternateNumber: form.alternateNumber.trim() || null,
+    landline: form.landline.trim() || null,
+    payTermNumber:
+      payTermNumber != null && Number.isFinite(payTermNumber)
+        ? payTermNumber
+        : null,
+    payTermType: form.payTermType || null,
+    creditLimit:
+      creditLimit != null && Number.isFinite(creditLimit) ? creditLimit : null,
+    addressLine1: form.address1.trim() || null,
+    addressLine2: form.address2.trim() || null,
+    city: form.city.trim() || null,
+    state: form.state.trim() || null,
+    country: form.country.trim() || null,
+    zipCode: form.zipCode.trim() || null,
+    landmark: form.landmark.trim() || null,
+    streetName: form.streetName.trim() || null,
+    buildingNumber: form.buildingNumber.trim() || null,
+    additionalNumber: form.additionalNumber.trim() || null,
+    shippingAddress: form.shippingAddress.trim() || null,
+    ...custom,
+  };
+}
+
+function composeFullAddress(form: FormState): string {
+  return [
+    form.address1,
+    form.address2,
+    form.streetName,
+    form.buildingNumber,
+    form.landmark,
+    form.city,
+    form.state,
+    form.country,
+    form.zipCode,
+  ]
+    .map((p) => p.trim())
+    .filter(Boolean)
+    .join(", ");
+}
+
 function buildSupplierNotes(form: FormState): string | null {
   return (
     [
@@ -91,9 +192,14 @@ function buildSupplierNotes(form: FormState): string | null {
         ? `Alt: ${form.alternateNumber.trim()}`
         : "",
       form.landline.trim() ? `Landline: ${form.landline.trim()}` : "",
-      form.payTerm.trim() ? `Pay term: ${form.payTerm.trim()}` : "",
+      form.payTermNumber.trim()
+        ? `Pay term: ${form.payTermNumber.trim()} ${form.payTermType || ""}`.trim()
+        : "",
       form.creditLimit.trim()
         ? `Credit limit: ${form.creditLimit.trim()}`
+        : "",
+      form.shippingAddress.trim()
+        ? `Shipping: ${form.shippingAddress.trim()}`
         : "",
     ]
       .filter(Boolean)
@@ -126,7 +232,7 @@ export function Hq6AddContactModal({
 }) {
   const queryClient = useQueryClient();
   const [form, setForm] = useState(() => resetAddContactForm(defaultType));
-  const [moreOpen, setMoreOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(true);
   const [saving, setSaving] = useState(false);
   const [dismissed, setDismissed] = useState(false);
 
@@ -154,7 +260,7 @@ export function Hq6AddContactModal({
     if (!open) return;
     setDismissed(false);
     setForm(resetAddContactForm(defaultType));
-    setMoreOpen(false);
+    setMoreOpen(true);
   }, [open, defaultType]);
 
   const setField = <K extends keyof FormState>(key: K, value: FormState[K]) => {
@@ -201,13 +307,22 @@ export function Hq6AddContactModal({
       toast.error("Opening balance must be a number");
       return;
     }
+    if (form.creditLimit.trim() && Number.isNaN(Number(form.creditLimit))) {
+      toast.error("Credit limit must be a number");
+      return;
+    }
+    if (
+      form.payTermNumber.trim() &&
+      Number.isNaN(Number.parseInt(form.payTermNumber, 10))
+    ) {
+      toast.error("Pay term must be a number");
+      return;
+    }
 
     const personName = composePersonName(form, showMiddleName);
     const business = form.businessName.trim();
-    const address = [form.address1, form.address2, form.city, form.state]
-      .map((p) => p.trim())
-      .filter(Boolean)
-      .join(", ");
+    const address = composeFullAddress(form);
+    const details = buildContactDetails(form);
     const now = new Date().toISOString();
 
     setSaving(true);
@@ -245,6 +360,7 @@ export function Hq6AddContactModal({
                 form.contactKind === "business" ? business || name : null,
               taxNumber: form.taxNumber.trim() || null,
               status: "active",
+              details,
             } satisfies Customer);
           },
           commit: (qc, data) => {
@@ -265,6 +381,7 @@ export function Hq6AddContactModal({
             assignedToUserId: form.assignedToUserId || undefined,
             openingBalance: balance,
             taxNumber: form.taxNumber.trim() || null,
+            details,
           });
           customerId = created.id;
           opt.onSuccess(created, undefined);
@@ -572,64 +689,172 @@ export function Hq6AddContactModal({
         </button>
 
         {moreOpen ? (
-          <div className="grid gap-3 sm:grid-cols-2">
-            <Hq6Field label="Tax number">
-              <input
-                className="hq6-modal-input"
-                value={form.taxNumber}
-                onChange={(e) => setField("taxNumber", e.target.value)}
-              />
-            </Hq6Field>
-            <Hq6Field label="Opening Balance">
-              <input
-                className="hq6-modal-input"
-                value={form.openingBalance}
-                onChange={(e) => setField("openingBalance", e.target.value)}
-              />
-            </Hq6Field>
-            <Hq6Field label="Pay term">
-              <input
-                className="hq6-modal-input"
-                value={form.payTerm}
-                onChange={(e) => setField("payTerm", e.target.value)}
-              />
-            </Hq6Field>
-            <Hq6Field label="Credit Limit">
-              <input
-                className="hq6-modal-input"
-                placeholder={
-                  isCustomerSide ? "Keep blank for no limit" : "No Limit"
+          <div className="space-y-3">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Hq6Field label="Tax number">
+                <input
+                  className="hq6-modal-input"
+                  placeholder="Tax number"
+                  value={form.taxNumber}
+                  onChange={(e) => setField("taxNumber", e.target.value)}
+                />
+              </Hq6Field>
+              <Hq6Field label="Opening Balance">
+                <input
+                  className="hq6-modal-input"
+                  value={form.openingBalance}
+                  onChange={(e) => setField("openingBalance", e.target.value)}
+                />
+              </Hq6Field>
+              <Hq6Field label="Pay term">
+                <div className="flex gap-2">
+                  <input
+                    className="hq6-modal-input min-w-0 flex-1"
+                    inputMode="numeric"
+                    placeholder=""
+                    value={form.payTermNumber}
+                    onChange={(e) => setField("payTermNumber", e.target.value)}
+                  />
+                  <select
+                    className="hq6-modal-input w-[9rem] shrink-0"
+                    value={form.payTermType}
+                    onChange={(e) =>
+                      setField(
+                        "payTermType",
+                        e.target.value as FormState["payTermType"],
+                      )
+                    }
+                  >
+                    <option value="">Please Select</option>
+                    <option value="days">Days</option>
+                    <option value="months">Months</option>
+                  </select>
+                </div>
+              </Hq6Field>
+              <Hq6Field
+                label="Credit Limit"
+                hint={
+                  <span className="ml-1 text-xs font-normal text-[#6b7280]">
+                    Keep blank for no limit
+                  </span>
                 }
-                value={form.creditLimit}
-                onChange={(e) => setField("creditLimit", e.target.value)}
-              />
-            </Hq6Field>
-            <Hq6Field label="Address line 1">
+              >
+                <input
+                  className="hq6-modal-input"
+                  placeholder="Keep blank for no limit"
+                  value={form.creditLimit}
+                  onChange={(e) => setField("creditLimit", e.target.value)}
+                />
+              </Hq6Field>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Hq6Field label="Address line 1">
+                <input
+                  className="hq6-modal-input"
+                  placeholder="Address line 1"
+                  value={form.address1}
+                  onChange={(e) => setField("address1", e.target.value)}
+                />
+              </Hq6Field>
+              <Hq6Field label="Address line 2">
+                <input
+                  className="hq6-modal-input"
+                  placeholder="Address line 2"
+                  value={form.address2}
+                  onChange={(e) => setField("address2", e.target.value)}
+                />
+              </Hq6Field>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              <Hq6Field label="City">
+                <input
+                  className="hq6-modal-input"
+                  placeholder="City"
+                  value={form.city}
+                  onChange={(e) => setField("city", e.target.value)}
+                />
+              </Hq6Field>
+              <Hq6Field label="State">
+                <input
+                  className="hq6-modal-input"
+                  placeholder="State"
+                  value={form.state}
+                  onChange={(e) => setField("state", e.target.value)}
+                />
+              </Hq6Field>
+              <Hq6Field label="Country">
+                <input
+                  className="hq6-modal-input"
+                  placeholder="Country"
+                  value={form.country}
+                  onChange={(e) => setField("country", e.target.value)}
+                />
+              </Hq6Field>
+              <Hq6Field label="Zip Code">
+                <input
+                  className="hq6-modal-input"
+                  placeholder="Zip/Postal Code"
+                  value={form.zipCode}
+                  onChange={(e) => setField("zipCode", e.target.value)}
+                />
+              </Hq6Field>
+              <Hq6Field label="Landmark">
+                <input
+                  className="hq6-modal-input"
+                  placeholder="Landmark"
+                  value={form.landmark}
+                  onChange={(e) => setField("landmark", e.target.value)}
+                />
+              </Hq6Field>
+              <Hq6Field label="Street name">
+                <input
+                  className="hq6-modal-input"
+                  placeholder="Street name"
+                  value={form.streetName}
+                  onChange={(e) => setField("streetName", e.target.value)}
+                />
+              </Hq6Field>
+              <Hq6Field label="Building number">
+                <input
+                  className="hq6-modal-input"
+                  placeholder="Building number"
+                  value={form.buildingNumber}
+                  onChange={(e) => setField("buildingNumber", e.target.value)}
+                />
+              </Hq6Field>
+              <Hq6Field label="Additional number">
+                <input
+                  className="hq6-modal-input"
+                  placeholder="Additional number"
+                  value={form.additionalNumber}
+                  onChange={(e) =>
+                    setField("additionalNumber", e.target.value)
+                  }
+                />
+              </Hq6Field>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {CONTACT_CUSTOM_FIELD_KEYS.map((key, index) => (
+                <Hq6Field key={key} label={CONTACT_CUSTOM_FIELD_LABELS[index]!}>
+                  <input
+                    className="hq6-modal-input"
+                    placeholder={CONTACT_CUSTOM_FIELD_LABELS[index]}
+                    value={form[key]}
+                    onChange={(e) => setField(key, e.target.value)}
+                  />
+                </Hq6Field>
+              ))}
+            </div>
+
+            <Hq6Field label="Shipping Address">
               <input
                 className="hq6-modal-input"
-                value={form.address1}
-                onChange={(e) => setField("address1", e.target.value)}
-              />
-            </Hq6Field>
-            <Hq6Field label="Address line 2">
-              <input
-                className="hq6-modal-input"
-                value={form.address2}
-                onChange={(e) => setField("address2", e.target.value)}
-              />
-            </Hq6Field>
-            <Hq6Field label="City">
-              <input
-                className="hq6-modal-input"
-                value={form.city}
-                onChange={(e) => setField("city", e.target.value)}
-              />
-            </Hq6Field>
-            <Hq6Field label="State">
-              <input
-                className="hq6-modal-input"
-                value={form.state}
-                onChange={(e) => setField("state", e.target.value)}
+                placeholder="Search address"
+                value={form.shippingAddress}
+                onChange={(e) => setField("shippingAddress", e.target.value)}
               />
             </Hq6Field>
           </div>

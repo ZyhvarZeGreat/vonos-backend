@@ -21,20 +21,20 @@ export function businessLocationName(
   return resolveBusinessLocation(code, locations)?.name ?? code;
 }
 
-/** Address line for invoices: landmark, city, state, country. */
+/** Address line for invoices: landmark + city (matches HQ6 letterhead). */
 export function formatBusinessLocationAddress(
   location: BusinessLocation | null | undefined,
 ): string | null {
   if (!location) return null;
-  const parts = [
-    location.landmark,
-    location.city,
-    location.state,
-    location.country,
-  ]
+  const parts = [location.landmark, location.city]
     .map((part) => part?.trim())
     .filter((part): part is string => Boolean(part));
-  return parts.length > 0 ? parts.join(", ") : null;
+  if (parts.length > 0) return parts.join(", ");
+  // Fallback when only state/country exist
+  const fallback = [location.state, location.country]
+    .map((part) => part?.trim())
+    .filter((part): part is string => Boolean(part));
+  return fallback.length > 0 ? fallback.join(", ") : null;
 }
 
 export function formatItemLocationLine(

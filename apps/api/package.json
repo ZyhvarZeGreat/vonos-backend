@@ -32,6 +32,8 @@
     "prisma:backfill-daily-finance": "ts-node --compiler-options '{\"module\":\"CommonJS\"}' prisma/scripts/backfill-daily-finance.ts",
     "prisma:refresh-entity-snapshots": "ts-node --compiler-options '{\"module\":\"CommonJS\"}' prisma/scripts/refresh-entity-snapshots.ts",
     "prisma:sync-product-stock-locations": "ts-node --compiler-options '{\"module\":\"CommonJS\"}' prisma/scripts/sync-product-stock-locations.ts",
+    "prisma:seed-designations": "ts-node --transpile-only prisma/scripts/seed-designations-va.ts",
+    "prisma:seed-expense-categories": "ts-node --transpile-only prisma/scripts/seed-expense-categories.ts",
     "prisma:studio": "prisma studio"
   },
   "prisma": {
