@@ -4,6 +4,7 @@ import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Search } from "lucide-react";
 import type { BusinessLocation, Item, StockStatus } from "@vonos/types";
+import { isProductStockLocationCode } from "@vonos/types";
 import {
   formatItemLocationLine,
   formatLocationStockSummary,
@@ -40,6 +41,11 @@ export interface ProductItemSearchProps {
   retailOnly?: boolean;
   /** Also search Autos Group stock (warehouse + sister entities). */
   includeWarehouse?: boolean;
+  /**
+   * When false (VA/VP), skip this tenant’s local Item catalog — stock comes
+   * from VW/VISP/VSP or custom/purchase lines only.
+   */
+  ownCatalog?: boolean;
   /**
    * When includeWarehouse is on: pick product first, then choose which entity
    * (VW / VISP / VSP / Own) to source from when multiple hold the SKU.
@@ -109,6 +115,7 @@ export function ProductItemSearch({
   placeholder = "Enter product name / SKU / scan barcode",
   retailOnly = false,
   includeWarehouse = false,
+  ownCatalog = true,
   pickSourceAfterSelect = false,
   allowCustom = false,
   showStockQty = true,
@@ -128,56 +135,81 @@ export function ProductItemSearch({
   const useSourceFlow = includeWarehouse && pickSourceAfterSelect;
 
   useEffect(() => {
-    const timer = window.setTimeout(() => setDebounced(query.trim()), 250);
+    const timer = window.setTimeout(() => setDebounced(query.trim()), 450);
     return () => window.clearTimeout(timer);
   }, [query]);
+
+  const isDenseSku =
+    debounced.length >= 2 &&
+    /^[A-Za-z0-9][A-Za-z0-9._\-/]*$/.test(debounced) &&
+    !/\s/.test(debounced);
 
   const localQuery = useQuery({
     queryKey: ["item-search", tenantId, debounced, retailOnly],
     queryFn: async () => {
       if (!tenantId || debounced.length < 1) return [];
-      const rows = await getItems(tenantId, { search: debounced, limit: 100 });
+      const rows = await getItems(tenantId, {
+        search: debounced,
+        limit: 25,
+        includeSummary: false,
+      });
       return retailOnly
         ? rows.filter((row) => row.availableForRetail !== false)
         : rows;
     },
-    enabled: Boolean(tenantId) && debounced.length >= 1,
+    // 2+ chars for fuzzy; SKU/barcode can fire at 2.
+    enabled:
+      ownCatalog &&
+      Boolean(tenantId) &&
+      (isDenseSku || debounced.length >= 2),
+    // Keep recent searches instant (no refetch churn) — matches the other pickers.
+    staleTime: 30_000,
   });
 
   const warehouseQuery = useQuery({
-    queryKey: ["item-search-warehouse", debounced, tenantCode],
+    queryKey: ["item-search-warehouse", debounced, tenantCode, ownCatalog],
     queryFn: async () => {
       if (debounced.length < 1) return [];
-      const result = await getStockAvailability(debounced);
+      const result = await getStockAvailability({
+        search: debounced,
+        limit: 20,
+      });
       return result.groups;
     },
-    enabled: includeWarehouse && debounced.length >= 1,
+    // Cross-entity scan is expensive — wait for 3 chars unless dense SKU.
+    enabled:
+      includeWarehouse &&
+      (isDenseSku || debounced.length >= 3),
     retry: false,
+    staleTime: 30_000,
   });
 
   const flatPicks = useMemo(() => {
     const rows: CatalogPartPick[] = [];
     const seen = new Set<string>();
 
-    for (const item of localQuery.data ?? []) {
-      const pick = itemToPick(
-        item,
-        businessLocations,
-        "Own products",
-        tenantCode ?? undefined,
-      );
-      const key = `local:${pick.itemId}`;
-      seen.add(key);
-      rows.push(pick);
+    if (ownCatalog) {
+      for (const item of localQuery.data ?? []) {
+        const pick = itemToPick(
+          item,
+          businessLocations,
+          "Own products",
+          tenantCode ?? undefined,
+        );
+        const key = `local:${pick.itemId}`;
+        seen.add(key);
+        rows.push(pick);
+      }
     }
 
     if (includeWarehouse) {
       for (const group of warehouseQuery.data ?? []) {
         for (const entity of group.entities) {
-          if (
-            tenantCode &&
-            entity.tenantCode.toUpperCase() === tenantCode.toUpperCase()
-          ) {
+          const code = entity.tenantCode.toUpperCase();
+          if (!ownCatalog && !isProductStockLocationCode(code)) {
+            continue;
+          }
+          if (tenantCode && code === tenantCode.toUpperCase()) {
             continue;
           }
           const key = `entity:${entity.itemId}`;
@@ -187,8 +219,8 @@ export function ProductItemSearch({
             itemId: entity.itemId,
             sku: group.sku,
             name: group.name,
-            costPrice: 0,
-            sellPrice: 0,
+            costPrice: entity.costPrice ?? 0,
+            sellPrice: entity.sellPrice || entity.costPrice || 0,
             availableQty: entity.available,
             status: entity.status,
             sourceLabel: entitySourceLabel(entity.tenantCode, entity.tenantName),
@@ -206,6 +238,7 @@ export function ProductItemSearch({
     businessLocations,
     includeWarehouse,
     localQuery.data,
+    ownCatalog,
     tenantCode,
     warehouseQuery.data,
   ]);
@@ -247,7 +280,7 @@ export function ProductItemSearch({
     return () => document.removeEventListener("mousedown", onDocClick);
   }, []);
 
-  const showDropdown = open && debounced.length >= 1;
+  const showDropdown = open && (isDenseSku || debounced.length >= 2);
   const isFetching = localQuery.isFetching || warehouseQuery.isFetching;
   const showCustom =
     allowCustom &&

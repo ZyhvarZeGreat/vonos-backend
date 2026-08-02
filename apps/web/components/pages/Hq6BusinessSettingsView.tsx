@@ -330,14 +330,6 @@ export function Hq6BusinessSettingsView() {
                   }}
                 />
               </div>
-              <button
-                type="button"
-                className="hq6-search-btn"
-                aria-label="Search"
-                onClick={() => setSearch((prev) => prev.trim())}
-              >
-                Search
-              </button>
             </div>
 
             <div className="hq6-biz-settings-content flex-1 p-4 pt-3 md:p-5 md:pt-4">

@@ -16,6 +16,18 @@ import {
   fetchListPage,
   type ListPage,
 } from "@/lib/api/fetchAllPages";
+import { createAsyncTtlCache } from "@/lib/utils/asyncTtlCache";
+
+/** Short-lived typeahead cache for the job picker — see customers.ts. */
+const jobOptionCache = createAsyncTtlCache<Job[]>({
+  ttlMs: 30_000,
+  maxEntries: 100,
+});
+
+/** Drop cached job option lists (call after job mutations). */
+export function clearJobOptionCache(): void {
+  jobOptionCache.clear();
+}
 
 export interface JobDetail extends Job {
   customer?: {
@@ -97,13 +109,23 @@ export async function getJobs(
   tenantId: string,
   filters?: JobFilters,
 ): Promise<Job[]> {
-  if (filters?.cursor || filters?.limit) {
-    return fetchJobsRaw(tenantId, filters, filters.cursor, filters.limit);
-  }
+  const cacheKey = JSON.stringify([
+    tenantId,
+    filters?.search ?? "",
+    filters?.limit ?? "",
+    filters?.cursor ?? "",
+    filters?.status ?? "",
+    filters?.statuses?.join(",") ?? "",
+  ]);
+  return jobOptionCache.get(cacheKey, () => {
+    if (filters?.cursor || filters?.limit) {
+      return fetchJobsRaw(tenantId, filters, filters.cursor, filters.limit);
+    }
 
-  return fetchFirstPage(
-    (cursor, limit) => fetchJobsRaw(tenantId, filters, cursor, limit),
-  );
+    return fetchFirstPage(
+      (cursor, limit) => fetchJobsRaw(tenantId, filters, cursor, limit),
+    );
+  });
 }
 
 export async function getJob(id: string): Promise<JobDetail> {
@@ -158,12 +180,14 @@ export async function createJob(
     body: JSON.stringify(body),
   });
   if (!response.ok) throw new Error("Failed to create job");
+  clearJobOptionCache();
   return response.json();
 }
 
 export async function advanceJobStatus(id: string): Promise<Job> {
   const response = await apiFetch(`/jobs/${id}/status`, { method: "PATCH" });
   if (!response.ok) throw new Error("Failed to advance job status");
+  clearJobOptionCache();
   return response.json();
 }
 
@@ -304,5 +328,6 @@ export async function updateJob(
     body: JSON.stringify(body),
   });
   if (!response.ok) throw new Error("Failed to update job");
+  clearJobOptionCache();
   return response.json();
 }

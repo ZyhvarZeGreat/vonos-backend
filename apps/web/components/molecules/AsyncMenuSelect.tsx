@@ -153,18 +153,21 @@ export function AsyncMenuSelect({
             onWheel={(event) => event.stopPropagation()}
           >
             {loading ? (
-              <p className="tw-px-3.5 tw-py-2.5 tw-text-sm tw-text-gray-500">
-                Searching…
+              <p className="tw-px-3.5 tw-py-1.5 tw-text-xs tw-text-gray-500">
+                {query.trim()
+                  ? `Searching for “${query.trim()}”…`
+                  : "Loading…"}
               </p>
-            ) : error ? (
+            ) : null}
+            {error ? (
               <p className="tw-px-3.5 tw-py-2.5 tw-text-sm tw-text-red-600">
                 {error}
               </p>
-            ) : options.length === 0 ? (
+            ) : !loading && options.length === 0 ? (
               <p className="tw-px-3.5 tw-py-2.5 tw-text-sm tw-text-gray-500">
                 {emptyMessage}
               </p>
-            ) : (
+            ) : options.length > 0 ? (
               options.map((option) => (
                 <button
                   key={option.value || "__empty"}
@@ -174,6 +177,7 @@ export function AsyncMenuSelect({
                   className={cn(
                     "tw-flex tw-w-full tw-cursor-pointer tw-items-center tw-border-0 tw-bg-transparent tw-px-3.5 tw-py-2.5 tw-text-left tw-text-sm tw-leading-5 tw-text-gray-900 hover:tw-bg-gray-100",
                     option.value === value && "tw-bg-gray-100 tw-font-medium",
+                    loading && "tw-opacity-60",
                   )}
                   onClick={() => {
                     onChange(option.value);
@@ -183,7 +187,7 @@ export function AsyncMenuSelect({
                   {option.label}
                 </button>
               ))
-            )}
+            ) : null}
           </div>
         </div>
       </FloatingMenuPanel>

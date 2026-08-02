@@ -46,7 +46,9 @@ import { useRouteTenant, useTenantId } from "@/lib/hooks/useRouteTenant";
 import {
   prefetchPaymentAccountsRef,
   prefetchPurchaseListModals,
+  prefetchPurchasePaymentsModal,
 } from "@/lib/query/prefetchListModals";
+import { modalKeys } from "@/lib/query/modalQueryKeys";
 import { HQ6_PURCHASE_FILTERS } from "@/lib/registries/hq6Filters";
 import { compositeListCursorFrom } from "@/lib/utils/pagination";
 import {
@@ -58,7 +60,7 @@ import { businessLocationName } from "@/lib/utils/locationLabels";
 import { entitySaleLocations } from "@/lib/hooks/useBusinessLocationOptions";
 import { cn } from "@/lib/utils/cn";
 import { toast } from "@/stores/toastStore";
-import { hq6PaymentBadgeClass } from "@/lib/utils/hq6PaymentBadge";
+import { hq6PaymentBadgeClass, canAddPaymentForStatus } from "@/lib/utils/hq6PaymentBadge";
 import type { MovementStatus, PurchasePaymentStatus } from "@vonos/types";
 
 function purchaseBadgeClass(status: string | null | undefined): string {
@@ -89,14 +91,14 @@ export function Hq6PurchasesListView() {
     setSearch,
     bounds,
   } = useListPageFilters({
-    defaultDateRange: "last_7_days",
+    // Match sales: unbounded list so Redis warm keys stay stable (no sliding from/to).
+    defaultDateRange: "all_time",
     isolateDateRange: true,
   });
   const [statusFilter, setStatusFilter] = useState("");
   const [paymentStatusFilter, setPaymentStatusFilter] = useState("");
   const [locationFilter, setLocationFilter] = useState("");
   const [supplierFilter, setSupplierFilter] = useState("");
-  const [localSearch, setLocalSearch] = useState(search);
   const [deleteTarget, setDeleteTarget] = useState<StockMovementListRow | null>(null);
   const [payTarget, setPayTarget] = useState<StockMovementListRow | null>(null);
   const [paymentsTarget, setPaymentsTarget] = useState<StockMovementListRow | null>(null);
@@ -187,8 +189,6 @@ export function Hq6PurchasesListView() {
     },
   });
 
-  const commitSearch = () => setSearch(localSearch);
-
   const handleExport = async () => {
     if (!tenantId) return;
     const rows = await getAllStockMovements(tenantId, apiFilters);
@@ -246,6 +246,37 @@ export function Hq6PurchasesListView() {
                 onClick: () =>
                   router.push(`/${tenantCode}/add-purchase?edit=${row.id}`),
               },
+              ...(canAddPaymentForStatus(row.paymentStatus, row.paymentDue)
+                ? [
+                    {
+                      id: "add_payment",
+                      label: "Add Payment",
+                      dividerBefore: true,
+                      icon: <Wallet className="h-3.5 w-3.5" />,
+                      onClick: () => {
+                        if (tenantId) {
+                          prefetchPaymentAccountsRef(queryClient, tenantId);
+                        }
+                        setPayTarget(row);
+                      },
+                    },
+                  ]
+                : []),
+              {
+                id: "view_payments",
+                label: "View Payments",
+                dividerBefore: !canAddPaymentForStatus(
+                  row.paymentStatus,
+                  row.paymentDue,
+                ),
+                icon: <Wallet className="h-3.5 w-3.5" />,
+                onClick: () => {
+                  if (tenantId) {
+                    prefetchPurchasePaymentsModal(queryClient, tenantId, row.id);
+                  }
+                  setPaymentsTarget(row);
+                },
+              },
               {
                 id: "delete",
                 label: "Delete",
@@ -259,29 +290,6 @@ export function Hq6PurchasesListView() {
                 icon: <Barcode className="h-3.5 w-3.5" />,
                 onClick: () =>
                   router.push(`/${tenantCode}/print-labels?purchaseId=${row.id}`),
-              },
-              {
-                id: "view_payments",
-                label: "View Payments",
-                dividerBefore: true,
-                icon: <Wallet className="h-3.5 w-3.5" />,
-                onClick: () => {
-                  if (tenantId) {
-                    prefetchPurchaseListModals(queryClient, tenantId, row.id);
-                  }
-                  setPaymentsTarget(row);
-                },
-              },
-              {
-                id: "add_payment",
-                label: "Add payment",
-                icon: <Wallet className="h-3.5 w-3.5" />,
-                onClick: () => {
-                  if (tenantId) {
-                    prefetchPaymentAccountsRef(queryClient, tenantId);
-                  }
-                  setPayTarget(row);
-                },
               },
               {
                 id: "purchase_return",
@@ -360,14 +368,23 @@ export function Hq6PurchasesListView() {
         key: "paymentStatus",
         header: "Payment Status",
         render: (row) => (
-          <span
+          <button
+            type="button"
             className={cn(
               "hq6-pay-badge",
               purchaseBadgeClass(row.paymentStatus),
             )}
+            title="View Payments"
+            onClick={(e) => {
+              e.stopPropagation();
+              if (tenantId) {
+                prefetchPurchasePaymentsModal(queryClient, tenantId, row.id);
+              }
+              setPaymentsTarget(row);
+            }}
           >
             {formatHq6PaymentStatus(row.paymentStatus)}
-          </span>
+          </button>
         ),
       },
       {
@@ -387,7 +404,7 @@ export function Hq6PurchasesListView() {
       {
         key: "addedBy",
         header: "Added By",
-        render: (row) => row.createdByName ?? "",
+        render: (row) => row.createdByName ?? "—",
       },
     ],
     [config?.businessLocations, openRecord, queryClient, router, tenantCode],
@@ -429,9 +446,9 @@ export function Hq6PurchasesListView() {
       chrome={chrome}
       pageSize={pageSize}
       onPageSizeChange={setPageSize}
-      searchValue={localSearch}
-      onSearchChange={setLocalSearch}
-      onSearchCommit={commitSearch}
+      searchValue={search}
+      onSearchChange={setSearch}
+      
       filters={
         <Hq6FilterGrid>
           <Hq6FilterSelect
@@ -516,6 +533,14 @@ export function Hq6PurchasesListView() {
             onPaid={() => {
               void queryClient.invalidateQueries({ queryKey: ["stock-movements"] });
               void queryClient.invalidateQueries({ queryKey: ["suppliers"] });
+              if (payTarget) {
+                void queryClient.invalidateQueries({
+                  queryKey: modalKeys.purchaseView(tenantId, payTarget.id),
+                });
+                void queryClient.invalidateQueries({
+                  queryKey: modalKeys.purchasePayments(tenantId, payTarget.id),
+                });
+              }
             }}
           />
           <Hq6ViewPaymentsModal
@@ -531,19 +556,50 @@ export function Hq6PurchasesListView() {
             context={
               paymentsTarget
                 ? {
-                    customerName: paymentsTarget.supplierOrDest || undefined,
+                    supplierName: paymentsTarget.supplierOrDest || undefined,
                     businessName: config?.name ?? undefined,
                     businessLocation: businessLocationName(
                       paymentsTarget.locationCode ?? null,
                       config?.businessLocations,
                     ),
+                    businessMobile:
+                      typeof config?.businessSettings?.business?.mobile ===
+                      "string"
+                        ? config.businessSettings.business.mobile
+                        : typeof config?.businessSettings?.business?.phone ===
+                            "string"
+                          ? config.businessSettings.business.phone
+                          : null,
+                    businessEmail:
+                      typeof config?.businessSettings?.business?.email ===
+                      "string"
+                        ? config.businessSettings.business.email
+                        : null,
                     invoiceNo: paymentsTarget.reference,
                     date: paymentsTarget.date,
                     paymentStatus: paymentsTarget.paymentStatus,
+                    purchaseStatus: paymentsTarget.status,
+                    remainingDue: paymentsTarget.paymentDue,
                   }
                 : null
             }
             onClose={() => setPaymentsTarget(null)}
+            onAddPayment={
+              paymentsTarget &&
+              canAddPaymentForStatus(
+                paymentsTarget.paymentStatus,
+                paymentsTarget.paymentDue,
+              )
+                ? () => {
+                    const purchase = paymentsTarget;
+                    if (tenantId) {
+                      prefetchPaymentAccountsRef(queryClient, tenantId);
+                    }
+                    setPaymentsTarget(null);
+                    setPayTarget(purchase);
+                  }
+                : undefined
+            }
           />
           <Hq6ConfirmModal
             open={Boolean(deleteTarget)}

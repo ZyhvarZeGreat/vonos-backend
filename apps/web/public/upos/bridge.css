@@ -1612,3 +1612,88 @@ html.upos-hq6 .upos-admin-entity-scope-select:focus,
   }
 }
 
+/* Multi-select entity tags — not .form-control (that forces height:34px and clips ×) */
+.vonos-tag-combobox {
+  display: flex !important;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-height: 38px;
+  height: auto !important;
+  padding: 4px 8px !important;
+  box-sizing: border-box;
+  background-color: #fff;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  cursor: text;
+  overflow: visible !important;
+}
+.vonos-tag-combobox[data-disabled="true"] {
+  cursor: not-allowed;
+  opacity: 0.65;
+  background-color: #eee;
+}
+.vonos-tag-combobox__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  border-radius: 3px;
+  background: #eef2f6;
+  padding: 2px 6px 2px 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #111827;
+  border: 1px solid #d2d6de;
+  line-height: 1.4;
+  position: relative;
+  z-index: 1;
+}
+.vonos-tag-combobox__chip-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.vonos-tag-combobox__remove {
+  display: inline-flex !important;
+  width: 18px;
+  height: 18px;
+  align-items: center;
+  justify-content: center;
+  border: 0 !important;
+  background: transparent !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  cursor: pointer;
+  color: #697586;
+  flex-shrink: 0;
+  border-radius: 2px;
+  line-height: 1;
+  box-shadow: none !important;
+}
+.vonos-tag-combobox__remove:hover {
+  color: #111827;
+  background: #dbe2ea !important;
+}
+.vonos-tag-combobox__remove-icon {
+  width: 12px;
+  height: 12px;
+  pointer-events: none;
+}
+.vonos-tag-combobox__select {
+  flex: 1 1 120px;
+  min-width: 120px;
+  border: 0 !important;
+  outline: none !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  padding: 2px 0 !important;
+  margin: 0 !important;
+  height: 28px !important;
+  font-size: 13px;
+  color: #111827;
+  cursor: pointer;
+  appearance: auto;
+}
+

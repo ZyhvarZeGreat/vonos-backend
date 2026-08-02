@@ -56,7 +56,21 @@ def transform_accounts(
     account_legacy: dict[int, str] = {**existing.get("payment_account", {})}
     payment_legacy: dict[int, str] = {**existing.get("payment", {})}
     sale_legacy = existing.get("sale", {})
+    movement_legacy = existing.get("stock_movement", {})
     supplier_legacy = existing.get("supplier", {})
+
+    # Purchase tx → PO reference (invoice_no / ref_no) for payment linking.
+    purchase_refs: dict[int, str] = {}
+    for txn in table_rows(tables, "transactions"):
+        tx_type = str(txn.get("type") or "")
+        if tx_type not in ("purchase", "opening_stock"):
+            continue
+        legacy_tx_id = parse_int(txn.get("id"))
+        if legacy_tx_id <= 0:
+            continue
+        purchase_refs[legacy_tx_id] = str(
+            txn.get("invoice_no") or txn.get("ref_no") or f"TX-{legacy_tx_id}"
+        ).strip()
 
     for row in table_rows(tables, "accounts"):
         if row.get("deleted_at") not in (None, "", "NULL"):
@@ -144,11 +158,32 @@ def transform_accounts(
 
         legacy_sale = parse_int(row.get("transaction_id"), 0)
         sale_id = sale_legacy.get(legacy_sale) if legacy_sale > 0 else None
+        movement_id = (
+            movement_legacy.get(legacy_sale) if legacy_sale > 0 else None
+        )
+        purchase_ref = purchase_refs.get(legacy_sale) if legacy_sale > 0 else None
 
         payment_for_id = parse_int(row.get("payment_for"), 0)
         payment_for = None
         if payment_for_id > 0:
             payment_for = supplier_legacy.get(payment_for_id) or f"contact:{payment_for_id}"
+
+        receipt_no = str(row.get("payment_ref_no") or row.get("transaction_no") or "").strip() or None
+        note = str(row.get("note") or "").strip() or None
+
+        # App purchase payments key off paymentFor='purchase' + paymentRefNo=PO ref.
+        # Legacy stores payment_for=supplier contact and payment_ref_no=PP… receipt.
+        if movement_id or (purchase_ref and not sale_id):
+            payment_for = "purchase"
+            po_ref = purchase_ref
+            if not po_ref and movement_id:
+                # Movement exists but tx row missing from dump slice — keep receipt.
+                po_ref = receipt_no
+            if po_ref:
+                if receipt_no and receipt_no != po_ref:
+                    prefix = f"Receipt {receipt_no}"
+                    note = f"{prefix} — {note}" if note else prefix
+                receipt_no = po_ref
 
         pay_id = new_cuid()
         result.payments.append({
@@ -157,13 +192,13 @@ def transform_accounts(
             "amount": str(parse_decimal(row.get("amount"))),
             "currency": "NGN",
             "method": str(row.get("method") or "") or None,
-            "paymentRefNo": str(row.get("payment_ref_no") or row.get("transaction_no") or "") or None,
+            "paymentRefNo": receipt_no,
             "paidOn": parse_tx_date(row.get("paid_on")) if row.get("paid_on") else None,
             "paymentFor": payment_for,
             "accountId": account_id,
             "saleId": sale_id,
             "isReturn": bool(parse_int(row.get("is_return"), 0)),
-            "note": str(row.get("note") or "") or None,
+            "note": note,
             "createdByName": user_names.get(parse_int(row.get("created_by"), 0)),
         })
         result.legacy_ids.append({

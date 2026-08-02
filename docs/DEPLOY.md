@@ -166,6 +166,9 @@ Run these as a tenant admin with a bounded date range (`last_30_days`):
    |----------|--------|
    | `NEXT_PUBLIC_API_URL` | Railway API URL (no trailing slash), e.g. `https://vonos-backend-production.up.railway.app` |
    | `NEXT_PUBLIC_SKIP_AUTH` | `false` |
+   | `NEXT_PUBLIC_BASE_PATH` | `/operations` (optional — serves the app at `https://your-domain/operations/...`) |
+
+   With `NEXT_PUBLIC_BASE_PATH=/operations`, login is at `/operations/login` and post-login routes are under `/operations/...` (e.g. `/operations/VA/overview`). Point the apex domain at this Vercel project; leave `/` for a marketing site if you proxy only `/operations` to Vercel.
 
 6. Deploy. Note the URL, e.g. `https://vonos-web-xxx.vercel.app`
 
@@ -206,7 +209,7 @@ https://app.vonosautos.com,https://app.vonosautosmarket.com
 
 ## 6. Smoke test
 
-1. Open `https://YOUR-VERCEL-URL/login`
+1. Open `https://YOUR-VERCEL-URL/operations/login` (or `/login` if `NEXT_PUBLIC_BASE_PATH` is unset)
 2. Log in with a seeded admin (see `apps/api/prisma/seed.ts`), e.g. `admin@vag.vonos` / seed password
 3. Open Reports → Profit/Loss for a tenant with data
 4. API health: `GET /health`

@@ -25,6 +25,11 @@ import { toIso, toNumber } from '../../common/utils/serializers';
 import { isServiceStaffDesignation } from '../../common/utils/serviceStaffDesignations';
 import { InvoiceHubService } from '../invoices/invoice-hub.service';
 import { CacheService } from '../../common/cache/cache.service';
+import { invalidateTenantDashboardCache } from '../../common/cache/cacheInvalidation';
+import {
+  listPageFilterKey,
+  withListPageCache,
+} from '../../common/utils/listPageCache';
 
 @Injectable()
 export class HrmService {
@@ -513,6 +518,34 @@ export class HrmService {
     serviceStaffOnly?: boolean;
   } = {}): Promise<Employee[]> {
     const tenantId = this.tenantDb.requireTenantId();
+    const filterKey = listPageFilterKey({
+      search: filters.search,
+      designationId: filters.designationId,
+      locationCode: filters.locationCode,
+      serviceStaffOnly: filters.serviceStaffOnly ? 1 : 0,
+      cursor: filters.cursor,
+      limit: filters.limit ?? 10,
+    });
+    return withListPageCache(
+      this.cache,
+      tenantId,
+      'hrm-employees',
+      filterKey,
+      () => this.listEmployeesUncached(filters, tenantId),
+    );
+  }
+
+  private async listEmployeesUncached(
+    filters: {
+      cursor?: string;
+      limit?: number;
+      search?: string;
+      designationId?: string;
+      locationCode?: string;
+      serviceStaffOnly?: boolean;
+    },
+    tenantId: string,
+  ): Promise<Employee[]> {
     const pagination = buildCompositeCursorQuery({
       sortField: 'name',
       sortDir: 'asc',
@@ -606,6 +639,7 @@ export class HrmService {
         payrollGroup: { select: { name: true } },
       },
     });
+    void invalidateTenantDashboardCache(this.cache, tenantId);
     return this.serializeEmployee(row);
   }
 
@@ -673,6 +707,39 @@ export class HrmService {
     hasMore?: boolean;
   }> {
     const tenantId = this.tenantDb.requireTenantId();
+    const filterKey = listPageFilterKey({
+      search: filters.search,
+      year: filters.year,
+      month: filters.month,
+      payrollGroupId: filters.payrollGroupId,
+      employeeRecordId: filters.employeeRecordId,
+      locationCode: filters.locationCode,
+      designationId: filters.designationId,
+      status: filters.status,
+      paymentStatus: filters.paymentStatus,
+      cursor: filters.cursor,
+      limit: filters.limit ?? 10,
+      sortBy: filters.sortBy,
+      sortDir: filters.sortDir,
+      sum: filters.includeSummary === false ? 0 : 1,
+    });
+    return withListPageCache(
+      this.cache,
+      tenantId,
+      'hrm-payrolls',
+      filterKey,
+      () => this.listPayrollsUncached(filters, tenantId),
+    );
+  }
+
+  private async listPayrollsUncached(
+    filters: PayrollFilters & { includeSummary?: boolean },
+    tenantId: string,
+  ): Promise<{
+    items: Payroll[];
+    totalCount?: number;
+    hasMore?: boolean;
+  }> {
     const monthYearFilter =
       filters.year != null || filters.month != null
         ? (() => {
@@ -893,6 +960,7 @@ export class HrmService {
       },
     });
     await this.invoiceHub.ensurePayrollInvoice(this.tenantDb.db, row);
+    void invalidateTenantDashboardCache(this.cache, tenantId);
     return this.serializePayroll(row);
   }
 
@@ -966,6 +1034,7 @@ export class HrmService {
       },
     });
     await this.invoiceHub.ensurePayrollInvoice(this.tenantDb.db, row);
+    void invalidateTenantDashboardCache(this.cache, tenantId);
     return this.serializePayroll(row);
   }
 

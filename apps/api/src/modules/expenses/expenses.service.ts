@@ -14,6 +14,9 @@ import {
   listPageFilterKey,
   withListPageCache,
 } from '../../common/utils/listPageCache';
+import {
+  HQ6_LIST_WARM_LIMITS,
+} from '../../common/utils/hq6ListWarm';
 import { buildCompositeCursorQuery } from '../../common/utils/pagination';
 import type { PaginatedList } from '../../common/utils/paginatedList';
 import { toIso, toNumber } from '../../common/utils/serializers';
@@ -49,6 +52,7 @@ type ExpenseRow = {
   recurIntervalType: string | null;
   expenseDate: Date;
   createdById: string | null;
+  createdByName?: string | null;
   createdAt: Date;
   updatedAt: Date;
   category?: { name: string } | null;
@@ -186,7 +190,12 @@ export class ExpensesService {
     });
 
     const userIds = [
-      ...new Set(rows.map((r) => r.createdById).filter((id): id is string => Boolean(id))),
+      ...new Set(
+        rows
+          .filter((r) => !r.createdByName && r.createdById)
+          .map((r) => r.createdById)
+          .filter((id): id is string => Boolean(id)),
+      ),
     ];
     const users =
       userIds.length > 0
@@ -197,7 +206,12 @@ export class ExpensesService {
         : [];
     const userNames = new Map(users.map((u) => [u.id, u.name]));
     const items = rows.map((row) =>
-      this.serializeExpense(row, userNames.get(row.createdById ?? '') ?? null),
+      this.serializeExpense(
+        row,
+        row.createdByName ??
+          userNames.get(row.createdById ?? '') ??
+          null,
+      ),
     );
 
     if (filters.includeSummary === false) {
@@ -233,6 +247,15 @@ export class ExpensesService {
       Number(dto.totalAmount) > 0;
 
     const row = await this.tenantDb.db.$transaction(async (tx) => {
+      const authUserId = this.tenantDb.getAuthUserId();
+      let createdByName: string | null = null;
+      if (authUserId) {
+        const user = await tx.user.findFirst({
+          where: { id: authUserId },
+          select: { name: true },
+        });
+        createdByName = user?.name ?? null;
+      }
       const created = await tx.expense.create({
         data: {
           tenantId,
@@ -255,7 +278,8 @@ export class ExpensesService {
           recurInterval: dto.recurInterval ?? null,
           recurIntervalType: dto.recurIntervalType ?? null,
           expenseDate: dto.expenseDate ? new Date(dto.expenseDate) : new Date(),
-          createdById: this.tenantDb.getAuthUserId(),
+          createdById: authUserId,
+          createdByName,
         },
         include: expenseInclude,
       });
@@ -292,7 +316,7 @@ export class ExpensesService {
       console.error('[expenses] daily finance rollup failed', err);
     });
     this.invalidateCaches();
-    return this.serializeExpense(row);
+    return this.serializeExpense(row, row.createdByName ?? null);
   }
 
   private invalidateCaches(): void {
@@ -310,8 +334,8 @@ export class ExpensesService {
     });
     if (!row) throw new NotFoundException('Expense not found');
 
-    let createdByName: string | null = null;
-    if (row.createdById) {
+    let createdByName: string | null = row.createdByName ?? null;
+    if (!createdByName && row.createdById) {
       const user = await this.tenantDb.db.user.findFirst({
         where: { id: row.createdById },
         select: { name: true },
@@ -590,9 +614,98 @@ export class ExpensesService {
       recurIntervalType: row.recurIntervalType,
       expenseDate: toIso(row.expenseDate),
       createdById: row.createdById,
-      createdByName,
+      createdByName: createdByName ?? row.createdByName ?? null,
       createdAt: toIso(row.createdAt),
       updatedAt: toIso(row.updatedAt),
     };
+  }
+}
+
+/** Boot/cron: seed HQ6 default expense list pages (limit 25, all-time, rows+summary). */
+export async function warmDefaultExpenseListPages(
+  prisma: import('@prisma/client').PrismaClient,
+  cache: CacheService,
+  tenantId: string,
+): Promise<void> {
+  for (const limit of HQ6_LIST_WARM_LIMITS) {
+    for (const includeSummary of [false, true] as const) {
+      const filterKey = listPageFilterKey({
+        search: undefined,
+        from: undefined,
+        to: undefined,
+        locationCode: undefined,
+        expenseForCustomerId: undefined,
+        contactCustomerId: undefined,
+        createdById: undefined,
+        categoryId: undefined,
+        paymentStatus: undefined,
+        cursor: undefined,
+        limit,
+        sum: includeSummary ? 1 : 0,
+      });
+      await withListPageCache(
+        cache,
+        tenantId,
+        'expenses',
+        filterKey,
+        async () => {
+          const baseWhere = { tenantId, deletedAt: null as null };
+          const rows = await prisma.expense.findMany({
+            where: baseWhere,
+            include: expenseInclude,
+            orderBy: [{ expenseDate: 'desc' }, { id: 'desc' }],
+            take: limit,
+          });
+          const items = rows.map((row) => ({
+            id: row.id,
+            tenantId: row.tenantId,
+            refNo: row.refNo,
+            categoryId: row.categoryId,
+            categoryName: row.category?.name ?? null,
+            subCategory: row.subCategory,
+            locationCode: row.locationCode,
+            expenseForCustomerId: row.expenseForCustomerId,
+            expenseFor: row.expenseForCustomer?.name ?? row.expenseFor ?? null,
+            contactCustomerId: row.contactCustomerId,
+            contactName: row.contactCustomer?.name ?? row.contactName ?? null,
+            totalAmount: toNumber(row.totalAmount),
+            taxAmount: toNumber(row.taxAmount),
+            paymentStatus: row.paymentStatus,
+            paymentDue: toNumber(row.paymentDue),
+            note: row.note,
+            accountId: row.accountId,
+            accountName: row.account?.name ?? null,
+            isRecurring: row.isRecurring,
+            recurInterval: row.recurInterval,
+            recurIntervalType: row.recurIntervalType,
+            expenseDate: toIso(row.expenseDate),
+            createdById: row.createdById,
+            createdByName: row.createdByName ?? null,
+            createdAt: toIso(row.createdAt),
+            updatedAt: toIso(row.updatedAt),
+          }));
+          if (!includeSummary) {
+            return { items };
+          }
+          const [totalCount, amountAgg] = await Promise.all([
+            prisma.expense.count({ where: baseWhere }),
+            prisma.expense.aggregate({
+              where: baseWhere,
+              _sum: { totalAmount: true, paymentDue: true },
+            }),
+          ]);
+          return {
+            items,
+            totalCount,
+            amountSummary: {
+              totalAmount: toNumber(amountAgg._sum.totalAmount),
+              totalDue: toNumber(amountAgg._sum.paymentDue),
+              currency: 'NGN',
+            },
+          };
+        },
+        600,
+      );
+    }
   }
 }

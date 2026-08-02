@@ -13,6 +13,7 @@ import {
 } from "@/lib/registries/vagViewUnits";
 import { getTenantByCode, type TenantCode } from "@/lib/registries/tenants";
 import { accentForTenantCode } from "@/lib/registries/tenantAccents";
+import { publicAssetPath } from "@/lib/utils/basePath";
 import { cn } from "@/lib/utils/cn";
 import { tenantOverviewPath } from "@/lib/utils/authRedirect";
 import { prefetchAdminEntity } from "@/lib/admin/prefetchAdminEntity";
@@ -301,7 +302,7 @@ export function AdminEntitySwitcher({
                         style={{ boxShadow: `inset 0 0 0 2px ${accent}33` }}
                       >
                         <Image
-                          src="/brand/vonos-autos-mark.png"
+                          src={publicAssetPath("/brand/vonos-autos-mark.png")}
                           alt=""
                           width={28}
                           height={28}

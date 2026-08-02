@@ -28,6 +28,7 @@ import {
 import { prefetchMovementListModals } from "@/lib/query/prefetchListModals";
 import { prefetchMovementDetail } from "@/lib/query/prefetchListDetails";
 import { formatCurrency } from "@/lib/utils/formatCurrency";
+import { withBasePath } from "@/lib/utils/basePath";
 import { formatDate } from "@/lib/utils/formatDate";
 import { uniqueFieldOptions } from "@/lib/utils/listFilters";
 import { compositeListCursorFrom } from "@/lib/utils/pagination";
@@ -168,7 +169,9 @@ function MovementListViewBody({
                         label: "Edit",
                         onClick: () => {
                           if (!tenantCode) return;
-                          window.location.href = `/${tenantCode}/add-purchase?edit=${row.id}`;
+                          window.location.href = withBasePath(
+                            `/${tenantCode}/add-purchase?edit=${row.id}`,
+                          );
                         },
                       },
                     ]

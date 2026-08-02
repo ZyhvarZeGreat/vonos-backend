@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Trash2 } from "lucide-react";
 import { Button } from "@/components/atoms/Button";
+import { ClearableNumberInput } from "@/components/atoms/ClearableNumberInput";
 import { Input } from "@/components/atoms/Input";
 import { Select } from "@/components/atoms/Select";
 import {
@@ -20,6 +21,7 @@ import { useRouteTenant } from "@/lib/hooks/useRouteTenant";
 import { useIsVaHq6 } from "@/lib/hooks/useIsVaHq6";
 import { Hq6PosOpenRegisterView } from "@/components/pages/Hq6PosTerminalView";
 import { formatCurrency } from "@/lib/utils/formatCurrency";
+import { isGroupStockConsumerTenant } from "@vonos/types";
 
 interface SaleLineDraft {
   key: string;
@@ -68,8 +70,8 @@ function PosTerminalViewBody() {
     [lines],
   );
 
-  const allowCrossEntitySource =
-    config?.code === "VA" || config?.code === "VP";
+  const allowCrossEntitySource = isGroupStockConsumerTenant(config?.code);
+  const ownCatalogSearch = !allowCrossEntitySource;
 
   const addLineFromItem = (pick: CatalogPartPick) => {
     if (!pick.itemId) return;
@@ -166,9 +168,15 @@ function PosTerminalViewBody() {
               tenantCode={config?.code}
               retailOnly={!allowCrossEntitySource}
               includeWarehouse
+              ownCatalog={ownCatalogSearch}
               pickSourceAfterSelect={allowCrossEntitySource}
-              allowCustom={false}
+              allowCustom={allowCrossEntitySource}
               onSelect={addLineFromItem}
+              placeholder={
+                allowCrossEntitySource
+                  ? "Search VW / VISP / VSP stock or type a custom part"
+                  : undefined
+              }
             />
           </div>
 
@@ -219,15 +227,11 @@ function PosTerminalViewBody() {
                         />
                       </td>
                       <td className="px-3 py-2">
-                        <input
-                          type="number"
-                          min="0"
-                          step="0.01"
+                        <ClearableNumberInput
+                          min={0}
                           value={line.unitPrice}
-                          onChange={(e) =>
-                            updateLine(line.key, {
-                              unitPrice: Math.max(0, Number(e.target.value) || 0),
-                            })
+                          onChange={(n) =>
+                            updateLine(line.key, { unitPrice: n })
                           }
                           className="w-24 rounded border border-border px-2 py-1"
                         />

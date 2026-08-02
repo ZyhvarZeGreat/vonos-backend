@@ -10,22 +10,41 @@ import { throwApiError } from "@/lib/api/parseApiError";
 import {
   DEFAULT_TABLE_PAGE_SIZE,
   EXPORT_PAGE_SIZE,
+  TYPEAHEAD_PAGE_SIZE,
   fetchAllPages,
   fetchFirstPage,
   type ListPage,
 } from "@/lib/api/fetchAllPages";
 import { appendListQuery, fetchTenantListPage } from "@/lib/api/listPageHelpers";
+import { createAsyncTtlCache } from "@/lib/utils/asyncTtlCache";
 
 const LIST_PATH = "/payment-accounts";
+
+/** Short-lived typeahead cache for account pickers — see customers.ts. */
+const paymentAccountOptionCache = createAsyncTtlCache<PaymentAccount[]>({
+  ttlMs: 30_000,
+  maxEntries: 100,
+});
+
+/** Drop cached payment-account option lists (call after account mutations). */
+export function clearPaymentAccountOptionCache(): void {
+  paymentAccountOptionCache.clear();
+}
 
 async function fetchPaymentAccountsRaw(
   tenantId: string,
   cursor?: string,
   limit?: number,
-  extra?: { search?: string },
+  extra?: { search?: string; openOnly?: boolean; lite?: boolean },
 ): Promise<PaymentAccount[]> {
   const tenantPath = withTenantQuery(LIST_PATH, tenantId);
-  const url = appendListQuery(tenantPath, { cursor, limit, ...extra });
+  const url = appendListQuery(tenantPath, {
+    cursor,
+    limit,
+    search: extra?.search,
+    openOnly: extra?.openOnly ? "1" : undefined,
+    lite: extra?.lite ? "1" : undefined,
+  });
   const response = await apiFetch(url);
   if (!response.ok) throw new Error("Failed to fetch payment accounts");
   return response.json();
@@ -64,6 +83,7 @@ export async function createPaymentAccount(
   if (!response.ok) {
     return throwApiError(response, "Failed to create payment account");
   }
+  clearPaymentAccountOptionCache();
   return response.json();
 }
 
@@ -80,6 +100,7 @@ export async function updatePaymentAccount(
   if (!response.ok) {
     return throwApiError(response, "Failed to update payment account");
   }
+  clearPaymentAccountOptionCache();
   return response.json();
 }
 
@@ -94,6 +115,7 @@ export async function closePaymentAccount(
   if (!response.ok) {
     return throwApiError(response, "Failed to close payment account");
   }
+  clearPaymentAccountOptionCache();
   return response.json();
 }
 
@@ -128,6 +150,7 @@ export async function transferPaymentAccounts(
   if (!response.ok) {
     return throwApiError(response, "Failed to transfer funds");
   }
+  clearPaymentAccountOptionCache();
   return response.json();
 }
 
@@ -139,6 +162,7 @@ export async function deletePaymentAccount(
     method: "DELETE",
   });
   if (!response.ok) throw new Error("Failed to delete payment account");
+  clearPaymentAccountOptionCache();
 }
 
 /** Full payment account list for export — not for table rendering. */
@@ -154,10 +178,44 @@ export async function getAllPaymentAccounts(
 
 export async function getPaymentAccounts(
   tenantId: string,
+  opts?: {
+    search?: string;
+    limit?: number;
+    openOnly?: boolean;
+    lite?: boolean;
+  },
 ): Promise<PaymentAccount[]> {
-  return fetchFirstPage((cursor, limit) =>
-    fetchPaymentAccountsRaw(tenantId, cursor, limit),
+  const cacheKey = JSON.stringify([
+    tenantId,
+    opts?.search ?? "",
+    opts?.limit ?? TYPEAHEAD_PAGE_SIZE,
+    opts?.openOnly ? 1 : 0,
+    opts?.lite ? 1 : 0,
+  ]);
+  return paymentAccountOptionCache.get(cacheKey, () =>
+    fetchFirstPage(
+      (cursor, limit) =>
+        fetchPaymentAccountsRaw(tenantId, cursor, limit, {
+          search: opts?.search,
+          openOnly: opts?.openOnly,
+          lite: opts?.lite,
+        }),
+      opts?.limit ?? TYPEAHEAD_PAGE_SIZE,
+    ),
   );
+}
+
+/** Open payment accounts for pickers (cash tills + banks; excludes chart junk). */
+export async function getPaymentAccountsForPicker(
+  tenantId: string,
+  opts?: { search?: string; limit?: number },
+): Promise<PaymentAccount[]> {
+  return getPaymentAccounts(tenantId, {
+    search: opts?.search,
+    limit: opts?.limit ?? TYPEAHEAD_PAGE_SIZE,
+    openOnly: true,
+    lite: true,
+  });
 }
 
 export async function getUnlinkedPaymentsCount(

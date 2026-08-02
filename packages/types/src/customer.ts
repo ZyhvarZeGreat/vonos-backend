@@ -44,6 +44,8 @@ export interface CustomerFilters {
   hasNoSellMonths?: 1 | 3 | 6 | 12;
   customerGroupId?: string;
   assignedToUserId?: string;
+  /** HRM employee (worker) assigned to the contact — details.assignedToEmployeeId. */
+  assignedToEmployeeId?: string;
   status?: "active" | "inactive";
   /** ISO date — filter by customer createdAt >= from */
   from?: string;
@@ -51,6 +53,11 @@ export interface CustomerFilters {
   to?: string;
   /** When false, skip count/amountSummary for faster first paint. */
   includeSummary?: boolean;
+  /**
+   * Typeahead / option-list mode: skip the legacy Contact ID resolution
+   * round-trip (pickers only render the name). Saves one Neon round-trip.
+   */
+  lite?: boolean;
 }
 
 export interface CreateCustomerInput {

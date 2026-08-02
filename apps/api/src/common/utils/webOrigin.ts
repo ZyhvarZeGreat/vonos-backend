@@ -3,6 +3,8 @@ const DEFAULT_ORIGINS = [
   'https://vonos-web-7w14.vercel.app',
   'https://app.vonosautos.com',
   'https://app.vonosautosmarket.com',
+  'https://vonosgroup.com',
+  'https://www.vonosgroup.com',
 ];
 
 function normalizeOrigin(value: string): string {

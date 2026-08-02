@@ -185,9 +185,6 @@ export function Hq6UserDetailView({
   const [activeTab, setActiveTab] = useState<"info" | "docs" | "activities">(
     "info",
   );
-  const [formLocationCodes, setFormLocationCodes] = useState<string[] | null>(
-    null,
-  );
 
   const defaultLocationCodes = useMemo(() => {
     const code = config?.code?.trim();
@@ -203,6 +200,10 @@ export function Hq6UserDetailView({
     return allowed.has(mapped) ? [mapped] : (["VM"] as string[]);
   }, [config?.code]);
 
+  /** Seed immediately so roles fetch on first paint (avoids empty→load delay). */
+  const [formLocationCodes, setFormLocationCodes] =
+    useState<string[]>(defaultLocationCodes);
+
   /** Home entity for API calls: first selected entity, else viewing tenant. */
   const homeTenantId = useMemo(() => {
     const fromForm = primaryTenantIdFromWorkLocations(formLocationCodes);
@@ -216,6 +217,8 @@ export function Hq6UserDetailView({
     queryKey: ["tenant-roles", tenantId],
     queryFn: () => getTenantRoles(tenantId!),
     enabled: Boolean(tenantId),
+    staleTime: 5 * 60_000,
+    placeholderData: (previous) => previous,
   });
 
   const {
@@ -242,13 +245,21 @@ export function Hq6UserDetailView({
     staleTime: DETAIL_RECORD_STALE_MS,
   });
 
-  const initial = useMemo(() => {
-    const defaultHq6RoleId =
+  const defaultHq6RoleId = useMemo(() => {
+    return (
       hq6Roles.find((r) => r.name.toUpperCase() === "MANAGER")?.id ??
       hq6Roles.find((r) => !r.locked)?.id ??
       hq6Roles[0]?.id ??
-      "";
+      ""
+    );
+  }, [hq6Roles]);
 
+  /**
+   * Seed from user / defaults only — NOT from hq6Roles.
+   * Roles used to be in this memo; when the first entity tag changed, home
+   * tenant + roles refetch recreated `initial` and wiped entity picks (× felt broken).
+   */
+  const initial = useMemo(() => {
     const resolvedLocations =
       linkedEmployeeLocations && linkedEmployeeLocations.length > 0
         ? linkedEmployeeLocations
@@ -260,7 +271,7 @@ export function Hq6UserDetailView({
         lastName: "",
         email: "",
         username: "",
-        hq6RoleId: defaultHq6RoleId,
+        hq6RoleId: "",
         isActive: true,
         allowLogin: true,
         password: "",
@@ -299,7 +310,7 @@ export function Hq6UserDetailView({
       lastName: parts.last,
       email: user.email,
       username: user.username ?? user.email.split("@")[0] ?? "",
-      hq6RoleId: user.tenantRoleId ?? defaultHq6RoleId,
+      hq6RoleId: user.tenantRoleId ?? "",
       isActive: user.status === "active",
       allowLogin: user.status === "active" || user.status === "invited",
       password: "",
@@ -330,16 +341,22 @@ export function Hq6UserDetailView({
       basicSalary: "",
       salaryPeriod: "month",
     };
-  }, [
-    isCreate,
-    user,
-    hq6Roles,
-    defaultLocationCodes,
-    linkedEmployeeLocations,
-  ]);
+  }, [isCreate, user, defaultLocationCodes, linkedEmployeeLocations]);
 
   const [form, setForm] = useState(initial);
   useEffect(() => setForm(initial), [initial]);
+
+  /** Fill / repair role when roles load or home entity changes — keep other fields. */
+  useEffect(() => {
+    if (!defaultHq6RoleId) return;
+    setForm((prev) => {
+      const stillValid =
+        prev.hq6RoleId.length > 0 &&
+        hq6Roles.some((r) => r.id === prev.hq6RoleId);
+      if (stillValid) return prev;
+      return { ...prev, hq6RoleId: defaultHq6RoleId };
+    });
+  }, [defaultHq6RoleId, hq6Roles]);
 
   useEffect(() => {
     setFormLocationCodes(form.locationCodes);

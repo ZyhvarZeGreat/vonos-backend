@@ -32,11 +32,12 @@ type PartSourceMode = "shop" | "internal" | "external";
 /** Internal departments a VA job can pull parts from. */
 const INTERNAL_DEPARTMENTS: { code: string; label: string }[] = [
   { code: "VW", label: "Warehouse" },
-  { code: "VSP", label: "Vonos Spare Parts" },
+  { code: "VISP", label: "Institute Spare Parts" },
+  { code: "VSP", label: "SP Marketplace" },
 ];
 
 const SOURCE_MODES: { id: PartSourceMode; label: string }[] = [
-  { id: "shop", label: "Own stock (VA → VW → purchase)" },
+  { id: "shop", label: "Group stock (VW / VISP / VSP) or purchase" },
   { id: "internal", label: "Internal dept" },
   { id: "external", label: "External purchase" },
 ];
@@ -229,9 +230,12 @@ export function JobMaterialsPanel({ job, tenantId, onJobChange }: JobCostPanelPr
         {sourceMode !== "external" ? (
           <ProductItemSearch
             tenantId={tenantId}
+            tenantCode="VA"
             includeWarehouse
+            ownCatalog={false}
             allowCustom
-            placeholder="Search own stock or warehouse parts…"
+            pickSourceAfterSelect
+            placeholder="Search VW / VISP / VSP stock or add custom…"
             onSelect={addFromItem}
           />
         ) : null}

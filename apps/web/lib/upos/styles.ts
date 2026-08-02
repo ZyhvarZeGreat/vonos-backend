@@ -3,13 +3,19 @@
  * Keeping links in <head> (not CSS modules) so AdminLTE can unload for auth pages.
  */
 
-export const UPOS_STYLESHEETS = [
+import { withBasePath } from "@/lib/utils/basePath";
+
+const UPOS_STYLESHEET_PATHS = [
   "/upos/tailwind-app.css",
   "/upos/vendor.css",
   "/upos/app.css",
   "/upos/bridge.css",
   "/upos/hq6-users-lift.css",
 ] as const;
+
+export const UPOS_STYLESHEETS = UPOS_STYLESHEET_PATHS.map((href) =>
+  withBasePath(href),
+);
 
 export function uposStylesheetId(href: string): string {
   return `upos-css-${href.replace(/\W+/g, "-")}`;

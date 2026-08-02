@@ -17,6 +17,17 @@ interface ToastState {
 let lastToastKey = "";
 let lastToastAt = 0;
 
+/** Max simultaneously visible toasts — oldest are dropped past this. */
+const MAX_TOASTS = 4;
+
+/** Auto-dismiss delay by severity — errors linger so they can be read. */
+const TOAST_DURATION_MS: Record<ToastType, number> = {
+  success: 4000,
+  info: 4500,
+  warning: 6000,
+  error: 8000,
+};
+
 export const useToastStore = create<ToastState>((set, get) => ({
   toasts: [],
   show: (type, message) => {
@@ -30,8 +41,13 @@ export const useToastStore = create<ToastState>((set, get) => ({
     lastToastAt = now;
 
     const id = crypto.randomUUID();
-    set((state) => ({ toasts: [...state.toasts, { id, type, message: trimmed }] }));
-    window.setTimeout(() => get().dismiss(id), 4500);
+    set((state) => ({
+      // Cap the stack so rapid-fire actions can't pile toasts off-screen.
+      toasts: [...state.toasts, { id, type, message: trimmed }].slice(
+        -MAX_TOASTS,
+      ),
+    }));
+    window.setTimeout(() => get().dismiss(id), TOAST_DURATION_MS[type]);
   },
   dismiss: (id) =>
     set((state) => ({ toasts: state.toasts.filter((toast) => toast.id !== id) })),

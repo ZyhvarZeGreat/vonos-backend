@@ -1,6 +1,9 @@
 "use client";
 
-/** DataTables-style search field + Search button (HQ6 / UPOS list chrome). */
+/**
+ * HQ6 list search — live typing; parent should pass a value that drives
+ * `useServerListPage` search (already debounced ~300ms). No Search button.
+ */
 export function Hq6DtSearchFilter({
   value,
   onChange,
@@ -12,15 +15,13 @@ export function Hq6DtSearchFilter({
 }: {
   value: string;
   onChange: (value: string) => void;
-  /** Apply the current draft (button / Enter). Defaults to no-op when omitted. */
+  /** Optional: Enter flushes immediately (same as onChange for live search). */
   onCommit?: () => void;
   placeholder?: string;
   id?: string;
   disabled?: boolean;
   ariaControls?: string;
 }) {
-  const commit = () => onCommit?.();
-
   return (
     <div id={id} className="dataTables_filter hq6-dt-search-filter">
       <label>
@@ -37,20 +38,11 @@ export function Hq6DtSearchFilter({
           onKeyDown={(e) => {
             if (e.key === "Enter") {
               e.preventDefault();
-              commit();
+              onCommit?.();
             }
           }}
         />
       </label>
-      <button
-        type="button"
-        className="hq6-search-btn"
-        aria-label="Search"
-        disabled={disabled}
-        onClick={commit}
-      >
-        Search
-      </button>
     </div>
   );
 }

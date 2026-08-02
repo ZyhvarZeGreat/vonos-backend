@@ -102,6 +102,11 @@ export interface Sale {
   totalPaid?: number;
   /** Remaining balance: total − totalPaid (≥ 0). */
   sellDue?: number;
+  /**
+   * Payment note(s) from linked payments (list) — joined when multiple.
+   * Not the sale sell-note (`notes`).
+   */
+  paymentNote?: string | null;
 }
 
 /** Detail view includes line items */

@@ -1,4 +1,9 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import type {
   ContactDueSummary,
   ContactLedgerEntry,
@@ -24,6 +29,9 @@ import {
   withListPageCache,
 } from '../../common/utils/listPageCache';
 import {
+  HQ6_LIST_WARM_LIMITS,
+} from '../../common/utils/hq6ListWarm';
+import {
   getLegacyContactIdsForPage,
   warmLegacyContactIdMap,
 } from '../../common/utils/legacyContactIdMap';
@@ -32,9 +40,26 @@ import type { PaginatedList } from '../../common/utils/paginatedList';
 import { parseCsv, pickCsvField } from '../../common/utils/csvImport';
 import { refreshCustomerFinancialRollups } from '../../common/utils/customerRollups';
 import { recordPaymentAccountTxn } from '../../common/utils/recordPaymentAccountTxn';
-import { tokenizedSearchWhere } from '../../common/utils/listSearch';
+import { contactTextSearchWhere } from '../../common/utils/listSearch';
 import { toIso, toNumber } from '../../common/utils/serializers';
 import { AuditService } from '../audit/audit.service';
+
+/** Plate / Contact ID often embedded in legacy customer names (HQ6). */
+function plateFromCustomerName(name: string | null | undefined): string | null {
+  if (!name) return null;
+  const m = name.match(/\b([A-Z]{1,4}-[A-Z0-9]{1,8})\b/i);
+  return m?.[1]?.toUpperCase() ?? null;
+}
+
+/** Trim + upper-case the manually-entered Contact ID (vehicle reg. for VA). */
+function normalizeContactId(
+  details: CustomerContactDetails | null | undefined,
+): string | null {
+  if (!details || typeof details !== 'object') return null;
+  const raw =
+    typeof details.contactId === 'string' ? details.contactId.trim() : '';
+  return raw ? raw.toUpperCase() : null;
+}
 
 type SaleRow = {
   id?: string;
@@ -157,8 +182,9 @@ function serializeCustomer(
     createdAt: toIso(row.createdAt),
     updatedAt: toIso(row.updatedAt),
     contactId:
-      details.contactId ??
-      extras?.contactId ??
+      details.contactId?.trim() ||
+      plateFromCustomerName(row.name) ||
+      extras?.contactId ||
       row.id.slice(0, 8).toUpperCase(),
     businessName: details.businessName ?? row.name,
     taxNumber: row.taxNumber?.trim() || null,
@@ -198,6 +224,7 @@ export class CustomersService {
       status: filters.status,
       customerGroupId: filters.customerGroupId,
       assignedToUserId: filters.assignedToUserId,
+      assignedToEmployeeId: filters.assignedToEmployeeId,
       openingBalance: filters.openingBalance ? 1 : 0,
       sellDue: filters.sellDue ? 1 : 0,
       advanceBalance: filters.advanceBalance ? 1 : 0,
@@ -208,6 +235,7 @@ export class CustomersService {
       cursor: filters.cursor,
       limit: filters.limit ?? 10,
       sum: filters.includeSummary === false ? 0 : 1,
+      lite: filters.lite ? 1 : 0,
     });
 
     return withListPageCache(
@@ -244,6 +272,14 @@ export class CustomersService {
       ...(filters.assignedToUserId
         ? { assignedToUserId: filters.assignedToUserId }
         : {}),
+      ...(filters.assignedToEmployeeId
+        ? {
+            details: {
+              path: ['assignedToEmployeeId'],
+              equals: filters.assignedToEmployeeId,
+            },
+          }
+        : {}),
       ...(filters.status ? { status: filters.status } : {}),
       ...(filters.openingBalance ? { openingBalance: { gt: 0 } } : {}),
       ...(filters.sellDue ? { totalSellDue: { gt: 0 } } : {}),
@@ -257,12 +293,8 @@ export class CustomersService {
             },
           }
         : {}),
-      // Trigram-backed fields only (Customer_name/phone/email_trgm_idx).
-      ...(tokenizedSearchWhere(filters.search, (_token, contains) => [
-        { name: contains },
-        { email: contains },
-        { phone: contains },
-      ]) ?? {}),
+      // Phone / single-token → prefix path; else trigram name/email/phone.
+      ...(contactTextSearchWhere(filters.search) ?? {}),
       ...(sinceCutoff
         ? {
             NOT: {
@@ -329,13 +361,17 @@ export class CustomersService {
         : Promise.resolve(undefined),
     ]);
 
-    const legacyById = await getLegacyContactIdsForPage(
-      this.tenantDb.db,
-      this.cache,
-      tenantId,
-      'customer',
-      rows.map((row) => row.id),
-    );
+    // Typeahead pickers render the name only — skip the legacy Contact ID
+    // resolution round-trip entirely.
+    const legacyById = filters.lite
+      ? new Map<string, string>()
+      : await getLegacyContactIdsForPage(
+          this.tenantDb.db,
+          this.cache,
+          tenantId,
+          'customer',
+          rows.map((row) => row.id),
+        );
 
     const items = rows.map((row) =>
       serializeCustomer(row, { contactId: legacyById.get(row.id) ?? null }),
@@ -359,6 +395,57 @@ export class CustomersService {
     };
   }
 
+  /** Reject a duplicate Contact ID (vehicle registration) within the tenant. */
+  private async assertContactIdUnique(
+    tenantId: string,
+    contactId: string,
+    excludeId?: string,
+  ): Promise<void> {
+    const dup = await this.tenantDb.db.customer.findFirst({
+      where: {
+        tenantId,
+        deletedAt: null,
+        ...(excludeId ? { id: { not: excludeId } } : {}),
+        details: { path: ['contactId'], equals: contactId },
+      },
+      select: { id: true },
+    });
+    if (dup) {
+      throw new ConflictException(
+        `A customer with Contact ID ${contactId} already exists`,
+      );
+    }
+  }
+
+  /**
+   * Validate the assigned HRM employee (worker) belongs to the tenant and stamp
+   * the authoritative name onto `details`. Clears both fields when unset.
+   */
+  private async resolveAssignedEmployee(
+    tenantId: string,
+    details: CustomerContactDetails | null | undefined,
+  ): Promise<void> {
+    if (!details || typeof details !== 'object') return;
+    const employeeId =
+      typeof details.assignedToEmployeeId === 'string'
+        ? details.assignedToEmployeeId.trim()
+        : '';
+    if (!employeeId) {
+      details.assignedToEmployeeId = null;
+      details.assignedToEmployeeName = null;
+      return;
+    }
+    const employee = await this.tenantDb.db.employee.findFirst({
+      where: { id: employeeId, tenantId, deletedAt: null },
+      select: { id: true, name: true },
+    });
+    if (!employee) {
+      throw new BadRequestException('Assigned worker not found');
+    }
+    details.assignedToEmployeeId = employee.id;
+    details.assignedToEmployeeName = employee.name;
+  }
+
   async create(dto: CreateCustomerInput): Promise<Customer> {
     const tenantId = this.tenantDb.requireTenantId();
     const name = dto.name.trim();
@@ -366,9 +453,18 @@ export class CustomersService {
       throw new BadRequestException('Customer name is required');
     }
     const createdBy = await this.auditService.createdByFields();
-    const detailsJson = toDetailsJson(
-      dto.details ? parseCustomerContactDetails(dto.details) : dto.details,
-    );
+    const parsedDetails = dto.details
+      ? parseCustomerContactDetails(dto.details)
+      : dto.details;
+    const contactId = normalizeContactId(parsedDetails);
+    if (parsedDetails && typeof parsedDetails === 'object') {
+      parsedDetails.contactId = contactId;
+    }
+    if (contactId) {
+      await this.assertContactIdUnique(tenantId, contactId);
+    }
+    await this.resolveAssignedEmployee(tenantId, parsedDetails);
+    const detailsJson = toDetailsJson(parsedDetails);
     const row = await this.tenantDb.db.customer.create({
       data: {
         tenantId,
@@ -410,13 +506,21 @@ export class CustomersService {
       throw new BadRequestException('Customer name is required');
     }
 
-    const detailsJson = toDetailsJson(
+    const parsedDetails =
       dto.details === undefined
         ? undefined
         : dto.details
           ? parseCustomerContactDetails(dto.details)
-          : null,
-    );
+          : null;
+    if (parsedDetails && typeof parsedDetails === 'object') {
+      const contactId = normalizeContactId(parsedDetails);
+      parsedDetails.contactId = contactId;
+      if (contactId) {
+        await this.assertContactIdUnique(tenantId, contactId, id);
+      }
+      await this.resolveAssignedEmployee(tenantId, parsedDetails);
+    }
+    const detailsJson = toDetailsJson(parsedDetails);
 
     const row = await this.tenantDb.db.customer.update({
       where: { id },
@@ -490,6 +594,12 @@ export class CustomersService {
     if (!Number.isFinite(amount) || amount <= 0) {
       throw new BadRequestException('Payment amount must be greater than zero');
     }
+    const accountId = dto.accountId?.trim() || null;
+    if (!accountId) {
+      throw new BadRequestException(
+        'Select a Payment Account so this payment posts to the account book',
+      );
+    }
 
     const customer = await this.tenantDb.db.customer.findFirst({
       where: { id, tenantId, deletedAt: null },
@@ -542,28 +652,26 @@ export class CustomersService {
             paidOn,
             paymentFor: 'sale',
             saleId: sale.id,
-            accountId: dto.accountId?.trim() || null,
+            accountId,
             note: dto.note?.trim() || `Contact payment — ${customer.name}`,
             createdByName: createdBy.createdByName ?? null,
           },
         });
 
-        if (dto.accountId?.trim()) {
-          await recordPaymentAccountTxn(tx, {
-            tenantId,
-            accountId: dto.accountId.trim(),
-            type: 'credit',
-            subType: 'sale_payment',
-            amount: apply,
-            operationDate: paidOn,
-            refNo: sale.reference,
-            note: dto.note?.trim() || `Contact payment — ${customer.name}`,
-            paymentMethod: method,
-            saleId: sale.id,
-            paymentId: payment.id,
-            createdByName: createdBy.createdByName ?? null,
-          });
-        }
+        await recordPaymentAccountTxn(tx, {
+          tenantId,
+          accountId,
+          type: 'credit',
+          subType: 'sale_payment',
+          amount: apply,
+          operationDate: paidOn,
+          refNo: sale.reference,
+          note: dto.note?.trim() || `Contact payment — ${customer.name}`,
+          paymentMethod: method,
+          saleId: sale.id,
+          paymentId: payment.id,
+          createdByName: createdBy.createdByName ?? null,
+        });
 
         await tx.ledgerEntry.create({
           data: {
@@ -892,20 +1000,22 @@ export class CustomersService {
   }
 }
 
-/** Boot/cron: seed default first-page customer list caches (limit 10/25, rows+summary). */
+/** Boot/cron: seed HQ6 default first-page customer list caches. */
 export async function warmDefaultCustomerListPages(
   prisma: import('@prisma/client').PrismaClient,
   cache: CacheService,
   tenantId: string,
 ): Promise<void> {
   await warmLegacyContactIdMap(prisma, cache, tenantId, 'customer');
-  for (const limit of [10, 25] as const) {
+  for (const limit of HQ6_LIST_WARM_LIMITS) {
     for (const includeSummary of [false, true] as const) {
+      // Keys must match CustomersService.list filterKey (incl. lite + employee).
       const filterKey = listPageFilterKey({
         search: undefined,
         status: undefined,
         customerGroupId: undefined,
         assignedToUserId: undefined,
+        assignedToEmployeeId: undefined,
         openingBalance: 0,
         sellDue: 0,
         advanceBalance: 0,
@@ -916,6 +1026,7 @@ export async function warmDefaultCustomerListPages(
         cursor: undefined,
         limit,
         sum: includeSummary ? 1 : 0,
+        lite: 0,
       });
       await withListPageCache(
         cache,
@@ -974,6 +1085,7 @@ export async function warmDefaultCustomerListPages(
             },
           };
         },
+        600,
       );
     }
   }

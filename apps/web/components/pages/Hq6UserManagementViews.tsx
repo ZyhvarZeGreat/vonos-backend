@@ -21,6 +21,7 @@ import {
   getTenantRoles,
   importTenantRoles,
 } from "@/lib/api/tenantRoles";
+import { useDebouncedValue } from "@/lib/hooks/useDebouncedValue";
 import { useRecordNavigation } from "@/lib/hooks/useRecordNavigation";
 import { useRouteTenant, useTenantId } from "@/lib/hooks/useRouteTenant";
 import {
@@ -53,18 +54,18 @@ const DEMO_REGISTERS: PosRegisterRow[] = [
 export function Hq6PosListView() {
   const { tenantCode } = useRouteTenant();
   const router = useRouter();
-  const [localSearch, setLocalSearch] = useState("");
+  const [search, setSearch] = useState("");
   const [editRegister, setEditRegister] = useState<PosRegisterRow | null>(null);
   const [editName, setEditName] = useState("");
   const chrome = useHq6ListChrome("pos-registers");
 
   const rows = useMemo(() => {
-    if (!localSearch.trim()) return DEMO_REGISTERS;
-    const q = localSearch.toLowerCase();
+    if (!search.trim()) return DEMO_REGISTERS;
+    const q = search.toLowerCase();
     return DEMO_REGISTERS.filter(
       (row) => row.name.toLowerCase().includes(q) || row.location.toLowerCase().includes(q),
     );
-  }, [localSearch]);
+  }, [search]);
 
   const columns: ColumnConfig<PosRegisterRow>[] = useMemo(
     () => [
@@ -132,8 +133,8 @@ export function Hq6PosListView() {
       chrome={chrome}
       pageSize={25}
       onPageSizeChange={() => undefined}
-      searchValue={localSearch}
-      onSearchChange={setLocalSearch}
+      searchValue={search}
+      onSearchChange={setSearch}
       tabs={[
         {
           id: "registers",
@@ -222,8 +223,8 @@ export function Hq6RolesListView() {
   const tenantId = useTenantId();
   const { tenantCode } = useRouteTenant();
   const { detailPath, listPath } = useRecordNavigation("roles");
-  const [localSearch, setLocalSearch] = useState("");
-  const [committedSearch, setCommittedSearch] = useState("");
+  const [search, setSearch] = useState("");
+  const debouncedSearch = useDebouncedValue(search, 300);
   const [deleteRole, setDeleteRole] = useState<TenantRole | null>(null);
   const [pageSize, setPageSize] = useState(50);
   const [pageIndex, setPageIndex] = useState(0);
@@ -234,11 +235,16 @@ export function Hq6RolesListView() {
   const canUpdateRole = isVag;
   const canDeleteRole = isVag;
 
-  const { data: roles = [] } = useQuery({
-    queryKey: ["tenant-roles", tenantId, committedSearch],
+  const {
+    data: roles = [],
+    isLoading: rolesLoading,
+    isError: rolesError,
+    refetch: refetchRoles,
+  } = useQuery({
+    queryKey: ["tenant-roles", tenantId, debouncedSearch],
     queryFn: () =>
       getTenantRoles(tenantId!, {
-        search: committedSearch || undefined,
+        search: debouncedSearch || undefined,
       }),
     enabled: Boolean(tenantId),
   });
@@ -417,10 +423,9 @@ export function Hq6RolesListView() {
                           <Hq6DtSearchFilter
                             id="roles_table_filter"
                             ariaControls="roles_table"
-                            value={localSearch}
-                            onChange={setLocalSearch}
-                            onCommit={() => {
-                              setCommittedSearch(localSearch);
+                            value={search}
+                            onChange={(value) => {
+                              setSearch(value);
                               setPageIndex(0);
                             }}
                           />
@@ -462,7 +467,22 @@ export function Hq6RolesListView() {
                           {visible.length === 0 ? (
                           <tr className="odd">
                             <td colSpan={3} className="dataTables_empty">
-                              No data available in table
+                              {rolesLoading ? (
+                                "Loading roles…"
+                              ) : rolesError ? (
+                                <span>
+                                  Couldn’t load roles.{" "}
+                                  <button
+                                    type="button"
+                                    className="btn btn-link p-0 align-baseline"
+                                    onClick={() => void refetchRoles()}
+                                  >
+                                    Retry
+                                  </button>
+                                </span>
+                              ) : (
+                                "No data available in table"
+                              )}
                             </td>
                           </tr>
                         ) : (
@@ -699,8 +719,7 @@ const AGENT_PAGE_SIZES = [25, 50, 100, 200, 500, 1000, -1] as const;
 /** Ultimate POS — sales_commission_agent/index.blade.php + create/edit modal (direct lift). */
 export function Hq6CommissionAgentsListView() {
   const { tenantCode } = useRouteTenant();
-  const [localSearch, setLocalSearch] = useState("");
-  const [committedSearch, setCommittedSearch] = useState("");
+  const [search, setSearch] = useState("");
   const [agents, setAgents] = useState<CommissionAgentRow[]>([]);
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<CommissionAgentRow | null>(null);
@@ -723,8 +742,8 @@ export function Hq6CommissionAgentsListView() {
   }, [tenantCode]);
 
   const filtered = useMemo(() => {
-    if (!committedSearch.trim()) return agents;
-    const q = committedSearch.toLowerCase();
+    if (!search.trim()) return agents;
+    const q = search.toLowerCase();
     return agents.filter(
       (row) =>
         row.name.toLowerCase().includes(q) ||
@@ -732,7 +751,7 @@ export function Hq6CommissionAgentsListView() {
         row.phone.toLowerCase().includes(q) ||
         row.address.toLowerCase().includes(q),
     );
-  }, [agents, committedSearch]);
+  }, [agents, search]);
 
   const total = filtered.length;
   const effectiveSize = pageSize <= 0 ? Math.max(total, 1) : pageSize;
@@ -1019,10 +1038,9 @@ export function Hq6CommissionAgentsListView() {
                             <Hq6DtSearchFilter
                               id="sales_commission_agent_table_filter"
                               ariaControls="sales_commission_agent_table"
-                              value={localSearch}
-                              onChange={setLocalSearch}
-                              onCommit={() => {
-                                setCommittedSearch(localSearch);
+                              value={search}
+                              onChange={(value) => {
+                                setSearch(value);
                                 setPageIndex(0);
                               }}
                             />

@@ -2,14 +2,16 @@
 
 import { Hq6DateTimeInput } from "@/components/hq6/Hq6DateTimeInput";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, Trash2 } from "lucide-react";
 import type { MovementStatus } from "@vonos/types";
+import { isGroupStockConsumerTenant } from "@vonos/types";
 import { Button } from "@/components/atoms/Button";
-import { MenuSelect } from "@/components/molecules/MenuSelect";
+import { ClearableNumberInput } from "@/components/atoms/ClearableNumberInput";
+import { AsyncMenuSelect } from "@/components/molecules/AsyncMenuSelect";
 import { ProductItemSearch, type CatalogPartPick } from "@/components/molecules/ProductItemSearch";
 import { Hq6FormShell } from "@/components/hq6/Hq6Chrome";
 import {
@@ -18,8 +20,9 @@ import {
   getStockMovement,
   payStockMovement,
 } from "@/lib/api/stockMovements";
-import { getPaymentAccounts } from "@/lib/api/paymentAccounts";
+import { getPaymentAccountsForPicker } from "@/lib/api/paymentAccounts";
 import { getSuppliers } from "@/lib/api/suppliers";
+import { TYPEAHEAD_PAGE_SIZE } from "@/lib/api/fetchAllPages";
 import { useIsVaHq6 } from "@/lib/hooks/useIsVaHq6";
 import { useRouteTenant, useTenantId } from "@/lib/hooks/useRouteTenant";
 import {
@@ -80,8 +83,8 @@ function emptyForm(): PurchaseFormState {
     payTermUnit: "days",
     purchaseOrder: "",
     discountType: "none",
-    discountAmount: "0",
-    purchaseTax: "0",
+    discountAmount: "",
+    purchaseTax: "",
     additionalNotes: "",
     shippingDetails: "",
     shippingCharges: "0",
@@ -174,6 +177,7 @@ export function AddPurchaseView() {
   const qc = useQueryClient();
 
   const businessLocations = entitySaleLocations(config);
+  const groupStockConsumer = isGroupStockConsumerTenant(config?.code ?? tenantCode);
 
   const { data: suppliers = [] } = useQuery({
     queryKey: ["suppliers", tenantId],
@@ -181,9 +185,27 @@ export function AddPurchaseView() {
     enabled: Boolean(tenantId),
   });
 
+  const loadSupplierOptions = useCallback(
+    async (query: string) => {
+      if (!tenantId) return [{ value: "", label: "Please Select" }];
+      const rows = await getSuppliers(tenantId, {
+        search: query || undefined,
+        limit: TYPEAHEAD_PAGE_SIZE,
+      });
+      return [
+        { value: "", label: "Please Select" },
+        ...rows.map((s) => ({
+          value: s.id,
+          label: s.businessName ?? s.name,
+        })),
+      ];
+    },
+    [tenantId],
+  );
+
   const { data: paymentAccounts = [] } = useQuery({
     queryKey: modalKeys.paymentAccounts(tenantId),
-    queryFn: () => getPaymentAccounts(tenantId!),
+    queryFn: () => getPaymentAccountsForPicker(tenantId!),
     enabled: Boolean(tenantId),
     staleTime: MODAL_REF_STALE_MS,
   });
@@ -197,6 +219,12 @@ export function AddPurchaseView() {
   const [form, setForm] = useState<PurchaseFormState>(emptyForm);
   const [lines, setLines] = useState<PurchaseLine[]>([]);
   const [prefillDone, setPrefillDone] = useState(false);
+
+  const selectedSupplierLabel = useMemo(() => {
+    const match = suppliers.find((s) => s.id === form.supplierId);
+    if (match) return match.businessName ?? match.name;
+    return undefined;
+  }, [form.supplierId, suppliers]);
 
   const patchForm = (patch: Partial<PurchaseFormState>) =>
     setForm((prev) => ({ ...prev, ...patch }));
@@ -383,18 +411,14 @@ export function AddPurchaseView() {
                 Supplier <span className="req">*</span>
               </span>
               <div className="hq6-form-inline-control">
-                <select
-                  className="hq6-form-input"
+                <AsyncMenuSelect
+                  className="hq6-form-input hq6-input-group-select-field tw-min-w-0 tw-flex-1"
                   value={form.supplierId}
-                  onChange={(e) => patchForm({ supplierId: e.target.value })}
-                >
-                  <option value="">Please Select</option>
-                  {suppliers.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.businessName ?? s.name}
-                    </option>
-                  ))}
-                </select>
+                  selectedLabel={selectedSupplierLabel}
+                  placeholder="Please Select"
+                  loadOptions={loadSupplierOptions}
+                  onChange={(supplierId) => patchForm({ supplierId })}
+                />
                 <button
                   type="button"
                   className="hq6-btn hq6-btn-blue shrink-0"
@@ -529,14 +553,24 @@ export function AddPurchaseView() {
                   tenantId={tenantId}
                   tenantCode={tenantCode}
                   businessLocations={businessLocations}
+                  includeWarehouse={groupStockConsumer}
+                  ownCatalog={!groupStockConsumer}
+                  allowCustom={groupStockConsumer}
+                  pickSourceAfterSelect={groupStockConsumer}
                   onSelect={addItem}
-                  placeholder="Enter Product name / SKU / Scan bar code"
+                  placeholder={
+                    groupStockConsumer
+                      ? "Search VW / VISP / VSP stock or type a custom part to purchase"
+                      : "Enter Product name / SKU / Scan bar code"
+                  }
                 />
               ) : null}
             </div>
+            {!groupStockConsumer ? (
             <Link href={`/${tenantCode}/add-product`} className="hq6-form-link">
               + Add new product
             </Link>
+            ) : null}
           </div>
 
           <div className="hq6-product-view-table-wrap">
@@ -583,29 +617,21 @@ export function AddPurchaseView() {
                         />
                       </td>
                       <td>
-                        <input
-                          type="number"
+                        <ClearableNumberInput
                           min={0}
-                          step="0.01"
                           value={line.unitCost}
-                          onChange={(e) =>
-                            updateLine(line.itemId, {
-                              unitCost: Number(e.target.value) || 0,
-                            })
+                          onChange={(n) =>
+                            updateLine(line.itemId, { unitCost: n })
                           }
                         />
                       </td>
                       <td>
-                        <input
-                          type="number"
+                        <ClearableNumberInput
                           min={0}
                           max={100}
-                          step="0.01"
                           value={line.discountPercent}
-                          onChange={(e) =>
-                            updateLine(line.itemId, {
-                              discountPercent: Number(e.target.value) || 0,
-                            })
+                          onChange={(n) =>
+                            updateLine(line.itemId, { discountPercent: n })
                           }
                         />
                       </td>
@@ -613,15 +639,11 @@ export function AddPurchaseView() {
                       <td>{formatHq6Currency(lineTotal(line))}</td>
                       <td>{lineProfitMargin(line).toFixed(2)}</td>
                       <td>
-                        <input
-                          type="number"
+                        <ClearableNumberInput
                           min={0}
-                          step="0.01"
                           value={line.unitSellingPrice}
-                          onChange={(e) =>
-                            updateLine(line.itemId, {
-                              unitSellingPrice: Number(e.target.value) || 0,
-                            })
+                          onChange={(n) =>
+                            updateLine(line.itemId, { unitSellingPrice: n })
                           }
                         />
                       </td>
@@ -958,15 +980,12 @@ export function AddPurchaseView() {
           </div>
           <div>
             <label className="mb-1 block text-sm font-medium">Supplier *</label>
-            <MenuSelect
+            <AsyncMenuSelect
               value={form.supplierId}
+              selectedLabel={selectedSupplierLabel}
               placeholder="Select supplier…"
-              searchable
+              loadOptions={loadSupplierOptions}
               onChange={(supplierId) => patchForm({ supplierId })}
-              options={[
-                { value: "", label: "Select supplier…" },
-                ...suppliers.map((s) => ({ value: s.id, label: s.name })),
-              ]}
             />
           </div>
           <div>

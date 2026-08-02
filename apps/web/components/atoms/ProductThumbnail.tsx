@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils/cn";
+import { resolveProductImageUrl } from "@/lib/utils/legacyMediaUrl";
 
 type ProductThumbnailProps = {
   src?: string | null;
@@ -22,7 +23,13 @@ export function ProductThumbnail({
   size = 50,
 }: ProductThumbnailProps) {
   const [failed, setFailed] = useState(false);
-  const showImage = Boolean(src) && !failed;
+  const resolved = resolveProductImageUrl(src);
+
+  useEffect(() => {
+    setFailed(false);
+  }, [resolved]);
+
+  const showImage = Boolean(resolved) && !failed;
   const boxStyle = {
     width: size,
     height: size,
@@ -47,7 +54,7 @@ export function ProductThumbnail({
   return (
     // eslint-disable-next-line @next/next/no-img-element
     <img
-      src={src!}
+      src={resolved!}
       alt={alt}
       className={cn("product-thumbnail-small", className)}
       style={{ ...boxStyle, objectFit: "cover" }}

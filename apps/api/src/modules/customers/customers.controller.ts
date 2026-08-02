@@ -38,12 +38,14 @@ export class CustomersController {
     @Query('hasNoSellMonths') hasNoSellMonths?: string,
     @Query('customerGroupId') customerGroupId?: string,
     @Query('assignedToUserId') assignedToUserId?: string,
+    @Query('assignedToEmployeeId') assignedToEmployeeId?: string,
     @Query('status') status?: 'active' | 'inactive',
     @Query('from') from?: string,
     @Query('to') to?: string,
     @Query('cursor') cursor?: string,
     @Query('limit') limit?: string,
     @Query('includeSummary') includeSummary?: string,
+    @Query('lite') lite?: string,
   ) {
     const months = Number(hasNoSellMonths);
     const filters: CustomerFilters = {
@@ -58,12 +60,14 @@ export class CustomersController {
           : undefined,
       customerGroupId,
       assignedToUserId,
+      assignedToEmployeeId,
       status,
       from,
       to,
       cursor,
       limit: limit ? Number(limit) : undefined,
       includeSummary: includeSummary !== '0' && includeSummary !== 'false',
+      lite: lite === '1' || lite === 'true',
     };
     return this.customersService.list(filters);
   }

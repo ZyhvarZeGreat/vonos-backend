@@ -35,6 +35,7 @@ export type {
 } from "./Hq6ContactDetailShell";
 export { Hq6PaySupplierModal } from "./Hq6PaySupplierModal";
 export { Hq6PayPurchaseModal } from "./Hq6PayPurchaseModal";
+export { Hq6PaySaleModal } from "./Hq6PaySaleModal";
 export { Hq6PurchaseViewModal } from "./Hq6PurchaseViewModal";
 export { Hq6SaleViewModal } from "./Hq6SaleViewModal";
 export { Hq6ViewPaymentsModal } from "./Hq6ViewPaymentsModal";

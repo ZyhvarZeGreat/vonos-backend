@@ -162,7 +162,11 @@ def transform_stock_movements(
             if not lines:
                 continue
             mov_id = new_cuid()
-            total = parse_decimal(txn.get("final_total"))
+            lines_total = sum(
+                (parse_decimal(ln.get("quantity")) * parse_decimal(ln.get("unitCost")))
+                for ln in lines
+            )
+            total = parse_decimal(txn.get("final_total")) or lines_total
             ledger_category = "Opening Stock" if tx_type == "opening_stock" else "Purchases"
             result.stock_movements.append({
                 "id": mov_id,
@@ -171,6 +175,8 @@ def transform_stock_movements(
                 "reference": ref,
                 "status": _movement_status_purchase(txn.get("status")),
                 "lines": lines,
+                "itemCount": len(lines),
+                "grandTotal": str(total),
                 "notes": contact_note or None,
                 "supplierId": supplier_id,
                 "source": "standard",
@@ -179,6 +185,8 @@ def transform_stock_movements(
                     if txn.get("payment_status") not in (None, "")
                     else "due"
                 ),
+                "paymentMethod": str(txn.get("prefer_payment_method") or "").strip()
+                or None,
                 "date": tx_date,
                 **created_by_fields(txn.get("created_by"), user_names, user_vonos),
             })
@@ -214,7 +222,11 @@ def transform_stock_movements(
             if not lines:
                 continue
             mov_id = new_cuid()
-            total = parse_decimal(txn.get("final_total"))
+            lines_total = sum(
+                (parse_decimal(ln.get("quantity")) * parse_decimal(ln.get("unitCost")))
+                for ln in lines
+            )
+            total = parse_decimal(txn.get("final_total")) or lines_total
             result.stock_movements.append({
                 "id": mov_id,
                 "tenantId": tenant_id,
@@ -222,6 +234,8 @@ def transform_stock_movements(
                 "reference": ref,
                 "status": "Delivered",
                 "lines": lines,
+                "itemCount": len(lines),
+                "grandTotal": str(total),
                 "notes": contact_note or None,
                 "supplierId": supplier_id,
                 "source": "purchase_return",
@@ -260,7 +274,11 @@ def transform_stock_movements(
             if not lines:
                 continue
             mov_id = new_cuid()
-            total = parse_decimal(txn.get("final_total"))
+            lines_total = sum(
+                (parse_decimal(ln.get("quantity")) * parse_decimal(ln.get("unitCost")))
+                for ln in lines
+            )
+            total = parse_decimal(txn.get("final_total")) or lines_total
             result.stock_movements.append({
                 "id": mov_id,
                 "tenantId": tenant_id,
@@ -268,6 +286,8 @@ def transform_stock_movements(
                 "reference": ref,
                 "status": _movement_status_sell(),
                 "lines": lines,
+                "itemCount": len(lines),
+                "grandTotal": str(total),
                 "notes": None,
                 "date": tx_date,
                 **created_by_fields(txn.get("created_by"), user_names, user_vonos),
@@ -400,6 +420,8 @@ def transform_expense_records(
         payment_due = Decimal("0") if payment_status == "paid" else amount
 
         expense_id = new_cuid()
+        created_by_legacy = parse_int(txn.get("created_by"), 0)
+        created_by_name = user_names.get(created_by_legacy) if created_by_legacy > 0 else None
         result.expenses.append({
             "id": expense_id,
             "tenantId": tenant_id,
@@ -419,6 +441,7 @@ def transform_expense_records(
             "recurIntervalType": None,
             "expenseDate": tx_date,
             "createdById": None,
+            "createdByName": created_by_name,
         })
         result.legacy_ids.append({
             "tenantId": tenant_id,

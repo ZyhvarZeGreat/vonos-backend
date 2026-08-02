@@ -8,6 +8,7 @@ import {
   isProductStockTenant,
 } from "@vonos/types";
 import { Hq6Modal, Hq6Field, Hq6ModalSaveClose } from "@/components/hq6/Hq6Modal";
+import { ProductThumbnail } from "@/components/atoms/ProductThumbnail";
 import { useRouteTenant } from "@/lib/hooks/useRouteTenant";
 import { formatHq6Currency } from "@/lib/utils/hq6Format";
 import { parseForm } from "@/lib/validation/parseForm";
@@ -250,8 +251,17 @@ export function Hq6ViewProductModal({
             </div>
           </div>
 
-          <div className="hq6-product-view-thumb" aria-hidden>
-            <ImageIcon className="h-10 w-10" strokeWidth={1.25} />
+          <div className="hq6-product-view-thumb">
+            {item.imageUrl ? (
+              <ProductThumbnail
+                src={item.imageUrl}
+                alt={item.name}
+                size={140}
+                className="!max-h-none !max-w-none h-full w-full rounded"
+              />
+            ) : (
+              <ImageIcon className="h-10 w-10" strokeWidth={1.25} aria-hidden />
+            )}
           </div>
         </div>
 

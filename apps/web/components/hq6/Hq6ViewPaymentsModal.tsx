@@ -4,9 +4,9 @@ import { Hq6DateTimeInput } from "@/components/hq6/Hq6DateTimeInput";
 
 import { paymentAmountSchema } from "@/lib/validation/schemas";
 import { parseForm } from "@/lib/validation/parseForm";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Eye, Mail, Pencil, Printer, Trash2 } from "lucide-react";
+import { Eye, Mail, Pencil, Plus, Printer, Trash2 } from "lucide-react";
 import { Hq6ConfirmModal } from "@/components/hq6/Hq6ConfirmModal";
 import { Hq6Field, Hq6Modal } from "@/components/hq6/Hq6Modal";
 import {
@@ -15,8 +15,13 @@ import {
   type SalePaymentRow,
   updateSalePayment,
 } from "@/lib/api/sales";
-import { getPaymentAccounts } from "@/lib/api/paymentAccounts";
-import { getStockMovementPayments } from "@/lib/api/stockMovements";
+import { getPaymentAccountsForPicker } from "@/lib/api/paymentAccounts";
+import {
+  deleteStockMovementPayment,
+  getStockMovementPayments,
+  updateStockMovementPayment,
+} from "@/lib/api/stockMovements";
+import type { PurchaseViewBundle, SaleViewBundle } from "@vonos/types";
 import { useAppMutation } from "@/lib/hooks/useAppMutation";
 import {
   MODAL_RECORD_STALE_MS,
@@ -32,7 +37,9 @@ import {
 } from "@/lib/utils/hq6Format";
 import { toast } from "@/stores/toastStore";
 import { cn } from "@/lib/utils/cn";
-import { hq6PaymentBadgeClass } from "@/lib/utils/hq6PaymentBadge";
+import { hq6PaymentBadgeClass, canAddPaymentForStatus } from "@/lib/utils/hq6PaymentBadge";
+import { filterSelectablePaymentAccounts } from "@/lib/utils/paymentAccountPicker";
+import { HQ6_PAYMENT_METHOD_OPTIONS } from "@/lib/utils/hq6PaymentMethods";
 
 export type Hq6PaymentRow = {
   id: string;
@@ -56,6 +63,8 @@ export type Hq6ViewPaymentsContext = {
   invoiceNo?: string;
   date?: string | null;
   paymentStatus?: string | null;
+  /** Remaining balance — preferred for Add Payment visibility. */
+  remainingDue?: number | null;
   /** Purchase status label when kind=purchase */
   purchaseStatus?: string | null;
   supplierName?: string | null;
@@ -65,13 +74,7 @@ function paymentBadgeClass(status: string | null | undefined): string {
   return hq6PaymentBadgeClass(status);
 }
 
-const METHOD_OPTIONS = [
-  { value: "cash", label: "Cash" },
-  { value: "card", label: "Card" },
-  { value: "bank_transfer", label: "Bank Transfer" },
-  { value: "cheque", label: "Cheque" },
-  { value: "other", label: "Other" },
-];
+const METHOD_OPTIONS = HQ6_PAYMENT_METHOD_OPTIONS;
 
 function extractBankAccountNo(note: string | null | undefined): string {
   if (!note) return "";
@@ -96,6 +99,7 @@ export function Hq6ViewPaymentsModal({
   recordId,
   context,
   onClose,
+  onAddPayment,
 }: {
   open: boolean;
   title: string;
@@ -104,6 +108,8 @@ export function Hq6ViewPaymentsModal({
   recordId: string | null;
   context?: Hq6ViewPaymentsContext | null;
   onClose: () => void;
+  /** UPOS: show “Add Payment” when invoice/PO is not fully paid. */
+  onAddPayment?: () => void;
 }) {
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState<SalePaymentRow | null>(null);
@@ -119,28 +125,73 @@ export function Hq6ViewPaymentsModal({
   const [editBankAccountNo, setEditBankAccountNo] = useState("");
   const [editDocName, setEditDocName] = useState("");
 
-  const paymentsQueryKey =
-    kind === "sale"
-      ? modalKeys.salePayments(tenantId, recordId)
-      : (["purchase-view-payments", tenantId, recordId] as const);
+  const paymentStatus = context?.paymentStatus;
+  const canAddPayment =
+    Boolean(onAddPayment) &&
+    canAddPaymentForStatus(paymentStatus, context?.remainingDue);
 
-  const { data: payments = [], isLoading } = useQuery({
-    queryKey: paymentsQueryKey,
-    queryFn: () =>
-      kind === "sale"
-        ? getSalePayments(tenantId!, recordId!)
-        : getStockMovementPayments(tenantId!, recordId!),
-    enabled: Boolean(open && tenantId && recordId),
+  // Light payments endpoint — not the full invoice /view bundle.
+  // If invoice View already cached this sale, paint payments instantly.
+  const saleViewCached = queryClient.getQueryData<SaleViewBundle>(
+    modalKeys.saleView(tenantId, recordId),
+  );
+  const purchaseViewCached = queryClient.getQueryData<PurchaseViewBundle>(
+    modalKeys.purchaseView(tenantId, recordId),
+  );
+  const salePaymentsSeed =
+    kind === "sale" && saleViewCached?.sale?.id === recordId
+      ? saleViewCached.payments
+      : undefined;
+  const purchasePaymentsSeed =
+    kind === "purchase" && purchaseViewCached?.movement?.id === recordId
+      ? purchaseViewCached.payments
+      : undefined;
+
+  const { data: salePayments, isLoading: saleLoading } = useQuery({
+    queryKey: modalKeys.salePayments(tenantId, recordId),
+    queryFn: () => getSalePayments(tenantId!, recordId!),
+    enabled: Boolean(open && kind === "sale" && tenantId && recordId),
     staleTime: MODAL_RECORD_STALE_MS,
+    initialData: salePaymentsSeed,
+    initialDataUpdatedAt: salePaymentsSeed
+      ? queryClient.getQueryState(modalKeys.saleView(tenantId, recordId))
+          ?.dataUpdatedAt
+      : undefined,
     placeholderData: (prev) => prev,
   });
 
-  const { data: paymentAccounts = [] } = useQuery({
+  const { data: purchasePayments, isLoading: purchaseLoading } = useQuery({
+    queryKey: modalKeys.purchasePayments(tenantId, recordId),
+    queryFn: () => getStockMovementPayments(tenantId!, recordId!),
+    enabled: Boolean(open && kind === "purchase" && tenantId && recordId),
+    staleTime: MODAL_RECORD_STALE_MS,
+    initialData: purchasePaymentsSeed,
+    initialDataUpdatedAt: purchasePaymentsSeed
+      ? queryClient.getQueryState(modalKeys.purchaseView(tenantId, recordId))
+          ?.dataUpdatedAt
+      : undefined,
+    placeholderData: (prev) => prev,
+  });
+
+  const payments: SalePaymentRow[] =
+    kind === "sale" ? (salePayments ?? []) : (purchasePayments ?? []);
+  const isLoading = kind === "sale" ? saleLoading : purchaseLoading;
+
+  const paymentsQueryKey =
+    kind === "sale"
+      ? modalKeys.salePayments(tenantId, recordId)
+      : modalKeys.purchasePayments(tenantId, recordId);
+
+  const { data: paymentAccountsRaw = [] } = useQuery({
     queryKey: modalKeys.paymentAccounts(tenantId),
-    queryFn: () => getPaymentAccounts(tenantId!),
+    queryFn: () => getPaymentAccountsForPicker(tenantId!),
     enabled: Boolean(editing && tenantId),
     staleTime: MODAL_REF_STALE_MS,
   });
+  const paymentAccounts = useMemo(
+    () => filterSelectablePaymentAccounts(paymentAccountsRaw),
+    [paymentAccountsRaw],
+  );
 
   useEffect(() => {
     if (!editing) return;
@@ -161,7 +212,6 @@ export function Hq6ViewPaymentsModal({
   const saveMutation = useAppMutation({
     mutationFn: async () => {
       if (!tenantId || !recordId || !editing) throw new Error("Missing payment");
-      if (kind !== "sale") throw new Error("Purchase payment edit is not available yet");
       const valid = parseForm(
         paymentAmountSchema,
         { amount: editAmount },
@@ -174,7 +224,7 @@ export function Hq6ViewPaymentsModal({
           "Select a Payment Account so this payment stays on the account book",
         );
       }
-      return updateSalePayment(tenantId, recordId, editing.id, {
+      const payload = {
         amount,
         method: editMethod,
         note: [
@@ -188,12 +238,28 @@ export function Hq6ViewPaymentsModal({
         paidOn: editPaidOn ? new Date(editPaidOn).toISOString() : null,
         paymentRefNo: editRef.trim() || null,
         accountId: editAccountId || null,
-      });
+      };
+      if (kind === "sale") {
+        return updateSalePayment(tenantId, recordId, editing.id, payload);
+      }
+      return updateStockMovementPayment(
+        tenantId,
+        recordId,
+        editing.id,
+        payload,
+      );
     },
     successMessage: "Payment updated",
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: paymentsQueryKey });
+      await queryClient.invalidateQueries({
+        queryKey:
+          kind === "sale"
+            ? modalKeys.saleView(tenantId, recordId)
+            : modalKeys.purchaseView(tenantId, recordId),
+      });
       await queryClient.invalidateQueries({ queryKey: ["sales"] });
+      await queryClient.invalidateQueries({ queryKey: ["stock-movements"] });
       await queryClient.invalidateQueries({
         queryKey: ["payment-accounts", tenantId],
       });
@@ -204,13 +270,23 @@ export function Hq6ViewPaymentsModal({
   const deleteMutation = useAppMutation({
     mutationFn: async (paymentId: string) => {
       if (!tenantId || !recordId) throw new Error("Missing payment");
-      if (kind !== "sale") throw new Error("Purchase payment delete is not available yet");
-      await deleteSalePayment(tenantId, recordId, paymentId);
+      if (kind === "sale") {
+        await deleteSalePayment(tenantId, recordId, paymentId);
+        return;
+      }
+      await deleteStockMovementPayment(tenantId, recordId, paymentId);
     },
     successMessage: "Payment deleted",
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: paymentsQueryKey });
+      await queryClient.invalidateQueries({
+        queryKey:
+          kind === "sale"
+            ? modalKeys.saleView(tenantId, recordId)
+            : modalKeys.purchaseView(tenantId, recordId),
+      });
       await queryClient.invalidateQueries({ queryKey: ["sales"] });
+      await queryClient.invalidateQueries({ queryKey: ["stock-movements"] });
       setDeleting(null);
     },
   });
@@ -254,7 +330,7 @@ export function Hq6ViewPaymentsModal({
         }
       >
         {context ? (
-          <div className="mb-4 grid gap-4 text-sm text-[#374151] sm:grid-cols-3">
+          <div className="hq6-view-payments-meta mb-4 grid gap-4 sm:grid-cols-3">
             <div className="space-y-1">
               {context.supplierName ? (
                 <>
@@ -328,111 +404,168 @@ export function Hq6ViewPaymentsModal({
                   {formatHq6PaymentStatus(context.paymentStatus)}
                 </span>
               </p>
-              {kind === "sale" ? (
-                <button
-                  type="button"
-                  className="hq6-modal-btn hq6-modal-btn-notify mt-2 inline-flex items-center"
-                  onClick={() =>
-                    toast.info("Payment received notification queued")
-                  }
-                >
-                  <Mail className="mr-1.5 h-4 w-4" />
-                  Send Payment Received Notification
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  className="hq6-modal-btn hq6-modal-btn-notify mt-2 inline-flex items-center"
-                  onClick={() =>
-                    toast.info("Payment paid notification queued")
-                  }
-                >
-                  <Mail className="mr-1.5 h-4 w-4" />
-                  Payment Paid Notification
-                </button>
-              )}
+              <div className="mt-2 flex flex-wrap gap-2">
+                {kind === "sale" ? (
+                  <button
+                    type="button"
+                    className="hq6-modal-btn hq6-modal-btn-notify inline-flex items-center"
+                    onClick={() =>
+                      toast.info("Payment received notification queued")
+                    }
+                  >
+                    <Mail className="mr-1.5 h-4 w-4" />
+                    Send Payment Received Notification
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="hq6-modal-btn hq6-modal-btn-notify inline-flex items-center"
+                    onClick={() =>
+                      toast.info("Payment paid notification queued")
+                    }
+                  >
+                    <Mail className="mr-1.5 h-4 w-4" />
+                    Payment Paid Notification
+                  </button>
+                )}
+                {canAddPayment && kind === "sale" ? (
+                  <button
+                    type="button"
+                    className="hq6-modal-btn hq6-modal-btn-reminder inline-flex items-center"
+                    onClick={() =>
+                      toast.info("Payment reminder queued")
+                    }
+                  >
+                    <Mail className="mr-1.5 h-4 w-4" />
+                    Send Payment Reminder
+                  </button>
+                ) : null}
+              </div>
             </div>
           </div>
         ) : null}
 
-        {showLoading ? (
-          <p className="text-sm text-[#6b7280]">Loading payments…</p>
-        ) : payments.length === 0 ? (
-          <p className="text-sm text-[#6b7280]">No payments recorded yet.</p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[720px] text-sm">
-              <thead>
-                <tr className="border-b border-[#e5e7eb] text-left text-[#6b7280]">
-                  <th className="pb-2 pr-3 font-medium">Date</th>
-                  <th className="pb-2 pr-3 font-medium">Reference No</th>
-                  <th className="pb-2 pr-3 font-medium text-right">Amount</th>
-                  <th className="pb-2 pr-3 font-medium">Payment Method</th>
-                  <th className="pb-2 pr-3 font-medium">Payment Note</th>
-                  <th className="pb-2 pr-3 font-medium">Payment Account</th>
-                  <th className="pb-2 font-medium">Actions</th>
+        {canAddPayment ? (
+          <div className="hq6-view-payments-toolbar no-print">
+            <button
+              type="button"
+              className="hq6-modal-btn hq6-modal-btn-add-payment"
+              onClick={() => {
+                // Parent closes this modal and opens Add Payment in one handoff.
+                onAddPayment?.();
+              }}
+            >
+              <Plus className="mr-1.5 h-4 w-4" />
+              Add Payment
+            </button>
+          </div>
+        ) : null}
+
+        <div className="hq6-view-payments-table-wrap">
+          <table className="hq6-view-payments-table">
+            <colgroup>
+              <col className="hq6-vp-col-date" />
+              <col className="hq6-vp-col-ref" />
+              <col className="hq6-vp-col-amount" />
+              <col className="hq6-vp-col-method" />
+              <col className="hq6-vp-col-note" />
+              <col className="hq6-vp-col-account" />
+              <col className="hq6-vp-col-actions" />
+            </colgroup>
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Reference No</th>
+                <th className="hq6-vp-num">Amount</th>
+                <th>Payment Method</th>
+                <th>Payment Note</th>
+                <th>Payment Account</th>
+                <th className="hq6-view-payments-actions">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {showLoading ? (
+                <tr>
+                  <td colSpan={7} className="hq6-vp-empty">
+                    Loading payments…
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {payments.map((row) => (
-                  <tr key={row.id} className="border-b border-[#f3f4f6]">
-                    <td className="whitespace-nowrap py-2 pr-3">
+              ) : payments.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="hq6-vp-empty">
+                    No payments recorded yet.
+                  </td>
+                </tr>
+              ) : (
+                payments.map((row) => (
+                  <tr key={row.id}>
+                    <td className="hq6-vp-nowrap">
                       {row.paidOn ? formatHq6DateTime(row.paidOn) : "—"}
                     </td>
-                    <td className="whitespace-nowrap py-2 pr-3">
+                    <td className="hq6-vp-nowrap">
                       {row.paymentRefNo ?? "—"}
                     </td>
-                    <td className="py-2 pr-3 text-right tabular-nums">
+                    <td className="hq6-vp-num">
                       {formatHq6Currency(row.amount, row.currency)}
                     </td>
-                    <td className="py-2 pr-3">
+                    <td className="hq6-vp-nowrap">
                       {formatHq6PaymentMethod(row.method)}
                     </td>
-                    <td className="py-2 pr-3">{row.note ?? ""}</td>
-                    <td className="py-2 pr-3">{row.accountName ?? "—"}</td>
-                    <td className="py-2">
-                      {/* UPOS: outline edit (info) / delete (error) / view (primary) */}
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        {kind === "sale" ? (
-                          <button
-                            type="button"
-                            className="tw-dw-btn tw-dw-btn-xs tw-dw-btn-outline tw-dw-btn-info"
-                            title="Edit payment"
-                            aria-label="Edit payment"
-                            onClick={() => setEditing(row)}
-                          >
-                            <Pencil className="h-3.5 w-3.5" />
-                          </button>
-                        ) : null}
-                        {kind === "sale" ? (
-                          <button
-                            type="button"
-                            className="tw-dw-btn tw-dw-btn-xs tw-dw-btn-outline tw-dw-btn-error"
-                            title="Delete payment"
-                            aria-label="Delete payment"
-                            disabled={deleteMutation.isPending}
-                            onClick={() => setDeleting(row)}
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
-                        ) : null}
+                    <td className="hq6-vp-note" title={row.note ?? undefined}>
+                      {row.note?.trim() ? row.note : "—"}
+                    </td>
+                    <td className="hq6-vp-note" title={row.accountName ?? undefined}>
+                      {row.accountName ?? "—"}
+                    </td>
+                    <td className="hq6-view-payments-actions">
+                      <div className="hq6-payment-row-actions">
                         <button
                           type="button"
-                          className="tw-dw-btn tw-dw-btn-xs tw-dw-btn-outline tw-dw-btn-primary"
-                          title="View payment"
-                          aria-label="View payment"
-                          onClick={() => setViewing(row)}
+                          className="hq6-payment-action-btn hq6-payment-action-edit"
+                          title="Edit"
+                          aria-label="Edit payment"
+                          onClick={() => setEditing(row)}
                         >
-                          <Eye className="h-3.5 w-3.5" />
+                          <Pencil
+                            className="hq6-inline-action-icon"
+                            aria-hidden
+                          />
+                        </button>
+                        <button
+                          type="button"
+                          className="hq6-payment-action-btn hq6-payment-action-delete"
+                          title="Delete"
+                          aria-label="Delete payment"
+                          disabled={deleteMutation.isPending}
+                          onClick={() => setDeleting(row)}
+                        >
+                          <Trash2
+                            className="hq6-inline-action-icon"
+                            aria-hidden
+                          />
+                        </button>
+                        <button
+                          type="button"
+                          className="hq6-payment-action-btn hq6-payment-action-view"
+                          title="View"
+                          aria-label="View payment"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setEditing(null);
+                            setDeleting(null);
+                            setViewing(row);
+                          }}
+                        >
+                          <Eye className="hq6-inline-action-icon" aria-hidden />
                         </button>
                       </div>
                     </td>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
 
         {/* Single-payment print sheet (hidden until print) */}
         {printRow ? (
@@ -559,9 +692,8 @@ export function Hq6ViewPaymentsModal({
             <Hq6Field label="Amount" required>
               <input
                 className="hq6-modal-input"
-                type="number"
-                min="0"
-                step="0.01"
+                type="text"
+                inputMode="decimal"
                 value={editAmount}
                 onChange={(e) => setEditAmount(e.target.value)}
               />
@@ -584,13 +716,13 @@ export function Hq6ViewPaymentsModal({
             </p>
           </Hq6Field>
 
-          <Hq6Field label="Payment Account">
+          <Hq6Field label="Payment Account" required>
             <select
               className="hq6-modal-input"
               value={editAccountId}
               onChange={(e) => setEditAccountId(e.target.value)}
             >
-              <option value="">None</option>
+              <option value="">Please Select</option>
               {paymentAccounts.map((acc) => (
                 <option key={acc.id} value={acc.id}>
                   {acc.name}
@@ -655,9 +787,13 @@ export function Hq6ViewPaymentsModal({
           <div className="space-y-4 text-sm text-[#111827]">
             <div className="grid gap-6 sm:grid-cols-2">
               <div className="space-y-1">
-                <p>Customer:</p>
+                <p>
+                  {kind === "purchase" || context?.supplierName
+                    ? "Supplier:"
+                    : "Customer:"}
+                </p>
                 <p className="font-semibold">
-                  {context?.customerName ?? context?.supplierName ?? "—"}
+                  {context?.supplierName ?? context?.customerName ?? "—"}
                 </p>
                 {context?.customerPhone ? (
                   <p>Mobile: {context.customerPhone}</p>
@@ -702,6 +838,12 @@ export function Hq6ViewPaymentsModal({
                   <span className="font-semibold">Paid on:</span>{" "}
                   {viewing.paidOn ? formatHq6DateTime(viewing.paidOn) : "—"}
                 </p>
+                {viewing.accountName ? (
+                  <p>
+                    <span className="font-semibold">Payment Account:</span>{" "}
+                    {viewing.accountName}
+                  </p>
+                ) : null}
               </div>
             </div>
           </div>

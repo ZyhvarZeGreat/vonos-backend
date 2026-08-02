@@ -1,3 +1,5 @@
+import { hq6PaymentMethodLabel } from "@/lib/utils/hq6PaymentMethods";
+
 /** HQ6 Ultimate POS display formats (ui-audit / ui-table-rows reference). */
 
 export function formatHq6Currency(
@@ -30,6 +32,8 @@ export function formatHq6DateTime(value: string): string {
 
 export function formatHq6PaymentMethod(method?: string | null): string {
   if (!method) return "—";
+  const known = hq6PaymentMethodLabel(method);
+  if (known) return known;
   return method
     .split(/[_\s-]+/)
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))

@@ -16,6 +16,7 @@ export interface TagComboboxProps {
 
 /**
  * Multi-select: selected tags render inside the input (chip field), not above it.
+ * Chip × removes a value; native select adds values.
  */
 export function TagCombobox({
   id,
@@ -41,69 +42,33 @@ export function TagCombobox({
 
   return (
     <div
-      className={cn("form-control select2", className)}
-      style={{
-        display: "flex",
-        flexWrap: "wrap",
-        alignItems: "center",
-        gap: 6,
-        minHeight: 38,
-        height: "auto",
-        padding: "4px 8px",
-        boxSizing: "border-box",
-        cursor: disabled ? "not-allowed" : "text",
-        opacity: disabled ? 0.65 : 1,
-      }}
+      className={cn("vonos-tag-combobox", className)}
+      data-disabled={disabled ? "true" : undefined}
     >
       {values.map((code) => (
         <span
           key={code}
+          className="vonos-tag-combobox__chip"
           title={labelByValue.get(code) ?? code}
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 4,
-            borderRadius: 3,
-            background: "#eef2f6",
-            padding: "2px 8px",
-            fontSize: 12,
-            fontWeight: 600,
-            color: "#111827",
-            border: "1px solid #d2d6de",
-            lineHeight: 1.4,
-            maxWidth: "100%",
-          }}
         >
-          <span
-            style={{
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
-            }}
-          >
-            {code}
-          </span>
+          <span className="vonos-tag-combobox__chip-label">{code}</span>
           {!disabled ? (
             <button
               type="button"
+              className="vonos-tag-combobox__remove"
               aria-label={`Remove ${code}`}
-              onClick={() => remove(code)}
-              style={{
-                display: "inline-flex",
-                width: 14,
-                height: 14,
-                alignItems: "center",
-                justifyContent: "center",
-                border: 0,
-                background: "transparent",
-                padding: 0,
-                margin: 0,
-                cursor: "pointer",
-                color: "#697586",
-                flexShrink: 0,
+              // mousedown: beat focus steal from the sibling <select>
+              onMouseDown={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+              }}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                remove(code);
               }}
             >
-              <X style={{ width: 12, height: 12 }} aria-hidden />
+              <X aria-hidden className="vonos-tag-combobox__remove-icon" />
             </button>
           ) : null}
         </span>
@@ -111,26 +76,13 @@ export function TagCombobox({
 
       <select
         id={id}
+        className="vonos-tag-combobox__select"
         disabled={disabled || available.length === 0}
         value=""
         aria-label={placeholder}
         onChange={(e) => {
           const next = e.target.value;
           if (next) add(next);
-        }}
-        style={{
-          flex: "1 1 120px",
-          minWidth: 120,
-          border: 0,
-          outline: "none",
-          background: "transparent",
-          boxShadow: "none",
-          padding: "2px 0",
-          margin: 0,
-          height: 28,
-          fontSize: 13,
-          color: "#111827",
-          cursor: disabled ? "not-allowed" : "pointer",
         }}
       >
         <option value="" disabled>

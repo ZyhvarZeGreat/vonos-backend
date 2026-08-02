@@ -97,18 +97,26 @@ export function Hq6DiscountsListView() {
 
   const brandSelectOptions = useMemo(
     () =>
-      (brandsQuery.data ?? [])
-        .map((b) => b.name?.trim())
-        .filter((n): n is string => Boolean(n))
-        .sort((a, b) => a.localeCompare(b)),
+      // De-dupe by name — legacy data can carry duplicate brands, which would
+      // otherwise render duplicate <option> keys.
+      Array.from(
+        new Set(
+          (brandsQuery.data ?? [])
+            .map((b) => b.name?.trim())
+            .filter((n): n is string => Boolean(n)),
+        ),
+      ).sort((a, b) => a.localeCompare(b)),
     [brandsQuery.data],
   );
   const categorySelectOptions = useMemo(
     () =>
-      (categoriesQuery.data ?? [])
-        .map((c) => c.name?.trim())
-        .filter((n): n is string => Boolean(n))
-        .sort((a, b) => a.localeCompare(b)),
+      Array.from(
+        new Set(
+          (categoriesQuery.data ?? [])
+            .map((c) => c.name?.trim())
+            .filter((n): n is string => Boolean(n)),
+        ),
+      ).sort((a, b) => a.localeCompare(b)),
     [categoriesQuery.data],
   );
   const priceGroupSelectOptions = useMemo(

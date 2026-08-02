@@ -3,6 +3,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import type { Prisma } from '@prisma/client';
 import type {
   MovementSource,
   MovementStatus,
@@ -21,6 +22,10 @@ import {
   listPageFilterKey,
   withListPageCache,
 } from '../../common/utils/listPageCache';
+import {
+  HQ6_LIST_WARM_LIMITS,
+  hq6WarmSorts,
+} from '../../common/utils/hq6ListWarm';
 import { buildCompositeCursorQuery } from '../../common/utils/pagination';
 import type { PaginatedList } from '../../common/utils/paginatedList';
 import { resolveListSort } from '../../common/utils/listSort';
@@ -32,8 +37,13 @@ import {
   shouldApplyOutboundQty,
 } from '../../common/utils/stockQuantity';
 import { toIso, toNumber } from '../../common/utils/serializers';
+import { paymentStatusFromAmounts } from '../../common/utils/paymentStatus';
 import { adjustItemLocationStock } from '../../common/utils/itemLocationStock';
-import { recordPaymentAccountTxn } from '../../common/utils/recordPaymentAccountTxn';
+import {
+  recordPaymentAccountTxn,
+  softDeletePaymentAccountTxns,
+  syncPurchasePaymentAccountDebit,
+} from '../../common/utils/recordPaymentAccountTxn';
 import {
   relationStringOr,
   tokenizedSearchWhere,
@@ -248,6 +258,7 @@ export class StockMovementsService {
               source: true,
               paymentStatus: true,
               paymentMethod: true,
+              totalPaid: true,
               date: true,
               itemCount: true,
               grandTotal: true,
@@ -288,6 +299,47 @@ export class StockMovementsService {
     return serializeMovement(row);
   }
 
+  /**
+   * Purchase payments are stored as:
+   * - App: paymentFor='purchase' + paymentRefNo=PO reference
+   * - Migrated (after backfill): same, and/or invoiceId → purchase invoice
+   */
+  private purchasePaymentWhere(
+    tenantId: string,
+    reference: string,
+    invoiceId: string | null,
+  ): Prisma.PaymentWhereInput {
+    return {
+      tenantId,
+      deletedAt: null,
+      OR: [
+        { paymentFor: 'purchase', paymentRefNo: reference },
+        ...(invoiceId ? [{ invoiceId }] : []),
+      ],
+    };
+  }
+
+  private async purchaseInvoiceId(
+    movementId: string,
+    tenantId: string,
+  ): Promise<string | null> {
+    const inv = await this.tenantDb.db.invoice.findFirst({
+      where: { tenantId, stockMovementId: movementId, deletedAt: null },
+      select: { id: true },
+    });
+    return inv?.id ?? null;
+  }
+
+  private async listPurchasePaymentRows(movementId: string, reference: string) {
+    const tenantId = this.tenantDb.requireTenantId();
+    const invoiceId = await this.purchaseInvoiceId(movementId, tenantId);
+    return this.tenantDb.db.payment.findMany({
+      where: this.purchasePaymentWhere(tenantId, reference, invoiceId),
+      include: { account: { select: { name: true } } },
+      orderBy: [{ paidOn: 'desc' }, { createdAt: 'desc' }],
+    });
+  }
+
   /** Purchase/view modal: movement + payments + supplier (sequential DB). */
   async getView(id: string): Promise<PurchaseViewBundle> {
     const tenantId = this.tenantDb.requireTenantId();
@@ -297,16 +349,10 @@ export class StockMovementsService {
     if (!row) throw new NotFoundException('Movement not found');
     const movement = serializeMovement(row);
 
-    const paymentRows = await this.tenantDb.db.payment.findMany({
-      where: {
-        tenantId,
-        deletedAt: null,
-        paymentFor: 'purchase',
-        paymentRefNo: row.reference,
-      },
-      include: { account: { select: { name: true } } },
-      orderBy: [{ paidOn: 'desc' }, { createdAt: 'desc' }],
-    });
+    const paymentRows = await this.listPurchasePaymentRows(
+      row.id,
+      row.reference,
+    );
     const payments = paymentRows.map((payment) => ({
       id: payment.id,
       amount: toNumber(payment.amount),
@@ -544,6 +590,12 @@ export class StockMovementsService {
     if (!Number.isFinite(amount) || amount <= 0) {
       throw new BadRequestException('Payment amount must be greater than zero');
     }
+    const accountId = dto.accountId?.trim() || null;
+    if (!accountId) {
+      throw new BadRequestException(
+        'Select a Payment Account so this payment posts to the account book',
+      );
+    }
 
     const movement = await this.tenantDb.db.stockMovement.findFirst({
       where: { id, tenantId, deletedAt: null, type: 'inbound' },
@@ -563,13 +615,13 @@ export class StockMovementsService {
       throw new BadRequestException('Purchase is already paid');
     }
 
+    const invoiceId = await this.purchaseInvoiceId(id, tenantId);
     const priorPaid = await this.tenantDb.db.payment.aggregate({
-      where: {
+      where: this.purchasePaymentWhere(
         tenantId,
-        deletedAt: null,
-        paymentFor: 'purchase',
-        paymentRefNo: movement.reference,
-      },
+        movement.reference,
+        invoiceId,
+      ),
       _sum: { amount: true },
     });
     const alreadyPaid = toNumber(priorPaid._sum.amount ?? 0);
@@ -593,7 +645,8 @@ export class StockMovementsService {
           paidOn,
           paymentFor: 'purchase',
           paymentRefNo: movement.reference,
-          accountId: dto.accountId?.trim() || null,
+          invoiceId,
+          accountId,
           note:
             dto.note?.trim() ||
             `Purchase payment — ${movement.reference}`,
@@ -601,23 +654,21 @@ export class StockMovementsService {
         },
       });
 
-      if (dto.accountId?.trim()) {
-        await recordPaymentAccountTxn(tx, {
-          tenantId,
-          accountId: dto.accountId.trim(),
-          type: 'debit',
-          subType: 'purchase_payment',
-          amount: apply,
-          operationDate: paidOn,
-          refNo: movement.reference,
-          note:
-            dto.note?.trim() ||
-            `Purchase payment — ${movement.reference}`,
-          paymentMethod: method,
-          paymentId: payment.id,
-          createdByName: createdBy.createdByName ?? null,
-        });
-      }
+      await recordPaymentAccountTxn(tx, {
+        tenantId,
+        accountId,
+        type: 'debit',
+        subType: 'purchase_payment',
+        amount: apply,
+        operationDate: paidOn,
+        refNo: movement.reference,
+        note:
+          dto.note?.trim() ||
+          `Purchase payment — ${movement.reference}`,
+        paymentMethod: method,
+        paymentId: payment.id,
+        createdByName: createdBy.createdByName ?? null,
+      });
 
       await tx.ledgerEntry.create({
         data: {
@@ -686,16 +737,10 @@ export class StockMovementsService {
     });
     if (!movement) throw new NotFoundException('Movement not found');
 
-    const rows = await this.tenantDb.db.payment.findMany({
-      where: {
-        tenantId,
-        deletedAt: null,
-        paymentFor: 'purchase',
-        paymentRefNo: movement.reference,
-      },
-      include: { account: { select: { name: true } } },
-      orderBy: [{ paidOn: 'desc' }, { createdAt: 'desc' }],
-    });
+    const rows = await this.listPurchasePaymentRows(
+      movement.id,
+      movement.reference,
+    );
 
     return rows.map((row) => ({
       id: row.id,
@@ -709,6 +754,177 @@ export class StockMovementsService {
       accountName: row.account?.name ?? null,
       createdByName: row.createdByName,
     }));
+  }
+
+  private async syncPurchasePaymentStatus(
+    movementId: string,
+    tenantId: string,
+    reference: string,
+    supplierId: string | null,
+  ) {
+    const movement = await this.tenantDb.db.stockMovement.findFirst({
+      where: { id: movementId, tenantId, deletedAt: null },
+    });
+    if (!movement) return;
+
+    const total = parseMovementLines(movement.lines).reduce(
+      (sum, line) =>
+        sum +
+        line.quantity * toNumber((line as { unitCost?: number }).unitCost ?? 0),
+      0,
+    );
+    const invoiceId = await this.purchaseInvoiceId(movementId, tenantId);
+    const paidAgg = await this.tenantDb.db.payment.aggregate({
+      where: this.purchasePaymentWhere(tenantId, reference, invoiceId),
+      _sum: { amount: true },
+    });
+    const paid = toNumber(paidAgg._sum.amount ?? 0);
+    const paymentStatus = paymentStatusFromAmounts(
+      total,
+      paid,
+      movement.paymentStatus,
+    ) as PurchasePaymentStatus;
+
+    await this.tenantDb.db.stockMovement.update({
+      where: { id: movementId },
+      data: { paymentStatus, totalPaid: paid },
+    });
+
+    if (supplierId) {
+      await refreshSupplierPurchaseRollups(this.tenantDb.db, supplierId);
+    }
+    await invalidateTenantDashboardCache(this.cache, tenantId);
+  }
+
+  async updatePayment(
+    movementId: string,
+    paymentId: string,
+    body: {
+      amount?: number;
+      method?: string | null;
+      note?: string | null;
+      paidOn?: string | null;
+      accountId?: string | null;
+      paymentRefNo?: string | null;
+    },
+  ) {
+    const tenantId = this.tenantDb.requireTenantId();
+    const movement = await this.tenantDb.db.stockMovement.findFirst({
+      where: { id: movementId, tenantId, deletedAt: null, type: 'inbound' },
+      select: { id: true, reference: true, supplierId: true },
+    });
+    if (!movement) throw new NotFoundException('Purchase not found');
+
+    const invoiceId = await this.purchaseInvoiceId(movementId, tenantId);
+    const payment = await this.tenantDb.db.payment.findFirst({
+      where: {
+        id: paymentId,
+        ...this.purchasePaymentWhere(tenantId, movement.reference, invoiceId),
+      },
+    });
+    if (!payment) throw new NotFoundException('Payment not found');
+
+    const amount =
+      body.amount !== undefined ? Number(body.amount) : toNumber(payment.amount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      throw new BadRequestException('Enter a valid payment amount');
+    }
+    const accountId =
+      body.accountId !== undefined
+        ? body.accountId?.trim() || null
+        : payment.accountId;
+    if (!accountId) {
+      throw new BadRequestException(
+        'Select a Payment Account so this payment posts to the account book',
+      );
+    }
+
+    const updated = await this.tenantDb.db.$transaction(async (tx) => {
+      const row = await tx.payment.update({
+        where: { id: paymentId },
+        data: {
+          amount,
+          ...(body.method !== undefined
+            ? { method: body.method?.trim() || null }
+            : {}),
+          ...(body.note !== undefined ? { note: body.note?.trim() || null } : {}),
+          ...(body.paidOn !== undefined
+            ? { paidOn: body.paidOn ? new Date(body.paidOn) : null }
+            : {}),
+          accountId,
+          // Keep purchase link on movement.reference — never overwrite with a
+          // display-only payment receipt number from the edit form.
+        },
+        include: { account: { select: { name: true } } },
+      });
+
+      await syncPurchasePaymentAccountDebit(tx, {
+        tenantId,
+        paymentId: row.id,
+        accountId: row.accountId,
+        amount: toNumber(row.amount),
+        operationDate: row.paidOn ?? row.createdAt,
+        refNo: movement.reference,
+        note: row.note ?? `Purchase payment — ${movement.reference}`,
+        paymentMethod: row.method,
+        createdByName: row.createdByName,
+      });
+
+      return row;
+    });
+
+    await this.syncPurchasePaymentStatus(
+      movementId,
+      tenantId,
+      movement.reference,
+      movement.supplierId,
+    );
+
+    return {
+      id: updated.id,
+      amount: toNumber(updated.amount),
+      currency: updated.currency,
+      method: updated.method,
+      paymentRefNo: updated.paymentRefNo,
+      paidOn: updated.paidOn ? toIso(updated.paidOn) : null,
+      note: updated.note,
+      accountId: updated.accountId,
+      accountName: updated.account?.name ?? null,
+      createdByName: updated.createdByName,
+    };
+  }
+
+  async removePayment(movementId: string, paymentId: string): Promise<void> {
+    const tenantId = this.tenantDb.requireTenantId();
+    const movement = await this.tenantDb.db.stockMovement.findFirst({
+      where: { id: movementId, tenantId, deletedAt: null, type: 'inbound' },
+      select: { id: true, reference: true, supplierId: true },
+    });
+    if (!movement) throw new NotFoundException('Purchase not found');
+
+    const invoiceId = await this.purchaseInvoiceId(movementId, tenantId);
+    const payment = await this.tenantDb.db.payment.findFirst({
+      where: {
+        id: paymentId,
+        ...this.purchasePaymentWhere(tenantId, movement.reference, invoiceId),
+      },
+    });
+    if (!payment) throw new NotFoundException('Payment not found');
+
+    await this.tenantDb.db.$transaction(async (tx) => {
+      await softDeletePaymentAccountTxns(tx, { tenantId, paymentId });
+      await tx.payment.update({
+        where: { id: paymentId },
+        data: { deletedAt: new Date() },
+      });
+    });
+
+    await this.syncPurchasePaymentStatus(
+      movementId,
+      tenantId,
+      movement.reference,
+      movement.supplierId,
+    );
   }
 
   async create(body: {
@@ -890,79 +1106,83 @@ export async function warmDefaultStockMovementListPages(
   cache: CacheService,
   tenantId: string,
 ): Promise<void> {
-  for (const limit of [10, 25, 50] as const) {
-    for (const includeSummary of [false, true] as const) {
-      const filterKey = listPageFilterKey({
-        type: 'inbound',
-        status: undefined,
-        source: undefined,
-        locationCode: undefined,
-        supplierId: undefined,
-        paymentStatus: undefined,
-        paymentMethod: undefined,
-        search: undefined,
-        from: undefined,
-        to: undefined,
-        cursor: undefined,
-        limit,
-        sortBy: undefined,
-        sortDir: undefined,
-        sum: includeSummary ? 1 : 0,
-      });
-      await withListPageCache(
-        cache,
-        tenantId,
-        'stock-movements',
-        filterKey,
-        async () => {
-          const baseWhere = {
-            tenantId,
-            deletedAt: null as null,
-            type: 'inbound' as const,
-          };
-          const [rows, totalCount] = await Promise.all([
-            prisma.stockMovement.findMany({
-              where: baseWhere,
-              select: {
-                id: true,
-                tenantId: true,
-                type: true,
-                reference: true,
-                status: true,
-                notes: true,
-                locationCode: true,
-                supplierId: true,
-                source: true,
-                paymentStatus: true,
-                paymentMethod: true,
-                date: true,
-                itemCount: true,
-                grandTotal: true,
-                createdByUserId: true,
-                createdByName: true,
-                createdAt: true,
-                updatedAt: true,
-                deletedAt: true,
-                supplier: { select: { name: true } },
-              },
-              orderBy: [{ date: 'desc' }, { id: 'desc' }],
-              take: limit,
-            }),
-            includeSummary
-              ? prisma.stockMovement.count({ where: baseWhere })
-              : Promise.resolve(undefined as number | undefined),
-          ]);
-          return {
-            items: rows.map((row) =>
-              toMovementListRow({
-                ...row,
-                lines: [],
+  for (const limit of HQ6_LIST_WARM_LIMITS) {
+    for (const sort of hq6WarmSorts({ sortBy: 'date', sortDir: 'desc' })) {
+      for (const includeSummary of [false, true] as const) {
+        const filterKey = listPageFilterKey({
+          type: 'inbound',
+          status: undefined,
+          source: undefined,
+          locationCode: undefined,
+          supplierId: undefined,
+          paymentStatus: undefined,
+          paymentMethod: undefined,
+          search: undefined,
+          from: undefined,
+          to: undefined,
+          cursor: undefined,
+          limit,
+          sortBy: sort.sortBy,
+          sortDir: sort.sortDir,
+          sum: includeSummary ? 1 : 0,
+        });
+        await withListPageCache(
+          cache,
+          tenantId,
+          'stock-movements',
+          filterKey,
+          async () => {
+            const baseWhere = {
+              tenantId,
+              deletedAt: null as null,
+              type: 'inbound' as const,
+            };
+            const [rows, totalCount] = await Promise.all([
+              prisma.stockMovement.findMany({
+                where: baseWhere,
+                select: {
+                  id: true,
+                  tenantId: true,
+                  type: true,
+                  reference: true,
+                  status: true,
+                  notes: true,
+                  locationCode: true,
+                  supplierId: true,
+                  source: true,
+                  paymentStatus: true,
+                  paymentMethod: true,
+                  totalPaid: true,
+                  date: true,
+                  itemCount: true,
+                  grandTotal: true,
+                  createdByUserId: true,
+                  createdByName: true,
+                  createdAt: true,
+                  updatedAt: true,
+                  deletedAt: true,
+                  supplier: { select: { name: true } },
+                },
+                orderBy: [{ date: 'desc' }, { id: 'desc' }],
+                take: limit,
               }),
-            ),
-            ...(totalCount != null ? { totalCount } : {}),
-          };
-        },
-      );
+              includeSummary
+                ? prisma.stockMovement.count({ where: baseWhere })
+                : Promise.resolve(undefined as number | undefined),
+            ]);
+            return {
+              items: rows.map((row) =>
+                toMovementListRow({
+                  ...row,
+                  lines: [],
+                }),
+              ),
+              ...(totalCount != null ? { totalCount } : {}),
+            };
+          },
+          600,
+        );
+      }
     }
   }
 }

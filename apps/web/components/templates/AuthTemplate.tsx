@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useLayoutEffect } from "react";
 import { cn } from "@/lib/utils/cn";
+import { publicAssetPath } from "@/lib/utils/basePath";
 import { preloadUposStylesheets } from "@/lib/upos/styles";
 
 export interface AuthTemplateProps {
@@ -33,7 +34,7 @@ function AuthBrandMark({ className, inverse }: { className?: string; inverse?: b
     <div className={cn("flex items-center gap-3", className)}>
       <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-full bg-white shadow-sm ring-1 ring-black/5">
         <Image
-          src="/brand/vonos-autos-mark.png"
+          src={publicAssetPath("/brand/vonos-autos-mark.png")}
           alt=""
           width={48}
           height={48}

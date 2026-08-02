@@ -1,5 +1,6 @@
 import type { LoginSuccessResponse } from "@vonos/types";
 import { useAuthStore } from "@/stores/authStore";
+import { stripBasePath, withBasePath } from "@/lib/utils/basePath";
 import { resolveViewingTenantId } from "./viewingTenant";
 
 const API_BASE = (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001").replace(
@@ -45,7 +46,7 @@ function applySession(result: LoginSuccessResponse): void {
 
 function redirectToLogin(): void {
   if (typeof window === "undefined") return;
-  const path = window.location.pathname;
+  const path = stripBasePath(window.location.pathname);
   if (
     path === "/login" ||
     path.startsWith("/login/") ||
@@ -56,7 +57,7 @@ function redirectToLogin(): void {
     return;
   }
   const redirect = encodeURIComponent(path + window.location.search);
-  window.location.replace(`/login?redirect=${redirect}`);
+  window.location.replace(withBasePath(`/login?redirect=${redirect}`));
 }
 
 /** Single-flight refresh so parallel 401s share one /auth/refresh. */

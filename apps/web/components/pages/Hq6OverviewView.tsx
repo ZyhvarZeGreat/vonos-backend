@@ -242,12 +242,11 @@ function Hq6HomePanelCard({
   onLocationChange: (code: string) => void;
 }) {
   const [search, setSearch] = useState("");
-  const [committedSearch, setCommittedSearch] = useState("");
   const [pageSize, setPageSize] = useState(10);
   const tableRef = useRef<HTMLDivElement>(null);
 
   const filteredRows = useMemo(() => {
-    const q = committedSearch.trim().toLowerCase();
+    const q = search.trim().toLowerCase();
     if (!q) return panel.rows;
     return panel.rows.filter((row) =>
       panel.columns.some((col) =>
@@ -256,7 +255,7 @@ function Hq6HomePanelCard({
           .includes(q),
       ),
     );
-  }, [committedSearch, panel.columns, panel.rows]);
+  }, [search, panel.columns, panel.rows]);
 
   const visibleRows = useMemo(
     () => filteredRows.slice(0, pageSize),
@@ -345,22 +344,8 @@ function Hq6HomePanelCard({
                   placeholder="Search…"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      setCommittedSearch(search);
-                    }
-                  }}
                 />
               </label>
-              <button
-                type="button"
-                className="hq6-search-btn"
-                aria-label="Search"
-                onClick={() => setCommittedSearch(search)}
-              >
-                Search
-              </button>
             </div>
             <label className="hq6-show-entries">
               Show{" "}

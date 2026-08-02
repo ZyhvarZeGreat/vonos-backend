@@ -55,8 +55,7 @@ const PlusIcon = (
 export function Hq6VariationsListView() {
   const tenantId = useTenantId();
   const queryClient = useQueryClient();
-  const [localSearch, setLocalSearch] = useState("");
-  const [committedSearch, setCommittedSearch] = useState("");
+  const [search, setSearch] = useState("");
   const chrome = useHq6ListChrome("variations");
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<VariationTemplate | null>(null);
@@ -85,11 +84,10 @@ export function Hq6VariationsListView() {
     goToPage,
     canSelectPage,
   } = useServerListPage<VariationTemplate>({
-    queryKey: ["variations", tenantId, "hq6", committedSearch],
+    queryKey: ["variations", tenantId, "hq6"],
     enabled: Boolean(tenantId),
     defaultPageSize: HQ6_TABLE_PAGE_SIZE,
-    filters: { search: committedSearch.trim() || undefined },
-    search: committedSearch,
+    search,
     fetchPage: (cursor, limit, _sort, opts) =>
       getVariationsPage(tenantId!, cursor, limit, {
         includeSummary: opts?.includeSummary,
@@ -97,14 +95,14 @@ export function Hq6VariationsListView() {
   });
 
   const filteredItems = useMemo(() => {
-    const q = committedSearch.trim().toLowerCase();
+    const q = search.trim().toLowerCase();
     if (!q) return items;
     return items.filter(
       (row) =>
         row.name.toLowerCase().includes(q) ||
         row.values.some((v) => v.toLowerCase().includes(q)),
     );
-  }, [committedSearch, items]);
+  }, [search, items]);
 
   const openCreate = useCallback(() => {
     setEditing(null);
@@ -358,9 +356,8 @@ export function Hq6VariationsListView() {
                         <div className="col-sm-3">
                           <Hq6DtSearchFilter
                             id="variation_table_filter"
-                            value={localSearch}
-                            onChange={setLocalSearch}
-                            onCommit={() => setCommittedSearch(localSearch)}
+                            value={search}
+                            onChange={setSearch}
                           />
                         </div>
                         {busy ? (

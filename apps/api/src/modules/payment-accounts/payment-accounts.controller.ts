@@ -33,11 +33,15 @@ export class PaymentAccountsController {
     @Query('cursor') cursor?: string,
     @Query('limit') limit?: string,
     @Query('search') search?: string,
+    @Query('openOnly') openOnly?: string,
+    @Query('lite') lite?: string,
   ) {
     return this.service.list({
       cursor,
       limit: limit ? Number(limit) : undefined,
       search,
+      openOnly: openOnly === '1' || openOnly === 'true',
+      lite: lite === '1' || lite === 'true',
     });
   }
 

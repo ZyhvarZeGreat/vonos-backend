@@ -265,7 +265,7 @@ export function Hq6PaymentAccountsListView() {
       {
         key: "addedBy",
         header: "Added By",
-        render: (r) => r.createdByName ?? "",
+        render: (r) => r.createdByName ?? "—",
       },
       {
         key: "actions",
@@ -565,8 +565,9 @@ export function Hq6PaymentAccountsListView() {
               <div className="alert alert-danger" role="alert">
                 <ul>
                   <li>
-                    Total <b>{unlinkedCount}</b> payments not linked with any
-                    account.{" "}
+                    Total <b>{unlinkedCount}</b> sale payments with{" "}
+                    <b>no Payment Account</b> (usually older imports paid with
+                    account left empty).{" "}
                     <button
                       type="button"
                       className="tw-underline tw-font-semibold"
@@ -574,8 +575,10 @@ export function Hq6PaymentAccountsListView() {
                         router.push(`/${tenantCode}/payments?unlinked=1`)
                       }
                     >
-                      View Details
-                    </button>
+                      View which ones
+                    </button>{" "}
+                    → Payments tab <b>Not linked to account</b>. Fix with{" "}
+                    <b>Link account</b>.
                     {canBackfill ? (
                       <>
                         {" · "}
@@ -588,7 +591,9 @@ export function Hq6PaymentAccountsListView() {
                           {backfillMutation.isPending
                             ? "Linking…"
                             : "Link orphan credits only"}
-                        </button>
+                        </button>{" "}
+                        only re-attaches book rows that already have an account
+                        — it does not assign accounts to these {unlinkedCount}.
                       </>
                     ) : null}
                   </li>

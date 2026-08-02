@@ -8,7 +8,7 @@ import type {
   StockAvailabilityResult,
   StockStatus,
 } from '@vonos/types';
-import { AUTOS_GROUP_CODES, isAutosGroupCode } from '@vonos/types';
+import { AUTOS_GROUP_CODES, isAutosGroupCode, isGroupStockConsumerTenant, PRODUCT_STOCK_LOCATION_CODES } from '@vonos/types';
 import { Prisma } from '@prisma/client';
 import { TenantDbService } from '../../common/prisma/tenant-db.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
@@ -35,7 +35,7 @@ import { adjustItemLocationStock } from '../../common/utils/itemLocationStock';
 import { toNumber } from '../../common/utils/serializers';
 import { applyLastPurchasePrices } from '../../common/utils/lastPurchasePrices';
 import {
-  tokenizedSearchWhere,
+  itemTextSearchWhere,
 } from '../../common/utils/listSearch';
 import { serializeItem } from './items.mapper';
 import {
@@ -221,12 +221,10 @@ export class ItemsService {
               AND: [
                 ...(filters.search
                   ? [
-                      // Prefer trigram-backed name/sku + selective carModel.
-                      tokenizedSearchWhere(filters.search, (_token, contains) => [
-                        { name: contains },
-                        { sku: contains },
-                        { carModel: contains },
-                      ])!,
+                      // SKU-like → btree equality/prefix; else trigram name/sku only.
+                      // Do not OR carModel here — it has no GIN trigram and slows every
+                      // fuzzy product search into a wider scan.
+                      itemTextSearchWhere(filters.search)!,
                     ]
                   : []),
                 ...(filters.locationCode
@@ -769,9 +767,12 @@ export class ItemsService {
       limit?: number;
       entityCode?: string;
       availability?: 'all' | 'available' | 'unavailable';
+      /** Limit to VW/VISP/VSP product homes (VA/VP consumers default on). */
+      stockHomesOnly?: boolean;
     },
   ): Promise<StockAvailabilityResult> {
     const requesterTenantId = this.tenantDb.resolveTenantId();
+    let requesterCode: string | null = null;
     // Super admin (null tenant) is always allowed; entity users must belong to
     // the auto-group.
     if (requesterTenantId !== null) {
@@ -784,22 +785,29 @@ export class ItemsService {
           'Cross-entity stock is limited to the Autos Group',
         );
       }
+      requesterCode = requester.code;
     }
 
     const limit = options?.limit ?? 10;
     const entityFilter = options?.entityCode?.trim().toUpperCase();
     const availability = options?.availability ?? 'all';
     const term = search?.trim();
-    const cacheKey = `stock-availability:${entityFilter ?? 'all'}:${availability}:${term ?? ''}:${limit}`;
+    const stockHomesOnly =
+      options?.stockHomesOnly === true ||
+      (!entityFilter && isGroupStockConsumerTenant(requesterCode));
+    const tenantCodes = entityFilter
+      ? [entityFilter]
+      : stockHomesOnly
+        ? [...PRODUCT_STOCK_LOCATION_CODES]
+        : [...AUTOS_GROUP_CODES];
+    const cacheKey = `stock-availability:v2:${tenantCodes.join(',')}:${availability}:${term ?? ''}:${limit}`;
     const cached = await this.cache.get<StockAvailabilityResult>(cacheKey);
     if (cached) return cached;
 
     const tenants = await this.prisma.tenant.findMany({
       where: {
         deletedAt: null,
-        ...(entityFilter
-          ? { code: entityFilter }
-          : { code: { in: [...AUTOS_GROUP_CODES] } }),
+        code: { in: tenantCodes },
       },
       select: { id: true, code: true, name: true },
     });
@@ -810,26 +818,47 @@ export class ItemsService {
         deletedAt: null,
         tenantId: { in: tenants.map((t) => t.id) },
         ...(term
-          ? {
-              OR: [
-                { name: { contains: term, mode: 'insensitive' } },
-                { sku: { contains: term, mode: 'insensitive' } },
-              ],
-            }
+          ? itemTextSearchWhere(term) ?? {}
           : {}),
       },
-      include: { locationStock: true },
+      select: {
+        id: true,
+        tenantId: true,
+        sku: true,
+        name: true,
+        category: true,
+        quantity: true,
+        reorderPoint: true,
+        status: true,
+        availableForRetail: true,
+        costPrice: true,
+        sellPrice: true,
+        currency: true,
+        locationStock: {
+          select: {
+            locationCode: true,
+            binLocation: true,
+            quantity: true,
+          },
+        },
+      },
       orderBy: [{ sku: 'asc' }, { tenantId: 'asc' }],
       take: Math.max(limit * 8, 40),
     });
 
+    const matchedSkus = [...new Set(items.map((item) => item.sku))];
     const reservedByTenant = new Map<string, Map<string, number>>();
-    for (const tenant of tenants) {
-      reservedByTenant.set(
-        tenant.id,
-        await reservedQtyBySku(this.prisma, tenant.id),
-      );
-    }
+    // Only scan requisitions for SKUs that matched — not the whole catalog.
+    await Promise.all(
+      tenants.map(async (tenant) => {
+        reservedByTenant.set(
+          tenant.id,
+          matchedSkus.length === 0
+            ? new Map()
+            : await reservedQtyBySku(this.prisma, tenant.id, matchedSkus),
+        );
+      }),
+    );
 
     const groups = new Map<string, StockAvailabilityResult['groups'][number]>();
     for (const item of items) {
@@ -862,6 +891,9 @@ export class ItemsService {
         reorderPoint: item.reorderPoint,
         status: item.status,
         availableForRetail: item.availableForRetail,
+        costPrice: toNumber(item.costPrice),
+        sellPrice: toNumber(item.sellPrice ?? item.costPrice),
+        currency: item.currency || 'NGN',
         locations: item.locationStock.map((loc) => ({
           locationCode: loc.locationCode,
           binLocation: loc.binLocation === '' ? null : loc.binLocation,

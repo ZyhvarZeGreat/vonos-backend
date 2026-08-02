@@ -22,6 +22,9 @@ import {
   withListPageCache,
 } from '../../common/utils/listPageCache';
 import {
+  HQ6_LIST_WARM_LIMITS,
+} from '../../common/utils/hq6ListWarm';
+import {
   getLegacyContactIdsForPage,
   warmLegacyContactIdMap,
 } from '../../common/utils/legacyContactIdMap';
@@ -194,16 +197,35 @@ export class SuppliersService {
       ...(filters.status === 'active' || filters.status === 'inactive'
         ? { status: filters.status }
         : {}),
-      ...(tokenizedSearchWhere(filters.search, (_token, contains) => [
-        { name: contains },
-        { contactName: contains },
-        { email: contains },
-        { phone: contains },
-        { address: contains },
-        { taxNumber: contains },
-        { notes: contains },
-        { locationCode: contains },
-      ]) ?? {}),
+      ...(filters.search?.trim()
+        ? (() => {
+            const phrase = filters.search.trim();
+            const tokenized = tokenizedSearchWhere(phrase, (_token, contains) => [
+              { name: contains },
+              { contactName: contains },
+              { email: contains },
+              { phone: contains },
+              { address: contains },
+              { taxNumber: contains },
+              { notes: contains },
+              { locationCode: contains },
+            ]);
+            return {
+              OR: [
+                { name: { contains: phrase, mode: 'insensitive' as const } },
+                {
+                  contactName: {
+                    contains: phrase,
+                    mode: 'insensitive' as const,
+                  },
+                },
+                { phone: { contains: phrase, mode: 'insensitive' as const } },
+                { email: { contains: phrase, mode: 'insensitive' as const } },
+                ...(tokenized ? [tokenized] : []),
+              ],
+            };
+          })()
+        : {}),
     };
 
     // Rows first; legacy IDs from warm map (0 RTT) or page-scoped IN (1 RTT).
@@ -533,6 +555,12 @@ export class SuppliersService {
     if (!Number.isFinite(amount) || amount <= 0) {
       throw new BadRequestException('Payment amount must be greater than zero');
     }
+    const accountId = dto.accountId?.trim() || null;
+    if (!accountId) {
+      throw new BadRequestException(
+        'Select a Payment Account so this payment posts to the account book',
+      );
+    }
 
     const supplier = await this.tenantDb.db.supplier.findFirst({
       where: { id, tenantId, deletedAt: null },
@@ -589,7 +617,7 @@ export class SuppliersService {
             paidOn,
             paymentFor: 'purchase',
             paymentRefNo: movement.reference,
-            accountId: dto.accountId?.trim() || null,
+            accountId,
             note:
               dto.note?.trim() ||
               `Supplier payment — ${supplier.name} (${movement.reference})`,
@@ -597,23 +625,21 @@ export class SuppliersService {
           },
         });
 
-        if (dto.accountId?.trim()) {
-          await recordPaymentAccountTxn(tx, {
-            tenantId,
-            accountId: dto.accountId.trim(),
-            type: 'debit',
-            subType: 'purchase_payment',
-            amount: apply,
-            operationDate: paidOn,
-            refNo: movement.reference,
-            note:
-              dto.note?.trim() ||
-              `Supplier payment — ${supplier.name} (${movement.reference})`,
-            paymentMethod: method,
-            paymentId: payment.id,
-            createdByName: createdBy.createdByName ?? null,
-          });
-        }
+        await recordPaymentAccountTxn(tx, {
+          tenantId,
+          accountId,
+          type: 'debit',
+          subType: 'purchase_payment',
+          amount: apply,
+          operationDate: paidOn,
+          refNo: movement.reference,
+          note:
+            dto.note?.trim() ||
+            `Supplier payment — ${supplier.name} (${movement.reference})`,
+          paymentMethod: method,
+          paymentId: payment.id,
+          createdByName: createdBy.createdByName ?? null,
+        });
 
         await tx.ledgerEntry.create({
           data: {
@@ -762,7 +788,7 @@ export async function warmDefaultSupplierListPages(
   tenantId: string,
 ): Promise<void> {
   await warmLegacyContactIdMap(prisma, cache, tenantId, 'supplier');
-  for (const limit of [10, 25] as const) {
+  for (const limit of HQ6_LIST_WARM_LIMITS) {
     for (const includeSummary of [false, true] as const) {
       const filterKey = listPageFilterKey({
         search: undefined,
@@ -828,6 +854,7 @@ export async function warmDefaultSupplierListPages(
             },
           };
         },
+        600,
       );
     }
   }

@@ -7,7 +7,7 @@
  *
  * Markup/classes match the scraped page — not our generic list shell.
  */
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { Hq6ConfirmModal } from "@/components/hq6/Hq6ConfirmModal";
@@ -20,6 +20,7 @@ import {
   getAllTenantUsers,
   type UserListRow,
 } from "@/lib/api/users";
+import { getTenantRoles } from "@/lib/api/tenantRoles";
 import { useServerListPage } from "@/lib/hooks/useServerListPage";
 import { useListExport } from "@/lib/hooks/useListExport";
 import { useListPageFilters } from "@/lib/hooks/useListPageFilters";
@@ -28,6 +29,7 @@ import { useTenantId } from "@/lib/hooks/useRouteTenant";
 import { usePathname } from "next/navigation";
 import { useHq6Permissions } from "@/lib/hooks/useHq6Permissions";
 import { prefetchUserDetail } from "@/lib/query/prefetchListDetails";
+import { getTenantByCode } from "@/lib/registries/tenants";
 import { toast } from "@/stores/toastStore";
 import type { User } from "@vonos/types";
 
@@ -104,9 +106,23 @@ export function Hq6UsersListView() {
   const { detailPath, prefetchDetail } = useRecordNavigation("users");
   const { requireCan } = useHq6Permissions();
   const { search, setSearch } = useListPageFilters();
-  const [localSearch, setLocalSearch] = useState(search);
   const [columnsOpen, setColumnsOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<UserListRow | null>(null);
+
+  const createHref = `${detailPath("new")}/edit`;
+
+  /** Warm create route + default-home roles so Add User isn't a cold start. */
+  useEffect(() => {
+    router.prefetch(createHref);
+    const homeTenantId =
+      tenantId ?? getTenantByCode("VA")?.tenantId ?? null;
+    if (!homeTenantId) return;
+    void queryClient.prefetchQuery({
+      queryKey: ["tenant-roles", homeTenantId],
+      queryFn: () => getTenantRoles(homeTenantId),
+      staleTime: 5 * 60_000,
+    });
+  }, [createHref, queryClient, router, tenantId]);
 
   const deactivateMutation = useMutation({
     mutationFn: (row: UserListRow) =>
@@ -226,12 +242,13 @@ export function Hq6UsersListView() {
               <h3 className="box-title">All users</h3>
               <div className="box-tools tw-flex tw-items-center">
                   <a
-                    href={`${detailPath("new")}/edit`}
+                    href={createHref}
                     className="tw-dw-btn tw-bg-gradient-to-r tw-from-indigo-600 tw-to-blue-500 tw-font-bold tw-text-white tw-border-none tw-rounded-full"
+                    onMouseEnter={() => router.prefetch(createHref)}
                     onClick={(e) => {
                       e.preventDefault();
                       if (!requireCan("user.create")) return;
-                      router.push(`${detailPath("new")}/edit`);
+                      router.push(createHref);
                     }}
                   >
                     {PlusIcon} Add
@@ -367,9 +384,9 @@ export function Hq6UsersListView() {
                           <Hq6DtSearchFilter
                             id="users_table_filter"
                             ariaControls="users_table"
-                            value={localSearch}
-                            onChange={setLocalSearch}
-                            onCommit={() => setSearch(localSearch)}
+                            value={search}
+                            onChange={setSearch}
+                            
                             disabled={busy}
                           />
                         </div>

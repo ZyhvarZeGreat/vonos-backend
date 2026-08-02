@@ -46,8 +46,6 @@ export function Hq6ListToolbar({
   density,
   onDensityChange,
 }: Hq6ListToolbarProps) {
-  const commit = () => onSearchCommit?.();
-
   return (
     <div className="hq6-dt-toolbar">
       <label className="hq6-show-entries">
@@ -153,26 +151,17 @@ export function Hq6ListToolbar({
         <input
           type="search"
           value={searchValue}
-          onChange={(e) => {
-            onSearchChange(e.target.value);
-          }}
+          onChange={(e) => onSearchChange(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Enter") {
               e.preventDefault();
-              commit();
+              onSearchCommit?.();
             }
           }}
           placeholder={searchPlaceholder}
           title={searchPlaceholder}
-        />
-        <button
-          type="button"
-          className="hq6-search-btn"
           aria-label="Search"
-          onClick={commit}
-        >
-          Search
-        </button>
+        />
       </div>
     </div>
   );

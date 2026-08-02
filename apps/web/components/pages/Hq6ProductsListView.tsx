@@ -132,7 +132,6 @@ export function Hq6ProductsListView({
   const [brandFilter, setBrandFilter] = useState("");
   const [taxFilter, setTaxFilter] = useState("");
   const [notForSelling, setNotForSelling] = useState(false);
-  const [localSearch, setLocalSearch] = useState(search);
   const [viewItem, setViewItem] = useState<Item | null>(null);
   const [stockItem, setStockItem] = useState<Item | null>(null);
   const [moveItem, setMoveItem] = useState<Item | null>(null);
@@ -293,9 +292,15 @@ export function Hq6ProductsListView({
 
   const brandOptions = useMemo(
     () =>
-      (brandsQuery.data ?? [])
-        .map((b) => b.name?.trim())
-        .filter((name): name is string => Boolean(name))
+      // De-dupe by name — legacy data can carry duplicate brands, which would
+      // otherwise render duplicate <option> keys.
+      [
+        ...new Set(
+          (brandsQuery.data ?? [])
+            .map((b) => b.name?.trim())
+            .filter((name): name is string => Boolean(name)),
+        ),
+      ]
         .sort((a, b) => a.localeCompare(b))
         .map((name) => ({ value: name, label: name })),
     [brandsQuery.data],
@@ -323,10 +328,6 @@ export function Hq6ProductsListView({
       return true;
     });
   }, [items, typeFilter]);
-
-  const commitSearch = useCallback(() => {
-    setSearch(localSearch);
-  }, [localSearch, setSearch]);
 
   const handleExport = useCallback(
     (format: "csv" | "excel" | "pdf" | "print") => {
@@ -674,9 +675,9 @@ export function Hq6ProductsListView({
                     tableId="product_table"
                     pageSize={pageSize}
                     onPageSizeChange={setPageSize}
-                    searchValue={localSearch}
-                    onSearchChange={setLocalSearch}
-                    onSearchCommit={commitSearch}
+                    searchValue={search}
+                    onSearchChange={setSearch}
+                    
                     onExportCsv={() => handleExport("csv")}
                     onExportExcel={() => handleExport("excel")}
                     onPrint={() => chrome.setPrintOpen(true)}

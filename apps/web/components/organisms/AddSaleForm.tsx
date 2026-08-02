@@ -8,11 +8,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Info, Minus, Plus, Trash2, X } from "lucide-react";
 import type { Customer, Sale, TenantConfig } from "@vonos/types";
+import { isGroupStockConsumerTenant } from "@vonos/types";
 import { Button } from "@/components/atoms/Button";
+import { ClearableNumberInput } from "@/components/atoms/ClearableNumberInput";
 import { Input } from "@/components/atoms/Input";
 import { Select } from "@/components/atoms/Select";
 import { AsyncMenuSelect } from "@/components/molecules/AsyncMenuSelect";
-import { MenuSelect } from "@/components/molecules/MenuSelect";
 import {
   ProductItemSearch,
   type CatalogPartPick,
@@ -21,7 +22,7 @@ import { Hq6AddSupplierModal } from "@/components/hq6/Hq6AddSupplierModal";
 import { createCustomer, getCustomerContact, getCustomers } from "@/lib/api/customers";
 import { getJob, getJobs } from "@/lib/api/jobs";
 import { createSale, deleteSale, getSale } from "@/lib/api/sales";
-import { getPaymentAccountsPage } from "@/lib/api/paymentAccounts";
+import { getPaymentAccountsForPicker } from "@/lib/api/paymentAccounts";
 import { getServiceStaff } from "@/lib/api/hrm";
 import { getSuppliers } from "@/lib/api/suppliers";
 import { TYPEAHEAD_PAGE_SIZE } from "@/lib/api/fetchAllPages";
@@ -84,13 +85,13 @@ function emptyForm(presetStatus: SaleFormPresetStatus = "final") {
     vehicleTimeIn: "",
     vehicleReleaseDate: "",
     discountType: "percentage",
-    discountAmount: "0",
-    redeemedPoints: "0",
-    orderTax: "0",
+    discountAmount: "",
+    redeemedPoints: "",
+    orderTax: "",
     sellNote: "",
     shippingDetails: "",
     shippingAddress: "",
-    shippingCharges: "0",
+    shippingCharges: "",
     shippingStatus: "pending",
     deliveredTo: "",
     deliveryPerson: "",
@@ -182,13 +183,13 @@ export function AddSaleForm({
     locations: saleLocations,
     defaultCode: defaultLocationCode,
   } = useEntitySaleLocationOptions(tenantConfig);
-  const isProvisional = presetStatus === "draft" || presetStatus === "quotation";
   const showLocationField = saleLocations.length > 0;
   const isJobTenant = tenantConfig?.archetype === "job";
-  /** VA / VP can source stock from VW, VISP, VSP on sale. */
-  const allowCrossEntitySource =
-    tenantConfig?.code === "VA" || tenantConfig?.code === "VP";
+  /** VA / VP: parts from VW/VISP/VSP or purchase — no local product catalog. */
+  const groupStockConsumer = isGroupStockConsumerTenant(tenantConfig?.code);
+  const allowCrossEntitySource = groupStockConsumer;
   const includeWarehouseSearch = allowCrossEntitySource || !isJobTenant;
+  const ownCatalogSearch = !groupStockConsumer;
   /** Job link is optional — only used for stock skip / prefill when chosen. */
   const showJobField = isJobTenant;
 
@@ -199,6 +200,8 @@ export function AddSaleForm({
     }
     return base;
   });
+  const isProvisional =
+    form.status === "draft" || form.status === "quotation";
   const [lines, setLines] = useState<SaleLineDraft[]>([]);
   const [additionalExpenses, setAdditionalExpenses] = useState<
     Array<{ key: string; name: string; amount: string }>
@@ -223,6 +226,26 @@ export function AddSaleForm({
     queryFn: () => getSuppliers(tenantId!, { limit: 100 }),
     enabled: Boolean(tenantId) && lines.some((l) => l.createPurchase),
   });
+
+  const loadSupplierOptions = useCallback(
+    async (query: string) => {
+      if (!tenantId) {
+        return [{ value: "", label: "No supplier" }];
+      }
+      const rows = await getSuppliers(tenantId, {
+        search: query || undefined,
+        limit: TYPEAHEAD_PAGE_SIZE,
+      });
+      return [
+        { value: "", label: "No supplier" },
+        ...rows.map((s) => ({
+          value: s.id,
+          label: s.businessName ?? s.name,
+        })),
+      ];
+    },
+    [tenantId],
+  );
 
   // Default to this entity's location once config loads (or if empty / foreign).
   useEffect(() => {
@@ -315,7 +338,9 @@ export function AddSaleForm({
       shippingCharges +
       additionalExpenseTotal,
   );
-  const paidAmount = Number(form.paymentAmount) || (isProvisional ? 0 : totalPayable);
+  const paidAmount =
+    Number(form.paymentAmount) ||
+    (form.paymentAmount.trim() === "0" ? 0 : totalPayable);
   const balance = Math.max(0, totalPayable - paidAmount);
   const changeReturn = Math.max(0, paidAmount - totalPayable);
 
@@ -329,9 +354,7 @@ export function AddSaleForm({
         { value: "", label: "Walk-in customer" },
         ...rows.map((row) => ({
           value: row.id,
-          label: row.businessName
-            ? `${row.name} (${row.businessName})`
-            : row.name,
+          label: row.name,
         })),
       ];
     },
@@ -356,14 +379,10 @@ export function AddSaleForm({
 
   const loadPaymentAccountOptions = useCallback(
     async (query: string) => {
-      const q = query.trim();
-      const page = await getPaymentAccountsPage(
-        tenantId,
-        undefined,
-        TYPEAHEAD_PAGE_SIZE,
-        q ? { search: q } : undefined,
-      );
-      const rows = page.items;
+      const rows = await getPaymentAccountsForPicker(tenantId, {
+        search: query.trim() || undefined,
+        limit: TYPEAHEAD_PAGE_SIZE,
+      });
       return [
         { value: "", label: "Select payment account" },
         ...rows.map((row) => ({
@@ -589,20 +608,30 @@ export function AddSaleForm({
       });
     },
     successMessage:
-      editSaleId
-        ? "Document updated"
-        : presetStatus === "draft"
-          ? "Draft saved"
-          : presetStatus === "quotation"
-            ? "Quotation saved"
-            : "Sale recorded",
-    progressLabel: editSaleId
-      ? "Updating sale"
-      : presetStatus === "draft"
-        ? "Saving draft"
-        : presetStatus === "quotation"
-          ? "Saving quotation"
-          : "Saving sale",
+      form.status === "final"
+        ? editSaleId &&
+          (presetStatus === "quotation" || presetStatus === "draft")
+          ? "Converted to sale"
+          : "Sale recorded"
+        : editSaleId
+          ? "Document updated"
+          : presetStatus === "draft"
+            ? "Draft saved"
+            : presetStatus === "quotation"
+              ? "Quotation saved"
+              : "Sale recorded",
+    progressLabel:
+      form.status === "final"
+        ? editSaleId
+          ? "Converting to sale"
+          : "Saving sale"
+        : editSaleId
+          ? "Updating sale"
+          : presetStatus === "draft"
+            ? "Saving draft"
+            : presetStatus === "quotation"
+              ? "Saving quotation"
+              : "Saving sale",
     invalidateKeys: [
       ["sales"],
       ["items"],
@@ -861,9 +890,15 @@ export function AddSaleForm({
               <select
                 className="hq6-form-input"
                 value={form.status}
-                onChange={(e) =>
-                  patchForm({ status: e.target.value as SaleFormPresetStatus })
-                }
+                onChange={(e) => {
+                  const next = e.target.value as SaleFormPresetStatus;
+                  patchForm({
+                    status: next,
+                    ...(next === "final" && !form.paymentAmount.trim()
+                      ? { paymentAmount: String(totalPayable) }
+                      : {}),
+                  });
+                }}
               >
                 <option value="final">Final</option>
                 <option value="draft">Draft</option>
@@ -924,32 +959,6 @@ export function AddSaleForm({
                 value={form.customerLocation}
                 onChange={(e) => patchForm({ customerLocation: e.target.value })}
               />
-            </label>
-
-            <label className="hq6-form-label">
-              <span>Attach Document:</span>
-              <div className="input-group file-caption-main" style={{ width: "100%" }}>
-                <div className="form-control file-caption kv-fileinput-caption">
-                  <span className="file-caption-name" />
-                </div>
-                <div className="input-group-btn">
-                  <div className="btn btn-primary btn-file">
-                    <i className="glyphicon glyphicon-folder-open" aria-hidden />
-                    &nbsp; <span className="hidden-xs">Browse..</span>
-                    <input
-                      id="upload_document"
-                      accept=".pdf,.csv,.zip,.doc,.docx,.jpeg,.jpg,.png"
-                      name="sell_document"
-                      type="file"
-                    />
-                  </div>
-                </div>
-              </div>
-              <p className="hq6-form-hint">
-                Max File size: 5MB
-                <br />
-                Allowed File: .pdf, .csv, .zip, .doc, .docx, .jpeg, .jpg, .png
-              </p>
             </label>
 
             <label className="hq6-form-label">
@@ -1028,26 +1037,25 @@ export function AddSaleForm({
                                 Will add to Purchases
                               </div>
                               <div className="flex flex-wrap items-center gap-1">
-                                <MenuSelect
+                                <AsyncMenuSelect
                                   value={line.supplierId ?? ""}
+                                  selectedLabel={line.supplierName}
                                   placeholder="Supplier (optional)"
-                                  searchable
+                                  loadOptions={loadSupplierOptions}
                                   onChange={(supplierId) => {
                                     const match = supplierOptions.find(
                                       (s) => s.id === supplierId,
                                     );
                                     updateLine(line.key, {
                                       supplierId: supplierId || undefined,
-                                      supplierName: match?.name,
+                                      supplierName:
+                                        match?.businessName ??
+                                        match?.name ??
+                                        (supplierId
+                                          ? line.supplierName
+                                          : undefined),
                                     });
                                   }}
-                                  options={[
-                                    { value: "", label: "No supplier" },
-                                    ...supplierOptions.map((s) => ({
-                                      value: s.id,
-                                      label: s.name,
-                                    })),
-                                  ]}
                                 />
                                 <button
                                   type="button"
@@ -1137,34 +1145,20 @@ export function AddSaleForm({
                           </div>
                         </td>
                         <td>
-                          <input
-                            type="number"
+                          <ClearableNumberInput
                             min={0}
-                            step="0.01"
                             value={line.unitPrice}
-                            onChange={(e) =>
-                              updateLine(line.key, {
-                                unitPrice: Math.max(
-                                  0,
-                                  Number(e.target.value) || 0,
-                                ),
-                              })
+                            onChange={(n) =>
+                              updateLine(line.key, { unitPrice: n })
                             }
                           />
                         </td>
                         <td>
-                          <input
-                            type="number"
+                          <ClearableNumberInput
                             min={0}
-                            step="0.01"
                             value={line.discount}
-                            onChange={(e) =>
-                              updateLine(line.key, {
-                                discount: Math.max(
-                                  0,
-                                  Number(e.target.value) || 0,
-                                ),
-                              })
+                            onChange={(n) =>
+                              updateLine(line.key, { discount: n })
                             }
                           />
                         </td>
@@ -1209,7 +1203,7 @@ export function AddSaleForm({
           </div>
           <div className="hq6-form-table-footer !border-0 mt-2 pt-1">
             <span>
-              <b>Items:</b> {lines.length.toFixed(2)}
+              <b>Items:</b> {lines.length}
               &nbsp;&nbsp;&nbsp;&nbsp;
               <b>Total:</b> {formatHq6Currency(lineTotal)}
             </span>
@@ -1224,6 +1218,7 @@ export function AddSaleForm({
                 tenantCode={tenantConfig?.code}
                 retailOnly={false}
                 includeWarehouse={includeWarehouseSearch}
+                ownCatalog={ownCatalogSearch}
                 pickSourceAfterSelect={allowCrossEntitySource}
                 allowCustom
                 showStockQty={includeWarehouseSearch}
@@ -1231,9 +1226,14 @@ export function AddSaleForm({
                 showSearchButton={false}
                 businessLocations={saleLocations}
                 onSelect={addLineFromPick}
-                placeholder="Enter Product name / SKU / Scan bar code"
+                placeholder={
+                  groupStockConsumer
+                    ? "Search VW / VISP / VSP stock or type a custom part"
+                    : "Enter Product name / SKU / Scan bar code"
+                }
                 className="hq6-product-search-embedded"
               />
+              {!groupStockConsumer ? (
               <span className="input-group-btn">
                 <button
                   type="button"
@@ -1248,6 +1248,7 @@ export function AddSaleForm({
                   <i className="fa fa-plus-circle text-primary fa-lg" aria-hidden />
                 </button>
               </span>
+              ) : null}
             </div>
           </div>
         </section>
@@ -1322,7 +1323,7 @@ export function AddSaleForm({
             <aside className="hq6-sale-totals-panel">
               <div className="hq6-form-summary-line">
                 <span>Items:</span>
-                <strong>{lines.length.toFixed(2)}</strong>
+                <strong>{lines.length}</strong>
               </div>
               <div className="hq6-form-summary-line">
                 <span>Total:</span>
@@ -1489,90 +1490,87 @@ export function AddSaleForm({
           </div>
         </section>
 
-        {!isProvisional ? (
-          <section className="hq6-form-card">
-            <h2 className="hq6-form-card-title">Add payment</h2>
+        <section className="hq6-form-card">
+          <h2 className="hq6-form-card-title">Add payment</h2>
+          {isProvisional ? (
+            <p className="mb-3 text-sm text-[#6b7280]">
+              Payment posts when Status is <strong>Final</strong> (converts this{" "}
+              {form.status === "draft" ? "draft" : "quotation"} to a real sale).
+            </p>
+          ) : (
             <p className="mb-3 text-sm text-[#6b7280]">
               Advance Balance: {formatHq6Currency(0)}
             </p>
-            <div className="hq6-form-grid hq6-form-grid-3">
-              <label className="hq6-form-label">
-                <span>
-                  Amount <span className="req">*</span>
-                </span>
-                <input
-                  type="number"
-                  min={0}
-                  className="hq6-form-input"
-                  value={form.paymentAmount || String(totalPayable)}
-                  onChange={(e) => patchForm({ paymentAmount: e.target.value })}
-                />
-              </label>
-              <label className="hq6-form-label">
-                <span>
-                  Paid on <span className="req">*</span>
-                </span>
-                <div className="hq6-form-input-wrap">
+          )}
+          <div className="hq6-form-grid hq6-form-grid-3">
+            <label className="hq6-form-label">
+              <span>
+                Amount <span className="req">*</span>:
+              </span>
+              <input
+                type="number"
+                min={0}
+                className="hq6-form-input"
+                value={form.paymentAmount || String(totalPayable)}
+                onChange={(e) => patchForm({ paymentAmount: e.target.value })}
+              />
+            </label>
+            <label className="hq6-form-label">
+              <span>
+                Paid on <span className="req">*</span>:
+              </span>
+              <div className="hq6-form-input-wrap">
                 <Hq6DateTimeInput
                   className="hq6-form-input"
-                    value={form.paidOn}
-                    onChange={(v) => patchForm({ paidOn: v })}
-                  />
-                </div>
-              </label>
-              <label className="hq6-form-label">
-                <span>
-                  Payment Method <span className="req">*</span>
-                </span>
-                <select
-                  className="hq6-form-input"
-                  value={form.paymentMethod}
-                  onChange={(e) =>
-                    patchForm({ paymentMethod: e.target.value })
-                  }
-                >
-                  <option value="cash">Cash</option>
-                  <option value="card">Card</option>
-                  <option value="transfer">Bank Transfer</option>
-                  <option value="cheque">Cheque</option>
-                  <option value="other">Other</option>
-                </select>
-              </label>
-              <label className="hq6-form-label">
-                <span>Payment Account:</span>
-                <AsyncMenuSelect
-                  value={form.paymentAccountId}
-                  placeholder="None"
-                  loadOptions={loadPaymentAccountOptions}
-                  onChange={(id) => patchForm({ paymentAccountId: id })}
+                  value={form.paidOn}
+                  onChange={(v) => patchForm({ paidOn: v })}
                 />
-              </label>
-              <label className="hq6-form-label" style={{ gridColumn: "1 / -1" }}>
-                <span>Payment note:</span>
-                <textarea
-                  className="hq6-form-input"
-                  rows={2}
-                  value={form.paymentNote}
-                  onChange={(e) => patchForm({ paymentNote: e.target.value })}
-                />
-              </label>
-            </div>
-            <div className="hq6-form-table-footer">
+              </div>
+            </label>
+            <label className="hq6-form-label">
               <span>
-                Change Return: <strong>{formatHq6Currency(changeReturn)}</strong>
+                Payment Method <span className="req">*</span>:
               </span>
-              <span>
-                Balance: <strong>{formatHq6Currency(balance)}</strong>
-              </span>
-            </div>
-          </section>
-        ) : (
-          <section className="hq6-form-card text-sm text-[#6b7280]">
-            Payment is recorded when the{" "}
-            {presetStatus === "draft" ? "draft" : "quotation"} is converted to a
-            final sale.
-          </section>
-        )}
+              <select
+                className="hq6-form-input"
+                value={form.paymentMethod}
+                onChange={(e) =>
+                  patchForm({ paymentMethod: e.target.value })
+                }
+              >
+                <option value="cash">Cash</option>
+                <option value="card">Card</option>
+                <option value="bank_transfer">Bank Transfer</option>
+                <option value="cheque">Cheque</option>
+                <option value="other">Other</option>
+              </select>
+            </label>
+            <label className="hq6-form-label">
+              <span>Payment Account:</span>
+              <AsyncMenuSelect
+                value={form.paymentAccountId}
+                placeholder="None"
+                loadOptions={loadPaymentAccountOptions}
+                onChange={(id) => patchForm({ paymentAccountId: id })}
+              />
+            </label>
+            <label className="hq6-form-label" style={{ gridColumn: "1 / -1" }}>
+              <span>Payment note:</span>
+              <textarea
+                className="hq6-form-input"
+                rows={3}
+                value={form.paymentNote}
+                onChange={(e) => patchForm({ paymentNote: e.target.value })}
+              />
+            </label>
+          </div>
+          <div className="hq6-form-table-footer">
+            <span>
+              Change Return:{" "}
+              <strong>{formatHq6Currency(changeReturn)}</strong>
+            </span>
+          </div>
+        </section>
 
         {error ? <p className="text-sm text-[#dc2626]">{error}</p> : null}
 
@@ -1825,11 +1823,15 @@ export function AddSaleForm({
           <Select
             label="Status"
             value={form.status}
-            onChange={(e) =>
+            onChange={(e) => {
+              const next = e.target.value as SaleFormPresetStatus;
               patchForm({
-                status: e.target.value as SaleFormPresetStatus,
-              })
-            }
+                status: next,
+                ...(next === "final" && !form.paymentAmount.trim()
+                  ? { paymentAmount: String(totalPayable) }
+                  : {}),
+              });
+            }}
             options={[
               { value: "final", label: "Final" },
               { value: "draft", label: "Draft" },
@@ -1904,26 +1906,25 @@ export function AddSaleForm({
                               Will add to Purchases
                             </div>
                             <div className="flex flex-wrap items-center gap-1">
-                              <MenuSelect
+                              <AsyncMenuSelect
                                 value={line.supplierId ?? ""}
+                                selectedLabel={line.supplierName}
                                 placeholder="Supplier (optional)"
-                                searchable
+                                loadOptions={loadSupplierOptions}
                                 onChange={(supplierId) => {
                                   const match = supplierOptions.find(
                                     (s) => s.id === supplierId,
                                   );
                                   updateLine(line.key, {
                                     supplierId: supplierId || undefined,
-                                    supplierName: match?.name,
+                                    supplierName:
+                                      match?.businessName ??
+                                      match?.name ??
+                                      (supplierId
+                                        ? line.supplierName
+                                        : undefined),
                                   });
                                 }}
-                                options={[
-                                  { value: "", label: "No supplier" },
-                                  ...supplierOptions.map((s) => ({
-                                    value: s.id,
-                                    label: s.name,
-                                  })),
-                                ]}
                               />
                               <Button
                                 type="button"
@@ -1972,29 +1973,21 @@ export function AddSaleForm({
                       />
                     </td>
                     <td className="px-3 py-2">
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.01"
+                      <ClearableNumberInput
+                        min={0}
                         value={line.unitPrice}
-                        onChange={(e) =>
-                          updateLine(line.key, {
-                            unitPrice: Math.max(0, Number(e.target.value) || 0),
-                          })
+                        onChange={(n) =>
+                          updateLine(line.key, { unitPrice: n })
                         }
                         className="w-24 rounded border border-border px-2 py-1"
                       />
                     </td>
                     <td className="px-3 py-2">
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.01"
+                      <ClearableNumberInput
+                        min={0}
                         value={line.discount}
-                        onChange={(e) =>
-                          updateLine(line.key, {
-                            discount: Math.max(0, Number(e.target.value) || 0),
-                          })
+                        onChange={(n) =>
+                          updateLine(line.key, { discount: n })
                         }
                         className="w-20 rounded border border-border px-2 py-1"
                       />
@@ -2033,17 +2026,20 @@ export function AddSaleForm({
             tenantCode={tenantConfig?.code}
             retailOnly={false}
             includeWarehouse={includeWarehouseSearch}
+            ownCatalog={ownCatalogSearch}
             pickSourceAfterSelect={allowCrossEntitySource}
             allowCustom
             showStockQty={includeWarehouseSearch}
             businessLocations={saleLocations}
             onSelect={addLineFromPick}
             placeholder={
-              allowCrossEntitySource
-                ? "Search parts (own / VW / VISP / VSP) or add custom…"
-                : isJobTenant
-                  ? "Search products by name or SKU…"
-                  : "Search own products or warehouse parts…"
+              groupStockConsumer
+                ? "Search VW / VISP / VSP stock or type a custom part"
+                : allowCrossEntitySource
+                  ? "Search parts (own / VW / VISP / VSP) or add custom…"
+                  : isJobTenant
+                    ? "Search products by name or SKU…"
+                    : "Search own products or warehouse parts…"
             }
           />
         </div>
@@ -2154,71 +2150,69 @@ export function AddSaleForm({
         </div>
       </section>
 
-      {!isProvisional ? (
-        <section className="space-y-3 rounded-lg border border-border bg-card p-4">
-          <p className="text-sm font-medium text-foreground">Add payment</p>
+      <section className="space-y-3 rounded-lg border border-border bg-card p-4">
+        <p className="text-sm font-medium text-foreground">Add payment</p>
+        {isProvisional ? (
+          <p className="text-sm text-muted">
+            Payment posts when Status is <strong>Final</strong> (converts this{" "}
+            {form.status === "draft" ? "draft" : "quotation"} to a real sale).
+          </p>
+        ) : (
           <p className="text-sm text-muted">
             Advance Balance: {formatCurrency(0)}
           </p>
-          <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-            <Input
-              label="Amount"
-              type="number"
-              min="0"
-              value={form.paymentAmount || String(totalPayable)}
-              onChange={(e) => patchForm({ paymentAmount: e.target.value })}
+        )}
+        <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+          <Input
+            label="Amount"
+            type="number"
+            min="0"
+            value={form.paymentAmount || String(totalPayable)}
+            onChange={(e) => patchForm({ paymentAmount: e.target.value })}
+          />
+          <Input
+            label="Paid on"
+            type="datetime-local"
+            value={form.paidOn}
+            onChange={(e) => patchForm({ paidOn: e.target.value })}
+          />
+          <Select
+            label="Payment Method"
+            value={form.paymentMethod}
+            onChange={(e) => patchForm({ paymentMethod: e.target.value })}
+            options={[
+              { value: "cash", label: "Cash" },
+              { value: "card", label: "Card" },
+              { value: "bank_transfer", label: "Bank Transfer" },
+              { value: "cheque", label: "Cheque" },
+              { value: "other", label: "Other" },
+            ]}
+          />
+          <div>
+            <label className="mb-1 block text-xs font-medium text-muted">
+              Payment Account
+            </label>
+            <AsyncMenuSelect
+              value={form.paymentAccountId}
+              placeholder="Select payment account"
+              loadOptions={loadPaymentAccountOptions}
+              onChange={(id) => patchForm({ paymentAccountId: id })}
             />
-            <Input
-              label="Paid on"
-              type="datetime-local"
-              value={form.paidOn}
-              onChange={(e) => patchForm({ paidOn: e.target.value })}
-            />
-            <Select
-              label="Payment Method"
-              value={form.paymentMethod}
-              onChange={(e) => patchForm({ paymentMethod: e.target.value })}
-              options={[
-                { value: "cash", label: "Cash" },
-                { value: "card", label: "Card" },
-                { value: "transfer", label: "Bank Transfer" },
-                { value: "cheque", label: "Cheque" },
-                { value: "other", label: "Other" },
-              ]}
-            />
-            <div>
-              <label className="mb-1 block text-xs font-medium text-muted">
-                Payment Account
-              </label>
-              <AsyncMenuSelect
-                value={form.paymentAccountId}
-                placeholder="Select payment account"
-                loadOptions={loadPaymentAccountOptions}
-                onChange={(id) => patchForm({ paymentAccountId: id })}
-              />
-            </div>
           </div>
-          <label className="block text-sm">
-            <span className="mb-1 block text-muted">Payment note</span>
-            <textarea
-              value={form.paymentNote}
-              onChange={(e) => patchForm({ paymentNote: e.target.value })}
-              rows={2}
-              className="w-full rounded-lg border border-border px-3 py-2 text-sm"
-            />
-          </label>
-          <div className="flex flex-wrap justify-between gap-4 text-sm font-semibold">
-            <span>Change Return: {formatCurrency(changeReturn)}</span>
-            <span>Balance: {formatCurrency(balance)}</span>
-          </div>
-        </section>
-      ) : (
-        <p className="rounded-lg border border-border bg-card p-4 text-sm text-muted">
-          Payment is recorded when the{" "}
-          {presetStatus === "draft" ? "draft" : "quotation"} is converted to a
-          final sale.
-        </p>
-      )}
+        </div>
+        <label className="block text-sm">
+          <span className="mb-1 block text-muted">Payment note</span>
+          <textarea
+            value={form.paymentNote}
+            onChange={(e) => patchForm({ paymentNote: e.target.value })}
+            rows={2}
+            className="w-full rounded-lg border border-border px-3 py-2 text-sm"
+          />
+        </label>
+        <div className="flex flex-wrap justify-between gap-4 text-sm font-semibold">
+          <span>Change Return: {formatCurrency(changeReturn)}</span>
+        </div>
+      </section>
 
       {error ? <p className="text-sm text-error">{error}</p> : null}
 

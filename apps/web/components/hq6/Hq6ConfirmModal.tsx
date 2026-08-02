@@ -81,7 +81,15 @@ export function Hq6ConfirmModal({
       title={title}
       size="sm"
       footer={
-        <>
+        <div className="flex w-full justify-end gap-2">
+          <button
+            type="button"
+            className="hq6-modal-btn hq6-modal-btn-close"
+            disabled={confirming}
+            onClick={onClose}
+          >
+            {cancelLabel}
+          </button>
           <button
             type="button"
             className={cn(
@@ -94,14 +102,7 @@ export function Hq6ConfirmModal({
           >
             {confirming ? "Please wait…" : confirmLabel}
           </button>
-          <button
-            type="button"
-            className="hq6-modal-btn hq6-modal-btn-close"
-            onClick={onClose}
-          >
-            {cancelLabel}
-          </button>
-        </>
+        </div>
       }
     >
       <p className="text-sm text-[#4b5563]">{message}</p>

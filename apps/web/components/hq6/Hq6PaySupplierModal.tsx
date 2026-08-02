@@ -11,7 +11,7 @@ import {
   Hq6Modal,
   Hq6ModalSaveClose,
 } from "@/components/hq6/Hq6Modal";
-import { getPaymentAccounts } from "@/lib/api/paymentAccounts";
+import { getPaymentAccountsForPicker } from "@/lib/api/paymentAccounts";
 import {
   getSupplierSummary,
   paySupplierDue,
@@ -23,22 +23,10 @@ import {
   modalKeys,
 } from "@/lib/query/modalQueryKeys";
 import { formatHq6Currency, formatHq6DateTime } from "@/lib/utils/hq6Format";
+import { HQ6_PAYMENT_METHOD_OPTIONS } from "@/lib/utils/hq6PaymentMethods";
 import { toast } from "@/stores/toastStore";
 
-const PAYMENT_METHODS = [
-  { value: "cash", label: "Cash" },
-  { value: "card", label: "Card" },
-  { value: "cheque", label: "Cheque" },
-  { value: "bank_transfer", label: "Bank Transfer" },
-  { value: "other", label: "Other" },
-  { value: "custom_pay_1", label: "POS 1" },
-  { value: "custom_pay_2", label: "FCMB (Bank Transfer)" },
-  { value: "custom_pay_3", label: "GTB (Bank Transfer)" },
-  { value: "custom_pay_4", label: "Zenith (Bank Transfer)" },
-  { value: "custom_pay_5", label: "POS 2" },
-  { value: "custom_pay_6", label: "Discount" },
-  { value: "custom_pay_7", label: "Exchange" },
-] as const;
+const PAYMENT_METHODS = HQ6_PAYMENT_METHOD_OPTIONS;
 
 function nowPaidOnLocal(): string {
   const d = new Date();
@@ -66,7 +54,7 @@ export function Hq6PaySupplierModal({
   onClose: () => void;
   onPaid?: () => void;
 }) {
-  const [amount, setAmount] = useState("0.00");
+  const [amount, setAmount] = useState("");
   const [method, setMethod] = useState("cash");
   const [accountId, setAccountId] = useState("");
   const [note, setNote] = useState("");
@@ -75,7 +63,7 @@ export function Hq6PaySupplierModal({
 
   const accountsQuery = useQuery({
     queryKey: modalKeys.paymentAccounts(tenantId),
-    queryFn: () => getPaymentAccounts(tenantId!),
+    queryFn: () => getPaymentAccountsForPicker(tenantId!),
     enabled: Boolean(open && tenantId),
     staleTime: MODAL_REF_STALE_MS,
     placeholderData: (prev) => prev,
@@ -102,7 +90,7 @@ export function Hq6PaySupplierModal({
 
   useEffect(() => {
     if (!open || !supplier) return;
-    setAmount(totals.totalDue > 0 ? totals.totalDue.toFixed(2) : "0.00");
+    setAmount(totals.totalDue > 0 ? totals.totalDue.toFixed(2) : "");
     setMethod("cash");
     setAccountId("");
     setNote("");
@@ -113,13 +101,19 @@ export function Hq6PaySupplierModal({
     if (!tenantId || !supplier) return;
     const valid = parseForm(paymentAmountSchema, { amount });
     if (!valid) return;
+    if (!accountId.trim()) {
+      toast.error(
+        "Select a Payment Account so this payment posts to the account book",
+      );
+      return;
+    }
     const value = Number(valid.amount);
     setSaving(true);
     try {
       const result = await paySupplierDue(tenantId, supplier.id, {
         amount: value,
         method,
-        accountId: accountId || undefined,
+        accountId,
         note: note.trim() || undefined,
         paidOn: paidOnToIso(paidOn),
       });
@@ -194,13 +188,13 @@ export function Hq6PaySupplierModal({
         <Hq6Field label="Attach Document">
           <input className="hq6-modal-input" type="file" disabled />
         </Hq6Field>
-        <Hq6Field label="Payment Account">
+        <Hq6Field label="Payment Account" required>
           <select
             className="hq6-modal-input"
             value={accountId}
             onChange={(e) => setAccountId(e.target.value)}
           >
-            <option value="">None</option>
+            <option value="">Please Select</option>
             {accounts.map((account) => (
               <option key={account.id} value={account.id}>
                 {account.name}

@@ -56,7 +56,6 @@ export function JobsListView() {
   });
   const [activeTab, setActiveTab] = useState("all");
   const [statusFilter, setStatusFilter] = useState("");
-  const [localSearch, setLocalSearch] = useState(search);
 
   const apiFilters = useMemo(() => {
     const next: {
@@ -160,9 +159,9 @@ export function JobsListView() {
         tabLabel="All Jobs"
         pageSize={pageSize}
         onPageSizeChange={setPageSize}
-        searchValue={localSearch}
-        onSearchChange={setLocalSearch}
-        onSearchCommit={() => setSearch(localSearch)}
+        searchValue={search}
+        onSearchChange={setSearch}
+        
         columnOptions={columnOptions}
         chrome={chrome}
         tabs={JOB_TABS.map((tab) => ({

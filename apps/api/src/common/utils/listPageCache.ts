@@ -1,7 +1,7 @@
 import type { CacheService } from '../cache/cache.service';
 
 /** Short TTL — list pages change often; version bump invalidates earlier. */
-export const LIST_PAGE_CACHE_TTL_S = 180;
+export const LIST_PAGE_CACHE_TTL_S = 600;
 
 /** In-flight loaders keyed by cache key — collapses concurrent identical misses. */
 const inflight = new Map<string, Promise<unknown>>();

@@ -14,9 +14,12 @@ import type {
 import { TenantDbService } from '../../common/prisma/tenant-db.service';
 import { CacheService } from '../../common/cache/cache.service';
 import { buildCompositeCursorQuery } from '../../common/utils/pagination';
+import {
+  listPageFilterKey,
+  withListPageCache,
+} from '../../common/utils/listPageCache';
 import { toIso } from '../../common/utils/serializers';
 
-const META_CACHE_TTL_S = 300;
 const WARRANTY_DURATION_TYPES = new Set(['days', 'months', 'years']);
 
 type MetaListFilters = {
@@ -53,26 +56,41 @@ export class CatalogMetaService {
     private readonly cache: CacheService,
   ) {}
 
-  private cacheKey(kind: string): string {
-    return `catalog-meta:${this.tenantDb.requireTenantId()}:${kind}`;
+  private async invalidateMetaCache(kind: string): Promise<void> {
+    const tenantId = this.tenantDb.requireTenantId();
+    // Drop legacy full-list keys + bump version so withListPageCache pages miss.
+    await Promise.all([
+      this.cache.invalidatePrefix(`catalog-meta:${tenantId}:${kind}`),
+      this.cache.bumpTenantVersion(tenantId),
+    ]);
   }
 
-  private async invalidateMetaCache(kind: string): Promise<void> {
-    await this.cache.invalidatePrefix(
-      `catalog-meta:${this.tenantDb.requireTenantId()}:${kind}`,
-    );
+  private metaListFilterKey(filters: MetaListFilters): string {
+    return listPageFilterKey({
+      search: filters.search,
+      cursor: filters.cursor,
+      limit: isPaginated(filters) ? (filters.limit ?? 10) : 'all',
+    });
   }
 
   async listCategories(filters: MetaListFilters = {}): Promise<ProductCategory[]> {
-    if (!isPaginated(filters)) {
-      const key = this.cacheKey('categories');
-      const cached = await this.cache.get<ProductCategory[]>(key);
-      if (cached) return cached;
-    }
+    const tenantId = this.tenantDb.requireTenantId();
+    return withListPageCache(
+      this.cache,
+      tenantId,
+      'catalog-meta-categories',
+      this.metaListFilterKey(filters),
+      () => this.listCategoriesUncached(filters, tenantId),
+    );
+  }
 
+  private async listCategoriesUncached(
+    filters: MetaListFilters,
+    tenantId: string,
+  ): Promise<ProductCategory[]> {
     const rows = await this.tenantDb.db.productCategory.findMany({
       where: {
-        tenantId: this.tenantDb.requireTenantId(),
+        tenantId,
         deletedAt: null,
         ...(filters.search
           ? { name: { contains: filters.search, mode: 'insensitive' } }
@@ -82,7 +100,7 @@ export class CatalogMetaService {
       orderBy: [{ name: 'asc' }, { id: 'asc' }],
       take: metaPagination(filters).take,
     });
-    const result = rows.map((row) => ({
+    return rows.map((row) => ({
       id: row.id,
       tenantId: row.tenantId,
       name: row.name,
@@ -94,10 +112,6 @@ export class CatalogMetaService {
       createdAt: toIso(row.createdAt),
       updatedAt: toIso(row.updatedAt),
     }));
-    if (!isPaginated(filters)) {
-      await this.cache.set(this.cacheKey('categories'), result, META_CACHE_TTL_S);
-    }
-    return result;
   }
 
   async createCategory(
@@ -130,15 +144,23 @@ export class CatalogMetaService {
   }
 
   async listBrands(filters: MetaListFilters = {}): Promise<Brand[]> {
-    if (!isPaginated(filters)) {
-      const key = this.cacheKey('brands');
-      const cached = await this.cache.get<Brand[]>(key);
-      if (cached) return cached;
-    }
+    const tenantId = this.tenantDb.requireTenantId();
+    return withListPageCache(
+      this.cache,
+      tenantId,
+      'catalog-meta-brands',
+      this.metaListFilterKey(filters),
+      () => this.listBrandsUncached(filters, tenantId),
+    );
+  }
 
+  private async listBrandsUncached(
+    filters: MetaListFilters,
+    tenantId: string,
+  ): Promise<Brand[]> {
     const rows = await this.tenantDb.db.brand.findMany({
       where: {
-        tenantId: this.tenantDb.requireTenantId(),
+        tenantId,
         deletedAt: null,
         ...(filters.search
           ? { name: { contains: filters.search, mode: 'insensitive' } }
@@ -148,7 +170,7 @@ export class CatalogMetaService {
       orderBy: [{ name: 'asc' }, { id: 'asc' }],
       take: metaPagination(filters).take,
     });
-    const result = rows.map((row) => ({
+    return rows.map((row) => ({
       id: row.id,
       tenantId: row.tenantId,
       name: row.name,
@@ -156,10 +178,6 @@ export class CatalogMetaService {
       createdAt: toIso(row.createdAt),
       updatedAt: toIso(row.updatedAt),
     }));
-    if (!isPaginated(filters)) {
-      await this.cache.set(this.cacheKey('brands'), result, META_CACHE_TTL_S);
-    }
-    return result;
   }
 
   async createBrand(body: CreateBrandInput): Promise<Brand> {
@@ -184,15 +202,23 @@ export class CatalogMetaService {
   }
 
   async listUnits(filters: MetaListFilters = {}): Promise<ProductUnit[]> {
-    if (!isPaginated(filters)) {
-      const key = this.cacheKey('units');
-      const cached = await this.cache.get<ProductUnit[]>(key);
-      if (cached) return cached;
-    }
+    const tenantId = this.tenantDb.requireTenantId();
+    return withListPageCache(
+      this.cache,
+      tenantId,
+      'catalog-meta-units',
+      this.metaListFilterKey(filters),
+      () => this.listUnitsUncached(filters, tenantId),
+    );
+  }
 
+  private async listUnitsUncached(
+    filters: MetaListFilters,
+    tenantId: string,
+  ): Promise<ProductUnit[]> {
     const rows = await this.tenantDb.db.productUnit.findMany({
       where: {
-        tenantId: this.tenantDb.requireTenantId(),
+        tenantId,
         deletedAt: null,
         ...(filters.search
           ? { name: { contains: filters.search, mode: 'insensitive' } }
@@ -202,7 +228,7 @@ export class CatalogMetaService {
       orderBy: [{ name: 'asc' }, { id: 'asc' }],
       take: metaPagination(filters).take,
     });
-    const result = rows.map((row) => ({
+    return rows.map((row) => ({
       id: row.id,
       tenantId: row.tenantId,
       name: row.name,
@@ -211,10 +237,6 @@ export class CatalogMetaService {
       createdAt: toIso(row.createdAt),
       updatedAt: toIso(row.updatedAt),
     }));
-    if (!isPaginated(filters)) {
-      await this.cache.set(this.cacheKey('units'), result, META_CACHE_TTL_S);
-    }
-    return result;
   }
 
   async createUnit(body: CreateProductUnitInput): Promise<ProductUnit> {
@@ -242,15 +264,23 @@ export class CatalogMetaService {
   }
 
   async listWarranties(filters: MetaListFilters = {}): Promise<Warranty[]> {
-    if (!isPaginated(filters)) {
-      const key = this.cacheKey('warranties');
-      const cached = await this.cache.get<Warranty[]>(key);
-      if (cached) return cached;
-    }
+    const tenantId = this.tenantDb.requireTenantId();
+    return withListPageCache(
+      this.cache,
+      tenantId,
+      'catalog-meta-warranties',
+      this.metaListFilterKey(filters),
+      () => this.listWarrantiesUncached(filters, tenantId),
+    );
+  }
 
+  private async listWarrantiesUncached(
+    filters: MetaListFilters,
+    tenantId: string,
+  ): Promise<Warranty[]> {
     const rows = await this.tenantDb.db.warranty.findMany({
       where: {
-        tenantId: this.tenantDb.requireTenantId(),
+        tenantId,
         deletedAt: null,
         ...(filters.search
           ? { name: { contains: filters.search, mode: 'insensitive' } }
@@ -260,7 +290,7 @@ export class CatalogMetaService {
       orderBy: [{ name: 'asc' }, { id: 'asc' }],
       take: metaPagination(filters).take,
     });
-    const result = rows.map((row) => ({
+    return rows.map((row) => ({
       id: row.id,
       tenantId: row.tenantId,
       name: row.name,
@@ -270,10 +300,6 @@ export class CatalogMetaService {
       createdAt: toIso(row.createdAt),
       updatedAt: toIso(row.updatedAt),
     }));
-    if (!isPaginated(filters)) {
-      await this.cache.set(this.cacheKey('warranties'), result, META_CACHE_TTL_S);
-    }
-    return result;
   }
 
   async createWarranty(body: CreateWarrantyInput): Promise<Warranty> {
@@ -311,15 +337,23 @@ export class CatalogMetaService {
   async listPriceGroups(
     filters: MetaListFilters = {},
   ): Promise<SellingPriceGroup[]> {
-    if (!isPaginated(filters)) {
-      const key = this.cacheKey('price-groups');
-      const cached = await this.cache.get<SellingPriceGroup[]>(key);
-      if (cached) return cached;
-    }
+    const tenantId = this.tenantDb.requireTenantId();
+    return withListPageCache(
+      this.cache,
+      tenantId,
+      'catalog-meta-price-groups',
+      this.metaListFilterKey(filters),
+      () => this.listPriceGroupsUncached(filters, tenantId),
+    );
+  }
 
+  private async listPriceGroupsUncached(
+    filters: MetaListFilters,
+    tenantId: string,
+  ): Promise<SellingPriceGroup[]> {
     const rows = await this.tenantDb.db.sellingPriceGroup.findMany({
       where: {
-        tenantId: this.tenantDb.requireTenantId(),
+        tenantId,
         deletedAt: null,
         ...(filters.search
           ? { name: { contains: filters.search, mode: 'insensitive' } }
@@ -329,7 +363,7 @@ export class CatalogMetaService {
       orderBy: [{ name: 'asc' }, { id: 'asc' }],
       take: metaPagination(filters).take,
     });
-    const result = rows.map((row) => ({
+    return rows.map((row) => ({
       id: row.id,
       tenantId: row.tenantId,
       name: row.name,
@@ -338,14 +372,6 @@ export class CatalogMetaService {
       createdAt: toIso(row.createdAt),
       updatedAt: toIso(row.updatedAt),
     }));
-    if (!isPaginated(filters)) {
-      await this.cache.set(
-        this.cacheKey('price-groups'),
-        result,
-        META_CACHE_TTL_S,
-      );
-    }
-    return result;
   }
 
   async createPriceGroup(

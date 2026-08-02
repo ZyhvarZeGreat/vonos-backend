@@ -63,10 +63,10 @@ export function Hq6ExpensesListView() {
     setSearch,
     bounds,
   } = useListPageFilters({
-    defaultDateRange: "last_7_days",
+    // Match sales: unbounded list so Redis warm keys stay stable (no sliding from/to).
+    defaultDateRange: "all_time",
     isolateDateRange: true,
   });
-  const [localSearch, setLocalSearch] = useState(search);
   const [locationFilter, setLocationFilter] = useState("");
   const [expenseForFilter, setExpenseForFilter] = useState("");
   const [addedByFilter, setAddedByFilter] = useState("");
@@ -162,8 +162,6 @@ export function Hq6ExpensesListView() {
       },
     },
   });
-
-  const commitSearch = () => setSearch(localSearch);
 
   const handleExport = async () => {
     if (!tenantId) return;
@@ -330,7 +328,7 @@ export function Hq6ExpensesListView() {
         key: "addedBy",
         header: "Added By",
         sortable: false,
-        render: (row) => row.createdByName ?? "",
+        render: (row) => row.createdByName ?? "—",
       },
     ],
     [config?.businessLocations, router, tenantCode],
@@ -369,9 +367,8 @@ export function Hq6ExpensesListView() {
       chrome={chrome}
       pageSize={pageSize}
       onPageSizeChange={setPageSize}
-      searchValue={localSearch}
-      onSearchChange={setLocalSearch}
-      onSearchCommit={commitSearch}
+      searchValue={search}
+      onSearchChange={setSearch}
       searchPlaceholder="Search ..."
       columnOptions={columnOptions}
       onExport={() => void handleExport()}

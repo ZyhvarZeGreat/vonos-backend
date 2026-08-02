@@ -6,15 +6,17 @@ import {
   getLedgerCharts,
   getLedgerSummary,
 } from "@/lib/api/ledger";
-import { getCustomersPage } from "@/lib/api/customers";
+import { getCustomersPage, getCustomersListSummary } from "@/lib/api/customers";
+import { getCatalogPage, getCatalogListSummary } from "@/lib/api/catalog";
+import { getExpensesPage } from "@/lib/api/expenses";
 import { getItemsPage, getStockAvailability } from "@/lib/api/items";
 import { getJobsPage } from "@/lib/api/jobs";
 import { getOverviewDashboard, getVaHq6Home } from "@/lib/api/overview";
 import { getRequisitionsPage } from "@/lib/api/requisitions";
 import { getGroupReports, getReportsDashboard } from "@/lib/api/reports";
-import { getSalesPage } from "@/lib/api/sales";
+import { getSalesPage, getSalesListSummary } from "@/lib/api/sales";
 import { getStockMovementsPage, getStockMovementsListSummary } from "@/lib/api/stockMovements";
-import { getSuppliersPage } from "@/lib/api/suppliers";
+import { getSuppliersPage, getSuppliersListSummary } from "@/lib/api/suppliers";
 import { getVehiclesPage } from "@/lib/api/vehicles";
 import { DEFAULT_TABLE_PAGE_SIZE, HQ6_TABLE_PAGE_SIZE } from "@/lib/api/fetchAllPages";
 import { ADMIN_ENTITY_STALE_MS } from "@/lib/admin/prefetchAdminEntity";
@@ -196,6 +198,44 @@ function emptyListFilterKey(
   });
 }
 
+/** Match `useServerListPage` page 0 query keys for HQ6 lists. */
+function hq6Page0QueryKey(
+  baseKey: readonly unknown[],
+  filters: Record<string, unknown>,
+  sort: { sortBy: string; sortDir: string } | null,
+  pageSize = HQ6_TABLE_PAGE_SIZE,
+): unknown[] {
+  const filterKey = JSON.stringify({
+    ...filters,
+    search: "",
+    sortBy: sort?.sortBy ?? null,
+    sortDir: sort?.sortDir ?? null,
+  });
+  return [
+    ...baseKey,
+    filterKey,
+    0,
+    null,
+    pageSize,
+    sort?.sortBy ?? null,
+    sort?.sortDir ?? null,
+  ];
+}
+
+function hq6SummaryQueryKey(
+  baseKey: readonly unknown[],
+  filters: Record<string, unknown>,
+  sort: { sortBy: string; sortDir: string } | null,
+): unknown[] {
+  const filterKey = JSON.stringify({
+    ...filters,
+    search: "",
+    sortBy: sort?.sortBy ?? null,
+    sortDir: sort?.sortDir ?? null,
+  });
+  return [...baseKey, "summary", filterKey];
+}
+
 /** Warm first page of common list screens (inventory, customers, movements, …). */
 function prefetchTenantListSection(
   queryClient: QueryClient,
@@ -207,8 +247,7 @@ function prefetchTenantListSection(
   const bounds = { from, to };
 
   switch (slug) {
-    case "inventory":
-    case "products": {
+    case "inventory": {
       const filterKey = emptyListFilterKey();
       prefetchQuery(queryClient, {
         queryKey: ["items", tenantId, filterKey, undefined, DEFAULT_TABLE_PAGE_SIZE],
@@ -216,52 +255,87 @@ function prefetchTenantListSection(
       });
       break;
     }
-    case "inbound":
-    case "outbound": {
-      const type = slug as "inbound" | "outbound";
-      // HQ6 purchases list (inbound) uses HQ6_TABLE_PAGE_SIZE.
-      if (type === "inbound") {
-        const hq6Filters = { type: "inbound" as const };
-        const hq6FilterKey = emptyListFilterKey(hq6Filters);
+    case "products": {
+      const sort = { sortBy: "name", sortDir: "asc" };
+      const filters = {};
+      prefetchQuery(queryClient, {
+        queryKey: hq6Page0QueryKey(["catalog", tenantId, "hq6-upos"], filters, sort),
+        queryFn: () =>
+          getCatalogPage(
+            tenantId,
+            { ...filters, sortBy: "name", sortDir: "asc", includeSummary: false },
+            undefined,
+            HQ6_TABLE_PAGE_SIZE,
+          ),
+      });
+      prefetchQuery(queryClient, {
+        queryKey: hq6SummaryQueryKey(["catalog", tenantId, "hq6-upos"], filters, sort),
+        queryFn: () => getCatalogListSummary(tenantId, filters),
+      });
+      break;
+    }
+    case "purchases":
+    case "inbound": {
+      const sort = { sortBy: "date", sortDir: "desc" };
+      const filters = { type: "inbound" as const };
+      prefetchQuery(queryClient, {
+        queryKey: hq6Page0QueryKey(
+          ["stock-movements", tenantId, "inbound", "hq6"],
+          filters,
+          sort,
+        ),
+        queryFn: () =>
+          getStockMovementsPage(
+            tenantId,
+            {
+              ...filters,
+              sortBy: "date",
+              sortDir: "desc",
+              includeSummary: false,
+            },
+            undefined,
+            HQ6_TABLE_PAGE_SIZE,
+          ),
+      });
+      prefetchQuery(queryClient, {
+        queryKey: hq6SummaryQueryKey(
+          ["stock-movements", tenantId, "inbound", "hq6"],
+          filters,
+          sort,
+        ),
+        queryFn: () => getStockMovementsListSummary(tenantId, filters),
+      });
+      if (slug === "inbound") {
+        const filterKey = emptyListFilterKey(bounds);
         prefetchQuery(queryClient, {
           queryKey: [
             "stock-movements",
             tenantId,
             "inbound",
-            "hq6",
-            hq6FilterKey,
-            0,
             undefined,
-            HQ6_TABLE_PAGE_SIZE,
-            null,
+            undefined,
+            filterKey,
+            undefined,
+            DEFAULT_TABLE_PAGE_SIZE,
           ],
           queryFn: () =>
             getStockMovementsPage(
               tenantId,
-              { ...hq6Filters, includeSummary: false },
+              { type: "inbound", from, to, includeSummary: false },
               undefined,
-              HQ6_TABLE_PAGE_SIZE,
+              DEFAULT_TABLE_PAGE_SIZE,
             ),
         });
-        prefetchQuery(queryClient, {
-          queryKey: [
-            "stock-movements",
-            tenantId,
-            "inbound",
-            "hq6",
-            "summary",
-            hq6FilterKey,
-          ],
-          queryFn: () =>
-            getStockMovementsListSummary(tenantId, hq6Filters),
-        });
       }
+      break;
+    }
+    case "outbound": {
       const filterKey = emptyListFilterKey(bounds);
       prefetchQuery(queryClient, {
         queryKey: [
           "stock-movements",
           tenantId,
-          type,
+          "outbound",
           undefined,
           undefined,
           filterKey,
@@ -271,7 +345,7 @@ function prefetchTenantListSection(
         queryFn: () =>
           getStockMovementsPage(
             tenantId,
-            { type, from, to, includeSummary: false },
+            { type: "outbound", from, to, includeSummary: false },
             undefined,
             DEFAULT_TABLE_PAGE_SIZE,
           ),
@@ -279,18 +353,46 @@ function prefetchTenantListSection(
       break;
     }
     case "customers": {
-      const filterKey = emptyListFilterKey(bounds);
+      const filters = {};
       prefetchQuery(queryClient, {
-        queryKey: ["customers", tenantId, filterKey, undefined, DEFAULT_TABLE_PAGE_SIZE],
-        queryFn: () => getCustomersPage(tenantId, bounds, undefined, DEFAULT_TABLE_PAGE_SIZE),
+        queryKey: hq6Page0QueryKey(["customers", tenantId, "hq6"], filters, null),
+        queryFn: () =>
+          getCustomersPage(tenantId, { includeSummary: false }, undefined, HQ6_TABLE_PAGE_SIZE),
+      });
+      prefetchQuery(queryClient, {
+        queryKey: hq6SummaryQueryKey(["customers", tenantId, "hq6"], filters, null),
+        queryFn: () => getCustomersListSummary(tenantId, {}),
       });
       break;
     }
     case "suppliers": {
-      const filterKey = emptyListFilterKey({ tab: "active" });
+      const filters = {};
       prefetchQuery(queryClient, {
-        queryKey: ["suppliers", tenantId, filterKey, undefined, DEFAULT_TABLE_PAGE_SIZE],
-        queryFn: () => getSuppliersPage(tenantId, undefined, DEFAULT_TABLE_PAGE_SIZE),
+        queryKey: hq6Page0QueryKey(["suppliers", tenantId, "hq6"], filters, null),
+        queryFn: () =>
+          getSuppliersPage(tenantId, undefined, HQ6_TABLE_PAGE_SIZE, {
+            includeSummary: false,
+          }),
+      });
+      prefetchQuery(queryClient, {
+        queryKey: hq6SummaryQueryKey(["suppliers", tenantId, "hq6"], filters, null),
+        queryFn: () => getSuppliersListSummary(tenantId, {}),
+      });
+      break;
+    }
+    case "expenses": {
+      const filters = {};
+      prefetchQuery(queryClient, {
+        queryKey: hq6Page0QueryKey(["expenses", tenantId, "hq6"], filters, null),
+        queryFn: () =>
+          getExpensesPage(tenantId, undefined, HQ6_TABLE_PAGE_SIZE, {
+            includeSummary: false,
+          }),
+      });
+      prefetchQuery(queryClient, {
+        queryKey: hq6SummaryQueryKey(["expenses", tenantId, "hq6"], filters, null),
+        queryFn: () =>
+          getExpensesPage(tenantId, undefined, 1, { includeSummary: true }),
       });
       break;
     }
@@ -311,11 +413,21 @@ function prefetchTenantListSection(
       break;
     }
     case "sales": {
-      const filterKey = emptyListFilterKey(bounds);
+      const sort = { sortBy: "date", sortDir: "desc" };
+      const filters = {};
       prefetchQuery(queryClient, {
-        queryKey: ["sales", tenantId, "all", filterKey, undefined, DEFAULT_TABLE_PAGE_SIZE],
+        queryKey: hq6Page0QueryKey(["sales", tenantId, "all", "hq6"], filters, sort),
         queryFn: () =>
-          getSalesPage(tenantId, { ...bounds }, undefined, DEFAULT_TABLE_PAGE_SIZE),
+          getSalesPage(
+            tenantId,
+            { sortBy: "date", sortDir: "desc", includeSummary: false },
+            undefined,
+            HQ6_TABLE_PAGE_SIZE,
+          ),
+      });
+      prefetchQuery(queryClient, {
+        queryKey: hq6SummaryQueryKey(["sales", tenantId, "all", "hq6"], filters, sort),
+        queryFn: () => getSalesListSummary(tenantId, {}),
       });
       break;
     }

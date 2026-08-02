@@ -17,8 +17,8 @@ import {
   Hq6Modal,
   Hq6ModalSaveClose,
 } from "@/components/hq6/Hq6Modal";
+import { PaymentAccountSelect } from "@/components/hq6/PaymentAccountSelect";
 import { getCustomerGroups } from "@/lib/api/customerGroups";
-import { getPaymentAccounts } from "@/lib/api/paymentAccounts";
 import {
   getCustomerSummary,
   payCustomerDue,
@@ -30,6 +30,7 @@ import {
   modalKeys,
 } from "@/lib/query/modalQueryKeys";
 import { formatHq6Currency, formatHq6DateTime } from "@/lib/utils/hq6Format";
+import { HQ6_PAYMENT_METHOD_OPTIONS } from "@/lib/utils/hq6PaymentMethods";
 import {
   firstValidationError,
   sanitizePersonNameInput,
@@ -37,22 +38,10 @@ import {
   validatePersonName,
   validatePhone,
 } from "@/lib/utils/formValidation";
+import { useRouteTenant } from "@/lib/hooks/useRouteTenant";
 import { toast } from "@/stores/toastStore";
 
-const PAYMENT_METHODS = [
-  { value: "cash", label: "Cash" },
-  { value: "card", label: "Card" },
-  { value: "cheque", label: "Cheque" },
-  { value: "bank_transfer", label: "Bank Transfer" },
-  { value: "other", label: "Other" },
-  { value: "custom_pay_1", label: "POS 1" },
-  { value: "custom_pay_2", label: "FCMB (Bank Transfer)" },
-  { value: "custom_pay_3", label: "GTB (Bank Transfer)" },
-  { value: "custom_pay_4", label: "Zenith (Bank Transfer)" },
-  { value: "custom_pay_5", label: "POS 2" },
-  { value: "custom_pay_6", label: "Discount" },
-  { value: "custom_pay_7", label: "Exchange" },
-] as const;
+const PAYMENT_METHODS = HQ6_PAYMENT_METHOD_OPTIONS;
 
 function nowPaidOnLocal(): string {
   const d = new Date();
@@ -100,6 +89,7 @@ export function Hq6ContactEditModal({
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const { tenantCode } = useRouteTenant();
   const [contactKind, setContactKind] = useState<"individual" | "business">(
     "individual",
   );
@@ -115,7 +105,7 @@ export function Hq6ContactEditModal({
   const [landline, setLandline] = useState("");
   const [email, setEmail] = useState("");
   const [taxNumber, setTaxNumber] = useState("");
-  const [openingBalance, setOpeningBalance] = useState("0");
+  const [openingBalance, setOpeningBalance] = useState("");
   const [payTermNumber, setPayTermNumber] = useState("");
   const [payTermType, setPayTermType] = useState<"" | "days" | "months">("");
   const [creditLimit, setCreditLimit] = useState("10000");
@@ -168,7 +158,9 @@ export function Hq6ContactEditModal({
     setLandline(details.landline ?? "");
     setEmail(customer.email ?? "");
     setTaxNumber(customer.taxNumber ?? "");
-    setOpeningBalance(String(customer.openingBalance ?? 0));
+    setOpeningBalance(
+      customer.openingBalance ? String(customer.openingBalance) : "",
+    );
     setPayTermNumber(
       details.payTermNumber != null ? String(details.payTermNumber) : "",
     );
@@ -195,10 +187,22 @@ export function Hq6ContactEditModal({
     setCustomFields(nextCustoms);
   }, [customer, open]);
 
+  // Automotive tenants use the vehicle registration as the (required) Contact ID.
+  const isAutomotive = tenantCode === "VA";
+  const contactIdLabel = isAutomotive
+    ? "Vehicle Registration No."
+    : "Contact ID";
+
   const handleUpdate = async () => {
     if (!tenantId || !customer) return;
     if (contactKind === "business" && !businessName.trim()) {
       toast.error("Business Name is required");
+      return;
+    }
+    const isWalkIn =
+      (customer?.name ?? "").trim().toLowerCase() === "walk-in customer";
+    if (!isWalkIn && !contactId.trim()) {
+      toast.error(`${contactIdLabel} is required`);
       return;
     }
     const composed = [prefix, firstName, middleName, lastName]
@@ -361,17 +365,25 @@ export function Hq6ContactEditModal({
 
         <div className="grid gap-3 sm:grid-cols-2">
           <Hq6Field
-            label="Contact ID"
+            label={contactIdLabel}
+            required
             hint={
-              <span className="ml-1 text-xs font-normal text-[#6b7280]">
-                Leave empty to autogenerate
-              </span>
+              isAutomotive ? (
+                <span className="ml-1 text-xs font-normal text-[#6b7280]">
+                  Used as the customer ID
+                </span>
+              ) : null
             }
           >
             <input
               className="hq6-modal-input"
               value={contactId}
-              onChange={(e) => setContactId(e.target.value)}
+              placeholder={isAutomotive ? "e.g. ABC-123-XY" : "Contact ID"}
+              onChange={(e) =>
+                setContactId(
+                  isAutomotive ? e.target.value.toUpperCase() : e.target.value,
+                )
+              }
             />
           </Hq6Field>
           {contactKind === "individual" ? (
@@ -676,21 +688,10 @@ export function Hq6PayContactModal({
   const [paidOn, setPaidOn] = useState(nowPaidOnLocal);
   const [saving, setSaving] = useState(false);
 
-  const accountsQuery = useQuery({
-    queryKey: modalKeys.paymentAccounts(tenantId),
-    queryFn: () => getPaymentAccounts(tenantId!),
-    enabled: Boolean(open && tenantId),
-    staleTime: MODAL_REF_STALE_MS,
-    placeholderData: (prev) => prev,
-  });
-  const accounts = accountsQuery.data ?? [];
-
   const { data: summary } = useQuery({
     queryKey: ["customer-summary", tenantId, customer?.id, "pay-modal"],
     queryFn: () => getCustomerSummary(tenantId!, customer!.id),
-    enabled: Boolean(
-      open && tenantId && customer?.id && accountsQuery.isFetched,
-    ),
+    enabled: Boolean(open && tenantId && customer?.id),
     staleTime: MODAL_RECORD_STALE_MS,
     placeholderData: (prev) => prev,
   });
@@ -705,9 +706,7 @@ export function Hq6PayContactModal({
 
   useEffect(() => {
     if (!open || !customer) return;
-    setAmount(
-      totals.totalDue > 0 ? totals.totalDue.toFixed(2) : "0.00",
-    );
+    setAmount(totals.totalDue > 0 ? totals.totalDue.toFixed(2) : "");
     setMethod("cash");
     setAccountId("");
     setNote("");
@@ -718,13 +717,19 @@ export function Hq6PayContactModal({
     if (!tenantId || !customer) return;
     const valid = parseForm(paymentAmountSchema, { amount });
     if (!valid) return;
+    if (!accountId.trim()) {
+      toast.error(
+        "Select a Payment Account so this payment posts to the account book",
+      );
+      return;
+    }
     const value = Number(valid.amount);
     setSaving(true);
     try {
       const result = await payCustomerDue(tenantId, customer.id, {
         amount: value,
         method,
-        accountId: accountId || undefined,
+        accountId,
         note: note.trim() || undefined,
         paidOn: paidOnToIso(paidOn),
       });
@@ -808,19 +813,12 @@ export function Hq6PayContactModal({
             .pdf, .csv, .zip, .doc, .docx, .jpeg, .jpg, .png
           </p>
         </Hq6Field>
-        <Hq6Field label="Payment Account">
-          <select
-            className="hq6-modal-input"
+        <Hq6Field label="Payment Account" required>
+          <PaymentAccountSelect
             value={accountId}
-            onChange={(e) => setAccountId(e.target.value)}
-          >
-            <option value="">None</option>
-            {accounts.map((account) => (
-              <option key={account.id} value={account.id}>
-                {account.name}
-              </option>
-            ))}
-          </select>
+            onChange={setAccountId}
+            emptyLabel="Please Select"
+          />
         </Hq6Field>
         <div className="sm:col-span-2">
           <Hq6Field label="Payment Note">

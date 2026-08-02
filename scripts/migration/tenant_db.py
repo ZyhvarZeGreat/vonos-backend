@@ -140,7 +140,7 @@ def _row_values(
             val = json.dumps(val)
         if col in ("date", "dueDate", "createdAt", "updatedAt", "occurredAt", "expenseDate", "paidOn", "operationDate", "payrollMonth") and isinstance(val, str):
             val = _parse_dt(val)
-        if col == "metadata" and isinstance(val, dict):
+        if col in ("metadata", "details") and isinstance(val, dict):
             val = json.dumps(val)
         if col in ("createdAt", "updatedAt") and val is None:
             val = datetime.utcnow()
@@ -330,7 +330,7 @@ def write_postgres(
         stats["customers"] = _insert_rows(
             cur,
             "Customer",
-            ["id", "tenantId", "name", "email", "phone", "createdByUserId", "createdByName", "createdAt", "updatedAt"],
+            ["id", "tenantId", "name", "email", "phone", "details", "createdByUserId", "createdByName", "createdAt", "updatedAt"],
             result.customers,
             progress=progress,
         )
@@ -368,7 +368,7 @@ def write_postgres(
                 "id", "tenantId", "refNo", "categoryId", "subCategory", "locationCode",
                 "expenseFor", "contactName", "totalAmount", "taxAmount", "paymentStatus",
                 "paymentDue", "note", "isRecurring", "recurInterval", "recurIntervalType",
-                "expenseDate", "createdById", "createdAt", "updatedAt",
+                "expenseDate", "createdById", "createdByName", "createdAt", "updatedAt",
             ],
             [
                 exp for exp in result.expenses
@@ -416,7 +416,8 @@ def write_postgres(
             cur,
             "StockMovement",
             [
-                "id", "tenantId", "type", "reference", "status", "lines", "notes",
+                "id", "tenantId", "type", "reference", "status", "lines",
+                "itemCount", "grandTotal", "notes",
                 "locationCode", "supplierId", "source", "paymentStatus", "paymentMethod",
                 "date", "createdByUserId", "createdByName",
                 "createdAt", "updatedAt",
@@ -427,7 +428,7 @@ def write_postgres(
         stats["sales"] = _insert_rows(
             cur,
             "Sale",
-            ["id", "tenantId", "reference", "customerId", "total", "currency", "status", "paymentStatus", "date", "createdByUserId", "createdByName", "createdAt", "updatedAt"],
+            ["id", "tenantId", "reference", "customerId", "total", "currency", "status", "paymentStatus", "paymentMethod", "date", "createdByUserId", "createdByName", "createdAt", "updatedAt"],
             result.sales,
             progress=progress,
         )
@@ -514,9 +515,14 @@ def write_postgres(
             result.payment_accounts,
             progress=progress,
         )
-        account_ids = _fetch_existing_ids(
-            cur, "PaymentAccount", [a["id"] for a in result.payment_accounts],
-        )
+        # Resolve against the full DB — delta imports link to accounts created in
+        # earlier runs, not only accounts inserted in this batch.
+        referenced_account_ids = list({
+            *(a["id"] for a in result.payment_accounts),
+            *(t["accountId"] for t in result.account_transactions if t.get("accountId")),
+            *(p["accountId"] for p in result.payments if p.get("accountId")),
+        })
+        account_ids = _fetch_existing_ids(cur, "PaymentAccount", referenced_account_ids)
         stats["accountTransactions"] = _insert_rows(
             cur,
             "AccountTransaction",

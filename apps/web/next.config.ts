@@ -1,10 +1,21 @@
 import type { NextConfig } from "next";
 
+/** e.g. `/operations` on the apex domain. Leave unset for local `/`. */
+const basePath = (process.env.NEXT_PUBLIC_BASE_PATH ?? "")
+  .trim()
+  .replace(/\/+$/, "");
+
 const nextConfig: NextConfig = {
+  ...(basePath ? { basePath } : {}),
+  images: {
+    loader: "custom",
+    loaderFile: "./lib/vonosImageLoader.ts",
+  },
   transpilePackages: ["@vonos/types"],
   env: {
     NEXT_PUBLIC_SKIP_AUTH:
       process.env.NEXT_PUBLIC_SKIP_AUTH ?? "false",
+    NEXT_PUBLIC_BASE_PATH: basePath,
   },
   async redirects() {
     return [

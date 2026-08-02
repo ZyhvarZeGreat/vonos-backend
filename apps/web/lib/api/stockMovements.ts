@@ -8,6 +8,7 @@ import type {
   StockMovementListRow,
 } from "@vonos/types";
 import { apiFetch, withTenantQuery } from "@/lib/api/client";
+import { throwApiError } from "@/lib/api/parseApiError";
 import {
   DEFAULT_TABLE_PAGE_SIZE,
   EXPORT_PAGE_SIZE,
@@ -259,4 +260,62 @@ export async function getStockMovementPayments(
   );
   if (!response.ok) throw new Error("Failed to fetch purchase payments");
   return response.json();
+}
+
+export async function updateStockMovementPayment(
+  tenantId: string,
+  movementId: string,
+  paymentId: string,
+  body: {
+    amount?: number;
+    method?: string | null;
+    note?: string | null;
+    paidOn?: string | null;
+    accountId?: string | null;
+    paymentRefNo?: string | null;
+  },
+): Promise<{
+  id: string;
+  amount: number;
+  currency: string;
+  method: string | null;
+  paymentRefNo: string | null;
+  paidOn: string | null;
+  note: string | null;
+  accountId: string | null;
+  accountName: string | null;
+  createdByName: string | null;
+}> {
+  const response = await apiFetch(
+    withTenantQuery(
+      `/stock-movements/${movementId}/payments/${paymentId}`,
+      tenantId,
+    ),
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    },
+  );
+  if (!response.ok) {
+    return throwApiError(response, "Failed to update payment");
+  }
+  return response.json();
+}
+
+export async function deleteStockMovementPayment(
+  tenantId: string,
+  movementId: string,
+  paymentId: string,
+): Promise<void> {
+  const response = await apiFetch(
+    withTenantQuery(
+      `/stock-movements/${movementId}/payments/${paymentId}`,
+      tenantId,
+    ),
+    { method: "DELETE" },
+  );
+  if (!response.ok) {
+    return throwApiError(response, "Failed to delete payment");
+  }
 }

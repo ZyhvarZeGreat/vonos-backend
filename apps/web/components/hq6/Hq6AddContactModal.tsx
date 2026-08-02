@@ -1,16 +1,19 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Hq6Field,
   Hq6Modal,
   Hq6ModalSaveClose,
 } from "@/components/hq6/Hq6Modal";
+import { AsyncMenuSelect } from "@/components/molecules/AsyncMenuSelect";
 import { createCustomer } from "@/lib/api/customers";
 import { getCustomerGroups } from "@/lib/api/customerGroups";
 import { createSupplier } from "@/lib/api/suppliers";
+import { getEmployees, getDesignations } from "@/lib/api/hrm";
 import { getUsers } from "@/lib/api/users";
+import { useRouteTenant } from "@/lib/hooks/useRouteTenant";
 import { TYPEAHEAD_PAGE_SIZE } from "@/lib/api/fetchAllPages";
 import { withOptimistic } from "@/lib/hooks/useAppMutation";
 import {
@@ -73,8 +76,12 @@ function resetAddContactForm(defaultType: Hq6ContactType) {
     landline: "",
     email: "",
     assignedToUserId: "",
+    // Customer-side: the HRM worker responsible for this contact.
+    assignedToEmployeeId: "",
+    assignedToEmployeeName: "",
+    assignedDesignationId: "",
     taxNumber: "",
-    openingBalance: "0",
+    openingBalance: "",
     payTermNumber: "",
     payTermType: "" as "" | "days" | "months",
     creditLimit: "10000",
@@ -231,6 +238,7 @@ export function Hq6AddContactModal({
   onSaved?: (result?: Hq6ContactSavedResult) => void;
 }) {
   const queryClient = useQueryClient();
+  const { tenantCode } = useRouteTenant();
   const [form, setForm] = useState(() => resetAddContactForm(defaultType));
   const [moreOpen, setMoreOpen] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -242,12 +250,51 @@ export function Hq6AddContactModal({
     form.contactType === "supplier" || form.contactType === "both";
   const showMiddleName = form.contactType === "customer";
 
+  // Automotive tenants use the vehicle registration number as the Contact ID.
+  const isAutomotive = tenantCode === "VA";
+  const contactIdLabel = isAutomotive
+    ? "Vehicle Registration No."
+    : "Contact ID";
+  const contactIdPlaceholder = isAutomotive ? "e.g. ABC-123-XY" : "Contact ID";
+  // Required whenever a customer is being created (the plate-as-id rule);
+  // supplier-only contacts keep it optional.
+  const contactIdRequired = isCustomerSide;
+
   const { data: users = [] } = useQuery({
     queryKey: modalKeys.usersFilter(tenantId),
     queryFn: () => getUsers(tenantId!, { limit: TYPEAHEAD_PAGE_SIZE }),
-    enabled: Boolean(open && tenantId),
+    enabled: Boolean(open && tenantId && isSupplierSide),
     staleTime: MODAL_REF_STALE_MS,
   });
+
+  // Worker (HRM employee) assignment for the customer side — the full roster,
+  // searchable and filterable by staff category (designation).
+  const { data: designations = [] } = useQuery({
+    queryKey: ["designations", tenantId, "assign-filter"],
+    queryFn: () => getDesignations(tenantId!),
+    enabled: Boolean(open && tenantId && isCustomerSide),
+    staleTime: MODAL_REF_STALE_MS,
+  });
+
+  const employeeNameById = useRef<Map<string, string>>(new Map());
+  const loadEmployeeOptions = useCallback(
+    async (query: string) => {
+      const rows = await getEmployees(tenantId!, query || undefined, {
+        designationId: form.assignedDesignationId || undefined,
+      });
+      for (const row of rows) employeeNameById.current.set(row.id, row.name);
+      return [
+        { value: "", label: "None" },
+        ...rows.map((row) => ({
+          value: row.id,
+          label: row.designationName
+            ? `${row.name} · ${row.designationName}`
+            : row.name,
+        })),
+      ];
+    },
+    [tenantId, form.assignedDesignationId],
+  );
 
   const { data: groups = [] } = useQuery({
     queryKey: modalKeys.customerGroups(tenantId),
@@ -302,6 +349,11 @@ export function Hq6AddContactModal({
       );
       return;
     }
+    const isWalkIn = name.trim().toLowerCase() === "walk-in customer";
+    if (contactIdRequired && !isWalkIn && !form.contactId.trim()) {
+      toast.error(`${contactIdLabel} is required`);
+      return;
+    }
     const balance = Number(form.openingBalance);
     if (Number.isNaN(balance)) {
       toast.error("Opening balance must be a number");
@@ -322,7 +374,11 @@ export function Hq6AddContactModal({
     const personName = composePersonName(form, showMiddleName);
     const business = form.businessName.trim();
     const address = composeFullAddress(form);
-    const details = buildContactDetails(form);
+    const details: CustomerContactDetails = {
+      ...buildContactDetails(form),
+      assignedToEmployeeId: form.assignedToEmployeeId || null,
+      assignedToEmployeeName: form.assignedToEmployeeName || null,
+    };
     const now = new Date().toISOString();
 
     setSaving(true);
@@ -536,18 +592,34 @@ export function Hq6AddContactModal({
             </label>
           </div>
           <Hq6Field
-            label="Contact ID"
+            label={contactIdLabel}
+            required={contactIdRequired}
             hint={
-              <span className="ml-1 text-xs font-normal text-[#6b7280]">
-                Leave empty to autogenerate
-              </span>
+              contactIdRequired ? (
+                isAutomotive ? (
+                  <span className="ml-1 text-xs font-normal text-[#6b7280]">
+                    Used as the customer ID
+                  </span>
+                ) : null
+              ) : (
+                <span className="ml-1 text-xs font-normal text-[#6b7280]">
+                  Leave empty to autogenerate
+                </span>
+              )
             }
           >
             <input
               className="hq6-modal-input"
-              placeholder="Contact ID"
+              placeholder={contactIdPlaceholder}
               value={form.contactId}
-              onChange={(e) => setField("contactId", e.target.value)}
+              onChange={(e) =>
+                setField(
+                  "contactId",
+                  isAutomotive
+                    ? e.target.value.toUpperCase()
+                    : e.target.value,
+                )
+              }
             />
           </Hq6Field>
         </div>
@@ -665,20 +737,59 @@ export function Hq6AddContactModal({
           </Hq6Field>
         </div>
 
-        <Hq6Field label="Assigned to">
-          <select
-            className="hq6-modal-input"
-            value={form.assignedToUserId}
-            onChange={(e) => setField("assignedToUserId", e.target.value)}
-          >
-            <option value="">None</option>
-            {users.map((user) => (
-              <option key={user.id} value={user.id}>
-                {user.name}
-              </option>
-            ))}
-          </select>
-        </Hq6Field>
+        {isCustomerSide ? (
+          <Hq6Field label="Assigned to">
+            <div className="grid gap-2 sm:grid-cols-[minmax(0,10rem)_1fr]">
+              <select
+                className="hq6-modal-input"
+                aria-label="Filter workers by category"
+                value={form.assignedDesignationId}
+                onChange={(e) =>
+                  setField("assignedDesignationId", e.target.value)
+                }
+              >
+                <option value="">All categories</option>
+                {designations.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.name}
+                  </option>
+                ))}
+              </select>
+              <AsyncMenuSelect
+                value={form.assignedToEmployeeId}
+                selectedLabel={form.assignedToEmployeeName || "None"}
+                placeholder="Search workers…"
+                emptyMessage="No workers found"
+                loadOptions={loadEmployeeOptions}
+                onChange={(id) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    assignedToEmployeeId: id,
+                    assignedToEmployeeName: id
+                      ? employeeNameById.current.get(id) ??
+                        prev.assignedToEmployeeName
+                      : "",
+                  }))
+                }
+              />
+            </div>
+          </Hq6Field>
+        ) : (
+          <Hq6Field label="Assigned to">
+            <select
+              className="hq6-modal-input"
+              value={form.assignedToUserId}
+              onChange={(e) => setField("assignedToUserId", e.target.value)}
+            >
+              <option value="">None</option>
+              {users.map((user) => (
+                <option key={user.id} value={user.id}>
+                  {user.name}
+                </option>
+              ))}
+            </select>
+          </Hq6Field>
+        )}
 
         <button
           type="button"

@@ -57,7 +57,6 @@ export function Hq6ReturnsListView() {
   const [statusFilter, setStatusFilter] = useState("");
   const [locationFilter, setLocationFilter] = useState("");
   const [customerFilter, setCustomerFilter] = useState("");
-  const [localSearch, setLocalSearch] = useState(search);
   const [printDoc, setPrintDoc] = useState<{
     sale: Sale;
     kind: Hq6PrintDocKind;
@@ -114,8 +113,6 @@ export function Hq6ReturnsListView() {
     defaultPageSize: HQ6_TABLE_PAGE_SIZE,
     fetchPage: (cursor, limit, _sort, opts) => getReturnsPage(tenantId!, { ...apiFilters, includeSummary: opts?.includeSummary }, cursor, limit),
   });
-
-  const commitSearch = useCallback(() => setSearch(localSearch), [localSearch, setSearch]);
 
   const exportList = useListExport();
   const handleExport = useCallback(() => {
@@ -281,9 +278,9 @@ export function Hq6ReturnsListView() {
       chrome={chrome}
       pageSize={pageSize}
       onPageSizeChange={setPageSize}
-      searchValue={localSearch}
-      onSearchChange={setLocalSearch}
-      onSearchCommit={commitSearch}
+      searchValue={search}
+      onSearchChange={setSearch}
+      
       hidePrimaryAction
       onExport={handleExport}
       pagination={{

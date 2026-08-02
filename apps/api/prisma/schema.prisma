@@ -309,6 +309,9 @@ model Item {
   @@index([tenantId, carModel])
   @@index([tenantId, category])
   @@index([tenantId, deletedAt])
+  /// B-tree for exact / prefix SKU + name lookup (≈ O(log n) with tenant scope).
+  @@index([tenantId, sku])
+  @@index([tenantId, name])
   /// Partial (SQL): Item_tenantId_updatedAt_id_active_idx
   /// ON ("tenantId", "updatedAt" DESC, id DESC) WHERE "deletedAt" IS NULL
 }
@@ -351,6 +354,8 @@ model StockMovement {
   supplier       Supplier?      @relation(fields: [supplierId], references: [id])
   source         MovementSource @default(standard)
   paymentStatus  PurchasePaymentStatus?
+  /** Cached sum of purchase payments — list pages must not re-sum Payment. */
+  totalPaid      Decimal               @default(0)
   paymentMethod  String?
   date            DateTime
   createdByUserId String?
@@ -630,6 +635,10 @@ model Sale {
   currency      String         @default("NGN")
   status        SaleStatus     @default(completed)
   paymentStatus PaymentStatus?
+  /** Cached sum of non-return payments (sale + invoice linked). Kept in sync on pay. */
+  totalPaid       Decimal        @default(0)
+  /** Cached SaleLine count for list pages. */
+  itemCount       Int            @default(0)
   locationCode  String?
   paymentMethod   String?
   cleanerUserId   String?
@@ -1170,6 +1179,9 @@ model Expense {
   recurIntervalType String?
   expenseDate       DateTime         @default(now())
   createdById       String?
+  /// Denormalized display name (mirrors Sale.createdByName) — survives even when
+  /// the creator user row is missing (common for migrated expenses).
+  createdByName     String?
   createdAt         DateTime         @default(now())
   updatedAt         DateTime         @updatedAt
   deletedAt         DateTime?

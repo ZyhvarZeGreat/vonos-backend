@@ -32,7 +32,6 @@ export function Hq6VehiclesListView() {
   const queryClient = useQueryClient();
   const exportList = useListExport();
   const { search, setSearch } = useListPageFilters();
-  const [localSearch, setLocalSearch] = useState(search);
   const [createOpen, setCreateOpen] = useState(false);
   const [form, setForm] = useState({
     plateNumber: "",
@@ -196,9 +195,9 @@ export function Hq6VehiclesListView() {
       }}
       pageSize={pageSize}
       onPageSizeChange={setPageSize}
-      searchValue={localSearch}
-      onSearchChange={setLocalSearch}
-      onSearchCommit={() => setSearch(localSearch)}
+      searchValue={search}
+      onSearchChange={setSearch}
+      
       columnOptions={columnOptions}
       chrome={chrome}
       pagination={{

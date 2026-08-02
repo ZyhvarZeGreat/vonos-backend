@@ -55,7 +55,6 @@ export function Hq6PurchaseOrdersListView() {
     defaultDateRange: "last_7_days",
     isolateDateRange: true,
   });
-  const [localSearch, setLocalSearch] = useState(search);
   const [locationFilter, setLocationFilter] = useState("");
   const [supplierFilter, setSupplierFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
@@ -213,7 +212,7 @@ export function Hq6PurchaseOrdersListView() {
         key: "addedBy",
         header: "Added By",
         sortable: false,
-        render: (row) => row.createdByName ?? "",
+        render: (row) => row.createdByName ?? "—",
       },
     ],
     [config?.businessLocations, router, tenantCode],
@@ -264,9 +263,9 @@ export function Hq6PurchaseOrdersListView() {
       chrome={chrome}
       pageSize={pageSize}
       onPageSizeChange={setPageSize}
-      searchValue={localSearch}
-      onSearchChange={setLocalSearch}
-      onSearchCommit={() => setSearch(localSearch)}
+      searchValue={search}
+      onSearchChange={setSearch}
+      
       filters={
         <Hq6FilterGrid>
           <Hq6FilterDateRange
@@ -387,7 +386,6 @@ export function Hq6PurchaseReturnsListView() {
     defaultDateRange: "last_7_days",
     isolateDateRange: true,
   });
-  const [localSearch, setLocalSearch] = useState(search);
 
   const apiFilters = useMemo(
     () => ({
@@ -559,9 +557,9 @@ export function Hq6PurchaseReturnsListView() {
       chrome={chrome}
       pageSize={pageSize}
       onPageSizeChange={setPageSize}
-      searchValue={localSearch}
-      onSearchChange={setLocalSearch}
-      onSearchCommit={() => setSearch(localSearch)}
+      searchValue={search}
+      onSearchChange={setSearch}
+      
       filters={
         <Hq6FilterGrid>
           <Hq6FilterDateRange

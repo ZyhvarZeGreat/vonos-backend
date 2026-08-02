@@ -5,19 +5,13 @@ import {
   useRef,
   useState,
   type ChangeEvent,
-  type ClipboardEvent,
   type FocusEvent,
   type KeyboardEvent,
 } from "react";
 import {
-  applyDigitToHq6Mask,
-  backspaceHq6Mask,
   extractHq6Digits,
-  formatHq6Digits,
   hq6DateTimePlaceholder,
-  hq6DateTimeZeroTemplate,
   hq6DisplayToIsoLocal,
-  isoLocalToDigits,
   isoLocalToHq6Display,
   type Hq6DateTimeMode,
 } from "@/lib/utils/hq6DateTimeInput";
@@ -37,10 +31,9 @@ export type Hq6DateTimeInputProps = {
 };
 
 /**
- * Copyable / editable HQ6 date(+time) text field.
- * - Native text selection & clipboard
- * - Controlled ISO local value (`YYYY-MM-DD` or `YYYY-MM-DDTHH:mm`)
- * - Typing starts from zeros (digit mask) so controlled values are fully changeable
+ * HQ6 date(+time) text field.
+ * Empty when cleared — no sticky `00-00-0000` zeros.
+ * Digits auto-format with separators; Backspace/Delete clear normally.
  */
 export function Hq6DateTimeInput({
   value,
@@ -56,34 +49,25 @@ export function Hq6DateTimeInput({
 }: Hq6DateTimeInputProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [focused, setFocused] = useState(false);
-  const [digits, setDigits] = useState(() => isoLocalToDigits(value, mode));
-  const [replaceNext, setReplaceNext] = useState(true);
-  const digitIndexRef = useRef(0);
+  const [draft, setDraft] = useState(() =>
+    value.trim() ? isoLocalToHq6Display(value, mode) : "",
+  );
 
   useEffect(() => {
     if (focused) return;
-    setDigits(isoLocalToDigits(value, mode));
+    setDraft(value.trim() ? isoLocalToHq6Display(value, mode) : "");
   }, [value, mode, focused]);
 
   const display = focused
-    ? formatHq6Digits(digits, mode)
+    ? draft
     : value.trim()
       ? isoLocalToHq6Display(value, mode)
       : "";
 
-  const emitFromDigits = (nextDigits: string) => {
-    setDigits(nextDigits);
-    const iso = hq6DisplayToIsoLocal(formatHq6Digits(nextDigits, mode), mode);
-    if (iso) onChange(iso);
-    else if (/^0+$/.test(nextDigits)) onChange("");
-  };
-
   const handleFocus = (e: FocusEvent<HTMLInputElement>) => {
     setFocused(true);
-    const next = isoLocalToDigits(value, mode);
-    setDigits(next);
-    setReplaceNext(true);
-    digitIndexRef.current = 0;
+    const next = value.trim() ? isoLocalToHq6Display(value, mode) : "";
+    setDraft(next);
     requestAnimationFrame(() => {
       e.target.select();
     });
@@ -91,118 +75,50 @@ export function Hq6DateTimeInput({
 
   const handleBlur = () => {
     setFocused(false);
-    const iso = hq6DisplayToIsoLocal(formatHq6Digits(digits, mode), mode);
+    const trimmed = draft.trim();
+    if (!trimmed) {
+      onChange("");
+      setDraft("");
+      return;
+    }
+    const iso = hq6DisplayToIsoLocal(trimmed, mode);
     if (iso) {
       onChange(iso);
-      setDigits(isoLocalToDigits(iso, mode));
-    } else if (/^0+$/.test(digits) || !digits.trim()) {
-      onChange("");
-      setDigits(isoLocalToDigits("", mode));
-    } else {
-      // Keep last valid value if draft invalid
-      setDigits(isoLocalToDigits(value, mode));
+      setDraft(isoLocalToHq6Display(iso, mode));
+      return;
     }
-    setReplaceNext(true);
+    // Invalid draft: revert to last committed value (or empty)
+    setDraft(value.trim() ? isoLocalToHq6Display(value, mode) : "");
+  };
+
+  const handleChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const raw = e.target.value;
+    if (!raw.trim()) {
+      setDraft("");
+      onChange("");
+      return;
+    }
+
+    const digits = extractHq6Digits(raw, mode);
+    if (!digits) {
+      setDraft(raw.replace(/[^\d\-:\s]/g, ""));
+      return;
+    }
+
+    // Format only digits typed so far — never pad with zeros into the field
+    const partial = formatPartialDigits(digits, mode);
+    setDraft(partial);
+
+    const iso = hq6DisplayToIsoLocal(partial, mode);
+    if (iso) onChange(iso);
   };
 
   const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
     if (disabled) return;
-
-    if (e.key === "a" && (e.metaKey || e.ctrlKey)) {
-      return;
-    }
-    if (
-      e.key === "c" ||
-      e.key === "x" ||
-      e.key === "v" ||
-      e.key === "C" ||
-      e.key === "X" ||
-      e.key === "V"
-    ) {
-      if (e.metaKey || e.ctrlKey) return;
-    }
-
-    if (e.key === "Tab" || e.key === "Enter" || e.key === "Escape") return;
-
-    if (e.key === "Backspace" || e.key === "Delete") {
-      e.preventDefault();
-      const clearAll = replaceNext || e.key === "Delete";
-      const result = backspaceHq6Mask(
-        digits,
-        digitIndexRef.current,
-        mode,
-        clearAll,
-      );
-      digitIndexRef.current = result.nextIndex;
-      setReplaceNext(false);
-      emitFromDigits(result.digits);
-      return;
-    }
-
-    if (e.key.length === 1 && /\d/.test(e.key)) {
-      e.preventDefault();
-      const result = applyDigitToHq6Mask(
-        digits,
-        e.key,
-        digitIndexRef.current,
-        mode,
-        replaceNext,
-      );
-      digitIndexRef.current = result.nextIndex;
-      setReplaceNext(false);
-      emitFromDigits(result.digits);
-      return;
-    }
-
-    // Block other printable keys from breaking the mask; arrows allowed for caret
-    if (e.key.length === 1 && !e.metaKey && !e.ctrlKey && !e.altKey) {
+    if (e.key.length === 1 && !/\d/.test(e.key) && !e.metaKey && !e.ctrlKey && !e.altKey) {
+      if (e.key === "-" || e.key === ":" || e.key === " ") return;
       e.preventDefault();
     }
-  };
-
-  const handleChange = (e: ChangeEvent<HTMLInputElement>) => {
-    // Fallback for mobile / IME / autofill: strip to digits and re-mask
-    const raw = extractHq6Digits(e.target.value, mode);
-    if (!raw) {
-      emitFromDigits(isoLocalToDigits("", mode));
-      digitIndexRef.current = 0;
-      setReplaceNext(true);
-      return;
-    }
-    const padded = raw.padEnd(
-      mode === "date" ? 8 : 12,
-      "0",
-    );
-    digitIndexRef.current = Math.min(raw.length, mode === "date" ? 8 : 12);
-    setReplaceNext(false);
-    emitFromDigits(padded);
-  };
-
-  const handlePaste = (e: ClipboardEvent<HTMLInputElement>) => {
-    e.preventDefault();
-    const text = e.clipboardData.getData("text").trim();
-    const fromDisplay = hq6DisplayToIsoLocal(text, mode);
-    const fromIsoShape = hq6DisplayToIsoLocal(
-      isoLocalToHq6Display(text, mode),
-      mode,
-    );
-    const parsed = fromDisplay ?? fromIsoShape;
-    if (parsed) {
-      onChange(parsed);
-      setDigits(isoLocalToDigits(parsed, mode));
-      setReplaceNext(true);
-      digitIndexRef.current = 0;
-      return;
-    }
-    const pastedDigits = extractHq6Digits(text, mode);
-    if (!pastedDigits) return;
-    const padded = pastedDigits.padEnd(mode === "date" ? 8 : 12, "0");
-    emitFromDigits(padded);
-    digitIndexRef.current = Math.min(
-      pastedDigits.length,
-      mode === "date" ? 8 : 12,
-    );
-    setReplaceNext(false);
   };
 
   return (
@@ -218,20 +134,29 @@ export function Hq6DateTimeInput({
       disabled={disabled}
       autoFocus={autoFocus}
       className={className}
-      placeholder={
-        placeholder ??
-        (focused
-          ? hq6DateTimeZeroTemplate(mode)
-          : hq6DateTimePlaceholder(mode))
-      }
+      placeholder={placeholder ?? hq6DateTimePlaceholder(mode)}
       value={display}
       onFocus={handleFocus}
       onBlur={handleBlur}
       onKeyDown={handleKeyDown}
       onChange={handleChange}
-      onPaste={handlePaste}
       aria-label={mode === "date" ? "Date" : "Date and time"}
-      title="Selectable text — type digits to edit (starts from 0)"
+      title="Type date as dd-mm-yyyy — fully clearable"
     />
   );
+}
+
+/** Format typed digits without padEnd zeros — only show what the user entered. */
+function formatPartialDigits(digits: string, mode: Hq6DateTimeMode): string {
+  const d = digits.replace(/\D/g, "").slice(0, mode === "date" ? 8 : 12);
+  if (!d) return "";
+
+  if (d.length <= 2) return d;
+  if (d.length <= 4) return `${d.slice(0, 2)}-${d.slice(2)}`;
+  if (d.length <= 8) return `${d.slice(0, 2)}-${d.slice(2, 4)}-${d.slice(4)}`;
+
+  const datePart = `${d.slice(0, 2)}-${d.slice(2, 4)}-${d.slice(4, 8)}`;
+  const timeDigits = d.slice(8);
+  if (timeDigits.length <= 2) return `${datePart} ${timeDigits}`;
+  return `${datePart} ${timeDigits.slice(0, 2)}:${timeDigits.slice(2)}`;
 }

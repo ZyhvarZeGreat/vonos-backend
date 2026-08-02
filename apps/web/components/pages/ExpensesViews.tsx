@@ -16,6 +16,7 @@ import { ListPageShell } from "@/components/organisms/ListPageShell";
 import { RowActionsMenu } from "@/components/molecules/RowActionsMenu";
 import { useIsVaHq6 } from "@/lib/hooks/useIsVaHq6";
 import { Hq6FormShell } from "@/components/hq6/Hq6Chrome";
+import { PaymentAccountSelect } from "@/components/hq6/PaymentAccountSelect";
 import { Hq6ExpenseCategoriesListView } from "@/components/pages/Hq6ExpenseCategoriesListView";
 import { Hq6ExpensesListView } from "@/components/pages/Hq6ExpensesListView";
 import { formatCurrency } from "@/lib/utils/formatCurrency";
@@ -40,7 +41,6 @@ import {
   updateExpense,
   updateExpenseCategory,
 } from "@/lib/api/expenses";
-import { getPaymentAccounts } from "@/lib/api/paymentAccounts";
 import { hq6TaxSelectOptions } from "@/lib/utils/hq6TaxOptions";
 import {
   optimisticTempId,
@@ -48,7 +48,6 @@ import {
   prependEntityInQueries,
   removeEntityFromQueries,
 } from "@/lib/query/optimistic";
-import { modalKeys, MODAL_REF_STALE_MS } from "@/lib/query/modalQueryKeys";
 
 const EXPORT_COLUMNS = [
   { key: "expenseDate", header: "Date" },
@@ -436,13 +435,6 @@ export function AddExpenseView() {
     enabled: Boolean(tenantId),
   });
 
-  const { data: paymentAccounts = [] } = useQuery({
-    queryKey: modalKeys.paymentAccounts(tenantId),
-    queryFn: () => getPaymentAccounts(tenantId!),
-    enabled: Boolean(tenantId),
-    staleTime: MODAL_REF_STALE_MS,
-  });
-
   const taxOptions = useMemo(
     () => hq6TaxSelectOptions(tenantId),
     [tenantId],
@@ -788,13 +780,16 @@ export function AddExpenseView() {
                 Amount: <span className="req">*</span>
               </span>
               <input
-                type="number"
+                type="text"
+                inputMode="decimal"
                 className="hq6-form-input"
-                value={form.totalAmount || "0.00"}
-                onChange={(e) =>
-                  setForm({ ...form, totalAmount: e.target.value })
-                }
+                value={form.totalAmount}
+                placeholder=""
+                readOnly
+                aria-readonly="true"
+                title="Equals the expense total amount above"
               />
+              <p className="hq6-form-hint">Matches the expense total above</p>
             </label>
             <label className="hq6-form-label">
               <span>
@@ -831,20 +826,13 @@ export function AddExpenseView() {
                   <span className="req"> *</span>
                 ) : null}
               </span>
-              <select
-                className="hq6-form-input"
+              <PaymentAccountSelect
                 value={form.paymentAccountId}
-                onChange={(e) =>
-                  setForm({ ...form, paymentAccountId: e.target.value })
+                onChange={(id) =>
+                  setForm({ ...form, paymentAccountId: id })
                 }
-              >
-                <option value="">None</option>
-                {paymentAccounts.map((acc) => (
-                  <option key={acc.id} value={acc.id}>
-                    {acc.name}
-                  </option>
-                ))}
-              </select>
+                emptyLabel="None"
+              />
             </label>
             <label
               className="hq6-form-label"

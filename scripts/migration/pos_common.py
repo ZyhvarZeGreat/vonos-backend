@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import uuid
 from collections import defaultdict
 from datetime import datetime
@@ -9,6 +10,36 @@ from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from migration.types import TableData, TransformResult
+
+# Auto-generated Ultimate POS contact ids (CO0001 / CU0001) — not a real identifier.
+_AUTO_CONTACT_ID_RE = re.compile(r"^C[OU]\d+$", re.IGNORECASE)
+# Vehicle-registration-like token embedded in a contact/customer name.
+_PLATE_IN_NAME_RE = re.compile(r"\b([A-Z]{1,4}-[A-Z0-9]{1,8})\b", re.IGNORECASE)
+
+
+def _is_real_contact_id(value: str) -> bool:
+    return bool(value) and _AUTO_CONTACT_ID_RE.match(value) is None
+
+
+def plate_from_name(name: str | None) -> str | None:
+    if not name:
+        return None
+    m = _PLATE_IN_NAME_RE.search(name)
+    return m.group(1).upper() if m else None
+
+
+def resolve_contact_id(raw_contact_id: str, name: str, legacy_id: int) -> str:
+    """Mirror the TS backfill order (minus cross-entity job/vehicle lookup):
+    real manual/plate value > plate-from-name > legacy CO000x > generated CU000x.
+    """
+    if _is_real_contact_id(raw_contact_id):
+        return raw_contact_id
+    plate = plate_from_name(name)
+    if plate:
+        return plate
+    if raw_contact_id:
+        return raw_contact_id
+    return f"CU{legacy_id:04d}"
 
 
 def build_legacy_user_name_map(tables: dict[str, TableData]) -> dict[int, str]:
@@ -68,12 +99,14 @@ def derive_stock_status(quantity: int, reorder_point: int | None) -> str:
 
 
 def map_payment_status(raw: Any) -> str | None:
+    # Null/unknown must NOT default to paid — that marks unpaid invoices as paid
+    # when payment rows are missing or status was blank in Ultimate POS.
     if raw is None:
-        return "paid"
-    s = str(raw).lower()
-    if s in ("paid", "partial", "due"):
+        return "due"
+    s = str(raw).lower().strip()
+    if s in ("paid", "partial", "due", "overdue"):
         return s
-    return "paid"
+    return "due"
 
 
 def map_sale_status(raw: Any, sub_status: Any = None) -> str:
@@ -283,13 +316,19 @@ def transform_contacts(
         if ctype in ("customer", "both"):
             if not (existing_customer_legacy and legacy_id in existing_customer_legacy):
                 new_id = new_cuid()
+                name = contact_display_name(row)
+                # User-entered Contact ID (often the vehicle registration) — not the
+                # numeric PK. Resolve to a real value so re-imports carry it directly.
+                raw_contact_id = str(row.get("contact_id") or "").strip()
+                contact_id_val = resolve_contact_id(raw_contact_id, name, legacy_id)
                 result.customers.append({
                     "id": new_id,
                     "tenantId": tenant_id,
-                    "name": contact_display_name(row),
+                    "name": name,
                     "email": (str(row["email"]).strip() or None) if row.get("email") else None,
                     "phone": str(row.get("mobile") or "").strip() or None,
                     "legacyContactId": legacy_id,
+                    "details": {"contactId": contact_id_val},
                     **created_by_fields(row.get("created_by"), user_names, user_vonos),
                 })
                 result.legacy_ids.append({
@@ -433,6 +472,7 @@ def transform_sales(
             "currency": "NGN",
             "status": sale_status,
             "paymentStatus": map_payment_status(txn.get("payment_status")),
+            "paymentMethod": str(txn.get("prefer_payment_method") or "").strip() or None,
             "date": sale_date,
             "itemCount": len(sale_lines_out),
             "legacyTransactionId": legacy_tx_id,
@@ -547,6 +587,7 @@ def transform_sell_returns(
             "currency": "NGN",
             "status": return_status,
             "paymentStatus": map_payment_status(txn.get("payment_status")),
+            "paymentMethod": str(txn.get("prefer_payment_method") or "").strip() or None,
             "date": sale_date,
             "itemCount": len(sale_lines_out),
             "legacyTransactionId": legacy_tx_id,

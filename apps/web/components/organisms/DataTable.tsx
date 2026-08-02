@@ -504,7 +504,14 @@ export function DataTable<T extends { id: string }>({
       );
       cellClassNames.push(
         cn(
-          columnCellClassName(column),
+          // HQ6/UPOS headers are always left; keep cells left too so values
+          // line up under the header (still use tabular nums for money/qty).
+          upos
+            ? cn(
+                "text-left",
+                (column.numeric || column.align === "right") && "tabular-nums",
+              )
+            : columnCellClassName(column),
           colIndex === 0 ? freezeDataColClass(false) : null,
         ),
       );
@@ -923,7 +930,9 @@ export function DataTable<T extends { id: string }>({
                           <span
                             className={cn(
                               "min-w-0",
-                              align === "right" && "ml-auto text-right",
+                              !upos &&
+                                align === "right" &&
+                                "ml-auto text-right",
                             )}
                           >
                             {column.header}

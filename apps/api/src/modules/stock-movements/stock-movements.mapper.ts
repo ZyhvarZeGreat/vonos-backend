@@ -5,6 +5,7 @@ import type {
   StockMovementLine,
   StockMovementListRow,
 } from '@vonos/types';
+import { paymentStatusFromAmounts } from '../../common/utils/paymentStatus';
 import { parseMovementLines, toIso, toNumber } from '../../common/utils/serializers';
 
 export type { StockMovementListRow };
@@ -39,7 +40,10 @@ export function toMovementListRow(
     /** Precomputed — avoids shipping full lines JSON on list. */
     itemCount?: number | null;
     grandTotal?: number | PrismaMovement['grandTotal'] | null;
+    totalPaid?: number | PrismaMovement['totalPaid'] | null;
   },
+  /** Optional override (tests / legacy). Prefer row.totalPaid. */
+  paidTotal?: number,
 ): StockMovementListRow {
   const supplierOrDest =
     row.supplier?.name ??
@@ -59,9 +63,16 @@ export function toMovementListRow(
         0,
       );
   }
-  // Never infer "paid" from receipt status — Received ≠ paid.
-  // Null paymentStatus (common on migrated rows) means still due.
-  const paymentStatus = row.paymentStatus ?? 'due';
+  const denormPaid =
+    row.totalPaid != null ? toNumber(row.totalPaid) : 0;
+  const safePaid = Math.max(0, paidTotal ?? denormPaid);
+  const total = grandTotal ?? 0;
+  const paymentDue = Math.max(0, total - safePaid);
+  const paymentStatus = paymentStatusFromAmounts(
+    total,
+    safePaid,
+    row.paymentStatus,
+  );
   return {
     id: row.id,
     reference: row.reference,
@@ -74,7 +85,7 @@ export function toMovementListRow(
     grandTotal,
     paymentStatus,
     paymentMethod: row.paymentMethod ?? null,
-    paymentDue: paymentStatus === 'paid' ? 0 : grandTotal,
+    paymentDue,
     supplierId: row.supplierId,
   };
 }

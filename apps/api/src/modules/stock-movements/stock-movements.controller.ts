@@ -76,6 +76,33 @@ export class StockMovementsController {
     return this.movementsService.listPayments(id);
   }
 
+  @Patch(':id/payments/:paymentId')
+  @Roles('staff', 'manager', 'admin', 'super_admin')
+  updatePayment(
+    @Param('id') id: string,
+    @Param('paymentId') paymentId: string,
+    @Body()
+    body: {
+      amount?: number;
+      method?: string | null;
+      note?: string | null;
+      paidOn?: string | null;
+      accountId?: string | null;
+      paymentRefNo?: string | null;
+    },
+  ) {
+    return this.movementsService.updatePayment(id, paymentId, body);
+  }
+
+  @Delete(':id/payments/:paymentId')
+  @Roles('manager', 'admin', 'super_admin')
+  removePayment(
+    @Param('id') id: string,
+    @Param('paymentId') paymentId: string,
+  ) {
+    return this.movementsService.removePayment(id, paymentId);
+  }
+
   @Get(':id/view')
   getView(@Param('id') id: string) {
     return this.movementsService.getView(id);

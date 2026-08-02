@@ -1,14 +1,16 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { AdminEntityContextBar } from "@/components/molecules/AdminEntityContextBar";
 import { getPostLoginPath } from "@/lib/utils/authRedirect";
 import { isAuthSkipped } from "@/lib/utils/devAccess";
 import {
+  filterVagNavSectionsByPermissions,
   isAdminNavActive,
   VAG_NAV_SECTIONS,
+  VAG_NAV_VIEW_PERMISSIONS,
 } from "@/lib/registries/vagNavSections";
 import { useAuthStore } from "@/stores/authStore";
 import { useAdminEntityStore } from "@/stores/adminEntityStore";
@@ -23,6 +25,7 @@ import { prefetchVagAdminShell } from "@/lib/prefetch/routePrefetchRegistry";
 import { UposAppShell } from "@/components/upos/UposAppShell";
 import { TopProgressBar } from "@/components/atoms/TopProgressBar";
 import { Spinner } from "@/components/atoms/Spinner";
+import { useAppPermissions } from "@/lib/hooks/useHq6Permissions";
 
 /**
  * VAG Group admin shell — same Ultimate POS chrome as operating tenants
@@ -44,6 +47,7 @@ export function AdminShell({
   const authName = useAuthStore((state) => state.name);
   const authEmail = useAuthStore((state) => state.email);
   const viewingCode = useAdminEntityStore((state) => state.viewingCode);
+  const { canAny, isFullAccess } = useAppPermissions();
   const viewingUnit =
     viewingCode && isVagViewUnitId(viewingCode)
       ? getVagViewUnit(viewingCode)
@@ -58,6 +62,16 @@ export function AdminShell({
   const onHrmUsers = pathname.startsWith("/admin/hrm/users");
   const showEntityContextBar = !onGroupOverview && !onHrmUsers;
 
+  const navSections = useMemo(
+    () =>
+      filterVagNavSectionsByPermissions(
+        VAG_NAV_SECTIONS,
+        canAny,
+        isFullAccess,
+      ),
+    [canAny, isFullAccess],
+  );
+
   useEffect(() => {
     if (skipAuth) return;
     if (!hydrated) return;
@@ -65,6 +79,23 @@ export function AdminShell({
       router.replace(getPostLoginPath(role, tenantId));
     }
   }, [skipAuth, hydrated, role, tenantId, router]);
+
+  // Block deep-links to Finance / financial Reports when the assigned role
+  // does not include those permissions (e.g. HR on VAG).
+  useEffect(() => {
+    if (skipAuth || !hydrated || role !== "super_admin") return;
+    if (isFullAccess) return;
+    const match = Object.entries(VAG_NAV_VIEW_PERMISSIONS).find(([route]) => {
+      if (route === "/admin/overview") return false;
+      return pathname === route || pathname.startsWith(`${route}/`);
+    });
+    if (!match) return;
+    const [, keys] = match;
+    if (keys.length === 0) return;
+    if (!canAny(...keys)) {
+      router.replace("/admin/hrm/users");
+    }
+  }, [skipAuth, hydrated, role, isFullAccess, canAny, pathname, router]);
 
   useEffect(() => {
     if (skipAuth) return;
@@ -95,7 +126,7 @@ export function AdminShell({
       <TopProgressBar />
       <UposAppShell
         variant="admin"
-        sections={VAG_NAV_SECTIONS}
+        sections={navSections}
         tenantCode={shellAccentCode}
         tenantName="Vonos Autos Group"
         activeRoute={pathname}

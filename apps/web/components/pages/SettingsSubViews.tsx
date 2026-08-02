@@ -316,17 +316,6 @@ function Hq6InvoiceSettingsView() {
                     onChange={(e) => setSearch(e.target.value)}
                   />
                 </label>
-                <button
-                  type="button"
-                  className="hq6-search-btn"
-                  aria-label="Search"
-                  onClick={() => {
-                    // Filter is live; keep button for HQ6 chrome parity.
-                    setSearch((prev) => prev.trim());
-                  }}
-                >
-                  Search
-                </button>
               </div>
             </div>
             <div className="hq6-table-wrap">

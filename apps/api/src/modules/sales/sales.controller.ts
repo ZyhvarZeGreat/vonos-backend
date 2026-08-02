@@ -136,6 +136,23 @@ export class SalesController {
     return this.salesService.listPayments(id);
   }
 
+  @Post(':id/payments')
+  @Roles('staff', 'manager', 'admin', 'super_admin')
+  addPayment(
+    @Param('id') id: string,
+    @Body()
+    body: {
+      amount: number;
+      method?: string;
+      note?: string;
+      paidOn?: string;
+      accountId?: string;
+      paymentRefNo?: string;
+    },
+  ) {
+    return this.salesService.addPayment(id, body);
+  }
+
   @Patch(':id/payments/:paymentId')
   @Roles('staff', 'manager', 'admin', 'super_admin')
   updatePayment(

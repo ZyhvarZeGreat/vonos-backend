@@ -5,6 +5,7 @@ import type { SaleDetail, SalePaymentViewRow } from "@vonos/types";
 import { formatHq6Currency, formatHq6DateTime } from "@/lib/utils/hq6Format";
 import { amountToWords } from "@/lib/utils/amountToWords";
 import { saleVehicleFields } from "@/lib/utils/saleVehicleFields";
+import { publicAssetPath } from "@/lib/utils/basePath";
 import { cn } from "@/lib/utils/cn";
 
 export interface SaleInvoicePayslipDocumentProps {
@@ -172,7 +173,7 @@ function BrandMark({ size = 72 }: { size?: number }) {
       style={{ width: size, height: size }}
     >
       <Image
-        src="/brand/vonos-autos-logo.png"
+        src={publicAssetPath("/brand/vonos-autos-logo.png")}
         alt="Vonos Autos"
         fill
         className="object-contain p-1.5"
@@ -217,11 +218,10 @@ function CompanyBlock({
           <span className="font-bold">Email:</span> {email}
         </p>
       ) : null}
-      {serviceStaff ? (
-        <p className="mt-0.5">
-          <span className="font-bold">Service staff:</span> {serviceStaff}
-        </p>
-      ) : null}
+      <p className="mt-0.5">
+        <span className="font-bold">Service staff:</span>{" "}
+        {serviceStaff?.trim() || "—"}
+      </p>
     </div>
   );
 }
@@ -412,7 +412,14 @@ export function SaleInvoicePayslipDocument({
     vehicleLabel: sale.vehicleLabel,
   });
   const salesPerson =
-    sale.createdByName || sale.serviceStaffEmployeeName || null;
+    sale.createdByName ||
+    sale.serviceStaffEmployeeName ||
+    sale.cleanerName ||
+    null;
+  const serviceStaffName =
+    sale.serviceStaffEmployeeName?.trim() ||
+    sale.cleanerName?.trim() ||
+    null;
   const heading = documentHeading(kind, sale);
 
   const lines = sale.lines.map((line, index) => ({
@@ -468,7 +475,7 @@ export function SaleInvoicePayslipDocument({
                   address={tenantAddress}
                   mobile={tenantMobile}
                   email={tenantEmail}
-                  serviceStaff={sale.serviceStaffEmployeeName}
+                  serviceStaff={serviceStaffName}
                   align="right"
                 />
                 <BrandMark />
@@ -542,6 +549,7 @@ export function SaleInvoicePayslipDocument({
                   address={tenantAddress}
                   mobile={tenantMobile}
                   email={tenantEmail}
+                  serviceStaff={serviceStaffName}
                 />
               </div>
             </div>
@@ -603,6 +611,7 @@ export function SaleInvoicePayslipDocument({
                     address={tenantAddress}
                     mobile={tenantMobile}
                     email={tenantEmail}
+                    serviceStaff={serviceStaffName}
                   />
                 </div>
               </div>

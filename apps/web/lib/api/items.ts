@@ -37,6 +37,7 @@ function buildItemsPath(
   if (filters?.availableForRetail === false) params.set("availableForRetail", "false");
   if (filters?.sortBy) params.set("sortBy", filters.sortBy);
   if (filters?.sortDir) params.set("sortDir", filters.sortDir);
+  if (filters?.includeSummary === false) params.set("includeSummary", "false");
   if (cursor) params.set("cursor", cursor);
   if (limit) params.set("limit", String(limit));
   const query = params.toString();

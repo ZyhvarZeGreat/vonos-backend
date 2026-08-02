@@ -36,7 +36,6 @@ export function Hq6RequisitionsListView() {
     });
   const exportList = useListExport();
   const { search, setSearch } = useListPageFilters();
-  const [localSearch, setLocalSearch] = useState(search);
 
   const {
     items: requisitions,
@@ -126,9 +125,9 @@ export function Hq6RequisitionsListView() {
       }}
       pageSize={pageSize}
       onPageSizeChange={setPageSize}
-      searchValue={localSearch}
-      onSearchChange={setLocalSearch}
-      onSearchCommit={() => setSearch(localSearch)}
+      searchValue={search}
+      onSearchChange={setSearch}
+      
       columnOptions={columnOptions}
       chrome={chrome}
       pagination={{

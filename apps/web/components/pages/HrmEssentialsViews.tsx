@@ -244,14 +244,6 @@ export function HrmLeaveTypeView() {
               }}
             />
           </label>
-          <button
-            type="button"
-            className="hq6-search-btn"
-            aria-label="Search"
-            onClick={() => setSearch((prev) => prev.trim())}
-          >
-            Search
-          </button>
         </div>
       </div>
       <ServerPaginatedTable
@@ -458,14 +450,6 @@ export function HrmLeaveView() {
                   }}
                 />
               </label>
-              <button
-                type="button"
-                className="hq6-search-btn"
-                aria-label="Search"
-                onClick={() => setSearch((prev) => prev.trim())}
-              >
-                Search
-              </button>
             </div>
           </div>
         </div>
@@ -700,14 +684,6 @@ export function HrmHolidayView() {
                 }}
               />
             </label>
-            <button
-              type="button"
-              className="hq6-search-btn"
-              aria-label="Search"
-              onClick={() => setSearch((prev) => prev.trim())}
-            >
-              Search
-            </button>
           </div>
         </div>
       }
@@ -919,14 +895,6 @@ export function HrmDepartmentsView() {
               }}
             />
           </label>
-          <button
-            type="button"
-            className="hq6-search-btn"
-            aria-label="Search"
-            onClick={() => setSearch((prev) => prev.trim())}
-          >
-            Search
-          </button>
         </div>
       </div>
       <ServerPaginatedTable
@@ -1098,14 +1066,6 @@ export function HrmDesignationsView() {
               }}
             />
           </label>
-          <button
-            type="button"
-            className="hq6-search-btn"
-            aria-label="Search"
-            onClick={() => setSearch((prev) => prev.trim())}
-          >
-            Search
-          </button>
         </div>
       </div>
       <ServerPaginatedTable
@@ -1262,14 +1222,6 @@ export function HrmSalesTargetsView() {
               }}
             />
           </label>
-          <button
-            type="button"
-            className="hq6-search-btn"
-            aria-label="Search"
-            onClick={() => setSearch((prev) => prev.trim())}
-          >
-            Search
-          </button>
         </div>
       </div>
       <ServerPaginatedTable

@@ -2,7 +2,7 @@
 
 import type { Sale, SaleDetail } from "@vonos/types";
 import { useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { FileText, Printer } from "lucide-react";
 import { Hq6Modal } from "@/components/hq6/Hq6Modal";
 import { getSaleView } from "@/lib/api/sales";
@@ -67,6 +67,7 @@ export function Hq6SaleViewModal({
   const { tenantId: routeTenantId, config } = useRouteTenant();
   const effectiveTenantId = tenantId ?? routeTenantId;
 
+  const queryClient = useQueryClient();
   const seeded =
     initialSale && saleId && initialSale.id === saleId
       ? seedToDetail(initialSale)
@@ -74,7 +75,14 @@ export function Hq6SaleViewModal({
 
   const { data: bundle, isLoading, isFetching } = useQuery({
     queryKey: modalKeys.saleView(effectiveTenantId, saleId),
-    queryFn: () => getSaleView(saleId!, effectiveTenantId!),
+    queryFn: async () => {
+      const data = await getSaleView(saleId!, effectiveTenantId!);
+      queryClient.setQueryData(
+        modalKeys.salePayments(effectiveTenantId, saleId),
+        data.payments,
+      );
+      return data;
+    },
     enabled: Boolean(open && effectiveTenantId && saleId),
     staleTime: MODAL_RECORD_STALE_MS,
     placeholderData: (prev) =>

@@ -32,6 +32,8 @@ import { warmDefaultCustomerListPages } from '../../modules/customers/customers.
 import { warmDefaultSupplierListPages } from '../../modules/suppliers/suppliers.service';
 import { warmDefaultSalesListPages } from '../../modules/sales/sales.service';
 import { warmDefaultStockMovementListPages } from '../../modules/stock-movements/stock-movements.service';
+import { warmDefaultExpenseListPages } from '../../modules/expenses/expenses.service';
+import { warmDefaultCatalogListPages } from '../../modules/catalog/catalog.service';
 
 const WARM_CACHE_TTL_S = 900;
 const INVOICE_SETTINGS_TTL_S = 600;
@@ -360,6 +362,8 @@ export async function warmHotPathsCache(
       () => warmDefaultSupplierListPages(prisma, cache, VA_TENANT_ID),
       () => warmDefaultSalesListPages(prisma, cache, VA_TENANT_ID),
       () => warmDefaultStockMovementListPages(prisma, cache, VA_TENANT_ID),
+      () => warmDefaultExpenseListPages(prisma, cache, VA_TENANT_ID),
+      () => warmDefaultCatalogListPages(prisma, cache, VA_TENANT_ID),
     ],
     2,
   );

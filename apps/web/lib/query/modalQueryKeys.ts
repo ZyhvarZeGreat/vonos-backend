@@ -24,12 +24,16 @@ export const modalKeys = {
     ["requisition-modal", tenantId, id] as const,
   salePayments: (tenantId: string | null | undefined, id: string | null | undefined) =>
     ["sale-view-payments", tenantId, id] as const,
+  purchasePayments: (
+    tenantId: string | null | undefined,
+    id: string | null | undefined,
+  ) => ["purchase-view-payments", tenantId, id] as const,
   invoiceSettings: (tenantId: string | null | undefined) =>
     ["invoice-settings", tenantId] as const,
   usersFilter: (tenantId: string | null | undefined) =>
     ["users", tenantId, "filter"] as const,
   paymentAccounts: (tenantId: string | null | undefined) =>
-    ["payment-accounts", tenantId] as const,
+    ["payment-accounts", tenantId, "picker-v3"] as const,
   customerGroups: (tenantId: string | null | undefined) =>
     ["customer-groups", tenantId] as const,
 };

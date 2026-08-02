@@ -76,7 +76,9 @@ export function buildCompositeCursorQuery(options: {
   limit?: number;
   sortValueType?: 'string' | 'date' | 'number';
 }) {
-  const limit = options.limit ?? 10;
+  // Prisma `take` must be a positive int — reject -1 ("All") and other bad values.
+  const rawLimit = options.limit ?? 10;
+  const limit = Math.min(Math.max(1, Number.isFinite(rawLimit) ? rawLimit : 10), 1000);
   const decoded = decodeCompositeCursor(options.cursor);
   const cursorWhere = buildCompositeCursorWhere(
     options.sortField,

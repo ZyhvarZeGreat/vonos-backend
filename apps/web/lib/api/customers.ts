@@ -24,6 +24,16 @@ import {
   type ListPage,
 } from "@/lib/api/fetchAllPages";
 import { customerListCursor } from "@/lib/utils/pagination";
+import { createAsyncTtlCache } from "@/lib/utils/asyncTtlCache";
+
+/**
+ * Short-lived cache for typeahead option lists so re-opening a picker or
+ * retyping a recent term is instant (no round-trip to a distant DB).
+ */
+const customerOptionCache = createAsyncTtlCache<Customer[]>({
+  ttlMs: 30_000,
+  maxEntries: 200,
+});
 
 async function fetchCustomersRaw(
   tenantId: string,
@@ -42,11 +52,14 @@ async function fetchCustomersRaw(
   }
   if (filters?.customerGroupId) params.set("customerGroupId", filters.customerGroupId);
   if (filters?.assignedToUserId) params.set("assignedToUserId", filters.assignedToUserId);
+  if (filters?.assignedToEmployeeId)
+    params.set("assignedToEmployeeId", filters.assignedToEmployeeId);
   if (filters?.status) params.set("status", filters.status);
   if (filters?.from) params.set("from", filters.from);
   if (filters?.to) params.set("to", filters.to);
   if (filters?.includeSummary === false) params.set("includeSummary", "0");
   else if (filters?.includeSummary === true) params.set("includeSummary", "1");
+  if (filters?.lite) params.set("lite", "1");
   if (cursor) params.set("cursor", cursor);
   if (limit) params.set("limit", String(limit));
   const query = params.toString();
@@ -109,20 +122,46 @@ export async function getCustomers(
   tenantId: string,
   filters?: CustomerFilters,
 ): Promise<Customer[]> {
-  if (filters?.cursor || filters?.limit) {
-    const payload = await fetchCustomersRaw(
-      tenantId,
-      filters,
-      filters.cursor,
-      filters.limit,
-    );
-    return Array.isArray(payload) ? payload : payload.items;
-  }
+  // Option lists never render totals or the legacy Contact ID — skip both the
+  // count + amount aggregate and the legacy-id resolution round-trip.
+  const typeaheadFilters: CustomerFilters = {
+    ...filters,
+    includeSummary: false,
+    lite: true,
+  };
 
-  return fetchFirstPage(
-    (cursor, limit) => fetchCustomersRaw(tenantId, filters, cursor, limit),
-    TYPEAHEAD_PAGE_SIZE,
-  );
+  const cacheKey = JSON.stringify([
+    tenantId,
+    typeaheadFilters.search ?? "",
+    typeaheadFilters.limit ?? TYPEAHEAD_PAGE_SIZE,
+    typeaheadFilters.cursor ?? "",
+    typeaheadFilters.customerGroupId ?? "",
+    typeaheadFilters.assignedToEmployeeId ?? "",
+    typeaheadFilters.status ?? "",
+  ]);
+
+  return customerOptionCache.get(cacheKey, async () => {
+    if (typeaheadFilters.cursor || typeaheadFilters.limit) {
+      const payload = await fetchCustomersRaw(
+        tenantId,
+        typeaheadFilters,
+        typeaheadFilters.cursor,
+        typeaheadFilters.limit,
+      );
+      return Array.isArray(payload) ? payload : payload.items;
+    }
+
+    return fetchFirstPage(
+      (cursor, limit) =>
+        fetchCustomersRaw(tenantId, typeaheadFilters, cursor, limit),
+      TYPEAHEAD_PAGE_SIZE,
+    );
+  });
+}
+
+/** Drop cached typeahead option lists (call after creating/editing a customer). */
+export function clearCustomerOptionCache(): void {
+  customerOptionCache.clear();
 }
 
 /** Profile shell — denormalized totals, empty transactionHistory (fast). */
@@ -160,6 +199,7 @@ export async function createCustomer(
   if (!response.ok) {
     return throwApiError(response, "Failed to create customer");
   }
+  clearCustomerOptionCache();
   return response.json();
 }
 
@@ -176,6 +216,7 @@ export async function updateCustomer(
   if (!response.ok) {
     return throwApiError(response, "Failed to update customer");
   }
+  clearCustomerOptionCache();
   return response.json();
 }
 
@@ -195,6 +236,7 @@ export async function setCustomerStatus(
   if (!response.ok) {
     return throwApiError(response, "Failed to update customer status");
   }
+  clearCustomerOptionCache();
   return response.json();
 }
 
@@ -205,6 +247,7 @@ export async function deleteCustomer(tenantId: string, id: string): Promise<void
   if (!response.ok) {
     return throwApiError(response, "Failed to delete customer");
   }
+  clearCustomerOptionCache();
 }
 
 export async function payCustomerDue(

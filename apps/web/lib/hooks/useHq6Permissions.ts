@@ -112,7 +112,11 @@ export function useAppPermissions(): AppPermissionsApi {
             name: roleName,
           }),
       );
-    const isFullAccess = isVag || isFullAccessRole;
+    // VAG portal access (super_admin) is separate from full permission grant.
+    // A VAG user assigned a concrete TenantRole (e.g. HR) is limited to that
+    // role's checkboxes — so Finance can be hidden while HRM/Users stay open.
+    const isFullAccess =
+      isFullAccessRole || (isVag && !hasRolePermissions);
 
     const can = (key: string): boolean => {
       // Hard security rule: only VAG edits the Roles matrix.

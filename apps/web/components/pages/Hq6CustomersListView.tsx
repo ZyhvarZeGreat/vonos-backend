@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import type { Customer } from "@vonos/types";
@@ -22,7 +22,8 @@ import {
 import { getCustomerGroups } from "@/lib/api/customerGroups";
 import { withOptimistic } from "@/lib/hooks/useAppMutation";
 import { patchEntityInQueries } from "@/lib/query/optimistic";
-import { getUsers } from "@/lib/api/users";
+import { getDesignations, getEmployees } from "@/lib/api/hrm";
+import { AsyncMenuSelect } from "@/components/molecules/AsyncMenuSelect";
 import { useServerListPage } from "@/lib/hooks/useServerListPage";
 import { HQ6_TABLE_PAGE_SIZE } from "@/lib/api/fetchAllPages";
 import { useListExport } from "@/lib/hooks/useListExport";
@@ -87,7 +88,6 @@ export function Hq6CustomersListView() {
   const tenantId = useTenantId();
   const openCreateModal = useUiStore((state) => state.openCreateModal);
   const { search, setSearch } = useListPageFilters();
-  const [localSearch, setLocalSearch] = useState(search);
   const [filtersOpen, setFiltersOpen] = useState(true);
   const chrome = useHq6ListChrome("customers");
 
@@ -97,7 +97,9 @@ export function Hq6CustomersListView() {
   const [openingBalance, setOpeningBalance] = useState(false);
   const [hasNoSellFrom, setHasNoSellFrom] = useState("");
   const [customerGroupId, setCustomerGroupId] = useState("");
-  const [assignedToUserId, setAssignedToUserId] = useState("");
+  const [assignedToEmployeeId, setAssignedToEmployeeId] = useState("");
+  const [assignedToEmployeeName, setAssignedToEmployeeName] = useState("");
+  const [assignDesignationId, setAssignDesignationId] = useState("");
   const [status, setStatus] = useState("");
 
   const [editTarget, setEditTarget] = useState<Customer | null>(null);
@@ -113,12 +115,32 @@ export function Hq6CustomersListView() {
     enabled: Boolean(tenantId),
     staleTime: 5 * 60_000,
   });
-  const usersQuery = useQuery({
-    queryKey: ["users", tenantId, "filter"],
-    queryFn: () => getUsers(tenantId),
+  const designationsQuery = useQuery({
+    queryKey: ["designations", tenantId, "customer-filter"],
+    queryFn: () => getDesignations(tenantId!),
     enabled: Boolean(tenantId),
     staleTime: 5 * 60_000,
   });
+
+  const employeeNameById = useRef<Map<string, string>>(new Map());
+  const loadEmployeeOptions = useCallback(
+    async (query: string) => {
+      const rows = await getEmployees(tenantId!, query || undefined, {
+        designationId: assignDesignationId || undefined,
+      });
+      for (const row of rows) employeeNameById.current.set(row.id, row.name);
+      return [
+        { value: "", label: "All workers" },
+        ...rows.map((row) => ({
+          value: row.id,
+          label: row.designationName
+            ? `${row.name} · ${row.designationName}`
+            : row.name,
+        })),
+      ];
+    },
+    [tenantId, assignDesignationId],
+  );
 
   const apiFilters = useMemo(() => {
     const months = Number(hasNoSellFrom);
@@ -133,12 +155,12 @@ export function Hq6CustomersListView() {
           ? (months as 1 | 3 | 6 | 12)
           : undefined,
       customerGroupId: customerGroupId || undefined,
-      assignedToUserId: assignedToUserId || undefined,
+      assignedToEmployeeId: assignedToEmployeeId || undefined,
       status: (status || undefined) as "active" | "inactive" | undefined,
     };
   }, [
     advanceBalance,
-    assignedToUserId,
+    assignedToEmployeeId,
     customerGroupId,
     hasNoSellFrom,
     openingBalance,
@@ -180,11 +202,6 @@ export function Hq6CustomersListView() {
       ),
     getCursor: (row) => customerListCursor(row),
   });
-
-  const commitSearch = useCallback(
-    () => setSearch(localSearch),
-    [localSearch, setSearch],
-  );
 
   const invalidate = useCallback(async () => {
     const opt = withOptimistic(queryClient, { keys: [["customers"]] });
@@ -423,21 +440,39 @@ export function Hq6CustomersListView() {
               </div>
               <div className="col-md-3">
                 <div className="form-group">
-                  <label htmlFor="assigned_to">Assigned to:</label>
+                  <label htmlFor="assign_category">Staff category:</label>
                   <select
                     className="form-control"
-                    style={{ width: "100%" }}
-                    id="assigned_to"
-                    value={assignedToUserId}
-                    onChange={(e) => setAssignedToUserId(e.target.value)}
+                    id="assign_category"
+                    value={assignDesignationId}
+                    onChange={(e) => setAssignDesignationId(e.target.value)}
                   >
-                    <option value="">None</option>
-                    {(usersQuery.data ?? []).map((u) => (
-                      <option key={u.id} value={u.id}>
-                        {u.name || u.email}
+                    <option value="">All categories</option>
+                    {(designationsQuery.data ?? []).map((d) => (
+                      <option key={d.id} value={d.id}>
+                        {d.name}
                       </option>
                     ))}
                   </select>
+                </div>
+              </div>
+              <div className="col-md-3">
+                <div className="form-group">
+                  <label htmlFor="assigned_to">Assigned to:</label>
+                  <AsyncMenuSelect
+                    id="assigned_to"
+                    value={assignedToEmployeeId}
+                    selectedLabel={assignedToEmployeeName || "All workers"}
+                    placeholder="Search workers…"
+                    emptyMessage="No workers found"
+                    loadOptions={loadEmployeeOptions}
+                    onChange={(id) => {
+                      setAssignedToEmployeeId(id);
+                      setAssignedToEmployeeName(
+                        id ? employeeNameById.current.get(id) ?? "" : "",
+                      );
+                    }}
+                  />
                 </div>
               </div>
               <div className="col-md-3">
@@ -556,9 +591,9 @@ export function Hq6CustomersListView() {
                           <Hq6DtSearchFilter
                             id="contact_table_filter"
                             ariaControls="contact_table"
-                            value={localSearch}
-                            onChange={setLocalSearch}
-                            onCommit={commitSearch}
+                            value={search}
+                            onChange={setSearch}
+                            
                           />
                         </div>
                         {busy ? (

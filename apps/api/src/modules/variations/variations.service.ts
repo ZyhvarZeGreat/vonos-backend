@@ -5,12 +5,21 @@ import type {
   VariationTemplate,
 } from '@vonos/types';
 import { TenantDbService } from '../../common/prisma/tenant-db.service';
+import { CacheService } from '../../common/cache/cache.service';
+import { invalidateTenantDashboardCache } from '../../common/cache/cacheInvalidation';
 import { buildCompositeCursorQuery } from '../../common/utils/pagination';
+import {
+  listPageFilterKey,
+  withListPageCache,
+} from '../../common/utils/listPageCache';
 import { toIso } from '../../common/utils/serializers';
 
 @Injectable()
 export class VariationsService {
-  constructor(private readonly tenantDb: TenantDbService) {}
+  constructor(
+    private readonly tenantDb: TenantDbService,
+    private readonly cache: CacheService,
+  ) {}
 
   private mapRow(row: {
     id: string;
@@ -35,6 +44,29 @@ export class VariationsService {
     limit?: number;
     search?: string;
   } = {}): Promise<VariationTemplate[]> {
+    const tenantId = this.tenantDb.requireTenantId();
+    const filterKey = listPageFilterKey({
+      search: filters.search,
+      cursor: filters.cursor,
+      limit: filters.limit ?? 10,
+    });
+    return withListPageCache(
+      this.cache,
+      tenantId,
+      'variations',
+      filterKey,
+      () => this.listUncached(filters, tenantId),
+    );
+  }
+
+  private async listUncached(
+    filters: {
+      cursor?: string;
+      limit?: number;
+      search?: string;
+    },
+    tenantId: string,
+  ): Promise<VariationTemplate[]> {
     const pagination = buildCompositeCursorQuery({
       sortField: 'name',
       sortDir: 'asc',
@@ -44,7 +76,7 @@ export class VariationsService {
     });
     const rows = await this.tenantDb.db.variationTemplate.findMany({
       where: {
-        tenantId: this.tenantDb.requireTenantId(),
+        tenantId,
         deletedAt: null,
         ...(filters.search
           ? { name: { contains: filters.search, mode: 'insensitive' } }
@@ -67,6 +99,7 @@ export class VariationsService {
         values,
       },
     });
+    void invalidateTenantDashboardCache(this.cache, tenantId);
     return this.mapRow(row);
   }
 
@@ -89,6 +122,7 @@ export class VariationsService {
           : {}),
       },
     });
+    void invalidateTenantDashboardCache(this.cache, tenantId);
     return this.mapRow(row);
   }
 
@@ -102,5 +136,6 @@ export class VariationsService {
       where: { id },
       data: { deletedAt: new Date() },
     });
+    void invalidateTenantDashboardCache(this.cache, tenantId);
   }
 }

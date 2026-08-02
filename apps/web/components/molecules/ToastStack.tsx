@@ -24,14 +24,17 @@ export function ToastStack() {
       aria-live="polite"
       aria-relevant="additions"
     >
-      {toasts.map((item) => (
+      {toasts.map((item) => {
+        const assertive = item.type === "error" || item.type === "warning";
+        return (
         <div
           key={item.id}
           className={cn(
             "pointer-events-auto flex items-start gap-3 rounded-lg border px-4 py-3 shadow-card",
             TYPE_STYLES[item.type],
           )}
-          role="status"
+          role={assertive ? "alert" : "status"}
+          aria-live={assertive ? "assertive" : "polite"}
         >
           <p className="flex-1 text-sm font-medium text-foreground">{item.message}</p>
           <IconButton
@@ -42,7 +45,8 @@ export function ToastStack() {
             <X className="h-4 w-4" />
           </IconButton>
         </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

@@ -13,12 +13,21 @@ import type {
   SalesTargetRow,
 } from '@vonos/types';
 import { TenantDbService } from '../../common/prisma/tenant-db.service';
+import { CacheService } from '../../common/cache/cache.service';
+import { invalidateTenantDashboardCache } from '../../common/cache/cacheInvalidation';
 import { buildCompositeCursorQuery } from '../../common/utils/pagination';
+import {
+  listPageFilterKey,
+  withListPageCache,
+} from '../../common/utils/listPageCache';
 import { toIso } from '../../common/utils/serializers';
 
 @Injectable()
 export class HrmEssentialsService {
-  constructor(private readonly tenantDb: TenantDbService) {}
+  constructor(
+    private readonly tenantDb: TenantDbService,
+    private readonly cache: CacheService,
+  ) {}
 
   async listLeaveTypes(filters: {
     cursor?: string;
@@ -140,6 +149,36 @@ export class HrmEssentialsService {
     hasMore?: boolean;
   }> {
     const tenantId = this.tenantDb.requireTenantId();
+    const filterKey = listPageFilterKey({
+      search: filters.search,
+      designationId: filters.designationId,
+      cursor: filters.cursor,
+      limit: filters.limit ?? 25,
+      sum: filters.includeSummary === false ? 0 : 1,
+    });
+    return withListPageCache(
+      this.cache,
+      tenantId,
+      'hrm-leaves',
+      filterKey,
+      () => this.listLeavesUncached(filters, tenantId),
+    );
+  }
+
+  private async listLeavesUncached(
+    filters: {
+      cursor?: string;
+      limit?: number;
+      search?: string;
+      designationId?: string;
+      includeSummary?: boolean;
+    },
+    tenantId: string,
+  ): Promise<{
+    items: LeaveRow[];
+    totalCount?: number;
+    hasMore?: boolean;
+  }> {
     const pageLimit = filters.limit ?? 25;
     const pagination = buildCompositeCursorQuery({
       sortField: 'leaveDate',
@@ -234,6 +273,7 @@ export class HrmEssentialsService {
       },
       include: { leaveType: { select: { name: true } } },
     });
+    void invalidateTenantDashboardCache(this.cache, tenantId);
     return {
       id: row.id,
       tenantId: row.tenantId,
@@ -439,6 +479,36 @@ export class HrmEssentialsService {
     hasMore?: boolean;
   }> {
     const tenantId = this.tenantDb.requireTenantId();
+    const filterKey = listPageFilterKey({
+      search: filters.search,
+      date: filters.date,
+      cursor: filters.cursor,
+      limit: filters.limit ?? 25,
+      sum: filters.includeSummary === false ? 0 : 1,
+    });
+    return withListPageCache(
+      this.cache,
+      tenantId,
+      'hrm-attendance',
+      filterKey,
+      () => this.listAttendancesUncached(filters, tenantId),
+    );
+  }
+
+  private async listAttendancesUncached(
+    filters: {
+      cursor?: string;
+      limit?: number;
+      search?: string;
+      date?: string;
+      includeSummary?: boolean;
+    },
+    tenantId: string,
+  ): Promise<{
+    items: AttendanceRow[];
+    totalCount?: number;
+    hasMore?: boolean;
+  }> {
     const pageLimit = filters.limit ?? 25;
     const pagination = buildCompositeCursorQuery({
       sortField: 'date',
@@ -530,6 +600,7 @@ export class HrmEssentialsService {
       },
       include: { shift: { select: { name: true } } },
     });
+    void invalidateTenantDashboardCache(this.cache, tenantId);
     return {
       id: row.id,
       tenantId: row.tenantId,

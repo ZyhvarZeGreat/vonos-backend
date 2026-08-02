@@ -58,8 +58,7 @@ const PlusIcon = (
 export function Hq6CustomerGroupsListView() {
   const tenantId = useTenantId();
   const queryClient = useQueryClient();
-  const [localSearch, setLocalSearch] = useState("");
-  const [committedSearch, setCommittedSearch] = useState("");
+  const [search, setSearch] = useState("");
   const chrome = useHq6ListChrome("customer-groups");
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<CustomerGroup | null>(null);
@@ -67,7 +66,7 @@ export function Hq6CustomerGroupsListView() {
   const [priceCalcType, setPriceCalcType] = useState<"percentage" | "selling_price_group">(
     "percentage",
   );
-  const [discountPercent, setDiscountPercent] = useState("0");
+  const [discountPercent, setDiscountPercent] = useState("");
   const [priceGroupId, setPriceGroupId] = useState("");
   const [saving, setSaving] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<CustomerGroup | null>(null);
@@ -108,14 +107,13 @@ export function Hq6CustomerGroupsListView() {
     goToPage,
     canSelectPage,
   } = useServerListPage<CustomerGroup>({
-    queryKey: ["customer-groups", tenantId, "hq6", committedSearch],
+    queryKey: ["customer-groups", tenantId, "hq6"],
     enabled: Boolean(tenantId),
     defaultPageSize: HQ6_TABLE_PAGE_SIZE,
-    filters: { search: committedSearch.trim() || undefined },
-    search: committedSearch,
+    search,
     fetchPage: (cursor, limit, _sort, opts) =>
       getCustomerGroupsPage(tenantId!, cursor, limit, {
-        search: committedSearch.trim() || undefined,
+        search: search.trim() || undefined,
         includeSummary: opts?.includeSummary,
       }),
   });
@@ -376,9 +374,8 @@ export function Hq6CustomerGroupsListView() {
                         <div className="col-sm-3">
                           <Hq6DtSearchFilter
                             id="customer_groups_table_filter"
-                            value={localSearch}
-                            onChange={setLocalSearch}
-                            onCommit={() => setCommittedSearch(localSearch)}
+                            value={search}
+                            onChange={setSearch}
                           />
                         </div>
                         {busy ? (

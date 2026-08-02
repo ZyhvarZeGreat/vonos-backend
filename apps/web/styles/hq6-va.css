@@ -1531,6 +1531,23 @@ html.upos-shell [data-hq6="true"] .hq6-dt-toolbar {
   -webkit-overflow-scrolling: touch;
 }
 
+/* Sticky header for HQ6 list tables. The DataTables scroll body owns the
+   vertical scroll (search toolbar + pagination sit outside it), so the thead
+   stays pinned while rows scroll on long lists. The opaque header background
+   comes from the `.hq6-table-wrap thead th` rule below. */
+[data-hq6="true"] .hq6-dt-scroll {
+  max-height: calc(100dvh - 300px);
+  overflow-y: auto;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+[data-hq6="true"] .hq6-dt-scroll thead th {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+}
+
 [data-hq6="true"] .hq6-table-wrap table {
   font-size: 0.8125rem;
   border-collapse: separate;
@@ -1584,6 +1601,15 @@ html.upos-shell [data-hq6="true"] .hq6-dt-toolbar {
   font-weight: 700;
   text-transform: capitalize;
   white-space: nowrap;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+  line-height: inherit;
+}
+
+[data-hq6="true"] button.hq6-pay-badge:hover {
+  filter: brightness(0.95);
+  text-decoration: underline;
 }
 
 [data-hq6="true"] .hq6-pay-paid {
@@ -1591,16 +1617,18 @@ html.upos-shell [data-hq6="true"] .hq6-dt-toolbar {
   color: #fff;
 }
 
+/* amber-700 (not the lighter --hq6-warning) so white text clears WCAG AA. */
 [data-hq6="true"] .hq6-pay-due {
-  background: var(--hq6-warning);
+  background: #b45309;
   color: #fff;
 }
 
-/* Blue-400 with white text — distinct from paid (green) and due (orange). */
+/* blue-600 with white text — distinct from paid (green) and due (amber),
+   and dark enough for AA contrast (light blue-400 failed). */
 [data-hq6="true"] .hq6-pay-partial {
-  background: #60a5fa;
+  background: #2563eb;
   color: #fff;
-  border: 1px solid #3b82f6;
+  border: 1px solid #1d4ed8;
 }
 
 [data-hq6="true"] .hq6-pay-overdue {
@@ -1616,11 +1644,11 @@ html.upos-shell [data-hq6="true"] .hq6-pay-paid {
   background: #00a65a !important;
 }
 html.upos-shell [data-hq6="true"] .hq6-pay-partial {
-  background: #3c8dbc !important;
+  background: #2563eb !important;
   border: none !important;
 }
 html.upos-shell [data-hq6="true"] .hq6-pay-due {
-  background: #f39c12 !important;
+  background: #b45309 !important;
 }
 html.upos-shell [data-hq6="true"] .hq6-pay-overdue {
   background: #dd4b39 !important;
@@ -1807,6 +1835,254 @@ html.upos-shell .hq6-actions-toggle.tw-dw-btn {
   gap: 0.25rem 0.35rem;
 }
 
+/* View Payments modal — bordered tabular grid (UPOS-style) */
+[data-hq6="true"] .hq6-view-payments-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin-top: 0.25rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.25rem;
+  background: #fff;
+}
+
+[data-hq6="true"] .hq6-view-payments-table {
+  width: 100%;
+  min-width: 52rem;
+  table-layout: fixed;
+  border-collapse: collapse;
+  font-size: 0.8125rem;
+  color: #121926;
+}
+
+[data-hq6="true"] .hq6-view-payments-table .hq6-vp-col-date {
+  width: 8.5rem;
+}
+[data-hq6="true"] .hq6-view-payments-table .hq6-vp-col-ref {
+  width: 8rem;
+}
+[data-hq6="true"] .hq6-view-payments-table .hq6-vp-col-amount {
+  width: 7.5rem;
+}
+[data-hq6="true"] .hq6-view-payments-table .hq6-vp-col-method {
+  width: 8rem;
+}
+[data-hq6="true"] .hq6-view-payments-table .hq6-vp-col-note {
+  width: auto;
+}
+[data-hq6="true"] .hq6-view-payments-table .hq6-vp-col-account {
+  width: 9rem;
+}
+[data-hq6="true"] .hq6-view-payments-table .hq6-vp-col-actions {
+  width: 7rem;
+}
+
+[data-hq6="true"] .hq6-view-payments-table thead th {
+  background: #f8fafc;
+  border: 1px solid #e5e7eb;
+  padding: 0.55rem 0.65rem;
+  font-weight: 600;
+  color: #374151;
+  text-align: left;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+[data-hq6="true"] .hq6-view-payments-table tbody td {
+  border: 1px solid #e5e7eb;
+  padding: 0.5rem 0.65rem;
+  vertical-align: middle;
+  background: #fff;
+}
+
+[data-hq6="true"] .hq6-view-payments-table tbody tr:nth-child(even) td {
+  background: #fafbfc;
+}
+
+[data-hq6="true"] .hq6-view-payments-table tbody tr:hover td {
+  background: #f0f4f8;
+}
+
+[data-hq6="true"] .hq6-view-payments-table .hq6-vp-num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+[data-hq6="true"] .hq6-view-payments-table .hq6-vp-nowrap {
+  white-space: nowrap;
+}
+
+[data-hq6="true"] .hq6-view-payments-table .hq6-vp-note {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 0; /* forces ellipsis under table-layout:fixed */
+}
+
+[data-hq6="true"] .hq6-view-payments-table .hq6-vp-empty {
+  text-align: center;
+  color: #6b7280;
+  padding: 1.25rem 0.75rem !important;
+  background: #fff !important;
+}
+
+[data-hq6="true"] .hq6-view-payments-table .hq6-view-payments-actions {
+  position: sticky;
+  right: 0;
+  z-index: 3;
+  text-align: center;
+  background: #fff;
+  box-shadow: -6px 0 10px -6px rgb(15 23 42 / 0.18);
+  min-width: 6.75rem;
+}
+
+[data-hq6="true"] .hq6-view-payments-table thead .hq6-view-payments-actions {
+  z-index: 4;
+  background: #f8fafc;
+}
+
+[data-hq6="true"] .hq6-view-payments-table tbody tr:nth-child(even) .hq6-view-payments-actions {
+  background: #fafbfc;
+}
+
+[data-hq6="true"] .hq6-view-payments-table tbody tr:hover .hq6-view-payments-actions {
+  background: #f0f4f8;
+}
+
+[data-hq6="true"] .hq6-view-payments-body .hq6-view-payments-meta {
+  align-items: start;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  color: #374151;
+}
+
+[data-hq6="true"] .hq6-view-payments-body .hq6-view-payments-meta p {
+  margin: 0;
+}
+
+[data-hq6="true"] .hq6-view-payments-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin: 0 0 0.5rem;
+}
+
+.hq6-modal-btn-add-payment {
+  background: #fff;
+  color: #155eef;
+  border: 1px solid #155eef;
+}
+
+.hq6-modal-btn-add-payment:hover:not(:disabled) {
+  background: #eff4ff;
+}
+
+.hq6-modal-btn-reminder {
+  background: #f59e0b;
+  color: #fff;
+  border: 1px solid #d97706;
+}
+
+.hq6-modal-btn-reminder:hover:not(:disabled) {
+  background: #d97706;
+}
+
+[data-hq6="true"] .hq6-payment-row-actions {
+  display: inline-flex !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 6.25rem;
+}
+
+[data-hq6="true"] .hq6-payment-action-btn {
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  width: 1.85rem;
+  height: 1.85rem;
+  min-width: 1.85rem;
+  min-height: 1.85rem;
+  padding: 0;
+  margin: 0;
+  border-radius: 0.35rem;
+  border: 1px solid transparent;
+  cursor: pointer;
+  color: #fff !important;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+[data-hq6="true"] .hq6-payment-action-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+[data-hq6="true"] .hq6-payment-action-btn .hq6-inline-action-icon,
+[data-hq6="true"] .hq6-payment-action-btn svg {
+  width: 0.95rem !important;
+  height: 0.95rem !important;
+  stroke: currentColor !important;
+  color: inherit !important;
+  flex-shrink: 0;
+  display: block;
+}
+
+[data-hq6="true"] .hq6-payment-action-edit {
+  background: #0ba5ec !important;
+  border-color: #0ba5ec !important;
+}
+
+[data-hq6="true"] .hq6-payment-action-edit:hover {
+  background: #0086c9 !important;
+}
+
+[data-hq6="true"] .hq6-payment-action-delete {
+  background: #f04438 !important;
+  border-color: #f04438 !important;
+}
+
+[data-hq6="true"] .hq6-payment-action-delete:hover {
+  background: #d92d20 !important;
+}
+
+[data-hq6="true"] .hq6-payment-action-view {
+  background: #155eef !important;
+  border-color: #155eef !important;
+}
+
+[data-hq6="true"] .hq6-payment-action-view:hover {
+  background: #004eeb !important;
+}
+
+/* Legacy tw-dw-btn fallbacks if any remain */
+[data-hq6="true"] .hq6-payment-row-actions .tw-dw-btn {
+  width: 1.7rem;
+  min-height: 1.7rem;
+  padding: 0;
+  justify-content: center;
+}
+
+[data-hq6="true"] .hq6-payment-row-actions .tw-dw-btn-info {
+  color: #fff !important;
+  background: #0ba5ec !important;
+  border-color: #0ba5ec !important;
+}
+
+[data-hq6="true"] .hq6-payment-row-actions .tw-dw-btn-error {
+  color: #fff !important;
+  background: #f04438 !important;
+  border-color: #f04438 !important;
+}
+
+[data-hq6="true"] .hq6-payment-row-actions .tw-dw-btn-primary {
+  color: #fff !important;
+  background: #155eef !important;
+  border-color: #155eef !important;
+}
+
 [data-hq6="true"] .hq6-inline-action-icon {
   width: 0.85rem;
   height: 0.85rem;
@@ -1923,7 +2199,7 @@ html.upos-shell .hq6-actions-toggle.tw-dw-btn {
   font-weight: 600;
   color: #121926;
   white-space: nowrap;
-  text-align: left;
+  text-align: left !important;
 }
 
 [data-hq6="true"] .hq6-table-wrap tbody td,
@@ -1931,6 +2207,7 @@ html.upos-shell .hq6-actions-toggle.tw-dw-btn {
   border: none !important;
   padding: 0.5rem 0.65rem !important;
   vertical-align: middle;
+  text-align: left !important;
 }
 
 [data-hq6="true"] .hq6-table-wrap tbody tr:nth-child(odd) td,
@@ -5189,4 +5466,108 @@ html.upos-shell [data-hq6="true"] .hq6-orders-module {
 }
 [data-hq6="true"] .hq6-essentials-todo > .hq6-page {
   /* nested shell already provides page chrome */
+}
+
+/* —— Add Payment modal (UPOS payment_row layout) —— */
+[data-hq6="true"] .hq6-add-payment-body {
+  padding-top: 0.5rem;
+}
+
+[data-hq6="true"] .hq6-add-payment-wells {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+@media (min-width: 768px) {
+  [data-hq6="true"] .hq6-add-payment-wells {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+[data-hq6="true"] .hq6-add-payment-well {
+  background: #f5f5f5;
+  border: 1px solid #e3e3e3;
+  border-radius: 3px;
+  padding: 0.75rem 0.9rem;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  color: #333;
+  min-height: 4.5rem;
+}
+
+[data-hq6="true"] .hq6-add-payment-well strong {
+  font-weight: 600;
+}
+
+[data-hq6="true"] .hq6-add-payment-advance {
+  margin-bottom: 0.75rem;
+  font-size: 0.8125rem;
+}
+
+[data-hq6="true"] .hq6-add-payment-fields {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.85rem 1rem;
+}
+
+@media (min-width: 768px) {
+  [data-hq6="true"] .hq6-add-payment-fields {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  [data-hq6="true"] .hq6-add-payment-field-account {
+    grid-column: span 2;
+  }
+
+  [data-hq6="true"] .hq6-add-payment-field-note {
+    grid-column: 1 / -1;
+  }
+}
+
+[data-hq6="true"] .hq6-add-payment-label {
+  display: block;
+  margin-bottom: 0.35rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: #333;
+}
+
+[data-hq6="true"] .hq6-add-payment-label .req {
+  color: #dd4b39;
+}
+
+[data-hq6="true"] .hq6-add-payment-input-group {
+  display: flex;
+  width: 100%;
+}
+
+[data-hq6="true"] .hq6-add-payment-input-group > .input-group-addon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2.25rem;
+  padding: 0 0.65rem;
+  background: #eee;
+  border: 1px solid #d2d6de;
+  border-right: 0;
+  border-radius: 3px 0 0 3px;
+  color: #555;
+}
+
+[data-hq6="true"] .hq6-add-payment-input-group > .hq6-modal-input,
+[data-hq6="true"] .hq6-add-payment-input-group > .form-control {
+  flex: 1 1 auto;
+  width: 1%;
+  min-width: 0;
+  border-radius: 0 3px 3px 0;
+  margin: 0;
+}
+
+[data-hq6="true"] .hq6-add-payment-input-group > .input-group-addon + .hq6-modal-input,
+[data-hq6="true"] .hq6-add-payment-input-group > .input-group-addon + input,
+[data-hq6="true"] .hq6-add-payment-input-group > .input-group-addon + select {
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
 }

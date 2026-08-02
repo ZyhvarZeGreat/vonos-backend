@@ -21,6 +21,9 @@ export interface StockAvailabilityEntityRow {
   reorderPoint: number | null;
   status: StockStatus;
   availableForRetail: boolean;
+  costPrice: number;
+  sellPrice: number;
+  currency: string;
   locations: StockAvailabilityLocation[];
 }
 

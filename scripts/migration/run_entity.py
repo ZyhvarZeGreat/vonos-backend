@@ -79,7 +79,7 @@ def run_entity_migration(
     account_existing: dict[str, dict[int, str]] = {
         entity: dict(mapping) for entity, mapping in (existing_legacy or {}).items()
     }
-    for entity_type in ("sale", "supplier", "payment_account", "payment"):
+    for entity_type in ("sale", "supplier", "payment_account", "payment", "stock_movement"):
         account_existing[entity_type] = {
             **account_existing.get(entity_type, {}),
             **legacy_map(result.legacy_ids, entity_type),

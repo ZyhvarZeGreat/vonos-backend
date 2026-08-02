@@ -11,7 +11,7 @@ import {
   getStockMovementPayments,
 } from "@/lib/api/stockMovements";
 import { getUsers } from "@/lib/api/users";
-import { getPaymentAccounts } from "@/lib/api/paymentAccounts";
+import { getPaymentAccountsForPicker } from "@/lib/api/paymentAccounts";
 import { getCustomerGroups } from "@/lib/api/customerGroups";
 import {
   MODAL_RECORD_STALE_MS,
@@ -22,7 +22,7 @@ import {
 
 type Qc = QueryClient;
 
-/** Prefetch sale detail + payments (View / View Payments). */
+/** Prefetch full sale invoice bundle (View). Also seeds the light payments cache. */
 export function prefetchSaleListModals(
   queryClient: Qc,
   tenantId: string,
@@ -30,9 +30,24 @@ export function prefetchSaleListModals(
 ): void {
   prefetchModalQuery(queryClient, {
     queryKey: modalKeys.saleView(tenantId, saleId),
-    queryFn: () => getSaleView(saleId, tenantId),
+    queryFn: async () => {
+      const bundle = await getSaleView(saleId, tenantId);
+      queryClient.setQueryData(
+        modalKeys.salePayments(tenantId, saleId),
+        bundle.payments,
+      );
+      return bundle;
+    },
     staleTime: MODAL_RECORD_STALE_MS,
   });
+}
+
+/** Prefetch payments only — used by View Payments (much lighter than /view). */
+export function prefetchSalePaymentsModal(
+  queryClient: Qc,
+  tenantId: string,
+  saleId: string,
+): void {
   prefetchModalQuery(queryClient, {
     queryKey: modalKeys.salePayments(tenantId, saleId),
     queryFn: () => getSalePayments(tenantId, saleId),
@@ -40,7 +55,7 @@ export function prefetchSaleListModals(
   });
 }
 
-/** Prefetch purchase detail + payments. */
+/** Prefetch purchase detail + seed payments cache. */
 export function prefetchPurchaseListModals(
   queryClient: Qc,
   tenantId: string,
@@ -48,11 +63,26 @@ export function prefetchPurchaseListModals(
 ): void {
   prefetchModalQuery(queryClient, {
     queryKey: modalKeys.purchaseView(tenantId, purchaseId),
-    queryFn: () => getPurchaseView(tenantId, purchaseId),
+    queryFn: async () => {
+      const bundle = await getPurchaseView(tenantId, purchaseId);
+      queryClient.setQueryData(
+        modalKeys.purchasePayments(tenantId, purchaseId),
+        bundle.payments,
+      );
+      return bundle;
+    },
     staleTime: MODAL_RECORD_STALE_MS,
   });
+}
+
+/** Prefetch purchase payments only — View Payments. */
+export function prefetchPurchasePaymentsModal(
+  queryClient: Qc,
+  tenantId: string,
+  purchaseId: string,
+): void {
   prefetchModalQuery(queryClient, {
-    queryKey: ["purchase-view-payments", tenantId, purchaseId] as const,
+    queryKey: modalKeys.purchasePayments(tenantId, purchaseId),
     queryFn: () => getStockMovementPayments(tenantId, purchaseId),
     staleTime: MODAL_RECORD_STALE_MS,
   });
@@ -137,7 +167,7 @@ export function prefetchPaymentAccountsRef(
 ): void {
   prefetchModalQuery(queryClient, {
     queryKey: modalKeys.paymentAccounts(tenantId),
-    queryFn: () => getPaymentAccounts(tenantId),
+    queryFn: () => getPaymentAccountsForPicker(tenantId),
     staleTime: MODAL_REF_STALE_MS,
   });
 }

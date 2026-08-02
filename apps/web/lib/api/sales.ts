@@ -249,6 +249,32 @@ export async function getSalePayments(
   return response.json();
 }
 
+export async function addSalePayment(
+  tenantId: string,
+  saleId: string,
+  body: {
+    amount: number;
+    method?: string;
+    note?: string;
+    paidOn?: string;
+    accountId: string;
+    paymentRefNo?: string;
+  },
+): Promise<SalePaymentRow & { amountApplied: number; remainingDue: number }> {
+  const response = await apiFetch(
+    withTenantQuery(`/sales/${saleId}/payments`, tenantId),
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    },
+  );
+  if (!response.ok) {
+    return throwApiError(response, "Failed to add payment");
+  }
+  return response.json();
+}
+
 export async function updateSalePayment(
   tenantId: string,
   saleId: string,

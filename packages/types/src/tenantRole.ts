@@ -34,6 +34,41 @@ export interface ImportTenantRolesRequest {
   }>;
 }
 
+/**
+ * Default permission set for HR roles on VAG / entity portals.
+ * Includes users + HRM/payroll; deliberately excludes finance / P&L / accounts.
+ */
+export const HR_ROLE_DEFAULT_PERMISSIONS: readonly string[] = [
+  "user.view",
+  "user.create",
+  "user.update",
+  "roles.view",
+  "essentials.crud_leave_type",
+  "essentials.crud_all_leave",
+  "essentials.approve_leave",
+  "essentials.crud_all_attendance",
+  "essentials.view_allowance_and_deduction",
+  "essentials.add_allowance_and_deduction",
+  "essentials.crud_department",
+  "essentials.crud_designation",
+  "essentials.view_all_payroll",
+  "essentials.create_payroll",
+  "essentials.update_payroll",
+];
+
+/** True when the role name looks like an HR / people-ops role. */
+export function isHrRoleName(name: string): boolean {
+  const n = name.trim().toLowerCase();
+  return (
+    n === "hr" ||
+    n.startsWith("hr ") ||
+    n.includes(" hr ") ||
+    n.includes("human resource") ||
+    n.includes("hr &") ||
+    n.includes("hr&")
+  );
+}
+
 /** Default demo role names seeded when a tenant has no roles yet. */
 export const TENANT_ROLE_DEMO_NAMES = [
   "AC TECHNICIAN",

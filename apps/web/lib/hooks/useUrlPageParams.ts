@@ -6,6 +6,7 @@ import { usePathname, useSearchParams } from "next/navigation";
 function parsePositiveInt(value: string | null, fallback: number): number {
   if (!value) return fallback;
   const parsed = Number.parseInt(value, 10);
+  // Reject 0 / negative (DataTables "All" used to send -1 and crashed Prisma take).
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
@@ -140,8 +141,11 @@ export function useUrlPageParams(defaultPageSize = 10) {
   );
 
   const setPageSize = useCallback(
-    (size: number) =>
-      commit({ pageIndex: 0, pageSize: size }, { immediateUrl: true }),
+    (size: number) => {
+      const safe =
+        Number.isFinite(size) && size > 0 ? Math.min(Math.floor(size), 1000) : defaultPageSizeRef.current;
+      commit({ pageIndex: 0, pageSize: safe }, { immediateUrl: true });
+    },
     [commit],
   );
 

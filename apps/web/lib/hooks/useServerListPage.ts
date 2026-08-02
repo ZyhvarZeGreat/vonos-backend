@@ -75,8 +75,8 @@ export interface UseServerListPageOptions<T extends { id: string }> {
   staleTime?: number;
   /**
    * How many pages ahead to warm after the current page settles.
-   * Default 1 — keep Neon connection pressure low (pool limit ~8).
-   * Prefetch is delayed so the visible page wins first.
+   * Default 0 — avoid competing Neon round-trips on first paint (remote DB).
+   * Set 1+ for views where Next-page must feel instant.
    */
   prefetchPagesAhead?: number;
   /**

@@ -84,7 +84,6 @@ export function Hq6SuppliersListView() {
   const tenantId = useTenantId();
   const openCreateModal = useUiStore((state) => state.openCreateModal);
   const { search, setSearch } = useListPageFilters();
-  const [localSearch, setLocalSearch] = useState(search);
   const [filtersOpen, setFiltersOpen] = useState(true);
   const [purchaseDue, setPurchaseDue] = useState(false);
   const [purchaseReturn, setPurchaseReturn] = useState(false);
@@ -155,8 +154,6 @@ export function Hq6SuppliersListView() {
       }),
     getCursor: (row) => nameListCursor(row),
   });
-
-  const commitSearch = useCallback(() => setSearch(localSearch), [localSearch, setSearch]);
 
   const invalidate = useCallback(async () => {
     const opt = withOptimistic(queryClient, { keys: [["suppliers"]] });
@@ -466,9 +463,9 @@ export function Hq6SuppliersListView() {
                           <Hq6DtSearchFilter
                             id="contact_table_filter"
                             ariaControls="contact_table"
-                            value={localSearch}
-                            onChange={setLocalSearch}
-                            onCommit={commitSearch}
+                            value={search}
+                            onChange={setSearch}
+                            
                           />
                         </div>
                         {busy ? (

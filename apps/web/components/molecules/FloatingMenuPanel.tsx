@@ -12,8 +12,8 @@ import { cn } from "@/lib/utils/cn";
 
 type Align = "start" | "end";
 
-/** Above HQ6 sidebar (1000); stay below modal roots that use z-index 2000+. */
-const FLOATING_MENU_Z = 1100;
+/** Above HQ6 sidebar (1000) and modal roots (2000) so searchable selects work in modals/forms. */
+const FLOATING_MENU_Z = 2300;
 
 function menuPosition(anchor: HTMLElement, align: Align): CSSProperties {
   const rect = anchor.getBoundingClientRect();

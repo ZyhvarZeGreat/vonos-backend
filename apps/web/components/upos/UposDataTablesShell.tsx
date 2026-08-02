@@ -4,7 +4,10 @@ import type { ReactNode } from "react";
 import { Hq6DtSearchFilter } from "@/components/hq6/Hq6DtSearchFilter";
 import { cn } from "@/lib/utils/cn";
 
-const PAGE_SIZE_OPTIONS = [25, 50, 100, 200, 500, 1000, -1] as const;
+const PAGE_SIZE_OPTIONS = [25, 50, 100, 200, 500, 1000] as const;
+
+/** "All" in the length menu — capped so Prisma `take` stays valid (never -1). */
+export const UPOS_PAGE_SIZE_ALL = 1000;
 
 export interface UposDataTablesShellProps {
   tableId?: string;
@@ -180,13 +183,26 @@ export function UposDataTablesShell({
                 name={`${tableId}_length`}
                 aria-controls={tableId}
                 className="form-control input-sm"
-                value={pageSize}
+                value={
+                  PAGE_SIZE_OPTIONS.includes(
+                    pageSize as (typeof PAGE_SIZE_OPTIONS)[number],
+                  )
+                    ? pageSize
+                    : pageSize >= UPOS_PAGE_SIZE_ALL
+                      ? UPOS_PAGE_SIZE_ALL
+                      : PAGE_SIZE_OPTIONS[0]
+                }
                 disabled={isBusy}
-                onChange={(e) => onPageSizeChange(Number(e.target.value))}
+                onChange={(e) => {
+                  const next = Number(e.target.value);
+                  onPageSizeChange(
+                    Number.isFinite(next) && next > 0 ? next : UPOS_PAGE_SIZE_ALL,
+                  );
+                }}
               >
                 {PAGE_SIZE_OPTIONS.map((n) => (
                   <option key={n} value={n}>
-                    {n === -1 ? "All" : n.toLocaleString()}
+                    {n === UPOS_PAGE_SIZE_ALL ? "All" : n.toLocaleString()}
                   </option>
                 ))}
               </select>{" "}

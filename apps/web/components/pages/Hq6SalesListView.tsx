@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { DataTable, type ColumnConfig } from "@/components/organisms/DataTable";
@@ -17,6 +17,7 @@ import {
 import { Hq6SalesSummaryStrip } from "@/components/hq6/Hq6SalesSummaryStrip";
 import { Hq6StandardListShell, useHq6ListChrome } from "@/components/hq6/Hq6StandardListShell";
 import { Hq6ViewPaymentsModal } from "@/components/hq6/Hq6ViewPaymentsModal";
+import { Hq6PaySaleModal } from "@/components/hq6/Hq6PaySaleModal";
 import { Hq6InvoiceUrlModal } from "@/components/hq6/Hq6InvoiceUrlModal";
 import {
   Hq6PrintInvoiceModal,
@@ -30,6 +31,7 @@ import {
   getSalesPage,
 } from "@/lib/api/sales";
 import { getCustomers } from "@/lib/api/customers";
+import { getServiceStaff } from "@/lib/api/hrm";
 import { useServerListPage, serverSortProps, withListSort } from "@/lib/hooks/useServerListPage";
 import { HQ6_TABLE_PAGE_SIZE } from "@/lib/api/fetchAllPages";
 import { useListExport } from "@/lib/hooks/useListExport";
@@ -37,7 +39,8 @@ import { useListRecordModal } from "@/lib/hooks/useListRecordModal";
 import { useListPageFilters } from "@/lib/hooks/useListPageFilters";
 import { useRouteTenant, useTenantId } from "@/lib/hooks/useRouteTenant";
 import { useHq6Permissions } from "@/lib/hooks/useHq6Permissions";
-import { prefetchSaleListModals } from "@/lib/query/prefetchListModals";
+import { prefetchSaleListModals, prefetchSalePaymentsModal, prefetchPaymentAccountsRef } from "@/lib/query/prefetchListModals";
+import { modalKeys } from "@/lib/query/modalQueryKeys";
 import { compositeListCursorFrom } from "@/lib/utils/pagination";
 import { toast } from "@/stores/toastStore";
 import {
@@ -48,7 +51,7 @@ import {
 } from "@/lib/utils/hq6Format";
 import { businessLocationName } from "@/lib/utils/locationLabels";
 import { entitySaleLocations } from "@/lib/hooks/useBusinessLocationOptions";
-import { hq6PaymentBadgeClass } from "@/lib/utils/hq6PaymentBadge";
+import { hq6PaymentBadgeClass, canAddPaymentForStatus } from "@/lib/utils/hq6PaymentBadge";
 import type { Sale, SaleReturnStatus, SaleStatus } from "@vonos/types";
 import { cn } from "@/lib/utils/cn";
 
@@ -107,11 +110,12 @@ export function Hq6SalesListView({
   const [paymentStatusFilter, setPaymentStatusFilter] = useState("");
   const [locationFilter, setLocationFilter] = useState("");
   const [customerFilter, setCustomerFilter] = useState("");
-  const [localSearch, setLocalSearch] = useState(search);
+  const [serviceStaffFilter, setServiceStaffFilter] = useState("");
   const chrome = useHq6ListChrome(slug);
   const [deleteTarget, setDeleteTarget] = useState<Sale | null>(null);
   const [invoiceUrlSale, setInvoiceUrlSale] = useState<Sale | null>(null);
   const [paymentsSale, setPaymentsSale] = useState<Sale | null>(null);
+  const [paySale, setPaySale] = useState<Sale | null>(null);
   const [shippingSale, setShippingSale] = useState<Sale | null>(null);
   const [printDoc, setPrintDoc] = useState<{
     sale: Sale;
@@ -170,13 +174,6 @@ export function Hq6SalesListView({
     [tenantId],
   );
 
-  const customersQuery = useQuery({
-    queryKey: ["customers", tenantId, "sale-filter"],
-    queryFn: () => getCustomers(tenantId!),
-    enabled: Boolean(tenantId),
-    staleTime: 5 * 60_000,
-  });
-
   const apiFilters = useMemo(
     () => ({
       search: (search).trim() || undefined,
@@ -188,6 +185,7 @@ export function Hq6SalesListView({
         | undefined,
       locationCode: locationFilter || undefined,
       customerId: customerFilter || undefined,
+      serviceStaffEmployeeId: serviceStaffFilter || undefined,
       from: bounds?.from,
       to: bounds?.to,
     }),
@@ -199,6 +197,7 @@ export function Hq6SalesListView({
       paymentStatusFilter,
       saleStatus,
       search,
+      serviceStaffFilter,
       shipmentsOnly,
       statusFilter,
     ],
@@ -223,6 +222,7 @@ export function Hq6SalesListView({
     canSelectPage,
     sort,
     setSort,
+    reset,
   } = useServerListPage({
     queryKey: ["sales", tenantId, saleStatus ?? "all", "hq6"],
     enabled: Boolean(tenantId),
@@ -230,6 +230,9 @@ export function Hq6SalesListView({
     search: search,
     defaultPageSize: HQ6_TABLE_PAGE_SIZE,
     defaultSort: { sortBy: "date", sortDir: "desc" },
+    // Warm the next page so Next feels instant after first paint.
+    prefetchPagesAhead: 1,
+    staleTime: 5 * 60_000,
     fetchPage: (cursor, limit, listSort, opts) =>
       getSalesPage(
         tenantId!,
@@ -248,7 +251,20 @@ export function Hq6SalesListView({
     },
   });
 
-  const commitSearch = () => setSearch(localSearch);
+  // Load filter dropdowns after rows — don't compete with first paint.
+  const customersQuery = useQuery({
+    queryKey: ["customers", tenantId, "sale-filter"],
+    queryFn: () => getCustomers(tenantId!),
+    enabled: Boolean(tenantId) && !isLoading,
+    staleTime: 5 * 60_000,
+  });
+
+  const serviceStaffQuery = useQuery({
+    queryKey: ["service-staff", tenantId, "sale-filter"],
+    queryFn: () => getServiceStaff(tenantId!, undefined, { limit: 200 }),
+    enabled: Boolean(tenantId) && !isLoading,
+    staleTime: 5 * 60_000,
+  });
 
   const handleExport = () => {
     exportList(
@@ -261,6 +277,8 @@ export function Hq6SalesListView({
         { key: "location", header: "Location" },
         { key: "paymentStatus", header: "Payment Status" },
         { key: "paymentMethod", header: "Payment Method" },
+        { key: "paymentNote", header: "Payment note" },
+        { key: "serviceStaff", header: "Service staff" },
         { key: "total", header: "Total amount" },
         { key: "totalPaid", header: "Total paid" },
         { key: "sellDue", header: "Sell Due" },
@@ -273,6 +291,11 @@ export function Hq6SalesListView({
         location: businessLocationName(row.locationCode, config?.businessLocations) ?? "—",
         paymentStatus: formatHq6PaymentStatus(row.paymentStatus),
         paymentMethod: formatHq6PaymentMethod(row.paymentMethod),
+        paymentNote: row.paymentNote ?? "",
+        serviceStaff:
+          row.serviceStaffEmployeeName?.trim() ||
+          row.cleanerName?.trim() ||
+          "",
         total: row.total,
         totalPaid: row.totalPaid ?? 0,
         sellDue: row.sellDue ?? 0,
@@ -292,6 +315,9 @@ export function Hq6SalesListView({
         const isDraft =
           saleStatus === "draft" || row.recordStatus === "draft";
         const isProvisional = isQuotation || isDraft;
+        const showAddPayment =
+          !isProvisional &&
+          canAddPaymentForStatus(row.paymentStatus, row.sellDue);
         const editPath = isQuotation
           ? `/${tenantCode}/add-quotation?edit=${row.id}`
           : isDraft
@@ -323,6 +349,49 @@ export function Hq6SalesListView({
             label: "Edit",
             onClick: () => router.push(editPath),
           },
+          // Add Payment only for open balances (due / partial) — not paid, not drafts.
+          ...(showAddPayment
+            ? [
+                {
+                  id: "add_payment",
+                  label: "Add Payment",
+                  dividerBefore: true,
+                  onClick: () => {
+                    if (tenantId) {
+                      prefetchPaymentAccountsRef(queryClient, tenantId);
+                    }
+                    setPaySale(row);
+                  },
+                },
+              ]
+            : []),
+          ...(!isProvisional
+            ? [
+                {
+                  id: "view_payments",
+                  label: "View Payments",
+                  dividerBefore: !showAddPayment,
+                  onClick: () => {
+                    if (tenantId) {
+                      prefetchSalePaymentsModal(queryClient, tenantId, row.id);
+                    }
+                    setPaymentsSale(row);
+                  },
+                },
+              ]
+            : [
+                {
+                  id: "view_payments",
+                  label: "View Payments",
+                  dividerBefore: true,
+                  onClick: () => {
+                    if (tenantId) {
+                      prefetchSalePaymentsModal(queryClient, tenantId, row.id);
+                    }
+                    setPaymentsSale(row);
+                  },
+                },
+              ]),
           ...(isProvisional
             ? [
                 {
@@ -359,17 +428,6 @@ export function Hq6SalesListView({
             label: "Delivery Note",
             onClick: () =>
               setPrintDoc({ sale: row, kind: "delivery_note" as const }),
-          },
-          {
-            id: "view_payments",
-            label: "View Payments",
-            dividerBefore: true,
-            onClick: () => {
-              if (tenantId) {
-                prefetchSaleListModals(queryClient, tenantId, row.id);
-              }
-              setPaymentsSale(row);
-            },
           },
           {
             id: "sell_return",
@@ -505,7 +563,7 @@ export function Hq6SalesListView({
           key: "addedBy",
           header: "Added By",
           sortable: false,
-          render: (row) => row.createdByName ?? "",
+          render: (row) => row.createdByName ?? "—",
         },
         actionColumn,
       ];
@@ -562,21 +620,33 @@ export function Hq6SalesListView({
           key: "paymentStatus",
           header: "Payment Status",
           render: (row) => (
-            <span
+            <button
+              type="button"
               className={cn(
                 "hq6-pay-badge",
                 paymentBadgeClass(row.paymentStatus),
               )}
+              title="View Payments"
+              onClick={(e) => {
+                e.stopPropagation();
+                if (tenantId) {
+                  prefetchSalePaymentsModal(queryClient, tenantId, row.id);
+                }
+                setPaymentsSale(row);
+              }}
             >
               {formatHq6PaymentStatus(row.paymentStatus)}
-            </span>
+            </button>
           ),
         },
         {
           key: "serviceStaff",
           header: "Service staff",
           sortable: false,
-          render: (row) => row.serviceStaffEmployeeName ?? "",
+          render: (row) =>
+            row.serviceStaffEmployeeName?.trim() ||
+            row.cleanerName?.trim() ||
+            "—",
         },
       ];
     }
@@ -615,6 +685,15 @@ export function Hq6SalesListView({
         render: (row) => row.customerPhone ?? "—",
       },
       {
+        key: "serviceStaff",
+        header: "Service staff",
+        sortable: false,
+        render: (row) =>
+          row.serviceStaffEmployeeName?.trim() ||
+          row.cleanerName?.trim() ||
+          "—",
+      },
+      {
         key: "locationCode",
         header: "Location",
         sortable: false,
@@ -624,14 +703,23 @@ export function Hq6SalesListView({
         key: "paymentStatus",
         header: "Payment Status",
         render: (row) => (
-          <span
+          <button
+            type="button"
             className={cn(
               "hq6-pay-badge",
               paymentBadgeClass(row.paymentStatus),
             )}
+            title="View Payments"
+            onClick={(e) => {
+              e.stopPropagation();
+              if (tenantId) {
+                prefetchSalePaymentsModal(queryClient, tenantId, row.id);
+              }
+              setPaymentsSale(row);
+            }}
           >
             {formatHq6PaymentStatus(row.paymentStatus)}
-          </span>
+          </button>
         ),
       },
       {
@@ -639,6 +727,12 @@ export function Hq6SalesListView({
         header: "Payment Method",
         sortable: false,
         render: (row) => formatHq6PaymentMethod(row.paymentMethod),
+      },
+      {
+        key: "paymentNote",
+        header: "Payment note",
+        sortable: false,
+        render: (row) => row.paymentNote ?? "",
       },
       {
         key: "total",
@@ -687,7 +781,7 @@ export function Hq6SalesListView({
         key: "addedBy",
         header: "Added By",
         sortable: false,
-        render: (row) => row.createdByName ?? "",
+        render: (row) => row.createdByName ?? "—",
       },
       {
         key: "sellNote",
@@ -707,12 +801,6 @@ export function Hq6SalesListView({
         sortable: false,
         render: (row) => row.shippingAddress ?? "",
       },
-      {
-        key: "serviceStaff",
-        header: "Service staff",
-        sortable: false,
-        render: (row) => row.serviceStaffEmployeeName ?? "",
-      },
     ];
   }, [actionColumn, config?.businessLocations, saleStatus, shipmentsOnly]);
 
@@ -723,6 +811,24 @@ export function Hq6SalesListView({
         .map((c) => ({ key: c.key, label: String(c.header || c.key) })),
     [columns],
   );
+
+  // Saved column prefs from before newer columns existed omit them — force on.
+  useEffect(() => {
+    const keys = chrome.visibleColumnKeys;
+    if (!keys) return;
+    const missing: string[] = [];
+    for (const key of ["serviceStaff", "customerPhone"] as const) {
+      if (keys.includes(key)) continue;
+      if (!columnOptions.some((c) => c.key === key)) continue;
+      missing.push(key);
+    }
+    if (missing.length === 0) return;
+    chrome.setVisibleColumnKeys([...keys, ...missing]);
+  }, [
+    chrome.visibleColumnKeys,
+    chrome.setVisibleColumnKeys,
+    columnOptions,
+  ]);
 
   const effectiveColumns = useMemo(() => {
     if (!chrome.visibleColumnKeys) return columns;
@@ -812,9 +918,8 @@ export function Hq6SalesListView({
         onExport={handleExport}
         pageSize={pageSize}
         onPageSizeChange={setPageSize}
-        searchValue={localSearch}
-        onSearchChange={setLocalSearch}
-        onSearchCommit={commitSearch}
+        searchValue={search}
+        onSearchChange={setSearch}
         searchPlaceholder="Search ..."
         columnOptions={columnOptions}
         chrome={chrome}
@@ -869,6 +974,16 @@ export function Hq6SalesListView({
               options={(customersQuery.data ?? []).map((c) => ({
                 value: c.id,
                 label: c.businessName || c.name,
+              }))}
+            />
+            <Hq6FilterSelect
+              label="Service staff"
+              value={serviceStaffFilter}
+              onChange={setServiceStaffFilter}
+              emptyLabel="All"
+              options={(serviceStaffQuery.data ?? []).map((e) => ({
+                value: e.id,
+                label: e.name,
               }))}
             />
           </Hq6FilterGrid>
@@ -979,12 +1094,40 @@ export function Hq6SalesListView({
               onClose={() => setDeleteTarget(null)}
               onConfirm={() => {
                 if (!tenantId || !deleteTarget || deleting) return;
+                const target = deleteTarget;
                 setDeleting(true);
-                void deleteSale(tenantId, deleteTarget.id)
+                void deleteSale(tenantId, target.id)
                   .then(async () => {
-                    toast.success(`Deleted sale ${deleteTarget.reference}`);
+                    toast.success(`Deleted sale ${target.reference}`);
                     setDeleteTarget(null);
+                    // Drop the row immediately so the table never paints a
+                    // stale cursor page that can error after Soft-delete.
+                    queryClient.setQueriesData(
+                      { queryKey: ["sales", tenantId] },
+                      (prev: unknown) => {
+                        if (!prev || typeof prev !== "object") return prev;
+                        const page = prev as {
+                          items?: Sale[];
+                          hasMore?: boolean;
+                          totalCount?: number;
+                        };
+                        if (!Array.isArray(page.items)) return prev;
+                        return {
+                          ...page,
+                          items: page.items.filter((row) => row.id !== target.id),
+                          totalCount:
+                            typeof page.totalCount === "number"
+                              ? Math.max(0, page.totalCount - 1)
+                              : page.totalCount,
+                        };
+                      },
+                    );
+                    reset();
                     await queryClient.invalidateQueries({ queryKey: ["sales"] });
+                    await queryClient.invalidateQueries({ queryKey: ["items"] });
+                    await queryClient.invalidateQueries({
+                      queryKey: ["catalog"],
+                    });
                   })
                   .catch((err) => {
                     toast.error(
@@ -1082,10 +1225,45 @@ export function Hq6SalesListView({
                       invoiceNo: paymentsSale.reference,
                       date: paymentsSale.date ?? paymentsSale.createdAt,
                       paymentStatus: paymentsSale.paymentStatus,
+                      remainingDue: paymentsSale.sellDue,
                     }
                   : null
               }
               onClose={() => setPaymentsSale(null)}
+              onAddPayment={
+                paymentsSale &&
+                canAddPaymentForStatus(
+                  paymentsSale.paymentStatus,
+                  paymentsSale.sellDue,
+                )
+                  ? () => {
+                      const sale = paymentsSale;
+                      if (tenantId) {
+                        prefetchPaymentAccountsRef(queryClient, tenantId);
+                      }
+                      // Close View Payments and open Add Payment together.
+                      setPaymentsSale(null);
+                      setPaySale(sale);
+                    }
+                  : undefined
+              }
+            />
+            <Hq6PaySaleModal
+              open={Boolean(paySale)}
+              sale={paySale}
+              tenantId={tenantId}
+              onClose={() => setPaySale(null)}
+              onPaid={() => {
+                void queryClient.invalidateQueries({ queryKey: ["sales"] });
+                if (paySale) {
+                  void queryClient.invalidateQueries({
+                    queryKey: modalKeys.saleView(tenantId, paySale.id),
+                  });
+                  void queryClient.invalidateQueries({
+                    queryKey: modalKeys.salePayments(tenantId, paySale.id),
+                  });
+                }
+              }}
             />
             <Hq6InvoiceUrlModal
               open={Boolean(invoiceUrlSale)}

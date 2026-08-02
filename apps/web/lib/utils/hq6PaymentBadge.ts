@@ -18,3 +18,21 @@ export function hq6PaymentBadgeProps(
     className: cn("hq6-pay-badge", hq6PaymentBadgeClass(status)),
   };
 }
+
+/**
+ * UPOS rule: Add Payment when the invoice/PO still has an open balance.
+ * Prefer remainingDue > 0. Status due/partial/overdue also shows the button
+ * (even if amount is briefly 0) so the Due badge matches the toolbar.
+ */
+export function canAddPaymentForStatus(
+  paymentStatus: string | null | undefined,
+  remainingDue?: number | null,
+): boolean {
+  const key = (paymentStatus ?? "").toLowerCase().trim();
+  if (remainingDue != null && remainingDue > 1e-6) return true;
+  if (key === "paid") return false;
+  if (key === "due" || key === "partial" || key === "overdue") return true;
+  // Unknown status: only if we don't know the due amount, or it's open.
+  if (!key) return remainingDue == null || remainingDue > 1e-6;
+  return false;
+}

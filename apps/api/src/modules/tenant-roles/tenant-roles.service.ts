@@ -12,7 +12,7 @@ import type {
   TenantRole,
   UpdateTenantRoleRequest,
 } from '@vonos/types';
-import { TENANT_ROLE_DEMO_NAMES } from '@vonos/types';
+import { TENANT_ROLE_DEMO_NAMES, HR_ROLE_DEFAULT_PERMISSIONS, isHrRoleName } from '@vonos/types';
 import { TenantDbService } from '../../common/prisma/tenant-db.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { CacheService } from '../../common/cache/cache.service';
@@ -61,7 +61,12 @@ function roleCatalogEntries(): Array<{
 
   return [...byKey.entries()].map(([key, name]) => {
     const legacy = LEGACY_ROLE_BY_NAME.get(key);
-    const permissions = legacy?.permissions ?? [];
+    let permissions = legacy?.permissions ?? [];
+    // HR roles get a safe default matrix (users + payroll, no finance) when
+    // the legacy seed has nothing checked.
+    if (permissions.length === 0 && isHrRoleName(name)) {
+      permissions = [...HR_ROLE_DEFAULT_PERMISSIONS];
+    }
     return {
       name,
       permissions,
@@ -84,8 +89,11 @@ export class TenantRolesService {
 
   async list(filters: { search?: string } = {}): Promise<TenantRole[]> {
     const tenantId = this.tenantDb.requireTenantId();
-    // Keep the same role catalog available in every operating app.
-    await this.ensureDefaultsForAllOperatingTenants();
+    // Seed the catalog for the tenant being viewed only. Looping every operating
+    // tenant here cost ~2 round-trips × 8 tenants on each roles page load, which
+    // was slow enough on a remote DB to look like an empty/hung list — and let a
+    // single misconfigured tenant break the roles page for all of them.
+    await this.ensureDefaults(tenantId);
     await this.backfillEmptyLegacyPermissions(tenantId);
 
     const rows = await this.tenantDb.db.tenantRole.findMany({
@@ -117,12 +125,21 @@ export class TenantRolesService {
   }
 
   async create(dto: CreateTenantRoleRequest): Promise<TenantRole> {
-    const tenantId = this.tenantDb.requireTenantId();
+    let tenantId = this.tenantDb.requireTenantId();
+    // VAG itself does not hold entity job roles — create against the first
+    // operating tenant, then propagate to every other entity.
+    if (tenantId === 'tenant_vag_001') {
+      const first = OPERATING_TENANTS.find((t) => t.code !== 'VAG');
+      if (!first) {
+        throw new BadRequestException('No operating tenant available for roles');
+      }
+      tenantId = first.id;
+    }
     await ensureOperatingTenant(this.prisma, tenantId);
     const name = dto.name.trim();
     if (!name) throw new BadRequestException('Role name is required');
 
-    const clash = await this.tenantDb.db.tenantRole.findFirst({
+    const clash = await this.prisma.tenantRole.findFirst({
       where: {
         tenantId,
         deletedAt: null,
@@ -140,7 +157,9 @@ export class TenantRolesService {
     const isServiceStaff =
       Boolean(dto.isServiceStaff) || permissions.includes('is_service_staff');
 
-    const row = await this.tenantDb.db.tenantRole.create({
+    // Use unscoped prisma when remapped from VAG so auto tenant inject can't
+    // write the role onto tenant_vag_001 (which has no job-role catalog).
+    const row = await this.prisma.tenantRole.create({
       data: {
         tenantId,
         name,
@@ -149,6 +168,7 @@ export class TenantRolesService {
         locked,
       },
     });
+    // Always mirror the role onto every operating entity.
     await this.propagateRoleToOtherTenants({
       name,
       permissions,
@@ -242,6 +262,11 @@ export class TenantRolesService {
       where: { tenantRoleId: id },
       data: { tenantRoleId: null },
     });
+    // Soft-delete the same role name on every other operating entity.
+    await this.propagateRoleDeleteToOtherTenants({
+      name: existing.name,
+      sourceTenantId: tenantId,
+    });
     void invalidateTenantDashboardCache(this.cache, tenantId);
   }
 
@@ -333,6 +358,10 @@ export class TenantRolesService {
       });
 
       if (existing) {
+        if (existing.locked || existing.name.toLowerCase() === 'admin') {
+          // Never overwrite locked Admin roles on peer tenants.
+          continue;
+        }
         await this.prisma.tenantRole.update({
           where: { id: existing.id },
           data: {
@@ -351,6 +380,40 @@ export class TenantRolesService {
             isServiceStaff: args.isServiceStaff,
             locked: args.locked,
           },
+        });
+      }
+      void invalidateTenantDashboardCache(this.cache, tenant.id);
+    }
+  }
+
+  /** Soft-delete matching role names on peer tenants (skips locked Admin). */
+  private async propagateRoleDeleteToOtherTenants(args: {
+    name: string;
+    sourceTenantId: string;
+  }): Promise<void> {
+    const matchName = args.name.trim().toLowerCase();
+    if (!matchName || matchName === 'admin') return;
+
+    for (const tenant of OPERATING_TENANTS) {
+      if (tenant.code === 'VAG' || tenant.id === args.sourceTenantId) continue;
+
+      const peers = await this.prisma.tenantRole.findMany({
+        where: {
+          tenantId: tenant.id,
+          deletedAt: null,
+          name: { equals: matchName, mode: 'insensitive' },
+        },
+        select: { id: true, locked: true, name: true },
+      });
+      for (const peer of peers) {
+        if (peer.locked || peer.name.toLowerCase() === 'admin') continue;
+        await this.prisma.tenantRole.update({
+          where: { id: peer.id },
+          data: { deletedAt: new Date() },
+        });
+        await this.prisma.user.updateMany({
+          where: { tenantRoleId: peer.id },
+          data: { tenantRoleId: null },
         });
       }
       void invalidateTenantDashboardCache(this.cache, tenant.id);
@@ -407,8 +470,6 @@ export class TenantRolesService {
   private async backfillEmptyLegacyPermissions(
     tenantId: string,
   ): Promise<void> {
-    if (LEGACY_ROLE_BY_NAME.size === 0) return;
-
     const empty = await this.prisma.tenantRole.findMany({
       where: {
         tenantId,
@@ -423,14 +484,18 @@ export class TenantRolesService {
     for (const row of empty) {
       if (row.locked || row.name.trim().toLowerCase() === 'admin') continue;
       const legacy = LEGACY_ROLE_BY_NAME.get(row.name.trim().toLowerCase());
-      if (!legacy || legacy.permissions.length === 0) continue;
+      let permissions = legacy?.permissions ?? [];
+      if (permissions.length === 0 && isHrRoleName(row.name)) {
+        permissions = [...HR_ROLE_DEFAULT_PERMISSIONS];
+      }
+      if (permissions.length === 0) continue;
       await this.prisma.tenantRole.update({
         where: { id: row.id },
         data: {
-          permissions: legacy.permissions,
+          permissions,
           isServiceStaff:
-            legacy.isServiceStaff ||
-            legacy.permissions.includes('is_service_staff'),
+            Boolean(legacy?.isServiceStaff) ||
+            permissions.includes('is_service_staff'),
         },
       });
       changed = true;

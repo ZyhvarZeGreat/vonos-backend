@@ -79,6 +79,7 @@ export class ItemsController {
     @Query('availableForRetail') availableForRetail?: string,
     @Query('sortBy') sortBy?: string,
     @Query('sortDir') sortDir?: string,
+    @Query('includeSummary') includeSummary?: string,
   ) {
     const filters: ItemFilters & { availableForRetail?: boolean } = {
       status,
@@ -91,6 +92,7 @@ export class ItemsController {
       limit: limit ? Number(limit) : undefined,
       sortBy,
       sortDir: sortDir === 'asc' || sortDir === 'desc' ? sortDir : undefined,
+      includeSummary: includeSummary === 'false' ? false : undefined,
     };
     if (availableForRetail === 'true') {
       filters.availableForRetail = true;

@@ -173,16 +173,25 @@ export function WarehouseInventoryView() {
         key: "actions",
         header: "Actions",
         sortable: false,
-        render: () => (
+        render: (row) => (
           <div className="text-right">
-            <button type="button" className="text-muted hover:text-foreground" aria-label="Row actions">
+            <button
+              type="button"
+              className="text-muted hover:text-foreground"
+              aria-label="View item"
+              title="View item"
+              onClick={(e) => {
+                e.stopPropagation();
+                goToDetail(row.id);
+              }}
+            >
               <MoreHorizontal className="inline h-4 w-4" />
             </button>
           </div>
         ),
       },
     ],
-    [config?.businessLocations],
+    [config?.businessLocations, goToDetail],
   );
 
   return (

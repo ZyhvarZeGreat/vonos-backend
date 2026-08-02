@@ -1,4 +1,5 @@
 import { getTenantByCode, isTenantCode } from "@/lib/registries/tenants";
+import { stripBasePath } from "@/lib/utils/basePath";
 import {
   adminViewingTenantId,
   useAdminEntityStore,
@@ -22,7 +23,9 @@ export function resolveViewingTenantId(): string | null {
   }
 
   if (typeof window !== "undefined") {
-    const parts = window.location.pathname.split("/").filter(Boolean);
+    const parts = stripBasePath(window.location.pathname)
+      .split("/")
+      .filter(Boolean);
     const segment = parts[0];
 
     // During entity switch, API calls may run before the URL updates — scope to target.

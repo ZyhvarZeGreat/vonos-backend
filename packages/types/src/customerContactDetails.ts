@@ -64,6 +64,10 @@ export interface CustomerContactDetails {
   customField8?: string | null;
   customField9?: string | null;
   customField10?: string | null;
+  /** HRM employee (worker) responsible for this contact — see Employee.id. */
+  assignedToEmployeeId?: string | null;
+  /** Cached employee name for display (resolved at write time). */
+  assignedToEmployeeName?: string | null;
 }
 
 export const CONTACT_CUSTOM_FIELD_KEYS: ContactCustomFieldKey[] = [
@@ -114,6 +118,8 @@ export function emptyCustomerContactDetails(): CustomerContactDetails {
     customField8: null,
     customField9: null,
     customField10: null,
+    assignedToEmployeeId: null,
+    assignedToEmployeeName: null,
   };
 }
 
@@ -174,5 +180,7 @@ export function parseCustomerContactDetails(
     customField8: str(o.customField8),
     customField9: str(o.customField9),
     customField10: str(o.customField10),
+    assignedToEmployeeId: str(o.assignedToEmployeeId),
+    assignedToEmployeeName: str(o.assignedToEmployeeName),
   };
 }

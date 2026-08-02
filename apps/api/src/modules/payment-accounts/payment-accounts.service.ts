@@ -19,6 +19,7 @@ import {
   withListPageCache,
 } from '../../common/utils/listPageCache';
 import { toIso, toNumber } from '../../common/utils/serializers';
+import { isPickerPaymentAccountName } from '../../common/utils/paymentAccountPicker';
 
 @Injectable()
 export class PaymentAccountsService {
@@ -110,12 +111,19 @@ export class PaymentAccountsService {
     cursor?: string;
     limit?: number;
     search?: string;
+    /** Open cash/bank tills for payment pickers (excludes closed + chart junk). */
+    openOnly?: boolean;
+    /** Skip balance aggregation — pickers only need id/name. */
+    lite?: boolean;
   } = {}): Promise<PaymentAccount[]> {
     const tenantId = this.tenantDb.requireTenantId();
     const filterKey = listPageFilterKey({
       search: filters.search,
       cursor: filters.cursor,
       limit: filters.limit ?? 10,
+      // v3: all open tills (cash + banks), not a 3-name whitelist
+      openOnly: filters.openOnly ? 'picker-v3' : 0,
+      lite: filters.lite ? 1 : 0,
     });
     return withListPageCache(
       this.cache,
@@ -131,9 +139,54 @@ export class PaymentAccountsService {
       cursor?: string;
       limit?: number;
       search?: string;
+      openOnly?: boolean;
+      lite?: boolean;
     },
     tenantId: string,
   ): Promise<PaymentAccount[]> {
+    // Payment pickers: all open tills (cash + banks), excluding chart junk.
+    if (filters.openOnly) {
+      const take = Math.min(Math.max(filters.limit ?? 40, 1), 200);
+      const allOpen = await this.tenantDb.db.paymentAccount.findMany({
+        where: {
+          tenantId,
+          deletedAt: null,
+          isClosed: false,
+          ...(filters.search
+            ? {
+                OR: [
+                  {
+                    name: { contains: filters.search, mode: 'insensitive' },
+                  },
+                  {
+                    accountNumber: {
+                      contains: filters.search,
+                      mode: 'insensitive',
+                    },
+                  },
+                ],
+              }
+            : {}),
+        },
+        orderBy: [{ name: 'asc' }, { id: 'asc' }],
+        // Over-fetch slightly so in-memory name filter still fills the page.
+        take: take * 3,
+      });
+      const usable = allOpen
+        .filter((row) => isPickerPaymentAccountName(row.name))
+        .slice(0, take);
+      // Pickers don't need live balances — skip the extra aggregate round-trip.
+      if (filters.lite) {
+        return Promise.all(usable.map((row) => this.serializeRow(row, 0)));
+      }
+      const balances = await this.balancesForAccounts(
+        usable.map((row) => row.id),
+      );
+      return Promise.all(
+        usable.map((row) => this.serializeRow(row, balances.get(row.id) ?? 0)),
+      );
+    }
+
     const pagination = buildCompositeCursorQuery({
       sortField: 'name',
       sortDir: 'asc',
@@ -164,9 +217,10 @@ export class PaymentAccountsService {
       take: pagination.take,
     });
 
-    const balances = await this.balancesForAccounts(rows.map((row) => row.id));
+    const page = rows.slice(0, filters.limit ?? 10);
+    const balances = await this.balancesForAccounts(page.map((row) => row.id));
     return Promise.all(
-      rows.map((row) => this.serializeRow(row, balances.get(row.id) ?? 0)),
+      page.map((row) => this.serializeRow(row, balances.get(row.id) ?? 0)),
     );
   }
 

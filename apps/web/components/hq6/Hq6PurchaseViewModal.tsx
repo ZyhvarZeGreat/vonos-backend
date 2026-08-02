@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Printer } from "lucide-react";
 import type { StockMovement, StockMovementListRow } from "@vonos/types";
 import { Hq6Modal } from "@/components/hq6/Hq6Modal";
@@ -49,6 +49,7 @@ export function Hq6PurchaseViewModal({
   const { tenantId: routeTenantId, config, tenantName } = useRouteTenant();
   const effectiveTenantId = tenantId ?? routeTenantId;
 
+  const queryClient = useQueryClient();
   const seeded: StockMovement | null =
     initialPurchase && purchaseId && initialPurchase.id === purchaseId
       ? stockMovementSeedFromListRow(initialPurchase, "inbound")
@@ -56,7 +57,14 @@ export function Hq6PurchaseViewModal({
 
   const { data: bundle, isLoading, isFetching } = useQuery({
     queryKey: modalKeys.purchaseView(effectiveTenantId, purchaseId),
-    queryFn: () => getPurchaseView(effectiveTenantId!, purchaseId!),
+    queryFn: async () => {
+      const data = await getPurchaseView(effectiveTenantId!, purchaseId!);
+      queryClient.setQueryData(
+        modalKeys.purchasePayments(effectiveTenantId, purchaseId),
+        data.payments,
+      );
+      return data;
+    },
     enabled: Boolean(open && effectiveTenantId && purchaseId),
     staleTime: MODAL_RECORD_STALE_MS,
     placeholderData: (prev) =>

@@ -5,6 +5,7 @@ import type { InvoiceListRow, Payroll } from "@vonos/types";
 import { formatCurrency } from "@/lib/utils/formatCurrency";
 import { formatDate } from "@/lib/utils/formatDate";
 import { amountToWords } from "@/lib/utils/amountToWords";
+import { publicAssetPath } from "@/lib/utils/basePath";
 import { cn } from "@/lib/utils/cn";
 
 export interface PayslipLine {
@@ -262,7 +263,7 @@ export function PayrollPayslipDocument({
         <div className="flex items-start justify-between gap-6">
           <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-full border border-neutral-200 bg-white">
             <Image
-              src="/brand/vonos-autos-logo.png"
+              src={publicAssetPath("/brand/vonos-autos-logo.png")}
               alt="Vonos Autos"
               fill
               className="object-contain p-1.5"

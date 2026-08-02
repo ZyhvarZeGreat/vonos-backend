@@ -4,7 +4,7 @@ import { Hq6DateTimeInput } from "@/components/hq6/Hq6DateTimeInput";
 
 import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/atoms/Button";
 import { EmptyState } from "@/components/atoms/EmptyState";
 import { type ColumnConfig } from "@/components/organisms/DataTable";
@@ -14,7 +14,7 @@ import { PaymentAccountFormModal } from "@/components/organisms/PaymentAccountMo
 import { getAccountBookPage, getPaymentsPage } from "@/lib/api/payments";
 import {
   getPaymentAccount,
-  getPaymentAccounts,
+  getPaymentAccountsForPicker,
   updatePaymentAccount,
 } from "@/lib/api/paymentAccounts";
 import { updateSalePayment } from "@/lib/api/sales";
@@ -258,12 +258,15 @@ interface PaymentRow {
   invoiceRef: string;
   amount: number;
   paymentType: string;
+  /** Display name, or empty when not linked */
   account: string;
+  linked: boolean;
   description: string;
 }
 
 export function PaymentsListView() {
-  const { tenantId } = useRouteTenant();
+  const { tenantId, tenantCode } = useRouteTenant();
+  const router = useRouter();
   const queryClient = useQueryClient();
   const searchParams = useSearchParams();
   const unlinkedOnly =
@@ -280,8 +283,8 @@ export function PaymentsListView() {
   const [editAccountId, setEditAccountId] = useState("");
 
   const { data: paymentAccounts = [] } = useQuery({
-    queryKey: ["payment-accounts", tenantId, "payments-edit"],
-    queryFn: () => getPaymentAccounts(tenantId!),
+    queryKey: ["payment-accounts", tenantId, "picker-v3"],
+    queryFn: () => getPaymentAccountsForPicker(tenantId!),
     enabled: Boolean(editing && tenantId),
   });
 
@@ -321,14 +324,15 @@ export function PaymentsListView() {
         invoiceRef: payment.saleReference ?? "—",
         amount: payment.amount,
         paymentType: payment.isReturn ? "Return" : "Payment",
-        account: payment.accountName ?? "—",
+        account: payment.accountName?.trim() || "",
+        linked: Boolean(payment.accountId && payment.accountName),
         description: payment.paymentFor ?? payment.note ?? "—",
       })),
     [data],
   );
 
   const accountOptions = useMemo(
-    () => uniqueFieldOptions(rows, "account").filter((o) => o.value !== "—"),
+    () => uniqueFieldOptions(rows.filter((r) => r.linked), "account"),
     [rows],
   );
 
@@ -361,7 +365,7 @@ export function PaymentsListView() {
         accountId: editAccountId || null,
       });
     },
-    successMessage: "Payment updated",
+    successMessage: "Payment linked to account",
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["payments", tenantId] });
       await queryClient.invalidateQueries({
@@ -370,6 +374,23 @@ export function PaymentsListView() {
       setEditing(null);
     },
   });
+
+  const openEdit = (record: PaymentRecord) => {
+    if (!record.saleId) {
+      toast.error("Expense / non-sale payments edit from Expenses.");
+      return;
+    }
+    setEditing(record);
+    setEditAmount(String(record.amount));
+    setEditMethod(record.method ?? "cash");
+    setEditNote(record.note ?? "");
+    setEditPaidOn(
+      record.paidOn
+        ? record.paidOn.slice(0, 16)
+        : new Date().toISOString().slice(0, 16),
+    );
+    setEditAccountId(record.accountId ?? "");
+  };
 
   const columns: ColumnConfig<PaymentRow>[] = useMemo(
     () => [
@@ -383,7 +404,26 @@ export function PaymentsListView() {
         render: (row) => formatCurrency(row.amount, "NGN"),
       },
       { key: "paymentType", header: "Payment Type" },
-      { key: "account", header: "Account" },
+      {
+        key: "linked",
+        header: "Link status",
+        render: (row) =>
+          row.linked ? (
+            <span className="text-emerald-700 font-medium">Linked</span>
+          ) : (
+            <span className="text-red-700 font-medium">Not linked</span>
+          ),
+      },
+      {
+        key: "account",
+        header: "Payment account",
+        render: (row) =>
+          row.linked ? (
+            <span>{row.account}</span>
+          ) : (
+            <span className="text-red-600 italic">None — pick account via Edit</span>
+          ),
+      },
       {
         key: "description",
         header: "Description",
@@ -402,23 +442,10 @@ export function PaymentsListView() {
               className="text-sky-600"
               disabled={!canEdit}
               onClick={() => {
-                if (!record?.saleId) {
-                  toast.error("Expense / non-sale payments edit from Expenses.");
-                  return;
-                }
-                setEditing(record);
-                setEditAmount(String(record.amount));
-                setEditMethod(record.method ?? "cash");
-                setEditNote(record.note ?? "");
-                setEditPaidOn(
-                  record.paidOn
-                    ? record.paidOn.slice(0, 16)
-                    : new Date().toISOString().slice(0, 16),
-                );
-                setEditAccountId(record.accountId ?? "");
+                if (record) openEdit(record);
               }}
             >
-              Edit
+              {row.linked ? "Edit" : "Link account"}
             </Button>
           );
         },
@@ -427,12 +454,24 @@ export function PaymentsListView() {
     [data],
   );
 
+  const paymentsBase = tenantCode ? `/${tenantCode}/payments` : "/payments";
+
   return (
     <>
       <ListPageShell
-        tabs={[{ id: "all", label: unlinkedOnly ? "Unlinked Payments" : "All Payments" }]}
-        activeTab="all"
-        onTabChange={() => {}}
+        tabs={[
+          { id: "all", label: "All payments" },
+          { id: "unlinked", label: "Not linked to account" },
+        ]}
+        activeTab={unlinkedOnly ? "unlinked" : "all"}
+        onTabChange={(tabId) => {
+          if (!tenantCode) return;
+          if (tabId === "unlinked") {
+            router.push(`${paymentsBase}?unlinked=1`);
+          } else {
+            router.push(paymentsBase);
+          }
+        }}
         showImport={false}
         searchValue={search}
         onSearchChange={setSearch}
@@ -450,22 +489,53 @@ export function PaymentsListView() {
               { value: "Return", label: "Return" },
             ],
           },
-          {
-            id: "account",
-            label: "Account",
-            value: accountFilter,
-            onChange: setAccountFilter,
-            options: accountOptions,
-          },
+          ...(unlinkedOnly
+            ? []
+            : [
+                {
+                  id: "account",
+                  label: "Account",
+                  value: accountFilter,
+                  onChange: setAccountFilter,
+                  options: accountOptions,
+                },
+              ]),
         ]}
       >
+        {unlinkedOnly ? (
+          <div className="alert alert-warning mb-3" role="status">
+            These sale payments have <b>no Payment Account</b>. They match the
+            red count on Payment Accounts. Use <b>Link account</b> → pick
+            till/bank → save. After that, Link status becomes Linked and the
+            amount shows on that account&apos;s book.
+          </div>
+        ) : (
+          <div className="text-sm text-slate-600 mb-3">
+            <b>Linked</b> = Payment account shows a till/bank name.{" "}
+            <b>Not linked</b> = None. Use the{" "}
+            <button
+              type="button"
+              className="text-sky-700 underline font-medium"
+              onClick={() =>
+                tenantCode && router.push(`${paymentsBase}?unlinked=1`)
+              }
+            >
+              Not linked to account
+            </button>{" "}
+            tab (same list as View Details on Payment Accounts).
+          </div>
+        )}
         <ServerPaginatedTable
           items={filtered}
           columns={columns}
           pagination={serverPaginationBarProps(listPage)}
           isLoading={isLoading}
           error={error ? "Failed to load payments" : null}
-          emptyState={{ message: "No payments recorded yet." }}
+          emptyState={{
+            message: unlinkedOnly
+              ? "No unlinked payments — every sale payment has an account."
+              : "No payments recorded yet.",
+          }}
         />
       </ListPageShell>
 

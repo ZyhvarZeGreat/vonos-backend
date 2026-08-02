@@ -208,7 +208,11 @@ export function AddProductForm({
   const brandOptions = useMemo(
     () => [
       { value: "", label: "Please Select" },
-      ...brands.map((row) => ({ value: row.name, label: row.name })),
+      // De-dupe by name — legacy data can carry duplicate brands, which would
+      // otherwise render duplicate <option> keys.
+      ...[...new Set(brands.map((row) => row.name?.trim()).filter(Boolean))].map(
+        (name) => ({ value: name as string, label: name as string }),
+      ),
     ],
     [brands],
   );

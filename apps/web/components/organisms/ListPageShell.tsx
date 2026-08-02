@@ -229,7 +229,7 @@ function Hq6ListPageShell({
   primaryAction,
   children,
   contentClassName,
-  searchDebounceMs: _searchDebounceMs = 300,
+  searchDebounceMs = 300,
   hq6Title,
   hq6Subtitle,
   hq6PageChrome = true,
@@ -248,7 +248,11 @@ function Hq6ListPageShell({
     searchPlaceholder === "Search ..." || searchPlaceholder === "Search …"
       ? copy.searchPlaceholder
       : searchPlaceholder;
-  const { localSearch, setLocalSearch } = useCommittedSearch(searchValue);
+  const { localSearch, setLocalSearch } = useDebouncedSearch(
+    searchValue,
+    onSearchChange,
+    searchDebounceMs,
+  );
   const [printOpen, setPrintOpen] = useState(false);
   const [columnsOpen, setColumnsOpen] = useState(false);
   const [columnModalKeys, setColumnModalKeys] = useState<string[]>([]);
@@ -484,14 +488,6 @@ function Hq6ListPageShell({
                 }
               }}
             />
-            <button
-              type="button"
-              className="hq6-search-btn"
-              aria-label="Search"
-              onClick={() => onSearchChange?.(localSearch)}
-            >
-              Search
-            </button>
           </div>
         ) : null}
       </div>
@@ -802,14 +798,6 @@ function DefaultListPageShell({
                   className="min-w-0 flex-1 border-none bg-transparent text-sm text-foreground outline-none placeholder:text-muted"
                 />
               </div>
-              <button
-                type="button"
-                className="inline-flex shrink-0 items-center justify-center border-l border-border bg-[#2563eb] px-3 text-sm font-semibold text-white hover:bg-[#1d4ed8]"
-                aria-label="Search"
-                onClick={() => onSearchChange?.(localSearch)}
-              >
-                Search
-              </button>
             </div>
           ) : null}
         </div>

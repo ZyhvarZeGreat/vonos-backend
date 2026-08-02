@@ -11,14 +11,18 @@ import {
   withListPageCache,
 } from '../../common/utils/listPageCache';
 import {
+  HQ6_LIST_WARM_LIMITS,
+  hq6WarmSorts,
+} from '../../common/utils/hq6ListWarm';
+import {
   breakdownFromOnHand,
   reservedQtyBySku,
 } from '../../common/utils/availableStock';
 import { serializeItem } from '../items/items.mapper';
 import { applyLastPurchasePrices } from '../../common/utils/lastPurchasePrices';
 import {
+  itemTextSearchWhere,
   relationStringOr,
-  tokenizedSearchWhere,
 } from '../../common/utils/listSearch';
 
 @Injectable()
@@ -129,18 +133,14 @@ export class CatalogService {
                 : []),
               ...(filters.search
                 ? [
-                    tokenizedSearchWhere(filters.search, (token, contains) => [
-                      { name: contains },
-                      { sku: contains },
-                      { category: contains },
-                      { subCategory: contains },
-                      { carModel: contains },
-                      { description: contains },
-                      { unit: contains },
-                      { binLocation: contains },
-                      { locationCode: contains },
-                      relationStringOr('brand', 'name', contains),
-                    ])!,
+                    // Prefer indexed name/sku (btree + trigram); brand/carModel only on fuzzy path.
+                    itemTextSearchWhere(filters.search, {
+                      extraFuzzyFields: (_token, contains) => [
+                        { carModel: contains },
+                        { category: contains },
+                        relationStringOr('brand', 'name', contains),
+                      ],
+                    })!,
                   ]
                 : []),
             ],
@@ -284,5 +284,67 @@ export class CatalogService {
       serializeItem(row),
     ]);
     return withAvailable!;
+  }
+}
+
+/** Boot/cron: seed HQ6 products list (catalog resource, name/asc, limit 25). */
+export async function warmDefaultCatalogListPages(
+  prisma: import('@prisma/client').PrismaClient,
+  cache: CacheService,
+  tenantId: string,
+): Promise<void> {
+
+  for (const limit of HQ6_LIST_WARM_LIMITS) {
+    for (const sort of hq6WarmSorts({ sortBy: 'name', sortDir: 'asc' })) {
+      for (const includeSummary of [false, true] as const) {
+        const filterKey = listPageFilterKey({
+          search: undefined,
+          status: undefined,
+          category: undefined,
+          locationCode: undefined,
+          unit: undefined,
+          brandName: undefined,
+          availableForRetail: '',
+          cursor: undefined,
+          limit,
+          sortBy: sort.sortBy,
+          sortDir: sort.sortDir,
+          sum: includeSummary ? 1 : 0,
+        });
+        await withListPageCache(
+          cache,
+          tenantId,
+          'catalog',
+          filterKey,
+          async () => {
+            const baseWhere = {
+              tenantId,
+              deletedAt: null as null,
+            };
+            const [rows, totalCount] = await Promise.all([
+              prisma.item.findMany({
+                where: baseWhere,
+                include: { brand: { select: { name: true } } },
+                orderBy: [{ name: 'asc' }, { id: 'asc' }],
+                take: limit,
+              }),
+              includeSummary
+                ? prisma.item.count({ where: baseWhere })
+                : Promise.resolve(undefined as number | undefined),
+            ]);
+            const items = await applyLastPurchasePrices(
+              prisma,
+              tenantId,
+              rows.map(serializeItem),
+            );
+            if (!includeSummary || totalCount == null) {
+              return { items };
+            }
+            return { items, totalCount };
+          },
+          600,
+        );
+      }
+    }
   }
 }

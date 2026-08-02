@@ -19,10 +19,22 @@ import {
 } from "@/lib/api/fetchAllPages";
 import { appendListQuery, fetchTenantListPage } from "@/lib/api/listPageHelpers";
 import { nameListCursor } from "@/lib/utils/pagination";
+import { createAsyncTtlCache } from "@/lib/utils/asyncTtlCache";
 
 export type { SupplierListRow };
 
 const LIST_PATH = "/suppliers";
+
+/** Short-lived typeahead option cache — see customers.ts for rationale. */
+const supplierOptionCache = createAsyncTtlCache<SupplierListRow[]>({
+  ttlMs: 30_000,
+  maxEntries: 200,
+});
+
+/** Drop cached supplier option lists (call after supplier mutations). */
+export function clearSupplierOptionCache(): void {
+  supplierOptionCache.clear();
+}
 
 export interface SupplierKpiSummary {
   totalSuppliers: number;
@@ -117,9 +129,23 @@ export async function getSuppliers(
   tenantId: string,
   filters?: SupplierFilters,
 ): Promise<SupplierListRow[]> {
-  return fetchFirstPage(
-    (cursor, limit) => fetchSuppliersRaw(tenantId, cursor, limit, filters),
+  const cacheKey = JSON.stringify([
+    tenantId,
+    filters?.search ?? "",
     filters?.limit ?? TYPEAHEAD_PAGE_SIZE,
+    filters?.status ?? "",
+    filters?.assignedToUserId ?? "",
+  ]);
+  return supplierOptionCache.get(cacheKey, () =>
+    fetchFirstPage(
+      (cursor, limit) =>
+        fetchSuppliersRaw(tenantId, cursor, limit, {
+          ...filters,
+          // Always skip count/agg on typeahead — keeps search snappy.
+          includeSummary: false,
+        }),
+      filters?.limit ?? TYPEAHEAD_PAGE_SIZE,
+    ),
   );
 }
 
@@ -174,6 +200,7 @@ export async function createSupplier(body: CreateSupplierRequest): Promise<Suppl
     body: JSON.stringify(body),
   });
   if (!response.ok) return throwApiError(response, "Failed to create supplier");
+  clearSupplierOptionCache();
   return response.json();
 }
 
@@ -187,6 +214,7 @@ export async function updateSupplier(
     body: JSON.stringify(body),
   });
   if (!response.ok) return throwApiError(response, "Failed to update supplier");
+  clearSupplierOptionCache();
   return response.json();
 }
 
@@ -206,6 +234,7 @@ export async function setSupplierStatus(
   if (!response.ok) {
     return throwApiError(response, "Failed to update supplier status");
   }
+  clearSupplierOptionCache();
   return response.json();
 }
 
@@ -241,6 +270,7 @@ export async function importSuppliers(
     body: JSON.stringify({ csv }),
   });
   if (!response.ok) throw new Error("Failed to import suppliers");
+  clearSupplierOptionCache();
   return response.json();
 }
 
@@ -251,6 +281,7 @@ export async function deleteSupplier(tenantId: string, id: string): Promise<void
   if (!response.ok) {
     return throwApiError(response, "Failed to delete supplier");
   }
+  clearSupplierOptionCache();
 }
 
 export async function paySupplierDue(

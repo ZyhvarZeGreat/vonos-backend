@@ -121,6 +121,44 @@ export async function syncSalePaymentAccountCredit(
   });
 }
 
+/**
+ * Replaces the payment-account debit for a purchase payment: remove prior
+ * linked rows, then create a fresh debit when accountId is set.
+ */
+export async function syncPurchasePaymentAccountDebit(
+  db: DbClient,
+  input: {
+    tenantId: string;
+    paymentId: string;
+    accountId: string | null;
+    amount: number;
+    operationDate: Date;
+    refNo?: string | null;
+    note?: string | null;
+    paymentMethod?: string | null;
+    createdByName?: string | null;
+  },
+): Promise<void> {
+  await softDeletePaymentAccountTxns(db, {
+    tenantId: input.tenantId,
+    paymentId: input.paymentId,
+  });
+  if (!input.accountId) return;
+  await recordPaymentAccountTxn(db, {
+    tenantId: input.tenantId,
+    accountId: input.accountId,
+    type: 'debit',
+    subType: 'purchase_payment',
+    amount: input.amount,
+    operationDate: input.operationDate,
+    refNo: input.refNo,
+    note: input.note,
+    paymentMethod: input.paymentMethod,
+    paymentId: input.paymentId,
+    createdByName: input.createdByName,
+  });
+}
+
 /** Soft-deletes open book rows tied to an Expense. */
 export async function softDeleteExpenseAccountTxns(
   db: DbClient,

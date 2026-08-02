@@ -33,6 +33,18 @@ import {
   type ListPage,
 } from "@/lib/api/fetchAllPages";
 import { appendListQuery, fetchTenantListPage } from "@/lib/api/listPageHelpers";
+import { createAsyncTtlCache } from "@/lib/utils/asyncTtlCache";
+
+/** Short-lived typeahead cache for the worker/staff pickers — see customers.ts. */
+const employeeOptionCache = createAsyncTtlCache<Employee[]>({
+  ttlMs: 30_000,
+  maxEntries: 200,
+});
+
+/** Drop cached employee/service-staff option lists (call after HRM mutations). */
+export function clearEmployeeOptionCache(): void {
+  employeeOptionCache.clear();
+}
 
 const PAYROLL_PATH = "/hrm/payroll";
 const PAYROLL_GROUPS_PATH = "/hrm/payroll-groups";
@@ -275,31 +287,48 @@ export async function createDesignation(
 export async function getServiceStaff(
   tenantId: string,
   search?: string,
+  opts?: { limit?: number },
 ): Promise<Employee[]> {
-  const tenantPath = withTenantQuery(EMPLOYEES_PATH, tenantId);
-  const url = appendListQuery(tenantPath, {
-    search,
-    serviceStaffOnly: "true",
-    limit: TYPEAHEAD_PAGE_SIZE,
+  const limit = opts?.limit ?? TYPEAHEAD_PAGE_SIZE;
+  const cacheKey = JSON.stringify(["service", tenantId, search ?? "", limit]);
+  return employeeOptionCache.get(cacheKey, async () => {
+    const tenantPath = withTenantQuery(EMPLOYEES_PATH, tenantId);
+    const url = appendListQuery(tenantPath, {
+      search,
+      serviceStaffOnly: "true",
+      limit,
+    });
+    const res = await apiFetch(url);
+    if (!res.ok) throw new Error("Failed to fetch service staff");
+    return asArray<Employee>(await res.json());
   });
-  const res = await apiFetch(url);
-  if (!res.ok) throw new Error("Failed to fetch service staff");
-  return asArray<Employee>(await res.json());
 }
 
 /** Typeahead options — never dumps the full catalog. */
 export async function getEmployees(
   tenantId: string,
   search?: string,
+  opts?: { designationId?: string; serviceStaffOnly?: boolean },
 ): Promise<Employee[]> {
-  const tenantPath = withTenantQuery(EMPLOYEES_PATH, tenantId);
-  const url = appendListQuery(tenantPath, {
-    search,
-    limit: TYPEAHEAD_PAGE_SIZE,
+  const cacheKey = JSON.stringify([
+    "employees",
+    tenantId,
+    search ?? "",
+    opts?.designationId ?? "",
+    opts?.serviceStaffOnly ? 1 : 0,
+  ]);
+  return employeeOptionCache.get(cacheKey, async () => {
+    const tenantPath = withTenantQuery(EMPLOYEES_PATH, tenantId);
+    const url = appendListQuery(tenantPath, {
+      search,
+      designationId: opts?.designationId,
+      ...(opts?.serviceStaffOnly ? { serviceStaffOnly: "true" } : {}),
+      limit: TYPEAHEAD_PAGE_SIZE,
+    });
+    const res = await apiFetch(url);
+    if (!res.ok) throw new Error("Failed to fetch employees");
+    return asArray<Employee>(await res.json());
   });
-  const res = await apiFetch(url);
-  if (!res.ok) throw new Error("Failed to fetch employees");
-  return asArray<Employee>(await res.json());
 }
 
 export async function getEmployeesPage(
@@ -322,6 +351,7 @@ export async function createEmployee(
     body: JSON.stringify(dto),
   });
   if (!res.ok) return throwApiError(res, "Failed to create employee");
+  clearEmployeeOptionCache();
   return res.json();
 }
 
@@ -347,6 +377,7 @@ export async function syncEmployeeWorkLocations(
   if (!res.ok) {
     return throwApiError(res, "Failed to update work locations");
   }
+  clearEmployeeOptionCache();
   return res.json();
 }
 

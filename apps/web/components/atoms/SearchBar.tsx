@@ -38,7 +38,6 @@ export function SearchBar({
           withButton
             ? "rounded-l-lg rounded-r-none border-r-0 px-3"
             : "rounded-lg pl-9 pr-3",
-          showShortcut && !withButton && "pr-14",
         )}
         {...props}
         onChange={(event) => {
@@ -67,11 +66,6 @@ export function SearchBar({
         >
           Search
         </button>
-      ) : null}
-      {showShortcut && !withButton ? (
-        <div className="pointer-events-none absolute right-3 top-1/2 flex -translate-y-1/2 items-center justify-center rounded bg-[var(--color-surface-muted)] px-1.5 py-0.5 text-xs font-medium text-muted">
-          ⌘K
-        </div>
       ) : null}
     </div>
   );

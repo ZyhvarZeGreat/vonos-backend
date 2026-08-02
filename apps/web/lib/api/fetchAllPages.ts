@@ -5,7 +5,7 @@ export const DEFAULT_TABLE_PAGE_SIZE = 10;
  * HQ6 / Ultimate POS list default (Show 25/50/100…).
  * Matches ui-audit list screenshots (Products etc. default to 50).
  */
-export const HQ6_TABLE_PAGE_SIZE = 50;
+export const HQ6_TABLE_PAGE_SIZE = 25;
 
 /** @deprecated Use DEFAULT_TABLE_PAGE_SIZE */
 export const DEFAULT_LIST_LIMIT = DEFAULT_TABLE_PAGE_SIZE;

@@ -127,6 +127,7 @@ export const HQ6_SALE_ROW_ACTIONS: Hq6RowActionSpec[] = [
   action("packing_slip", "Packing Slip", "modal", "opened_modal"),
   action("delivery_note", "Delivery Note", "modal", "opened_modal"),
   action("view_payments", "View Payments", "modal", "opened_modal"),
+  action("add_payment", "Add payment", "modal", "opened_modal"),
   action("sell_return", "Sell Return", "route", "navigated_subpage"),
   action("invoice_url", "Invoice URL", "modal", "opened_modal"),
 ];

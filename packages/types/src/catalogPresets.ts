@@ -10,6 +10,15 @@ export const PRODUCT_STOCK_LOCATION_CODES = ["VW", "VISP", "VSP"] as const;
 export type ProductStockLocationCode =
   (typeof PRODUCT_STOCK_LOCATION_CODES)[number];
 
+/**
+ * Job/service tenants that consume group stock (VW/VISP/VSP) or purchase —
+ * they do not maintain their own sellable product catalog.
+ */
+export const GROUP_STOCK_CONSUMER_CODES = ["VA", "VP"] as const;
+
+export type GroupStockConsumerCode =
+  (typeof GROUP_STOCK_CONSUMER_CODES)[number];
+
 export const PRODUCT_STOCK_BUSINESS_LOCATIONS: BusinessLocation[] = [
   { code: "VW", name: "Vonos Warehouse" },
   { code: "VISP", name: "Vonos Institute Spare Parts" },
@@ -26,6 +35,15 @@ export function isProductStockLocationCode(
 
 export function isProductStockTenant(code: string | null | undefined): boolean {
   return isProductStockLocationCode(code);
+}
+
+/** VA / VP — source parts from VW/VISP/VSP or purchases, not a local catalog. */
+export function isGroupStockConsumerTenant(
+  code: string | null | undefined,
+): boolean {
+  if (!code?.trim()) return false;
+  const upper = code.trim().toUpperCase();
+  return (GROUP_STOCK_CONSUMER_CODES as readonly string[]).includes(upper);
 }
 
 /** Legacy WordPress `business_locations` — branch / POS sites per entity. */
