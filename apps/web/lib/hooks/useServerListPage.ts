@@ -95,7 +95,7 @@ export function useServerListPage<T extends { id: string }>({
   defaultPageSize = DEFAULT_TABLE_PAGE_SIZE,
   debounceSearchMs = SEARCH_DEBOUNCE_MS,
   refetchInterval,
-  staleTime = 5 * 60_000,
+  staleTime = 10 * 60_000,
   prefetchPagesAhead = 1,
   retainPagesBehind = 2,
   getCursor,

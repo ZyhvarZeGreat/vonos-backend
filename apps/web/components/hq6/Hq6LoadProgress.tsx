@@ -3,8 +3,8 @@
 import { cn } from "@/lib/utils/cn";
 
 /**
- * In-place read-load progress — "Loading 42%" with a determinate bar.
- * Use while tables / invoice print payloads are fetching.
+ * In-place read-load hint for empty tables only (first paint).
+ * Prefer keeping previous rows over showing this during search refetch.
  */
 export function Hq6LoadProgress({
   percent,
@@ -12,13 +12,12 @@ export function Hq6LoadProgress({
   className,
   compact = false,
 }: {
-  percent: number;
+  /** Ignored for display — kept for call-site compatibility. */
+  percent?: number;
   label?: string;
   className?: string;
   compact?: boolean;
 }) {
-  const display = Math.round(Math.min(100, Math.max(0, percent)));
-
   return (
     <div
       className={cn(
@@ -26,31 +25,25 @@ export function Hq6LoadProgress({
         compact ? "py-2" : "py-6",
         className,
       )}
-      role="progressbar"
-      aria-valuemin={0}
-      aria-valuemax={100}
-      aria-valuenow={display}
-      aria-valuetext={`${label} ${display}%`}
-      aria-busy={display < 100}
+      role="status"
+      aria-busy
+      aria-live="polite"
     >
       <p
         className={cn(
-          "font-semibold tabular-nums text-[#3c8dbc]",
+          "font-medium text-[#6b7280]",
           compact ? "text-xs" : "text-sm",
         )}
       >
-        {label} {display}%
+        {label}…
       </p>
       <div
         className={cn(
           "w-full overflow-hidden rounded-full bg-[#e5e7eb]",
-          compact ? "h-1.5 max-w-[12rem]" : "h-2 max-w-[16rem]",
+          compact ? "h-1 max-w-[10rem]" : "h-1.5 max-w-[12rem]",
         )}
       >
-        <div
-          className="h-full rounded-full bg-[#3c8dbc] transition-[width] duration-100 ease-out"
-          style={{ width: `${display}%` }}
-        />
+        <div className="mutation-progress-bar h-full bg-[#3c8dbc]" />
       </div>
     </div>
   );

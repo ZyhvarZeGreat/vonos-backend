@@ -593,9 +593,11 @@ export function DataTable<T extends { id: string }>({
   }
 
   const showBodyLoading = isLoading || (isFetching && data.length === 0);
-  const showFetchOverlay = isFetching && !showBodyLoading && data.length > 0;
+  // Never overlay a "Loading N%" spinner on top of existing rows — keep showing
+  // cached / previous page while search or paging refetch runs.
+  const showFetchOverlay = false;
   const loadPercent = useSimulatedLoadPercent(
-    displayMode === "table" && (showBodyLoading || showFetchOverlay),
+    displayMode === "table" && showBodyLoading,
   );
 
   if (

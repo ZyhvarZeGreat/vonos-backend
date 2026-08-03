@@ -44,9 +44,9 @@ export function createQueryClient() {
     }),
     defaultOptions: {
       queries: {
-        staleTime: 5 * 60_000,
-        // Keep list/route data so revisiting a page paints from cache.
-        gcTime: 30 * 60_000,
+        staleTime: 10 * 60_000,
+        // Keep list/route data so revisiting / re-searching paints from cache.
+        gcTime: 45 * 60_000,
         refetchOnWindowFocus: false,
         retry: 1,
         meta: {
