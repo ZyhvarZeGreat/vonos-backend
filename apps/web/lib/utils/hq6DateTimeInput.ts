@@ -99,6 +99,15 @@ export function hq6DisplayToIsoLocal(
   return `${datePart}T${pad(hour)}:${pad(minute)}`;
 }
 
+/** Current local date (or date+time) as ISO local for form state. */
+export function nowIsoLocal(mode: Hq6DateTimeMode = "datetime"): string {
+  const d = new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const datePart = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  if (mode === "date") return datePart;
+  return `${datePart}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 /** Apply a typed digit under “start fresh with zeros” editing. */
 export function applyDigitToHq6Mask(
   currentDigits: string,

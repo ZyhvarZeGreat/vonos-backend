@@ -219,7 +219,7 @@ function InvoiceTableSection({
   detailed: boolean;
 }) {
   const [search, setSearch] = useState("");
-  const debouncedSearch = useDebouncedValue(search, 300);
+  const debouncedSearch = useDebouncedValue(search);
   const [pageSize, setPageSize] = useState(
     seed?.pageSize ?? TABLE_REPORT_PAGE_SIZE,
   );

@@ -2,7 +2,7 @@
 
 /**
  * HQ6 list search — live typing; parent should pass a value that drives
- * `useServerListPage` search (already debounced ~300ms). No Search button.
+ * `useServerListPage` search (debounced via SEARCH_DEBOUNCE_MS). No Search button.
  */
 export function Hq6DtSearchFilter({
   value,

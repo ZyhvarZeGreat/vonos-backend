@@ -4,6 +4,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import { ChevronDown } from "lucide-react";
 import { FloatingMenuPanel } from "@/components/molecules/FloatingMenuPanel";
 import type { MenuSelectOption } from "@/components/molecules/MenuSelect";
+import { SEARCH_DEBOUNCE_MS } from "@/lib/constants/search";
 import { cn } from "@/lib/utils/cn";
 
 export interface AsyncMenuSelectProps {
@@ -34,7 +35,7 @@ export function AsyncMenuSelect({
   placeholder = "Select…",
   className,
   disabled = false,
-  debounceMs = 300,
+  debounceMs = SEARCH_DEBOUNCE_MS,
   emptyMessage = "No matches",
 }: AsyncMenuSelectProps) {
   const listId = useId();
@@ -82,6 +83,8 @@ export function AsyncMenuSelect({
 
   useEffect(() => {
     if (!open) return;
+    // Show initial options immediately on open; debounce only while typing.
+    const delay = query.trim() ? debounceMs : 0;
     const handle = window.setTimeout(() => {
       const id = ++requestId.current;
       setLoading(true);
@@ -99,7 +102,7 @@ export function AsyncMenuSelect({
         .finally(() => {
           if (id === requestId.current) setLoading(false);
         });
-    }, debounceMs);
+    }, delay);
     return () => window.clearTimeout(handle);
   }, [open, query, loadOptions, debounceMs]);
 

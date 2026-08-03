@@ -1,6 +1,7 @@
 "use client";
 
 import { Hq6DateTimeInput } from "@/components/hq6/Hq6DateTimeInput";
+import { PaymentAccountSelect } from "@/components/hq6/PaymentAccountSelect";
 
 import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -11,10 +12,13 @@ import { type ColumnConfig } from "@/components/organisms/DataTable";
 import { ServerPaginatedTable } from "@/components/organisms/ServerPaginatedTable";
 import { ListPageShell } from "@/components/organisms/ListPageShell";
 import { PaymentAccountFormModal } from "@/components/organisms/PaymentAccountModals";
-import { getAccountBookPage, getPaymentsPage } from "@/lib/api/payments";
+import {
+  bulkLinkPayments,
+  getAccountBookPage,
+  getPaymentsPage,
+} from "@/lib/api/payments";
 import {
   getPaymentAccount,
-  getPaymentAccountsForPicker,
   updatePaymentAccount,
 } from "@/lib/api/paymentAccounts";
 import { updateSalePayment } from "@/lib/api/sales";
@@ -32,7 +36,6 @@ import {
 import { cn } from "@/lib/utils/cn";
 import type {
   AccountTransaction,
-  PaymentAccount,
   PaymentRecord,
 } from "@vonos/types";
 import { CatalogMetaListView } from "@/components/pages/CatalogMetaListView";
@@ -281,12 +284,10 @@ export function PaymentsListView() {
   const [editNote, setEditNote] = useState("");
   const [editPaidOn, setEditPaidOn] = useState("");
   const [editAccountId, setEditAccountId] = useState("");
-
-  const { data: paymentAccounts = [] } = useQuery({
-    queryKey: ["payment-accounts", tenantId, "picker-v3"],
-    queryFn: () => getPaymentAccountsForPicker(tenantId!),
-    enabled: Boolean(editing && tenantId),
-  });
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const [bulkAccountId, setBulkAccountId] = useState("");
+  const [bulkPaymentIds, setBulkPaymentIds] = useState<string[] | null>(null);
+  const [bulkProgress, setBulkProgress] = useState<string | null>(null);
 
   const apiFilters = useMemo(
     () => ({
@@ -343,6 +344,13 @@ export function PaymentsListView() {
     return next;
   }, [accountFilter, rows, typeFilter]);
 
+  const invalidatePaymentQueries = async () => {
+    await queryClient.invalidateQueries({ queryKey: ["payments", tenantId] });
+    await queryClient.invalidateQueries({
+      queryKey: ["payment-accounts", tenantId],
+    });
+  };
+
   const saveMutation = useAppMutation({
     mutationFn: async () => {
       if (!tenantId || !editing?.saleId) {
@@ -367,11 +375,64 @@ export function PaymentsListView() {
     },
     successMessage: "Payment linked to account",
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["payments", tenantId] });
-      await queryClient.invalidateQueries({
-        queryKey: ["payment-accounts", tenantId],
-      });
+      await invalidatePaymentQueries();
       setEditing(null);
+    },
+  });
+
+  const bulkLinkMutation = useAppMutation({
+    mutationFn: async () => {
+      if (!tenantId) throw new Error("No tenant");
+      if (!bulkAccountId.trim()) {
+        throw new Error("Select a Payment Account");
+      }
+      // Selected rows: one request. All unlinked: keep batching until done.
+      if (bulkPaymentIds && bulkPaymentIds.length > 0) {
+        setBulkProgress(`Linking ${bulkPaymentIds.length} selected…`);
+        return bulkLinkPayments(tenantId, {
+          accountId: bulkAccountId,
+          paymentIds: bulkPaymentIds,
+        });
+      }
+      let totalLinked = 0;
+      let remaining = Number.POSITIVE_INFINITY;
+      let accountName = "";
+      while (remaining > 0) {
+        setBulkProgress(
+          remaining === Number.POSITIVE_INFINITY
+            ? "Linking batch…"
+            : `Linked ${totalLinked} so far — ${remaining} left…`,
+        );
+        const result = await bulkLinkPayments(tenantId, {
+          accountId: bulkAccountId,
+          allUnlinked: true,
+          limit: 200,
+        });
+        totalLinked += result.linked;
+        remaining = result.remaining;
+        accountName = result.accountName;
+        if (result.linked === 0) break;
+      }
+      return {
+        linked: totalLinked,
+        skipped: 0,
+        remaining,
+        accountId: bulkAccountId,
+        accountName,
+      };
+    },
+    successMessage: (result) =>
+      `Linked ${result.linked} to ${result.accountName}` +
+      (result.remaining > 0 ? ` (${result.remaining} still unlinked)` : ""),
+    onSuccess: async () => {
+      await invalidatePaymentQueries();
+      setBulkOpen(false);
+      setBulkPaymentIds(null);
+      setBulkAccountId("");
+      setBulkProgress(null);
+    },
+    onError: () => {
+      setBulkProgress(null);
     },
   });
 
@@ -390,6 +451,13 @@ export function PaymentsListView() {
         : new Date().toISOString().slice(0, 16),
     );
     setEditAccountId(record.accountId ?? "");
+  };
+
+  const openBulk = (paymentIds: string[] | null) => {
+    setBulkPaymentIds(paymentIds);
+    setBulkAccountId("");
+    setBulkProgress(null);
+    setBulkOpen(true);
   };
 
   const columns: ColumnConfig<PaymentRow>[] = useMemo(
@@ -504,10 +572,18 @@ export function PaymentsListView() {
       >
         {unlinkedOnly ? (
           <div className="alert alert-warning mb-3" role="status">
-            These sale payments have <b>no Payment Account</b>. They match the
-            red count on Payment Accounts. Use <b>Link account</b> → pick
-            till/bank → save. After that, Link status becomes Linked and the
-            amount shows on that account&apos;s book.
+            <p className="mb-2">
+              These sale payments have <b>no Payment Account</b>. They match the
+              red count on Payment Accounts. Select rows and use{" "}
+              <b>Assign account</b>, or link everything in batches:
+            </p>
+            <button
+              type="button"
+              className="tw-dw-btn tw-dw-btn-primary tw-dw-btn-sm"
+              onClick={() => openBulk(null)}
+            >
+              Bulk link all unlinked…
+            </button>
           </div>
         ) : (
           <div className="text-sm text-slate-600 mb-3">
@@ -531,6 +607,18 @@ export function PaymentsListView() {
           pagination={serverPaginationBarProps(listPage)}
           isLoading={isLoading}
           error={error ? "Failed to load payments" : null}
+          selectable={unlinkedOnly}
+          bulkActions={
+            unlinkedOnly
+              ? [
+                  {
+                    id: "assign-account",
+                    label: "Assign account",
+                    onClick: (selectedIds) => openBulk(selectedIds),
+                  },
+                ]
+              : undefined
+          }
           emptyState={{
             message: unlinkedOnly
               ? "No unlinked payments — every sale payment has an account."
@@ -595,18 +683,10 @@ export function PaymentsListView() {
             </select>
           </Hq6Field>
           <Hq6Field label="Payment Account">
-            <select
-              className="form-control"
+            <PaymentAccountSelect
               value={editAccountId}
-              onChange={(e) => setEditAccountId(e.target.value)}
-            >
-              <option value="">None</option>
-              {paymentAccounts.map((a: PaymentAccount) => (
-                <option key={a.id} value={a.id}>
-                  {a.name}
-                </option>
-              ))}
-            </select>
+              onChange={setEditAccountId}
+            />
           </Hq6Field>
           <Hq6Field label="Payment note">
             <textarea
@@ -616,6 +696,60 @@ export function PaymentsListView() {
               onChange={(e) => setEditNote(e.target.value)}
             />
           </Hq6Field>
+        </div>
+      </Hq6Modal>
+
+      <Hq6Modal
+        open={bulkOpen}
+        onClose={() => {
+          if (bulkLinkMutation.isPending) return;
+          setBulkOpen(false);
+          setBulkProgress(null);
+        }}
+        title="Assign payment account"
+        size="md"
+        footer={
+          <>
+            <button
+              type="button"
+              className="tw-dw-btn"
+              disabled={bulkLinkMutation.isPending}
+              onClick={() => setBulkOpen(false)}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="tw-dw-btn tw-dw-btn-primary"
+              disabled={bulkLinkMutation.isPending || !bulkAccountId.trim()}
+              onClick={() => bulkLinkMutation.mutate()}
+            >
+              {bulkLinkMutation.isPending
+                ? "Linking…"
+                : bulkPaymentIds
+                  ? `Link ${bulkPaymentIds.length} selected`
+                  : "Link all unlinked (batches)"}
+            </button>
+          </>
+        }
+      >
+        <div className="space-y-3">
+          <p className="text-sm text-slate-600">
+            {bulkPaymentIds
+              ? `Assign a till/bank to ${bulkPaymentIds.length} selected payment(s). Credits will post to that account book.`
+              : "Assign one till/bank to every unlinked sale payment (in batches of 200 until none remain). Pick the account that should have received these payments historically — usually Cash or your main POS bank."}
+          </p>
+          <Hq6Field label="Payment Account *">
+            <PaymentAccountSelect
+              value={bulkAccountId}
+              onChange={setBulkAccountId}
+            />
+          </Hq6Field>
+          {bulkProgress ? (
+            <p className="text-sm text-sky-800" role="status">
+              {bulkProgress}
+            </p>
+          ) : null}
         </div>
       </Hq6Modal>
     </>

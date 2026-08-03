@@ -1,17 +1,26 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import type { AccountTransaction, PaymentRecord } from '@vonos/types';
 import { TenantDbService } from '../../common/prisma/tenant-db.service';
 import { CacheService } from '../../common/cache/cache.service';
+import { invalidateTenantDashboardCache } from '../../common/cache/cacheInvalidation';
 import { buildCompositeCursorQuery } from '../../common/utils/pagination';
 import {
   listPageFilterKey,
   withListPageCache,
 } from '../../common/utils/listPageCache';
+import { syncSalePaymentAccountCredit } from '../../common/utils/recordPaymentAccountTxn';
 import { toIso, toNumber } from '../../common/utils/serializers';
 import {
   relationStringOr,
   tokenizedSearchWhere,
 } from '../../common/utils/listSearch';
+
+const BULK_LINK_MAX = 500;
+const BULK_LINK_DEFAULT = 200;
 
 @Injectable()
 export class PaymentsService {
@@ -121,6 +130,135 @@ export class PaymentsService {
       createdByName: row.createdByName,
       createdAt: toIso(row.createdAt),
     }));
+  }
+
+  /**
+   * Assign a payment account to unlinked sale payments and post sale_payment
+   * credits. Pass paymentIds for a selection, or allUnlinked to process the
+   * next batch (default 200, max 500). Call again while remaining > 0.
+   */
+  async bulkLinkToAccount(body: {
+    accountId: string;
+    paymentIds?: string[];
+    allUnlinked?: boolean;
+    limit?: number;
+  }): Promise<{
+    linked: number;
+    skipped: number;
+    remaining: number;
+    accountId: string;
+    accountName: string;
+  }> {
+    const tenantId = this.tenantDb.requireTenantId();
+    const accountId = body.accountId?.trim() || '';
+    if (!accountId) {
+      throw new BadRequestException('Select a Payment Account');
+    }
+
+    const account = await this.tenantDb.db.paymentAccount.findFirst({
+      where: { id: accountId, tenantId, deletedAt: null },
+      select: { id: true, name: true, isClosed: true },
+    });
+    if (!account) {
+      throw new NotFoundException('Payment account not found');
+    }
+    if (account.isClosed) {
+      throw new BadRequestException('Cannot link payments to a closed account');
+    }
+
+    const ids = (body.paymentIds ?? [])
+      .map((id) => id.trim())
+      .filter(Boolean);
+    const batchLimit = Math.min(
+      Math.max(Number(body.limit) || BULK_LINK_DEFAULT, 1),
+      BULK_LINK_MAX,
+    );
+
+    if (!body.allUnlinked && ids.length === 0) {
+      throw new BadRequestException(
+        'Pass paymentIds or set allUnlinked to link a batch',
+      );
+    }
+
+    const unlinkedWhere = {
+      tenantId,
+      deletedAt: null,
+      isReturn: false,
+      accountId: null as string | null,
+      saleId: { not: null as string | null },
+    };
+
+    const targets = body.allUnlinked
+      ? await this.tenantDb.db.payment.findMany({
+          where: unlinkedWhere,
+          select: {
+            id: true,
+            amount: true,
+            paidOn: true,
+            createdAt: true,
+            paymentRefNo: true,
+            note: true,
+            method: true,
+            saleId: true,
+            createdByName: true,
+          },
+          orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+          take: batchLimit,
+        })
+      : await this.tenantDb.db.payment.findMany({
+          where: {
+            ...unlinkedWhere,
+            id: { in: ids },
+          },
+          select: {
+            id: true,
+            amount: true,
+            paidOn: true,
+            createdAt: true,
+            paymentRefNo: true,
+            note: true,
+            method: true,
+            saleId: true,
+            createdByName: true,
+          },
+        });
+
+    let linked = 0;
+    for (const payment of targets) {
+      if (!payment.saleId) continue;
+      await this.tenantDb.db.$transaction(async (tx) => {
+        await tx.payment.update({
+          where: { id: payment.id },
+          data: { accountId: account.id },
+        });
+        await syncSalePaymentAccountCredit(tx, {
+          tenantId,
+          paymentId: payment.id,
+          accountId: account.id,
+          amount: toNumber(payment.amount),
+          operationDate: payment.paidOn ?? payment.createdAt,
+          refNo: payment.paymentRefNo,
+          note: payment.note ?? 'Sale payment',
+          paymentMethod: payment.method,
+          saleId: payment.saleId,
+          createdByName: payment.createdByName,
+        });
+      });
+      linked += 1;
+    }
+
+    const remaining = await this.tenantDb.db.payment.count({
+      where: unlinkedWhere,
+    });
+    await invalidateTenantDashboardCache(this.cache, tenantId);
+
+    return {
+      linked,
+      skipped: Math.max(0, (body.allUnlinked ? targets.length : ids.length) - linked),
+      remaining,
+      accountId: account.id,
+      accountName: account.name,
+    };
   }
 
   async listAccountBook(

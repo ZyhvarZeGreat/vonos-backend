@@ -31,9 +31,7 @@ import {
 import { buildCompositeCursorQuery } from '../../common/utils/pagination';
 import type { PaginatedList } from '../../common/utils/paginatedList';
 import { parseCsv, pickCsvField } from '../../common/utils/csvImport';
-import {
-  tokenizedSearchWhere,
-} from '../../common/utils/listSearch';
+import { supplierTextSearchWhere } from '../../common/utils/listSearch';
 import {
   parseMovementLines,
   toIso,
@@ -197,35 +195,7 @@ export class SuppliersService {
       ...(filters.status === 'active' || filters.status === 'inactive'
         ? { status: filters.status }
         : {}),
-      ...(filters.search?.trim()
-        ? (() => {
-            const phrase = filters.search.trim();
-            const tokenized = tokenizedSearchWhere(phrase, (_token, contains) => [
-              { name: contains },
-              { contactName: contains },
-              { email: contains },
-              { phone: contains },
-              { address: contains },
-              { taxNumber: contains },
-              { notes: contains },
-              { locationCode: contains },
-            ]);
-            return {
-              OR: [
-                { name: { contains: phrase, mode: 'insensitive' as const } },
-                {
-                  contactName: {
-                    contains: phrase,
-                    mode: 'insensitive' as const,
-                  },
-                },
-                { phone: { contains: phrase, mode: 'insensitive' as const } },
-                { email: { contains: phrase, mode: 'insensitive' as const } },
-                ...(tokenized ? [tokenized] : []),
-              ],
-            };
-          })()
-        : {}),
+      ...(supplierTextSearchWhere(filters.search) ?? {}),
     };
 
     // Rows first; legacy IDs from warm map (0 RTT) or page-scoped IN (1 RTT).

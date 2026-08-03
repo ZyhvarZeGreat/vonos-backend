@@ -4,16 +4,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ListPage, ListSortState } from "@/lib/api/fetchAllPages";
 import { DEFAULT_TABLE_PAGE_SIZE } from "@/lib/api/fetchAllPages";
+import { SEARCH_DEBOUNCE_MS } from "@/lib/constants/search";
+import { useDebouncedValue } from "@/lib/hooks/useDebouncedValue";
 import { useUrlCursorPage } from "@/lib/hooks/useUrlCursorPage";
-
-function useDebouncedValue<T>(value: T, delayMs = 300): T {
-  const [debounced, setDebounced] = useState(value);
-  useEffect(() => {
-    const timer = window.setTimeout(() => setDebounced(value), delayMs);
-    return () => window.clearTimeout(timer);
-  }, [value, delayMs]);
-  return debounced;
-}
 
 /** Stable React Query key for one cursor page (primitives only — no object identity). */
 function listPageQueryKey(
@@ -100,7 +93,7 @@ export function useServerListPage<T extends { id: string }>({
   filters = {},
   search = "",
   defaultPageSize = DEFAULT_TABLE_PAGE_SIZE,
-  debounceSearchMs = 300,
+  debounceSearchMs = SEARCH_DEBOUNCE_MS,
   refetchInterval,
   staleTime = 5 * 60_000,
   prefetchPagesAhead = 1,

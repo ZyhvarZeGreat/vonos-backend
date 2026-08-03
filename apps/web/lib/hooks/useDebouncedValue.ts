@@ -1,9 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { SEARCH_DEBOUNCE_MS } from "@/lib/constants/search";
 
-/** Debounce a value — useful for report filter search before hitting the API. */
-export function useDebouncedValue<T>(value: T, delayMs = 400): T {
+/** Debounce a value — list search / filter typedown before hitting the API. */
+export function useDebouncedValue<T>(
+  value: T,
+  delayMs = SEARCH_DEBOUNCE_MS,
+): T {
   const [debounced, setDebounced] = useState(value);
 
   useEffect(() => {

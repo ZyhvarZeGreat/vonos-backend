@@ -1,4 +1,12 @@
-import { Controller, Get, Param, Query, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Post,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import {
   JwtAuthGuard,
   RolesGuard,
@@ -33,6 +41,20 @@ export class PaymentsController {
       cursor,
       limit: limit ? Number(limit) : undefined,
     });
+  }
+
+  /** Assign payment account to unlinked sale payments (+ book credits). */
+  @Post('bulk-link')
+  bulkLink(
+    @Body()
+    body: {
+      accountId: string;
+      paymentIds?: string[];
+      allUnlinked?: boolean;
+      limit?: number;
+    },
+  ) {
+    return this.service.bulkLinkToAccount(body);
   }
 
   @Get('account-book/:accountId')

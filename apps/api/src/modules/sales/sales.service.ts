@@ -33,10 +33,7 @@ import { AuditService } from '../audit/audit.service';
 import { InvoiceHubService } from '../invoices/invoice-hub.service';
 import { buildCompositeCursorQuery, decodeCompositeCursor } from '../../common/utils/pagination';
 import type { PaginatedList } from '../../common/utils/paginatedList';
-import {
-  relationStringOr,
-  tokenizedSearchWhere,
-} from '../../common/utils/listSearch';
+import { saleTextSearchWhere } from '../../common/utils/listSearch';
 import { resolveListSort } from '../../common/utils/listSort';
 import { computeStockStatus, movementLineRollups } from '../../common/utils/stockQuantity';
 import { adjustItemLocationStock } from '../../common/utils/itemLocationStock';
@@ -262,20 +259,7 @@ export class SalesService {
       sortValueType: sort.sortValueType,
     });
 
-    const searchWhere = tokenizedSearchWhere(search, (_token, contains) => [
-      { reference: contains },
-      { paymentMethod: contains },
-      { locationCode: contains },
-      { notes: contains },
-      { createdByName: contains },
-      { cleanerName: contains },
-      { shippingStatus: contains },
-      { trackingNumber: contains },
-      relationStringOr('customer', 'name', contains),
-      relationStringOr('customer', 'phone', contains),
-      relationStringOr('customer', 'email', contains),
-      relationStringOr('job', 'reference', contains),
-    ]);
+    const searchWhere = saleTextSearchWhere(search);
 
     const baseWhere = {
       tenantId,

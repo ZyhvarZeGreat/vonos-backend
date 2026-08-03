@@ -224,7 +224,7 @@ export function Hq6RolesListView() {
   const { tenantCode } = useRouteTenant();
   const { detailPath, listPath } = useRecordNavigation("roles");
   const [search, setSearch] = useState("");
-  const debouncedSearch = useDebouncedValue(search, 300);
+  const debouncedSearch = useDebouncedValue(search);
   const [deleteRole, setDeleteRole] = useState<TenantRole | null>(null);
   const [pageSize, setPageSize] = useState(50);
   const [pageIndex, setPageIndex] = useState(0);

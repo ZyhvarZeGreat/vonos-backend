@@ -1,5 +1,5 @@
-import type { AccountTransaction, PaymentRecord } from "@vonos/types";
 import { apiFetch, withTenantQuery } from "@/lib/api/client";
+import { throwApiError } from "@/lib/api/parseApiError";
 import {
   DEFAULT_TABLE_PAGE_SIZE,
   EXPORT_PAGE_SIZE,
@@ -70,6 +70,7 @@ export async function getPaymentsPage(
 ): Promise<ListPage<PaymentRecord>> {
   return fetchTenantListPage(PAYMENTS_PATH, tenantId, cursor, limit, {
     accountId: filters?.accountId,
+    unlinkedOnly: filters?.unlinkedOnly ? "1" : undefined,
     from: filters?.from,
     to: filters?.to,
     search: filters?.search,
@@ -137,6 +138,35 @@ export async function getPayments(
   return fetchFirstPage((cursor, limit) =>
     fetchPaymentsRaw(tenantId, filters, cursor, limit),
   );
+}
+
+export async function bulkLinkPayments(
+  tenantId: string,
+  body: {
+    accountId: string;
+    paymentIds?: string[];
+    allUnlinked?: boolean;
+    limit?: number;
+  },
+): Promise<{
+  linked: number;
+  skipped: number;
+  remaining: number;
+  accountId: string;
+  accountName: string;
+}> {
+  const response = await apiFetch(
+    withTenantQuery(`${PAYMENTS_PATH}/bulk-link`, tenantId),
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    },
+  );
+  if (!response.ok) {
+    return throwApiError(response, "Failed to link payments to account");
+  }
+  return response.json();
 }
 
 export async function getAccountBook(

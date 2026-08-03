@@ -489,7 +489,7 @@ html.upos-hq6 [data-hq6="true"] .hq6-page .table.table-bordered {
 html.upos-hq6 [data-hq6="true"] .hq6-page .table.table-bordered > thead > tr > th,
 html.upos-hq6 [data-hq6="true"] .hq6-page .table.table-bordered > tbody > tr > td {
   border-left: none !important;
-  border-right: none !important;
+  border-right: 1px solid rgba(0, 0, 0, 0.12) !important;
   border-top: none !important;
   border-bottom: none !important;
   vertical-align: middle !important;
@@ -498,6 +498,11 @@ html.upos-hq6 [data-hq6="true"] .hq6-page .table.table-bordered > tbody > tr > t
   text-transform: none !important;
   letter-spacing: normal !important;
   font-weight: 600;
+}
+
+html.upos-hq6 [data-hq6="true"] .hq6-page .table.table-bordered > thead > tr > th:last-child,
+html.upos-hq6 [data-hq6="true"] .hq6-page .table.table-bordered > tbody > tr > td:last-child {
+  border-right: none !important;
 }
 
 html.upos-hq6 [data-hq6="true"] .hq6-page .table.table-bordered > tbody > tr > td {
@@ -828,21 +833,32 @@ html.upos-shell #scrollable-container .mx-auto {
   margin-right: 0 !important;
 }
 
-/* ——— Tables: no heavy row rules (HQ6 AdminLTE — zebra only) ——— */
+/* ——— Tables: light vertical column rules (~12% opacity) ——— */
 html.upos-shell .hq6-page .table.table-bordered,
+html.upos-shell .hq6-page .hq6-roles-table,
+html.upos-shell .hq6-page .hq6-product-view-table {
+  border: none !important;
+}
 html.upos-shell .hq6-page .table.table-bordered > thead > tr > th,
 html.upos-shell .hq6-page .table.table-bordered > tbody > tr > td,
 html.upos-shell .hq6-page .table.table-bordered > tfoot > tr > td,
-html.upos-shell .hq6-page .hq6-roles-table,
 html.upos-shell .hq6-page .hq6-roles-table thead th,
 html.upos-shell .hq6-page .hq6-roles-table tbody td,
-html.upos-shell .hq6-page .hq6-product-view-table,
 html.upos-shell .hq6-page .hq6-product-view-table th,
 html.upos-shell .hq6-page .hq6-product-view-table td {
   border-left: none !important;
-  border-right: none !important;
+  border-right: 1px solid rgba(0, 0, 0, 0.12) !important;
   border-top: none !important;
   border-bottom: none !important;
+}
+html.upos-shell .hq6-page .table.table-bordered > thead > tr > th:last-child,
+html.upos-shell .hq6-page .table.table-bordered > tbody > tr > td:last-child,
+html.upos-shell .hq6-page .table.table-bordered > tfoot > tr > td:last-child,
+html.upos-shell .hq6-page .hq6-roles-table thead th:last-child,
+html.upos-shell .hq6-page .hq6-roles-table tbody td:last-child,
+html.upos-shell .hq6-page .hq6-product-view-table th:last-child,
+html.upos-shell .hq6-page .hq6-product-view-table td:last-child {
+  border-right: none !important;
 }
 html.upos-shell .hq6-page .table.table-bordered {
   border: none !important;

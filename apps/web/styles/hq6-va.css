@@ -651,9 +651,14 @@ html.upos-shell [data-hq6="true"] .hq6-page:not(.hq6-home) {
 html.upos-shell [data-hq6="true"] .hq6-roles-table thead th,
 html.upos-shell [data-hq6="true"] .hq6-roles-table tbody td {
   border-left: none !important;
-  border-right: none !important;
+  border-right: 1px solid rgba(0, 0, 0, 0.12) !important;
   border-top: none !important;
   border-bottom: none !important;
+}
+
+html.upos-shell [data-hq6="true"] .hq6-roles-table thead th:last-child,
+html.upos-shell [data-hq6="true"] .hq6-roles-table tbody td:last-child {
+  border-right: none !important;
 }
 
 [data-hq6="true"] .hq6-roles-empty {
@@ -1560,13 +1565,20 @@ html.upos-shell [data-hq6="true"] .hq6-dt-toolbar {
   font-weight: 700 !important;
   white-space: nowrap;
   border-bottom: 1px solid #f4f4f4 !important;
+  border-right: 1px solid rgba(0, 0, 0, 0.12) !important;
   padding-top: 0.55rem !important;
   padding-bottom: 0.55rem !important;
 }
 
 [data-hq6="true"] .hq6-table-wrap tbody td {
   border-bottom: none !important;
+  border-right: 1px solid rgba(0, 0, 0, 0.12) !important;
   vertical-align: middle;
+}
+
+[data-hq6="true"] .hq6-table-wrap thead th:last-child,
+[data-hq6="true"] .hq6-table-wrap tbody td:last-child {
+  border-right: none !important;
 }
 
 [data-hq6="true"] .hq6-table-wrap tbody tr:hover {
@@ -2194,6 +2206,7 @@ html.upos-shell .hq6-actions-toggle.tw-dw-btn {
 [data-hq6="true"] .table.table-bordered > thead > tr > th {
   background: #f8fafc !important;
   border: none !important;
+  border-right: 1px solid rgba(0, 0, 0, 0.12) !important;
   border-bottom: 1px solid #f4f4f4 !important;
   padding: 0.55rem 0.65rem !important;
   font-weight: 600;
@@ -2205,9 +2218,17 @@ html.upos-shell .hq6-actions-toggle.tw-dw-btn {
 [data-hq6="true"] .hq6-table-wrap tbody td,
 [data-hq6="true"] .table.table-bordered > tbody > tr > td {
   border: none !important;
+  border-right: 1px solid rgba(0, 0, 0, 0.12) !important;
   padding: 0.5rem 0.65rem !important;
   vertical-align: middle;
   text-align: left !important;
+}
+
+[data-hq6="true"] .hq6-table-wrap thead th:last-child,
+[data-hq6="true"] .hq6-table-wrap tbody td:last-child,
+[data-hq6="true"] .table.table-bordered > thead > tr > th:last-child,
+[data-hq6="true"] .table.table-bordered > tbody > tr > td:last-child {
+  border-right: none !important;
 }
 
 [data-hq6="true"] .hq6-table-wrap tbody tr:nth-child(odd) td,
@@ -3832,6 +3853,104 @@ textarea.hq6-form-input {
 
 .hq6-form-input-wrap {
   position: relative;
+}
+
+/* Date/time field with Now + calendar — fill the wrap, drop ghost icon padding. */
+.hq6-form-input-wrap:has(.hq6-dt-input-group) {
+  display: block;
+}
+
+.hq6-form-input-wrap:has(.hq6-dt-input-group) .hq6-form-input,
+.hq6-form-input-wrap .hq6-dt-input-group .hq6-form-input,
+.hq6-dt-input-group .hq6-form-input,
+.hq6-dt-input-group .hq6-dt-field {
+  padding-right: 12px;
+  width: 100%;
+  min-width: 0;
+}
+
+.hq6-dt-input-group {
+  display: flex;
+  align-items: stretch;
+  width: 100%;
+  gap: 0;
+  position: relative;
+}
+
+.hq6-dt-input-group .hq6-dt-field,
+.hq6-dt-input-group > input[type="text"] {
+  flex: 1 1 auto;
+  min-width: 0;
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.hq6-dt-native {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.hq6-dt-picker-btn,
+.hq6-dt-now-btn {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  border: 1px solid #d2d6de;
+  border-left: 0;
+  background: #f4f4f5;
+  color: #374151;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 0.65rem;
+  white-space: nowrap;
+}
+
+.hq6-dt-picker-btn {
+  min-width: 2.25rem;
+  color: #4b5563;
+}
+
+.hq6-dt-now-btn {
+  border-top-right-radius: 3px;
+  border-bottom-right-radius: 3px;
+  background: #2563eb;
+  border-color: #2563eb;
+  color: #fff;
+  padding: 0 0.75rem;
+}
+
+.hq6-dt-picker-btn:hover:not(:disabled),
+.hq6-dt-now-btn:hover:not(:disabled) {
+  filter: brightness(0.96);
+}
+
+.hq6-dt-picker-btn:disabled,
+.hq6-dt-now-btn:disabled,
+.hq6-dt-input-group.is-disabled .hq6-dt-picker-btn,
+.hq6-dt-input-group.is-disabled .hq6-dt-now-btn {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* Modal inputs use hq6-modal-input — match height with the addon buttons. */
+.hq6-dt-input-group .hq6-modal-input {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.hq6-modal-field .hq6-dt-input-group .hq6-dt-picker-btn,
+.hq6-modal-field .hq6-dt-input-group .hq6-dt-now-btn,
+.hq6-field .hq6-dt-input-group .hq6-dt-picker-btn,
+.hq6-field .hq6-dt-input-group .hq6-dt-now-btn {
+  min-height: 34px;
 }
 
 .hq6-form-input-wrap .hq6-form-input {

@@ -175,6 +175,62 @@ export function contactTextSearchWhere(
 }
 
 /**
+ * Supplier / vendor contact search — same phone / dense-token / fuzzy paths
+ * as customers, with supplier-specific fields.
+ */
+export function supplierTextSearchWhere(
+  search: string | undefined | null,
+): { AND: Array<{ OR: object[] }> } | undefined {
+  const raw = search?.trim();
+  if (!raw) return undefined;
+
+  if (isPhoneLikeLookup(raw)) {
+    const digits = raw.replace(/\D/g, '');
+    return {
+      AND: [
+        {
+          OR: [
+            { phone: equalsInsensitive(raw) },
+            { phone: startsWithInsensitive(raw) },
+            { phone: containsInsensitive(digits) },
+          ],
+        },
+      ],
+    };
+  }
+
+  if (isSkuLikeLookup(raw)) {
+    const token = tokenizeListSearch(raw)[0]!;
+    return {
+      AND: [
+        {
+          OR: [
+            { name: startsWithInsensitive(token) },
+            { name: containsInsensitive(token) },
+            { contactName: startsWithInsensitive(token) },
+            { contactName: containsInsensitive(token) },
+            { email: startsWithInsensitive(token) },
+            { taxNumber: startsWithInsensitive(token) },
+            { phone: startsWithInsensitive(token) },
+          ],
+        },
+      ],
+    };
+  }
+
+  return tokenizedSearchWhere(raw, (_token, contains) => [
+    { name: contains },
+    { contactName: contains },
+    { email: contains },
+    { phone: contains },
+    { address: contains },
+    { taxNumber: contains },
+    { notes: contains },
+    { locationCode: contains },
+  ]);
+}
+
+/**
  * Build a Prisma `AND` of per-token `OR` clauses so multi-word queries
  * match when every token hits at least one field (e.g. "camry brake pad").
  *
@@ -191,6 +247,69 @@ export function tokenizedSearchWhere<T extends object>(
       OR: fieldsForToken(token, containsInsensitive(token)),
     })),
   };
+}
+
+/**
+ * Sales / invoice list search:
+ * - invoice-like single token → equality + prefix on reference (btree-friendly)
+ *   plus customer name/phone prefix
+ * - else → tokenized contains across sale + customer fields
+ */
+export function saleTextSearchWhere(
+  search: string | undefined | null,
+): { AND: Array<{ OR: object[] }> } | undefined {
+  const raw = search?.trim();
+  if (!raw) return undefined;
+
+  if (isPhoneLikeLookup(raw)) {
+    const digits = raw.replace(/\D/g, '');
+    return {
+      AND: [
+        {
+          OR: [
+            { customer: { phone: equalsInsensitive(raw) } },
+            { customer: { phone: startsWithInsensitive(raw) } },
+            { customer: { phone: containsInsensitive(digits) } },
+          ],
+        },
+      ],
+    };
+  }
+
+  if (isSkuLikeLookup(raw)) {
+    const token = tokenizeListSearch(raw)[0]!;
+    return {
+      AND: [
+        {
+          OR: [
+            { reference: equalsInsensitive(token) },
+            { reference: startsWithInsensitive(token) },
+            { trackingNumber: equalsInsensitive(token) },
+            { trackingNumber: startsWithInsensitive(token) },
+            { customer: { name: startsWithInsensitive(token) } },
+            { customer: { name: containsInsensitive(token) } },
+            { customer: { phone: startsWithInsensitive(token) } },
+            { job: { reference: startsWithInsensitive(token) } },
+          ],
+        },
+      ],
+    };
+  }
+
+  return tokenizedSearchWhere(raw, (_token, contains) => [
+    { reference: contains },
+    { paymentMethod: contains },
+    { locationCode: contains },
+    { notes: contains },
+    { createdByName: contains },
+    { cleanerName: contains },
+    { shippingStatus: contains },
+    { trackingNumber: contains },
+    relationStringOr('customer', 'name', contains),
+    relationStringOr('customer', 'phone', contains),
+    relationStringOr('customer', 'email', contains),
+    relationStringOr('job', 'reference', contains),
+  ]);
 }
 
 /** Convenience: plain string columns on the root model. */

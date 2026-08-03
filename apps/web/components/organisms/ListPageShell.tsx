@@ -29,6 +29,7 @@ import {
 } from "@/lib/listTableBridge";
 import { downloadCsv, downloadExcelCsv } from "@/lib/utils/exportCsv";
 import { exportTablePdf } from "@/lib/utils/exportPdf";
+import { SEARCH_DEBOUNCE_MS } from "@/lib/constants/search";
 import { toast } from "@/stores/toastStore";
 
 export interface ListTab {
@@ -229,7 +230,7 @@ function Hq6ListPageShell({
   primaryAction,
   children,
   contentClassName,
-  searchDebounceMs = 300,
+  searchDebounceMs = SEARCH_DEBOUNCE_MS,
   hq6Title,
   hq6Subtitle,
   hq6PageChrome = true,
@@ -588,7 +589,7 @@ function DefaultListPageShell({
   children,
   className,
   contentClassName,
-  searchDebounceMs = 300,
+  searchDebounceMs = SEARCH_DEBOUNCE_MS,
   hq6Columns = [],
   hq6VisibleColumns,
   onHq6VisibleColumnsChange,

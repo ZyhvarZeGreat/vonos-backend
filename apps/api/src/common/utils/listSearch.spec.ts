@@ -1,6 +1,7 @@
 import {
   isSkuLikeLookup,
   itemTextSearchWhere,
+  saleTextSearchWhere,
   tokenizeListSearch,
 } from './listSearch';
 
@@ -44,5 +45,26 @@ describe('listSearch', () => {
   it('skips 1-character fuzzy tokens', () => {
     const where = itemTextSearchWhere('a brake');
     expect(where?.AND).toHaveLength(1);
+  });
+
+  it('uses prefix/equality for invoice-like sale search', () => {
+    const where = saleTextSearchWhere('2024/001');
+    expect(where?.AND[0]?.OR).toEqual(
+      expect.arrayContaining([
+        { reference: { equals: '2024/001', mode: 'insensitive' } },
+        { reference: { startsWith: '2024/001', mode: 'insensitive' } },
+      ]),
+    );
+  });
+
+  it('uses customer contains for multi-word sale search', () => {
+    const where = saleTextSearchWhere('peridot oil');
+    expect(where?.AND).toHaveLength(2);
+    expect(where?.AND[0]?.OR).toEqual(
+      expect.arrayContaining([
+        { reference: { contains: 'peridot', mode: 'insensitive' } },
+        { customer: { name: { contains: 'peridot', mode: 'insensitive' } } },
+      ]),
+    );
   });
 });

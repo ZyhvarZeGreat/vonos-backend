@@ -50,7 +50,15 @@ export function MenuSelect({
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return options;
-    return options.filter((option) => option.label.toLowerCase().includes(q));
+    return options
+      .filter((option) => option.label.toLowerCase().includes(q))
+      .sort((a, b) => {
+        const al = a.label.toLowerCase();
+        const bl = b.label.toLowerCase();
+        const ap = al.startsWith(q) ? 0 : 1;
+        const bp = bl.startsWith(q) ? 0 : 1;
+        return ap - bp || al.localeCompare(bl);
+      });
   }, [options, query]);
 
   useEffect(() => {
