@@ -99,7 +99,6 @@ function PaymentAccountsListViewBody() {
     },
     fetchPage: (cursor, limit, _sort, opts) =>
       getPaymentAccountsPage(tenantId!, cursor, limit, {
-        search: search.trim() || undefined,
         includeSummary: opts?.includeSummary,
       }),
   });
@@ -257,7 +256,6 @@ function PaymentAccountsListViewBody() {
     setExporting(true);
     try {
       const rows = await getAllPaymentAccounts(tenantId, {
-        search: search.trim() || undefined,
       });
       exportList(
         "payment-accounts",

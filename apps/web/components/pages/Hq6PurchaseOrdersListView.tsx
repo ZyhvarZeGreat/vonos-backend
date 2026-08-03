@@ -73,7 +73,6 @@ export function Hq6PurchaseOrdersListView() {
   const apiFilters = useMemo(
     () => ({
       type: "inbound" as const,
-      search: search.trim() || undefined,
       locationCode: locationFilter || undefined,
       supplierId: supplierFilter || undefined,
       status: (statusFilter || undefined) as
@@ -391,7 +390,6 @@ export function Hq6PurchaseReturnsListView() {
     () => ({
       type: "outbound" as const,
       source: "purchase_return" as const,
-      search: search.trim() || undefined,
       from: bounds?.from,
       to: bounds?.to,
     }),

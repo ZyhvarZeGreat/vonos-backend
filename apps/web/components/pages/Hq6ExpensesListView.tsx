@@ -106,7 +106,6 @@ export function Hq6ExpensesListView() {
       contactCustomerId: contactFilter || undefined,
       categoryId: categoryFilter || undefined,
       paymentStatus: paymentStatusFilter || undefined,
-      search: search.trim() || undefined,
     }),
     [
       addedByFilter,
@@ -147,7 +146,6 @@ export function Hq6ExpensesListView() {
     fetchPage: (cursor, limit, _sort, opts) =>
       getExpensesPage(tenantId!, cursor, limit, {
         ...listFilters,
-        search: search.trim() || undefined,
         includeSummary: opts?.includeSummary,
       }),
   });
@@ -167,7 +165,6 @@ export function Hq6ExpensesListView() {
     if (!tenantId) return;
     const rows = await getAllExpenses(tenantId, {
       ...listFilters,
-      search: search.trim() || undefined,
     });
     exportList(
       "expenses",

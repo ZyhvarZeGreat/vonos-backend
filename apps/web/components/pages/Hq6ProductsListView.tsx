@@ -222,7 +222,6 @@ export function Hq6ProductsListView({
         withListSort(
           {
             ...apiFilters,
-            search: search.trim() || undefined,
             includeSummary: opts?.includeSummary,
           },
           listSort,
@@ -233,7 +232,6 @@ export function Hq6ProductsListView({
     fetchSummary: () =>
       getCatalogListSummary(tenantId!, {
         ...apiFilters,
-        search: search.trim() || undefined,
       }),
     getCursor: (row, listSort) => {
       const sortBy = listSort?.sortBy ?? "name";

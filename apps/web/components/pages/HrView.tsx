@@ -234,13 +234,11 @@ function HrViewBody({ allTenants = false, embedded = false }: HrViewProps) {
     fetchPage: (cursor, limit, _sort, opts) =>
       allTenants
         ? getAllTenantUsersPage(cursor, limit, {
-            search: search.trim() || undefined,
             role: roleFilter || undefined,
             status: statusFilter || undefined,
         includeSummary: opts?.includeSummary,
       })
         : getUsersPage(tenantId!, cursor, limit, {
-            search: search.trim() || undefined,
             role: roleFilter || undefined,
             status: statusFilter || undefined,
         includeSummary: opts?.includeSummary,

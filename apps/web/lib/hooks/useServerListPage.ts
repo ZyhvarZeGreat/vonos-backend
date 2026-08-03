@@ -7,6 +7,7 @@ import { DEFAULT_TABLE_PAGE_SIZE } from "@/lib/api/fetchAllPages";
 import { SEARCH_DEBOUNCE_MS } from "@/lib/constants/search";
 import { useDebouncedValue } from "@/lib/hooks/useDebouncedValue";
 import { useUrlCursorPage } from "@/lib/hooks/useUrlCursorPage";
+import { filterRowsBySearch } from "@/lib/utils/listClientSearch";
 
 /** Stable React Query key for one cursor page (primitives only — no object identity). */
 function listPageQueryKey(
@@ -60,6 +61,12 @@ export interface UseServerListPageOptions<T extends { id: string }> {
   /** Serialized into the query key; changing values resets to page 1. */
   filters?: Record<string, unknown>;
   search?: string;
+  /**
+   * `local` (default) — filter the loaded sliding-window page with match-sorter.
+   * Does not hit the API when typing.
+   * `server` — debounced API search across the full catalog.
+   */
+  searchMode?: "local" | "server";
   defaultPageSize?: number;
   debounceSearchMs?: number;
   /** Poll interval in ms for live views (e.g. kitchen display). */
@@ -92,8 +99,9 @@ export function useServerListPage<T extends { id: string }>({
   enabled = true,
   filters = {},
   search = "",
+  searchMode = "local",
   defaultPageSize = DEFAULT_TABLE_PAGE_SIZE,
-  debounceSearchMs = SEARCH_DEBOUNCE_MS,
+  debounceSearchMs = searchMode === "local" ? 0 : SEARCH_DEBOUNCE_MS,
   refetchInterval,
   staleTime = 10 * 60_000,
   prefetchPagesAhead = 1,
@@ -121,16 +129,23 @@ export function useServerListPage<T extends { id: string }>({
   const [sort, setSort] = useState<ListSortState | null>(defaultSort);
   const [isJumping, setIsJumping] = useState(false);
 
-  const filterKey = useMemo(
-    () =>
-      JSON.stringify({
-        ...filters,
-        search: debouncedSearch,
+  // Local mode: never put typedown search in the query key (no Neon round-trip).
+  const filterKey = useMemo(() => {
+    const { search: _ignoredSearch, ...restFilters } = filters;
+    if (searchMode === "local") {
+      return JSON.stringify({
+        ...restFilters,
         sortBy: sort?.sortBy ?? null,
         sortDir: sort?.sortDir ?? null,
-      }),
-    [filters, debouncedSearch, sort],
-  );
+      });
+    }
+    return JSON.stringify({
+      ...restFilters,
+      search: debouncedSearch,
+      sortBy: sort?.sortBy ?? null,
+      sortDir: sort?.sortDir ?? null,
+    });
+  }, [filters, debouncedSearch, searchMode, sort]);
 
   const resetRef = useRef(reset);
   resetRef.current = reset;
@@ -228,7 +243,11 @@ export function useServerListPage<T extends { id: string }>({
     }
   }, [pageIndex, pageQuery.data, pageQuery.isPlaceholderData]);
 
-  const items = paintItems ?? pageQuery.data?.items ?? [];
+  const rawItems = paintItems ?? pageQuery.data?.items ?? [];
+  const items = useMemo(() => {
+    if (searchMode !== "local") return rawItems;
+    return filterRowsBySearch(rawItems, search);
+  }, [rawItems, search, searchMode]);
   const totalCount =
     summaryQuery.data?.totalCount ?? pageQuery.data?.totalCount;
   const amountSummary =
@@ -239,7 +258,7 @@ export function useServerListPage<T extends { id: string }>({
       ? (pageIndex + 1) * pageSize < totalCount
       : (pageQuery.data?.hasMore ?? false);
 
-  const lastItemId = items[items.length - 1]?.id;
+  const lastItemId = rawItems[rawItems.length - 1]?.id;
   const sortBy = sort?.sortBy ?? null;
   const sortDir = sort?.sortDir ?? null;
 
@@ -272,14 +291,14 @@ export function useServerListPage<T extends { id: string }>({
       },
     });
 
-    if (prefetchPagesAhead <= 0 || !hasMore || items.length === 0) return;
+    if (prefetchPagesAhead <= 0 || !hasMore || rawItems.length === 0) return;
 
     let cancelled = false;
     const warm = async () => {
       const cursorOf = getCursorRef.current;
       let walkCursorValue: string | undefined = cursorOf
-        ? cursorOf(items[items.length - 1]!, sort)
-        : items[items.length - 1]!.id;
+        ? cursorOf(rawItems[rawItems.length - 1]!, sort)
+        : rawItems[rawItems.length - 1]!.id;
       let walkPageIndex = pageIndex;
 
       for (let step = 1; step <= prefetchPagesAhead; step += 1) {
@@ -348,7 +367,7 @@ export function useServerListPage<T extends { id: string }>({
   ]);
 
   const handleNext = () => {
-    const last = items[items.length - 1];
+    const last = rawItems[rawItems.length - 1];
     if (!last || !hasMore || isJumping) return;
     const nextCursor = getCursor ? getCursor(last, sort) : last.id;
     const nextKey = listPageQueryKey(
@@ -481,14 +500,14 @@ export function useServerListPage<T extends { id: string }>({
       return;
     }
     if (pageQuery.isPlaceholderData) return;
-    if (pageIndex > 0 && items.length === 0 && pageQuery.isSuccess) {
+    if (pageIndex > 0 && rawItems.length === 0 && pageQuery.isSuccess) {
       goPrev();
     }
   }, [
     enabled,
     goPrev,
     isJumping,
-    items.length,
+    rawItems.length,
     pageIndex,
     pageQuery.isFetching,
     pageQuery.isPending,
@@ -503,7 +522,7 @@ export function useServerListPage<T extends { id: string }>({
 
   const pagePending =
     (pageQuery.isPending && !pageQuery.isPlaceholderData) ||
-    (pageQuery.isFetching && items.length === 0 && !pageQuery.isPlaceholderData) ||
+    (pageQuery.isFetching && rawItems.length === 0 && !pageQuery.isPlaceholderData) ||
     isJumping;
 
   // True only while the target page is not in cache yet (network / cursor walk).
@@ -527,10 +546,10 @@ export function useServerListPage<T extends { id: string }>({
     setPageSize,
     sort,
     setSort: handleSortChange,
-    isLoading: pagePending && items.length === 0,
+    isLoading: pagePending && rawItems.length === 0,
     // Table overlay: only when there are no rows to keep on screen.
     // Never blur a full table during keepPreviousData / cache hits.
-    isFetching: isAwaitingPage && items.length === 0,
+    isFetching: isAwaitingPage && rawItems.length === 0,
     // Pagination bar busy indicator (no table blur).
     isPaging: isAwaitingPage,
     error: pageQuery.error,

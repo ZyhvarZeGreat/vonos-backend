@@ -105,7 +105,6 @@ export function Hq6SuppliersListView() {
 
   const apiFilters = useMemo(
     () => ({
-      search: search.trim() || undefined,
       purchaseDue: purchaseDue || undefined,
       purchaseReturn: purchaseReturn || undefined,
       advanceBalance: advanceBalance || undefined,

@@ -131,7 +131,6 @@ function SalesListViewBody({
 
   const apiFilters = useMemo(
     () => ({
-      search: search.trim() || undefined,
       saleStatus,
       shipmentsOnly,
       status: (statusFilter || undefined) as SaleReturnStatus | undefined,
@@ -331,7 +330,6 @@ export function OrdersListView() {
 
   const apiFilters = useMemo(
     () => ({
-      search: search.trim() || undefined,
       from: bounds?.from,
       to: bounds?.to,
     }),
@@ -475,7 +473,6 @@ function CustomersListViewBody() {
 
   const apiFilters = useMemo(
     () => ({
-      search: search.trim() || undefined,
       from: bounds?.from,
       to: bounds?.to,
     }),
@@ -646,7 +643,6 @@ function ReturnsListViewBody() {
 
   const apiFilters = useMemo(
     () => ({
-      search: search.trim() || undefined,
       status: (statusFilter || undefined) as SaleReturnStatus | undefined,
       from: bounds?.from,
       to: bounds?.to,
@@ -828,7 +824,6 @@ function VehiclesListViewBody() {
     search,
     fetchPage: (cursor, limit, _sort, opts) =>
       getVehiclesPage(tenantId!, cursor, limit, {
-        search: search.trim() || undefined,
         includeSummary: opts?.includeSummary,
       }),
   });
@@ -1012,7 +1007,6 @@ function RequisitionsListViewBody() {
     search,
     fetchPage: (cursor, limit, _sort, opts) =>
       getRequisitionsPage(tenantId!, cursor, limit, {
-        search: search.trim() || undefined,
         includeSummary: opts?.includeSummary,
       }),
   });
@@ -1134,7 +1128,6 @@ export function IncomingRequisitionsListView() {
     search,
     fetchPage: (cursor, limit, _sort, opts) =>
       getIncomingRequisitionsPage(tenantId!, cursor, limit, {
-        search: search.trim() || undefined,
         includeSummary: opts?.includeSummary,
       }),
   });
@@ -1228,7 +1221,6 @@ export function MenuItemsListView() {
 
   const apiFilters = useMemo(
     () => ({
-      search: search.trim() || undefined,
       category: categoryFilter || undefined,
     }),
     [categoryFilter, search],
@@ -1364,7 +1356,6 @@ export function ServicesListView() {
     search,
     fetchPage: (cursor, limit, _sort, opts) =>
       getSalonServicesPage(tenantId!, cursor, limit, {
-        search: search.trim() || undefined,
         includeSummary: opts?.includeSummary,
       }),
   });
@@ -1466,14 +1457,12 @@ export function CatalogListView() {
       status?: StockStatus;
       category?: string;
       locationCode?: string;
-      search?: string;
     } = {};
     if (categoryFilter) next.category = categoryFilter;
     if (statusFilter) next.status = statusFilter as StockStatus;
     if (locationFilter) next.locationCode = locationFilter;
-    if (search.trim()) next.search = search.trim();
     return next;
-  }, [categoryFilter, locationFilter, search, statusFilter]);
+  }, [categoryFilter, locationFilter, statusFilter]);
 
   const {
     items,
@@ -1495,6 +1484,7 @@ export function CatalogListView() {
     queryKey: ["catalog", tenantId],
     enabled: Boolean(tenantId) && section === "products",
     filters: apiFilters,
+    search,
     fetchPage: (cursor, limit, _sort, opts) => getCatalogPage(tenantId!, { ...apiFilters, includeSummary: opts?.includeSummary }, cursor, limit),
   });
 

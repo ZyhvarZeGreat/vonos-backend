@@ -68,16 +68,14 @@ export function WarehouseInventoryView() {
       status?: StockStatus;
       category?: string;
       locationCode?: string;
-      search?: string;
     } = {};
     if (stockFilter === "low_stock") next.status = "low_stock";
     else if (stockFilter === "out_of_stock") next.status = "out_of_stock";
     if (categoryFilter) next.category = categoryFilter;
     if (statusFilter) next.status = statusFilter as StockStatus;
     if (locationFilter) next.locationCode = locationFilter;
-    if (search.trim()) next.search = search.trim();
     return next;
-  }, [categoryFilter, locationFilter, search, statusFilter, stockFilter]);
+  }, [categoryFilter, locationFilter, statusFilter, stockFilter]);
 
   const {
     items,
@@ -99,6 +97,7 @@ export function WarehouseInventoryView() {
     queryKey: ["items", tenantId],
     enabled: Boolean(tenantId) && section === "products",
     filters: apiFilters,
+    search,
     fetchPage: (cursor, limit, _sort, opts) => getItemsPage(tenantId!, { ...apiFilters, includeSummary: opts?.includeSummary }, cursor, limit),
   });
 

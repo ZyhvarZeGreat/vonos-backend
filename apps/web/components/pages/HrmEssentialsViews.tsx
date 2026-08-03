@@ -1142,12 +1142,13 @@ export function HrmSalesTargetsView() {
   });
 
   const workforceQuery = useQuery({
-    queryKey: ["workforce-for-targets", tenantId, search],
+    queryKey: ["workforce-for-targets", tenantId],
     enabled: Boolean(tenantId),
     queryFn: () =>
-      getWorkforcePage(tenantId!, undefined, 100, search || undefined, {
+      getWorkforcePage(tenantId!, undefined, 100, undefined, {
         includeSummary: false,
       }),
+    staleTime: 5 * 60_000,
   });
 
   const rows = useMemo((): SalesTargetRow[] => {

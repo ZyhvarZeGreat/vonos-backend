@@ -91,7 +91,6 @@ function MovementListViewBody({
       type,
       ...(tabStatus ? { status: tabStatus } : {}),
       ...(source ? { source } : {}),
-      search: search.trim() || undefined,
       from: bounds?.from,
       to: bounds?.to,
     }),

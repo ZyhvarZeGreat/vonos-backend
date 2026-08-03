@@ -1,8 +1,8 @@
 "use client";
 
 /**
- * HQ6 list search — live typing; parent should pass a value that drives
- * `useServerListPage` search (debounced via SEARCH_DEBOUNCE_MS). No Search button.
+ * HQ6 list search — live typing; filters the already-loaded page in memory
+ * via `useServerListPage` (`searchMode: "local"` + match-sorter). No Search button.
  */
 export function Hq6DtSearchFilter({
   value,

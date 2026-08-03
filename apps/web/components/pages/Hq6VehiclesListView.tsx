@@ -138,7 +138,6 @@ export function Hq6VehiclesListView() {
     search,
     fetchPage: (cursor, limit, _sort, opts) =>
       getVehiclesPage(tenantId!, cursor, limit, {
-        search: search.trim() || undefined,
         includeSummary: opts?.includeSummary,
       }),
   });

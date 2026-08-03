@@ -36,13 +36,13 @@ export function Hq6ColumnVisibilityModal({
       open={open}
       onClose={onClose}
       title="Column visibility"
-      size="sm"
+      size="md"
       footer={
-        <div className="flex w-full items-center justify-between gap-2">
+        <div className="hq6-colvis-footer">
           {onReset ? (
             <button
               type="button"
-              className="text-sm text-[#6b7280] hover:text-[#111827]"
+              className="hq6-colvis-reset"
               onClick={onReset}
             >
               Reset to default
@@ -61,27 +61,22 @@ export function Hq6ColumnVisibilityModal({
         </div>
       }
     >
-      <div className="space-y-2">
-        <label className="flex items-center gap-2 text-sm font-medium text-[#374151]">
+      <div className="hq6-colvis">
+        <label className="hq6-colvis-select-all">
           <input
             type="checkbox"
-            className="h-4 w-4 rounded border-[#d1d5db]"
             checked={draft.size === allKeys.length && allKeys.length > 0}
             onChange={(e) => {
               setDraft(e.target.checked ? new Set(allKeys) : new Set());
             }}
           />
-          Select all
+          <span>Select all</span>
         </label>
-        <div className="max-h-72 space-y-1.5 overflow-y-auto border-t border-[#e5e7eb] pt-2">
+        <div className="hq6-colvis-grid">
           {columns.map((col) => (
-            <label
-              key={col.key}
-              className="flex items-center gap-2 text-sm text-[#111827]"
-            >
+            <label key={col.key} className="hq6-colvis-item">
               <input
                 type="checkbox"
-                className="h-4 w-4 rounded border-[#d1d5db]"
                 checked={draft.has(col.key)}
                 onChange={(e) => {
                   setDraft((prev) => {
@@ -92,7 +87,7 @@ export function Hq6ColumnVisibilityModal({
                   });
                 }}
               />
-              {col.label}
+              <span>{col.label}</span>
             </label>
           ))}
         </div>

@@ -114,7 +114,6 @@ export function Hq6PurchasesListView() {
   const apiFilters = useMemo(
     () => ({
       type: "inbound" as const,
-      search: (search).trim() || undefined,
       status: (statusFilter || undefined) as MovementStatus | undefined,
       paymentStatus: (paymentStatusFilter || undefined) as
         | PurchasePaymentStatus

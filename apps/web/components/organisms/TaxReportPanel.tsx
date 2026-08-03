@@ -19,7 +19,6 @@ import { cn } from "@/lib/utils/cn";
 import { CursorPaginationBar } from "@/components/molecules/CursorPaginationBar";
 import { ReportTableSearchBar } from "@/components/molecules/ReportTableSearchBar";
 import { useCursorPage } from "@/lib/hooks/useCursorPage";
-import { useDebouncedValue } from "@/lib/hooks/useDebouncedValue";
 import { TABLE_REPORT_PAGE_SIZE } from "@/lib/registries/reportTableUi";
 import { runReport } from "@/lib/api/reports";
 import { useIsVaHq6 } from "@/lib/hooks/useIsVaHq6";
@@ -219,7 +218,6 @@ function InvoiceTableSection({
   detailed: boolean;
 }) {
   const [search, setSearch] = useState("");
-  const debouncedSearch = useDebouncedValue(search);
   const [pageSize, setPageSize] = useState(
     seed?.pageSize ?? TABLE_REPORT_PAGE_SIZE,
   );
@@ -236,11 +234,11 @@ function InvoiceTableSection({
 
   useEffect(() => {
     reset();
-  }, [debouncedSearch, pageSize, from, to, tenantId, reset]);
+  }, [pageSize, from, to, tenantId, reset]);
 
   const needsServerPage =
     Boolean(tenantId) &&
-    (Boolean(cursor) || Boolean(debouncedSearch.trim()) || pageSize !== (seed?.pageSize ?? TABLE_REPORT_PAGE_SIZE));
+    (Boolean(cursor) || pageSize !== (seed?.pageSize ?? TABLE_REPORT_PAGE_SIZE));
 
   const pageQuery = useQuery({
     queryKey: [
@@ -252,7 +250,6 @@ function InvoiceTableSection({
       to ?? "all",
       cursor ?? "first",
       pageSize,
-      debouncedSearch.trim(),
     ],
     queryFn: async () => {
       if (!tenantId) return null;
@@ -264,7 +261,6 @@ function InvoiceTableSection({
         taxTable: side,
         cursor,
         limit: pageSize,
-        search: debouncedSearch.trim() || undefined,
       });
       return data.taxTables?.[side] ?? null;
     },
@@ -278,10 +274,8 @@ function InvoiceTableSection({
 
   const filteredRows = useMemo(() => {
     if (!table) return [];
-    // Server already filtered when searching via API.
-    if (needsServerPage && debouncedSearch.trim()) return table.rows;
     return table.rows.filter((row) => rowMatchesSearch(row, search));
-  }, [table, search, needsServerPage, debouncedSearch]);
+  }, [table, search]);
 
   const isHq6 = useIsVaHq6();
 

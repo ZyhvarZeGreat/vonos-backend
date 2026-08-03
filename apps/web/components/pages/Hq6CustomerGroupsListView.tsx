@@ -113,7 +113,6 @@ export function Hq6CustomerGroupsListView() {
     search,
     fetchPage: (cursor, limit, _sort, opts) =>
       getCustomerGroupsPage(tenantId!, cursor, limit, {
-        search: search.trim() || undefined,
         includeSummary: opts?.includeSummary,
       }),
   });

@@ -145,7 +145,6 @@ export function Hq6CustomersListView() {
   const apiFilters = useMemo(() => {
     const months = Number(hasNoSellFrom);
     return {
-      search: search.trim() || undefined,
       sellDue: sellDue || undefined,
       sellReturn: sellReturn || undefined,
       advanceBalance: advanceBalance || undefined,

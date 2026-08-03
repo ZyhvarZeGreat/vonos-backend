@@ -136,7 +136,6 @@ function ExpensesListViewBody() {
     fetchPage: (cursor, limit, _sort, opts) =>
       getExpensesPage(tenantId!, cursor, limit, {
         ...listFilters,
-        search: search.trim() || undefined,
         includeSummary: opts?.includeSummary,
       }),
   });
@@ -258,7 +257,6 @@ function ExpensesListViewBody() {
     try {
       const rows = await getAllExpenses(tenantId, {
         ...listFilters,
-        search: search.trim() || undefined,
       });
       exportList(
         "expenses",

@@ -159,11 +159,9 @@ export function Hq6UsersListView() {
     fetchPage: (cursor, limit, _sort, opts) =>
       useAllTenants
         ? getAllTenantUsersPage(cursor, limit, {
-            search: search.trim() || undefined,
             includeSummary: opts?.includeSummary,
           })
         : getUsersPage(tenantId!, cursor, limit, {
-            search: search.trim() || undefined,
             includeSummary: opts?.includeSummary,
           }),
   });

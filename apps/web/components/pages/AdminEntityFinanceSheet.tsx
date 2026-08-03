@@ -225,7 +225,6 @@ export function AdminEntityFinanceSheet({ unitId }: AdminEntityFinanceSheetProps
             ? (typeFilter as LedgerEntry["type"])
             : undefined,
           category: categoryFilter || undefined,
-          search: search.trim() || undefined,
         }),
       ),
     );

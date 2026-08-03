@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { matchSorter, rankings } from "match-sorter";
 import { FloatingMenuPanel } from "@/components/molecules/FloatingMenuPanel";
 import { cn } from "@/lib/utils/cn";
 
@@ -36,17 +37,12 @@ export function DropdownMenu({
   const inputRef = useRef<HTMLInputElement>(null);
 
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
+    const q = query.trim();
     if (!q) return options;
-    return options
-      .filter((option) => option.label.toLowerCase().includes(q))
-      .sort((a, b) => {
-        const al = a.label.toLowerCase();
-        const bl = b.label.toLowerCase();
-        const ap = al.startsWith(q) ? 0 : 1;
-        const bp = bl.startsWith(q) ? 0 : 1;
-        return ap - bp || al.localeCompare(bl);
-      });
+    return matchSorter(options, q, {
+      keys: ["label"],
+      threshold: rankings.CONTAINS,
+    });
   }, [options, query]);
 
   useEffect(() => {

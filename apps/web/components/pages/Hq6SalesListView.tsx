@@ -176,7 +176,6 @@ export function Hq6SalesListView({
 
   const apiFilters = useMemo(
     () => ({
-      search: (search).trim() || undefined,
       saleStatus,
       shipmentsOnly,
       status: (statusFilter || undefined) as SaleReturnStatus | undefined,

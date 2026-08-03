@@ -21,7 +21,6 @@ import {
   getTenantRoles,
   importTenantRoles,
 } from "@/lib/api/tenantRoles";
-import { useDebouncedValue } from "@/lib/hooks/useDebouncedValue";
 import { useRecordNavigation } from "@/lib/hooks/useRecordNavigation";
 import { useRouteTenant, useTenantId } from "@/lib/hooks/useRouteTenant";
 import {
@@ -29,6 +28,7 @@ import {
   hq6RoleStorageKey,
 } from "@/lib/registries/hq6RolePermissions";
 import { useHq6Permissions } from "@/lib/hooks/useHq6Permissions";
+import { filterRowsBySearch } from "@/lib/utils/listClientSearch";
 import {
   firstValidationError,
   sanitizePersonNameInput,
@@ -224,7 +224,6 @@ export function Hq6RolesListView() {
   const { tenantCode } = useRouteTenant();
   const { detailPath, listPath } = useRecordNavigation("roles");
   const [search, setSearch] = useState("");
-  const debouncedSearch = useDebouncedValue(search);
   const [deleteRole, setDeleteRole] = useState<TenantRole | null>(null);
   const [pageSize, setPageSize] = useState(50);
   const [pageIndex, setPageIndex] = useState(0);
@@ -241,12 +240,10 @@ export function Hq6RolesListView() {
     isError: rolesError,
     refetch: refetchRoles,
   } = useQuery({
-    queryKey: ["tenant-roles", tenantId, debouncedSearch],
-    queryFn: () =>
-      getTenantRoles(tenantId!, {
-        search: debouncedSearch || undefined,
-      }),
+    queryKey: ["tenant-roles", tenantId],
+    queryFn: () => getTenantRoles(tenantId!),
     enabled: Boolean(tenantId),
+    staleTime: 5 * 60_000,
   });
 
   // One-time: push browser-local roles into DB (VAG only — import is super_admin).
@@ -281,7 +278,10 @@ export function Hq6RolesListView() {
     })();
   }, [tenantId, tenantCode, migratedLocal, queryClient, isVag]);
 
-  const filtered = roles;
+  const filtered = useMemo(
+    () => filterRowsBySearch(roles, search),
+    [roles, search],
+  );
   const total = filtered.length;
   const effectiveSize = pageSize <= 0 ? Math.max(total, 1) : pageSize;
   const pageCount = Math.max(1, Math.ceil(Math.max(total, 1) / effectiveSize));

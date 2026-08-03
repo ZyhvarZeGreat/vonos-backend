@@ -93,7 +93,6 @@ export function AccountBookView({ accountId }: { accountId?: string }) {
     () => ({
       from: bounds?.from,
       to: bounds?.to,
-      search: search.trim() || undefined,
       type: typeFilter || undefined,
     }),
     [bounds?.from, bounds?.to, search, typeFilter],
@@ -293,7 +292,6 @@ export function PaymentsListView() {
     () => ({
       from: bounds?.from,
       to: bounds?.to,
-      search: search.trim() || undefined,
       unlinkedOnly: unlinkedOnly || undefined,
     }),
     [bounds?.from, bounds?.to, search, unlinkedOnly],

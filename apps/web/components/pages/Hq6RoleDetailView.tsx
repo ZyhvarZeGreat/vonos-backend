@@ -25,7 +25,7 @@ import { notifyInsufficientPrivilege } from "@/lib/utils/privilegeToast";
 import { cn } from "@/lib/utils/cn";
 
 /**
- * Roles Edit/Add — permission matrix for TenantRoles (entity-agnostic).
+ * Roles Edit/Add — permission matrix for TenantRoles (shared across all entities).
  * Only VAG (`super_admin`) may create/update; others get a read-only view.
  * `/roles/:id/edit` · `/roles/new/edit`
  */

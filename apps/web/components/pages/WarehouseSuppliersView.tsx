@@ -140,7 +140,6 @@ function WarehouseSuppliersViewBody() {
 
   const hq6ApiFilters = useMemo(
     () => ({
-      search: search.trim() || undefined,
       purchaseDue: purchaseDue || undefined,
       purchaseReturn: purchaseReturn || undefined,
       advanceBalance: advanceBalance || undefined,
@@ -193,7 +192,6 @@ function WarehouseSuppliersViewBody() {
         ...(isHq6
           ? hq6ApiFilters
           : {
-              search: search.trim() || undefined,
               status: activeTab === "active" ? "active" : undefined,
             }),
         includeSummary: opts?.includeSummary,

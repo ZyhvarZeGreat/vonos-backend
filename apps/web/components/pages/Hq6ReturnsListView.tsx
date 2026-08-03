@@ -72,7 +72,6 @@ export function Hq6ReturnsListView() {
 
   const apiFilters = useMemo(
     () => ({
-      search: (search).trim() || undefined,
       status: (statusFilter || undefined) as SaleReturnStatus | undefined,
       locationCode: locationFilter || undefined,
       customerId: customerFilter || undefined,

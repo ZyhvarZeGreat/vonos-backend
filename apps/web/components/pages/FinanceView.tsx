@@ -327,14 +327,12 @@ export function FinanceView({ groupMode = false }: FinanceViewProps) {
             type: "expense",
             from: bounds?.from,
             to: bounds?.to,
-            search: search.trim() || undefined,
             category: categoryFilter || undefined,
           })
         : await getAllLedgerEntries(tenantId!, {
             type: "expense",
             from: bounds?.from,
             to: bounds?.to,
-            search: search.trim() || undefined,
             category: categoryFilter || undefined,
           });
       payload = {
@@ -375,14 +373,12 @@ export function FinanceView({ groupMode = false }: FinanceViewProps) {
             category: categoryFilter || undefined,
             from: bounds?.from,
             to: bounds?.to,
-            search: search.trim() || undefined,
           })
         : await getAllLedgerEntries(tenantId!, {
             type: (typeFilter as LedgerEntry["type"]) || undefined,
             category: categoryFilter || undefined,
             from: bounds?.from,
             to: bounds?.to,
-            search: search.trim() || undefined,
           });
       payload = {
         filename: `ledger-${activeTab}`,

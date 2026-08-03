@@ -65,7 +65,6 @@ export function JobsListView() {
       from?: string;
       to?: string;
     } = {
-      search: search.trim() || undefined,
       from: bounds?.from,
       to: bounds?.to,
     };

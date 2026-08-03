@@ -2,6 +2,8 @@
 
 import type { ReactNode } from "react";
 import { DateRangeDropdown } from "@/components/molecules/DateRangeDropdown";
+import { MenuSelect } from "@/components/molecules/MenuSelect";
+import { FILTER_SEARCHABLE_MIN_OPTIONS } from "@/lib/constants/search";
 import type { CustomDateRange, DateRangePreset } from "@/stores/uiStore";
 
 export function Hq6FilterCheckbox({
@@ -32,36 +34,36 @@ export function Hq6FilterSelect({
   onChange,
   options,
   emptyLabel = "All",
+  searchable,
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
   options: Array<{ value: string; label: string }>;
-  /** Used when options omit a blank row. */
   emptyLabel?: string;
+  searchable?: boolean;
 }) {
-  // Dedupe by value — presets/imports can repeat the same code with the same label
-  // (React warns on duplicate keys like `VONOS-VONOS`).
   const uniqueOptions = options.filter(
     (option, index, all) =>
       all.findIndex((row) => row.value === option.value) === index,
   );
   const hasBlank = uniqueOptions.some((o) => o.value === "");
+  const menuOptions = hasBlank
+    ? uniqueOptions
+    : [{ value: "", label: emptyLabel }, ...uniqueOptions];
+  const useSearch =
+    searchable ?? menuOptions.length >= FILTER_SEARCHABLE_MIN_OPTIONS;
+
   return (
     <label className="hq6-field">
       <span>{label}:</span>
-      <select
-        className="form-control select2"
+      <MenuSelect
         value={value}
-        onChange={(e) => onChange(e.target.value)}
-      >
-        {!hasBlank ? <option value="">{emptyLabel}</option> : null}
-        {uniqueOptions.map((o, index) => (
-          <option key={`${o.value || "blank"}-${index}`} value={o.value}>
-            {o.label}
-          </option>
-        ))}
-      </select>
+        onChange={onChange}
+        options={menuOptions}
+        placeholder={emptyLabel}
+        searchable={useSearch}
+      />
     </label>
   );
 }

@@ -428,7 +428,6 @@ export function PayrollView({
     fetchPage: (cursor, limit, _sort, opts) =>
       getPayrollsPage(tenantId!, cursor, limit, {
         ...payrollListFilters,
-        search: search.trim() || undefined,
         includeSummary: opts?.includeSummary,
       }),
     getCursor: (row) => payrollListCursor(row),
@@ -440,7 +439,6 @@ export function PayrollView({
     search,
     fetchPage: (cursor, limit, _sort, opts) =>
       getPayrollGroupsPage(tenantId!, cursor, limit, {
-        search: search.trim() || undefined,
         includeSummary: opts?.includeSummary,
       }),
     getCursor: (row) => nameListCursor(row),
@@ -452,7 +450,6 @@ export function PayrollView({
     search,
     fetchPage: (cursor, limit, _sort, opts) =>
       getPayComponentsPage(tenantId!, cursor, limit, {
-        search: search.trim() || undefined,
         includeSummary: opts?.includeSummary,
       }),
     getCursor: (row) => nameListCursor(row),

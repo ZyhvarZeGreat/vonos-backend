@@ -56,7 +56,6 @@ export function InvoicesListView() {
     () => ({
       kind: (kindFilter || undefined) as InvoiceKind | undefined,
       paymentStatus: paymentFilter || undefined,
-      search: search.trim() || undefined,
       from: bounds?.from,
       to: bounds?.to,
     }),

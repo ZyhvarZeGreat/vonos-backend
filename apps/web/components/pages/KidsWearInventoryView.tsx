@@ -55,13 +55,12 @@ export function KidsWearInventoryView() {
   const [statusFilter, setStatusFilter] = useState("");
 
   const apiFilters = useMemo(() => {
-    const next: { status?: StockStatus; category?: string; search?: string } = {};
+    const next: { status?: StockStatus; category?: string } = {};
     if (activeTab === "low_stock") next.status = "low_stock";
     if (categoryFilter) next.category = categoryFilter;
     if (statusFilter) next.status = statusFilter as StockStatus;
-    if (search.trim()) next.search = search.trim();
     return next;
-  }, [activeTab, categoryFilter, search, statusFilter]);
+  }, [activeTab, categoryFilter, statusFilter]);
 
   const {
     items,
@@ -83,6 +82,7 @@ export function KidsWearInventoryView() {
     queryKey: ["items", tenantId],
     enabled: Boolean(tenantId),
     filters: apiFilters,
+    search,
     fetchPage: (cursor, limit, _sort, opts) => getItemsPage(tenantId!, { ...apiFilters, includeSummary: opts?.includeSummary }, cursor, limit),
   });
 

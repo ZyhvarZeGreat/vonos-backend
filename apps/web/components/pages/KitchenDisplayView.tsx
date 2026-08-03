@@ -65,7 +65,6 @@ export function KitchenDisplayView() {
       getOrdersPage(
         tenantId!,
         {
-          search: search.trim() || undefined,
           from: bounds?.from,
           to: bounds?.to,
           includeSummary: opts?.includeSummary,

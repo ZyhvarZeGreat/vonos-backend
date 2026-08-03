@@ -2420,6 +2420,87 @@ html.upos-shell [data-hq6="true"] .hq6-page > .hq6-footer {
   overflow-y: auto;
 }
 
+/* Column visibility — explicit layout (Tailwind flex often missing under UPOS). */
+.hq6-colvis {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.hq6-colvis-select-all {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #374151;
+  margin: 0;
+  cursor: pointer;
+}
+
+.hq6-colvis-select-all input,
+.hq6-colvis-item input {
+  width: 1rem;
+  height: 1rem;
+  margin: 0;
+  flex-shrink: 0;
+  accent-color: #605ca8;
+}
+
+.hq6-colvis-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem 1rem;
+  max-height: 18rem;
+  overflow-y: auto;
+  padding-top: 0.75rem;
+  border-top: 1px solid #e5e7eb;
+}
+
+@media (min-width: 640px) {
+  .hq6-colvis-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.hq6-colvis-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 400;
+  color: #111827;
+  line-height: 1.35;
+  cursor: pointer;
+}
+
+.hq6-colvis-item span {
+  min-width: 0;
+  word-break: break-word;
+}
+
+.hq6-colvis-footer {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.hq6-colvis-reset {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  font-size: 0.875rem;
+  color: #6b7280;
+  cursor: pointer;
+}
+
+.hq6-colvis-reset:hover {
+  color: #111827;
+}
+
 .hq6-modal-footer {
   display: flex;
   align-items: center;
