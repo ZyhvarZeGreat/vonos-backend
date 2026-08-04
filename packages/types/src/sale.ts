@@ -119,6 +119,11 @@ export interface SaleDetail extends Sale {
   customerTotalSellDue?: number | null;
   /** Linked job vehicle label (make-model plate) when available. */
   vehicleLabel?: string | null;
+  /**
+   * Public invoice path (`/invoice/:token`) — returned on create/finalize so
+   * the client can navigate without a second `/invoice-url` round-trip.
+   */
+  invoicePath?: string | null;
 }
 
 /** One modal round-trip: sale detail + payments + recent activity. */

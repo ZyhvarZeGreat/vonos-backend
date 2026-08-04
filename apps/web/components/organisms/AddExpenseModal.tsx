@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useAppMutation } from "@/lib/hooks/useAppMutation";
 import { parseForm } from "@/lib/validation/parseForm";
 import { expenseFormSchema } from "@/lib/validation/schemas";
@@ -31,7 +31,6 @@ export function AddExpenseModal() {
   const routeTenantId = useTenantId();
   const tenantId = financeActionTenantId ?? routeTenantId;
   const { tenantCode } = useRouteTenant();
-  const queryClient = useQueryClient();
   const open = activeModal === "addExpense";
   const isHq6 = useIsVaHq6();
   const onAdmin = Boolean(pathname?.startsWith("/admin"));
@@ -103,12 +102,14 @@ export function AddExpenseModal() {
     successMessage: entityLabel
       ? `Expense added for ${entityLabel}`
       : "Expense added to ledger",
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["ledgerEntries"] });
-      await queryClient.invalidateQueries({ queryKey: ["ledgerTablePage"] });
-      await queryClient.invalidateQueries({ queryKey: ["ledgerSummary"] });
-      await queryClient.invalidateQueries({ queryKey: ["adminFinanceSummary"] });
-      await queryClient.invalidateQueries({ queryKey: ["ledgerChartEntries"] });
+    invalidateKeys: [
+      ["ledgerEntries"],
+      ["ledgerTablePage"],
+      ["ledgerSummary"],
+      ["adminFinanceSummary"],
+      ["ledgerChartEntries"],
+    ],
+    onSuccess: () => {
       setAmount("");
       setDescription("");
       setError(null);

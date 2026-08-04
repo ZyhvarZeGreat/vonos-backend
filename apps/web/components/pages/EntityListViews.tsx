@@ -501,8 +501,24 @@ function CustomersListViewBody() {
     enabled: Boolean(tenantId),
     filters: apiFilters,
     search,
-    fetchPage: (cursor, limit, _sort, opts) => getCustomersPage(tenantId!, { ...apiFilters, includeSummary: opts?.includeSummary }, cursor, limit),
-    getCursor: (row) => customerListCursor(row),
+    defaultSort: { sortBy: "createdAt", sortDir: "desc" },
+    fetchPage: (cursor, limit, listSort, opts) =>
+      getCustomersPage(
+        tenantId!,
+        {
+          ...apiFilters,
+          includeSummary: opts?.includeSummary,
+          ...(listSort?.sortBy
+            ? { sortBy: listSort.sortBy, sortDir: listSort.sortDir }
+            : { sortBy: "createdAt", sortDir: "desc" }),
+        },
+        cursor,
+        limit,
+      ),
+    getCursor: (row, listSort) => {
+      const sortBy = listSort?.sortBy ?? "createdAt";
+      return customerListCursor(row, sortBy);
+    },
   });
 
   const filtered = customers;

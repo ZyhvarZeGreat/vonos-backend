@@ -173,14 +173,17 @@
 .hq6-users-page .table > tfoot > tr > td {
   padding: 8px;
   line-height: 1.42857143;
-  vertical-align: top;
+  vertical-align: middle;
   border-top: none;
+  border-bottom: 1px solid #e5e7eb;
+  text-align: center;
 }
 .hq6-users-page .table > thead > tr > th {
-  vertical-align: bottom;
-  border-bottom: 1px solid #f4f4f4;
+  vertical-align: middle;
+  border-bottom: 1px solid #d1d5db;
   white-space: nowrap;
   border-top: 0;
+  text-align: center;
 }
 .hq6-users-page .table-bordered {
   border: none;
@@ -191,7 +194,11 @@
 .hq6-users-page .table-bordered > thead > tr > td,
 .hq6-users-page .table-bordered > tbody > tr > td,
 .hq6-users-page .table-bordered > tfoot > tr > td {
-  border: none;
+  border-left: none;
+  border-right: none;
+  border-top: none;
+  border-bottom: 1px solid #e5e7eb;
+  text-align: center;
 }
 .hq6-users-page .table-striped > tbody > tr:nth-of-type(odd) {
   background-color: #f9f9f9;
@@ -372,13 +379,16 @@ html.upos-hq6 .hq6-users-page .dataTables_length select.form-control {
   background: #ecf0f5 !important;
   font-weight: 700 !important;
   border: none !important;
-  border-bottom: 1px solid #f4f4f4 !important;
+  border-bottom: 1px solid #d1d5db !important;
   padding: 8px !important;
+  text-align: center !important;
 }
 .hq6-roles-page table tbody td {
   border: none !important;
+  border-bottom: 1px solid #e5e7eb !important;
   padding: 8px !important;
   vertical-align: middle !important;
+  text-align: center !important;
 }
 .hq6-roles-page .table-striped > tbody > tr:nth-of-type(odd) {
   background-color: #f9f9f9 !important;
@@ -400,8 +410,9 @@ html.upos-hq6 .hq6-roles-page .table.table-bordered > tbody > tr > td,
   border-left: none !important;
   border-right: none !important;
   border-top: none !important;
-  border-bottom: none !important;
+  border-bottom: 1px solid #e5e7eb !important;
   box-shadow: none !important;
+  text-align: center !important;
 }
 .hq6-roles-page #roles_table > thead > tr > th {
   background: #ecf0f5 !important;
@@ -494,13 +505,16 @@ html.upos-hq6 .hq6-roles-page .table.table-bordered > tbody > tr > td,
   background: #ecf0f5 !important;
   font-weight: 700 !important;
   border: none !important;
-  border-bottom: 1px solid #f4f4f4 !important;
+  border-bottom: 1px solid #d1d5db !important;
   padding: 8px !important;
+  text-align: center !important;
 }
 .hq6-agents-page table tbody td {
   border: none !important;
+  border-bottom: 1px solid #e5e7eb !important;
   padding: 8px !important;
   vertical-align: middle !important;
+  text-align: center !important;
 }
 .hq6-agents-page .table-striped > tbody > tr:nth-of-type(odd) {
   background-color: #f9f9f9 !important;
@@ -524,8 +538,9 @@ html.upos-hq6 .hq6-agents-page .table.table-bordered > tbody > tr > td,
   border-left: none !important;
   border-right: none !important;
   border-top: none !important;
-  border-bottom: none !important;
+  border-bottom: 1px solid #e5e7eb !important;
   box-shadow: none !important;
+  text-align: center !important;
 }
 .hq6-agents-page #sales_commission_agent_table > thead > tr > th {
   background: #ecf0f5 !important;
@@ -873,9 +888,11 @@ html.upos-hq6 .hq6-agents-page .table.table-bordered > tbody > tr > td,
   background: #ecf0f5 !important;
   font-weight: 700 !important;
   border: none !important;
-  border-bottom: 1px solid #f4f4f4 !important;
+  border-bottom: 1px solid #d1d5db !important;
   padding: 8px !important;
   white-space: nowrap;
+  text-align: center !important;
+  vertical-align: middle !important;
 }
 .hq6-suppliers-page table tbody td,
 .hq6-customers-page table tbody td,
@@ -890,9 +907,11 @@ html.upos-hq6 .hq6-agents-page .table.table-bordered > tbody > tr > td,
 .hq6-catalog-meta-page table tfoot td,
 .hq6-products-page table tfoot td {
   border: none !important;
+  border-bottom: 1px solid #e5e7eb !important;
   padding: 8px !important;
   vertical-align: middle !important;
   white-space: nowrap;
+  text-align: center !important;
 }
 .hq6-suppliers-page .table-striped > tbody > tr:nth-of-type(odd),
 .hq6-customers-page .table-striped > tbody > tr:nth-of-type(odd),
@@ -992,8 +1011,9 @@ html.upos-hq6 .hq6-products-page .table.table-bordered > tfoot > tr > td {
   border-left: none !important;
   border-right: none !important;
   border-top: none !important;
-  border-bottom: none !important;
+  border-bottom: 1px solid #e5e7eb !important;
   box-shadow: none !important;
+  text-align: center !important;
 }
 .hq6-suppliers-page #contact_table > thead > tr > th,
 .hq6-customers-page #contact_table > thead > tr > th,

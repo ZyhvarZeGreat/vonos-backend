@@ -454,13 +454,15 @@ export function Hq6SaleViewModal({
           <div className="hq6-purchase-view-notes hq6-sale-view-notes">
             <div>
               <strong>Sell note:</strong>
-              <p className="hq6-purchase-note-well">
-                {sale.notes?.trim() || "--"}
+              <p className="hq6-purchase-note-well whitespace-pre-wrap">
+                {sale.notes?.trim() || "—"}
               </p>
             </div>
             <div>
-              <strong>Staff note:</strong>
-              <p className="hq6-purchase-note-well">--</p>
+              <strong>Payment note:</strong>
+              <p className="hq6-purchase-note-well whitespace-pre-wrap">
+                {sale.paymentNote?.trim() || "—"}
+              </p>
             </div>
           </div>
 

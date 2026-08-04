@@ -40,6 +40,8 @@ export class SuppliersController {
     @Query('assignedToUserId') assignedToUserId?: string,
     @Query('status') status?: 'active' | 'inactive',
     @Query('includeSummary') includeSummary?: string,
+    @Query('sortBy') sortBy?: string,
+    @Query('sortDir') sortDir?: 'asc' | 'desc',
   ) {
     const filters: SupplierFilters = {
       cursor,
@@ -52,6 +54,8 @@ export class SuppliersController {
       assignedToUserId,
       status,
       includeSummary: includeSummary !== '0' && includeSummary !== 'false',
+      sortBy,
+      sortDir,
     };
     return this.suppliersService.list(filters);
   }

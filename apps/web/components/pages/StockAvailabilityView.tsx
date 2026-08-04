@@ -6,6 +6,7 @@ import { Search } from "lucide-react";
 import { EntityColorBadge } from "@/components/atoms/EntityColorBadge";
 import { Spinner } from "@/components/atoms/Spinner";
 import { getStockAvailability } from "@/lib/api/items";
+import { IN_MEMORY_FILTER_CATALOG_LIMIT } from "@/lib/api/fetchAllPages";
 import { AUTOS_GROUP_ENTITIES } from "@/lib/registries/tenants";
 import {
   getVagViewUnit,
@@ -14,6 +15,7 @@ import {
 import { ADMIN_ENTITY_STALE_MS } from "@/lib/admin/prefetchAdminEntity";
 import { useAdminEntityStore } from "@/stores/adminEntityStore";
 import { useIsVaHq6 } from "@/lib/hooks/useIsVaHq6";
+import { matchSorter, rankings } from "match-sorter";
 
 type AvailabilityFilter = "all" | "available" | "unavailable";
 
@@ -26,13 +28,12 @@ function entityCodeFromViewing(code: string | null): string {
 
 /**
  * Cross-entity stock lookup for the Autos Group.
- * Loads a small first page; search runs on button / Enter.
+ * Roster loads once; search is local match-sorter (no per-keystroke API).
  */
 export function StockAvailabilityView() {
   const isHq6 = useIsVaHq6();
   const viewingCode = useAdminEntityStore((s) => s.viewingCode);
   const [query, setQuery] = useState("");
-  const [appliedSearch, setAppliedSearch] = useState("");
   const [entityFilter, setEntityFilter] = useState(
     () => entityCodeFromViewing(viewingCode),
   );
@@ -45,15 +46,13 @@ export function StockAvailabilityView() {
 
   const { data, isFetching, isLoading, isFetched } = useQuery({
     queryKey: [
-      "stock-availability",
-      appliedSearch,
+      "stock-availability-roster",
       entityFilter || "all",
       availability,
     ],
     queryFn: () =>
       getStockAvailability({
-        search: appliedSearch || undefined,
-        limit: 10,
+        limit: IN_MEMORY_FILTER_CATALOG_LIMIT,
         entityCode: entityFilter || undefined,
         availability,
       }),
@@ -61,7 +60,17 @@ export function StockAvailabilityView() {
     placeholderData: (prev) => prev,
   });
 
-  const groups = data?.groups ?? [];
+  const groups = useMemo(() => {
+    const roster = data?.groups ?? [];
+    const q = query.trim();
+    if (!q) return roster;
+    return matchSorter(roster, q, {
+      keys: ["sku", "name", "category"],
+      threshold: rankings.CONTAINS,
+      keepDiacritics: true,
+    });
+  }, [data?.groups, query]);
+
   const showResultsLoading = isLoading || (isFetching && isFetched);
   const entityOptions = useMemo(
     () => [
@@ -74,15 +83,11 @@ export function StockAvailabilityView() {
     [],
   );
 
-  const runSearch = () => {
-    setAppliedSearch(query.trim());
-  };
-
   const fieldClass = isHq6
     ? "form-control"
     : "w-full rounded-lg border border-border bg-card py-2.5 px-3 text-sm text-foreground outline-none focus:border-[var(--color-brand-primary)] focus:ring-1";
   const cardClass = isHq6
-    ? "hq6-card p-4"
+    ? "hq6-card p-5"
     : "rounded-xl border border-border bg-card p-4 shadow-sm";
   const muted = isHq6 ? "text-[#6b7280]" : "text-muted";
   const fg = isHq6 ? "text-[#111827]" : "text-foreground";
@@ -91,35 +96,31 @@ export function StockAvailabilityView() {
     : "border-b border-border";
 
   return (
-    <div className="space-y-4">
+    <div className={isHq6 ? "hq6-page space-y-4 p-4 md:p-6" : "space-y-4"}>
       {!isHq6 ? (
         <div>
           <h2 className="text-2xl font-semibold text-foreground">
             Stock Availability
           </h2>
           <p className="mt-1 text-sm text-muted">
-            First 10 products load immediately. Search by name or SKU across the
-            Autos Group — available = on hand minus Approved requisition holds.
+            Roster loads once; typing filters with match-sorter. Available = on
+            hand minus Approved requisition holds.
           </p>
         </div>
       ) : (
         <p className={`text-sm ${muted}`}>
-          First 10 products load immediately. Search by name or SKU — available =
-          on hand minus Approved requisition holds. “Show info for” above scopes
-          the filter when set.
+          Roster loads once; typing filters locally. Available = on hand minus
+          Approved requisition holds. “Show info for” above scopes the filter
+          when set.
         </p>
       )}
 
-      <form
+      <div
         className={
           isHq6
-            ? "hq6-card flex flex-wrap items-end gap-3 p-4"
+            ? "hq6-card flex flex-wrap items-end gap-4 p-5"
             : "flex flex-wrap items-end gap-3"
         }
-        onSubmit={(e) => {
-          e.preventDefault();
-          runSearch();
-        }}
       >
         <div className="relative min-w-[220px] flex-1 max-w-xl">
           <label
@@ -140,7 +141,7 @@ export function StockAvailabilityView() {
             type="search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search by product name or SKU…"
+            placeholder="Type to filter by name or SKU…"
             className={
               isHq6 ? fieldClass : `${fieldClass} pl-9`
             }
@@ -195,23 +196,7 @@ export function StockAvailabilityView() {
             <option value="unavailable">Unavailable</option>
           </select>
         </div>
-        <button
-          type="submit"
-          className={
-            isHq6
-              ? "hq6-btn hq6-btn-blue shrink-0"
-              : "inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-lg border border-transparent bg-[var(--color-brand-primary)] px-4 text-sm font-medium text-white"
-          }
-          disabled={showResultsLoading}
-        >
-          {showResultsLoading ? (
-            <Spinner size="sm" className="text-current" />
-          ) : (
-            <Search className="h-4 w-4" />
-          )}
-          {showResultsLoading ? "Searching…" : "Search"}
-        </button>
-      </form>
+      </div>
 
       {showResultsLoading ? (
         <div
@@ -220,9 +205,7 @@ export function StockAvailabilityView() {
           aria-live="polite"
         >
           <Spinner size="sm" className={muted} />
-          {appliedSearch
-            ? `Searching for “${appliedSearch}”…`
-            : "Loading stock…"}
+          Loading stock…
         </div>
       ) : null}
 
@@ -238,15 +221,15 @@ export function StockAvailabilityView() {
           <p className={`text-sm ${muted}`}>Loading stock…</p>
         ) : groups.length === 0 && !showResultsLoading ? (
           <p className={`text-sm ${muted}`}>
-            {appliedSearch
+            {query.trim()
               ? "No matching products for these filters."
-              : "No products in the first page — try searching."}
+              : "No products in the roster for these filters."}
           </p>
         ) : groups.length === 0 ? null : (
-          <div className="space-y-3">
+          <div className="space-y-4">
             {groups.map((group) => (
               <div key={group.sku} className={cardClass}>
-                <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <div className="flex flex-wrap items-baseline justify-between gap-3">
                   <div>
                     <p className={`font-semibold ${fg}`}>
                       {group.sku} — {group.name}
@@ -324,10 +307,8 @@ export function StockAvailabilityView() {
       </div>
 
       <p className={`text-xs ${muted}`}>
-        Showing up to 10 products
-        {appliedSearch
-          ? ` matching “${appliedSearch}”`
-          : " (browse / search for more)"}
+        Showing up to {IN_MEMORY_FILTER_CATALOG_LIMIT.toLocaleString()} products
+        {query.trim() ? ` matching “${query.trim()}”` : ""}
         .
       </p>
     </div>

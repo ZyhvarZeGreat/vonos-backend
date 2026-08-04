@@ -250,7 +250,7 @@ export class PaymentsService {
     const remaining = await this.tenantDb.db.payment.count({
       where: unlinkedWhere,
     });
-    await invalidateTenantDashboardCache(this.cache, tenantId);
+    void invalidateTenantDashboardCache(this.cache, tenantId);
 
     return {
       linked,

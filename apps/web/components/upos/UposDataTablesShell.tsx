@@ -192,7 +192,7 @@ export function UposDataTablesShell({
                       ? UPOS_PAGE_SIZE_ALL
                       : PAGE_SIZE_OPTIONS[0]
                 }
-                disabled={isBusy}
+                disabled={false}
                 onChange={(e) => {
                   const next = Number(e.target.value);
                   onPageSizeChange(
@@ -248,7 +248,6 @@ export function UposDataTablesShell({
               else onSearchChange(searchValue.trim());
             }}
             placeholder={searchPlaceholder}
-            disabled={isBusy}
           />
         </div>
       </div>

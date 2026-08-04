@@ -11,14 +11,28 @@ import { apiFetch, withTenantQuery } from "@/lib/api/client";
 import {
   DEFAULT_TABLE_PAGE_SIZE,
   EXPORT_PAGE_SIZE,
+  FILTER_DROPDOWN_INITIAL_LIMIT,
+  FILTER_ROSTER_TTL_MS,
+  IN_MEMORY_FILTER_CATALOG_LIMIT,
   fetchAllPages,
   fetchFirstPage,
   type ListPage,
 } from "@/lib/api/fetchAllPages";
 import { appendListQuery, fetchTenantListPage } from "@/lib/api/listPageHelpers";
+import { createAsyncTtlCache } from "@/lib/utils/asyncTtlCache";
+import { matchSorter, rankings } from "match-sorter";
 
 const EXPENSES_PATH = "/expenses";
 const CATEGORIES_PATH = "/expenses/categories";
+
+const expenseCategoryRosterCache = createAsyncTtlCache<ExpenseCategory[]>({
+  ttlMs: FILTER_ROSTER_TTL_MS,
+  maxEntries: 128,
+});
+
+export function clearExpenseCategoryOptionCache(): void {
+  expenseCategoryRosterCache.clear();
+}
 
 export type ExpenseListFilters = Pick<
   ExpenseFilters,
@@ -155,14 +169,6 @@ export async function createExpense(
   return res.json();
 }
 
-export async function getExpenseCategories(
-  tenantId: string,
-): Promise<ExpenseCategory[]> {
-  return fetchFirstPage((cursor, limit) =>
-    fetchExpenseCategoriesRaw(tenantId, cursor, limit),
-  );
-}
-
 export async function createExpenseCategory(
   tenantId: string,
   dto: CreateExpenseCategoryRequest,
@@ -172,6 +178,7 @@ export async function createExpenseCategory(
     { method: "POST", body: JSON.stringify(dto) },
   );
   if (!res.ok) throw new Error("Failed to create expense category");
+  clearExpenseCategoryOptionCache();
   return res.json();
 }
 
@@ -185,6 +192,7 @@ export async function updateExpenseCategory(
     { method: "PATCH", body: JSON.stringify(dto) },
   );
   if (!res.ok) throw new Error("Failed to update expense category");
+  clearExpenseCategoryOptionCache();
   return res.json();
 }
 
@@ -197,4 +205,31 @@ export async function deleteExpenseCategory(
     { method: "DELETE" },
   );
   if (!res.ok) throw new Error("Failed to delete expense category");
+  clearExpenseCategoryOptionCache();
+}
+
+/**
+ * Expense-category picker options.
+ * Empty query → first 100. Search filters that window (categories stay small).
+ */
+export async function getExpenseCategories(
+  tenantId: string,
+  search?: string,
+): Promise<ExpenseCategory[]> {
+  const limit = FILTER_DROPDOWN_INITIAL_LIMIT;
+  const q = search?.trim() ?? "";
+  const cacheKey = JSON.stringify(["expense-cat-picker", tenantId, limit]);
+  const recent = await expenseCategoryRosterCache.get(cacheKey, () =>
+    fetchFirstPage(
+      (cursor, pageLimit) =>
+        fetchExpenseCategoriesRaw(tenantId, cursor, pageLimit),
+      limit,
+    ),
+  );
+  if (!q) return recent;
+  return matchSorter(recent, q, {
+    keys: ["name", "code"],
+    threshold: rankings.CONTAINS,
+    keepDiacritics: true,
+  });
 }

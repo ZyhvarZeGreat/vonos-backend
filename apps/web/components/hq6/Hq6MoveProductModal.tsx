@@ -134,9 +134,9 @@ export function Hq6MoveProductModal({
             ? locationStock
             : [{ locationCode: toCode, quantity: 0 }],
       });
-      await queryClient.invalidateQueries({ queryKey: ["catalog"] });
-      await queryClient.invalidateQueries({ queryKey: ["items"] });
-      await queryClient.invalidateQueries({ queryKey: ["stock-movements"] });
+      void queryClient.invalidateQueries({ queryKey: ["catalog"] });
+      void queryClient.invalidateQueries({ queryKey: ["items"] });
+      void queryClient.invalidateQueries({ queryKey: ["stock-movements"] });
       toast.success("Product moved — stock & movement recorded");
       onSaved?.();
       onClose();

@@ -205,7 +205,7 @@ export function Hq6CatalogMetaListView({ kind }: { kind: CatalogMetaKind }) {
       opt.onError(err, undefined, ctx);
       toast.error(err instanceof Error ? err.message : "Update failed");
     } finally {
-      await opt.onSettled();
+      void opt.onSettled();
       setSaving(false);
     }
   };
@@ -521,7 +521,7 @@ export function Hq6CatalogMetaListView({ kind }: { kind: CatalogMetaKind }) {
                     err instanceof Error ? err.message : "Delete failed",
                   );
                 } finally {
-                  await opt.onSettled();
+                  void opt.onSettled();
                 }
               })();
             }}

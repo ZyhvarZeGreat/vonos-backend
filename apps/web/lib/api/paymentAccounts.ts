@@ -10,6 +10,8 @@ import { throwApiError } from "@/lib/api/parseApiError";
 import {
   DEFAULT_TABLE_PAGE_SIZE,
   EXPORT_PAGE_SIZE,
+  FILTER_ROSTER_TTL_MS,
+  IN_MEMORY_FILTER_CATALOG_LIMIT,
   TYPEAHEAD_PAGE_SIZE,
   fetchAllPages,
   fetchFirstPage,
@@ -17,13 +19,14 @@ import {
 } from "@/lib/api/fetchAllPages";
 import { appendListQuery, fetchTenantListPage } from "@/lib/api/listPageHelpers";
 import { createAsyncTtlCache } from "@/lib/utils/asyncTtlCache";
+import { matchSorter, rankings } from "match-sorter";
 
 const LIST_PATH = "/payment-accounts";
 
-/** Short-lived typeahead cache for account pickers — see customers.ts. */
+/** Full payment-account roster — cleared only on account mutations. */
 const paymentAccountOptionCache = createAsyncTtlCache<PaymentAccount[]>({
-  ttlMs: 30_000,
-  maxEntries: 100,
+  ttlMs: FILTER_ROSTER_TTL_MS,
+  maxEntries: 64,
 });
 
 /** Drop cached payment-account option lists (call after account mutations). */
@@ -205,17 +208,47 @@ export async function getPaymentAccounts(
   );
 }
 
-/** Open payment accounts for pickers (cash tills + banks; excludes chart junk). */
+/**
+ * Open payment-account roster for pickers — loaded once into memory.
+ * Capped at IN_MEMORY_FILTER_CATALOG_LIMIT.
+ */
+export async function getPaymentAccountRoster(
+  tenantId: string,
+): Promise<PaymentAccount[]> {
+  const cacheKey = JSON.stringify(["payment-account-roster", tenantId]);
+  return paymentAccountOptionCache.get(cacheKey, async () =>
+    fetchAllPages(
+      (cursor, limit) =>
+        fetchPaymentAccountsRaw(tenantId, cursor, limit, {
+          openOnly: true,
+          lite: true,
+        }),
+      Math.min(EXPORT_PAGE_SIZE, IN_MEMORY_FILTER_CATALOG_LIMIT),
+      (row) => row.id,
+      IN_MEMORY_FILTER_CATALOG_LIMIT,
+    ),
+  );
+}
+
+/**
+ * Open payment accounts for pickers (cash tills + banks).
+ * Full roster cached; `search` / `limit` are local match-sorter only.
+ */
 export async function getPaymentAccountsForPicker(
   tenantId: string,
   opts?: { search?: string; limit?: number },
 ): Promise<PaymentAccount[]> {
-  return getPaymentAccounts(tenantId, {
-    search: opts?.search,
-    limit: opts?.limit ?? TYPEAHEAD_PAGE_SIZE,
-    openOnly: true,
-    lite: true,
-  });
+  const roster = await getPaymentAccountRoster(tenantId);
+  const q = opts?.search?.trim() ?? "";
+  const matched = q
+    ? matchSorter(roster, q, {
+        keys: ["name", "accountNumber"],
+        threshold: rankings.CONTAINS,
+        keepDiacritics: true,
+      })
+    : roster;
+  const limit = opts?.limit;
+  return limit != null ? matched.slice(0, limit) : matched;
 }
 
 export async function getUnlinkedPaymentsCount(

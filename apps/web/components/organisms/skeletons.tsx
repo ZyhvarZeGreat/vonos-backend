@@ -203,31 +203,91 @@ export function DataTableSkeleton({
 }
 
 /**
- * Route-level list placeholder: text chrome only — TopProgressBar covers load.
- * No row skeletons; keep the page readable while the chunk/data arrives.
+ * Route-level list placeholder: real page chrome (title) stays visible.
+ * Only the table body shimmers — no full-page spinner.
  */
 export function Hq6ListRouteSkeleton({
-  title = "All products",
+  title = "Loading…",
+  subtitle,
+  rows = 8,
+  columns = 6,
 }: {
   rows?: number;
   columns?: number;
   title?: string;
+  subtitle?: string;
 }) {
+  const showTitle = Boolean(title?.trim());
   return (
     <div className="hq6-page" aria-busy aria-label="Loading list">
-      <section className="hq6-content-header">
-        <h1 className="text-foreground">{title}</h1>
-      </section>
+      {showTitle ? (
+        <section className="content-header">
+          <h1 className="tw-text-xl md:tw-text-3xl tw-font-bold tw-text-black">
+            {title}
+            {subtitle ? (
+              <small className="tw-text-sm md:tw-text-base tw-text-gray-700 tw-font-semibold">
+                {subtitle}
+              </small>
+            ) : null}
+          </h1>
+        </section>
+      ) : null}
 
-      <div className="hq6-card mb-4 border border-[var(--hq6-border)] bg-white p-3">
-        <p className="text-sm text-muted">Filters and search appear when ready.</p>
-      </div>
-
-      <div className="hq6-card hq6-products-box overflow-x-clip">
-        <div className="min-h-[12rem] px-3 py-6">
-          <p className="text-sm text-muted">Loading records…</p>
+      <section className="content">
+        <div className="box-primary tw-mb-4 tw-bg-white tw-shadow-sm tw-rounded-xl tw-ring-1 tw-ring-gray-200">
+          <div className="tw-p-2 sm:tw-p-3">
+            <div className="tw-py-2 sm:tw-px-5">
+              <DataTableSkeleton
+                rows={rows}
+                columns={columns}
+                withPagination={false}
+                embedded
+              />
+            </div>
+          </div>
         </div>
-      </div>
+      </section>
+    </div>
+  );
+}
+
+/**
+ * Generic content route: static title, loading only in the body (no spinner).
+ */
+export function Hq6ContentRouteSkeleton({
+  title = "Loading…",
+  subtitle,
+}: {
+  title?: string;
+  subtitle?: string;
+}) {
+  const showTitle = Boolean(title?.trim());
+  return (
+    <div className="hq6-page" aria-busy aria-label="Loading page">
+      {showTitle ? (
+        <section className="content-header">
+          <h1 className="tw-text-xl md:tw-text-3xl tw-font-bold tw-text-black">
+            {title}
+            {subtitle ? (
+              <small className="tw-text-sm md:tw-text-base tw-text-gray-700 tw-font-semibold">
+                {subtitle}
+              </small>
+            ) : null}
+          </h1>
+        </section>
+      ) : null}
+      <section className="content">
+        <div className="box-primary tw-mb-4 tw-bg-white tw-shadow-sm tw-rounded-xl tw-ring-1 tw-ring-gray-200">
+          <div className="tw-p-4 sm:tw-p-6">
+            <DataTableSkeleton
+              rows={6}
+              columns={4}
+              withPagination={false}
+              embedded
+            />
+          </div>
+        </div>
+      </section>
     </div>
   );
 }

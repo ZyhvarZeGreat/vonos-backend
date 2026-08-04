@@ -400,6 +400,59 @@ html.upos-shell [data-hq6="true"] .hq6-page:not(.hq6-home) {
   color: #374151;
 }
 
+/* AdminLTE / UPOS breadcrumbs — Home › Section › Page */
+[data-hq6="true"] .content-header {
+  position: relative;
+  padding-right: 0.25rem;
+}
+
+[data-hq6="true"] .content-header > .breadcrumb {
+  float: right;
+  background: transparent;
+  margin-top: 0;
+  margin-bottom: 0;
+  font-size: 12px;
+  padding: 7px 5px;
+  border-radius: 2px;
+  list-style: none;
+}
+
+[data-hq6="true"] .content-header > .breadcrumb > li {
+  display: inline-block;
+}
+
+[data-hq6="true"] .content-header > .breadcrumb > li + li::before {
+  content: ">\00a0";
+  padding: 0 5px;
+  color: #6b7280;
+}
+
+[data-hq6="true"] .content-header > .breadcrumb > li > a {
+  color: #3c8dbc;
+  text-decoration: none;
+}
+
+[data-hq6="true"] .content-header > .breadcrumb > li > a:hover {
+  text-decoration: underline;
+}
+
+[data-hq6="true"] .content-header > .breadcrumb > li.active {
+  color: #777;
+}
+
+[data-hq6="true"] .content-header > .breadcrumb > li > a > .fa {
+  margin-right: 0.25rem;
+}
+
+@media (max-width: 767px) {
+  [data-hq6="true"] .content-header > .breadcrumb {
+    float: none;
+    position: static;
+    margin-top: 0.35rem;
+    padding-left: 0;
+  }
+}
+
 /* Ultimate POS widget card (components/widget.blade.php + ui-audit/01_users) */
 [data-hq6="true"] .box-primary {
   background: #fff;
@@ -621,19 +674,20 @@ html.upos-shell [data-hq6="true"] .hq6-page:not(.hq6-home) {
 
 [data-hq6="true"] .hq6-roles-table thead th {
   padding: 0.65rem 0.85rem;
-  text-align: left;
+  text-align: center;
   font-weight: 700;
   color: #111827;
-  border-bottom: 1px solid #e5e7eb;
+  border-bottom: 1px solid #d1d5db;
   background: #fff;
   white-space: nowrap;
 }
 
 [data-hq6="true"] .hq6-roles-table tbody td {
   padding: 0.55rem 0.85rem;
-  border-bottom: 1px solid #f3f4f6;
+  border-bottom: 1px solid #e5e7eb;
   color: #111827;
   vertical-align: middle;
+  text-align: center;
 }
 
 [data-hq6="true"] .hq6-roles-table tbody tr.odd {
@@ -653,7 +707,8 @@ html.upos-shell [data-hq6="true"] .hq6-roles-table tbody td {
   border-left: none !important;
   border-right: 1px solid rgba(0, 0, 0, 0.12) !important;
   border-top: none !important;
-  border-bottom: none !important;
+  border-bottom: 1px solid #e5e7eb !important;
+  text-align: center !important;
 }
 
 html.upos-shell [data-hq6="true"] .hq6-roles-table thead th:last-child,
@@ -1564,16 +1619,23 @@ html.upos-shell [data-hq6="true"] .hq6-dt-toolbar {
   color: #374151 !important;
   font-weight: 700 !important;
   white-space: nowrap;
-  border-bottom: 1px solid #f4f4f4 !important;
+  border-bottom: 1px solid #d1d5db !important;
   border-right: 1px solid rgba(0, 0, 0, 0.12) !important;
   padding-top: 0.55rem !important;
   padding-bottom: 0.55rem !important;
+  text-align: center !important;
+  vertical-align: middle;
 }
 
 [data-hq6="true"] .hq6-table-wrap tbody td {
-  border-bottom: none !important;
+  border-bottom: 1px solid #e5e7eb !important;
   border-right: 1px solid rgba(0, 0, 0, 0.12) !important;
   vertical-align: middle;
+  text-align: center !important;
+}
+
+[data-hq6="true"] .hq6-table-wrap tbody tr:last-child td {
+  border-bottom: 1px solid #e5e7eb !important;
 }
 
 [data-hq6="true"] .hq6-table-wrap thead th:last-child,
@@ -2207,21 +2269,49 @@ html.upos-shell .hq6-actions-toggle.tw-dw-btn {
   background: #f8fafc !important;
   border: none !important;
   border-right: 1px solid rgba(0, 0, 0, 0.12) !important;
-  border-bottom: 1px solid #f4f4f4 !important;
+  border-bottom: 1px solid #d1d5db !important;
   padding: 0.55rem 0.65rem !important;
   font-weight: 600;
   color: #121926;
   white-space: nowrap;
-  text-align: left !important;
+  text-align: center !important;
+  vertical-align: middle;
 }
 
 [data-hq6="true"] .hq6-table-wrap tbody td,
 [data-hq6="true"] .table.table-bordered > tbody > tr > td {
   border: none !important;
   border-right: 1px solid rgba(0, 0, 0, 0.12) !important;
+  border-bottom: 1px solid #e5e7eb !important;
   padding: 0.5rem 0.65rem !important;
   vertical-align: middle;
-  text-align: left !important;
+  text-align: center !important;
+}
+
+/* Center cell content when DataTable uses flex wrappers (overrides text-left/right). */
+[data-hq6="true"] .hq6-table-wrap thead th > *,
+[data-hq6="true"] .hq6-table-wrap tbody td > *,
+[data-hq6="true"] .hq6-table-wrap tfoot td > * {
+  justify-content: center !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+  text-align: center !important;
+}
+
+[data-hq6="true"] .hq6-table-wrap thead th button.inline-flex,
+[data-hq6="true"] .hq6-table-wrap thead th .justify-start {
+  justify-content: center !important;
+}
+
+[data-hq6="true"] .hq6-table-wrap thead th .ml-auto,
+[data-hq6="true"] .hq6-table-wrap tbody td .ml-auto,
+[data-hq6="true"] .hq6-table-wrap tbody td .text-right,
+[data-hq6="true"] .hq6-table-wrap thead th .text-right,
+[data-hq6="true"] .hq6-table-wrap tbody td .text-left,
+[data-hq6="true"] .hq6-table-wrap thead th .text-left {
+  margin-left: auto !important;
+  margin-right: auto !important;
+  text-align: center !important;
 }
 
 [data-hq6="true"] .hq6-table-wrap thead th:last-child,

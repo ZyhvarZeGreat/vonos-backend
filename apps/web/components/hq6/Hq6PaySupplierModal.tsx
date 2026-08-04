@@ -64,7 +64,7 @@ export function Hq6PaySupplierModal({
   const accountsQuery = useQuery({
     queryKey: modalKeys.paymentAccounts(tenantId),
     queryFn: () => getPaymentAccountsForPicker(tenantId!),
-    enabled: Boolean(open && tenantId),
+    enabled: Boolean(tenantId),
     staleTime: MODAL_REF_STALE_MS,
     placeholderData: (prev) => prev,
   });

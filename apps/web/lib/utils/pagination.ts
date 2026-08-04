@@ -49,8 +49,17 @@ export function saleListCursor(row: { id: string; date: string }): string {
   return encodeCompositeCursor({ sortValue, id: row.id });
 }
 
-export function customerListCursor(row: { id: string; name: string }): string {
-  return encodeCompositeCursor({ sortValue: row.name, id: row.id });
+export function customerListCursor(
+  row: { id: string; name: string; createdAt?: string },
+  sortBy: string = "createdAt",
+): string {
+  if (sortBy === "name") {
+    return encodeCompositeCursor({ sortValue: row.name, id: row.id });
+  }
+  const raw = row.createdAt ?? "";
+  const sortValue =
+    raw && !raw.includes("T") ? new Date(raw).toISOString() : raw;
+  return encodeCompositeCursor({ sortValue, id: row.id });
 }
 
 export function itemListCursor(row: { id: string; name: string }): string {

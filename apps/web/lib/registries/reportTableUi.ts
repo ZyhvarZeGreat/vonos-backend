@@ -193,7 +193,7 @@ export function compactReportFilters(
   const out: ReportRunOptions = {};
   if (filters.cursor) out.cursor = filters.cursor;
   if (filters.limit != null) out.limit = filters.limit;
-  if (filters.search?.trim()) out.search = filters.search.trim();
+  // Search is client-side match-sorter only — never send to the report API.
   if (filters.customerId) out.customerId = filters.customerId;
   if (filters.customerGroupId) out.customerGroupId = filters.customerGroupId;
   if (filters.locationCode) out.locationCode = filters.locationCode;

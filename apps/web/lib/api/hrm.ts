@@ -26,6 +26,9 @@ import { throwApiError } from "@/lib/api/parseApiError";
 import {
   DEFAULT_TABLE_PAGE_SIZE,
   EXPORT_PAGE_SIZE,
+  FILTER_DROPDOWN_INITIAL_LIMIT,
+  FILTER_ROSTER_TTL_MS,
+  IN_MEMORY_FILTER_CATALOG_LIMIT,
   TYPEAHEAD_PAGE_SIZE,
   fetchAllPages,
   fetchFirstPage,
@@ -33,17 +36,35 @@ import {
   type ListPage,
 } from "@/lib/api/fetchAllPages";
 import { appendListQuery, fetchTenantListPage } from "@/lib/api/listPageHelpers";
+import { createAccumulatingPicker } from "@/lib/api/accumulatingPicker";
 import { createAsyncTtlCache } from "@/lib/utils/asyncTtlCache";
+import { compositeListCursorFrom } from "@/lib/utils/pagination";
+import { matchSorter, rankings } from "match-sorter";
 
-/** Short-lived typeahead cache for the worker/staff pickers — see customers.ts. */
+/** Full staff roster for filters/pickers — cleared only on HRM mutations. */
 const employeeOptionCache = createAsyncTtlCache<Employee[]>({
-  ttlMs: 30_000,
-  maxEntries: 200,
+  ttlMs: FILTER_ROSTER_TTL_MS,
+  maxEntries: 64,
+});
+
+/** Full designation roster — cleared only on designation mutations. */
+const designationOptionCache = createAsyncTtlCache<Designation[]>({
+  ttlMs: FILTER_ROSTER_TTL_MS,
+  maxEntries: 64,
 });
 
 /** Drop cached employee/service-staff option lists (call after HRM mutations). */
 export function clearEmployeeOptionCache(): void {
   employeeOptionCache.clear();
+  for (const picker of serviceStaffPickers.values()) picker.clearAll();
+  serviceStaffPickers.clear();
+  for (const picker of employeePickers.values()) picker.clearAll();
+  employeePickers.clear();
+}
+
+/** Drop cached designation option lists (call after designation mutations). */
+export function clearDesignationOptionCache(): void {
+  designationOptionCache.clear();
 }
 
 const PAYROLL_PATH = "/hrm/payroll";
@@ -241,19 +262,48 @@ export async function getPayrollsPage(
   });
 }
 
-/** Typeahead options — never dumps the full catalog. */
+/** Full designation roster — loaded once; cleared only on designation mutations. */
+export async function getDesignationRoster(
+  tenantId: string,
+): Promise<Designation[]> {
+  const cacheKey = JSON.stringify(["designation-roster", tenantId]);
+  return designationOptionCache.get(cacheKey, async () =>
+    fetchAllPages(
+      async (cursor, limit) => {
+        const url = appendListQuery(
+          withTenantQuery(DESIGNATIONS_PATH, tenantId),
+          { cursor, limit },
+        );
+        const res = await apiFetch(url);
+        if (!res.ok) throw new Error("Failed to fetch designations");
+        return asArray<Designation>(await res.json());
+      },
+      Math.min(EXPORT_PAGE_SIZE, IN_MEMORY_FILTER_CATALOG_LIMIT),
+      (row) => compositeListCursorFrom(row, "name", "string"),
+      IN_MEMORY_FILTER_CATALOG_LIMIT,
+    ),
+  );
+}
+
+/**
+ * Designation filter/picker options — full roster; `search` is local match-sorter.
+ */
 export async function getDesignations(
   tenantId: string,
   search?: string,
+  opts?: { limit?: number },
 ): Promise<Designation[]> {
-  const tenantPath = withTenantQuery(DESIGNATIONS_PATH, tenantId);
-  const url = appendListQuery(tenantPath, {
-    search,
-    limit: TYPEAHEAD_PAGE_SIZE,
-  });
-  const res = await apiFetch(url);
-  if (!res.ok) throw new Error("Failed to fetch designations");
-  return asArray<Designation>(await res.json());
+  const roster = await getDesignationRoster(tenantId);
+  const q = search?.trim() ?? "";
+  const matched = q
+    ? matchSorter(roster, q, {
+        keys: ["name"],
+        threshold: rankings.CONTAINS,
+        keepDiacritics: true,
+      })
+    : roster;
+  const limit = opts?.limit;
+  return limit != null ? matched.slice(0, limit) : matched;
 }
 
 export async function getDesignationsPage(
@@ -280,55 +330,132 @@ export async function createDesignation(
     body: JSON.stringify(dto),
   });
   if (!res.ok) return throwApiError(res, "Failed to create designation");
+  clearDesignationOptionCache();
   return res.json();
 }
 
-/** Service staff roster for sales assignment and filters. */
+type StaffPicker = ReturnType<typeof createAccumulatingPicker<Employee>>;
+const serviceStaffPickers = new Map<string, StaffPicker>();
+
+function serviceStaffPickerFor(tenantId: string): StaffPicker {
+  let picker = serviceStaffPickers.get(tenantId);
+  if (!picker) {
+    picker = createAccumulatingPicker<Employee>({
+      getCursor: (row) => compositeListCursorFrom(row, "name", "string"),
+      searchKeys: ["name", "employeeCode", "designationName"],
+      fetchPage: (cursor, limit, search) =>
+        fetchListPage(
+          async (pageCursor, pageLimit) => {
+            const url = appendListQuery(withTenantQuery(EMPLOYEES_PATH, tenantId), {
+              serviceStaffOnly: "true",
+              search: search || undefined,
+              cursor: pageCursor,
+              limit: pageLimit,
+            });
+            const res = await apiFetch(url);
+            if (!res.ok) throw new Error("Failed to fetch service staff");
+            return asArray<Employee>(await res.json());
+          },
+          cursor,
+          limit,
+        ),
+    });
+    serviceStaffPickers.set(tenantId, picker);
+  }
+  return picker;
+}
+
+/**
+ * Service staff filter/picker — first ~80, scroll for more.
+ * Search uses loaded rows first; otherwise API.
+ */
 export async function getServiceStaff(
   tenantId: string,
   search?: string,
-  opts?: { limit?: number },
+  _opts?: { limit?: number },
 ): Promise<Employee[]> {
-  const limit = opts?.limit ?? TYPEAHEAD_PAGE_SIZE;
-  const cacheKey = JSON.stringify(["service", tenantId, search ?? "", limit]);
-  return employeeOptionCache.get(cacheKey, async () => {
-    const tenantPath = withTenantQuery(EMPLOYEES_PATH, tenantId);
-    const url = appendListQuery(tenantPath, {
-      search,
-      serviceStaffOnly: "true",
-      limit,
-    });
-    const res = await apiFetch(url);
-    if (!res.ok) throw new Error("Failed to fetch service staff");
-    return asArray<Employee>(await res.json());
-  });
+  const page = await serviceStaffPickerFor(tenantId).load(tenantId, search);
+  return page.items;
 }
 
-/** Typeahead options — never dumps the full catalog. */
+export async function loadMoreServiceStaffForPicker(
+  tenantId: string,
+): Promise<{ items: Employee[]; appended: Employee[]; hasMore: boolean }> {
+  return serviceStaffPickerFor(tenantId).loadMore(tenantId);
+}
+
+export function serviceStaffPickerHasMore(tenantId: string): boolean {
+  return serviceStaffPickerFor(tenantId).hasMore(tenantId);
+}
+
+type EmployeePicker = ReturnType<typeof createAccumulatingPicker<Employee>>;
+const employeePickers = new Map<string, EmployeePicker>();
+
+function employeePickerKey(tenantId: string, designationId = ""): string {
+  return JSON.stringify([tenantId, designationId]);
+}
+
+function employeePickerFor(
+  tenantId: string,
+  designationId = "",
+): EmployeePicker {
+  const key = employeePickerKey(tenantId, designationId);
+  let picker = employeePickers.get(key);
+  if (!picker) {
+    picker = createAccumulatingPicker<Employee>({
+      getCursor: (row) => compositeListCursorFrom(row, "name", "string"),
+      searchKeys: ["name", "employeeCode", "designationName"],
+      fetchPage: (cursor, limit, search) =>
+        fetchListPage(
+          async (pageCursor, pageLimit) => {
+            const url = appendListQuery(withTenantQuery(EMPLOYEES_PATH, tenantId), {
+              search: search || undefined,
+              designationId: designationId || undefined,
+              cursor: pageCursor,
+              limit: pageLimit,
+            });
+            const res = await apiFetch(url);
+            if (!res.ok) throw new Error("Failed to fetch employees");
+            return asArray<Employee>(await res.json());
+          },
+          cursor,
+          limit,
+        ),
+    });
+    employeePickers.set(key, picker);
+  }
+  return picker;
+}
+
+/**
+ * Employee filter/picker — first ~80, scroll for more.
+ * Search uses loaded rows first; otherwise API.
+ */
 export async function getEmployees(
   tenantId: string,
   search?: string,
-  opts?: { designationId?: string; serviceStaffOnly?: boolean },
+  opts?: {
+    designationId?: string;
+    serviceStaffOnly?: boolean;
+    limit?: number;
+  },
 ): Promise<Employee[]> {
-  const cacheKey = JSON.stringify([
-    "employees",
-    tenantId,
-    search ?? "",
-    opts?.designationId ?? "",
-    opts?.serviceStaffOnly ? 1 : 0,
-  ]);
-  return employeeOptionCache.get(cacheKey, async () => {
-    const tenantPath = withTenantQuery(EMPLOYEES_PATH, tenantId);
-    const url = appendListQuery(tenantPath, {
-      search,
-      designationId: opts?.designationId,
-      ...(opts?.serviceStaffOnly ? { serviceStaffOnly: "true" } : {}),
-      limit: TYPEAHEAD_PAGE_SIZE,
-    });
-    const res = await apiFetch(url);
-    if (!res.ok) throw new Error("Failed to fetch employees");
-    return asArray<Employee>(await res.json());
-  });
+  if (opts?.serviceStaffOnly) {
+    return getServiceStaff(tenantId, search, { limit: opts.limit });
+  }
+  const designationId = opts?.designationId ?? "";
+  const key = employeePickerKey(tenantId, designationId);
+  const page = await employeePickerFor(tenantId, designationId).load(key, search);
+  return page.items;
+}
+
+export async function loadMoreEmployeesForPicker(
+  tenantId: string,
+  opts?: { designationId?: string },
+): Promise<{ items: Employee[]; appended: Employee[]; hasMore: boolean }> {
+  const designationId = opts?.designationId ?? "";
+  const key = employeePickerKey(tenantId, designationId);
+  return employeePickerFor(tenantId, designationId).loadMore(key);
 }
 
 export async function getEmployeesPage(
@@ -534,6 +661,8 @@ export async function updateDesignation(
     { method: "PATCH", body: JSON.stringify(dto) },
   );
   if (!res.ok) throw new Error("Failed to update designation");
+  clearDesignationOptionCache();
+  clearEmployeeOptionCache();
   return res.json();
 }
 
@@ -546,6 +675,8 @@ export async function deleteDesignation(
     { method: "DELETE" },
   );
   if (!res.ok) throw new Error("Failed to delete designation");
+  clearDesignationOptionCache();
+  clearEmployeeOptionCache();
 }
 
 export async function updatePayrollGroup(

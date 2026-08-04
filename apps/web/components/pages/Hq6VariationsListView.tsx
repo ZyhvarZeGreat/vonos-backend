@@ -27,6 +27,7 @@ import { useServerListPage } from "@/lib/hooks/useServerListPage";
 import { HQ6_TABLE_PAGE_SIZE } from "@/lib/api/fetchAllPages";
 import { useListExport } from "@/lib/hooks/useListExport";
 import { useTenantId } from "@/lib/hooks/useRouteTenant";
+import { matchSearchRows } from "@/lib/utils/listClientSearch";
 import { toast } from "@/stores/toastStore";
 
 const PAGE_SIZES = [25, 50, 100, 200, 500, 1000, -1] as const;
@@ -95,13 +96,10 @@ export function Hq6VariationsListView() {
   });
 
   const filteredItems = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return items;
-    return items.filter(
-      (row) =>
-        row.name.toLowerCase().includes(q) ||
-        row.values.some((v) => v.toLowerCase().includes(q)),
-    );
+    return matchSearchRows(items, search, [
+      "name",
+      (row) => row.values.join(" "),
+    ]);
   }, [search, items]);
 
   const openCreate = useCallback(() => {
@@ -183,7 +181,7 @@ export function Hq6VariationsListView() {
         setFormOpen(true);
         toast.error(err instanceof Error ? err.message : "Save failed");
       } finally {
-        await opt.onSettled();
+        void opt.onSettled();
         setSaving(false);
       }
     },
@@ -209,7 +207,7 @@ export function Hq6VariationsListView() {
       opt.onError(err, undefined, ctx);
       toast.error(err instanceof Error ? err.message : "Delete failed");
     } finally {
-      await opt.onSettled();
+      void opt.onSettled();
       setDeleting(false);
     }
   }, [deleteTarget, queryClient, tenantId]);

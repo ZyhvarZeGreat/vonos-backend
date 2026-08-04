@@ -4,6 +4,7 @@
  * HQ6 Barcode sticker settings — list + localStorage persistence
  * (ui-walkthrough/66_barcodes). Create/edit are separate routes.
  */
+import { matchSearchRows } from "@/lib/utils/listClientSearch";
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -115,15 +116,10 @@ export function Hq6BarcodeSettingsListView() {
     if (tenantId) saveBarcodeSettings(tenantId, next);
   };
 
-  const filtered = useMemo(() => {
-    const q = localSearch.trim().toLowerCase();
-    if (!q) return rows;
-    return rows.filter(
-      (r) =>
-        r.name.toLowerCase().includes(q) ||
-        r.description.toLowerCase().includes(q),
-    );
-  }, [localSearch, rows]);
+  const filtered = useMemo(
+    () => matchSearchRows(rows, localSearch, ["name", "description"]),
+    [localSearch, rows],
+  );
 
   const base = tenantCode
     ? tenantListPath(tenantCode, "barcode-settings")

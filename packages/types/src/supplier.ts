@@ -37,6 +37,9 @@ export interface SupplierFilters {
   status?: "active" | "inactive";
   /** When false, skip count/amountSummary for faster first paint. */
   includeSummary?: boolean;
+  /** List / picker sort — default name asc; use createdAt desc for recent pickers. */
+  sortBy?: string;
+  sortDir?: "asc" | "desc";
 }
 
 /** List/detail row with display fields returned by the suppliers API. */

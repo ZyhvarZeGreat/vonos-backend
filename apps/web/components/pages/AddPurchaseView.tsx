@@ -21,8 +21,7 @@ import {
   payStockMovement,
 } from "@/lib/api/stockMovements";
 import { getPaymentAccountsForPicker } from "@/lib/api/paymentAccounts";
-import { getSuppliers } from "@/lib/api/suppliers";
-import { TYPEAHEAD_PAGE_SIZE } from "@/lib/api/fetchAllPages";
+import { getSuppliersForPicker, loadMoreSuppliersForPicker, suppliersPickerHasMore } from "@/lib/api/suppliers";
 import { useIsVaHq6 } from "@/lib/hooks/useIsVaHq6";
 import { useRouteTenant, useTenantId } from "@/lib/hooks/useRouteTenant";
 import {
@@ -181,27 +180,40 @@ export function AddPurchaseView() {
 
   const { data: suppliers = [] } = useQuery({
     queryKey: ["suppliers", tenantId],
-    queryFn: () => getSuppliers(tenantId!),
+    queryFn: () => getSuppliersForPicker(tenantId!),
     enabled: Boolean(tenantId),
   });
 
   const loadSupplierOptions = useCallback(
     async (query: string) => {
-      if (!tenantId) return [{ value: "", label: "Please Select" }];
-      const rows = await getSuppliers(tenantId, {
-        search: query || undefined,
-        limit: TYPEAHEAD_PAGE_SIZE,
-      });
-      return [
-        { value: "", label: "Please Select" },
-        ...rows.map((s) => ({
-          value: s.id,
-          label: s.businessName ?? s.name,
-        })),
-      ];
+      if (!tenantId) return { options: [{ value: "", label: "Please Select" }], hasMore: false };
+      const rows = await getSuppliersForPicker(tenantId, query || undefined);
+      return {
+        options: [
+          { value: "", label: "Please Select" },
+          ...rows.map((s) => ({
+            value: s.id,
+            label: s.businessName ?? s.name,
+          })),
+        ],
+        hasMore: !query.trim() && suppliersPickerHasMore(tenantId),
+      };
     },
     [tenantId],
   );
+
+  const loadMoreSupplierOptions = useCallback(async () => {
+    if (!tenantId) return { options: [], hasMore: false, append: true };
+    const page = await loadMoreSuppliersForPicker(tenantId);
+    return {
+      options: page.appended.map((s) => ({
+        value: s.id,
+        label: s.businessName ?? s.name,
+      })),
+      hasMore: page.hasMore,
+      append: true,
+    };
+  }, [tenantId]);
 
   const { data: paymentAccounts = [] } = useQuery({
     queryKey: modalKeys.paymentAccounts(tenantId),
@@ -417,6 +429,8 @@ export function AddPurchaseView() {
                   selectedLabel={selectedSupplierLabel}
                   placeholder="Please Select"
                   loadOptions={loadSupplierOptions}
+                  loadMoreOptions={loadMoreSupplierOptions}
+                  debounceMs={0}
                   onChange={(supplierId) => patchForm({ supplierId })}
                 />
                 <button
@@ -553,14 +567,13 @@ export function AddPurchaseView() {
                   tenantId={tenantId}
                   tenantCode={tenantCode}
                   businessLocations={businessLocations}
-                  includeWarehouse={groupStockConsumer}
-                  ownCatalog={!groupStockConsumer}
-                  allowCustom={groupStockConsumer}
-                  pickSourceAfterSelect={groupStockConsumer}
+                  includeWarehouse={false}
+                  ownCatalog
+                  showStockQty={!groupStockConsumer}
                   onSelect={addItem}
                   placeholder={
                     groupStockConsumer
-                      ? "Search VW / VISP / VSP stock or type a custom part to purchase"
+                      ? "Search product catalog by name or SKU"
                       : "Enter Product name / SKU / Scan bar code"
                   }
                 />
@@ -985,6 +998,8 @@ export function AddPurchaseView() {
               selectedLabel={selectedSupplierLabel}
               placeholder="Select supplier…"
               loadOptions={loadSupplierOptions}
+                  loadMoreOptions={loadMoreSupplierOptions}
+              debounceMs={0}
               onChange={(supplierId) => patchForm({ supplierId })}
             />
           </div>

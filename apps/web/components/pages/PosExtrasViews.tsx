@@ -21,7 +21,8 @@ import {
   deleteDiscount,
   getDiscountsPage,
 } from "@/lib/api/discounts";
-import { bulkUpdatePrices, getAllItems } from "@/lib/api/items";
+import { bulkUpdatePrices, getItemsForPicker } from "@/lib/api/items";
+import { TYPEAHEAD_PAGE_SIZE } from "@/lib/api/fetchAllPages";
 import {
   createVariation,
   deleteVariation,
@@ -494,7 +495,11 @@ function PrintLabelsViewBody() {
     if (!tenantId) return;
     setLoading(true);
     try {
-      const items = await getAllItems(tenantId, { search: search.trim() || undefined });
+      const items = await getItemsForPicker(
+        tenantId,
+        search.trim() || undefined,
+        { limit: TYPEAHEAD_PAGE_SIZE },
+      );
       setSelected(items.slice(0, 24));
     } finally {
       setLoading(false);

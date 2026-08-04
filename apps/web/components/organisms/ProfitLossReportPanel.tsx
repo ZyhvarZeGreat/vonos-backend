@@ -11,6 +11,7 @@ import { runReport, type ReportRunMode } from "@/lib/api/reports";
 import { useOffsetPage } from "@/lib/hooks/useOffsetPage";
 import { formatCurrency } from "@/lib/utils/formatCurrency";
 import { cn } from "@/lib/utils/cn";
+import { matchSearchRows } from "@/lib/utils/listClientSearch";
 import { Skeleton } from "@/components/atoms/Skeleton";
 import { DataTableSkeleton } from "@/components/organisms/skeletons";
 import { CursorPaginationBar } from "@/components/molecules/CursorPaginationBar";
@@ -109,17 +110,19 @@ function BreakdownTable({
   hq6?: boolean;
 }) {
   const [search, setSearch] = useState("");
-  const filteredRows = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return table.rows;
-    return table.rows.filter((row) =>
-      table.columns.some((col) => {
-        const raw = row[col.key];
-        if (raw == null || Array.isArray(raw)) return false;
-        return String(raw).toLowerCase().includes(q);
-      }),
-    );
-  }, [search, table.columns, table.rows]);
+  const filteredRows = useMemo(
+    () =>
+      matchSearchRows(
+        table.rows,
+        search,
+        table.columns.map((col) => (row) => {
+          const raw = row[col.key];
+          if (raw == null || Array.isArray(raw)) return "";
+          return String(raw);
+        }),
+      ),
+    [search, table.columns, table.rows],
+  );
   const pagination = useOffsetPage(filteredRows, {
     resetKey: `${table.rows.length}:${search}`,
     defaultPageSize: TABLE_REPORT_PAGE_SIZE,

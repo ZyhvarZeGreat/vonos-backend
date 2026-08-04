@@ -1,5 +1,6 @@
 "use client";
 
+import { matchSearchRows } from "@/lib/utils/listClientSearch";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Info, Search } from "lucide-react";
@@ -175,13 +176,10 @@ export function Hq6BusinessSettingsView() {
     );
   }, [config?.businessSettings, config?.name, tenantCode, tenantName]);
 
-  const filteredNav = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return HQ6_SETTINGS_NAV;
-    return HQ6_SETTINGS_NAV.filter((item) =>
-      item.label.toLowerCase().includes(q),
-    );
-  }, [search]);
+  const filteredNav = useMemo(
+    () => matchSearchRows(HQ6_SETTINGS_NAV, search, ["label"]),
+    [search],
+  );
 
   const setTab = (tab: TabKey, key: string, value: string | boolean) => {
     setDraft((prev) => ({

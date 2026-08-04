@@ -10,7 +10,6 @@ import {
 } from "@/components/hq6/Hq6Modal";
 import { updateSupplier } from "@/lib/api/suppliers";
 import { getUsers } from "@/lib/api/users";
-import { TYPEAHEAD_PAGE_SIZE } from "@/lib/api/fetchAllPages";
 import { withOptimistic } from "@/lib/hooks/useAppMutation";
 import {
   MODAL_REF_STALE_MS,
@@ -86,7 +85,7 @@ export function Hq6EditSupplierModal({
 
   const { data: users = [] } = useQuery({
     queryKey: modalKeys.usersFilter(tenantId),
-    queryFn: () => getUsers(tenantId!, { limit: TYPEAHEAD_PAGE_SIZE }),
+    queryFn: () => getUsers(tenantId!),
     enabled: Boolean(open && tenantId),
     staleTime: MODAL_REF_STALE_MS,
     placeholderData: (prev) => prev,
@@ -224,7 +223,7 @@ export function Hq6EditSupplierModal({
         err instanceof Error ? err.message : "Failed to update supplier",
       );
     } finally {
-      await opt.onSettled();
+      void opt.onSettled();
       setSaving(false);
     }
   };

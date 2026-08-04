@@ -12,15 +12,33 @@ import { throwApiError } from "@/lib/api/parseApiError";
 import {
   DEFAULT_TABLE_PAGE_SIZE,
   EXPORT_PAGE_SIZE,
+  FILTER_DROPDOWN_INITIAL_LIMIT,
+  FILTER_ROSTER_TTL_MS,
+  IN_MEMORY_FILTER_CATALOG_LIMIT,
   fetchAllPages,
   fetchFirstPage,
   fetchListPage,
   type ListPage,
 } from "@/lib/api/fetchAllPages";
+import { createAccumulatingPicker } from "@/lib/api/accumulatingPicker";
+import { createAsyncTtlCache } from "@/lib/utils/asyncTtlCache";
+import { nameListCursor } from "@/lib/utils/pagination";
 
 export interface UserListRow extends User {
   tenantCode?: string | null;
   tenantName?: string | null;
+}
+
+/** User picker cache — recent window / search; cleared on mutations. */
+const userOptionCache = createAsyncTtlCache<UserListRow[]>({
+  ttlMs: FILTER_ROSTER_TTL_MS,
+  maxEntries: 128,
+});
+
+export function clearUserOptionCache(): void {
+  userOptionCache.clear();
+  for (const picker of userPickers.values()) picker.clearAll();
+  userPickers.clear();
 }
 
 export interface UserListOptions {
@@ -137,11 +155,128 @@ export async function getAllTenantUsers(): Promise<UserListRow[]> {
   );
 }
 
+/**
+ * Full user roster for export / admin — not for filter dropdowns.
+ */
+export async function getUserRoster(
+  tenantId: string | null,
+  options?: Pick<UserListOptions, "allTenants" | "role" | "status">,
+): Promise<UserListRow[]> {
+  const cacheKey = JSON.stringify([
+    "user-roster",
+    tenantId,
+    options?.allTenants ? 1 : 0,
+    options?.role ?? "",
+    options?.status ?? "",
+  ]);
+  return userOptionCache.get(cacheKey, async () =>
+    fetchAllPages(
+      (cursor, limit) =>
+        fetchUsersRaw(
+          tenantId,
+          {
+            allTenants: options?.allTenants,
+            role: options?.role,
+            status: options?.status,
+          },
+          cursor,
+          limit,
+        ),
+      Math.min(EXPORT_PAGE_SIZE, IN_MEMORY_FILTER_CATALOG_LIMIT),
+      nameListCursor,
+      IN_MEMORY_FILTER_CATALOG_LIMIT,
+    ),
+  );
+}
+
+type UserPicker = ReturnType<typeof createAccumulatingPicker<UserListRow>>;
+const userPickers = new Map<string, UserPicker>();
+
+function userPickerKey(
+  tenantId: string | null,
+  opts?: { allTenants?: boolean; role?: string; status?: string },
+): string {
+  return JSON.stringify([
+    tenantId,
+    opts?.allTenants ? 1 : 0,
+    opts?.role ?? "",
+    opts?.status ?? "",
+  ]);
+}
+
+function userPickerFor(
+  tenantId: string | null,
+  opts?: { allTenants?: boolean; role?: string; status?: string },
+): UserPicker {
+  const key = userPickerKey(tenantId, opts);
+  let picker = userPickers.get(key);
+  if (!picker) {
+    picker = createAccumulatingPicker<UserListRow>({
+      getCursor: nameListCursor,
+      searchKeys: ["name", "email", "username"],
+      fetchPage: (cursor, limit, search) =>
+        fetchListPage(
+          (pageCursor, pageLimit) =>
+            fetchUsersRaw(
+              tenantId,
+              {
+                allTenants: opts?.allTenants,
+                role: opts?.role,
+                status: opts?.status,
+                search: search || undefined,
+              },
+              pageCursor,
+              pageLimit,
+            ),
+          cursor,
+          limit,
+        ),
+    });
+    userPickers.set(key, picker);
+  }
+  return picker;
+}
+
+/**
+ * User filter/picker — first ~80, scroll for more.
+ * Search uses loaded rows first; otherwise API.
+ */
+export async function getUsersForPicker(
+  tenantId: string | null,
+  search?: string,
+  opts?: {
+    limit?: number;
+    allTenants?: boolean;
+    role?: string;
+    status?: string;
+  },
+): Promise<UserListRow[]> {
+  const key = userPickerKey(tenantId, opts);
+  const page = await userPickerFor(tenantId, opts).load(key, search);
+  return page.items;
+}
+
+export async function loadMoreUsersForPicker(
+  tenantId: string | null,
+  opts?: { allTenants?: boolean; role?: string; status?: string },
+): Promise<{ items: UserListRow[]; appended: UserListRow[]; hasMore: boolean }> {
+  const key = userPickerKey(tenantId, opts);
+  return userPickerFor(tenantId, opts).loadMore(key);
+}
+
+export function usersPickerHasMore(
+  tenantId: string | null,
+  opts?: { allTenants?: boolean; role?: string; status?: string },
+): boolean {
+  const key = userPickerKey(tenantId, opts);
+  return userPickerFor(tenantId, opts).hasMore(key);
+}
+
 export async function getUsers(
   tenantId: string | null,
   options?: UserListOptions,
 ): Promise<UserListRow[]> {
-  if (options?.cursor || options?.limit) {
+  if (options?.cursor) {
     return fetchUsersRaw(
       tenantId,
       options,
@@ -150,9 +285,12 @@ export async function getUsers(
     );
   }
 
-  return fetchFirstPage((cursor, limit) =>
-    fetchUsersRaw(tenantId, options, cursor, limit),
-  );
+  return getUsersForPicker(tenantId, options?.search, {
+    allTenants: options?.allTenants,
+    role: options?.role,
+    status: options?.status,
+    limit: options?.limit ?? FILTER_DROPDOWN_INITIAL_LIMIT,
+  });
 }
 
 /** Single user for detail pages — prefer over scanning getUsers(). */
@@ -181,6 +319,7 @@ export async function inviteUser(
     return throwApiError(response, "Failed to send invite");
   }
 
+  clearUserOptionCache();
   return response.json();
 }
 
@@ -202,6 +341,7 @@ export async function createUser(
     return throwApiError(response, "Failed to create user");
   }
 
+  clearUserOptionCache();
   return response.json();
 }
 
@@ -218,6 +358,7 @@ export async function updateUser(
   if (!response.ok) {
     return throwApiError(response, "Failed to update user");
   }
+  clearUserOptionCache();
   return response.json();
 }
 
@@ -230,5 +371,6 @@ export async function deactivateUser(
   if (!response.ok) {
     return throwApiError(response, "Failed to deactivate user");
   }
+  clearUserOptionCache();
   return response.json();
 }

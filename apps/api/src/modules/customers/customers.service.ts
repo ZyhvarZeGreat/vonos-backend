@@ -36,6 +36,7 @@ import {
   warmLegacyContactIdMap,
 } from '../../common/utils/legacyContactIdMap';
 import { buildCompositeCursorQuery } from '../../common/utils/pagination';
+import { resolveListSort } from '../../common/utils/listSort';
 import type { PaginatedList } from '../../common/utils/paginatedList';
 import { parseCsv, pickCsvField } from '../../common/utils/csvImport';
 import { refreshCustomerFinancialRollups } from '../../common/utils/customerRollups';
@@ -234,6 +235,8 @@ export class CustomersService {
       to: filters.to,
       cursor: filters.cursor,
       limit: filters.limit ?? 10,
+      sortBy: filters.sortBy ?? 'createdAt',
+      sortDir: filters.sortDir ?? 'desc',
       sum: filters.includeSummary === false ? 0 : 1,
       lite: filters.lite ? 1 : 0,
     });
@@ -255,12 +258,31 @@ export class CustomersService {
       filters.hasNoSellMonths != null
         ? monthsAgo(filters.hasNoSellMonths)
         : null;
+    const sort = resolveListSort(
+      filters.sortBy,
+      filters.sortDir,
+      {
+        createdAt: { field: 'createdAt', type: 'date' },
+        name: { field: 'name', type: 'string' },
+        email: { field: 'email', type: 'string' },
+        phone: { field: 'phone', type: 'string' },
+        totalSellDue: { field: 'totalSellDue', type: 'number' },
+        totalSell: { field: 'totalSell', type: 'number' },
+        openingBalance: { field: 'openingBalance', type: 'number' },
+        status: { field: 'status', type: 'string' },
+      },
+      {
+        sortField: 'createdAt',
+        sortDir: 'desc',
+        sortValueType: 'date',
+      },
+    );
     const pagination = buildCompositeCursorQuery({
-      sortField: 'name',
-      sortDir: 'asc',
+      sortField: sort.sortField,
+      sortDir: sort.sortDir,
       cursor: filters.cursor,
       limit: filters.limit ?? 10,
-      sortValueType: 'string',
+      sortValueType: sort.sortValueType,
     });
 
     const baseWhere = {
@@ -340,10 +362,11 @@ export class CustomersService {
           createdByName: true,
           createdAt: true,
           updatedAt: true,
+          details: true,
           customerGroup: { select: { name: true } },
           assignedToUser: { select: { name: true } },
         },
-        orderBy: [{ name: 'asc' }, { id: 'asc' }],
+        orderBy: [{ [sort.sortField]: sort.sortDir }, { id: sort.sortDir }],
         take: pagination.take,
       }),
       includeSummary
@@ -1025,6 +1048,8 @@ export async function warmDefaultCustomerListPages(
         to: undefined,
         cursor: undefined,
         limit,
+        sortBy: 'createdAt',
+        sortDir: 'desc',
         sum: includeSummary ? 1 : 0,
         lite: 0,
       });
@@ -1042,7 +1067,7 @@ export async function warmDefaultCustomerListPages(
                 customerGroup: { select: { name: true } },
                 assignedToUser: { select: { name: true } },
               },
-              orderBy: [{ name: 'asc' }, { id: 'asc' }],
+              orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
               take: limit,
             }),
             includeSummary

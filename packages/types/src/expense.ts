@@ -67,6 +67,8 @@ export interface CreateExpenseRequest {
   taxAmount?: number;
   paymentStatus?: string;
   note?: string;
+  /** Stored on the account debit / payment side when paying now. */
+  paymentNote?: string;
   accountId?: string;
   paymentMethod?: string;
   isRecurring?: boolean;
@@ -99,6 +101,7 @@ export interface UpdateExpenseRequest {
   paymentStatus?: string;
   paymentDue?: number;
   note?: string | null;
+  paymentNote?: string | null;
   accountId?: string | null;
   paymentMethod?: string | null;
   isRecurring?: boolean;

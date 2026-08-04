@@ -18,7 +18,7 @@ const FLOATING_MENU_Z = 2300;
 function menuPosition(anchor: HTMLElement, align: Align): CSSProperties {
   const rect = anchor.getBoundingClientRect();
   const gap = 4;
-  const estimatedMenuHeight = 320;
+  const estimatedMenuHeight = 420;
   const spaceBelow = window.innerHeight - rect.bottom - gap;
   const openUpward =
     spaceBelow < Math.min(160, estimatedMenuHeight) && rect.top > spaceBelow;

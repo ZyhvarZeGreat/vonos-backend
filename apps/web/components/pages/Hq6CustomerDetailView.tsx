@@ -218,7 +218,7 @@ export function Hq6CustomerDetailView({ recordId }: { recordId: string }) {
           void deleteCustomer(tenantId, recordId)
             .then(async () => {
               toast.success("Customer deleted");
-              await queryClient.invalidateQueries({ queryKey: ["customers"] });
+              void queryClient.invalidateQueries({ queryKey: ["customers"] });
               router.push(listPath);
             })
             .catch((err) => {

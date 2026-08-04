@@ -3,9 +3,9 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { getCatalogMeta } from "@/lib/api/catalogMeta";
-import { getCustomers } from "@/lib/api/customers";
+import { getCustomersForPicker } from "@/lib/api/customers";
 import { getCustomerGroups } from "@/lib/api/customerGroups";
-import { getSuppliers } from "@/lib/api/suppliers";
+import { getSuppliersForPicker } from "@/lib/api/suppliers";
 import type { ReportFilterOptionSets } from "@/components/organisms/ReportFilterShell";
 import type { ReportFilterField } from "@/lib/registries/reportTableUi";
 import { locationFilterOptions } from "@/lib/utils/locationLabels";
@@ -46,7 +46,7 @@ export function useReportFilterOptions(
 
   const customersQuery = useQuery({
     queryKey: ["report-filter-customers", tenantId],
-    queryFn: () => getCustomers(tenantId!),
+    queryFn: () => getCustomersForPicker(tenantId!),
     enabled: enabled && sources.has("customers"),
     staleTime: 10 * 60_000,
   });
@@ -75,7 +75,7 @@ export function useReportFilterOptions(
 
   const suppliersQuery = useQuery({
     queryKey: ["report-filter-suppliers", tenantId],
-    queryFn: () => getSuppliers(tenantId!),
+    queryFn: () => getSuppliersForPicker(tenantId!),
     enabled: enabled && sources.has("suppliers"),
     staleTime: 10 * 60_000,
   });

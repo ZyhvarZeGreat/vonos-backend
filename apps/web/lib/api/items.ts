@@ -12,6 +12,8 @@ import { throwApiError } from "@/lib/api/parseApiError";
 import {
   DEFAULT_TABLE_PAGE_SIZE,
   EXPORT_PAGE_SIZE,
+  FILTER_ROSTER_TTL_MS,
+  IN_MEMORY_FILTER_CATALOG_LIMIT,
   TYPEAHEAD_PAGE_SIZE,
   fetchAllPages,
   fetchFirstPage,
@@ -19,6 +21,18 @@ import {
   type ListPage,
 } from "@/lib/api/fetchAllPages";
 import { itemListCursor } from "@/lib/utils/pagination";
+import { createAsyncTtlCache } from "@/lib/utils/asyncTtlCache";
+import { matchSorter, rankings } from "match-sorter";
+
+const itemOptionCache = createAsyncTtlCache<Item[]>({
+  ttlMs: FILTER_ROSTER_TTL_MS,
+  maxEntries: 64,
+});
+
+/** Drop cached item option lists (call after item mutations). */
+export function clearItemOptionCache(): void {
+  itemOptionCache.clear();
+}
 
 function buildItemsPath(
   tenantId: string,
@@ -80,11 +94,90 @@ export async function getAllItems(
   );
 }
 
-/** Typeahead / option lists — capped; pass search for more matches. */
+/**
+ * Item roster for pickers / label search — loaded once into memory.
+ * Capped at IN_MEMORY_FILTER_CATALOG_LIMIT.
+ */
+export async function getItemRoster(
+  tenantId: string,
+  filters?: Pick<ItemFilters, "availableForRetail" | "status" | "category">,
+): Promise<Item[]> {
+  const cacheKey = JSON.stringify([
+    "item-roster",
+    tenantId,
+    filters?.availableForRetail ?? null,
+    filters?.status ?? null,
+    filters?.category ?? null,
+  ]);
+  return itemOptionCache.get(cacheKey, async () =>
+    fetchAllPages(
+      (cursor, limit) =>
+        fetchItemsRaw(
+          tenantId,
+          { ...filters, includeSummary: false },
+          cursor,
+          limit,
+        ),
+      Math.min(EXPORT_PAGE_SIZE, IN_MEMORY_FILTER_CATALOG_LIMIT),
+      itemListCursor,
+      IN_MEMORY_FILTER_CATALOG_LIMIT,
+    ),
+  );
+}
+
+/**
+ * Item picker / product search — full roster cached; `search` / `limit` are
+ * local match-sorter only (no per-keystroke API).
+ */
+export async function getItemsForPicker(
+  tenantId: string,
+  search?: string,
+  opts?: {
+    limit?: number;
+    availableForRetail?: boolean;
+    status?: StockStatus;
+    category?: string;
+  },
+): Promise<Item[]> {
+  const roster = await getItemRoster(tenantId, {
+    availableForRetail: opts?.availableForRetail,
+    status: opts?.status,
+    category: opts?.category,
+  });
+  const q = search?.trim() ?? "";
+  const matched = q
+    ? matchSorter(roster, q, {
+        keys: ["name", "sku", "category", "brandName", "carModel", "description"],
+        threshold: rankings.CONTAINS,
+        keepDiacritics: true,
+      })
+    : roster;
+  const limit = opts?.limit;
+  return limit != null ? matched.slice(0, limit) : matched;
+}
+
+/** Typeahead / option lists — capped; search is local match-sorter. */
 export async function getItems(
   tenantId: string,
   filters?: ItemFilters,
 ): Promise<Item[]> {
+  const plainPicker =
+    !filters?.cursor &&
+    !filters?.locationCode &&
+    !filters?.unit &&
+    !filters?.brandName &&
+    !filters?.sortBy &&
+    !filters?.sortDir;
+
+  if (plainPicker) {
+    return getItemsForPicker(tenantId, filters?.search, {
+      limit: filters?.limit,
+      availableForRetail: filters?.availableForRetail,
+      status: filters?.status,
+      category: filters?.category,
+    });
+  }
+
   if (filters?.cursor || filters?.limit) {
     return fetchItemsRaw(tenantId, filters, filters.cursor, filters.limit);
   }
@@ -195,6 +288,7 @@ export async function deleteItem(tenantId: string, id: string): Promise<void> {
   if (!response.ok) {
     return throwApiError(response, "Failed to delete product");
   }
+  clearItemOptionCache();
 }
 
 export async function getKpiSummary(tenantId: string): Promise<KpiSummary> {
@@ -245,6 +339,7 @@ export async function createItem(
     body: JSON.stringify(body),
   });
   if (!response.ok) throw new Error("Failed to create item");
+  clearItemOptionCache();
   return response.json();
 }
 
@@ -258,6 +353,7 @@ export async function updateItem(
     body: JSON.stringify(body),
   });
   if (!response.ok) throw new Error("Failed to update item");
+  clearItemOptionCache();
   return response.json();
 }
 

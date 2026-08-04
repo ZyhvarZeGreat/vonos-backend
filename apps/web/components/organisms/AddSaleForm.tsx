@@ -7,7 +7,7 @@ import { parseForm } from "@/lib/validation/parseForm";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Info, Minus, Plus, Trash2, X } from "lucide-react";
-import type { Customer, Sale, TenantConfig } from "@vonos/types";
+import type { Customer, SaleDetail, TenantConfig } from "@vonos/types";
 import { isGroupStockConsumerTenant } from "@vonos/types";
 import { Button } from "@/components/atoms/Button";
 import { ClearableNumberInput } from "@/components/atoms/ClearableNumberInput";
@@ -19,13 +19,12 @@ import {
   type CatalogPartPick,
 } from "@/components/molecules/ProductItemSearch";
 import { Hq6AddSupplierModal } from "@/components/hq6/Hq6AddSupplierModal";
-import { createCustomer, getCustomerContact, getCustomers } from "@/lib/api/customers";
+import { createCustomer, getCustomerContact, getCustomersForPicker, loadMoreCustomersForPicker, customersPickerHasMore } from "@/lib/api/customers";
 import { getJob, getJobs } from "@/lib/api/jobs";
-import { createSale, deleteSale, getSale } from "@/lib/api/sales";
+import { createSale, getSale } from "@/lib/api/sales";
 import { getPaymentAccountsForPicker } from "@/lib/api/paymentAccounts";
-import { getServiceStaff } from "@/lib/api/hrm";
-import { getSuppliers } from "@/lib/api/suppliers";
-import { TYPEAHEAD_PAGE_SIZE } from "@/lib/api/fetchAllPages";
+import { getServiceStaff, loadMoreServiceStaffForPicker, serviceStaffPickerHasMore } from "@/lib/api/hrm";
+import { getSuppliersForPicker, loadMoreSuppliersForPicker, suppliersPickerHasMore } from "@/lib/api/suppliers";
 import {
   assertBusinessLocationSelected,
   useEntitySaleLocationOptions,
@@ -162,7 +161,7 @@ export interface AddSaleFormProps {
   editSaleId?: string | null;
   /** `page` = full Add Sale screen; `modal` = compact dialog body */
   variant?: "page" | "modal";
-  onSuccess?: (sale: Sale, options?: { print?: boolean }) => void;
+  onSuccess?: (sale: SaleDetail, options?: { print?: boolean }) => void;
   onCancel?: () => void;
 }
 
@@ -185,11 +184,11 @@ export function AddSaleForm({
   } = useEntitySaleLocationOptions(tenantConfig);
   const showLocationField = saleLocations.length > 0;
   const isJobTenant = tenantConfig?.archetype === "job";
-  /** VA / VP: parts from VW/VISP/VSP or purchase — no local product catalog. */
+  /** VA / VP: bill from synced product catalog — no stock qty / no custom lines. */
   const groupStockConsumer = isGroupStockConsumerTenant(tenantConfig?.code);
-  const allowCrossEntitySource = groupStockConsumer;
-  const includeWarehouseSearch = allowCrossEntitySource || !isJobTenant;
-  const ownCatalogSearch = !groupStockConsumer;
+  const allowCrossEntitySource = false;
+  const includeWarehouseSearch = !groupStockConsumer && !isJobTenant;
+  const ownCatalogSearch = true;
   /** Job link is optional — only used for stock skip / prefill when chosen. */
   const showJobField = isJobTenant;
 
@@ -221,31 +220,53 @@ export function AddSaleForm({
   const jobPrefillDone = useRef(false);
   const editPrefillDone = useRef(false);
 
+  // Warm customer / staff / payment-account pickers with the page.
+  useEffect(() => {
+    if (!tenantId) return;
+    void getCustomersForPicker(tenantId);
+    void getServiceStaff(tenantId);
+    void getPaymentAccountsForPicker(tenantId);
+  }, [tenantId]);
+
   const { data: supplierOptions = [] } = useQuery({
     queryKey: ["suppliers", "sale-line", tenantId],
-    queryFn: () => getSuppliers(tenantId!, { limit: 100 }),
+    queryFn: () => getSuppliersForPicker(tenantId!),
     enabled: Boolean(tenantId) && lines.some((l) => l.createPurchase),
+    staleTime: Infinity,
   });
 
   const loadSupplierOptions = useCallback(
     async (query: string) => {
       if (!tenantId) {
-        return [{ value: "", label: "No supplier" }];
+        return { options: [{ value: "", label: "No supplier" }], hasMore: false };
       }
-      const rows = await getSuppliers(tenantId, {
-        search: query || undefined,
-        limit: TYPEAHEAD_PAGE_SIZE,
-      });
-      return [
-        { value: "", label: "No supplier" },
-        ...rows.map((s) => ({
-          value: s.id,
-          label: s.businessName ?? s.name,
-        })),
-      ];
+      const rows = await getSuppliersForPicker(tenantId, query || undefined);
+      return {
+        options: [
+          { value: "", label: "No supplier" },
+          ...rows.map((s) => ({
+            value: s.id,
+            label: s.businessName ?? s.name,
+          })),
+        ],
+        hasMore: !query.trim() && suppliersPickerHasMore(tenantId),
+      };
     },
     [tenantId],
   );
+
+  const loadMoreSupplierOptions = useCallback(async () => {
+    if (!tenantId) return { options: [], hasMore: false, append: true };
+    const page = await loadMoreSuppliersForPicker(tenantId);
+    return {
+      options: page.appended.map((s) => ({
+        value: s.id,
+        label: s.businessName ?? s.name,
+      })),
+      hasMore: page.hasMore,
+      append: true,
+    };
+  }, [tenantId]);
 
   // Default to this entity's location once config loads (or if empty / foreign).
   useEffect(() => {
@@ -346,42 +367,80 @@ export function AddSaleForm({
 
   const loadCustomerOptions = useCallback(
     async (query: string) => {
-      const rows = await getCustomers(tenantId, {
-        search: query || undefined,
-        limit: TYPEAHEAD_PAGE_SIZE,
-      });
-      return [
-        { value: "", label: "Walk-in customer" },
-        ...rows.map((row) => ({
-          value: row.id,
-          label: row.name,
-        })),
-      ];
+      const rows = await getCustomersForPicker(tenantId, query || undefined);
+      return {
+        options: [
+          { value: "", label: "Walk-in customer" },
+          ...rows.map((row) => {
+            const name = row.name?.trim() || "";
+            const business = row.businessName?.trim() || "";
+            const label =
+              business && business.toLowerCase() !== name.toLowerCase()
+                ? `${name} · ${business}`
+                : name || business;
+            return { value: row.id, label };
+          }),
+        ],
+        hasMore: !query.trim() && customersPickerHasMore(tenantId),
+      };
     },
     [tenantId],
   );
 
+  const loadMoreCustomerOptions = useCallback(async () => {
+    const page = await loadMoreCustomersForPicker(tenantId);
+    return {
+      options: page.appended.map((row) => {
+        const name = row.name?.trim() || "";
+        const business = row.businessName?.trim() || "";
+        const label =
+          business && business.toLowerCase() !== name.toLowerCase()
+            ? `${name} · ${business}`
+            : name || business;
+        return { value: row.id, label };
+      }),
+      hasMore: page.hasMore,
+      append: true,
+    };
+  }, [tenantId]);
+
   const loadStaffOptions = useCallback(
     async (query: string) => {
       const rows = await getServiceStaff(tenantId, query || undefined);
-      return [
-        { value: "", label: "Select service staff" },
-        ...rows.map((row) => ({
-          value: row.id,
-          label: row.designationName
-            ? `${row.name} · ${row.designationName}`
-            : row.name,
-        })),
-      ];
+      return {
+        options: [
+          { value: "", label: "Select service staff" },
+          ...rows.map((row) => ({
+            value: row.id,
+            label: row.designationName
+              ? `${row.name} · ${row.designationName}`
+              : row.name,
+          })),
+        ],
+        hasMore: !query.trim() && serviceStaffPickerHasMore(tenantId),
+      };
     },
     [tenantId],
   );
+
+  const loadMoreStaffOptions = useCallback(async () => {
+    const page = await loadMoreServiceStaffForPicker(tenantId);
+    return {
+      options: page.appended.map((row) => ({
+        value: row.id,
+        label: row.designationName
+          ? `${row.name} · ${row.designationName}`
+          : row.name,
+      })),
+      hasMore: page.hasMore,
+      append: true,
+    };
+  }, [tenantId]);
 
   const loadPaymentAccountOptions = useCallback(
     async (query: string) => {
       const rows = await getPaymentAccountsForPicker(tenantId, {
         search: query.trim() || undefined,
-        limit: TYPEAHEAD_PAGE_SIZE,
       });
       return [
         { value: "", label: "Select payment account" },
@@ -398,7 +457,6 @@ export function AddSaleForm({
     async (query: string) => {
       const rows = await getJobs(tenantId, {
         search: query || undefined,
-        limit: TYPEAHEAD_PAGE_SIZE,
       });
       return rows.map((row) => ({
         value: row.id,
@@ -596,15 +654,6 @@ export function AddSaleForm({
                 accountId: form.paymentAccountId || undefined,
               },
             ],
-      }).then(async (sale) => {
-        if (editSaleId) {
-          try {
-            await deleteSale(tenantId, editSaleId);
-          } catch {
-            // Keep the new document even if archive of the previous fails.
-          }
-        }
-        return sale;
       });
     },
     successMessage:
@@ -754,6 +803,8 @@ export function AddSaleForm({
                       selectedLabel={form.customerName || "Walk-In Customer"}
                       placeholder="Walk-In Customer"
                       loadOptions={loadCustomerOptions}
+                      loadMoreOptions={loadMoreCustomerOptions}
+                      debounceMs={0}
                       onChange={async (id) => {
                         if (!id) {
                           applyCustomer(null);
@@ -968,6 +1019,8 @@ export function AddSaleForm({
                 selectedLabel={form.serviceStaffName || "Select service staff"}
                 placeholder="Select service staff"
                 loadOptions={loadStaffOptions}
+                loadMoreOptions={loadMoreStaffOptions}
+                debounceMs={0}
                 onChange={async (id) => {
                   if (!id) {
                     patchForm({
@@ -1042,6 +1095,8 @@ export function AddSaleForm({
                                   selectedLabel={line.supplierName}
                                   placeholder="Supplier (optional)"
                                   loadOptions={loadSupplierOptions}
+                                  loadMoreOptions={loadMoreSupplierOptions}
+                                  debounceMs={0}
                                   onChange={(supplierId) => {
                                     const match = supplierOptions.find(
                                       (s) => s.id === supplierId,
@@ -1085,7 +1140,9 @@ export function AddSaleForm({
                           <div className="text-xs font-semibold text-[#374151]">
                             {sourceCode}
                           </div>
-                          {line.availableQty != null && !line.createPurchase ? (
+                          {line.availableQty != null &&
+                          !line.createPurchase &&
+                          !groupStockConsumer ? (
                             <div
                               className={
                                 line.availableQty <= 5
@@ -1220,15 +1277,14 @@ export function AddSaleForm({
                 includeWarehouse={includeWarehouseSearch}
                 ownCatalog={ownCatalogSearch}
                 pickSourceAfterSelect={allowCrossEntitySource}
-                allowCustom
-                showStockQty={includeWarehouseSearch}
+                showStockQty={!groupStockConsumer}
                 showLeadingIcon={false}
                 showSearchButton={false}
                 businessLocations={saleLocations}
                 onSelect={addLineFromPick}
                 placeholder={
                   groupStockConsumer
-                    ? "Search VW / VISP / VSP stock or type a custom part"
+                    ? "Search product catalog by name or SKU"
                     : "Enter Product name / SKU / Scan bar code"
                 }
                 className="hq6-product-search-embedded"
@@ -1551,6 +1607,7 @@ export function AddSaleForm({
                 value={form.paymentAccountId}
                 placeholder="None"
                 loadOptions={loadPaymentAccountOptions}
+                debounceMs={0}
                 onChange={(id) => patchForm({ paymentAccountId: id })}
               />
             </label>
@@ -1690,6 +1747,8 @@ export function AddSaleForm({
                 selectedLabel={form.customerName || "Walk-in customer"}
                 placeholder="Search customer…"
                 loadOptions={loadCustomerOptions}
+                      loadMoreOptions={loadMoreCustomerOptions}
+                debounceMs={0}
                 onChange={async (id) => {
                   if (!id) {
                     applyCustomer(null);
@@ -1773,6 +1832,8 @@ export function AddSaleForm({
               selectedLabel={form.serviceStaffName || "Select service staff"}
               placeholder="Select service staff"
               loadOptions={loadStaffOptions}
+                loadMoreOptions={loadMoreStaffOptions}
+              debounceMs={0}
               onChange={async (id) => {
                 if (!id) {
                   patchForm({
@@ -1911,6 +1972,8 @@ export function AddSaleForm({
                                 selectedLabel={line.supplierName}
                                 placeholder="Supplier (optional)"
                                 loadOptions={loadSupplierOptions}
+                                  loadMoreOptions={loadMoreSupplierOptions}
+                                debounceMs={0}
                                 onChange={(supplierId) => {
                                   const match = supplierOptions.find(
                                     (s) => s.id === supplierId,
@@ -1947,7 +2010,9 @@ export function AddSaleForm({
                             ? "Purchase"
                             : tenantConfig?.code || "Own")}
                       </div>
-                      {line.availableQty != null && !line.createPurchase ? (
+                      {line.availableQty != null &&
+                      !line.createPurchase &&
+                      !groupStockConsumer ? (
                         <div
                           className={
                             line.availableQty <= 5
@@ -2028,18 +2093,15 @@ export function AddSaleForm({
             includeWarehouse={includeWarehouseSearch}
             ownCatalog={ownCatalogSearch}
             pickSourceAfterSelect={allowCrossEntitySource}
-            allowCustom
-            showStockQty={includeWarehouseSearch}
+            showStockQty={!groupStockConsumer}
             businessLocations={saleLocations}
             onSelect={addLineFromPick}
             placeholder={
               groupStockConsumer
-                ? "Search VW / VISP / VSP stock or type a custom part"
-                : allowCrossEntitySource
-                  ? "Search parts (own / VW / VISP / VSP) or add custom…"
-                  : isJobTenant
-                    ? "Search products by name or SKU…"
-                    : "Search own products or warehouse parts…"
+                ? "Search product catalog by name or SKU"
+                : isJobTenant
+                  ? "Search products by name or SKU…"
+                  : "Search products by name or SKU…"
             }
           />
         </div>
@@ -2196,6 +2258,7 @@ export function AddSaleForm({
               value={form.paymentAccountId}
               placeholder="Select payment account"
               loadOptions={loadPaymentAccountOptions}
+              debounceMs={0}
               onChange={(id) => patchForm({ paymentAccountId: id })}
             />
           </div>

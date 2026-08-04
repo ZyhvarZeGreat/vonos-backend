@@ -153,8 +153,8 @@ export function Hq6RoleDetailView({
       toast.success(
         isCreate ? `Role “${role.name}” added.` : `Role “${role.name}” updated.`,
       );
-      await queryClient.invalidateQueries({ queryKey: ["tenant-roles"] });
-      await queryClient.invalidateQueries({
+      void queryClient.invalidateQueries({ queryKey: ["tenant-roles"] });
+      void queryClient.invalidateQueries({
         queryKey: ["tenant-role", tenantId, role.id],
       });
       router.push(listPath);

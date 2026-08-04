@@ -28,7 +28,7 @@ import {
   hq6RoleStorageKey,
 } from "@/lib/registries/hq6RolePermissions";
 import { useHq6Permissions } from "@/lib/hooks/useHq6Permissions";
-import { filterRowsBySearch } from "@/lib/utils/listClientSearch";
+import { filterRowsBySearch, matchSearchRows } from "@/lib/utils/listClientSearch";
 import {
   firstValidationError,
   sanitizePersonNameInput,
@@ -59,13 +59,10 @@ export function Hq6PosListView() {
   const [editName, setEditName] = useState("");
   const chrome = useHq6ListChrome("pos-registers");
 
-  const rows = useMemo(() => {
-    if (!search.trim()) return DEMO_REGISTERS;
-    const q = search.toLowerCase();
-    return DEMO_REGISTERS.filter(
-      (row) => row.name.toLowerCase().includes(q) || row.location.toLowerCase().includes(q),
-    );
-  }, [search]);
+  const rows = useMemo(
+    () => matchSearchRows(DEMO_REGISTERS, search, ["name", "location"]),
+    [search],
+  );
 
   const columns: ColumnConfig<PosRegisterRow>[] = useMemo(
     () => [
@@ -268,7 +265,7 @@ export function Hq6RolesListView() {
         if (typeof window !== "undefined") {
           window.localStorage.removeItem(hq6RoleStorageKey(tenantCode));
         }
-        await queryClient.invalidateQueries({ queryKey: ["tenant-roles"] });
+        void queryClient.invalidateQueries({ queryKey: ["tenant-roles"] });
         toast.info("Imported role permissions from this browser into the database.");
       } catch {
         // Keep localStorage; user can retry by refreshing.
@@ -303,7 +300,7 @@ export function Hq6RolesListView() {
     onSuccess: async (_data, role) => {
       toast.success(`Role “${role.name}” deleted.`);
       setDeleteRole(null);
-      await queryClient.invalidateQueries({ queryKey: ["tenant-roles"] });
+      void queryClient.invalidateQueries({ queryKey: ["tenant-roles"] });
     },
     onError: (err: Error) => {
       toast.error(err.message || "Failed to delete role");
@@ -741,17 +738,11 @@ export function Hq6CommissionAgentsListView() {
     setAgents(loadCommissionAgents(tenantCode));
   }, [tenantCode]);
 
-  const filtered = useMemo(() => {
-    if (!search.trim()) return agents;
-    const q = search.toLowerCase();
-    return agents.filter(
-      (row) =>
-        row.name.toLowerCase().includes(q) ||
-        row.email.toLowerCase().includes(q) ||
-        row.phone.toLowerCase().includes(q) ||
-        row.address.toLowerCase().includes(q),
-    );
-  }, [agents, search]);
+  const filtered = useMemo(
+    () =>
+      matchSearchRows(agents, search, ["name", "email", "phone", "address"]),
+    [agents, search],
+  );
 
   const total = filtered.length;
   const effectiveSize = pageSize <= 0 ? Math.max(total, 1) : pageSize;

@@ -8,13 +8,12 @@ import {
   Hq6ModalSaveClose,
 } from "@/components/hq6/Hq6Modal";
 import { AsyncMenuSelect } from "@/components/molecules/AsyncMenuSelect";
-import { createCustomer } from "@/lib/api/customers";
+import { createCustomer, clearCustomerOptionCache } from "@/lib/api/customers";
 import { getCustomerGroups } from "@/lib/api/customerGroups";
-import { createSupplier } from "@/lib/api/suppliers";
+import { createSupplier, clearSupplierOptionCache } from "@/lib/api/suppliers";
 import { getEmployees, getDesignations } from "@/lib/api/hrm";
 import { getUsers } from "@/lib/api/users";
 import { useRouteTenant } from "@/lib/hooks/useRouteTenant";
-import { TYPEAHEAD_PAGE_SIZE } from "@/lib/api/fetchAllPages";
 import { withOptimistic } from "@/lib/hooks/useAppMutation";
 import {
   MODAL_REF_STALE_MS,
@@ -262,7 +261,7 @@ export function Hq6AddContactModal({
 
   const { data: users = [] } = useQuery({
     queryKey: modalKeys.usersFilter(tenantId),
-    queryFn: () => getUsers(tenantId!, { limit: TYPEAHEAD_PAGE_SIZE }),
+    queryFn: () => getUsers(tenantId!),
     enabled: Boolean(open && tenantId && isSupplierSide),
     staleTime: MODAL_REF_STALE_MS,
   });
@@ -392,6 +391,9 @@ export function Hq6AddContactModal({
         const tempId = optimisticTempId("customer");
         const opt = withOptimistic<Customer, void>(queryClient, {
           keys: [["customers"]],
+          // Keep the committed row visible — invalidate can briefly race and
+          // drop newly-added contact fields before the refetch lands.
+          invalidate: false,
           update: (qc) => {
             prependEntityInQueries(qc, ["customers"], {
               id: tempId,
@@ -422,6 +424,8 @@ export function Hq6AddContactModal({
           commit: (qc, data) => {
             removeEntityFromQueries(qc, ["customers"], tempId);
             prependEntityInQueries(qc, ["customers"], data);
+            clearCustomerOptionCache();
+            void qc.invalidateQueries({ queryKey: ["customers"] });
           },
         });
         const ctx = await opt.onMutate(undefined);
@@ -445,7 +449,7 @@ export function Hq6AddContactModal({
           opt.onError(err, undefined, ctx);
           throw err;
         } finally {
-          await opt.onSettled();
+          void opt.onSettled();
         }
       }
 
@@ -454,6 +458,7 @@ export function Hq6AddContactModal({
         const tempId = optimisticTempId("supplier");
         const opt = withOptimistic<SupplierListRow, void>(queryClient, {
           keys: [["suppliers"]],
+          invalidate: false,
           update: (qc) => {
             prependEntityInQueries(qc, ["suppliers"], {
               id: tempId,
@@ -483,6 +488,8 @@ export function Hq6AddContactModal({
           commit: (qc, data) => {
             removeEntityFromQueries(qc, ["suppliers"], tempId);
             prependEntityInQueries(qc, ["suppliers"], data);
+            clearSupplierOptionCache();
+            void qc.invalidateQueries({ queryKey: ["suppliers"] });
           },
         });
         const ctx = await opt.onMutate(undefined);
@@ -508,7 +515,7 @@ export function Hq6AddContactModal({
           opt.onError(err, undefined, ctx);
           throw err;
         } finally {
-          await opt.onSettled();
+          void opt.onSettled();
         }
       }
 

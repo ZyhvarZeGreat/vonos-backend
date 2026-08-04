@@ -1,6 +1,6 @@
 import { Hq6ListRouteSkeleton } from "@/components/organisms/skeletons";
 
-/** Keep list chrome stable — table body shimmers while the route loads. */
+/** Page title chrome stays; only the table body shimmers. */
 export default function TenantListLoading() {
-  return <Hq6ListRouteSkeleton />;
+  return <Hq6ListRouteSkeleton title=" " />;
 }

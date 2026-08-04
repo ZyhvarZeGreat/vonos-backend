@@ -1,23 +1,57 @@
 "use client";
 
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useCursorPage } from "@/lib/hooks/useCursorPage";
-import { useUrlPageParams } from "@/lib/hooks/useUrlPageParams";
+
+function parsePositiveInt(value: string | null, fallback: number): number {
+  if (!value) return fallback;
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function readPageIndexFromLocation(): number {
+  if (typeof window === "undefined") return 0;
+  const params = new URLSearchParams(window.location.search);
+  return Math.max(0, parsePositiveInt(params.get("page"), 1) - 1);
+}
+
+function readPageSizeFromLocation(defaultPageSize: number): number {
+  if (typeof window === "undefined") return defaultPageSize;
+  const params = new URLSearchParams(window.location.search);
+  return parsePositiveInt(params.get("pageSize"), defaultPageSize);
+}
+
+function writeListPageToUrl(
+  pageIndex: number,
+  pageSize: number,
+  defaultPageSize: number,
+) {
+  if (typeof window === "undefined") return;
+  const params = new URLSearchParams(window.location.search);
+  if (pageIndex <= 0) params.delete("page");
+  else params.set("page", String(pageIndex + 1));
+  if (pageSize === defaultPageSize) params.delete("pageSize");
+  else params.set("pageSize", String(pageSize));
+
+  const query = params.toString();
+  const href = query
+    ? `${window.location.pathname}?${query}`
+    : window.location.pathname;
+  if (href === `${window.location.pathname}${window.location.search}`) return;
+  window.history.replaceState(window.history.state, "", href);
+}
 
 /**
- * Cursor pagination with `page` / `pageSize` synced to the URL.
+ * Cursor pagination with a cosmetic URL mirror.
  *
- * Important: only ONE effect owns URL ↔ stack sync. Competing effects
- * (URL→stack, stack→URL, clamp) previously fought during deep-links and
- * pageSize changes, which made `?page=` / `?pageSize=` routes flicker.
+ * Cursor stack = source of truth. URL is write-only after mount (shareable
+ * links). We never sync Next `useSearchParams` back into the stack — that
+ * race was snapping lists to page 1 on every Next/page click.
  */
 export function useUrlCursorPage(defaultPageSize = 10) {
-  const {
-    pageIndex: urlPageIndex,
-    pageSize,
-    setPageIndex: setUrlPageIndex,
-    setPageSize: setUrlPageSize,
-  } = useUrlPageParams(defaultPageSize);
+  const initialPageSize = readPageSizeFromLocation(defaultPageSize);
+  const initialUrlPage = readPageIndexFromLocation();
+
   const {
     pageIndex,
     cursor,
@@ -27,101 +61,64 @@ export function useUrlCursorPage(defaultPageSize = 10) {
     goToPage,
     reset,
     maxReachablePageIndex,
-    extendCursorsTo: extendCursorsToBase,
+    extendCursorsTo,
   } = useCursorPage();
 
-  /** Suppress the next stack→URL write (after reset / pageSize). */
-  const suppressUrlWriteRef = useRef(false);
-  /** True while walking cursors for a deep-link / numbered jump. */
-  const isExtendingRef = useRef(false);
-  const prevUrlPageIndexRef = useRef(urlPageIndex);
+  const [pageSize, setPageSizeState] = useState(initialPageSize);
+  /** Target page from deep link / popstate until the cursor stack catches up. */
+  const [urlPageIndex, setUrlPageIndexState] = useState(initialUrlPage);
+  const defaultPageSizeRef = useRef(defaultPageSize);
+  defaultPageSizeRef.current = defaultPageSize;
 
-  const extendCursorsTo = useCallback(
-    async (
-      targetIndex: number,
-      fetchNext: (
-        cursor: string | undefined,
-        pageIndex: number,
-      ) => Promise<string | null>,
-    ) => {
-      isExtendingRef.current = true;
-      try {
-        return await extendCursorsToBase(targetIndex, fetchNext);
-      } finally {
-        // Keep the guard through the commit that applies landing pageIndex.
-        queueMicrotask(() => {
-          isExtendingRef.current = false;
-        });
+  // Mirror stack → URL once the stack has reached (or passed) the URL target.
+  useEffect(() => {
+    if (pageIndex < urlPageIndex) {
+      // Still walking toward a deep-linked page — don't clobber ?page=.
+      return;
+    }
+    if (pageIndex !== urlPageIndex) {
+      setUrlPageIndexState(pageIndex);
+    }
+    writeListPageToUrl(pageIndex, pageSize, defaultPageSizeRef.current);
+  }, [pageIndex, pageSize, urlPageIndex]);
+
+  useEffect(() => {
+    const onPopState = () => {
+      const nextIndex = readPageIndexFromLocation();
+      const nextSize = readPageSizeFromLocation(defaultPageSizeRef.current);
+      setPageSizeState(nextSize);
+      setUrlPageIndexState(nextIndex);
+      if (nextIndex <= maxReachablePageIndex) {
+        goToPage(nextIndex);
       }
-    },
-    [extendCursorsToBase],
-  );
-
-  // Single bidirectional sync — never write URL while URL is ahead of the
-  // cursor stack (deep-link / jump in progress).
-  useEffect(() => {
-    if (isExtendingRef.current) return;
-
-    const urlChanged = prevUrlPageIndexRef.current !== urlPageIndex;
-    if (urlChanged) {
-      prevUrlPageIndexRef.current = urlPageIndex;
-    }
-
-    if (urlPageIndex === pageIndex) {
-      suppressUrlWriteRef.current = false;
-      return;
-    }
-
-    // URL moved (back/forward, replace, or deep-link) and stack can satisfy it.
-    if (urlChanged && urlPageIndex <= maxReachablePageIndex) {
-      goToPage(urlPageIndex);
-      return;
-    }
-
-    // URL is ahead of the stack — useServerListPage walks cursors; do not
-    // clobber `?page=` back down to the stack head.
-    if (urlPageIndex > maxReachablePageIndex) {
-      return;
-    }
-
-    // Stack moved (Next / Prev / goToPage) — mirror into the URL.
-    if (suppressUrlWriteRef.current) {
-      suppressUrlWriteRef.current = false;
-      return;
-    }
-    setUrlPageIndex(pageIndex);
-  }, [
-    goToPage,
-    maxReachablePageIndex,
-    pageIndex,
-    setUrlPageIndex,
-    urlPageIndex,
-  ]);
-
-  // Safety clamp if stack shrinks under the current index (should be rare).
-  useEffect(() => {
-    if (isExtendingRef.current) return;
-    if (pageIndex > maxReachablePageIndex) {
-      goToPage(maxReachablePageIndex);
-    }
-  }, [goToPage, maxReachablePageIndex, pageIndex]);
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, [goToPage, maxReachablePageIndex]);
 
   const resetAll = useCallback(() => {
-    suppressUrlWriteRef.current = true;
-    prevUrlPageIndexRef.current = 0;
     reset();
-    setUrlPageIndex(0);
-  }, [reset, setUrlPageIndex]);
+    setUrlPageIndexState(0);
+    writeListPageToUrl(0, pageSize, defaultPageSizeRef.current);
+  }, [pageSize, reset]);
 
   const setPageSize = useCallback(
     (size: number) => {
-      suppressUrlWriteRef.current = true;
-      prevUrlPageIndexRef.current = 0;
+      const safe =
+        Number.isFinite(size) && size > 0
+          ? Math.min(Math.floor(size), 1000)
+          : defaultPageSizeRef.current;
       reset();
-      setUrlPageSize(size); // also forces pageIndex 0 in the URL
+      setPageSizeState(safe);
+      setUrlPageIndexState(0);
+      writeListPageToUrl(0, safe, defaultPageSizeRef.current);
     },
-    [reset, setUrlPageSize],
+    [reset],
   );
+
+  const setUrlPageIndex = useCallback((index: number) => {
+    setUrlPageIndexState(Math.max(0, index));
+  }, []);
 
   return {
     pageIndex,

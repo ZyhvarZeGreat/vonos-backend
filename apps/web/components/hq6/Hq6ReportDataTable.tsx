@@ -13,6 +13,7 @@ import {
 } from "@/lib/utils/reportTableTotals";
 import { formatCurrency, formatNumber } from "@/lib/utils/formatCurrency";
 import { cn } from "@/lib/utils/cn";
+import { matchSearchRows } from "@/lib/utils/listClientSearch";
 
 function formatCell(
   colKey: string,
@@ -31,13 +32,18 @@ function rowMatchesSearch(
   columns: ReportsTable["columns"],
   query: string,
 ): boolean {
-  const q = query.trim().toLowerCase();
-  if (!q) return true;
-  return columns.some((col) => {
-    const raw = row[col.key];
-    if (raw == null || Array.isArray(raw)) return false;
-    return String(raw).toLowerCase().includes(q);
-  });
+  if (!query.trim()) return true;
+  return (
+    matchSearchRows(
+      [row],
+      query,
+      columns.map((col) => (r) => {
+        const raw = r[col.key];
+        if (raw == null || Array.isArray(raw)) return "";
+        return String(raw);
+      }),
+    ).length > 0
+  );
 }
 
 export interface Hq6ReportDataTableProps {

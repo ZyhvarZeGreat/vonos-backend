@@ -121,7 +121,7 @@ export function UposHeader({
       setNotifications(
         notifications.map((n) => (n.id === id ? { ...n, read: true } : n)),
       );
-      await queryClient.invalidateQueries({ queryKey: ["notifications", tenantId] });
+      void queryClient.invalidateQueries({ queryKey: ["notifications", tenantId] });
     } catch (error) {
       toast.error(`Could not mark notification read: ${formatApiError(error)}`);
     }

@@ -1,4 +1,5 @@
 import { isWithinDateRange, type DateRangeBounds } from "@/lib/utils/dateRange";
+import { matchSearchRows } from "@/lib/utils/listClientSearch";
 
 function fieldValue<T extends object>(
   row: T,
@@ -7,20 +8,16 @@ function fieldValue<T extends object>(
   return (row as Record<string, unknown>)[String(key)];
 }
 
-/** Client-side search across one or more string fields. */
+/** Client-side search across one or more string fields (match-sorter). */
 export function filterBySearch<T extends object>(
   rows: T[],
   search: string,
   keys: (keyof T | string)[],
 ): T[] {
-  const q = search.trim().toLowerCase();
-  if (!q) return rows;
-  return rows.filter((row) =>
-    keys.some((key) =>
-      String(fieldValue(row, key) ?? "")
-        .toLowerCase()
-        .includes(q),
-    ),
+  return matchSearchRows(
+    rows,
+    search,
+    keys.map((key) => String(key)),
   );
 }
 

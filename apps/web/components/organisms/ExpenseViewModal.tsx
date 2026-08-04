@@ -11,6 +11,7 @@ import { hq6PaymentBadgeClass } from "@/lib/utils/hq6PaymentBadge";
 import { businessLocationName } from "@/lib/utils/locationLabels";
 import { useRouteTenant } from "@/lib/hooks/useRouteTenant";
 import { cn } from "@/lib/utils/cn";
+import { parseExpenseNotes } from "@/lib/utils/expenseNotes";
 
 /**
  * HQ6 Expense details — same document frame as sell/purchase view modals.
@@ -235,9 +236,15 @@ export function ExpenseViewModal({
 
           <div className="hq6-purchase-view-notes hq6-sale-view-notes">
             <div>
-              <strong>Note:</strong>
-              <p className="hq6-purchase-note-well">
-                {expense.note?.trim() || "--"}
+              <strong>Expense note:</strong>
+              <p className="hq6-purchase-note-well whitespace-pre-wrap">
+                {parseExpenseNotes(expense.note).expenseNote || "—"}
+              </p>
+            </div>
+            <div>
+              <strong>Payment note:</strong>
+              <p className="hq6-purchase-note-well whitespace-pre-wrap">
+                {parseExpenseNotes(expense.note).paymentNote || "—"}
               </p>
             </div>
           </div>

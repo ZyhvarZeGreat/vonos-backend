@@ -49,6 +49,8 @@ export interface StockMovementListRow {
   paymentDue?: number;
   supplierId?: string | null;
   createdByName?: string | null;
+  /** Raw notes blob — parse with parsePurchaseNotes on the client. */
+  notes?: string | null;
 }
 
 export const MOVEMENT_SOURCES = ["standard", "purchase_return"] as const;

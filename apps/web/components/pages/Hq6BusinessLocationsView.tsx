@@ -5,6 +5,7 @@
  * List + Add/Edit modal. Address fields persist on the tenant entity
  * (`tenantConfig.businessLocations`), not localStorage.
  */
+import { matchSearchRows } from "@/lib/utils/listClientSearch";
 import { businessLocationFormSchema } from "@/lib/validation/schemas";
 import { parseForm } from "@/lib/validation/parseForm";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -176,16 +177,10 @@ export function Hq6BusinessLocationsView() {
     });
   }, [branches]);
 
-  const filtered = useMemo(() => {
-    const q = localSearch.trim().toLowerCase();
-    if (!q) return rows;
-    return rows.filter(
-      (r) =>
-        r.name.toLowerCase().includes(q) ||
-        r.locationId.toLowerCase().includes(q) ||
-        r.city.toLowerCase().includes(q),
-    );
-  }, [localSearch, rows]);
+  const filtered = useMemo(
+    () => matchSearchRows(rows, localSearch, ["name", "locationId", "city"]),
+    [localSearch, rows],
+  );
 
   const openAdd = () => {
     setEditing(null);

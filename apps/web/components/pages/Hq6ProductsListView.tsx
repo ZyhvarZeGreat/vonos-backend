@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { useServerListPage, withListSort, hq6ListPaginationProps } from "@/lib/hooks/useServerListPage";
 import { HQ6_TABLE_PAGE_SIZE } from "@/lib/api/fetchAllPages";
 import { getCatalogPage, getCatalogListSummary } from "@/lib/api/catalog";
-import { deleteItem as deleteItemApi, getAllItems } from "@/lib/api/items";
+import { deleteItem as deleteItemApi, getAllItems, getItemRoster } from "@/lib/api/items";
 import { getAllCatalogMeta } from "@/lib/api/catalogMeta";
 import { useListExport } from "@/lib/hooks/useListExport";
 import type { Brand, Item, ProductCategory, ProductUnit, StockStatus } from "@vonos/types";
@@ -44,6 +44,10 @@ import {
 import { useHq6ListChrome } from "@/components/hq6/Hq6StandardListShell";
 import { prefetchCatalogDetail } from "@/lib/query/prefetchListDetails";
 import { hq6CopyForSlug } from "@/lib/registries/hq6PageCopy";
+import {
+  Hq6Breadcrumbs,
+  useHq6Breadcrumbs,
+} from "@/components/hq6/Hq6Breadcrumbs";
 
 const TAX_RATES_STORAGE_PREFIX = "vonos:hq6-tax-rates:";
 const DEFAULT_TAX_FILTER_OPTIONS = [
@@ -123,6 +127,7 @@ export function Hq6ProductsListView({
   const { requireCan } = useHq6Permissions();
   const { search, setSearch } = useListPageFilters();
   const copy = hq6CopyForSlug(listSlug === "menu-items" ? "catalog" : listSlug);
+  const crumbs = useHq6Breadcrumbs({ leafLabel: copy.title });
   const [listTab, setListTab] = useState<"products" | "stock-report">("products");
   const [categoryFilter, setCategoryFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
@@ -191,6 +196,35 @@ export function Hq6ProductsListView({
     unitFilter,
   ]);
 
+  const categoriesQuery = useQuery({
+    queryKey: ["catalog-meta", "categories", tenantId, "product-filter-all"],
+    queryFn: () =>
+      getAllCatalogMeta(tenantId!, "categories") as Promise<ProductCategory[]>,
+    enabled: Boolean(tenantId),
+    staleTime: 5 * 60_000,
+  });
+
+  // Full catalog for search — warms in parallel with page 1 so typing
+  // matches the entire product list, not just the visible page.
+  const searchCatalogQuery = useQuery({
+    queryKey: [
+      "item-roster",
+      tenantId,
+      "products-list-search",
+      apiFilters.status ?? null,
+      apiFilters.category ?? null,
+      apiFilters.availableForRetail ?? null,
+    ],
+    queryFn: () =>
+      getItemRoster(tenantId!, {
+        status: apiFilters.status,
+        category: apiFilters.category,
+        availableForRetail: apiFilters.availableForRetail,
+      }),
+    enabled: Boolean(tenantId) && listTab === "products",
+    staleTime: 5 * 60_000,
+  });
+
   const {
     items,
     hasMore,
@@ -203,6 +237,7 @@ export function Hq6ProductsListView({
     isLoading,
     isFetching,
     isPaging,
+    isSearchWarming,
     error,
     goToPage,
     canSelectPage,
@@ -214,6 +249,9 @@ export function Hq6ProductsListView({
     enabled: Boolean(tenantId) && listTab === "products",
     filters: apiFilters,
     search: search,
+    localSearchWarmPages: 10,
+    searchCatalog: searchCatalogQuery.data,
+    searchCatalogLoading: searchCatalogQuery.isLoading,
     defaultPageSize: HQ6_TABLE_PAGE_SIZE,
     defaultSort: { sortBy: "name", sortDir: "asc" },
     fetchPage: (cursor, limit, listSort, opts) =>
@@ -244,20 +282,6 @@ export function Hq6ProductsListView({
       return compositeListCursorFrom(row, sortBy, type);
     },
   });
-
-  const locationOptions = useMemo(
-    () => productStockLocationFilterOptions(),
-    [],
-  );
-  const productLocations = PRODUCT_STOCK_BUSINESS_LOCATIONS;
-
-  const categoriesQuery = useQuery({
-    queryKey: ["catalog-meta", "categories", tenantId, "product-filter-all"],
-    queryFn: () =>
-      getAllCatalogMeta(tenantId!, "categories") as Promise<ProductCategory[]>,
-    enabled: Boolean(tenantId),
-    staleTime: 5 * 60_000,
-  });
   const brandsQuery = useQuery({
     queryKey: ["catalog-meta", "brands", tenantId, "product-filter-all"],
     queryFn: () =>
@@ -272,6 +296,12 @@ export function Hq6ProductsListView({
     enabled: Boolean(tenantId),
     staleTime: 5 * 60_000,
   });
+
+  const locationOptions = useMemo(
+    () => productStockLocationFilterOptions(),
+    [],
+  );
+  const productLocations = PRODUCT_STOCK_BUSINESS_LOCATIONS;
 
   const categoryOptions = useMemo(() => {
     const names = new Set<string>();
@@ -418,6 +448,9 @@ export function Hq6ProductsListView({
     isLoading,
   });
 
+  const showTableLoading =
+    (isLoading || isSearchWarming) && visibleItems.length === 0;
+
   return (
     <div className="hq6-page hq6-products-page">
       {/* Content Header — product/index.blade.php */}
@@ -428,6 +461,7 @@ export function Hq6ProductsListView({
             {copy.subtitle}
           </small>
         </h1>
+        <Hq6Breadcrumbs items={crumbs} />
       </section>
 
       <section className="content">
@@ -846,12 +880,22 @@ export function Hq6ProductsListView({
                         </tr>
                       </thead>
                       <tbody>
-                        {isLoading ? (
-                          <tr className="odd">
-                            <td colSpan={14} className="text-center">
-                              Loading…
-                            </td>
-                          </tr>
+                        {showTableLoading ? (
+                          Array.from({ length: 8 }).map((_, rowIdx) => (
+                            <tr key={`sk-${rowIdx}`} className={rowIdx % 2 === 0 ? "odd" : "even"}>
+                              {Array.from({ length: 8 }).map((__, colIdx) => (
+                                <td key={colIdx}>
+                                  <span
+                                    className="tw-inline-block tw-h-3.5 tw-animate-pulse tw-rounded tw-bg-gray-200"
+                                    style={{
+                                      width: `${48 + ((rowIdx + colIdx) % 4) * 12}%`,
+                                    }}
+                                    aria-hidden
+                                  />
+                                </td>
+                              ))}
+                            </tr>
+                          ))
                         ) : visibleItems.length === 0 ? (
                           <tr className="odd">
                             <td colSpan={14} className="dataTables_empty text-center">
@@ -1158,8 +1202,8 @@ export function Hq6ProductsListView({
             .then(async () => {
               toast.success(`Deleted ${deleteItem.name}`);
               setDeleteItem(null);
-              await queryClient.invalidateQueries({ queryKey: ["catalog"] });
-              await queryClient.invalidateQueries({ queryKey: ["items"] });
+              void queryClient.invalidateQueries({ queryKey: ["catalog"] });
+              void queryClient.invalidateQueries({ queryKey: ["items"] });
             })
             .catch((err) =>
               toast.error(
@@ -1194,8 +1238,8 @@ export function Hq6ProductsListView({
               );
               setBulkDeleteIds(null);
               setSelectedIds(new Set());
-              await queryClient.invalidateQueries({ queryKey: ["catalog"] });
-              await queryClient.invalidateQueries({ queryKey: ["items"] });
+              void queryClient.invalidateQueries({ queryKey: ["catalog"] });
+              void queryClient.invalidateQueries({ queryKey: ["items"] });
             } catch (err) {
               toast.error(
                 err instanceof Error
@@ -1232,8 +1276,8 @@ export function Hq6ProductsListView({
               );
               setBulkDeactivateIds(null);
               setSelectedIds(new Set());
-              await queryClient.invalidateQueries({ queryKey: ["catalog"] });
-              await queryClient.invalidateQueries({ queryKey: ["items"] });
+              void queryClient.invalidateQueries({ queryKey: ["catalog"] });
+              void queryClient.invalidateQueries({ queryKey: ["items"] });
             } catch (err) {
               toast.error(
                 err instanceof Error

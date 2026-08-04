@@ -70,7 +70,7 @@ export const useMutationBusyStore = create<MutationBusyState>((set, get) => ({
     finishTimer = setTimeout(() => {
       set({ percent: 0, finishing: false, label: "Saving" });
       finishTimer = null;
-    }, 450);
+    }, 180);
   },
   reset: () => {
     clearTick();

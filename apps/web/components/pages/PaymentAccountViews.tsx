@@ -376,7 +376,7 @@ function PaymentAccountsListViewBody() {
               opt.onError(err, undefined, ctx);
               throw err;
             } finally {
-              await opt.onSettled();
+              void opt.onSettled();
             }
             return;
           }
@@ -415,7 +415,7 @@ function PaymentAccountsListViewBody() {
             opt.onError(err, undefined, ctx);
             throw err;
           } finally {
-            await opt.onSettled();
+            void opt.onSettled();
           }
         }}
       />

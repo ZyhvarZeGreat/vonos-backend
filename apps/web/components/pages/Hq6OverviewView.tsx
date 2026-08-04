@@ -32,6 +32,7 @@ import { welcomeFirstName } from "@/lib/utils/welcomeFirstName";
 import { formatHq6Currency } from "@/lib/utils/hq6Format";
 import { formatCurrencyCompact } from "@/lib/utils/formatCurrency";
 import { downloadCsv } from "@/lib/utils/exportCsv";
+import { matchSearchRows } from "@/lib/utils/listClientSearch";
 import type { OverviewPanel, ReportsKpi } from "@vonos/types";
 import {
   Hq6IconAlertCircle,
@@ -245,17 +246,15 @@ function Hq6HomePanelCard({
   const [pageSize, setPageSize] = useState(10);
   const tableRef = useRef<HTMLDivElement>(null);
 
-  const filteredRows = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return panel.rows;
-    return panel.rows.filter((row) =>
-      panel.columns.some((col) =>
-        String(row[col.key] ?? "")
-          .toLowerCase()
-          .includes(q),
+  const filteredRows = useMemo(
+    () =>
+      matchSearchRows(
+        panel.rows,
+        search,
+        panel.columns.map((col) => (row) => String(row[col.key] ?? "")),
       ),
-    );
-  }, [search, panel.columns, panel.rows]);
+    [search, panel.columns, panel.rows],
+  );
 
   const visibleRows = useMemo(
     () => filteredRows.slice(0, pageSize),

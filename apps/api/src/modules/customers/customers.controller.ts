@@ -46,6 +46,8 @@ export class CustomersController {
     @Query('limit') limit?: string,
     @Query('includeSummary') includeSummary?: string,
     @Query('lite') lite?: string,
+    @Query('sortBy') sortBy?: string,
+    @Query('sortDir') sortDir?: 'asc' | 'desc',
   ) {
     const months = Number(hasNoSellMonths);
     const filters: CustomerFilters = {
@@ -68,6 +70,8 @@ export class CustomersController {
       limit: limit ? Number(limit) : undefined,
       includeSummary: includeSummary !== '0' && includeSummary !== 'false',
       lite: lite === '1' || lite === 'true',
+      sortBy,
+      sortDir,
     };
     return this.customersService.list(filters);
   }

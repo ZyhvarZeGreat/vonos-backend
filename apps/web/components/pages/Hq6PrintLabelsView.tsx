@@ -2,10 +2,11 @@
 
 import { useMemo, useState } from "react";
 import type { Item } from "@vonos/types";
-import { getAllItems } from "@/lib/api/items";
+import { getItemsForPicker } from "@/lib/api/items";
 import { useTenantId } from "@/lib/hooks/useRouteTenant";
 import { formatCurrency } from "@/lib/utils/formatCurrency";
 import { toast } from "@/stores/toastStore";
+import { TYPEAHEAD_PAGE_SIZE } from "@/lib/api/fetchAllPages";
 
 type LabelRow = {
   item: Item;
@@ -65,7 +66,9 @@ export function Hq6PrintLabelsView() {
     }
     setSearching(true);
     try {
-      const items = await getAllItems(tenantId, { search: q.trim() });
+      const items = await getItemsForPicker(tenantId, q.trim(), {
+        limit: TYPEAHEAD_PAGE_SIZE,
+      });
       setSuggestions(items.slice(0, 12));
     } catch {
       setSuggestions([]);

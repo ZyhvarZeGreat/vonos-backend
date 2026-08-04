@@ -71,7 +71,6 @@ function PosTerminalViewBody() {
   );
 
   const allowCrossEntitySource = isGroupStockConsumerTenant(config?.code);
-  const ownCatalogSearch = !allowCrossEntitySource;
 
   const addLineFromItem = (pick: CatalogPartPick) => {
     if (!pick.itemId) return;
@@ -167,14 +166,13 @@ function PosTerminalViewBody() {
               tenantId={tenantId}
               tenantCode={config?.code}
               retailOnly={!allowCrossEntitySource}
-              includeWarehouse
-              ownCatalog={ownCatalogSearch}
-              pickSourceAfterSelect={allowCrossEntitySource}
-              allowCustom={allowCrossEntitySource}
+              includeWarehouse={false}
+              ownCatalog
+              showStockQty={!allowCrossEntitySource}
               onSelect={addLineFromItem}
               placeholder={
                 allowCrossEntitySource
-                  ? "Search VW / VISP / VSP stock or type a custom part"
+                  ? "Search product catalog by name or SKU"
                   : undefined
               }
             />
@@ -207,7 +205,8 @@ function PosTerminalViewBody() {
                         {line.sourceTenantCode || line.sourceLabel ? (
                           <div className="text-xs text-muted">
                             {line.sourceTenantCode ?? line.sourceLabel}
-                            {line.availableQty != null
+                            {!allowCrossEntitySource &&
+                            line.availableQty != null
                               ? ` · ${line.availableQty} left`
                               : ""}
                           </div>

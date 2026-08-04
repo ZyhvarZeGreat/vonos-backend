@@ -15,6 +15,7 @@ import {
   formatDebitCell,
 } from "@/lib/utils/ledgerAmountStyles";
 import { cn } from "@/lib/utils/cn";
+import { matchSearchRows } from "@/lib/utils/listClientSearch";
 
 function todayInputValue() {
   return new Date().toISOString().slice(0, 10);
@@ -81,16 +82,13 @@ export function Hq6CashFlowView() {
     } else if (txnType === "credit") {
       rows = rows.filter((r) => r.credit != null && r.credit !== 0);
     }
-    const q = search.trim().toLowerCase();
-    if (q) {
-      rows = rows.filter((r) =>
-        [r.date, r.account, r.description, r.paymentMethod, r.receiptVoucher]
-          .join(" ")
-          .toLowerCase()
-          .includes(q),
-      );
-    }
-    return rows;
+    return matchSearchRows(rows, search, [
+      "date",
+      "account",
+      "description",
+      "paymentMethod",
+      "receiptVoucher",
+    ]);
   }, [report?.rows, accountId, accounts, txnType, search]);
 
   const pagination = useOffsetPage(filteredRows, {

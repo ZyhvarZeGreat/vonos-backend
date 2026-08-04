@@ -28,7 +28,7 @@ export function stockMovementSeedFromListRow(
     reference: row.reference,
     status: row.status,
     lines: [],
-    notes: row.supplierOrDest || null,
+    notes: row.notes ?? null,
     locationCode: row.locationCode ?? null,
     supplierId: row.supplierId ?? null,
     source: null,

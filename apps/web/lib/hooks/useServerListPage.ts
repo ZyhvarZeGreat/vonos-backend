@@ -8,6 +8,7 @@ import { SEARCH_DEBOUNCE_MS } from "@/lib/constants/search";
 import { useDebouncedValue } from "@/lib/hooks/useDebouncedValue";
 import { useUrlCursorPage } from "@/lib/hooks/useUrlCursorPage";
 import { filterRowsBySearch } from "@/lib/utils/listClientSearch";
+import { stableListFilterKey } from "@/lib/utils/stableListFilterKey";
 
 /** Stable React Query key for one cursor page (primitives only — no object identity). */
 function listPageQueryKey(
@@ -62,11 +63,24 @@ export interface UseServerListPageOptions<T extends { id: string }> {
   filters?: Record<string, unknown>;
   search?: string;
   /**
-   * `local` (default) — filter the loaded sliding-window page with match-sorter.
-   * Does not hit the API when typing.
+   * `local` (default) — match-sorter over a warm catalog (not just the
+   * visible page). Pages 1…N accumulate in the background on mount.
    * `server` — debounced API search across the full catalog.
    */
   searchMode?: "local" | "server";
+  /**
+   * While on the list, background-load this many pages into the local
+   * search roster (default 10). Search filters that roster, not page 1 only.
+   */
+  localSearchWarmPages?: number;
+  /**
+   * Optional full catalog override for local search (e.g. getItemRoster).
+   * When set, search uses this once loaded; progressive warm still helps
+   * until it arrives.
+   */
+  searchCatalog?: T[];
+  /** True while `searchCatalog` is still fetching. */
+  searchCatalogLoading?: boolean;
   defaultPageSize?: number;
   debounceSearchMs?: number;
   /** Poll interval in ms for live views (e.g. kitchen display). */
@@ -75,14 +89,12 @@ export interface UseServerListPageOptions<T extends { id: string }> {
   staleTime?: number;
   /**
    * How many pages ahead to warm after the current page settles.
-   * Default 0 — avoid competing Neon round-trips on first paint (remote DB).
-   * Set 1+ for views where Next-page must feel instant.
+   * Default 2 so Next (and Next+1) resolve from cache without Neon.
    */
   prefetchPagesAhead?: number;
   /**
    * How many already-visited pages to keep in cache behind the current page.
-   * Default 1 so Prev stays instant; older pages are dropped to free memory
-   * as you move forward (sliding window with the ahead prefetch).
+   * Default 3 so Prev across a few pages stays instant.
    */
   retainPagesBehind?: number;
   /** Encode composite cursor from the last row (defaults to row.id). */
@@ -100,12 +112,15 @@ export function useServerListPage<T extends { id: string }>({
   filters = {},
   search = "",
   searchMode = "local",
+  localSearchWarmPages = 10,
+  searchCatalog,
+  searchCatalogLoading = false,
   defaultPageSize = DEFAULT_TABLE_PAGE_SIZE,
   debounceSearchMs = searchMode === "local" ? 0 : SEARCH_DEBOUNCE_MS,
   refetchInterval,
   staleTime = 10 * 60_000,
-  prefetchPagesAhead = 1,
-  retainPagesBehind = 2,
+  prefetchPagesAhead = 2,
+  retainPagesBehind = 3,
   getCursor,
   defaultSort = null,
 }: UseServerListPageOptions<T>) {
@@ -132,19 +147,11 @@ export function useServerListPage<T extends { id: string }>({
   // Local mode: never put typedown search in the query key (no Neon round-trip).
   const filterKey = useMemo(() => {
     const { search: _ignoredSearch, ...restFilters } = filters;
-    if (searchMode === "local") {
-      return JSON.stringify({
-        ...restFilters,
-        sortBy: sort?.sortBy ?? null,
-        sortDir: sort?.sortDir ?? null,
-      });
-    }
-    return JSON.stringify({
-      ...restFilters,
-      search: debouncedSearch,
-      sortBy: sort?.sortBy ?? null,
-      sortDir: sort?.sortDir ?? null,
-    });
+    return stableListFilterKey(
+      restFilters,
+      sort,
+      searchMode === "server" ? { search: debouncedSearch } : undefined,
+    );
   }, [filters, debouncedSearch, searchMode, sort]);
 
   const resetRef = useRef(reset);
@@ -215,6 +222,10 @@ export function useServerListPage<T extends { id: string }>({
     refetchInterval,
     staleTime,
     gcTime: Math.max(staleTime * 6, 30 * 60_000),
+    // Instant back-navigation: reuse cache. Only hit the network again when a
+    // mutation invalidated this query (or there is no data yet).
+    refetchOnMount: (query) => query.isStale() && query.state.isInvalidated,
+    refetchOnReconnect: false,
     placeholderData: keepPreviousData,
   });
 
@@ -232,9 +243,16 @@ export function useServerListPage<T extends { id: string }>({
     queryFn: resolveSummary,
     enabled: enabled && deferSummary,
     staleTime,
+    gcTime: Math.max(staleTime * 6, 30 * 60_000),
+    refetchOnMount: (query) => query.isStale() && query.state.isInvalidated,
+    refetchOnReconnect: false,
   });
 
   const [paintItems, setPaintItems] = useState<T[] | null>(null);
+  /** Progressive catalog for local search (pages 1…N), updated as each page lands. */
+  const [warmedSearchRoster, setWarmedSearchRoster] = useState<T[]>([]);
+  const [searchWarmComplete, setSearchWarmComplete] = useState(false);
+  const [searchWarmInFlight, setSearchWarmInFlight] = useState(false);
 
   // Drop optimistic paint once React Query has the real page.
   useEffect(() => {
@@ -244,33 +262,199 @@ export function useServerListPage<T extends { id: string }>({
   }, [pageIndex, pageQuery.data, pageQuery.isPlaceholderData]);
 
   const rawItems = paintItems ?? pageQuery.data?.items ?? [];
+
+  // Background-load pages into the local search roster (from the head of the list).
+  useEffect(() => {
+    if (searchMode !== "local") return;
+    if (!enabled || localSearchWarmPages <= 0) return;
+
+    let cancelled = false;
+    const targetPages = localSearchWarmPages;
+    setSearchWarmInFlight(true);
+    setSearchWarmComplete(false);
+
+    const accumulate = async () => {
+      const byId = new Map<string, T>();
+      const page0Key = listPageQueryKey(
+        queryKeyRef.current,
+        filterKey,
+        0,
+        undefined,
+        pageSize,
+        sort,
+      );
+      let page0: ListPage<T> | undefined =
+        queryClient.getQueryData<ListPage<T>>(page0Key);
+      if (!page0 && pageIndex === 0 && pageQuery.data) {
+        page0 = pageQuery.data;
+      }
+      if (!page0) {
+        try {
+          page0 = await queryClient.fetchQuery({
+            queryKey: [...page0Key],
+            queryFn: () =>
+              fetchPageRef.current(undefined, pageSize, sort, {
+                includeSummary: false,
+              }),
+            staleTime,
+            gcTime: Math.max(staleTime * 6, 30 * 60_000),
+          });
+        } catch {
+          if (!cancelled) {
+            setSearchWarmComplete(true);
+            setSearchWarmInFlight(false);
+          }
+          return;
+        }
+      }
+      if (cancelled) return;
+
+      const seed = page0?.items ?? [];
+      for (const row of seed) byId.set(row.id, row);
+      setWarmedSearchRoster([...byId.values()]);
+
+      if (seed.length === 0) {
+        setSearchWarmComplete(true);
+        setSearchWarmInFlight(false);
+        return;
+      }
+
+      const cursorOf = getCursorRef.current;
+      let walkCursorValue: string | undefined = cursorOf
+        ? cursorOf(seed[seed.length - 1]!, sort)
+        : seed[seed.length - 1]!.id;
+      let walkPageIndex = 0;
+      let pageHasMore = page0?.hasMore ?? seed.length >= pageSize;
+
+      for (let step = 1; step < targetPages && pageHasMore; step += 1) {
+        if (cancelled) return;
+        walkPageIndex += 1;
+        const nextKey = listPageQueryKey(
+          queryKeyRef.current,
+          filterKey,
+          walkPageIndex,
+          walkCursorValue,
+          pageSize,
+          sort,
+        );
+        let page: ListPage<T> | undefined =
+          queryClient.getQueryData<ListPage<T>>(nextKey);
+        if (!page) {
+          page = await queryClient.fetchQuery({
+            queryKey: [...nextKey],
+            queryFn: () =>
+              fetchPageRef.current(walkCursorValue, pageSize, sort, {
+                includeSummary: false,
+              }),
+            staleTime,
+            gcTime: Math.max(staleTime * 6, 30 * 60_000),
+          });
+        }
+        if (cancelled) return;
+        if (!page || page.items.length === 0) break;
+        for (const row of page.items) byId.set(row.id, row);
+        setWarmedSearchRoster([...byId.values()]);
+        pageHasMore = page.hasMore;
+        if (!pageHasMore) break;
+        const lastRow = page.items[page.items.length - 1]!;
+        walkCursorValue = cursorOf ? cursorOf(lastRow, sort) : lastRow.id;
+      }
+
+      if (!cancelled) {
+        setSearchWarmComplete(true);
+        setSearchWarmInFlight(false);
+      }
+    };
+
+    void accumulate();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    enabled,
+    filterKey,
+    localSearchWarmPages,
+    pageSize,
+    searchMode,
+    staleTime,
+  ]);
+
+  // Reset warm roster when filters change.
+  useEffect(() => {
+    if (searchMode !== "local") return;
+    setWarmedSearchRoster([]);
+    setSearchWarmComplete(false);
+  }, [filterKey, searchMode]);
+
+  const searchQ = search.trim();
+  const searchPool = useMemo(() => {
+    if (searchMode !== "local") return rawItems;
+    if (searchCatalog && searchCatalog.length > 0) return searchCatalog;
+    if (warmedSearchRoster.length > 0) return warmedSearchRoster;
+    return rawItems;
+  }, [rawItems, searchCatalog, searchMode, warmedSearchRoster]);
+
+  const searchMatched = useMemo(() => {
+    if (searchMode !== "local" || !searchQ) return null;
+    return filterRowsBySearch(searchPool, searchQ);
+  }, [searchMode, searchPool, searchQ]);
+
+  const isSearchWarming = Boolean(
+    searchMode === "local" &&
+      searchQ &&
+      (searchMatched?.length ?? 0) === 0 &&
+      (searchCatalogLoading || (searchWarmInFlight && !searchWarmComplete)),
+  );
+
   const items = useMemo(() => {
     if (searchMode !== "local") return rawItems;
-    return filterRowsBySearch(rawItems, search);
-  }, [rawItems, search, searchMode]);
+    if (!searchQ) return rawItems;
+    const matched = searchMatched ?? [];
+    // Show search hits from the warm catalog (cap to a few pages so the table stays usable).
+    return matched.slice(0, pageSize * Math.max(localSearchWarmPages, 1));
+  }, [
+    localSearchWarmPages,
+    pageSize,
+    rawItems,
+    searchMatched,
+    searchMode,
+    searchQ,
+  ]);
+
   const totalCount =
-    summaryQuery.data?.totalCount ?? pageQuery.data?.totalCount;
+    searchMode === "local" && searchQ && searchMatched
+      ? searchMatched.length
+      : (summaryQuery.data?.totalCount ?? pageQuery.data?.totalCount);
   const amountSummary =
     summaryQuery.data?.amountSummary ?? pageQuery.data?.amountSummary;
 
   const hasMore =
-    totalCount != null
-      ? (pageIndex + 1) * pageSize < totalCount
-      : (pageQuery.data?.hasMore ?? false);
+    searchMode === "local" && searchQ
+      ? false
+      : totalCount != null
+        ? (pageIndex + 1) * pageSize < totalCount
+        : (pageQuery.data?.hasMore ?? false);
 
   const lastItemId = rawItems[rawItems.length - 1]?.id;
   const sortBy = sort?.sortBy ?? null;
   const sortDir = sort?.sortDir ?? null;
 
-  // Sliding window: warm N pages ahead; drop pages behind. Effect deps are
-  // primitives only — unstable fetchPage/queryKey identities used to cancel
-  // warm mid-flight on every parent re-render (so Next never hit cache).
+  // Sliding window: warm N pages ahead as soon as the visible page is real
+  // data (not a placeholder). Do NOT depend on isFetching / totalCount — those
+  // flip when the deferred summary lands and were cancelling the warm mid-flight,
+  // so Next kept missing cache and hitting Neon.
   useEffect(() => {
-    if (!enabled || isJumping || !pageQuery.isSuccess) {
-      return;
-    }
-    // Don't start warm while this page is still a placeholder wait.
-    if (pageQuery.isFetching && pageQuery.isPlaceholderData) return;
+    if (!enabled || isJumping || !pageQuery.isSuccess) return;
+    if (pageQuery.isPlaceholderData) return;
+    if (prefetchPagesAhead <= 0 || rawItems.length === 0) return;
+
+    const pageHasMoreHint =
+      pageQuery.data?.hasMore ??
+      (totalCount != null
+        ? (pageIndex + 1) * pageSize < totalCount
+        : rawItems.length >= pageSize);
+    if (!pageHasMoreHint) return;
 
     const baseKey = queryKeyRef.current;
     const baseLen = baseKey.length;
@@ -291,15 +475,17 @@ export function useServerListPage<T extends { id: string }>({
       },
     });
 
-    if (prefetchPagesAhead <= 0 || !hasMore || rawItems.length === 0) return;
-
     let cancelled = false;
+    const settledItems = rawItems;
+    const settledSort = sort;
+    const settledPageIndex = pageIndex;
+
     const warm = async () => {
       const cursorOf = getCursorRef.current;
       let walkCursorValue: string | undefined = cursorOf
-        ? cursorOf(rawItems[rawItems.length - 1]!, sort)
-        : rawItems[rawItems.length - 1]!.id;
-      let walkPageIndex = pageIndex;
+        ? cursorOf(settledItems[settledItems.length - 1]!, settledSort)
+        : settledItems[settledItems.length - 1]!.id;
+      let walkPageIndex = settledPageIndex;
 
       for (let step = 1; step <= prefetchPagesAhead; step += 1) {
         if (cancelled) return;
@@ -310,7 +496,7 @@ export function useServerListPage<T extends { id: string }>({
           walkPageIndex,
           walkCursorValue,
           pageSize,
-          sort,
+          settledSort,
         );
         let page: ListPage<T> | undefined =
           queryClient.getQueryData<ListPage<T>>(pageQueryKey);
@@ -318,43 +504,38 @@ export function useServerListPage<T extends { id: string }>({
           page = await queryClient.fetchQuery({
             queryKey: [...pageQueryKey],
             queryFn: () =>
-              fetchPageRef.current(walkCursorValue, pageSize, sort, {
+              fetchPageRef.current(walkCursorValue, pageSize, settledSort, {
                 includeSummary: false,
               }),
             staleTime,
             gcTime: Math.max(staleTime * 6, 30 * 60_000),
           });
         }
+        if (cancelled) return;
         const resolved = page;
         if (!resolved || resolved.items.length === 0) return;
-        const pageHasMore =
-          totalCount != null
-            ? walkPageIndex * pageSize < totalCount
-            : resolved.hasMore;
-        if (!pageHasMore) return;
+        if (!resolved.hasMore) return;
         const lastRow: T = resolved.items[resolved.items.length - 1]!;
-        walkCursorValue = cursorOf ? cursorOf(lastRow, sort) : lastRow.id;
+        walkCursorValue = cursorOf
+          ? cursorOf(lastRow, settledSort)
+          : lastRow.id;
       }
     };
 
-    // Let the visible page + summary settle before competing for Neon slots.
-    const timer = window.setTimeout(() => {
-      if (!cancelled) void warm();
-    }, 400);
+    void warm();
     return () => {
       cancelled = true;
-      window.clearTimeout(timer);
     };
-    // Intentionally omit fetchPage / queryKey / items / sort object identity.
+    // Intentionally omit isFetching / totalCount / hasMore — those churn on
+    // summary arrival and were aborting the warm window before Next could hit it.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     enabled,
     filterKey,
-    hasMore,
     isJumping,
     lastItemId,
     pageIndex,
-    pageQuery.isFetching,
+    pageQuery.isPlaceholderData,
     pageQuery.isSuccess,
     pageSize,
     prefetchPagesAhead,
@@ -363,7 +544,6 @@ export function useServerListPage<T extends { id: string }>({
     sortBy,
     sortDir,
     staleTime,
-    totalCount,
   ]);
 
   const handleNext = () => {
@@ -379,7 +559,6 @@ export function useServerListPage<T extends { id: string }>({
       sort,
     );
     const nextCached = queryClient.getQueryData<ListPage<T>>(nextKey);
-    if (!nextCached && pageQuery.isFetching) return;
     // Paint cached rows in this click — don't wait for useQuery to commit.
     if (nextCached?.items?.length) {
       setPaintItems(nextCached.items);
@@ -423,9 +602,7 @@ export function useServerListPage<T extends { id: string }>({
       if (targetIndex < 0) return;
       if (targetIndex <= maxReachablePageIndex) {
         goToPage(targetIndex);
-        if (targetIndex !== urlPageIndex) {
-          setUrlPageIndex(targetIndex);
-        }
+        setUrlPageIndex(targetIndex);
         return;
       }
       if (totalPages != null && targetIndex >= totalPages) return;
@@ -436,12 +613,12 @@ export function useServerListPage<T extends { id: string }>({
         return;
       }
 
+      // Pin the URL target so the stack→URL mirror does not wipe ?page= mid-walk.
+      setUrlPageIndex(targetIndex);
       setIsJumping(true);
       try {
         const landing = await extendCursorsTo(targetIndex, walkCursor);
-        if (landing !== urlPageIndex) {
-          setUrlPageIndex(landing);
-        }
+        setUrlPageIndex(landing);
       } finally {
         setIsJumping(false);
       }
@@ -453,7 +630,6 @@ export function useServerListPage<T extends { id: string }>({
       maxReachablePageIndex,
       setUrlPageIndex,
       totalPages,
-      urlPageIndex,
       walkCursor,
     ],
   );
@@ -493,16 +669,20 @@ export function useServerListPage<T extends { id: string }>({
     urlPageIndex,
   ]);
 
-  // Landed past the end (empty page after a bad hasMore / stale cursor) — step back.
-  // Ignore placeholder/previous-page rows so keepPreviousData does not false-trigger.
+  // Empty page while past the end of totalCount — step back once.
+  // Do NOT bounce on transient empty responses mid-navigation (that was
+  // sending users back to page 1 after every Next click).
   useEffect(() => {
     if (!enabled || isJumping || pageQuery.isFetching || pageQuery.isPending) {
       return;
     }
     if (pageQuery.isPlaceholderData) return;
-    if (pageIndex > 0 && rawItems.length === 0 && pageQuery.isSuccess) {
-      goPrev();
-    }
+    if (pageIndex <= 0) return;
+    if (rawItems.length > 0) return;
+    if (!pageQuery.isSuccess) return;
+    if (totalCount == null) return;
+    if (pageIndex * pageSize < totalCount) return;
+    goPrev();
   }, [
     enabled,
     goPrev,
@@ -513,6 +693,8 @@ export function useServerListPage<T extends { id: string }>({
     pageQuery.isPending,
     pageQuery.isPlaceholderData,
     pageQuery.isSuccess,
+    pageSize,
+    totalCount,
   ]);
 
   const handleSortChange = (sortBy: string, sortDir: ListSortState["sortDir"]) => {
@@ -527,9 +709,12 @@ export function useServerListPage<T extends { id: string }>({
 
   // True only while the target page is not in cache yet (network / cursor walk).
   // Prefetched Next/Prev hits resolve synchronously — no spinner, no blur.
+  // paintItems means handleNext already applied the warm cache — don't flash busy.
   const isAwaitingPage =
     isJumping ||
-    (pageQuery.isFetching && Boolean(pageQuery.isPlaceholderData));
+    (pageQuery.isFetching &&
+      Boolean(pageQuery.isPlaceholderData) &&
+      paintItems == null);
 
   return {
     items,
@@ -538,20 +723,25 @@ export function useServerListPage<T extends { id: string }>({
     amountSummary,
     pageIndex,
     pageSize,
-    canGoPrev,
+    canGoPrev: searchQ && searchMode === "local" ? false : canGoPrev,
     goNext: handleNext,
     goPrev: handlePrev,
     goToPage: jumpToPage,
-    canSelectPage,
+    canSelectPage:
+      searchQ && searchMode === "local" ? () => false : canSelectPage,
     setPageSize,
     sort,
     setSort: handleSortChange,
-    isLoading: pagePending && rawItems.length === 0,
-    // Table overlay: only when there are no rows to keep on screen.
-    // Never blur a full table during keepPreviousData / cache hits.
-    isFetching: isAwaitingPage && rawItems.length === 0,
-    // Pagination bar busy indicator (no table blur).
+    isLoading:
+      (pagePending && rawItems.length === 0) ||
+      (isSearchWarming && items.length === 0),
+    // Table overlay: awaiting page OR searching while catalog still warming.
+    isFetching:
+      (isAwaitingPage && rawItems.length === 0) ||
+      (isSearchWarming && items.length === 0),
     isPaging: isAwaitingPage,
+    isSearchWarming,
+    searchRosterSize: searchPool.length,
     error: pageQuery.error,
     reset,
   };
@@ -657,8 +847,8 @@ export function hq6ListPaginationProps(page: ServerListPageSlice) {
     canSelectPage: page.canSelectPage,
     totalItems: page.totalCount,
     maxPageButtons: 5,
-    // Prefer isPaging — do not busy-lock the bar on silent cache hits.
-    isBusy: Boolean(page.isPaging) || Boolean(page.isLoading),
+    // Only lock pagination while jumping pages — never the toolbar/search/exports.
+    isBusy: Boolean(page.isPaging),
   };
 }
 

@@ -7,13 +7,25 @@ import { apiFetch, withTenantQuery } from "@/lib/api/client";
 import {
   DEFAULT_TABLE_PAGE_SIZE,
   EXPORT_PAGE_SIZE,
+  FILTER_ROSTER_TTL_MS,
+  IN_MEMORY_FILTER_CATALOG_LIMIT,
   fetchAllPages,
-  fetchFirstPage,
   type ListPage,
 } from "@/lib/api/fetchAllPages";
 import { appendListQuery, fetchTenantListPage } from "@/lib/api/listPageHelpers";
+import { createAsyncTtlCache } from "@/lib/utils/asyncTtlCache";
+import { nameListCursor } from "@/lib/utils/pagination";
 
 const LIST_PATH = "/customer-groups";
+
+const customerGroupOptionCache = createAsyncTtlCache<CustomerGroup[]>({
+  ttlMs: FILTER_ROSTER_TTL_MS,
+  maxEntries: 64,
+});
+
+export function clearCustomerGroupOptionCache(): void {
+  customerGroupOptionCache.clear();
+}
 
 async function fetchCustomerGroupsRaw(
   tenantId: string,
@@ -56,10 +68,14 @@ export async function getAllCustomerGroups(
 export async function getCustomerGroups(
   tenantId: string,
 ): Promise<CustomerGroup[]> {
-  // Contact / sale forms need the full small catalog, not the table page size (10).
-  return fetchFirstPage(
-    (cursor, limit) => fetchCustomerGroupsRaw(tenantId, cursor, limit),
-    200,
+  const cacheKey = JSON.stringify(["customer-group-roster", tenantId]);
+  return customerGroupOptionCache.get(cacheKey, async () =>
+    fetchAllPages(
+      (cursor, limit) => fetchCustomerGroupsRaw(tenantId, cursor, limit),
+      Math.min(EXPORT_PAGE_SIZE, IN_MEMORY_FILTER_CATALOG_LIMIT),
+      nameListCursor,
+      IN_MEMORY_FILTER_CATALOG_LIMIT,
+    ),
   );
 }
 
@@ -72,6 +88,7 @@ export async function createCustomerGroup(
     body: JSON.stringify(dto),
   });
   if (!res.ok) throw new Error("Failed to create customer group");
+  clearCustomerGroupOptionCache();
   return res.json();
 }
 
@@ -88,6 +105,7 @@ export async function updateCustomerGroup(
     },
   );
   if (!res.ok) throw new Error("Failed to update customer group");
+  clearCustomerGroupOptionCache();
   return res.json();
 }
 
@@ -100,4 +118,5 @@ export async function deleteCustomerGroup(
     { method: "DELETE" },
   );
   if (!res.ok) throw new Error("Failed to delete customer group");
+  clearCustomerGroupOptionCache();
 }

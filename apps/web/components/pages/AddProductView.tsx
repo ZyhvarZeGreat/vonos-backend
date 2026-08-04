@@ -48,9 +48,9 @@ export function AddProductView() {
       duplicateFrom={duplicateId && !editId ? duplicateFrom ?? null : null}
       editFrom={editId ? editFrom ?? null : null}
       onSuccess={async () => {
-        await queryClient.invalidateQueries({ queryKey: ["items"] });
-        await queryClient.invalidateQueries({ queryKey: ["catalog"] });
-        await queryClient.invalidateQueries({ queryKey: ["catalog-meta"] });
+        void queryClient.invalidateQueries({ queryKey: ["items"] });
+        void queryClient.invalidateQueries({ queryKey: ["catalog"] });
+        void queryClient.invalidateQueries({ queryKey: ["catalog-meta"] });
       }}
     />
   );

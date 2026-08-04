@@ -36,6 +36,7 @@ import {
   shouldApplyInboundQty,
   shouldApplyOutboundQty,
 } from '../../common/utils/stockQuantity';
+import { resolveActiveItem } from '../../common/utils/resolveActiveItem';
 import { toIso, toNumber } from '../../common/utils/serializers';
 import { paymentStatusFromAmounts } from '../../common/utils/paymentStatus';
 import { adjustItemLocationStock } from '../../common/utils/itemLocationStock';
@@ -440,8 +441,10 @@ export class StockMovementsService {
       const db = this.prisma.forTenant(tenantId);
       await db.$transaction(async (tx) => {
         for (const line of lines) {
-          const item = await tx.item.findFirst({
-            where: { id: line.itemId, tenantId, deletedAt: null },
+          const item = await resolveActiveItem(tx, {
+            tenantId,
+            itemId: line.itemId,
+            sku: line.sku,
           });
           if (!item) {
             throw new BadRequestException(
@@ -793,7 +796,7 @@ export class StockMovementsService {
     if (supplierId) {
       await refreshSupplierPurchaseRollups(this.tenantDb.db, supplierId);
     }
-    await invalidateTenantDashboardCache(this.cache, tenantId);
+    void invalidateTenantDashboardCache(this.cache, tenantId);
   }
 
   async updatePayment(

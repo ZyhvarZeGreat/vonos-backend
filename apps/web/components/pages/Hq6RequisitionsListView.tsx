@@ -49,6 +49,7 @@ export function Hq6RequisitionsListView() {
     setPageSize,
     isLoading,
     isFetching,
+    isPaging,
     error,
     goToPage,
     canSelectPage,
@@ -141,7 +142,7 @@ export function Hq6RequisitionsListView() {
         onPageSelect: goToPage,
         canSelectPage,
         totalItems: totalCount,
-        isBusy: isFetching && !isLoading,
+        isBusy: isPaging,
       }}
       modals={
         <RequisitionRecordModal

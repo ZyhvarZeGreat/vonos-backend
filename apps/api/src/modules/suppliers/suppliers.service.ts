@@ -158,6 +158,8 @@ export class SuppliersService {
       advanceBalance: filters.advanceBalance ? 1 : 0,
       cursor: filters.cursor,
       limit: filters.limit ?? 10,
+      sortBy: filters.sortBy ?? 'name',
+      sortDir: filters.sortDir ?? 'asc',
       sum: filters.includeSummary === false ? 0 : 1,
     });
 
@@ -174,12 +176,20 @@ export class SuppliersService {
     filters: SupplierFilters,
     tenantId: string,
   ): Promise<PaginatedList<SupplierListRow>> {
+    const sortField =
+      filters.sortBy === 'createdAt' ? 'createdAt' : 'name';
+    const sortDir =
+      filters.sortDir === 'desc' || filters.sortDir === 'asc'
+        ? filters.sortDir
+        : sortField === 'createdAt'
+          ? 'desc'
+          : 'asc';
     const pagination = buildCompositeCursorQuery({
-      sortField: 'name',
-      sortDir: 'asc',
+      sortField,
+      sortDir,
       cursor: filters.cursor,
       limit: filters.limit ?? 10,
-      sortValueType: 'string',
+      sortValueType: sortField === 'createdAt' ? 'date' : 'string',
     });
 
     const baseWhere = {
@@ -207,7 +217,7 @@ export class SuppliersService {
           ...(pagination.where ?? {}),
         },
         include: { assignedToUser: { select: { name: true } } },
-        orderBy: [{ name: 'asc' }, { id: 'asc' }],
+        orderBy: [{ [sortField]: sortDir }, { id: sortDir }],
         take: pagination.take,
       }),
       includeSummary

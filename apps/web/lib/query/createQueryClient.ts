@@ -48,6 +48,9 @@ export function createQueryClient() {
         // Keep list/route data so revisiting / re-searching paints from cache.
         gcTime: 45 * 60_000,
         refetchOnWindowFocus: false,
+        // Lists set their own policy; default = don't refetch on every remount.
+        refetchOnMount: false,
+        refetchOnReconnect: false,
         retry: 1,
         meta: {
           suppressErrorToast: true,

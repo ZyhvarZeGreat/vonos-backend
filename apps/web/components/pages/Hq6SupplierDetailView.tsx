@@ -257,7 +257,7 @@ export function Hq6SupplierDetailView({ recordId }: { recordId: string }) {
           void deleteSupplier(tenantId, recordId)
             .then(async () => {
               toast.success(`Deleted ${displayName}`);
-              await queryClient.invalidateQueries({ queryKey: ["suppliers"] });
+              void queryClient.invalidateQueries({ queryKey: ["suppliers"] });
               router.push(listPath);
             })
             .catch((err) => {

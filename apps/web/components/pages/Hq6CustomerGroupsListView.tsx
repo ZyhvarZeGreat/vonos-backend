@@ -201,7 +201,7 @@ export function Hq6CustomerGroupsListView() {
         setFormOpen(true);
         toast.error(err instanceof Error ? err.message : "Save failed");
       } finally {
-        await opt.onSettled();
+        void opt.onSettled();
         setSaving(false);
       }
     },
@@ -227,7 +227,7 @@ export function Hq6CustomerGroupsListView() {
       opt.onError(err, undefined, ctx);
       toast.error(err instanceof Error ? err.message : "Delete failed");
     } finally {
-      await opt.onSettled();
+      void opt.onSettled();
       setDeleting(false);
     }
   }, [deleteTarget, queryClient, tenantId]);

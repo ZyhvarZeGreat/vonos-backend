@@ -593,11 +593,11 @@ export function DataTable<T extends { id: string }>({
   }
 
   const showBodyLoading = isLoading || (isFetching && data.length === 0);
-  // Never overlay a "Loading N%" spinner on top of existing rows — keep showing
-  // cached / previous page while search or paging refetch runs.
-  const showFetchOverlay = false;
+  // Soft overlay while filters/search refetch — keeps rows visible so users
+  // see that results are updating.
+  const showFetchOverlay = isFetching && data.length > 0 && !isLoading;
   const loadPercent = useSimulatedLoadPercent(
-    displayMode === "table" && showBodyLoading,
+    displayMode === "table" && (showBodyLoading || showFetchOverlay),
   );
 
   if (
@@ -872,11 +872,16 @@ export function DataTable<T extends { id: string }>({
           }
         >
           {showFetchOverlay ? (
-            <div className="pointer-events-none absolute inset-0 z-20 flex items-start justify-center bg-white/70 pt-10 no-print">
+            <div
+              className="pointer-events-none absolute inset-0 z-20 flex items-start justify-center bg-white/55 pt-8 no-print"
+              aria-busy
+              aria-live="polite"
+              aria-label="Filtering results"
+            >
               <div className="rounded-md border border-[#e5e7eb] bg-white px-4 py-3 shadow-md">
                 <Hq6LoadProgress
                   percent={loadPercent}
-                  label="Loading"
+                  label="Filtering"
                   compact
                 />
               </div>

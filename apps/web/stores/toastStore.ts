@@ -42,9 +42,10 @@ export const useToastStore = create<ToastState>((set, get) => ({
 
     const id = crypto.randomUUID();
     set((state) => ({
-      // Cap the stack so rapid-fire actions can't pile toasts off-screen.
-      toasts: [...state.toasts, { id, type, message: trimmed }].slice(
-        -MAX_TOASTS,
+      // Newest first at the top of the stack.
+      toasts: [{ id, type, message: trimmed }, ...state.toasts].slice(
+        0,
+        MAX_TOASTS,
       ),
     }));
     window.setTimeout(() => get().dismiss(id), TOAST_DURATION_MS[type]);

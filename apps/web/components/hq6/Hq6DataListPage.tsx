@@ -1,6 +1,10 @@
 "use client";
 
 import { type ReactNode } from "react";
+import {
+  Hq6Breadcrumbs,
+  useHq6Breadcrumbs,
+} from "@/components/hq6/Hq6Breadcrumbs";
 import { UposDataTablesShell } from "@/components/upos/UposDataTablesShell";
 import { UposFiltersPanel } from "@/components/upos/UposFiltersPanel";
 import {
@@ -105,6 +109,7 @@ export function Hq6DataListPage({
   className,
   freezeFirstColumn = true,
 }: Hq6DataListPageProps) {
+  const crumbs = useHq6Breadcrumbs({ leafLabel: title });
   const visibleActions = primaryActions.filter(
     (a) => !a.hidden && (a.onClick || a.href),
   );
@@ -208,6 +213,7 @@ export function Hq6DataListPage({
             </small>
           ) : null}
         </h1>
+        <Hq6Breadcrumbs items={crumbs} />
       </section>
       ) : null}
 

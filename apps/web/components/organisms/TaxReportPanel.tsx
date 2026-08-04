@@ -16,6 +16,7 @@ import {
   resolveReportColumnTotals,
 } from "@/lib/utils/reportTableTotals";
 import { cn } from "@/lib/utils/cn";
+import { rowMatchesListSearch } from "@/lib/utils/listClientSearch";
 import { CursorPaginationBar } from "@/components/molecules/CursorPaginationBar";
 import { ReportTableSearchBar } from "@/components/molecules/ReportTableSearchBar";
 import { useCursorPage } from "@/lib/hooks/useCursorPage";
@@ -25,12 +26,7 @@ import { useIsVaHq6 } from "@/lib/hooks/useIsVaHq6";
 import { Hq6ReportDataTable } from "@/components/hq6/Hq6ReportDataTable";
 
 function rowMatchesSearch(row: ReportsTableRow, query: string): boolean {
-  const q = query.trim().toLowerCase();
-  if (!q) return true;
-  return Object.entries(row).some(([key, value]) => {
-    if (key === "actions" || value == null || Array.isArray(value)) return false;
-    return String(value).toLowerCase().includes(q);
-  });
+  return rowMatchesListSearch(row, query);
 }
 
 function formatTaxAmount(amount: number, currency: string): string {

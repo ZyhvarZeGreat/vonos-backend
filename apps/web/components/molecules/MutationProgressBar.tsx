@@ -5,12 +5,13 @@ import { useMutationBusyStore } from "@/stores/mutationBusyStore";
 import { cn } from "@/lib/utils/cn";
 
 /**
- * Thin indeterminate write bar — no fake percentage chip.
- * Optimistic list updates should land instantly; this is a quiet network hint.
+ * Thin top write bar — quiet network hint while optimistic UI already updated.
+ * No fake percentage chip (that made slow Neon writes feel slower).
  */
 export function MutationProgressBar() {
   const pendingCount = useMutationBusyStore((s) => s.pendingCount);
   const finishing = useMutationBusyStore((s) => s.finishing);
+  const label = useMutationBusyStore((s) => s.label);
   const active = pendingCount > 0 || finishing;
   const [visible, setVisible] = useState(false);
 
@@ -36,7 +37,7 @@ export function MutationProgressBar() {
         className="h-0.5 w-full overflow-hidden bg-transparent"
         role="progressbar"
         aria-busy={active}
-        aria-valuetext="Saving"
+        aria-valuetext={label || "Saving"}
         aria-hidden={!active}
       >
         <div className="mutation-progress-bar h-full bg-[var(--color-brand-primary,#2563eb)]" />

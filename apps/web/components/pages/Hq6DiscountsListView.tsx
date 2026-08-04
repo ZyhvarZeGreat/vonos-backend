@@ -23,6 +23,7 @@ import {
   getDiscountsPage,
   updateDiscount,
 } from "@/lib/api/discounts";
+import { matchSearchRows } from "@/lib/utils/listClientSearch";
 import { getAllCatalogMeta } from "@/lib/api/catalogMeta";
 import { useAppMutation } from "@/lib/hooks/useAppMutation";
 import { useBusinessLocationOptions } from "@/lib/hooks/useBusinessLocationOptions";
@@ -344,11 +345,10 @@ export function Hq6DiscountsListView() {
     .filter((c) => c.key !== "actions")
     .map((c) => ({ key: c.key, label: String(c.header) }));
 
-  const filtered = useMemo(() => {
-    if (!localSearch.trim()) return items;
-    const q = localSearch.toLowerCase();
-    return items.filter((row) => row.name.toLowerCase().includes(q));
-  }, [items, localSearch]);
+  const filtered = useMemo(
+    () => matchSearchRows(items, localSearch, ["name"]),
+    [items, localSearch],
+  );
 
   const exportList = useListExport();
   const handleExport = useCallback(() => {

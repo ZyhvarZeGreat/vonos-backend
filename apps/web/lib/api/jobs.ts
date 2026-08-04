@@ -11,17 +11,21 @@ import { apiFetch, withTenantQuery } from "@/lib/api/client";
 import {
   DEFAULT_TABLE_PAGE_SIZE,
   EXPORT_PAGE_SIZE,
+  FILTER_ROSTER_TTL_MS,
+  IN_MEMORY_FILTER_CATALOG_LIMIT,
+  TYPEAHEAD_PAGE_SIZE,
   fetchAllPages,
   fetchFirstPage,
   fetchListPage,
   type ListPage,
 } from "@/lib/api/fetchAllPages";
 import { createAsyncTtlCache } from "@/lib/utils/asyncTtlCache";
+import { matchSorter, rankings } from "match-sorter";
 
-/** Short-lived typeahead cache for the job picker — see customers.ts. */
+/** Job picker roster — cleared only on job mutations. */
 const jobOptionCache = createAsyncTtlCache<Job[]>({
-  ttlMs: 30_000,
-  maxEntries: 100,
+  ttlMs: FILTER_ROSTER_TTL_MS,
+  maxEntries: 64,
 });
 
 /** Drop cached job option lists (call after job mutations). */
@@ -105,10 +109,78 @@ export async function getAllJobs(
   );
 }
 
+/**
+ * Job roster for pickers — loaded once into memory.
+ * Capped at IN_MEMORY_FILTER_CATALOG_LIMIT.
+ */
+export async function getJobRoster(
+  tenantId: string,
+  filters?: Pick<JobFilters, "status" | "statuses">,
+): Promise<Job[]> {
+  const cacheKey = JSON.stringify([
+    "job-roster",
+    tenantId,
+    filters?.status ?? null,
+    filters?.statuses?.join(",") ?? null,
+  ]);
+  return jobOptionCache.get(cacheKey, async () =>
+    fetchAllPages(
+      (cursor, limit) =>
+        fetchJobsRaw(
+          tenantId,
+          { ...filters, includeSummary: false },
+          cursor,
+          limit,
+        ),
+      Math.min(EXPORT_PAGE_SIZE, IN_MEMORY_FILTER_CATALOG_LIMIT),
+      (row) => row.id,
+      IN_MEMORY_FILTER_CATALOG_LIMIT,
+    ),
+  );
+}
+
+/**
+ * Job picker — full roster cached; `search` / `limit` are local match-sorter
+ * only (no per-keystroke API).
+ */
+export async function getJobsForPicker(
+  tenantId: string,
+  search?: string,
+  opts?: { limit?: number; status?: string; statuses?: string[] },
+): Promise<Job[]> {
+  const roster = await getJobRoster(tenantId, {
+    status: opts?.status,
+    statuses: opts?.statuses,
+  });
+  const q = search?.trim() ?? "";
+  const matched = q
+    ? matchSorter(roster, q, {
+        keys: ["reference", "customerName", "status", "description"],
+        threshold: rankings.CONTAINS,
+        keepDiacritics: true,
+      })
+    : roster;
+  const limit = opts?.limit;
+  return limit != null ? matched.slice(0, limit) : matched;
+}
+
 export async function getJobs(
   tenantId: string,
   filters?: JobFilters,
 ): Promise<Job[]> {
+  const plainPicker =
+    !filters?.cursor &&
+    !filters?.from &&
+    !filters?.to;
+
+  if (plainPicker) {
+    return getJobsForPicker(tenantId, filters?.search, {
+      limit: filters?.limit,
+      status: filters?.status,
+      statuses: filters?.statuses,
+    });
+  }
+
   const cacheKey = JSON.stringify([
     tenantId,
     filters?.search ?? "",
@@ -116,6 +188,8 @@ export async function getJobs(
     filters?.cursor ?? "",
     filters?.status ?? "",
     filters?.statuses?.join(",") ?? "",
+    filters?.from ?? "",
+    filters?.to ?? "",
   ]);
   return jobOptionCache.get(cacheKey, () => {
     if (filters?.cursor || filters?.limit) {

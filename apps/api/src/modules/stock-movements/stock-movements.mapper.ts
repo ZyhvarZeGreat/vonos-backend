@@ -87,6 +87,8 @@ export function toMovementListRow(
     paymentMethod: row.paymentMethod ?? null,
     paymentDue,
     supplierId: row.supplierId,
+    createdByName: row.createdByName,
+    notes: row.notes ?? null,
   };
 }
 

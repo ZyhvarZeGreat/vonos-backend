@@ -30,6 +30,7 @@ import { usePathname } from "next/navigation";
 import { useHq6Permissions } from "@/lib/hooks/useHq6Permissions";
 import { prefetchUserDetail } from "@/lib/query/prefetchListDetails";
 import { getTenantByCode } from "@/lib/registries/tenants";
+import { matchSearchRows } from "@/lib/utils/listClientSearch";
 import { toast } from "@/stores/toastStore";
 import type { User } from "@vonos/types";
 
@@ -130,7 +131,7 @@ export function Hq6UsersListView() {
     onSuccess: async (_data, row) => {
       toast.success(`Deactivated ${row.name}`);
       setDeleteTarget(null);
-      await queryClient.invalidateQueries({ queryKey: ["users"] });
+      void queryClient.invalidateQueries({ queryKey: ["users"] });
     },
     onError: (err: Error) => {
       toast.error(err.message || "Failed to deactivate user");
@@ -174,14 +175,7 @@ export function Hq6UsersListView() {
       const rows = useAllTenants
         ? await getAllTenantUsers()
         : await getAllUsers(tenantId!);
-      const q = search.trim().toLowerCase();
-      const filtered = q
-        ? rows.filter(
-            (row) =>
-              row.name.toLowerCase().includes(q) ||
-              row.email.toLowerCase().includes(q),
-          )
-        : rows;
+      const filtered = matchSearchRows(rows, search, ["name", "email"]);
       exportList(
         "users",
         [

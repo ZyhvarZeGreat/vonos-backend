@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   Barcode,
   Eye,
@@ -27,16 +27,16 @@ import {
 } from "@/components/hq6/Hq6StandardListShell";
 import { Hq6PayPurchaseModal } from "@/components/hq6/Hq6PayPurchaseModal";
 import { Hq6PurchaseViewModal } from "@/components/hq6/Hq6PurchaseViewModal";
+import { Hq6UpdatePurchaseStatusModal } from "@/components/hq6/Hq6UpdatePurchaseStatusModal";
 import { Hq6ViewPaymentsModal } from "@/components/hq6/Hq6ViewPaymentsModal";
 import {
   deleteStockMovement,
   getAllStockMovements,
   getStockMovementsListSummary,
   getStockMovementsPage,
-  updateStockMovementStatus,
   type StockMovementListRow,
 } from "@/lib/api/stockMovements";
-import { getSuppliers } from "@/lib/api/suppliers";
+import { getSuppliersForPicker, loadMoreSuppliersForPicker, suppliersPickerHasMore } from "@/lib/api/suppliers";
 import { useServerListPage, serverSortProps, withListSort } from "@/lib/hooks/useServerListPage";
 import { HQ6_TABLE_PAGE_SIZE } from "@/lib/api/fetchAllPages";
 import { useListExport } from "@/lib/hooks/useListExport";
@@ -48,6 +48,7 @@ import {
   prefetchPurchaseListModals,
   prefetchPurchasePaymentsModal,
 } from "@/lib/query/prefetchListModals";
+import { parsePurchaseNotes } from "@/lib/utils/purchaseNotes";
 import { modalKeys } from "@/lib/query/modalQueryKeys";
 import { HQ6_PURCHASE_FILTERS } from "@/lib/registries/hq6Filters";
 import { compositeListCursorFrom } from "@/lib/utils/pagination";
@@ -74,6 +75,13 @@ export function Hq6PurchasesListView() {
   const queryClient = useQueryClient();
   const { tenantCode, config } = useRouteTenant();
   const chrome = useHq6ListChrome("purchases");
+
+  // Warm payment-account dropdown while the purchases list loads.
+  useEffect(() => {
+    if (!tenantId) return;
+    prefetchPaymentAccountsRef(queryClient, tenantId);
+  }, [tenantId, queryClient]);
+
   const { recordId, recordSeed, openRecord, closeRecord } =
     useListRecordModal<StockMovementListRow>({
     onPrefetchRecord: (id) => {
@@ -102,14 +110,44 @@ export function Hq6PurchasesListView() {
   const [deleteTarget, setDeleteTarget] = useState<StockMovementListRow | null>(null);
   const [payTarget, setPayTarget] = useState<StockMovementListRow | null>(null);
   const [paymentsTarget, setPaymentsTarget] = useState<StockMovementListRow | null>(null);
+  const [statusTarget, setStatusTarget] = useState<StockMovementListRow | null>(null);
   const [deleting, setDeleting] = useState(false);
 
-  const suppliersQuery = useQuery({
-    queryKey: ["suppliers", tenantId, "purchase-filter"],
-    queryFn: () => getSuppliers(tenantId!),
-    enabled: Boolean(tenantId),
-    staleTime: 5 * 60_000,
-  });
+  const supplierLabelById = useRef(new Map<string, string>());
+  const [supplierLabel, setSupplierLabel] = useState("");
+  const loadSupplierOptions = useCallback(
+    async (query: string) => {
+      if (!tenantId) return { options: [], hasMore: false };
+      const rows = await getSuppliersForPicker(tenantId, query || undefined);
+      for (const row of rows) {
+        supplierLabelById.current.set(row.id, row.businessName || row.name);
+      }
+      return {
+        options: rows.map((s) => ({
+          value: s.id,
+          label: s.businessName || s.name,
+        })),
+        hasMore: !query.trim() && suppliersPickerHasMore(tenantId),
+      };
+    },
+    [tenantId],
+  );
+
+  const loadMoreSupplierOptions = useCallback(async () => {
+    if (!tenantId) return { options: [], hasMore: false, append: true };
+    const page = await loadMoreSuppliersForPicker(tenantId);
+    for (const row of page.appended) {
+      supplierLabelById.current.set(row.id, row.businessName || row.name);
+    }
+    return {
+      options: page.appended.map((s) => ({
+        value: s.id,
+        label: s.businessName || s.name,
+      })),
+      hasMore: page.hasMore,
+      append: true,
+    };
+  }, [tenantId]);
 
   const apiFilters = useMemo(
     () => ({
@@ -128,7 +166,6 @@ export function Hq6PurchasesListView() {
       bounds?.to,
       locationFilter,
       paymentStatusFilter,
-      search,
       statusFilter,
       supplierFilter,
     ],
@@ -202,17 +239,26 @@ export function Hq6PurchasesListView() {
         { key: "paymentStatus", header: "Payment Status" },
         { key: "grandTotal", header: "Grand Total" },
         { key: "paymentDue", header: "Payment due" },
+        { key: "additionalNotes", header: "Additional Notes" },
+        { key: "paymentNote", header: "Payment note" },
+        { key: "addedBy", header: "Added By" },
       ],
-      rows.map((row) => ({
-        date: row.date,
-        reference: row.reference,
-        location: businessLocationName(row.locationCode, config?.businessLocations) ?? "—",
-        supplier: row.supplierOrDest,
-        status: row.status,
-        paymentStatus: formatHq6PaymentStatus(row.paymentStatus),
-        grandTotal: row.grandTotal ?? 0,
-        paymentDue: row.paymentDue ?? 0,
-      })),
+      rows.map((row) => {
+        const notes = parsePurchaseNotes(row.notes);
+        return {
+          date: row.date,
+          reference: row.reference,
+          location: businessLocationName(row.locationCode, config?.businessLocations) ?? "—",
+          supplier: row.supplierOrDest,
+          status: row.status,
+          paymentStatus: formatHq6PaymentStatus(row.paymentStatus),
+          grandTotal: row.grandTotal ?? 0,
+          paymentDue: row.paymentDue ?? 0,
+          additionalNotes: notes.additionalNotes,
+          paymentNote: notes.paymentNote,
+          addedBy: row.createdByName ?? "",
+        };
+      }),
       "Export Purchases Spreadsheet",
     );
   };
@@ -264,11 +310,11 @@ export function Hq6PurchasesListView() {
               {
                 id: "view_payments",
                 label: "View Payments",
+                icon: <Wallet className="h-3.5 w-3.5" />,
                 dividerBefore: !canAddPaymentForStatus(
                   row.paymentStatus,
                   row.paymentDue,
                 ),
-                icon: <Wallet className="h-3.5 w-3.5" />,
                 onClick: () => {
                   if (tenantId) {
                     prefetchPurchasePaymentsModal(queryClient, tenantId, row.id);
@@ -303,28 +349,7 @@ export function Hq6PurchasesListView() {
                 id: "update_status",
                 label: "Update Status",
                 icon: <Pencil className="h-3.5 w-3.5" />,
-                onClick: () => {
-                  const next: MovementStatus =
-                    row.status === "Ordered" || row.status === "Pending"
-                      ? "Received"
-                      : row.status === "Received"
-                        ? "Delivered"
-                        : "Received";
-                  void updateStockMovementStatus(row.id, next)
-                    .then(async () => {
-                      toast.success(`Status → ${next}`);
-                      await queryClient.invalidateQueries({
-                        queryKey: ["stock-movements"],
-                      });
-                    })
-                    .catch((err) =>
-                      toast.error(
-                        err instanceof Error
-                          ? err.message
-                          : "Failed to update status",
-                      ),
-                    );
-                },
+                onClick: () => setStatusTarget(row),
               },
               {
                 id: "items_received",
@@ -366,25 +391,38 @@ export function Hq6PurchasesListView() {
       {
         key: "paymentStatus",
         header: "Payment Status",
-        render: (row) => (
-          <button
-            type="button"
-            className={cn(
-              "hq6-pay-badge",
-              purchaseBadgeClass(row.paymentStatus),
-            )}
-            title="View Payments"
-            onClick={(e) => {
-              e.stopPropagation();
-              if (tenantId) {
-                prefetchPurchasePaymentsModal(queryClient, tenantId, row.id);
-              }
-              setPaymentsTarget(row);
-            }}
-          >
-            {formatHq6PaymentStatus(row.paymentStatus)}
-          </button>
-        ),
+        render: (row) => {
+          const canPay = canAddPaymentForStatus(
+            row.paymentStatus,
+            row.paymentDue,
+          );
+          return (
+            <button
+              type="button"
+              className={cn(
+                "hq6-pay-badge",
+                purchaseBadgeClass(row.paymentStatus),
+              )}
+              title={canPay ? "Add Payment" : "View Payments"}
+              onClick={(e) => {
+                e.stopPropagation();
+                if (canPay) {
+                  if (tenantId) {
+                    prefetchPaymentAccountsRef(queryClient, tenantId);
+                  }
+                  setPayTarget(row);
+                } else {
+                  if (tenantId) {
+                    prefetchPurchasePaymentsModal(queryClient, tenantId, row.id);
+                  }
+                  setPaymentsTarget(row);
+                }
+              }}
+            >
+              {formatHq6PaymentStatus(row.paymentStatus)}
+            </button>
+          );
+        },
       },
       {
         key: "grandTotal",
@@ -399,6 +437,18 @@ export function Hq6PurchasesListView() {
         numeric: true,
         sortValue: (row) => row.paymentDue ?? 0,
         render: (row) => formatHq6Currency(row.paymentDue ?? 0, "NGN"),
+      },
+      {
+        key: "additionalNotes",
+        header: "Additional Notes",
+        sortable: false,
+        render: (row) => parsePurchaseNotes(row.notes).additionalNotes || "",
+      },
+      {
+        key: "paymentNote",
+        header: "Payment note",
+        sortable: false,
+        render: (row) => parsePurchaseNotes(row.notes).paymentNote || "",
       },
       {
         key: "addedBy",
@@ -462,12 +512,17 @@ export function Hq6PurchasesListView() {
           <Hq6FilterSelect
             label="Supplier"
             value={supplierFilter}
-            onChange={setSupplierFilter}
+            selectedLabel={supplierLabel}
+            onChange={(id) => {
+              setSupplierFilter(id);
+              setSupplierLabel(
+                id ? supplierLabelById.current.get(id) ?? "" : "",
+              );
+            }}
             emptyLabel="All"
-            options={(suppliersQuery.data ?? []).map((s) => ({
-              value: s.id,
-              label: s.businessName || s.name,
-            }))}
+            loadOptions={loadSupplierOptions}
+            loadMoreOptions={loadMoreSupplierOptions}
+            prefetchKey={tenantId}
           />
           <Hq6FilterSelect
             label="Purchase Status"
@@ -514,7 +569,7 @@ export function Hq6PurchasesListView() {
         onPageSelect: goToPage,
         canSelectPage,
         totalItems: totalCount,
-        isBusy: isPaging || isFetching || isLoading,
+        isBusy: isPaging,
       }}
       modals={
         <>
@@ -540,6 +595,16 @@ export function Hq6PurchasesListView() {
                   queryKey: modalKeys.purchasePayments(tenantId, payTarget.id),
                 });
               }
+            }}
+          />
+          <Hq6UpdatePurchaseStatusModal
+            open={Boolean(statusTarget)}
+            purchase={statusTarget}
+            onClose={() => setStatusTarget(null)}
+            onUpdated={() => {
+              void queryClient.invalidateQueries({
+                queryKey: ["stock-movements"],
+              });
             }}
           />
           <Hq6ViewPaymentsModal
@@ -610,7 +675,7 @@ export function Hq6PurchasesListView() {
                 .then(async () => {
                   toast.success(`Deleted purchase ${deleteTarget.reference}`);
                   setDeleteTarget(null);
-                  await queryClient.invalidateQueries({ queryKey: ["stock-movements"] });
+                  void queryClient.invalidateQueries({ queryKey: ["stock-movements"] });
                 })
                 .catch((err) =>
                   toast.error(

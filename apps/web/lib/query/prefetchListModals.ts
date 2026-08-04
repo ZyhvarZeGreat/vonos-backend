@@ -185,7 +185,7 @@ export function prefetchContactModalRefs(
   });
   prefetchModalQuery(queryClient, {
     queryKey: modalKeys.usersFilter(tenantId),
-    queryFn: () => getUsers(tenantId, { limit: 100 }),
+    queryFn: () => getUsers(tenantId),
     staleTime: MODAL_REF_STALE_MS,
   });
 }

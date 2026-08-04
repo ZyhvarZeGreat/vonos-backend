@@ -19,6 +19,7 @@ import {
   signedAmountClass,
 } from "@/lib/utils/ledgerAmountStyles";
 import { cn } from "@/lib/utils/cn";
+import { matchSearchRows } from "@/lib/utils/listClientSearch";
 
 function offsetPaginationProps<T>(pagination: ReturnType<typeof useOffsetPage<T>>) {
   return {
@@ -170,19 +171,17 @@ export function CashFlowReportPanel({ report }: { report: CashFlowReport }) {
   const { currency } = report;
   const [search, setSearch] = useState("");
 
-  const filteredRows = useMemo(() => {
-    const query = search.trim().toLowerCase();
-    if (!query) return report.rows;
-    return report.rows.filter((row) =>
-      [
-        row.date,
-        row.account,
-        row.description,
-        row.paymentMethod,
-        row.receiptVoucher,
-      ].some((value) => value.toLowerCase().includes(query)),
-    );
-  }, [report.rows, search]);
+  const filteredRows = useMemo(
+    () =>
+      matchSearchRows(report.rows, search, [
+        "date",
+        "account",
+        "description",
+        "paymentMethod",
+        "receiptVoucher",
+      ]),
+    [report.rows, search],
+  );
 
   const pagination = useOffsetPage(filteredRows, { resetKey: search });
 
@@ -350,15 +349,10 @@ export function TrialBalanceReportPanel({
 }) {
   const [search, setSearch] = useState("");
 
-  const filteredRows = useMemo(() => {
-    const query = search.trim().toLowerCase();
-    if (!query) return table.rows;
-    return table.rows.filter((row) =>
-      String(row.account ?? "")
-        .toLowerCase()
-        .includes(query),
-    );
-  }, [table.rows, search]);
+  const filteredRows = useMemo(
+    () => matchSearchRows(table.rows, search, ["account"]),
+    [table.rows, search],
+  );
 
   const pagination = useOffsetPage(filteredRows, { resetKey: search });
 
@@ -460,25 +454,19 @@ export function PaymentAccountDetailReportPanel({
 }) {
   const [search, setSearch] = useState("");
 
-  const filteredRows = useMemo(() => {
-    const query = search.trim().toLowerCase();
-    if (!query) return table.rows;
-    return table.rows.filter((row) =>
-      [
-        row.date,
-        row.paymentRef,
-        row.invoiceRef,
-        row.paymentType,
-        row.account,
-        row.createdBy,
-        row.description,
-      ].some((value) =>
-        String(value ?? "")
-          .toLowerCase()
-          .includes(query),
-      ),
-    );
-  }, [table.rows, search]);
+  const filteredRows = useMemo(
+    () =>
+      matchSearchRows(table.rows, search, [
+        "date",
+        "paymentRef",
+        "invoiceRef",
+        "paymentType",
+        "account",
+        "createdBy",
+        "description",
+      ]),
+    [table.rows, search],
+  );
 
   const pagination = useOffsetPage(filteredRows, { resetKey: search });
 

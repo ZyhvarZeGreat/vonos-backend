@@ -12,6 +12,7 @@ import {
 } from "@/lib/query/optimistic";
 import type { PaymentAccount } from "@vonos/types";
 import { DataTable, type ColumnConfig } from "@/components/organisms/DataTable";
+import { matchSearchRows } from "@/lib/utils/listClientSearch";
 import {
   PaymentAccountDepositModal,
   PaymentAccountFormModal,
@@ -104,17 +105,12 @@ export function Hq6PaymentAccountsListView() {
     let rows = items;
     if (statusFilter === "active") rows = rows.filter((row) => !row.isClosed);
     if (statusFilter === "closed") rows = rows.filter((row) => row.isClosed);
-    if (localSearch.trim()) {
-      const q = localSearch.toLowerCase();
-      rows = rows.filter(
-        (row) =>
-          row.name.toLowerCase().includes(q) ||
-          row.accountNumber.toLowerCase().includes(q) ||
-          (row.accountType ?? "").toLowerCase().includes(q) ||
-          (row.note ?? "").toLowerCase().includes(q),
-      );
-    }
-    return rows;
+    return matchSearchRows(rows, localSearch, [
+      "name",
+      "accountNumber",
+      "accountType",
+      "note",
+    ]);
   }, [items, localSearch, statusFilter]);
 
   const accountTypes = useMemo(() => {
@@ -462,7 +458,7 @@ export function Hq6PaymentAccountsListView() {
                     opt.onError(err, undefined, ctx);
                     throw err;
                   } finally {
-                    await opt.onSettled();
+                    void opt.onSettled();
                   }
                   return;
                 }
@@ -514,7 +510,7 @@ export function Hq6PaymentAccountsListView() {
                   opt.onError(err, undefined, ctx);
                   throw err;
                 } finally {
-                  await opt.onSettled();
+                  void opt.onSettled();
                 }
               }}
             />

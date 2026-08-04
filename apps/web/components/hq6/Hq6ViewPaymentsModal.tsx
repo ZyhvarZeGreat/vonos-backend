@@ -28,6 +28,7 @@ import {
   MODAL_REF_STALE_MS,
   modalKeys,
 } from "@/lib/query/modalQueryKeys";
+import { patchEntityInQueries } from "@/lib/query/optimistic";
 import {
   formatHq6Currency,
   formatHq6Date,
@@ -40,6 +41,12 @@ import { cn } from "@/lib/utils/cn";
 import { hq6PaymentBadgeClass, canAddPaymentForStatus } from "@/lib/utils/hq6PaymentBadge";
 import { filterSelectablePaymentAccounts } from "@/lib/utils/paymentAccountPicker";
 import { HQ6_PAYMENT_METHOD_OPTIONS } from "@/lib/utils/hq6PaymentMethods";
+
+function paymentStatusFromPaid(total: number, paid: number): string {
+  if (paid <= 0) return "due";
+  if (paid + 0.0001 >= total) return "paid";
+  return "partial";
+}
 
 export type Hq6PaymentRow = {
   id: string;
@@ -250,20 +257,67 @@ export function Hq6ViewPaymentsModal({
       );
     },
     successMessage: "Payment updated",
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: paymentsQueryKey });
-      await queryClient.invalidateQueries({
-        queryKey:
-          kind === "sale"
-            ? modalKeys.saleView(tenantId, recordId)
-            : modalKeys.purchaseView(tenantId, recordId),
-      });
-      await queryClient.invalidateQueries({ queryKey: ["sales"] });
-      await queryClient.invalidateQueries({ queryKey: ["stock-movements"] });
-      await queryClient.invalidateQueries({
-        queryKey: ["payment-accounts", tenantId],
-      });
-      setEditing(null);
+    progressLabel: "Updating payment",
+    optimistic: {
+      keys: [
+        paymentsQueryKey,
+        kind === "sale" ? ["sales"] : ["stock-movements"],
+        kind === "sale"
+          ? modalKeys.saleView(tenantId, recordId)
+          : modalKeys.purchaseView(tenantId, recordId),
+        ["payment-accounts", tenantId],
+      ],
+      update: (qc) => {
+        if (!editing) return;
+        const amount = Number(editAmount);
+        const accountName =
+          paymentAccounts.find((a) => a.id === editAccountId)?.name ??
+          editing.accountName ??
+          null;
+        const note =
+          [
+            editNote.trim(),
+            editBankAccountNo.trim()
+              ? `Bank Account No: ${editBankAccountNo.trim()}`
+              : "",
+          ]
+            .filter(Boolean)
+            .join(" | ") || null;
+        const prevRows =
+          qc.getQueryData<SalePaymentRow[]>(paymentsQueryKey) ?? payments;
+        const nextRows = prevRows.map((row) =>
+          row.id === editing.id
+            ? {
+                ...row,
+                amount: Number.isFinite(amount) ? amount : row.amount,
+                method: editMethod,
+                note,
+                paidOn: editPaidOn
+                  ? new Date(editPaidOn).toISOString()
+                  : row.paidOn,
+                paymentRefNo: editRef.trim() || null,
+                accountId: editAccountId || null,
+                accountName,
+              }
+            : row,
+        );
+        qc.setQueryData(paymentsQueryKey, nextRows);
+
+        if (kind === "sale" && recordId) {
+          const paid = nextRows.reduce((sum, row) => sum + row.amount, 0);
+          const prevPaid = prevRows.reduce((sum, row) => sum + row.amount, 0);
+          const saleTotal =
+            context?.remainingDue != null
+              ? prevPaid + context.remainingDue
+              : paid;
+          patchEntityInQueries(qc, ["sales"], recordId, {
+            totalPaid: paid,
+            sellDue: Math.max(0, saleTotal - paid),
+            paymentStatus: paymentStatusFromPaid(saleTotal, paid),
+          });
+        }
+        setEditing(null);
+      },
     },
   });
 
@@ -272,22 +326,42 @@ export function Hq6ViewPaymentsModal({
       if (!tenantId || !recordId) throw new Error("Missing payment");
       if (kind === "sale") {
         await deleteSalePayment(tenantId, recordId, paymentId);
-        return;
+        return paymentId;
       }
       await deleteStockMovementPayment(tenantId, recordId, paymentId);
+      return paymentId;
     },
     successMessage: "Payment deleted",
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: paymentsQueryKey });
-      await queryClient.invalidateQueries({
-        queryKey:
-          kind === "sale"
-            ? modalKeys.saleView(tenantId, recordId)
-            : modalKeys.purchaseView(tenantId, recordId),
-      });
-      await queryClient.invalidateQueries({ queryKey: ["sales"] });
-      await queryClient.invalidateQueries({ queryKey: ["stock-movements"] });
-      setDeleting(null);
+    progressLabel: "Deleting payment",
+    optimistic: {
+      keys: [
+        paymentsQueryKey,
+        kind === "sale" ? ["sales"] : ["stock-movements"],
+        kind === "sale"
+          ? modalKeys.saleView(tenantId, recordId)
+          : modalKeys.purchaseView(tenantId, recordId),
+        ["payment-accounts", tenantId],
+      ],
+      update: (qc, paymentId) => {
+        const prevRows =
+          qc.getQueryData<SalePaymentRow[]>(paymentsQueryKey) ?? payments;
+        const nextRows = prevRows.filter((row) => row.id !== paymentId);
+        qc.setQueryData(paymentsQueryKey, nextRows);
+        if (kind === "sale" && recordId) {
+          const paid = nextRows.reduce((sum, row) => sum + row.amount, 0);
+          const prevPaid = prevRows.reduce((sum, row) => sum + row.amount, 0);
+          const saleTotal =
+            context?.remainingDue != null
+              ? prevPaid + context.remainingDue
+              : paid;
+          patchEntityInQueries(qc, ["sales"], recordId, {
+            totalPaid: paid,
+            sellDue: Math.max(0, saleTotal - paid),
+            paymentStatus: paymentStatusFromPaid(saleTotal, paid),
+          });
+        }
+        setDeleting(null);
+      },
     },
   });
 

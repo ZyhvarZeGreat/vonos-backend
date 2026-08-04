@@ -21,6 +21,7 @@ import { useServerListPage } from "@/lib/hooks/useServerListPage";
 import { HQ6_TABLE_PAGE_SIZE } from "@/lib/api/fetchAllPages";
 import { useListExport } from "@/lib/hooks/useListExport";
 import { useTenantId } from "@/lib/hooks/useRouteTenant";
+import { matchSearchRows } from "@/lib/utils/listClientSearch";
 import { parseForm } from "@/lib/validation/parseForm";
 import { expenseCategoryFormSchema } from "@/lib/validation/schemas";
 import {
@@ -70,15 +71,10 @@ export function Hq6ExpenseCategoriesListView() {
       }),
   });
 
-  const filtered = useMemo(() => {
-    if (!localSearch.trim()) return data;
-    const q = localSearch.toLowerCase();
-    return data.filter(
-      (row) =>
-        row.name.toLowerCase().includes(q) ||
-        (row.code ?? "").toLowerCase().includes(q),
-    );
-  }, [data, localSearch]);
+  const filtered = useMemo(
+    () => matchSearchRows(data, localSearch, ["name", "code"]),
+    [data, localSearch],
+  );
 
   const createMutation = useAppMutation({
     mutationFn: () =>

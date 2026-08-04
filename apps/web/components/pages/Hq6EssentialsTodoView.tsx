@@ -18,6 +18,7 @@ import { useRecordNavigation } from "@/lib/hooks/useRecordNavigation";
 import { useTenantId } from "@/lib/hooks/useRouteTenant";
 import { HQ6_TODO_FILTERS } from "@/lib/registries/hq6Filters";
 import { formatHq6DateTime } from "@/lib/utils/hq6Format";
+import { matchSearchRows } from "@/lib/utils/listClientSearch";
 import { parseForm } from "@/lib/validation/parseForm";
 import { requiredTextSchema } from "@/lib/validation/schemas";
 import { toast } from "@/stores/toastStore";
@@ -105,7 +106,7 @@ export function Hq6EssentialsTodoView() {
   const rows = useMemo(() => {
     const fromMs = bounds?.from ? new Date(bounds.from).getTime() : null;
     const toMs = bounds?.to ? new Date(bounds.to).getTime() : null;
-    return todos.filter((row) => {
+    const scoped = todos.filter((row) => {
       if (assignedToFilter && row.assignedTo !== assignedToFilter) return false;
       if (priorityFilter && row.priority !== priorityFilter) return false;
       if (statusFilter) {
@@ -122,14 +123,13 @@ export function Hq6EssentialsTodoView() {
         const t = new Date(row.addedOn).getTime();
         if (Number.isNaN(t) || t < fromMs || t > toMs) return false;
       }
-      if (!localSearch.trim()) return true;
-      const q = localSearch.toLowerCase();
-      return (
-        row.task.toLowerCase().includes(q) ||
-        row.taskId.toLowerCase().includes(q) ||
-        row.assignedTo.toLowerCase().includes(q)
-      );
+      return true;
     });
+    return matchSearchRows(scoped, localSearch, [
+      "task",
+      "taskId",
+      "assignedTo",
+    ]);
   }, [
     assignedToFilter,
     bounds?.from,

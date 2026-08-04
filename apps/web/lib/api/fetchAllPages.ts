@@ -10,8 +10,23 @@ export const HQ6_TABLE_PAGE_SIZE = 25;
 /** @deprecated Use DEFAULT_TABLE_PAGE_SIZE */
 export const DEFAULT_LIST_LIMIT = DEFAULT_TABLE_PAGE_SIZE;
 
-/** Max rows for searchable dropdowns / typeahead (never dump full catalogs). */
+/** Max rows for searchable dropdowns / typeahead (legacy callers). */
 export const TYPEAHEAD_PAGE_SIZE = 40;
+
+/**
+ * Filter / picker dropdowns: first batch size (~80). Scroll loads more.
+ * Prefer FILTER_DROPDOWN_BATCH_SIZE from accumulatingPicker.ts.
+ */
+export const FILTER_DROPDOWN_INITIAL_LIMIT = 80;
+
+/**
+ * Upper bound if a caller still needs a large in-memory dump (exports).
+ * Filter dropdowns should use FILTER_DROPDOWN_INITIAL_LIMIT instead.
+ */
+export const IN_MEMORY_FILTER_CATALOG_LIMIT = 10_000;
+
+/** How long filter/picker rosters stay warm without a mutation. */
+export const FILTER_ROSTER_TTL_MS = 7 * 24 * 60 * 60_000;
 
 /** Chunk size when explicitly fetching an entire list (export only). */
 export const EXPORT_PAGE_SIZE = 500;
@@ -98,9 +113,9 @@ export async function fetchFirstPage<T extends { id: string }>(
 }
 
 /**
- * Fetch every page — **export / admin tooling only**.
- * Never use for table initial render or dropdown options.
- * Stops at `maxRows` (default EXPORT_MAX_ROWS) to protect the browser.
+ * Fetch every page — exports, admin tooling, and **filter/picker rosters**
+ * (capped by `maxRows`, usually `IN_MEMORY_FILTER_CATALOG_LIMIT`).
+ * Never use for table initial render.
  */
 export async function fetchAllPages<T extends { id: string }>(
   fetchPage: (cursor?: string, limit?: number) => Promise<ListApiPayload<T>>,

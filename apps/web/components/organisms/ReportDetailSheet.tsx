@@ -22,6 +22,7 @@ import { DataTableSkeleton } from "@/components/organisms/skeletons";
 import { Hq6ReportKpiSummary } from "@/components/hq6/Hq6ReportKpiSummary";
 import { Hq6UposCard } from "@/components/hq6/Hq6UposCard";
 import { cn } from "@/lib/utils/cn";
+import { filterRowsBySearch } from "@/lib/utils/listClientSearch";
 
 export interface ReportTablePagination {
   pageIndex: number;
@@ -113,16 +114,10 @@ function rowNeedsStockAlert(row: ReportsTableRow & { id: string }): boolean {
 
 function rowMatchesSearch(
   row: ReportsTableRow & { id: string },
-  columns: ReportsTable["columns"],
+  _columns: ReportsTable["columns"],
   query: string,
 ): boolean {
-  const q = query.trim().toLowerCase();
-  if (!q) return true;
-  return columns.some((col) => {
-    const raw = row[col.key];
-    if (raw == null || Array.isArray(raw)) return false;
-    return String(raw).toLowerCase().includes(q);
-  });
+  return filterRowsBySearch([row], query).length > 0;
 }
 
 function ReportTable({
@@ -158,16 +153,13 @@ function ReportTable({
   const tableSearch = controlled ? (searchValue ?? "") : localSearch;
   const setTableSearch = controlled ? onSearchChange : setLocalSearch;
 
-  // Server-paginated + controlled search: API filters. Otherwise filter client-side.
-  const serverHandlesSearch = Boolean(pagination && controlled);
+  // Always filter client-side with match-sorter — never push search to the API.
   const filteredRows = useMemo(
     () =>
-      serverHandlesSearch
-        ? allRows
-        : allRows.filter((row) =>
-            rowMatchesSearch(row, table.columns, tableSearch),
-          ),
-    [allRows, serverHandlesSearch, table.columns, tableSearch],
+      allRows.filter((row) =>
+        rowMatchesSearch(row, table.columns, tableSearch),
+      ),
+    [allRows, table.columns, tableSearch],
   );
 
   const offsetPagination = useOffsetPage(filteredRows, { resetKey: tableSearch });
@@ -186,7 +178,8 @@ function ReportTable({
   };
 
   const activePagination = pagination ?? clientPagination;
-  const rows = pagination ? allRows : offsetPagination.pageRows;
+  // Prefer client-filtered rows so typing never requires an API round-trip.
+  const rows = pagination ? filteredRows : offsetPagination.pageRows;
 
   const showActions =
     Boolean(onRowAction) &&
@@ -196,12 +189,8 @@ function ReportTable({
     () =>
       resolveReportColumnTotals(
         table.columns,
-        !serverHandlesSearch && tableSearch.trim()
-          ? filteredRows
-          : table.rows,
-        !serverHandlesSearch && tableSearch.trim()
-          ? undefined
-          : table.columnTotals,
+        tableSearch.trim() ? filteredRows : table.rows,
+        tableSearch.trim() ? undefined : table.columnTotals,
       ),
     [
       table.columns,
@@ -209,7 +198,6 @@ function ReportTable({
       table.columnTotals,
       filteredRows,
       tableSearch,
-      serverHandlesSearch,
     ],
   );
   const hasTotals = Object.keys(totals).length > 0;

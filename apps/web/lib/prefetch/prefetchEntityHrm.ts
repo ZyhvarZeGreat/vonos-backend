@@ -6,15 +6,11 @@ import {
 } from "@/lib/api/hrm";
 import { ADMIN_ENTITY_STALE_MS } from "@/lib/admin/prefetchAdminEntity";
 import { DEFAULT_TABLE_PAGE_SIZE } from "@/lib/api/fetchAllPages";
+import { stableListFilterKey } from "@/lib/utils/stableListFilterKey";
 
 /** Same filterKey shape useServerListPage builds for empty search + no sort. */
 function emptyListFilterKey(filters: Record<string, unknown> = {}): string {
-  return JSON.stringify({
-    ...filters,
-    search: "",
-    sortBy: null,
-    sortDir: null,
-  });
+  return stableListFilterKey(filters, null);
 }
 
 /**

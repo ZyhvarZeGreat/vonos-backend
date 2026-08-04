@@ -372,7 +372,7 @@ export function Hq6UserDetailView({
     mutationFn: () => deactivateUser(recordId, { tenantId }),
     onSuccess: async () => {
       toast.success("User deactivated");
-      await queryClient.invalidateQueries({ queryKey: ["users"] });
+      void queryClient.invalidateQueries({ queryKey: ["users"] });
       setDeleteOpen(false);
       goToList();
     },
@@ -510,9 +510,9 @@ export function Hq6UserDetailView({
                 basicSalary: form.basicSalary,
                 salaryPeriod: form.salaryPeriod,
               });
-              await queryClient.invalidateQueries({ queryKey: ["employees"] });
-              await queryClient.invalidateQueries({ queryKey: ["payrolls"] });
-              await queryClient.invalidateQueries({ queryKey: ["hrm"] });
+              void queryClient.invalidateQueries({ queryKey: ["employees"] });
+              void queryClient.invalidateQueries({ queryKey: ["payrolls"] });
+              void queryClient.invalidateQueries({ queryKey: ["hrm"] });
               toast.success(`Created ${name} (linked to payroll)`);
             } catch (payrollErr) {
               console.error("[user→payroll]", payrollErr);
@@ -550,9 +550,9 @@ export function Hq6UserDetailView({
                 basicSalary: form.basicSalary,
                 salaryPeriod: form.salaryPeriod,
               });
-              await queryClient.invalidateQueries({ queryKey: ["employees"] });
-              await queryClient.invalidateQueries({ queryKey: ["payrolls"] });
-              await queryClient.invalidateQueries({ queryKey: ["hrm"] });
+              void queryClient.invalidateQueries({ queryKey: ["employees"] });
+              void queryClient.invalidateQueries({ queryKey: ["payrolls"] });
+              void queryClient.invalidateQueries({ queryKey: ["hrm"] });
               toast.success(`Invited ${name} (linked to payroll)`);
             } catch (payrollErr) {
               console.error("[invite→payroll]", payrollErr);
@@ -603,11 +603,11 @@ export function Hq6UserDetailView({
           }
         }
         toast.success(`Updated ${name}`);
-        await queryClient.invalidateQueries({
+        void queryClient.invalidateQueries({
           queryKey: ["user", viewingTenantId ?? "any", recordId],
         });
       }
-      await queryClient.invalidateQueries({ queryKey: ["users"] });
+      void queryClient.invalidateQueries({ queryKey: ["users"] });
       goToList();
       }, isCreate ? "Creating user" : "Updating user");
     } catch (err) {

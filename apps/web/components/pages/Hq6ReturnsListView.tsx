@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useCallback, useMemo, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import type { SaleReturnRow } from "@/lib/types/entityRows";
 import type { Sale, SaleReturnStatus } from "@vonos/types";
 import { DataTable, type ColumnConfig } from "@/components/organisms/DataTable";
@@ -18,7 +18,7 @@ import {
   Hq6FilterSelect,
 } from "@/components/hq6/Hq6FilterFields";
 import { Hq6StandardListShell, useHq6ListChrome } from "@/components/hq6/Hq6StandardListShell";
-import { getCustomers } from "@/lib/api/customers";
+import { getCustomersForPicker, loadMoreCustomersForPicker, customersPickerHasMore } from "@/lib/api/customers";
 import { getReturnsPage } from "@/lib/api/returns";
 import { useServerListPage } from "@/lib/hooks/useServerListPage";
 import { HQ6_TABLE_PAGE_SIZE } from "@/lib/api/fetchAllPages";
@@ -63,12 +63,41 @@ export function Hq6ReturnsListView() {
   } | null>(null);
   const chrome = useHq6ListChrome("returns");
 
-  const customersQuery = useQuery({
-    queryKey: ["customers", tenantId, "return-filter"],
-    queryFn: () => getCustomers(tenantId!),
-    enabled: Boolean(tenantId),
-    staleTime: 5 * 60_000,
-  });
+  const customerLabelById = useRef(new Map<string, string>());
+  const [customerLabel, setCustomerLabel] = useState("");
+  const loadCustomerOptions = useCallback(
+    async (query: string) => {
+      if (!tenantId) return { options: [], hasMore: false };
+      const rows = await getCustomersForPicker(tenantId, query || undefined);
+      for (const row of rows) {
+        customerLabelById.current.set(row.id, row.businessName || row.name);
+      }
+      return {
+        options: rows.map((c) => ({
+          value: c.id,
+          label: c.businessName || c.name,
+        })),
+        hasMore: !query.trim() && customersPickerHasMore(tenantId),
+      };
+    },
+    [tenantId],
+  );
+
+  const loadMoreCustomerOptions = useCallback(async () => {
+    if (!tenantId) return { options: [], hasMore: false, append: true };
+    const page = await loadMoreCustomersForPicker(tenantId);
+    for (const row of page.appended) {
+      customerLabelById.current.set(row.id, row.businessName || row.name);
+    }
+    return {
+      options: page.appended.map((c) => ({
+        value: c.id,
+        label: c.businessName || c.name,
+      })),
+      hasMore: page.hasMore,
+      append: true,
+    };
+  }, [tenantId]);
 
   const apiFilters = useMemo(
     () => ({
@@ -256,12 +285,14 @@ export function Hq6ReturnsListView() {
       <Hq6FilterSelect
         label="Customer"
         value={customerFilter}
-        onChange={setCustomerFilter}
+        selectedLabel={customerLabel}
+        onChange={(id) => {
+          setCustomerFilter(id);
+          setCustomerLabel(id ? customerLabelById.current.get(id) ?? "" : "");
+        }}
         emptyLabel="All"
-        options={(customersQuery.data ?? []).map((c) => ({
-          value: c.id,
-          label: c.businessName || c.name,
-        }))}
+        loadOptions={loadCustomerOptions}
+        loadMoreOptions={loadMoreCustomerOptions}
       />
     </Hq6FilterGrid>
   );

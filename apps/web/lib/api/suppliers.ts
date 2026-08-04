@@ -12,28 +12,35 @@ import type {
 import {
   DEFAULT_TABLE_PAGE_SIZE,
   EXPORT_PAGE_SIZE,
+  FILTER_DROPDOWN_INITIAL_LIMIT,
+  FILTER_ROSTER_TTL_MS,
+  IN_MEMORY_FILTER_CATALOG_LIMIT,
   TYPEAHEAD_PAGE_SIZE,
   fetchAllPages,
   fetchFirstPage,
+  fetchListPage,
   type ListPage,
 } from "@/lib/api/fetchAllPages";
 import { appendListQuery, fetchTenantListPage } from "@/lib/api/listPageHelpers";
-import { nameListCursor } from "@/lib/utils/pagination";
+import { createAccumulatingPicker } from "@/lib/api/accumulatingPicker";
+import { compositeListCursorFrom, nameListCursor } from "@/lib/utils/pagination";
 import { createAsyncTtlCache } from "@/lib/utils/asyncTtlCache";
 
 export type { SupplierListRow };
 
 const LIST_PATH = "/suppliers";
 
-/** Short-lived typeahead option cache — see customers.ts for rationale. */
+/** Picker option cache — recent window / search results; cleared on mutations. */
 const supplierOptionCache = createAsyncTtlCache<SupplierListRow[]>({
-  ttlMs: 30_000,
-  maxEntries: 200,
+  ttlMs: FILTER_ROSTER_TTL_MS,
+  maxEntries: 128,
 });
 
 /** Drop cached supplier option lists (call after supplier mutations). */
 export function clearSupplierOptionCache(): void {
   supplierOptionCache.clear();
+  for (const picker of supplierPickers.values()) picker.clearAll();
+  supplierPickers.clear();
 }
 
 export interface SupplierKpiSummary {
@@ -54,6 +61,8 @@ function supplierExtraParams(filters?: SupplierFilters): Record<string, string |
     openingBalance: filters.openingBalance ? "true" : undefined,
     assignedToUserId: filters.assignedToUserId,
     status: filters.status,
+    sortBy: filters.sortBy,
+    sortDir: filters.sortDir,
     includeSummary:
       filters.includeSummary === false
         ? "0"
@@ -124,12 +133,100 @@ export async function getAllSuppliers(
   );
 }
 
+type SupplierPicker = ReturnType<typeof createAccumulatingPicker<SupplierListRow>>;
+const supplierPickers = new Map<string, SupplierPicker>();
+
+function supplierPickerFor(tenantId: string): SupplierPicker {
+  let picker = supplierPickers.get(tenantId);
+  if (!picker) {
+    picker = createAccumulatingPicker<SupplierListRow>({
+      getCursor: (row) => compositeListCursorFrom(row, "createdAt", "date"),
+      searchKeys: ["name", "businessName", "contactName", "phone", "email"],
+      fetchPage: (cursor, limit, search) =>
+        fetchListPage(
+          (pageCursor, pageLimit) =>
+            fetchSuppliersRaw(tenantId, pageCursor, pageLimit, {
+              search: search || undefined,
+              includeSummary: false,
+              sortBy: "createdAt",
+              sortDir: "desc",
+            }),
+          cursor,
+          limit,
+        ),
+    });
+    supplierPickers.set(tenantId, picker);
+  }
+  return picker;
+}
+
+/**
+ * Full supplier roster for export / admin — not for filter dropdowns.
+ */
+export async function getSupplierRoster(
+  tenantId: string,
+): Promise<SupplierListRow[]> {
+  const cacheKey = JSON.stringify(["supplier-roster", tenantId]);
+  return supplierOptionCache.get(cacheKey, async () =>
+    fetchAllPages(
+      (cursor, limit) =>
+        fetchSuppliersRaw(tenantId, cursor, limit, {
+          includeSummary: false,
+        }),
+      Math.min(EXPORT_PAGE_SIZE, IN_MEMORY_FILTER_CATALOG_LIMIT),
+      nameListCursor,
+      IN_MEMORY_FILTER_CATALOG_LIMIT,
+    ),
+  );
+}
+
+/**
+ * Supplier filter/picker — first ~80, scroll for more.
+ * Search uses loaded rows first; otherwise API.
+ */
+export async function getSuppliersForPicker(
+  tenantId: string,
+  search?: string,
+  _opts?: { limit?: number },
+): Promise<SupplierListRow[]> {
+  const page = await supplierPickerFor(tenantId).load(tenantId, search);
+  return page.items;
+}
+
+export async function loadMoreSuppliersForPicker(
+  tenantId: string,
+): Promise<{ items: SupplierListRow[]; appended: SupplierListRow[]; hasMore: boolean }> {
+  return supplierPickerFor(tenantId).loadMore(tenantId);
+}
+
+export function suppliersPickerHasMore(tenantId: string): boolean {
+  return supplierPickerFor(tenantId).hasMore(tenantId);
+}
+
 /** Typeahead / option lists — capped; pass search for more matches. */
 export async function getSuppliers(
   tenantId: string,
   filters?: SupplierFilters,
 ): Promise<SupplierListRow[]> {
+  // Prefer in-memory roster for dumps and search (match-sorter).
+  // Cursor / status / due filters stay on the server.
+  const plainPicker =
+    !filters?.cursor &&
+    !filters?.status &&
+    !filters?.assignedToUserId &&
+    !filters?.purchaseDue &&
+    !filters?.purchaseReturn &&
+    !filters?.advanceBalance &&
+    !filters?.openingBalance;
+
+  if (plainPicker) {
+    return getSuppliersForPicker(tenantId, filters?.search, {
+      limit: filters?.limit ?? FILTER_DROPDOWN_INITIAL_LIMIT,
+    });
+  }
+
   const cacheKey = JSON.stringify([
+    "typeahead",
     tenantId,
     filters?.search ?? "",
     filters?.limit ?? TYPEAHEAD_PAGE_SIZE,

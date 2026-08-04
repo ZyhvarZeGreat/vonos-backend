@@ -17,23 +17,59 @@ import { throwApiError } from "@/lib/api/parseApiError";
 import {
   DEFAULT_TABLE_PAGE_SIZE,
   EXPORT_PAGE_SIZE,
+  FILTER_DROPDOWN_INITIAL_LIMIT,
+  FILTER_ROSTER_TTL_MS,
+  IN_MEMORY_FILTER_CATALOG_LIMIT,
   TYPEAHEAD_PAGE_SIZE,
   fetchAllPages,
   fetchFirstPage,
   fetchListPage,
   type ListPage,
 } from "@/lib/api/fetchAllPages";
+import { createAccumulatingPicker } from "@/lib/api/accumulatingPicker";
 import { customerListCursor } from "@/lib/utils/pagination";
 import { createAsyncTtlCache } from "@/lib/utils/asyncTtlCache";
 
 /**
- * Short-lived cache for typeahead option lists so re-opening a picker or
- * retyping a recent term is instant (no round-trip to a distant DB).
+ * Picker option cache — search result pages; cleared on mutations.
  */
 const customerOptionCache = createAsyncTtlCache<Customer[]>({
-  ttlMs: 30_000,
-  maxEntries: 200,
+  ttlMs: FILTER_ROSTER_TTL_MS,
+  maxEntries: 128,
 });
+
+type CustomerPicker = ReturnType<typeof createAccumulatingPicker<Customer>>;
+const customerPickers = new Map<string, CustomerPicker>();
+
+function customerPickerFor(tenantId: string): CustomerPicker {
+  let picker = customerPickers.get(tenantId);
+  if (!picker) {
+    picker = createAccumulatingPicker<Customer>({
+      getCursor: (row) => customerListCursor(row, "createdAt"),
+      searchKeys: ["name", "businessName", "phone", "email", "contactId"],
+      fetchPage: (cursor, limit, search) =>
+        fetchListPage(
+          (pageCursor, pageLimit) =>
+            fetchCustomersRaw(
+              tenantId,
+              {
+                search: search || undefined,
+                includeSummary: false,
+                lite: true,
+                sortBy: "createdAt",
+                sortDir: "desc",
+              },
+              pageCursor,
+              pageLimit,
+            ),
+          cursor,
+          limit,
+        ),
+    });
+    customerPickers.set(tenantId, picker);
+  }
+  return picker;
+}
 
 async function fetchCustomersRaw(
   tenantId: string,
@@ -60,6 +96,8 @@ async function fetchCustomersRaw(
   if (filters?.includeSummary === false) params.set("includeSummary", "0");
   else if (filters?.includeSummary === true) params.set("includeSummary", "1");
   if (filters?.lite) params.set("lite", "1");
+  if (filters?.sortBy) params.set("sortBy", filters.sortBy);
+  if (filters?.sortDir) params.set("sortDir", filters.sortDir);
   if (cursor) params.set("cursor", cursor);
   if (limit) params.set("limit", String(limit));
   const query = params.toString();
@@ -117,6 +155,52 @@ export async function getAllCustomers(
   );
 }
 
+/**
+ * Full customer roster for export / admin — not for filter dropdowns.
+ * Capped at IN_MEMORY_FILTER_CATALOG_LIMIT.
+ */
+export async function getCustomerRoster(tenantId: string): Promise<Customer[]> {
+  const cacheKey = JSON.stringify(["customer-roster", tenantId]);
+  return customerOptionCache.get(cacheKey, async () =>
+    fetchAllPages(
+      (cursor, limit) =>
+        fetchCustomersRaw(
+          tenantId,
+          { includeSummary: false, lite: true },
+          cursor,
+          limit,
+        ),
+      Math.min(EXPORT_PAGE_SIZE, IN_MEMORY_FILTER_CATALOG_LIMIT),
+      customerListCursor,
+      IN_MEMORY_FILTER_CATALOG_LIMIT,
+    ),
+  );
+}
+
+/**
+ * Customer filter/picker — first ~80, then scroll for more batches.
+ * Search matches loaded rows first; if none, fetches from the API.
+ */
+export async function getCustomersForPicker(
+  tenantId: string,
+  search?: string,
+  _opts?: { limit?: number },
+): Promise<Customer[]> {
+  const page = await customerPickerFor(tenantId).load(tenantId, search);
+  return page.items;
+}
+
+/** Next batch while scrolling the customer filter dropdown. */
+export async function loadMoreCustomersForPicker(
+  tenantId: string,
+): Promise<{ items: Customer[]; appended: Customer[]; hasMore: boolean }> {
+  return customerPickerFor(tenantId).loadMore(tenantId);
+}
+
+export function customersPickerHasMore(tenantId: string): boolean {
+  return customerPickerFor(tenantId).hasMore(tenantId);
+}
+
 /** Typeahead / option lists — capped; pass search for more matches. */
 export async function getCustomers(
   tenantId: string,
@@ -130,7 +214,26 @@ export async function getCustomers(
     lite: true,
   };
 
+  // Roster + match-sorter for dumps and search (no per-keystroke Neon).
+  // Cursor / group / due filters stay on the server.
+  const plainPicker =
+    !typeaheadFilters.cursor &&
+    !typeaheadFilters.customerGroupId &&
+    !typeaheadFilters.assignedToEmployeeId &&
+    !typeaheadFilters.status &&
+    !typeaheadFilters.sellDue &&
+    !typeaheadFilters.sellReturn &&
+    !typeaheadFilters.advanceBalance &&
+    !typeaheadFilters.openingBalance;
+
+  if (plainPicker) {
+    return getCustomersForPicker(tenantId, typeaheadFilters.search, {
+      limit: typeaheadFilters.limit ?? FILTER_DROPDOWN_INITIAL_LIMIT,
+    });
+  }
+
   const cacheKey = JSON.stringify([
+    "typeahead",
     tenantId,
     typeaheadFilters.search ?? "",
     typeaheadFilters.limit ?? TYPEAHEAD_PAGE_SIZE,
@@ -162,6 +265,8 @@ export async function getCustomers(
 /** Drop cached typeahead option lists (call after creating/editing a customer). */
 export function clearCustomerOptionCache(): void {
   customerOptionCache.clear();
+  for (const picker of customerPickers.values()) picker.clearAll();
+  customerPickers.clear();
 }
 
 /** Profile shell — denormalized totals, empty transactionHistory (fast). */

@@ -125,9 +125,9 @@ export class ItemsService {
     private readonly cache: CacheService,
   ) {}
 
-  private async invalidateItemCaches(): Promise<void> {
+  private invalidateItemCaches(): void {
     const tenantId = this.tenantDb.requireTenantId();
-    await invalidateTenantDashboardCache(this.cache, tenantId);
+    void invalidateTenantDashboardCache(this.cache, tenantId);
   }
 
   async list(

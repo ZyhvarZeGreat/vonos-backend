@@ -31,7 +31,7 @@ export function Hq6OrdersModuleView() {
     queryKey: ["service-staff", tenantId],
     queryFn: () => getServiceStaff(tenantId!),
     enabled: Boolean(tenantId),
-    staleTime: 60_000,
+    staleTime: Infinity,
   });
 
   const ordersQuery = useQuery({

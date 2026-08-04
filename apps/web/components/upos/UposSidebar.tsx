@@ -8,6 +8,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import type { NavItem as NavItemConfig } from "@vonos/types";
 import { cn } from "@/lib/utils/cn";
+import { matchSearchRows } from "@/lib/utils/listClientSearch";
 import {
   HQ6_FA_ICONS,
   HQ6_SIDEBAR_ICONS,
@@ -82,16 +83,12 @@ export function UposSidebar({
     "#";
 
   const filteredSections = useMemo(() => {
-    const q = menuSearch.trim().toLowerCase();
+    const q = menuSearch.trim();
     if (!q) return sections;
     return sections
       .map((section) => {
-        if (section.label.toLowerCase().includes(q)) return section;
-        const items = section.items.filter(
-          (item) =>
-            item.label.toLowerCase().includes(q) ||
-            item.route.toLowerCase().includes(q),
-        );
+        if (matchSearchRows([section], q, ["label"]).length > 0) return section;
+        const items = matchSearchRows(section.items, q, ["label", "route"]);
         if (items.length === 0) return null;
         return { ...section, items, collapsible: items.length > 1 };
       })

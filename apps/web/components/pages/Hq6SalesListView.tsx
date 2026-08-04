@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { DataTable, type ColumnConfig } from "@/components/organisms/DataTable";
 import { SaleRecordModal } from "@/components/organisms/SaleRecordModal";
@@ -30,8 +30,8 @@ import {
   getSaleInvoiceUrl,
   getSalesPage,
 } from "@/lib/api/sales";
-import { getCustomers } from "@/lib/api/customers";
-import { getServiceStaff } from "@/lib/api/hrm";
+import { getCustomersForPicker, loadMoreCustomersForPicker, customersPickerHasMore } from "@/lib/api/customers";
+import { getServiceStaff, loadMoreServiceStaffForPicker, serviceStaffPickerHasMore } from "@/lib/api/hrm";
 import { useServerListPage, serverSortProps, withListSort } from "@/lib/hooks/useServerListPage";
 import { HQ6_TABLE_PAGE_SIZE } from "@/lib/api/fetchAllPages";
 import { useListExport } from "@/lib/hooks/useListExport";
@@ -86,6 +86,12 @@ export function Hq6SalesListView({
     requireCanAny(["direct_sell.update", "sell.update", "draft.update"]);
   const requireDeleteSale = () =>
     requireCanAny(["direct_sell.delete", "sell.delete", "draft.delete"]);
+
+  // Warm payment-account dropdown while the sales list loads.
+  useEffect(() => {
+    if (!tenantId) return;
+    prefetchPaymentAccountsRef(queryClient, tenantId);
+  }, [tenantId, queryClient]);
   const { recordId, recordSeed, openRecord, closeRecord } = useListRecordModal<Sale>({
     syncUrlParam: "record",
     onPrefetchRecord: (id) => {
@@ -188,6 +194,7 @@ export function Hq6SalesListView({
       from: bounds?.from,
       to: bounds?.to,
     }),
+    // Remove `search` from deps — local search is not part of apiFilters / query key.
     [
       bounds?.from,
       bounds?.to,
@@ -195,7 +202,6 @@ export function Hq6SalesListView({
       locationFilter,
       paymentStatusFilter,
       saleStatus,
-      search,
       serviceStaffFilter,
       shipmentsOnly,
       statusFilter,
@@ -229,9 +235,7 @@ export function Hq6SalesListView({
     search: search,
     defaultPageSize: HQ6_TABLE_PAGE_SIZE,
     defaultSort: { sortBy: "date", sortDir: "desc" },
-    // Warm the next page so Next feels instant after first paint.
-    prefetchPagesAhead: 1,
-    staleTime: 5 * 60_000,
+    staleTime: 10 * 60_000,
     fetchPage: (cursor, limit, listSort, opts) =>
       getSalesPage(
         tenantId!,
@@ -250,20 +254,73 @@ export function Hq6SalesListView({
     },
   });
 
-  // Load filter dropdowns after rows — don't compete with first paint.
-  const customersQuery = useQuery({
-    queryKey: ["customers", tenantId, "sale-filter"],
-    queryFn: () => getCustomers(tenantId!),
-    enabled: Boolean(tenantId) && !isLoading,
-    staleTime: 5 * 60_000,
-  });
+    // Load filter dropdowns after rows — don't compete with first paint.
+  const customerLabelById = useRef(new Map<string, string>());
+  const staffLabelById = useRef(new Map<string, string>());
+  const [customerLabel, setCustomerLabel] = useState("");
+  const [serviceStaffLabel, setServiceStaffLabel] = useState("");
 
-  const serviceStaffQuery = useQuery({
-    queryKey: ["service-staff", tenantId, "sale-filter"],
-    queryFn: () => getServiceStaff(tenantId!, undefined, { limit: 200 }),
-    enabled: Boolean(tenantId) && !isLoading,
-    staleTime: 5 * 60_000,
-  });
+  const loadCustomerOptions = useCallback(
+    async (query: string) => {
+      if (!tenantId) return { options: [], hasMore: false };
+      const rows = await getCustomersForPicker(tenantId, query || undefined);
+      for (const row of rows) {
+        customerLabelById.current.set(row.id, row.businessName || row.name);
+      }
+      return {
+        options: rows.map((c) => ({
+          value: c.id,
+          label: c.businessName || c.name,
+        })),
+        hasMore: !query.trim() && customersPickerHasMore(tenantId),
+      };
+    },
+    [tenantId],
+  );
+
+  const loadMoreCustomerOptions = useCallback(async () => {
+    if (!tenantId) return { options: [], hasMore: false, append: true };
+    const page = await loadMoreCustomersForPicker(tenantId);
+    for (const row of page.appended) {
+      customerLabelById.current.set(row.id, row.businessName || row.name);
+    }
+    return {
+      options: page.appended.map((c) => ({
+        value: c.id,
+        label: c.businessName || c.name,
+      })),
+      hasMore: page.hasMore,
+      append: true,
+    };
+  }, [tenantId]);
+
+  const loadServiceStaffOptions = useCallback(
+    async (query: string) => {
+      if (!tenantId) return { options: [], hasMore: false };
+      const rows = await getServiceStaff(tenantId, query || undefined);
+      for (const row of rows) {
+        staffLabelById.current.set(row.id, row.name);
+      }
+      return {
+        options: rows.map((e) => ({ value: e.id, label: e.name })),
+        hasMore: !query.trim() && serviceStaffPickerHasMore(tenantId),
+      };
+    },
+    [tenantId],
+  );
+
+  const loadMoreServiceStaffOptions = useCallback(async () => {
+    if (!tenantId) return { options: [], hasMore: false, append: true };
+    const page = await loadMoreServiceStaffForPicker(tenantId);
+    for (const row of page.appended) {
+      staffLabelById.current.set(row.id, row.name);
+    }
+    return {
+      options: page.appended.map((e) => ({ value: e.id, label: e.name })),
+      hasMore: page.hasMore,
+      append: true,
+    };
+  }, [tenantId]);
 
   const handleExport = () => {
     exportList(
@@ -314,9 +371,6 @@ export function Hq6SalesListView({
         const isDraft =
           saleStatus === "draft" || row.recordStatus === "draft";
         const isProvisional = isQuotation || isDraft;
-        const showAddPayment =
-          !isProvisional &&
-          canAddPaymentForStatus(row.paymentStatus, row.sellDue);
         const editPath = isQuotation
           ? `/${tenantCode}/add-quotation?edit=${row.id}`
           : isDraft
@@ -348,8 +402,9 @@ export function Hq6SalesListView({
             label: "Edit",
             onClick: () => router.push(editPath),
           },
-          // Add Payment only for open balances (due / partial) — not paid, not drafts.
-          ...(showAddPayment
+          // Add Payment for open balances (due / partial / overdue).
+          ...(!isProvisional &&
+          canAddPaymentForStatus(row.paymentStatus, row.sellDue)
             ? [
                 {
                   id: "add_payment",
@@ -362,14 +417,9 @@ export function Hq6SalesListView({
                     setPaySale(row);
                   },
                 },
-              ]
-            : []),
-          ...(!isProvisional
-            ? [
                 {
                   id: "view_payments",
                   label: "View Payments",
-                  dividerBefore: !showAddPayment,
                   onClick: () => {
                     if (tenantId) {
                       prefetchSalePaymentsModal(queryClient, tenantId, row.id);
@@ -618,25 +668,40 @@ export function Hq6SalesListView({
         {
           key: "paymentStatus",
           header: "Payment Status",
-          render: (row) => (
-            <button
-              type="button"
-              className={cn(
-                "hq6-pay-badge",
-                paymentBadgeClass(row.paymentStatus),
-              )}
-              title="View Payments"
-              onClick={(e) => {
-                e.stopPropagation();
-                if (tenantId) {
-                  prefetchSalePaymentsModal(queryClient, tenantId, row.id);
-                }
-                setPaymentsSale(row);
-              }}
-            >
-              {formatHq6PaymentStatus(row.paymentStatus)}
-            </button>
-          ),
+          render: (row) => {
+            const canPay = canAddPaymentForStatus(
+              row.paymentStatus,
+              row.sellDue,
+            );
+            return (
+              <button
+                type="button"
+                className={cn(
+                  "hq6-pay-badge",
+                  paymentBadgeClass(row.paymentStatus),
+                )}
+                title={canPay ? "Add Payment" : "View Payments"}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (tenantId) {
+                    if (canPay) {
+                      prefetchPaymentAccountsRef(queryClient, tenantId);
+                      setPaySale(row);
+                    } else {
+                      prefetchSalePaymentsModal(queryClient, tenantId, row.id);
+                      setPaymentsSale(row);
+                    }
+                  } else if (canPay) {
+                    setPaySale(row);
+                  } else {
+                    setPaymentsSale(row);
+                  }
+                }}
+              >
+                {formatHq6PaymentStatus(row.paymentStatus)}
+              </button>
+            );
+          },
         },
         {
           key: "serviceStaff",
@@ -701,25 +766,40 @@ export function Hq6SalesListView({
       {
         key: "paymentStatus",
         header: "Payment Status",
-        render: (row) => (
-          <button
-            type="button"
-            className={cn(
-              "hq6-pay-badge",
-              paymentBadgeClass(row.paymentStatus),
-            )}
-            title="View Payments"
-            onClick={(e) => {
-              e.stopPropagation();
-              if (tenantId) {
-                prefetchSalePaymentsModal(queryClient, tenantId, row.id);
-              }
-              setPaymentsSale(row);
-            }}
-          >
-            {formatHq6PaymentStatus(row.paymentStatus)}
-          </button>
-        ),
+        render: (row) => {
+          const canPay = canAddPaymentForStatus(
+            row.paymentStatus,
+            row.sellDue,
+          );
+          return (
+            <button
+              type="button"
+              className={cn(
+                "hq6-pay-badge",
+                paymentBadgeClass(row.paymentStatus),
+              )}
+              title={canPay ? "Add Payment" : "View Payments"}
+              onClick={(e) => {
+                e.stopPropagation();
+                if (tenantId) {
+                  if (canPay) {
+                    prefetchPaymentAccountsRef(queryClient, tenantId);
+                    setPaySale(row);
+                  } else {
+                    prefetchSalePaymentsModal(queryClient, tenantId, row.id);
+                    setPaymentsSale(row);
+                  }
+                } else if (canPay) {
+                  setPaySale(row);
+                } else {
+                  setPaymentsSale(row);
+                }
+              }}
+            >
+              {formatHq6PaymentStatus(row.paymentStatus)}
+            </button>
+          );
+        },
       },
       {
         key: "paymentMethod",
@@ -968,22 +1048,32 @@ export function Hq6SalesListView({
             <Hq6FilterSelect
               label="Customer"
               value={customerFilter}
-              onChange={setCustomerFilter}
+              selectedLabel={customerLabel}
+              onChange={(id) => {
+                setCustomerFilter(id);
+                setCustomerLabel(
+                  id ? customerLabelById.current.get(id) ?? "" : "",
+                );
+              }}
               emptyLabel="All"
-              options={(customersQuery.data ?? []).map((c) => ({
-                value: c.id,
-                label: c.businessName || c.name,
-              }))}
+              loadOptions={loadCustomerOptions}
+              loadMoreOptions={loadMoreCustomerOptions}
+              prefetchKey={tenantId}
             />
             <Hq6FilterSelect
               label="Service staff"
               value={serviceStaffFilter}
-              onChange={setServiceStaffFilter}
+              selectedLabel={serviceStaffLabel}
+              onChange={(id) => {
+                setServiceStaffFilter(id);
+                setServiceStaffLabel(
+                  id ? staffLabelById.current.get(id) ?? "" : "",
+                );
+              }}
               emptyLabel="All"
-              options={(serviceStaffQuery.data ?? []).map((e) => ({
-                value: e.id,
-                label: e.name,
-              }))}
+              loadOptions={loadServiceStaffOptions}
+              loadMoreOptions={loadMoreServiceStaffOptions}
+              prefetchKey={tenantId}
             />
           </Hq6FilterGrid>
         }
@@ -1070,7 +1160,7 @@ export function Hq6SalesListView({
           onPageSelect: goToPage,
           canSelectPage,
           totalItems: totalCount,
-          isBusy: isPaging || isLoading,
+          isBusy: isPaging,
           // Keep bar visible while changing pages (loading clears rows briefly).
           show:
             sales.length > 0 ||
@@ -1122,9 +1212,9 @@ export function Hq6SalesListView({
                       },
                     );
                     reset();
-                    await queryClient.invalidateQueries({ queryKey: ["sales"] });
-                    await queryClient.invalidateQueries({ queryKey: ["items"] });
-                    await queryClient.invalidateQueries({
+                    void queryClient.invalidateQueries({ queryKey: ["sales"] });
+                    void queryClient.invalidateQueries({ queryKey: ["items"] });
+                    void queryClient.invalidateQueries({
                       queryKey: ["catalog"],
                     });
                   })
@@ -1160,7 +1250,7 @@ export function Hq6SalesListView({
                       `Converted ${convertTarget.reference} to invoice`,
                     );
                     setConvertTarget(null);
-                    await queryClient.invalidateQueries({ queryKey: ["sales"] });
+                    void queryClient.invalidateQueries({ queryKey: ["sales"] });
                   })
                   .catch((err) => {
                     toast.error(

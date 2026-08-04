@@ -129,6 +129,7 @@ export function Hq6VehiclesListView() {
     setPageSize,
     isLoading,
     isFetching,
+    isPaging,
     error,
     goToPage,
     canSelectPage,
@@ -211,7 +212,7 @@ export function Hq6VehiclesListView() {
         onPageSelect: goToPage,
         canSelectPage,
         totalItems: totalCount,
-        isBusy: isFetching && !isLoading,
+        isBusy: isPaging,
       }}
       modals={
         createOpen ? (

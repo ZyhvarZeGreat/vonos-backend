@@ -5,6 +5,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import type { Customer } from "@vonos/types";
 import { Hq6ActionsMenu } from "@/components/hq6/Hq6ActionsMenu";
+import { Hq6Breadcrumbs, useHq6Breadcrumbs } from "@/components/hq6/Hq6Breadcrumbs";
 import { Hq6ColumnVisibilityModal } from "@/components/hq6/Hq6ColumnVisibilityModal";
 import { Hq6ConfirmModal } from "@/components/hq6/Hq6ConfirmModal";
 import { Hq6DtSearchFilter } from "@/components/hq6/Hq6DtSearchFilter";
@@ -22,12 +23,13 @@ import {
 import { getCustomerGroups } from "@/lib/api/customerGroups";
 import { withOptimistic } from "@/lib/hooks/useAppMutation";
 import { patchEntityInQueries } from "@/lib/query/optimistic";
-import { getDesignations, getEmployees } from "@/lib/api/hrm";
+import { getDesignations, getEmployees, loadMoreEmployeesForPicker } from "@/lib/api/hrm";
 import { AsyncMenuSelect } from "@/components/molecules/AsyncMenuSelect";
-import { useServerListPage } from "@/lib/hooks/useServerListPage";
+import { useServerListPage, withListSort } from "@/lib/hooks/useServerListPage";
 import { HQ6_TABLE_PAGE_SIZE } from "@/lib/api/fetchAllPages";
 import { useListExport } from "@/lib/hooks/useListExport";
 import { useListPageFilters } from "@/lib/hooks/useListPageFilters";
+import { compositeListCursorFrom } from "@/lib/utils/pagination";
 import { useRecordNavigation } from "@/lib/hooks/useRecordNavigation";
 import { useTenantId } from "@/lib/hooks/useRouteTenant";
 import { prefetchContactModalRefs } from "@/lib/query/prefetchListModals";
@@ -39,7 +41,6 @@ import {
 import { useUiStore } from "@/stores/uiStore";
 import { toast } from "@/stores/toastStore";
 import { formatHq6Currency, formatHq6Date, hq6Cell } from "@/lib/utils/hq6Format";
-import { customerListCursor } from "@/lib/utils/pagination";
 
 const PAGE_SIZES = [25, 50, 100, 200, 500, 1000, -1] as const;
 
@@ -113,34 +114,59 @@ export function Hq6CustomersListView() {
     queryKey: ["customer-groups", tenantId, "filter"],
     queryFn: () => getCustomerGroups(tenantId!),
     enabled: Boolean(tenantId),
-    staleTime: 5 * 60_000,
+    staleTime: Infinity,
   });
   const designationsQuery = useQuery({
     queryKey: ["designations", tenantId, "customer-filter"],
     queryFn: () => getDesignations(tenantId!),
     enabled: Boolean(tenantId),
-    staleTime: 5 * 60_000,
+    staleTime: Infinity,
   });
 
   const employeeNameById = useRef<Map<string, string>>(new Map());
   const loadEmployeeOptions = useCallback(
     async (query: string) => {
-      const rows = await getEmployees(tenantId!, query || undefined, {
+      if (!tenantId) return { options: [{ value: "", label: "All workers" }], hasMore: false };
+      const rows = await getEmployees(tenantId, query || undefined, {
         designationId: assignDesignationId || undefined,
       });
       for (const row of rows) employeeNameById.current.set(row.id, row.name);
-      return [
-        { value: "", label: "All workers" },
-        ...rows.map((row) => ({
-          value: row.id,
-          label: row.designationName
-            ? `${row.name} · ${row.designationName}`
-            : row.name,
-        })),
-      ];
+      return {
+        options: [
+          { value: "", label: "All workers" },
+          ...rows.map((row) => ({
+            value: row.id,
+            label: row.designationName
+              ? `${row.name} · ${row.designationName}`
+              : row.name,
+          })),
+        ],
+        // Always allow scroll attempts — loadMore no-ops when exhausted.
+        hasMore: !query.trim(),
+      };
     },
     [tenantId, assignDesignationId],
   );
+
+  const loadMoreEmployeeOptions = useCallback(async () => {
+    if (!tenantId) return { options: [], hasMore: false, append: true };
+    const page = await loadMoreEmployeesForPicker(tenantId, {
+      designationId: assignDesignationId || undefined,
+    });
+    for (const row of page.appended) {
+      employeeNameById.current.set(row.id, row.name);
+    }
+    return {
+      options: page.appended.map((row) => ({
+        value: row.id,
+        label: row.designationName
+          ? `${row.name} · ${row.designationName}`
+          : row.name,
+      })),
+      hasMore: page.hasMore,
+      append: true,
+    };
+  }, [tenantId, assignDesignationId]);
 
   const apiFilters = useMemo(() => {
     const months = Number(hasNoSellFrom);
@@ -192,20 +218,35 @@ export function Hq6CustomersListView() {
     filters: apiFilters,
     search,
     defaultPageSize: HQ6_TABLE_PAGE_SIZE,
-    fetchPage: (cursor, limit, _sort, opts) =>
+    defaultSort: { sortBy: "createdAt", sortDir: "desc" },
+    fetchPage: (cursor, limit, listSort, opts) =>
       getCustomersPage(
         tenantId!,
-        { ...apiFilters, includeSummary: opts?.includeSummary },
+        withListSort(
+          { ...apiFilters, includeSummary: opts?.includeSummary },
+          listSort,
+        ),
         cursor,
         limit,
       ),
-    getCursor: (row) => customerListCursor(row),
+    getCursor: (row, listSort) => {
+      const sortBy = listSort?.sortBy ?? "createdAt";
+      const type =
+        sortBy === "createdAt"
+          ? "date"
+          : sortBy === "totalSellDue" ||
+              sortBy === "totalSell" ||
+              sortBy === "openingBalance"
+            ? "number"
+            : "string";
+      return compositeListCursorFrom(row, sortBy, type);
+    },
   });
 
   const invalidate = useCallback(async () => {
     const opt = withOptimistic(queryClient, { keys: [["customers"]] });
     await opt.onMutate(undefined);
-    await opt.onSettled();
+    void opt.onSettled();
   }, [queryClient]);
 
   const handleDeactivate = useCallback(async () => {
@@ -231,7 +272,7 @@ export function Hq6CustomersListView() {
       opt.onError(err, undefined, ctx);
       toast.error(err instanceof Error ? err.message : "Status update failed");
     } finally {
-      await opt.onSettled();
+      void opt.onSettled();
       setStatusBusy(false);
     }
   }, [deactivateTarget, queryClient, tenantId]);
@@ -303,6 +344,7 @@ export function Hq6CustomersListView() {
 
   const showCol = (key: string) => visibleKeys.has(key);
   const colSpan = 15 + CUSTOM_HEADERS.length;
+  const crumbs = useHq6Breadcrumbs({ leafLabel: "Customers" });
 
   return (
     <div className="hq6-page hq6-customers-page">
@@ -314,6 +356,7 @@ export function Hq6CustomersListView() {
             Manage your Customers
           </small>
         </h1>
+        <Hq6Breadcrumbs items={crumbs} />
       </section>
 
       <section className="content">
@@ -465,6 +508,7 @@ export function Hq6CustomersListView() {
                     placeholder="Search workers…"
                     emptyMessage="No workers found"
                     loadOptions={loadEmployeeOptions}
+                    loadMoreOptions={loadMoreEmployeeOptions}
                     onChange={(id) => {
                       setAssignedToEmployeeId(id);
                       setAssignedToEmployeeName(
@@ -794,14 +838,7 @@ export function Hq6CustomersListView() {
                                     <td>{hq6Cell(row.contactId)}</td>
                                   ) : null}
                                   {showCol("businessName") ? (
-                                    <td>
-                                      {hq6Cell(
-                                        row.businessName &&
-                                          row.businessName !== row.name
-                                          ? row.businessName
-                                          : "",
-                                      )}
-                                    </td>
+                                    <td>{hq6Cell(row.businessName)}</td>
                                   ) : null}
                                   {showCol("name") ? <td>{row.name}</td> : null}
                                   {showCol("email") ? (
@@ -811,9 +848,23 @@ export function Hq6CustomersListView() {
                                     <td>{hq6Cell(row.taxNumber)}</td>
                                   ) : null}
                                   {showCol("creditLimit") ? (
-                                    <td>No Limit</td>
+                                    <td>
+                                      {row.details?.creditLimit != null
+                                        ? formatHq6Currency(row.details.creditLimit)
+                                        : "No Limit"}
+                                    </td>
                                   ) : null}
-                                  {showCol("payTerm") ? <td /> : null}
+                                  {showCol("payTerm") ? (
+                                    <td>
+                                      {row.details?.payTermNumber != null
+                                        ? `${row.details.payTermNumber}${
+                                            row.details.payTermType
+                                              ? ` ${row.details.payTermType}`
+                                              : ""
+                                          }`
+                                        : ""}
+                                    </td>
+                                  ) : null}
                                   {showCol("openingBalance") ? (
                                     <td>
                                       <span
@@ -846,7 +897,21 @@ export function Hq6CustomersListView() {
                                   {showCol("customerGroup") ? (
                                     <td>{hq6Cell(row.customerGroupName)}</td>
                                   ) : null}
-                                  {showCol("address") ? <td /> : null}
+                                  {showCol("address") ? (
+                                    <td>
+                                      {hq6Cell(
+                                        [
+                                          row.details?.addressLine1,
+                                          row.details?.addressLine2,
+                                          row.details?.city,
+                                          row.details?.state,
+                                          row.details?.country,
+                                        ]
+                                          .filter(Boolean)
+                                          .join(", "),
+                                      )}
+                                    </td>
+                                  ) : null}
                                   {showCol("phone") ? (
                                     <td>{hq6Cell(row.phone)}</td>
                                   ) : null}

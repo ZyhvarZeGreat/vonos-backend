@@ -1,23 +1,25 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useCallback, useMemo, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { Hq6ActionsMenu } from "@/components/hq6/Hq6ActionsMenu";
+import { Hq6Breadcrumbs, useHq6Breadcrumbs } from "@/components/hq6/Hq6Breadcrumbs";
 import { Hq6ColumnVisibilityModal } from "@/components/hq6/Hq6ColumnVisibilityModal";
 import { Hq6DtSearchFilter } from "@/components/hq6/Hq6DtSearchFilter";
 import { Hq6EditSupplierModal } from "@/components/hq6/Hq6EditSupplierModal";
 import { Hq6PaySupplierModal } from "@/components/hq6/Hq6PaySupplierModal";
 import { Hq6PrintModal } from "@/components/hq6/Hq6PrintModal";
 import { useHq6ListChrome } from "@/components/hq6/Hq6StandardListShell";
+import { AsyncMenuSelect } from "@/components/molecules/AsyncMenuSelect";
 import {
   getAllSuppliers,
   getSuppliersPage,
   setSupplierStatus,
   type SupplierListRow,
 } from "@/lib/api/suppliers";
-import { getUsers } from "@/lib/api/users";
-import { TYPEAHEAD_PAGE_SIZE, HQ6_TABLE_PAGE_SIZE } from "@/lib/api/fetchAllPages";
+import { getUsersForPicker, loadMoreUsersForPicker, usersPickerHasMore } from "@/lib/api/users";
+import { HQ6_TABLE_PAGE_SIZE } from "@/lib/api/fetchAllPages";
 import { useServerListPage } from "@/lib/hooks/useServerListPage";
 import { useListExport } from "@/lib/hooks/useListExport";
 import { useListPageFilters } from "@/lib/hooks/useListPageFilters";
@@ -39,20 +41,6 @@ import { formatHq6Currency, formatHq6Date, hq6Cell } from "@/lib/utils/hq6Format
 import { nameListCursor } from "@/lib/utils/pagination";
 
 const PAGE_SIZES = [25, 50, 100, 200, 500, 1000, -1] as const;
-
-/** HQ6 contact custom columns (ui-audit/04 thead). */
-const CUSTOM_HEADERS = [
-  "Milage",
-  "VIN Number",
-  "Car Model & Year",
-  "Customer Location",
-  "Referral source",
-  "Custom Field 6",
-  "Custom Field 7",
-  "Custom Field 8",
-  "Custom Field 9",
-  "Custom Field 10",
-] as const;
 
 const PlusIcon = (
   <svg
@@ -90,18 +78,50 @@ export function Hq6SuppliersListView() {
   const [advanceBalance, setAdvanceBalance] = useState(false);
   const [openingBalance, setOpeningBalance] = useState(false);
   const [assignedToUserId, setAssignedToUserId] = useState("");
+  const [assignedToUserName, setAssignedToUserName] = useState("");
   const [status, setStatus] = useState("");
   const chrome = useHq6ListChrome("suppliers");
 
   const [editTarget, setEditTarget] = useState<SupplierListRow | null>(null);
   const [payTarget, setPayTarget] = useState<SupplierListRow | null>(null);
 
-  const usersQuery = useQuery({
-    queryKey: ["users", tenantId, "filter"],
-    queryFn: () => getUsers(tenantId!, { limit: TYPEAHEAD_PAGE_SIZE }),
-    enabled: Boolean(tenantId),
-    staleTime: 10 * 60_000,
-  });
+  const userNameById = useRef(new Map<string, string>());
+  const loadUserOptions = useCallback(
+    async (query: string) => {
+      if (!tenantId) return { options: [{ value: "", label: "None" }], hasMore: false };
+      const rows = await getUsersForPicker(tenantId, query || undefined);
+      for (const row of rows) {
+        userNameById.current.set(row.id, row.name || row.email);
+      }
+      return {
+        options: [
+          { value: "", label: "None" },
+          ...rows.map((u) => ({
+            value: u.id,
+            label: u.name || u.email,
+          })),
+        ],
+        hasMore: !query.trim() && usersPickerHasMore(tenantId),
+      };
+    },
+    [tenantId],
+  );
+
+  const loadMoreUserOptions = useCallback(async () => {
+    if (!tenantId) return { options: [], hasMore: false, append: true };
+    const page = await loadMoreUsersForPicker(tenantId);
+    for (const row of page.appended) {
+      userNameById.current.set(row.id, row.name || row.email);
+    }
+    return {
+      options: page.appended.map((u) => ({
+        value: u.id,
+        label: u.name || u.email,
+      })),
+      hasMore: page.hasMore,
+      append: true,
+    };
+  }, [tenantId]);
 
   const apiFilters = useMemo(
     () => ({
@@ -157,7 +177,7 @@ export function Hq6SuppliersListView() {
   const invalidate = useCallback(async () => {
     const opt = withOptimistic(queryClient, { keys: [["suppliers"]] });
     await opt.onMutate(undefined);
-    await opt.onSettled();
+    void opt.onSettled();
   }, [queryClient]);
 
   const defaultKeys = useMemo(() => hq6DefaultColumnKeys(HQ6_SUPPLIER_COLUMNS), []);
@@ -224,6 +244,7 @@ export function Hq6SuppliersListView() {
   }, [knownPages]);
 
   const showCol = (key: string) => visibleKeys.has(key);
+  const crumbs = useHq6Breadcrumbs({ leafLabel: "Suppliers" });
 
   return (
     <div className="hq6-page hq6-suppliers-page">
@@ -235,6 +256,7 @@ export function Hq6SuppliersListView() {
             Manage your Suppliers
           </small>
         </h1>
+        <Hq6Breadcrumbs items={crumbs} />
       </section>
 
       <section className="content">
@@ -330,20 +352,21 @@ export function Hq6SuppliersListView() {
               <div className="col-md-3">
                 <div className="form-group">
                   <label htmlFor="assigned_to">Assigned to:</label>
-                  <select
-                    className="form-control"
-                    style={{ width: "100%" }}
+                  <AsyncMenuSelect
                     id="assigned_to"
                     value={assignedToUserId}
-                    onChange={(e) => setAssignedToUserId(e.target.value)}
-                  >
-                    <option value="">None</option>
-                    {(usersQuery.data ?? []).map((u) => (
-                      <option key={u.id} value={u.id}>
-                        {u.name || u.email}
-                      </option>
-                    ))}
-                  </select>
+                    selectedLabel={assignedToUserName || "None"}
+                    placeholder="Search users…"
+                    emptyMessage="No users found"
+                    loadOptions={loadUserOptions}
+                    loadMoreOptions={loadMoreUserOptions}
+                    onChange={(id) => {
+                      setAssignedToUserId(id);
+                      setAssignedToUserName(
+                        id ? userNameById.current.get(id) ?? "" : "",
+                      );
+                    }}
+                  />
                 </div>
               </div>
               <div className="col-md-3">
@@ -525,16 +548,13 @@ export function Hq6SuppliersListView() {
                                   Total Purchase Return Due
                                 </th>
                               ) : null}
-                              {CUSTOM_HEADERS.map((h) => (
-                                <th key={h}>{h}</th>
-                              ))}
                             </tr>
                           </thead>
                           <tbody>
                             {error ? (
                               <tr className="odd">
                                 <td
-                                  colSpan={14 + CUSTOM_HEADERS.length}
+                                  colSpan={14}
                                   className="dataTables_empty"
                                 >
                                   Failed to load suppliers.
@@ -543,7 +563,7 @@ export function Hq6SuppliersListView() {
                             ) : isLoading && suppliers.length === 0 ? (
                               <tr className="odd">
                                 <td
-                                  colSpan={14 + CUSTOM_HEADERS.length}
+                                  colSpan={14}
                                   className="dataTables_empty"
                                 >
                                   Processing...
@@ -552,7 +572,7 @@ export function Hq6SuppliersListView() {
                             ) : suppliers.length === 0 ? (
                               <tr className="odd">
                                 <td
-                                  colSpan={14 + CUSTOM_HEADERS.length}
+                                  colSpan={14}
                                   className="dataTables_empty"
                                   valign="top"
                                 >
@@ -693,13 +713,11 @@ export function Hq6SuppliersListView() {
                                     <td>{hq6Cell(row.contactId)}</td>
                                   ) : null}
                                   {showCol("businessName") ? (
-                                    <td>
-                                      {hq6Cell(row.businessName ?? row.name)}
-                                    </td>
+                                    <td>{hq6Cell(row.businessName)}</td>
                                   ) : null}
                                   {showCol("contactName") ? (
                                     <td>
-                                      {hq6Cell(row.contactName) || row.name}
+                                      {hq6Cell(row.contactName ?? row.name)}
                                     </td>
                                   ) : null}
                                   {showCol("email") ? (
@@ -774,9 +792,6 @@ export function Hq6SuppliersListView() {
                                       </span>
                                     </td>
                                   ) : null}
-                                  {CUSTOM_HEADERS.map((h) => (
-                                    <td key={h} />
-                                  ))}
                                 </tr>
                               ))
                             )}
@@ -814,9 +829,6 @@ export function Hq6SuppliersListView() {
                                     {formatHq6Currency(returnDueTotal)}
                                   </td>
                                 ) : null}
-                                {CUSTOM_HEADERS.map((h) => (
-                                  <td key={h} />
-                                ))}
                               </tr>
                             </tfoot>
               ) : null}

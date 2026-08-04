@@ -10,7 +10,6 @@ import { getSaleInvoiceUrl } from "@/lib/api/sales";
 import { getTenantConfigById } from "@/lib/registries/tenantConfigs";
 import { ENTITY_LIST } from "@/lib/registries/tenants";
 import { useUiStore } from "@/stores/uiStore";
-import { useQueryClient } from "@tanstack/react-query";
 
 export function AddSaleModal() {
   const router = useRouter();
@@ -31,7 +30,6 @@ export function AddSaleModal() {
     financeActionTenantId && financeActionTenantId !== routeTenantId
       ? getTenantConfigById(financeActionTenantId)
       : routeConfig;
-  const queryClient = useQueryClient();
   const open = activeModal === "addSale";
   const presetStatus = salePresetStatus ?? "final";
   const [formKey, setFormKey] = useState(0);
@@ -94,29 +92,13 @@ export function AddSaleModal() {
       variant="modal"
       onCancel={handleClose}
       onSuccess={async (sale, options) => {
-        await queryClient.invalidateQueries({ queryKey: ["sales"] });
-        await queryClient.invalidateQueries({ queryKey: ["items"] });
-        await queryClient.invalidateQueries({ queryKey: ["catalog"] });
-        await queryClient.invalidateQueries({ queryKey: ["jobs"] });
-        await queryClient.invalidateQueries({ queryKey: ["job"] });
-        await queryClient.invalidateQueries({ queryKey: ["ledgerTablePage"] });
-        await queryClient.invalidateQueries({ queryKey: ["ledgerSummary"] });
-        await queryClient.invalidateQueries({
-          queryKey: ["adminFinanceSummary"],
-        });
-        await queryClient.invalidateQueries({
-          queryKey: ["ledgerChartEntries"],
-        });
+        // Lists already invalidate via AddSaleForm invalidateKeys — don't block UX.
         handleClose();
-        if (!tenantId) return;
-        try {
-          const { path } = await getSaleInvoiceUrl(tenantId, sale.id);
-          router.push(
-            options?.print ? `${path}?print_on_load=true` : path,
-          );
-        } catch {
-          /* stay on current page */
-        }
+        const path =
+          sale.invoicePath?.trim() ||
+          (await getSaleInvoiceUrl(tenantId, sale.id).then((r) => r.path).catch(() => null));
+        if (!path) return;
+        router.push(options?.print ? `${path}?print_on_load=true` : path);
       }}
     />
   );

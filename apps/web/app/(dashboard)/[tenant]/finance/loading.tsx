@@ -1,15 +1,6 @@
-import { Spinner } from "@/components/atoms/Spinner";
+import { Hq6ContentRouteSkeleton } from "@/components/organisms/skeletons";
 
-/** Finance route loading — shell stays; show loader while the segment resolves. */
+/** Finance title stays; only the body shimmers. */
 export default function TenantFinanceLoading() {
-  return (
-    <div
-      className="flex min-h-[40vh] flex-col items-center justify-center gap-3 p-8"
-      aria-busy
-      aria-label="Loading finance"
-    >
-      <Spinner size="lg" />
-      <p className="text-sm text-muted">Loading…</p>
-    </div>
-  );
+  return <Hq6ContentRouteSkeleton title="Finance" />;
 }

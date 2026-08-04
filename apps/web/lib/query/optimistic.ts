@@ -238,8 +238,9 @@ export function createOptimisticHandlers<TData, TVariables>(
       config.commit?.(queryClient, data, variables);
     },
     onSettled: async () => {
+      // Don't block the mutation (or Saving chip) on list refetches.
       if (invalidate) {
-        await invalidateOptimisticKeys(queryClient, config.keys);
+        void invalidateOptimisticKeys(queryClient, config.keys);
       }
     },
   };

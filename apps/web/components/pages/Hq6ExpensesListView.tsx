@@ -1,8 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
-import { useQuery } from "@tanstack/react-query";
 import type { Expense } from "@vonos/types";
 import { DataTable, type ColumnConfig } from "@/components/organisms/DataTable";
 import { ExpenseViewModal } from "@/components/organisms/ExpenseViewModal";
@@ -26,8 +26,8 @@ import {
   getExpenseCategories,
   getExpensesPage,
 } from "@/lib/api/expenses";
-import { getCustomers } from "@/lib/api/customers";
-import { getUsers } from "@/lib/api/users";
+import { getCustomersForPicker, loadMoreCustomersForPicker, customersPickerHasMore } from "@/lib/api/customers";
+import { getUsersForPicker, loadMoreUsersForPicker, usersPickerHasMore } from "@/lib/api/users";
 import { useAppMutation } from "@/lib/hooks/useAppMutation";
 import { useServerListPage } from "@/lib/hooks/useServerListPage";
 import { HQ6_TABLE_PAGE_SIZE } from "@/lib/api/fetchAllPages";
@@ -35,12 +35,14 @@ import { useListExport } from "@/lib/hooks/useListExport";
 import { useListPageFilters } from "@/lib/hooks/useListPageFilters";
 import { useRouteTenant, useTenantId } from "@/lib/hooks/useRouteTenant";
 import { removeEntityFromQueries } from "@/lib/query/optimistic";
+import { prefetchPaymentAccountsRef } from "@/lib/query/prefetchListModals";
 import { expensePageRoute } from "@/lib/registries/expenseNav";
 import {
   formatHq6Currency,
   formatHq6DateTime,
   formatHq6PaymentStatus,
 } from "@/lib/utils/hq6Format";
+import { parseExpenseNotes } from "@/lib/utils/expenseNotes";
 import { businessLocationName } from "@/lib/utils/locationLabels";
 import { entitySaleLocations } from "@/lib/hooks/useBusinessLocationOptions";
 import { cn } from "@/lib/utils/cn";
@@ -52,8 +54,16 @@ export function Hq6ExpensesListView() {
   const tenantId = useTenantId();
   const { tenantCode, config } = useRouteTenant();
   const router = useRouter();
+  const queryClient = useQueryClient();
   const exportList = useListExport();
   const chrome = useHq6ListChrome("expenses");
+
+  // Warm payment-account dropdown while the expenses list loads.
+  useEffect(() => {
+    if (!tenantId) return;
+    prefetchPaymentAccountsRef(queryClient, tenantId);
+  }, [tenantId, queryClient]);
+
   const {
     dateRange,
     setDateRange,
@@ -69,32 +79,101 @@ export function Hq6ExpensesListView() {
   });
   const [locationFilter, setLocationFilter] = useState("");
   const [expenseForFilter, setExpenseForFilter] = useState("");
+  const [expenseForLabel, setExpenseForLabel] = useState("");
   const [addedByFilter, setAddedByFilter] = useState("");
+  const [addedByLabel, setAddedByLabel] = useState("");
   const [contactFilter, setContactFilter] = useState("");
+  const [contactLabel, setContactLabel] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("");
+  const [categoryLabel, setCategoryLabel] = useState("");
   const [paymentStatusFilter, setPaymentStatusFilter] = useState("");
   const [viewExpense, setViewExpense] = useState<Expense | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Expense | null>(null);
   const [paymentsExpense, setPaymentsExpense] = useState<Expense | null>(null);
 
-  const customersQuery = useQuery({
-    queryKey: ["customers", tenantId, "expense-filter"],
-    queryFn: () => getCustomers(tenantId!),
-    enabled: Boolean(tenantId),
-    staleTime: 5 * 60_000,
-  });
-  const usersQuery = useQuery({
-    queryKey: ["users", tenantId, "expense-filter"],
-    queryFn: () => getUsers(tenantId),
-    enabled: Boolean(tenantId),
-    staleTime: 5 * 60_000,
-  });
-  const categoriesQuery = useQuery({
-    queryKey: ["expense-categories", tenantId, "expense-filter"],
-    queryFn: () => getExpenseCategories(tenantId!),
-    enabled: Boolean(tenantId),
-    staleTime: 5 * 60_000,
-  });
+  const customerLabelById = useRef(new Map<string, string>());
+  const userLabelById = useRef(new Map<string, string>());
+  const categoryLabelById = useRef(new Map<string, string>());
+
+  const loadCustomerOptions = useCallback(
+    async (query: string) => {
+      if (!tenantId) return { options: [], hasMore: false };
+      const rows = await getCustomersForPicker(tenantId, query || undefined);
+      for (const row of rows) {
+        customerLabelById.current.set(row.id, row.businessName || row.name);
+      }
+      return {
+        options: rows.map((c) => ({
+          value: c.id,
+          label: c.businessName || c.name,
+        })),
+        hasMore: !query.trim() && customersPickerHasMore(tenantId),
+      };
+    },
+    [tenantId],
+  );
+
+  const loadMoreCustomerOptions = useCallback(async () => {
+    if (!tenantId) return { options: [], hasMore: false, append: true };
+    const page = await loadMoreCustomersForPicker(tenantId);
+    for (const row of page.appended) {
+      customerLabelById.current.set(row.id, row.businessName || row.name);
+    }
+    return {
+      options: page.appended.map((c) => ({
+        value: c.id,
+        label: c.businessName || c.name,
+      })),
+      hasMore: page.hasMore,
+      append: true,
+    };
+  }, [tenantId]);
+
+  const loadUserOptions = useCallback(
+    async (query: string) => {
+      if (!tenantId) return { options: [], hasMore: false };
+      const rows = await getUsersForPicker(tenantId, query || undefined);
+      for (const row of rows) {
+        userLabelById.current.set(row.id, row.name || row.email);
+      }
+      return {
+        options: rows.map((u) => ({
+          value: u.id,
+          label: u.name || u.email,
+        })),
+        hasMore: !query.trim() && usersPickerHasMore(tenantId),
+      };
+    },
+    [tenantId],
+  );
+
+  const loadMoreUserOptions = useCallback(async () => {
+    if (!tenantId) return { options: [], hasMore: false, append: true };
+    const page = await loadMoreUsersForPicker(tenantId);
+    for (const row of page.appended) {
+      userLabelById.current.set(row.id, row.name || row.email);
+    }
+    return {
+      options: page.appended.map((u) => ({
+        value: u.id,
+        label: u.name || u.email,
+      })),
+      hasMore: page.hasMore,
+      append: true,
+    };
+  }, [tenantId]);
+
+  const loadCategoryOptions = useCallback(
+    async (query: string) => {
+      if (!tenantId) return { options: [], hasMore: false };
+      const rows = await getExpenseCategories(tenantId, query || undefined);
+      for (const row of rows) {
+        categoryLabelById.current.set(row.id, row.name);
+      }
+      return rows.map((c) => ({ value: c.id, label: c.name }));
+    },
+    [tenantId],
+  );
 
   const listFilters = useMemo(
     () => ({
@@ -116,7 +195,6 @@ export function Hq6ExpensesListView() {
       expenseForFilter,
       locationFilter,
       paymentStatusFilter,
-      search,
     ],
   );
 
@@ -181,23 +259,28 @@ export function Hq6ExpensesListView() {
         { key: "expenseFor", header: "Expense for" },
         { key: "contact", header: "Contact" },
         { key: "note", header: "Expense note" },
+        { key: "paymentNote", header: "Payment note" },
         { key: "addedBy", header: "Added By" },
       ],
-      rows.map((row) => ({
-        date: formatHq6DateTime(row.expenseDate),
-        refNo: row.refNo ?? "",
-        category: row.categoryName ?? "",
-        subCategory: row.subCategory ?? "",
-        location: row.locationCode ?? "",
-        paymentStatus: formatHq6PaymentStatus(row.paymentStatus),
-        tax: row.taxAmount,
-        total: row.totalAmount,
-        due: row.paymentDue,
-        expenseFor: row.expenseFor ?? "",
-        contact: row.contactName ?? "",
-        note: row.note ?? "",
-        addedBy: row.createdByName ?? "",
-      })),
+      rows.map((row) => {
+        const notes = parseExpenseNotes(row.note);
+        return {
+          date: formatHq6DateTime(row.expenseDate),
+          refNo: row.refNo ?? "",
+          category: row.categoryName ?? "",
+          subCategory: row.subCategory ?? "",
+          location: row.locationCode ?? "",
+          paymentStatus: formatHq6PaymentStatus(row.paymentStatus),
+          tax: row.taxAmount,
+          total: row.totalAmount,
+          due: row.paymentDue,
+          expenseFor: row.expenseFor ?? "",
+          contact: row.contactName ?? "",
+          note: notes.expenseNote,
+          paymentNote: notes.paymentNote,
+          addedBy: row.createdByName ?? "",
+        };
+      }),
       "Export Expenses Spreadsheet",
     );
   };
@@ -223,15 +306,26 @@ export function Hq6ExpensesListView() {
                 },
               },
               {
-                id: "delete",
-                label: "Delete",
-                danger: true,
-                onClick: () => setDeleteTarget(row),
+                id: "add_payment",
+                label: "Add Payment",
+                dividerBefore: true,
+                onClick: () => {
+                  if (!tenantCode) return;
+                  router.push(
+                    `${expensePageRoute(tenantCode, "add-expense")}?edit=${row.id}`,
+                  );
+                },
               },
               {
                 id: "view_payments",
                 label: "View Payments",
                 onClick: () => setPaymentsExpense(row),
+              },
+              {
+                id: "delete",
+                label: "Delete",
+                danger: true,
+                onClick: () => setDeleteTarget(row),
               },
             ]}
           />
@@ -319,7 +413,13 @@ export function Hq6ExpensesListView() {
       {
         key: "note",
         header: "Expense note",
-        render: (row) => row.note ?? "",
+        render: (row) => parseExpenseNotes(row.note).expenseNote || "",
+      },
+      {
+        key: "paymentNote",
+        header: "Payment note",
+        sortable: false,
+        render: (row) => parseExpenseNotes(row.note).paymentNote || "",
       },
       {
         key: "addedBy",
@@ -405,42 +505,59 @@ export function Hq6ExpensesListView() {
             <Hq6FilterSelect
               label="Expense for"
               value={expenseForFilter}
-              onChange={setExpenseForFilter}
+              selectedLabel={expenseForLabel}
+              onChange={(id) => {
+                setExpenseForFilter(id);
+                setExpenseForLabel(
+                  id ? customerLabelById.current.get(id) ?? "" : "",
+                );
+              }}
               emptyLabel="All"
-              options={(customersQuery.data ?? []).map((c) => ({
-                value: c.id,
-                label: c.businessName || c.name,
-              }))}
+              loadOptions={loadCustomerOptions}
+              loadMoreOptions={loadMoreCustomerOptions}
+              prefetchKey={tenantId}
             />
             <Hq6FilterSelect
               label="Added By"
               value={addedByFilter}
-              onChange={setAddedByFilter}
+              selectedLabel={addedByLabel}
+              onChange={(id) => {
+                setAddedByFilter(id);
+                setAddedByLabel(id ? userLabelById.current.get(id) ?? "" : "");
+              }}
               emptyLabel="All"
-              options={(usersQuery.data ?? []).map((u) => ({
-                value: u.id,
-                label: u.name || u.email,
-              }))}
+              loadOptions={loadUserOptions}
+              loadMoreOptions={loadMoreUserOptions}
+              prefetchKey={tenantId}
             />
             <Hq6FilterSelect
               label="Contact"
               value={contactFilter}
-              onChange={setContactFilter}
+              selectedLabel={contactLabel}
+              onChange={(id) => {
+                setContactFilter(id);
+                setContactLabel(
+                  id ? customerLabelById.current.get(id) ?? "" : "",
+                );
+              }}
               emptyLabel="All"
-              options={(customersQuery.data ?? []).map((c) => ({
-                value: c.id,
-                label: c.businessName || c.name,
-              }))}
+              loadOptions={loadCustomerOptions}
+              loadMoreOptions={loadMoreCustomerOptions}
+              prefetchKey={tenantId}
             />
             <Hq6FilterSelect
               label="Expense Category"
               value={categoryFilter}
-              onChange={setCategoryFilter}
+              selectedLabel={categoryLabel}
+              onChange={(id) => {
+                setCategoryFilter(id);
+                setCategoryLabel(
+                  id ? categoryLabelById.current.get(id) ?? "" : "",
+                );
+              }}
               emptyLabel="All"
-              options={(categoriesQuery.data ?? []).map((c) => ({
-                value: c.id,
-                label: c.name,
-              }))}
+              loadOptions={loadCategoryOptions}
+              prefetchKey={tenantId}
             />
             <Hq6FilterSelect
               label="Payment Status"

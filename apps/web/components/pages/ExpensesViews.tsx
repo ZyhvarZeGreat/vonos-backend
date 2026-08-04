@@ -17,9 +17,11 @@ import { RowActionsMenu } from "@/components/molecules/RowActionsMenu";
 import { useIsVaHq6 } from "@/lib/hooks/useIsVaHq6";
 import { Hq6FormShell } from "@/components/hq6/Hq6Chrome";
 import { PaymentAccountSelect } from "@/components/hq6/PaymentAccountSelect";
+import { getPaymentAccountsForPicker } from "@/lib/api/paymentAccounts";
 import { Hq6ExpenseCategoriesListView } from "@/components/pages/Hq6ExpenseCategoriesListView";
 import { Hq6ExpensesListView } from "@/components/pages/Hq6ExpensesListView";
 import { formatCurrency } from "@/lib/utils/formatCurrency";
+import { buildExpenseNoteBlob, parseExpenseNotes } from "@/lib/utils/expenseNotes";
 import { useTenantId, useRouteTenant } from "@/lib/hooks/useRouteTenant";
 import { entitySaleLocations, defaultEntityLocationCode } from "@/lib/hooks/useBusinessLocationOptions";
 import { useServerListPage } from "@/lib/hooks/useServerListPage";
@@ -393,13 +395,14 @@ const emptyForm = (): ExpenseFormState => ({
 });
 
 function expenseToForm(expense: Expense): ExpenseFormState {
+  const parsed = parseExpenseNotes(expense.note);
   return {
     categoryId: expense.categoryId ?? "",
     refNo: expense.refNo ?? "",
     subCategory: expense.subCategory ?? "",
     totalAmount: String(expense.totalAmount),
     taxAmount: String(expense.taxAmount),
-    note: expense.note ?? "",
+    note: parsed.expenseNote,
     expenseDate: expense.expenseDate.slice(0, 16),
     locationCode: expense.locationCode ?? "",
     expenseFor: expense.expenseFor ?? "",
@@ -411,7 +414,7 @@ function expenseToForm(expense: Expense): ExpenseFormState {
     recurIntervalType: expense.recurIntervalType ?? "days",
     paymentMethod: "cash",
     paymentAccountId: expense.accountId ?? "",
-    paymentNote: "",
+    paymentNote: parsed.paymentNote,
   };
 }
 
@@ -432,6 +435,12 @@ export function AddExpenseView() {
     queryFn: () => getExpenseCategories(tenantId!),
     enabled: Boolean(tenantId),
   });
+
+  // Warm payment-account dropdown with the page.
+  useEffect(() => {
+    if (!tenantId) return;
+    void getPaymentAccountsForPicker(tenantId);
+  }, [tenantId]);
 
   const taxOptions = useMemo(
     () => hq6TaxSelectOptions(tenantId),
@@ -478,7 +487,8 @@ export function AddExpenseView() {
         subCategory: form.subCategory || undefined,
         totalAmount: amount,
         taxAmount: form.taxAmount ? Number(form.taxAmount) : undefined,
-        note: form.note || undefined,
+        note: buildExpenseNoteBlob(form.note, form.paymentNote),
+        paymentNote: form.paymentNote.trim() || undefined,
         expenseDate: form.expenseDate || undefined,
         locationCode: form.locationCode || undefined,
         expenseFor: form.expenseFor || undefined,

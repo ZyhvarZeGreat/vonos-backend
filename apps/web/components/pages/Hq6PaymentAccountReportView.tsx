@@ -1,5 +1,7 @@
 "use client";
 
+
+import { matchSearchRows } from "@/lib/utils/listClientSearch";
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Hq6PageHeader } from "@/components/hq6/Hq6Chrome";
@@ -63,21 +65,14 @@ export function Hq6PaymentAccountReportView() {
 
   const filteredRows = useMemo(() => {
     const rows = table?.rows ?? [];
-    const q = search.trim().toLowerCase();
-    if (!q) return rows;
-    return rows.filter((row) =>
-      [
-        row.date,
-        row.paymentRef,
-        row.invoiceRef,
-        row.paymentType,
-        row.account,
-        row.description,
-      ]
-        .join(" ")
-        .toLowerCase()
-        .includes(q),
-    );
+    return matchSearchRows(rows, search, [
+      "date",
+      "paymentRef",
+      "invoiceRef",
+      "paymentType",
+      "account",
+      "description",
+    ]);
   }, [table?.rows, search]);
 
   const pagination = useOffsetPage(filteredRows, {

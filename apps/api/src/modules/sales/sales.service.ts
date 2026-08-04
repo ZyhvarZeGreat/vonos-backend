@@ -15,6 +15,7 @@ import type {
   SaleStatus,
   SaleViewBundle,
 } from '@vonos/types';
+import { isGroupStockConsumerTenant } from '@vonos/types';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { TenantDbService } from '../../common/prisma/tenant-db.service';
 import { CacheService } from '../../common/cache/cache.service';
@@ -37,6 +38,7 @@ import { saleTextSearchWhere } from '../../common/utils/listSearch';
 import { resolveListSort } from '../../common/utils/listSort';
 import { computeStockStatus, movementLineRollups } from '../../common/utils/stockQuantity';
 import { adjustItemLocationStock } from '../../common/utils/itemLocationStock';
+import { resolveActiveItem } from '../../common/utils/resolveActiveItem';
 import {
   parseCsv,
   pickCsvField,
@@ -147,6 +149,207 @@ export class SalesService {
     }
     if (options.customerId) {
       void refreshCustomerFinancialRollups(this.tenantDb.db, options.customerId);
+    }
+  }
+
+  /**
+   * Soft-archive a sale inside an edit/replace transaction so the unique
+   * (tenantId, reference) / (tenantId, jobId) keys are freed before insert.
+   * Does not touch stock — caller applies net inventory deltas.
+   */
+  private async archiveReplacedSaleInTx(
+    tx: Prisma.TransactionClient,
+    opts: { saleId: string; tenantId: string },
+  ): Promise<{
+    wasFinalized: boolean;
+    total: number;
+    date: Date;
+    currency: string;
+    customerId: string | null;
+    locationCode: string | null;
+    lines: Array<{
+      itemId: string | null;
+      sku: string;
+      quantity: { toString(): string };
+      sourceTenantCode: string | null;
+    }>;
+  }> {
+    const existing = await tx.sale.findFirst({
+      where: {
+        id: opts.saleId,
+        tenantId: opts.tenantId,
+        deletedAt: null,
+      },
+      select: {
+        id: true,
+        reference: true,
+        customerId: true,
+        status: true,
+        total: true,
+        currency: true,
+        date: true,
+        locationCode: true,
+        lines: {
+          select: {
+            itemId: true,
+            sku: true,
+            quantity: true,
+            sourceTenantCode: true,
+          },
+        },
+        payments: {
+          where: { deletedAt: null },
+          select: { id: true },
+        },
+      },
+    });
+    if (!existing) {
+      throw new NotFoundException('Sale to replace was not found');
+    }
+
+    for (const payment of existing.payments) {
+      await softDeletePaymentAccountTxns(tx, {
+        tenantId: opts.tenantId,
+        paymentId: payment.id,
+      });
+    }
+
+    await tx.payment.updateMany({
+      where: { tenantId: opts.tenantId, saleId: opts.saleId, deletedAt: null },
+      data: { deletedAt: new Date() },
+    });
+    await tx.accountTransaction.updateMany({
+      where: { tenantId: opts.tenantId, saleId: opts.saleId, deletedAt: null },
+      data: { deletedAt: new Date() },
+    });
+    await tx.ledgerEntry.updateMany({
+      where: {
+        tenantId: opts.tenantId,
+        linkedRecordType: 'sale',
+        linkedRecordId: opts.saleId,
+        deletedAt: null,
+      },
+      data: { deletedAt: new Date() },
+    });
+    await tx.invoice.updateMany({
+      where: {
+        tenantId: opts.tenantId,
+        saleId: opts.saleId,
+        deletedAt: null,
+      },
+      data: { deletedAt: new Date() },
+    });
+
+    await tx.sale.update({
+      where: { id: opts.saleId },
+      data: {
+        deletedAt: new Date(),
+        jobId: null,
+        reference: `${existing.reference}__del_${opts.saleId.slice(-8)}`,
+      },
+    });
+
+    return {
+      wasFinalized: existing.status === 'completed',
+      total: toNumber(existing.total),
+      date: existing.date,
+      currency: existing.currency ?? 'NGN',
+      customerId: existing.customerId,
+      locationCode: existing.locationCode,
+      lines: existing.lines,
+    };
+  }
+
+  /** Apply aggregated on-hand deltas (edit/replace nets zero unchanged lines). */
+  private async applyItemStockDeltas(
+    tx: Prisma.TransactionClient,
+    deltas: Map<
+      string,
+      {
+        itemTenantId: string;
+        itemId: string;
+        sku: string;
+        locationCode: string | null | undefined;
+        binLocation: string | null | undefined;
+        delta: number;
+      }
+    >,
+  ): Promise<void> {
+    const pending = [...deltas.values()].filter((entry) => entry.delta !== 0);
+    if (pending.length === 0) return;
+
+    // One round-trip per tenant instead of findFirst-per-line (Neon RTT bound).
+    const byTenant = new Map<string, typeof pending>();
+    for (const entry of pending) {
+      const list = byTenant.get(entry.itemTenantId) ?? [];
+      list.push(entry);
+      byTenant.set(entry.itemTenantId, list);
+    }
+
+    const itemsById = new Map<
+      string,
+      {
+        id: string;
+        tenantId: string;
+        quantity: { toString(): string };
+        reorderPoint: { toString(): string } | null;
+        locationCode: string | null;
+        binLocation: string | null;
+      }
+    >();
+
+    for (const [itemTenantId, entries] of byTenant) {
+      const rows = await tx.item.findMany({
+        where: {
+          tenantId: itemTenantId,
+          id: { in: entries.map((e) => e.itemId) },
+          deletedAt: null,
+        },
+        select: {
+          id: true,
+          tenantId: true,
+          quantity: true,
+          reorderPoint: true,
+          locationCode: true,
+          binLocation: true,
+        },
+      });
+      for (const row of rows) itemsById.set(row.id, row);
+    }
+
+    for (const entry of pending) {
+      const item = itemsById.get(entry.itemId);
+      if (!item || item.tenantId !== entry.itemTenantId) {
+        if (entry.delta < 0) {
+          throw new BadRequestException(`Item not found: ${entry.sku}`);
+        }
+        continue;
+      }
+      const nextQuantity = toNumber(item.quantity) + entry.delta;
+      if (nextQuantity < 0) {
+        throw new BadRequestException(
+          `Insufficient stock for ${entry.sku} (need ${Math.abs(entry.delta)}, have ${toNumber(item.quantity)})`,
+        );
+      }
+      await tx.item.update({
+        where: { id: item.id },
+        data: {
+          quantity: nextQuantity,
+          status: computeStockStatus(
+            nextQuantity,
+            item.reorderPoint != null ? toNumber(item.reorderPoint) : null,
+          ),
+        },
+      });
+      // Keep in-memory qty current if the same item appears twice (shouldn't after Map merge).
+      item.quantity = { toString: () => String(nextQuantity) };
+      await adjustItemLocationStock(tx, {
+        tenantId: entry.itemTenantId,
+        itemId: item.id,
+        locationCode: entry.locationCode ?? item.locationCode,
+        binLocation: entry.binLocation ?? item.binLocation,
+        delta: entry.delta,
+      });
     }
   }
 
@@ -476,8 +679,12 @@ export class SalesService {
           OR s."shippingStatus" IS NOT NULL
         )
         AND (
-          ${filters.saleStatus ?? null}::text IS NULL
-          OR s.status::text = ${filters.saleStatus ?? null}
+          ${filters.saleStatus ?? null}::text IS NOT NULL
+            AND s.status::text = ${filters.saleStatus ?? null}
+          OR (
+            ${filters.saleStatus ?? null}::text IS NULL
+            AND s.status::text NOT IN ('draft', 'quotation')
+          )
         )
         AND (
           ${cursorId}::text IS NULL
@@ -601,8 +808,12 @@ export class SalesService {
               OR s."shippingStatus" IS NOT NULL
             )
             AND (
-              ${filters.saleStatus ?? null}::text IS NULL
-              OR s.status::text = ${filters.saleStatus ?? null}
+              ${filters.saleStatus ?? null}::text IS NOT NULL
+                AND s.status::text = ${filters.saleStatus ?? null}
+              OR (
+                ${filters.saleStatus ?? null}::text IS NULL
+                AND s.status::text NOT IN ('draft', 'quotation')
+              )
             )
         `;
         return {
@@ -915,6 +1126,8 @@ export class SalesService {
       }>;
     } | null = null;
 
+    const replaceSaleId = body.replaceSaleId?.trim() || null;
+
     if (jobId) {
       linkedJob = await this.tenantDb.db.job.findFirst({
         where: { id: jobId, tenantId, deletedAt: null },
@@ -947,7 +1160,6 @@ export class SalesService {
         throw new BadRequestException('Job not found');
       }
       jobReference = linkedJob.reference;
-      const replaceSaleId = body.replaceSaleId?.trim() || null;
       const existingForJob = await this.tenantDb.db.sale.findFirst({
         where: {
           tenantId,
@@ -1048,15 +1260,111 @@ export class SalesService {
       (jobReference ? jobReference : `SALE-${Date.now().toString(36).toUpperCase()}`);
 
     let row;
+    const replacedFinalizedHolder: {
+      value: {
+        total: number;
+        date: Date;
+        currency: string;
+        customerId: string | null;
+      } | null;
+    } = { value: null };
     try {
       row = await this.prisma.$transaction(
       async (tx) => {
+      // Edit path: free (tenantId, reference) before insert — never create-then-delete
+      // across two HTTP calls (that caused P2002 + double stock work).
+      const stockDeltas = new Map<
+        string,
+        {
+          itemTenantId: string;
+          itemId: string;
+          sku: string;
+          locationCode: string | null | undefined;
+          binLocation: string | null | undefined;
+          delta: number;
+        }
+      >();
+      const bumpStock = (
+        key: string,
+        entry: {
+          itemTenantId: string;
+          itemId: string;
+          sku: string;
+          locationCode?: string | null;
+          binLocation?: string | null;
+          delta: number;
+        },
+      ) => {
+        const prev = stockDeltas.get(key);
+        if (prev) {
+          prev.delta += entry.delta;
+          return;
+        }
+        stockDeltas.set(key, {
+          itemTenantId: entry.itemTenantId,
+          itemId: entry.itemId,
+          sku: entry.sku,
+          locationCode: entry.locationCode,
+          binLocation: entry.binLocation,
+          delta: entry.delta,
+        });
+      };
+
+      if (replaceSaleId) {
+        const replaced = await this.archiveReplacedSaleInTx(tx, {
+          saleId: replaceSaleId,
+          tenantId,
+        });
+        if (replaced.wasFinalized) {
+          replacedFinalizedHolder.value = {
+            total: replaced.total,
+            date: replaced.date,
+            currency: replaced.currency,
+            customerId: replaced.customerId,
+          };
+          if (!skipStock) {
+            for (const line of replaced.lines) {
+              if (!line.itemId) continue;
+              const qty = toNumber(line.quantity);
+              if (qty <= 0) continue;
+              let itemTenantId = tenantId;
+              if (line.sourceTenantCode) {
+                const sourceTenant = await tx.tenant.findFirst({
+                  where: {
+                    code: line.sourceTenantCode,
+                    deletedAt: null,
+                  },
+                  select: { id: true },
+                });
+                if (sourceTenant) itemTenantId = sourceTenant.id;
+              }
+              const item = await resolveActiveItem(tx, {
+                tenantId: itemTenantId,
+                itemId: line.itemId,
+                sku: line.sku,
+              });
+              if (!item) continue;
+              bumpStock(`${item.tenantId}:${item.id}`, {
+                itemTenantId: item.tenantId,
+                itemId: item.id,
+                sku: line.sku,
+                locationCode: item.locationCode ?? replaced.locationCode,
+                binLocation: item.binLocation,
+                delta: qty,
+              });
+            }
+          }
+        }
+      }
+
       if (!isProvisional && !skipStock) {
         const sellingTenant = await tx.tenant.findFirst({
           where: { id: tenantId, deletedAt: null },
           select: { code: true },
         });
         const sellingCode = sellingTenant?.code?.toUpperCase() ?? '';
+        /** VA/VP: price catalog only — do not deduct local (often 0) stock. */
+        const catalogOnlySeller = isGroupStockConsumerTenant(sellingCode);
 
         for (let index = 0; index < workingLines.length; index++) {
           const line = workingLines[index]!;
@@ -1071,6 +1379,7 @@ export class SalesService {
             !isCrossSource &&
             (Boolean(line.createPurchase) || !line.itemId);
           if (!needsPurchase) continue;
+          if (catalogOnlySeller) continue;
 
           const sku =
             line.sku?.trim() ||
@@ -1148,6 +1457,34 @@ export class SalesService {
           };
         }
 
+        // Prefetch same-tenant items in one query (avoid N resolveActiveItem RTTs).
+        const localItemIds = [
+          ...new Set(
+            workingLines
+              .filter((line) => {
+                if (!line.itemId) return false;
+                const sourceCode = line.sourceTenantCode?.trim().toUpperCase();
+                return !sourceCode || sourceCode === sellingCode;
+              })
+              .map((line) => line.itemId!.trim())
+              .filter(Boolean),
+          ),
+        ];
+        const localItemsById = new Map<
+          string,
+          Awaited<ReturnType<typeof resolveActiveItem>>
+        >();
+        if (localItemIds.length > 0 && !catalogOnlySeller) {
+          const localRows = await tx.item.findMany({
+            where: {
+              tenantId,
+              id: { in: localItemIds },
+              deletedAt: null,
+            },
+          });
+          for (const row of localRows) localItemsById.set(row.id, row);
+        }
+
         for (const line of workingLines) {
           if (!line.itemId && !line.sourceTenantCode) continue;
           const qty = Math.max(1, Math.round(line.quantity));
@@ -1165,38 +1502,20 @@ export class SalesService {
                 `Source entity ${sourceCode} not found for ${line.sku}`,
               );
             }
-            const item = await tx.item.findFirst({
-              where: {
-                deletedAt: null,
-                tenantId: sourceTenant.id,
-                OR: [
-                  ...(line.itemId ? [{ id: line.itemId }] : []),
-                  { sku: line.sku.trim() },
-                ],
-              },
+            const item = await resolveActiveItem(tx, {
+              tenantId: sourceTenant.id,
+              itemId: line.itemId,
+              sku: line.sku,
             });
             if (!item) {
               throw new BadRequestException(
                 `Item ${line.sku} not found at ${sourceCode}`,
               );
             }
-            const currentQty = toNumber(item.quantity);
-            if (currentQty < qty) {
-              throw new BadRequestException(
-                `Insufficient stock at ${sourceCode} for ${line.sku} (have ${currentQty}, need ${qty})`,
-              );
-            }
-            const nextQuantity = currentQty - qty;
-            await tx.item.update({
-              where: { id: item.id },
-              data: {
-                quantity: nextQuantity,
-                status: computeStockStatus(nextQuantity, item.reorderPoint),
-              },
-            });
-            await adjustItemLocationStock(tx, {
-              tenantId: sourceTenant.id,
+            bumpStock(`${item.tenantId}:${item.id}`, {
+              itemTenantId: item.tenantId,
               itemId: item.id,
+              sku: line.sku,
               locationCode: item.locationCode,
               binLocation: item.binLocation,
               delta: -qty,
@@ -1204,31 +1523,36 @@ export class SalesService {
             continue;
           }
 
+          // VA/VP quotations → invoices: catalog price only until a stock
+          // source (VW/VISP/VSP) is chosen on the line.
+          if (catalogOnlySeller) continue;
+
           if (!line.itemId) continue;
-          const item = await tx.item.findFirst({
-            where: { id: line.itemId, tenantId, deletedAt: null },
-          });
+          let item =
+            localItemsById.get(line.itemId) ??
+            (await resolveActiveItem(tx, {
+              tenantId,
+              itemId: line.itemId,
+              sku: line.sku,
+            }));
           if (!item) {
             throw new BadRequestException(`Item not found: ${line.sku}`);
           }
-          const currentQty = toNumber(item.quantity);
-          const nextQuantity = currentQty - qty;
-          await tx.item.update({
-            where: { id: item.id },
-            data: {
-              quantity: nextQuantity,
-              status: computeStockStatus(nextQuantity, item.reorderPoint),
-            },
-          });
-          await adjustItemLocationStock(tx, {
-            tenantId: item.tenantId,
+          if (item.id !== line.itemId) {
+            line.itemId = item.id;
+          }
+          bumpStock(`${item.tenantId}:${item.id}`, {
+            itemTenantId: item.tenantId,
             itemId: item.id,
+            sku: line.sku,
             locationCode: locationCode ?? item.locationCode,
             binLocation: item.binLocation,
             delta: -qty,
           });
         }
       }
+
+      await this.applyItemStockDeltas(tx, stockDeltas);
 
       const lineData = buildSaleLineRows(workingLines);
       const total = computeSaleTotal(lineData, orderDiscount, taxAmount);
@@ -1371,13 +1695,36 @@ export class SalesService {
     }
 
     const saleTotal = toNumber(row.total);
-    await this.auditService.log({
-      action: 'created',
+    void this.auditService.log({
+      action: replaceSaleId ? 'updated' : 'created',
       entityType: 'sale',
       entityId: row.id,
-      summary: `Recorded sale ${row.reference}`,
+      summary: replaceSaleId
+        ? `Updated sale ${row.reference}`
+        : `Recorded sale ${row.reference}`,
       metadata: { total: saleTotal, paymentStatus: row.paymentStatus },
     });
+
+    if (replacedFinalizedHolder.value && replacedFinalizedHolder.value.total > 0) {
+      const replacedFinalized = replacedFinalizedHolder.value;
+      void applyDailyFinanceDelta(
+        this.prisma,
+        tenantId,
+        replacedFinalized.date,
+        'revenue',
+        -Math.abs(replacedFinalized.total),
+        replacedFinalized.currency,
+      );
+      if (
+        replacedFinalized.customerId &&
+        replacedFinalized.customerId !== row.customerId
+      ) {
+        void refreshCustomerFinancialRollups(
+          this.tenantDb.db,
+          replacedFinalized.customerId,
+        );
+      }
+    }
 
     this.refreshSaleSideEffects({
       customerId: row.customerId,
@@ -1428,18 +1775,68 @@ export class SalesService {
 
     const row = await this.prisma.$transaction(
       async (tx) => {
+      const sellingTenant = await tx.tenant.findFirst({
+        where: { id: tenantId, deletedAt: null },
+        select: { code: true },
+      });
+      const sellingCode = sellingTenant?.code?.toUpperCase() ?? '';
+      const catalogOnlySeller = isGroupStockConsumerTenant(sellingCode);
+
       if (!existing.jobId) {
         for (const line of existing.lines) {
           if (!line.itemId) continue;
-          const item = await tx.item.findFirst({
-            where: { id: line.itemId, deletedAt: null },
+          const qty = toNumber(line.quantity);
+          if (qty <= 0) continue;
+
+          const sourceCode = line.sourceTenantCode?.trim().toUpperCase();
+          const isCrossSource =
+            Boolean(sourceCode) && sourceCode !== sellingCode;
+
+          // VA/VP: skip local stock until a VW/VISP/VSP source is on the line.
+          if (catalogOnlySeller && !isCrossSource) {
+            continue;
+          }
+
+          const itemTenantId = isCrossSource
+            ? (
+                await tx.tenant.findFirst({
+                  where: { code: sourceCode!, deletedAt: null },
+                  select: { id: true },
+                })
+              )?.id
+            : tenantId;
+          if (!itemTenantId) {
+            throw new BadRequestException(
+              `Source entity ${sourceCode} not found for ${line.sku}`,
+            );
+          }
+
+          const item = await resolveActiveItem(tx, {
+            tenantId: itemTenantId,
+            itemId: line.itemId,
+            sku: line.sku,
           });
           if (!item) {
-            throw new BadRequestException(`Item not found: ${line.sku}`);
+            // Catalog row soft-deleted with no live SKU twin — don't block
+            // convert/pay on historical quotations; skip stock for this line.
+            this.logger.warn(
+              `Finalize ${existing.reference}: skip stock for missing item ${line.sku} (${line.itemId})`,
+            );
+            continue;
+          }
+          if (!isCrossSource && item.id !== line.itemId) {
+            await tx.saleLine.update({
+              where: { id: line.id },
+              data: { itemId: item.id },
+            });
           }
           const currentQty = toNumber(item.quantity);
-          const qty = toNumber(line.quantity);
           const nextQuantity = currentQty - qty;
+          if (nextQuantity < 0) {
+            throw new BadRequestException(
+              `Insufficient stock at ${sourceCode ?? sellingCode} for ${line.sku} (need ${qty}, have ${currentQty})`,
+            );
+          }
           await tx.item.update({
             where: { id: item.id },
             data: {
@@ -1672,11 +2069,16 @@ export class SalesService {
       if (body.disposition === 'restocked') {
         for (const line of returnLineRows) {
           if (!line.itemId) continue;
-          const item = await tx.item.findFirst({
-            where: { id: line.itemId, deletedAt: null },
+          const item = await resolveActiveItem(tx, {
+            tenantId,
+            itemId: line.itemId,
+            sku: line.sku,
           });
           if (!item) {
-            throw new BadRequestException(`Item not found: ${line.sku}`);
+            this.logger.warn(
+              `Return ${reference}: skip restock for missing item ${line.sku} (${line.itemId})`,
+            );
+            continue;
           }
           const currentQty = toNumber(item.quantity);
           const nextQuantity = currentQty + line.quantity;
@@ -1941,7 +2343,7 @@ export class SalesService {
       );
     }
 
-    await invalidateTenantDashboardCache(this.cache, tenantId);
+    void invalidateTenantDashboardCache(this.cache, tenantId);
     await this.auditService.log({
       action: 'deleted',
       entityType: 'sale',
@@ -2037,7 +2439,7 @@ export class SalesService {
     if (sale.customerId) {
       await refreshCustomerFinancialRollups(this.tenantDb.db, sale.customerId);
     }
-    await invalidateTenantDashboardCache(this.cache, tenantId);
+    void invalidateTenantDashboardCache(this.cache, tenantId);
   }
 
   /** HQ6 sales row “Add payment” — post one payment against an open sale. */
@@ -2622,6 +3024,7 @@ export class SalesService {
           ? toNumber(row.customer.totalSellDue)
           : null,
       vehicleLabel: row.job?.vehicleLabel ?? null,
+      invoicePath: `/invoice/${encodePublicInvoiceToken(row.id)}`,
     };
   }
 }

@@ -239,10 +239,10 @@ export function AccountBookView({ accountId }: { accountId?: string }) {
         onSave={async (payload) => {
           if (!tenantId || !accountId) return;
           await updatePaymentAccount(tenantId, accountId, payload);
-          await queryClient.invalidateQueries({
+          void queryClient.invalidateQueries({
             queryKey: ["payment-account", tenantId, accountId],
           });
-          await queryClient.invalidateQueries({
+          void queryClient.invalidateQueries({
             queryKey: ["payment-accounts", tenantId],
           });
           toast.success("Account updated");
@@ -343,8 +343,8 @@ export function PaymentsListView() {
   }, [accountFilter, rows, typeFilter]);
 
   const invalidatePaymentQueries = async () => {
-    await queryClient.invalidateQueries({ queryKey: ["payments", tenantId] });
-    await queryClient.invalidateQueries({
+    void queryClient.invalidateQueries({ queryKey: ["payments", tenantId] });
+    void queryClient.invalidateQueries({
       queryKey: ["payment-accounts", tenantId],
     });
   };

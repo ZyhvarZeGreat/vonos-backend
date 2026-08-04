@@ -5,6 +5,7 @@
  * Two boxes: "All your tax rates" + "Tax groups ( Combination of multiple taxes )"
  * Add/Edit open Hq6Modal (localStorage until tax API exists).
  */
+import { matchSearchRows } from "@/lib/utils/listClientSearch";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { DataTable, type ColumnConfig } from "@/components/organisms/DataTable";
 import { Hq6PageHeader } from "@/components/hq6/Hq6Chrome";
@@ -116,17 +117,15 @@ export function Hq6TaxRatesView() {
     return map;
   }, [rates]);
 
-  const filteredRates = useMemo(() => {
-    const q = rateSearch.trim().toLowerCase();
-    if (!q) return rates;
-    return rates.filter((r) => r.name.toLowerCase().includes(q));
-  }, [rateSearch, rates]);
+  const filteredRates = useMemo(
+    () => matchSearchRows(rates, rateSearch, ["name"]),
+    [rateSearch, rates],
+  );
 
-  const filteredGroups = useMemo(() => {
-    const q = groupSearch.trim().toLowerCase();
-    if (!q) return groups;
-    return groups.filter((g) => g.name.toLowerCase().includes(q));
-  }, [groupSearch, groups]);
+  const filteredGroups = useMemo(
+    () => matchSearchRows(groups, groupSearch, ["name"]),
+    [groupSearch, groups],
+  );
 
   const openAddRate = () => {
     setEditingRate(null);

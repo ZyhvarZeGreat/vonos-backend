@@ -113,17 +113,24 @@ export function useAppMutation<
         __optimistic: optimisticCtx,
       } as AppMutationContext<TContext>;
     },
-    onSuccess: async (data, variables, onMutateResult, context) => {
+    onSuccess: (data, variables, onMutateResult, context) => {
       optimisticHandlers?.onSuccess(data, variables);
 
       const message = resolveMessage(successMessage, data, variables);
       if (message) toast.success(message);
 
       if (invalidateNotifications) {
-        await queryClient.invalidateQueries({ queryKey: ["notifications"] });
+        // Background — don't hold isPending / Saving on notification refresh.
+        void queryClient.invalidateQueries({ queryKey: ["notifications"] });
       }
 
-      await onSuccess?.(data, variables, onMutateResult, context);
+      // Never await caller onSuccess — invalidation / navigation must not
+      // keep MutationCache busy (Saving chip / isPending) after the write returns.
+      void Promise.resolve(
+        onSuccess?.(data, variables, onMutateResult, context),
+      ).catch(() => {
+        /* caller handles its own errors */
+      });
     },
     onError: (error, variables, onMutateResult, context) => {
       optimisticHandlers?.onError(
@@ -139,9 +146,10 @@ export function useAppMutation<
       toast.error(resolved);
       onError?.(error, variables, onMutateResult, context);
     },
-    onSettled: async (data, error, variables, onMutateResult, context) => {
-      await optimisticHandlers?.onSettled();
-      await onSettled?.(data, error, variables, onMutateResult, context);
+    onSettled: (data, error, variables, onMutateResult, context) => {
+      // Fire-and-forget: list invalidation must not delay UI unlock.
+      void optimisticHandlers?.onSettled();
+      void onSettled?.(data, error, variables, onMutateResult, context);
     },
   });
 }

@@ -4,6 +4,7 @@
  * HQ6 Printers — ui-audit/67_printers
  * "All configured Printers" DataTables list. Add → /receipt-printers/create
  */
+import { matchSearchRows } from "@/lib/utils/listClientSearch";
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { ReceiptPrinter } from "@vonos/types";
@@ -42,11 +43,10 @@ export function Hq6ReceiptPrintersView() {
   });
 
   const printers = settings?.printers ?? [];
-  const filtered = useMemo(() => {
-    const q = localSearch.trim().toLowerCase();
-    if (!q) return printers;
-    return printers.filter((p) => p.name.toLowerCase().includes(q));
-  }, [localSearch, printers]);
+  const filtered = useMemo(
+    () => matchSearchRows(printers, localSearch, ["name"]),
+    [localSearch, printers],
+  );
 
   const columns: ColumnConfig<ReceiptPrinter>[] = useMemo(
     () => [

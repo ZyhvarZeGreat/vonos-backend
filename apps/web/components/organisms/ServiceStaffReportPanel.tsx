@@ -8,6 +8,7 @@ import {
   resolveReportColumnTotals,
 } from "@/lib/utils/reportTableTotals";
 import { cn } from "@/lib/utils/cn";
+import { rowMatchesListSearch } from "@/lib/utils/listClientSearch";
 import { CursorPaginationBar } from "@/components/molecules/CursorPaginationBar";
 import { ReportTableSearchBar } from "@/components/molecules/ReportTableSearchBar";
 import { useOffsetPage } from "@/lib/hooks/useOffsetPage";
@@ -17,12 +18,7 @@ import { Hq6ReportDataTable } from "@/components/hq6/Hq6ReportDataTable";
 import { Hq6ReportKpiSummary } from "@/components/hq6/Hq6ReportKpiSummary";
 
 function rowMatchesSearch(row: ReportsTableRow, query: string): boolean {
-  const q = query.trim().toLowerCase();
-  if (!q) return true;
-  return Object.entries(row).some(([key, value]) => {
-    if (key === "actions" || value == null || Array.isArray(value)) return false;
-    return String(value).toLowerCase().includes(q);
-  });
+  return rowMatchesListSearch(row, query);
 }
 
 function kpiValue(

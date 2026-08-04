@@ -1,7 +1,8 @@
 import type { QueryClient, QueryKey } from "@tanstack/react-query";
 
 /** Shared stale times for modal-related caches. */
-export const MODAL_REF_STALE_MS = 10 * 60_000;
+/** Modal reference catalogs (users, staff, accounts) — keep until mutation invalidates. */
+export const MODAL_REF_STALE_MS = Number.POSITIVE_INFINITY;
 export const MODAL_RECORD_STALE_MS = 60_000;
 
 /** Stable React Query keys for record view bundles + shared reference data. */

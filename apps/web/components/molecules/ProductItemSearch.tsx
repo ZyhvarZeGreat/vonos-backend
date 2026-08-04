@@ -9,12 +9,18 @@ import {
   formatItemLocationLine,
   formatLocationStockSummary,
 } from "@/lib/utils/locationLabels";
-import { getItems, getStockAvailability } from "@/lib/api/items";
+import { getItemRoster, getStockAvailability } from "@/lib/api/items";
 import { itemSellPrice } from "@/lib/utils/itemPricing";
 import { formatCurrency } from "@/lib/utils/formatCurrency";
 import { cn } from "@/lib/utils/cn";
+import { matchSorter, rankings } from "match-sorter";
+import { IN_MEMORY_FILTER_CATALOG_LIMIT } from "@/lib/api/fetchAllPages";
+import type { StockAvailabilityGroup } from "@vonos/types";
+import { MenuListSkeleton } from "@/components/molecules/MenuListSkeleton";
 
-/** Normalized pick from catalog search (own stock, warehouse, or custom). */
+const BROWSE_PREVIEW_LIMIT = 12;
+
+/** Normalized pick from the product catalog. */
 export interface CatalogPartPick {
   /** Existing catalog item id when known. */
   itemId?: string;
@@ -22,13 +28,13 @@ export interface CatalogPartPick {
   name: string;
   costPrice: number;
   sellPrice: number;
-  /** Remaining sellable qty at the source. */
+  /** Remaining sellable qty at the source (hidden for VA/VP). */
   availableQty: number;
   status?: StockStatus;
   /** Where the part was found — shown in the UI. */
   sourceLabel: string;
   sourceTenantCode?: string;
-  /** True when the user chose "add as custom / purchase". */
+  /** @deprecated Custom / ad-hoc lines are no longer offered in the picker. */
   isCustom?: boolean;
   locationStockSummary?: string;
 }
@@ -42,8 +48,8 @@ export interface ProductItemSearchProps {
   /** Also search Autos Group stock (warehouse + sister entities). */
   includeWarehouse?: boolean;
   /**
-   * When false (VA/VP), skip this tenant’s local Item catalog — stock comes
-   * from VW/VISP/VSP or custom/purchase lines only.
+   * When false, skip this tenant’s local Item catalog (rare — prefer own
+   * synced catalog for fast match-sorter search).
    */
   ownCatalog?: boolean;
   /**
@@ -51,7 +57,10 @@ export interface ProductItemSearchProps {
    * (VW / VISP / VSP / Own) to source from when multiple hold the SKU.
    */
   pickSourceAfterSelect?: boolean;
-  /** Offer “Add as custom part” when nothing matches (creates a purchase on save). */
+  /**
+   * @deprecated Custom / ad-hoc parts are not offered — catalog picks only.
+   * Kept so older call sites compile; ignored when false (default).
+   */
   allowCustom?: boolean;
   /** When false, show sell price instead of remaining qty (job / price-list tenants). */
   showStockQty?: boolean;
@@ -117,7 +126,7 @@ export function ProductItemSearch({
   includeWarehouse = false,
   ownCatalog = true,
   pickSourceAfterSelect = false,
-  allowCustom = false,
+  allowCustom: _allowCustom = false,
   showStockQty = true,
   businessLocations,
   onSelect,
@@ -127,69 +136,77 @@ export function ProductItemSearch({
 }: ProductItemSearchProps) {
   const listId = useId();
   const [query, setQuery] = useState("");
-  const [debounced, setDebounced] = useState("");
   const [open, setOpen] = useState(false);
   const [pendingGroup, setPendingGroup] = useState<SkuGroup | null>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
 
   const useSourceFlow = includeWarehouse && pickSourceAfterSelect;
 
-  useEffect(() => {
-    const timer = window.setTimeout(() => setDebounced(query.trim()), 450);
-    return () => window.clearTimeout(timer);
-  }, [query]);
+  // Instant typedown — no debounce / no per-keystroke Neon.
+  const searchQ = query.trim();
+  // 1+ chars searches the warm roster; empty focus shows a browse preview.
+  const readyToSearch = searchQ.length >= 1;
+  const canBrowseLocal =
+    ownCatalog && Boolean(tenantId) && open && searchQ.length === 0;
+  const canSearchLocal = ownCatalog && Boolean(tenantId) && readyToSearch;
+  const canSearchWarehouse = includeWarehouse && readyToSearch;
 
-  const isDenseSku =
-    debounced.length >= 2 &&
-    /^[A-Za-z0-9][A-Za-z0-9._\-/]*$/.test(debounced) &&
-    !/\s/.test(debounced);
-
-  const localQuery = useQuery({
-    queryKey: ["item-search", tenantId, debounced, retailOnly],
+  const localRosterQuery = useQuery({
+    queryKey: ["item-roster", tenantId, retailOnly],
     queryFn: async () => {
-      if (!tenantId || debounced.length < 1) return [];
-      const rows = await getItems(tenantId, {
-        search: debounced,
-        limit: 25,
-        includeSummary: false,
-      });
-      return retailOnly
-        ? rows.filter((row) => row.availableForRetail !== false)
-        : rows;
+      if (!tenantId) return [];
+      return getItemRoster(
+        tenantId,
+        retailOnly ? { availableForRetail: true } : undefined,
+      );
     },
-    // 2+ chars for fuzzy; SKU/barcode can fire at 2.
-    enabled:
-      ownCatalog &&
-      Boolean(tenantId) &&
-      (isDenseSku || debounced.length >= 2),
-    // Keep recent searches instant (no refetch churn) — matches the other pickers.
-    staleTime: 30_000,
+    // Prefetch with the page (same pattern as AsyncMenuSelect dropdowns).
+    enabled: ownCatalog && Boolean(tenantId),
+    staleTime: 5 * 60_000,
   });
 
-  const warehouseQuery = useQuery({
-    queryKey: ["item-search-warehouse", debounced, tenantCode, ownCatalog],
+  // Cross-entity stock roster — prefetch when warehouse search is enabled so
+  // typing feels instant (VA/VP keep includeWarehouse=false, so this stays off).
+  const warehouseRosterQuery = useQuery({
+    queryKey: ["item-search-warehouse-roster", tenantCode, ownCatalog],
     queryFn: async () => {
-      if (debounced.length < 1) return [];
       const result = await getStockAvailability({
-        search: debounced,
-        limit: 20,
+        limit: IN_MEMORY_FILTER_CATALOG_LIMIT,
       });
       return result.groups;
     },
-    // Cross-entity scan is expensive — wait for 3 chars unless dense SKU.
-    enabled:
-      includeWarehouse &&
-      (isDenseSku || debounced.length >= 3),
+    enabled: includeWarehouse,
     retry: false,
-    staleTime: 30_000,
+    staleTime: 5 * 60_000,
   });
+
+  const matchedLocal = useMemo(() => {
+    const roster = localRosterQuery.data ?? [];
+    if (canBrowseLocal) return roster.slice(0, BROWSE_PREVIEW_LIMIT);
+    if (!canSearchLocal) return [];
+    return matchSorter(roster, searchQ, {
+      keys: ["name", "sku", "category", "brandName", "carModel", "description"],
+      threshold: rankings.CONTAINS,
+      keepDiacritics: true,
+    }).slice(0, 25);
+  }, [canBrowseLocal, canSearchLocal, localRosterQuery.data, searchQ]);
+
+  const matchedWarehouse = useMemo(() => {
+    if (!canSearchWarehouse) return [] as StockAvailabilityGroup[];
+    const groups = warehouseRosterQuery.data ?? [];
+    return matchSorter(groups, searchQ, {
+      keys: ["sku", "name"],
+      threshold: rankings.CONTAINS,
+      keepDiacritics: true,
+    }).slice(0, 20);
+  }, [canSearchWarehouse, searchQ, warehouseRosterQuery.data]);
 
   const flatPicks = useMemo(() => {
     const rows: CatalogPartPick[] = [];
     const seen = new Set<string>();
 
     if (ownCatalog) {
-      for (const item of localQuery.data ?? []) {
+      for (const item of matchedLocal) {
         const pick = itemToPick(
           item,
           businessLocations,
@@ -203,7 +220,7 @@ export function ProductItemSearch({
     }
 
     if (includeWarehouse) {
-      for (const group of warehouseQuery.data ?? []) {
+      for (const group of matchedWarehouse) {
         for (const entity of group.entities) {
           const code = entity.tenantCode.toUpperCase();
           if (!ownCatalog && !isProductStockLocationCode(code)) {
@@ -237,10 +254,10 @@ export function ProductItemSearch({
   }, [
     businessLocations,
     includeWarehouse,
-    localQuery.data,
+    matchedLocal,
+    matchedWarehouse,
     ownCatalog,
     tenantCode,
-    warehouseQuery.data,
   ]);
 
   const skuGroups = useMemo(() => {
@@ -280,19 +297,20 @@ export function ProductItemSearch({
     return () => document.removeEventListener("mousedown", onDocClick);
   }, []);
 
-  const showDropdown = open && (isDenseSku || debounced.length >= 2);
-  const isFetching = localQuery.isFetching || warehouseQuery.isFetching;
-  const showCustom =
-    allowCustom &&
-    debounced.length >= 2 &&
-    !isFetching &&
-    !pendingGroup &&
-    flatPicks.every((row) => row.name.toLowerCase() !== debounced.toLowerCase());
+  const showDropdown = open;
+  const rosterWarming =
+    (ownCatalog && localRosterQuery.isLoading) ||
+    (includeWarehouse && warehouseRosterQuery.isLoading);
+  const rosterRefreshing =
+    (localRosterQuery.isFetching || warehouseRosterQuery.isFetching) &&
+    !rosterWarming;
+  const showCustom = false;
+  const listRows = useSourceFlow ? skuGroups : flatPicks;
+  const showSkeleton = rosterWarming && listRows.length === 0;
 
   const finishSelect = (pick: CatalogPartPick) => {
     onSelect(pick);
     setQuery("");
-    setDebounced("");
     setOpen(false);
     setPendingGroup(null);
   };
@@ -306,14 +324,13 @@ export function ProductItemSearch({
       finishSelect(group.sources[0]!);
       return;
     }
-    // Prefer sources with stock when opening chooser.
-    const sorted = [...group.sources].sort(
-      (a, b) => b.availableQty - a.availableQty,
-    );
+    const sorted = showStockQty
+      ? [...group.sources].sort((a, b) => b.availableQty - a.availableQty)
+      : [...group.sources].sort((a, b) =>
+          a.sourceLabel.localeCompare(b.sourceLabel),
+        );
     setPendingGroup({ ...group, sources: sorted });
   };
-
-  const listRows = useSourceFlow ? skuGroups : flatPicks;
 
   return (
     <div
@@ -352,7 +369,6 @@ export function ProductItemSearch({
             onKeyDown={(e) => {
               if (e.key === "Enter") {
                 e.preventDefault();
-                setDebounced(query.trim());
                 setOpen(true);
               }
               if (e.key === "Escape" && pendingGroup) {
@@ -370,7 +386,6 @@ export function ProductItemSearch({
             className="hq6-product-search-btn inline-flex shrink-0 items-center justify-center rounded-r-lg border border-[#2563eb] bg-[#2563eb] px-3 text-sm font-semibold text-white hover:border-[#1d4ed8] hover:bg-[#1d4ed8]"
             aria-label="Search"
             onClick={() => {
-              setDebounced(query.trim());
               setOpen(true);
             }}
           >
@@ -416,18 +431,28 @@ export function ProductItemSearch({
                       <span className="hq6-product-search-option-name font-medium text-foreground">
                         {pick.sourceLabel}
                       </span>
-                      <span
-                        className={cn(
-                          "hq6-product-search-option-meta shrink-0 text-xs font-semibold tabular-nums",
-                          stockTone(pick.status, pick.availableQty),
-                        )}
-                      >
-                        {pick.availableQty} left
-                      </span>
+                      {showStockQty ? (
+                        <span
+                          className={cn(
+                            "hq6-product-search-option-meta shrink-0 text-xs font-semibold tabular-nums",
+                            stockTone(pick.status, pick.availableQty),
+                          )}
+                        >
+                          {pick.availableQty} left
+                        </span>
+                      ) : (
+                        <span className="hq6-product-search-option-meta shrink-0 text-xs font-semibold tabular-nums text-foreground">
+                          {formatCurrency(pick.sellPrice || pick.costPrice)}
+                        </span>
+                      )}
                     </span>
-                    {pick.locationStockSummary ? (
+                    {showStockQty && pick.locationStockSummary ? (
                       <span className="hq6-product-search-option-source text-xs text-muted">
                         {pick.locationStockSummary}
+                      </span>
+                    ) : !showStockQty ? (
+                      <span className="hq6-product-search-option-source text-xs text-muted">
+                        Catalog source — no stock balance required
                       </span>
                     ) : null}
                   </button>
@@ -436,14 +461,26 @@ export function ProductItemSearch({
             </>
           ) : (
             <>
-              {isFetching ? (
-                <li className="hq6-product-search-empty px-3 py-2 text-sm text-muted">
-                  Searching…
+              {canBrowseLocal && listRows.length > 0 ? (
+                <li className="hq6-product-search-empty px-3 py-1.5 text-[11px] text-muted">
+                  Catalog ready — type to filter
                 </li>
               ) : null}
-              {!isFetching && listRows.length === 0 && !showCustom ? (
+              {rosterRefreshing && listRows.length > 0 ? (
+                <li className="hq6-product-search-empty px-3 py-1 text-[11px] text-muted">
+                  Updating…
+                </li>
+              ) : null}
+              {showSkeleton ? (
+                <li className="list-none">
+                  <MenuListSkeleton rows={6} className="px-1" />
+                </li>
+              ) : null}
+              {!showSkeleton && listRows.length === 0 && !showCustom ? (
                 <li className="hq6-product-search-empty px-3 py-2 text-sm text-muted">
-                  No products found
+                  {readyToSearch
+                    ? "No products found"
+                    : "Start typing a product name or SKU"}
                 </li>
               ) : null}
               {useSourceFlow
@@ -532,7 +569,7 @@ export function ProductItemSearch({
                     onClick={() =>
                       finishSelect({
                         sku: `ADHOC-${Date.now().toString(36).toUpperCase()}`,
-                        name: debounced,
+                        name: searchQ,
                         costPrice: 0,
                         sellPrice: 0,
                         availableQty: 0,
@@ -542,7 +579,7 @@ export function ProductItemSearch({
                     }
                   >
                     <span className="hq6-product-search-option-name font-medium text-foreground">
-                      Add “{debounced}” as custom part
+                      Add “{searchQ}” as custom part
                     </span>
                     <span className="hq6-product-search-option-source text-xs text-muted">
                       Not in catalog — sale line + purchase will be created

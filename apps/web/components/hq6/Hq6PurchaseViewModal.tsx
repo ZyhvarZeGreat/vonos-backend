@@ -15,6 +15,7 @@ import { formatHq6Currency, formatHq6Date, formatHq6PaymentStatus } from "@/lib/
 import { hq6PaymentBadgeClass } from "@/lib/utils/hq6PaymentBadge";
 import { stockMovementSeedFromListRow } from "@/lib/utils/listModalSeeds";
 import { businessLocationName } from "@/lib/utils/locationLabels";
+import { parsePurchaseNotes } from "@/lib/utils/purchaseNotes";
 import { cn } from "@/lib/utils/cn";
 
 function partyFromNotes(notes: string | null): string {
@@ -126,8 +127,8 @@ export function Hq6PurchaseViewModal({
   const supplierName =
     supplier?.businessName ??
     supplier?.name ??
-    partyFromNotes(movement?.notes ?? null) ??
     initialPurchase?.supplierOrDest ??
+    partyFromNotes(movement?.notes ?? null) ??
     "—";
   const supplierMobile = supplier?.phone ?? null;
   const supplierAddress = supplier?.address ?? null;
@@ -413,16 +414,25 @@ export function Hq6PurchaseViewModal({
           <div className="hq6-purchase-view-notes">
             <div>
               <strong>Shipping Details:</strong>
-              <p className="hq6-purchase-note-well" />
+              <p className="hq6-purchase-note-well whitespace-pre-wrap">
+                {parsePurchaseNotes(movement.notes).shippingDetails || "—"}
+              </p>
             </div>
             <div>
               <strong>Additional Notes:</strong>
-              <p className="hq6-purchase-note-well">
-                {movement.notes
-                  ?.split("|")
-                  .slice(1)
-                  .join("|")
-                  .trim() || ""}
+              <p className="hq6-purchase-note-well whitespace-pre-wrap">
+                {parsePurchaseNotes(movement.notes).additionalNotes || "—"}
+              </p>
+            </div>
+            <div>
+              <strong>Payment note:</strong>
+              <p className="hq6-purchase-note-well whitespace-pre-wrap">
+                {parsePurchaseNotes(movement.notes).paymentNote ||
+                  payments
+                    .map((p) => p.note?.trim())
+                    .filter(Boolean)
+                    .join("\n") ||
+                  "—"}
               </p>
             </div>
           </div>

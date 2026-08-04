@@ -2,15 +2,28 @@
 
 import { useState, type ReactNode } from "react";
 import { ChevronDown, Filter } from "lucide-react";
+import {
+  Hq6Breadcrumbs,
+  useHq6Breadcrumbs,
+  type Hq6BreadcrumbItem,
+} from "@/components/hq6/Hq6Breadcrumbs";
 import { cn } from "@/lib/utils/cn";
 
 export function Hq6PageHeader({
   title,
   subtitle,
+  breadcrumbs,
+  showBreadcrumbs = true,
 }: {
   title: string;
   subtitle?: string;
+  /** Override auto crumbs from the current route. */
+  breadcrumbs?: Hq6BreadcrumbItem[];
+  showBreadcrumbs?: boolean;
 }) {
+  const autoCrumbs = useHq6Breadcrumbs({ leafLabel: title });
+  const crumbs = breadcrumbs ?? autoCrumbs;
+
   return (
     <section className="content-header hq6-content-header">
       <h1 className="tw-text-xl md:tw-text-3xl tw-font-bold tw-text-black">
@@ -21,6 +34,7 @@ export function Hq6PageHeader({
           </small>
         ) : null}
       </h1>
+      {showBreadcrumbs ? <Hq6Breadcrumbs items={crumbs} /> : null}
     </section>
   );
 }

@@ -59,7 +59,8 @@ export function Hq6PayPurchaseModal({
   const { data: accounts = [] } = useQuery({
     queryKey: modalKeys.paymentAccounts(tenantId),
     queryFn: () => getPaymentAccountsForPicker(tenantId!),
-    enabled: Boolean(open && tenantId),
+    // Load with the page (modal stays mounted) so Add Payment opens ready.
+    enabled: Boolean(tenantId),
     staleTime: MODAL_REF_STALE_MS,
     placeholderData: (prev) => prev,
   });

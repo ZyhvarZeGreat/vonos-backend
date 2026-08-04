@@ -35,9 +35,13 @@ const SALE_STATUS_TO_UI: Record<string, SaleReturnStatus> = {
   refunded: 'Refunded',
   partially_refunded: 'Restocked',
   written_off: 'Written Off',
-  draft: 'Completed',
-  quotation: 'Completed',
+  // draft / quotation stay on their own list pages — never "Completed".
 };
+
+const PROVISIONAL_SALE_STATUSES: SaleStatus[] = [
+  SaleStatus.draft,
+  SaleStatus.quotation,
+];
 
 /** Human label for list badges when recordStatus differs from return vocabulary. */
 export function mapSaleRecordStatusLabel(status: string): string {
@@ -64,6 +68,10 @@ export function prismaSaleStatusesForUi(
     .map(([db]) => db as SaleStatus);
 }
 
+/**
+ * Main sales / shipments = finalized only.
+ * Drafts and quotations are scoped via `saleStatus` on their own pages.
+ */
 export function saleStatusWhereClause(filters: {
   status?: SaleReturnStatus;
   saleStatus?: string;
@@ -71,7 +79,10 @@ export function saleStatusWhereClause(filters: {
   shipmentsOnly?: boolean;
 }): Pick<Prisma.SaleWhereInput, 'status' | 'shippingStatus'> {
   if (filters.shipmentsOnly) {
-    return { shippingStatus: { not: null } };
+    return {
+      shippingStatus: { not: null },
+      status: { notIn: PROVISIONAL_SALE_STATUSES },
+    };
   }
   if (filters.returnsOnly) {
     return { status: { in: RETURN_PRISMA_STATUSES } };
@@ -82,7 +93,7 @@ export function saleStatusWhereClause(filters: {
   if (filters.status) {
     return { status: { in: prismaSaleStatusesForUi(filters.status) } };
   }
-  return {};
+  return { status: { notIn: PROVISIONAL_SALE_STATUSES } };
 }
 
 export function parseMovementLines(lines: unknown): Array<{

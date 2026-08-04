@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { matchSearchRows } from "@/lib/utils/listClientSearch";
 
 export type SortDirection = "asc" | "desc";
 
@@ -29,19 +30,12 @@ export function useClientTable<T>({
   const [sort, setSort] = useState<SortState | null>(null);
 
   const filtered = useMemo(() => {
-    let rows = data;
-    const q = search.trim().toLowerCase();
-    if (q && searchKeys.length > 0) {
-      rows = rows.filter((row) =>
-        searchKeys.some((key) => {
-          const val = (row as Record<string, unknown>)[String(key)];
-          return String(val ?? "")
-            .toLowerCase()
-            .includes(q);
-        }),
-      );
-    }
-    return rows;
+    if (!search.trim() || searchKeys.length === 0) return data;
+    return matchSearchRows(
+      data,
+      search,
+      searchKeys.map((key) => String(key)),
+    );
   }, [data, search, searchKeys]);
 
   const sorted = useMemo(() => {

@@ -25,10 +25,12 @@ import { getTenantByCode, isTenantCode, type TenantCode } from "@/lib/registries
 import { allNavRoutesForConfig, getTenantConfigByCode } from "@/lib/registries/tenantConfigs";
 import { dateRangePresetToApiBounds } from "@/lib/utils/dateRange";
 import type { DateRangeBounds } from "@/lib/utils/dateRange";
+import { stableListFilterKey } from "@/lib/utils/stableListFilterKey";
 import { prefetchEntityHrm } from "@/lib/prefetch/prefetchEntityHrm";
 import { prefetchGroupOverview } from "@/lib/prefetch/prefetchGroupOverview";
 import { scheduleIdleBatch } from "@/lib/prefetch/scheduleIdle";
 import { REPORT_TABS } from "@/lib/registries/reportTabs";
+import type { ListSortState } from "@/lib/api/fetchAllPages";
 
 export const ROUTE_PREFETCH_STALE_MS = ADMIN_ENTITY_STALE_MS;
 
@@ -137,12 +139,7 @@ function prefetchTenantJobs(
   to: string,
 ): void {
   const filters = { from, to };
-  const filterKey = JSON.stringify({
-    ...filters,
-    search: "",
-    sortBy: null,
-    sortDir: null,
-  });
+  const filterKey = stableListFilterKey(filters, null);
   prefetchQuery(queryClient, {
     queryKey: ["jobs", tenantId, filterKey, undefined, DEFAULT_TABLE_PAGE_SIZE],
     queryFn: () => getJobsPage(tenantId, filters, undefined, DEFAULT_TABLE_PAGE_SIZE),
@@ -188,29 +185,18 @@ function prefetchTenantReports(
 
 function emptyListFilterKey(
   filters: Record<string, unknown> = {},
-  search = "",
 ): string {
-  return JSON.stringify({
-    ...filters,
-    search,
-    sortBy: null,
-    sortDir: null,
-  });
+  return stableListFilterKey(filters, null);
 }
 
 /** Match `useServerListPage` page 0 query keys for HQ6 lists. */
 function hq6Page0QueryKey(
   baseKey: readonly unknown[],
   filters: Record<string, unknown>,
-  sort: { sortBy: string; sortDir: string } | null,
+  sort: ListSortState | null,
   pageSize = HQ6_TABLE_PAGE_SIZE,
 ): unknown[] {
-  const filterKey = JSON.stringify({
-    ...filters,
-    search: "",
-    sortBy: sort?.sortBy ?? null,
-    sortDir: sort?.sortDir ?? null,
-  });
+  const filterKey = stableListFilterKey(filters, sort);
   return [
     ...baseKey,
     filterKey,
@@ -225,14 +211,9 @@ function hq6Page0QueryKey(
 function hq6SummaryQueryKey(
   baseKey: readonly unknown[],
   filters: Record<string, unknown>,
-  sort: { sortBy: string; sortDir: string } | null,
+  sort: ListSortState | null,
 ): unknown[] {
-  const filterKey = JSON.stringify({
-    ...filters,
-    search: "",
-    sortBy: sort?.sortBy ?? null,
-    sortDir: sort?.sortDir ?? null,
-  });
+  const filterKey = stableListFilterKey(filters, sort);
   return [...baseKey, "summary", filterKey];
 }
 

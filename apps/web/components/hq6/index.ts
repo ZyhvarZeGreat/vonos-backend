@@ -1,6 +1,8 @@
 export { Hq6Sidebar } from "./Hq6Sidebar";
 export type { Hq6SidebarProps, Hq6NavSection } from "./Hq6Sidebar";
 export { Hq6PageHeader, Hq6FiltersCard, Hq6FormShell, Hq6PageFrame } from "./Hq6Chrome";
+export { Hq6Breadcrumbs, useHq6Breadcrumbs } from "./Hq6Breadcrumbs";
+export type { Hq6BreadcrumbItem } from "./Hq6Breadcrumbs";
 export { Hq6UposCard } from "./Hq6UposCard";
 export { Hq6ReportKpiSummary } from "./Hq6ReportKpiSummary";
 export { Hq6ReportDataTable } from "./Hq6ReportDataTable";

@@ -1,15 +1,6 @@
-import { Spinner } from "@/components/atoms/Spinner";
+import { Hq6ContentRouteSkeleton } from "@/components/organisms/skeletons";
 
-/** Default segment loader while the next page prepares. */
+/** Title stays; only the body shimmers — never a full-page spinner. */
 export default function TenantSegmentLoading() {
-  return (
-    <div
-      className="flex min-h-[40vh] flex-col items-center justify-center gap-3 p-8"
-      aria-busy
-      aria-label="Loading"
-    >
-      <Spinner size="lg" />
-      <p className="text-sm text-muted">Loading…</p>
-    </div>
-  );
+  return <Hq6ContentRouteSkeleton title=" " />;
 }

@@ -1,9 +1,40 @@
 import { matchSorter, rankings } from "match-sorter";
 
 /**
+ * Shared client-side search — match-sorter ranked contains/prefix.
+ * Use for every in-memory list / picker / report filter across the app
+ * (including VAG). Never hits the API.
+ */
+
+export type MatchSearchKey<T> =
+  | string
+  | ((item: T) => string | number | null | undefined);
+
+const MATCH_OPTS = {
+  threshold: rankings.CONTAINS,
+  keepDiacritics: true,
+} as const;
+
+/**
+ * Filter rows with explicit keys (preferred when you know the fields).
+ */
+export function matchSearchRows<T>(
+  rows: readonly T[],
+  rawSearch: string,
+  keys: MatchSearchKey<T>[],
+): T[] {
+  const q = rawSearch.trim();
+  if (!q || rows.length === 0) return [...rows];
+  if (keys.length === 0) return filterRowsBySearch([...rows], q);
+
+  return matchSorter([...rows], q, {
+    keys: keys as Array<string | ((item: T) => string)>,
+    ...MATCH_OPTS,
+  });
+}
+
+/**
  * Client-side list search over the sliding-window page already in memory.
- * Uses match-sorter for ranked contains/prefix matching — never hits the API.
- *
  * Indexes top-level strings, numbers, and string/number arrays (e.g. variation
  * values). Nested objects are skipped so typing stays instant on fat DTOs.
  */
@@ -13,8 +44,7 @@ export function filterRowsBySearch<T>(rows: T[], rawSearch: string): T[] {
 
   return matchSorter(rows, q, {
     keys: [rowSearchBlob],
-    threshold: rankings.CONTAINS,
-    keepDiacritics: true,
+    ...MATCH_OPTS,
   });
 }
 

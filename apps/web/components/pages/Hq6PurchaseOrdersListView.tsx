@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useCallback, useMemo, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Eye, Pencil, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { DataTable, type ColumnConfig } from "@/components/organisms/DataTable";
@@ -23,7 +23,7 @@ import {
   getStockMovementsPage,
   type StockMovementListRow,
 } from "@/lib/api/stockMovements";
-import { getSuppliers } from "@/lib/api/suppliers";
+import { getSuppliersForPicker, loadMoreSuppliersForPicker, suppliersPickerHasMore } from "@/lib/api/suppliers";
 import { HQ6_TABLE_PAGE_SIZE } from "@/lib/api/fetchAllPages";
 import { useListExport } from "@/lib/hooks/useListExport";
 import { useListPageFilters } from "@/lib/hooks/useListPageFilters";
@@ -63,12 +63,41 @@ export function Hq6PurchaseOrdersListView() {
   );
   const [deleting, setDeleting] = useState(false);
 
-  const suppliersQuery = useQuery({
-    queryKey: ["suppliers", tenantId, "po-filter"],
-    queryFn: () => getSuppliers(tenantId!),
-    enabled: Boolean(tenantId),
-    staleTime: 5 * 60_000,
-  });
+  const supplierLabelById = useRef(new Map<string, string>());
+  const [supplierLabel, setSupplierLabel] = useState("");
+  const loadSupplierOptions = useCallback(
+    async (query: string) => {
+      if (!tenantId) return { options: [], hasMore: false };
+      const rows = await getSuppliersForPicker(tenantId, query || undefined);
+      for (const row of rows) {
+        supplierLabelById.current.set(row.id, row.businessName || row.name);
+      }
+      return {
+        options: rows.map((s) => ({
+          value: s.id,
+          label: s.businessName || s.name,
+        })),
+        hasMore: !query.trim() && suppliersPickerHasMore(tenantId),
+      };
+    },
+    [tenantId],
+  );
+
+  const loadMoreSupplierOptions = useCallback(async () => {
+    if (!tenantId) return { options: [], hasMore: false, append: true };
+    const page = await loadMoreSuppliersForPicker(tenantId);
+    for (const row of page.appended) {
+      supplierLabelById.current.set(row.id, row.businessName || row.name);
+    }
+    return {
+      options: page.appended.map((s) => ({
+        value: s.id,
+        label: s.businessName || s.name,
+      })),
+      hasMore: page.hasMore,
+      append: true,
+    };
+  }, [tenantId]);
 
   const apiFilters = useMemo(
     () => ({
@@ -285,12 +314,16 @@ export function Hq6PurchaseOrdersListView() {
           <Hq6FilterSelect
             label="Supplier"
             value={supplierFilter}
-            onChange={setSupplierFilter}
+            selectedLabel={supplierLabel}
+            onChange={(id) => {
+              setSupplierFilter(id);
+              setSupplierLabel(
+                id ? supplierLabelById.current.get(id) ?? "" : "",
+              );
+            }}
             emptyLabel="All"
-            options={(suppliersQuery.data ?? []).map((s) => ({
-              value: s.id,
-              label: s.businessName || s.name,
-            }))}
+            loadOptions={loadSupplierOptions}
+            loadMoreOptions={loadMoreSupplierOptions}
           />
           <Hq6FilterSelect
             label="Status"
@@ -331,7 +364,7 @@ export function Hq6PurchaseOrdersListView() {
               await deleteStockMovement(tenantId, deleteTarget.id);
               toast.success("Purchase order deleted");
               setDeleteTarget(null);
-              await queryClient.invalidateQueries({
+              void queryClient.invalidateQueries({
                 queryKey: ["purchase-orders"],
               });
             } catch (err) {

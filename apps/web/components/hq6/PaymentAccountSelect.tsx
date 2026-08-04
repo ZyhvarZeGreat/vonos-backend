@@ -69,9 +69,11 @@ export function PaymentAccountSelect({
       selectedLabel={selectedLabel}
       onChange={onChange}
       loadOptions={loadOptions}
+      debounceMs={0}
       disabled={disabled}
       placeholder={emptyLabel}
       emptyMessage="No matching payment accounts"
+      prefetchKey={tenantId}
     />
   );
 }

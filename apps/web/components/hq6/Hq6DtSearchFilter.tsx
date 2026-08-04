@@ -1,7 +1,8 @@
 "use client";
 
 /**
- * HQ6 list search — live typing; filters the already-loaded page in memory
+ * HQ6 list search — live typing over the warm catalog (background pages +
+ * full roster when available), not just the visible page.
  * via `useServerListPage` (`searchMode: "local"` + match-sorter). No Search button.
  */
 export function Hq6DtSearchFilter({

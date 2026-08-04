@@ -292,7 +292,7 @@ export class ExpensesService {
           amount: dto.totalAmount,
           operationDate: created.expenseDate,
           refNo: created.refNo,
-          note: dto.note ?? `Expense — ${created.refNo ?? created.id}`,
+          note: dto.paymentNote?.trim() || dto.note || `Expense — ${created.refNo ?? created.id}`,
           paymentMethod: dto.paymentMethod ?? null,
         });
       }
@@ -424,7 +424,10 @@ export class ExpensesService {
         amount: updatedTotal,
         operationDate: updated.expenseDate,
         refNo: updated.refNo,
-        note: updated.note ?? `Expense — ${updated.refNo ?? updated.id}`,
+        note:
+          dto.paymentNote?.trim() ||
+          updated.note ||
+          `Expense — ${updated.refNo ?? updated.id}`,
         paymentMethod: dto.paymentMethod ?? null,
       });
 

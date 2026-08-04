@@ -92,6 +92,11 @@ export class CacheService implements OnModuleInit {
     }
   }
 
+  /** Drop in-process cache entries matching any of the prefixes (no Redis). */
+  clearL1Matching(prefixes: string[]): void {
+    for (const prefix of prefixes) this.clearL1Prefix(prefix);
+  }
+
   async getTenantCacheVersion(tenantId: string): Promise<number> {
     const version = await this.get<number>(this.versionKey(tenantId));
     return version ?? 1;

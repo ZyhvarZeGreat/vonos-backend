@@ -28,7 +28,7 @@ export interface Hq6ListToolbarProps {
   onDensityChange?: (density: TableDensity) => void;
 }
 
-const PAGE_SIZE_OPTIONS = [25, 50, 100, 200, 500, 1000, -1] as const;
+const PAGE_SIZE_OPTIONS = [10, 25, 50, 100, 200, 500, 1000] as const;
 
 /** DataTables-style toolbar — Show | exports | Search (ui-audit/01_users). */
 export function Hq6ListToolbar({
@@ -56,7 +56,7 @@ export function Hq6ListToolbar({
         >
           {PAGE_SIZE_OPTIONS.map((n) => (
             <option key={n} value={n}>
-              {n === -1 ? "All" : n.toLocaleString()}
+              {n.toLocaleString()}
             </option>
           ))}
         </select>{" "}

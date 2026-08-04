@@ -3,8 +3,7 @@
 import { cn } from "@/lib/utils/cn";
 
 /**
- * In-place read-load hint for empty tables only (first paint).
- * Prefer keeping previous rows over showing this during search refetch.
+ * In-place load hint for empty tables and filter refetch overlays.
  */
 export function Hq6LoadProgress({
   percent,

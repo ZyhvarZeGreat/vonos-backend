@@ -22,7 +22,7 @@ import {
   updateJobMaterial,
 } from "@/lib/api/jobs";
 import { getUsers } from "@/lib/api/users";
-import { getSuppliers } from "@/lib/api/suppliers";
+import { getSuppliersForPicker } from "@/lib/api/suppliers";
 import { useAppMutation } from "@/lib/hooks/useAppMutation";
 import { formatCurrency } from "@/lib/utils/formatCurrency";
 import { cn } from "@/lib/utils/cn";
@@ -61,8 +61,9 @@ export function JobMaterialsPanel({ job, tenantId, onJobChange }: JobCostPanelPr
 
   const suppliersQuery = useQuery({
     queryKey: ["suppliers", tenantId, "job-materials"],
-    queryFn: () => getSuppliers(tenantId),
+    queryFn: () => getSuppliersForPicker(tenantId),
     enabled: Boolean(tenantId) && sourceMode === "external",
+    staleTime: Infinity,
   });
 
   const supplierOptions = useMemo(
@@ -231,11 +232,10 @@ export function JobMaterialsPanel({ job, tenantId, onJobChange }: JobCostPanelPr
           <ProductItemSearch
             tenantId={tenantId}
             tenantCode="VA"
-            includeWarehouse
-            ownCatalog={false}
-            allowCustom
-            pickSourceAfterSelect
-            placeholder="Search VW / VISP / VSP stock or add custom…"
+            includeWarehouse={false}
+            ownCatalog
+            showStockQty={false}
+            placeholder="Search product catalog by name or SKU"
             onSelect={addFromItem}
           />
         ) : null}

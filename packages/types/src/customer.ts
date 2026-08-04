@@ -58,6 +58,9 @@ export interface CustomerFilters {
    * round-trip (pickers only render the name). Saves one Neon round-trip.
    */
   lite?: boolean;
+  /** List sort — default createdAt desc (newest first). */
+  sortBy?: string;
+  sortDir?: "asc" | "desc";
 }
 
 export interface CreateCustomerInput {

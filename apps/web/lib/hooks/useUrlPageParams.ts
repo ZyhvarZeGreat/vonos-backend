@@ -21,9 +21,9 @@ function readPageSize(params: URLSearchParams, defaultPageSize: number): number 
 /**
  * Sync `page` (1-based) and `pageSize` query params with the current route.
  *
- * Page-index writes are debounced so rapid Next/Prev does not thrash the
- * address bar or trip Next.js into soft navigations. Local state updates
- * immediately so the table can flip from cache without waiting on the URL.
+ * Local state updates immediately so the table can flip from cache without
+ * waiting on the URL. Address-bar writes use `history.replaceState` (not the
+ * Next router) so soft-navigations do not remount the list.
  */
 export function useUrlPageParams(defaultPageSize = 10) {
   const pathname = usePathname();
@@ -44,17 +44,21 @@ export function useUrlPageParams(defaultPageSize = 10) {
   pathnameRef.current = pathname;
   const defaultPageSizeRef = useRef(defaultPageSize);
   defaultPageSizeRef.current = defaultPageSize;
-  const urlWriteTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const skipSearchParamsSyncRef = useRef(false);
+  /** Ignore Next searchParams echoes briefly after our own replaceState. */
+  const ignoreRouterSyncUntilRef = useRef(0);
 
-  // External URL changes (shared link, real Next navigation) → local state.
+  // External URL changes → local state.
+  // Always prefer `window.location.search`: we write via replaceState, which
+  // leaves Next `useSearchParams` stale. Syncing from that stale value was
+  // snapping lists back to page 1 after Next/numbered jumps.
   useEffect(() => {
-    if (skipSearchParamsSyncRef.current) {
-      skipSearchParamsSyncRef.current = false;
-      return;
-    }
-    const nextIndex = readPageIndex(searchParams);
-    const nextSize = readPageSize(searchParams, defaultPageSize);
+    if (Date.now() < ignoreRouterSyncUntilRef.current) return;
+    const live =
+      typeof window !== "undefined"
+        ? new URLSearchParams(window.location.search)
+        : searchParams;
+    const nextIndex = readPageIndex(live);
+    const nextSize = readPageSize(live, defaultPageSize);
     setPageIndexState((prev) => (prev === nextIndex ? prev : nextIndex));
     setPageSizeState((prev) => (prev === nextSize ? prev : nextSize));
   }, [defaultPageSize, searchParams]);
@@ -69,68 +73,42 @@ export function useUrlPageParams(defaultPageSize = 10) {
     return () => window.removeEventListener("popstate", onPopState);
   }, []);
 
-  useEffect(
-    () => () => {
-      if (urlWriteTimerRef.current) clearTimeout(urlWriteTimerRef.current);
-    },
-    [],
-  );
-
   const writeUrl = useCallback(
-    (nextPageIndex: number, nextPageSize: number, immediate: boolean) => {
-      const apply = () => {
-        const defaultSize = defaultPageSizeRef.current;
-        const params = new URLSearchParams(window.location.search);
-        if (nextPageIndex <= 0) params.delete("page");
-        else params.set("page", String(nextPageIndex + 1));
+    (nextPageIndex: number, nextPageSize: number) => {
+      const defaultSize = defaultPageSizeRef.current;
+      const params = new URLSearchParams(window.location.search);
+      if (nextPageIndex <= 0) params.delete("page");
+      else params.set("page", String(nextPageIndex + 1));
 
-        if (nextPageSize === defaultSize) params.delete("pageSize");
-        else params.set("pageSize", String(nextPageSize));
+      if (nextPageSize === defaultSize) params.delete("pageSize");
+      else params.set("pageSize", String(nextPageSize));
 
-        const query = params.toString();
-        const href = query
-          ? `${pathnameRef.current}?${query}`
-          : pathnameRef.current;
-        if (
-          href ===
-          `${window.location.pathname}${window.location.search}`
-        ) {
-          return;
-        }
-        skipSearchParamsSyncRef.current = true;
-        window.history.replaceState(window.history.state, "", href);
-      };
-
-      if (urlWriteTimerRef.current) clearTimeout(urlWriteTimerRef.current);
-      if (immediate) {
-        apply();
+      const query = params.toString();
+      const href = query
+        ? `${pathnameRef.current}?${query}`
+        : pathnameRef.current;
+      if (
+        href === `${window.location.pathname}${window.location.search}`
+      ) {
         return;
       }
-      // Debounce page flips — keeps prefetch/cache UX snappy.
-      urlWriteTimerRef.current = setTimeout(apply, 400);
+      // Ignore router searchParams for a beat — replaceState does not update them.
+      ignoreRouterSyncUntilRef.current = Date.now() + 750;
+      window.history.replaceState(window.history.state, "", href);
     },
     [],
   );
 
   const commit = useCallback(
-    (
-      next: { pageIndex?: number; pageSize?: number },
-      opts?: { immediateUrl?: boolean },
-    ) => {
+    (next: { pageIndex?: number; pageSize?: number }) => {
       const nextPageIndex = next.pageIndex ?? pageIndexRef.current;
       const nextPageSize = next.pageSize ?? pageSizeRef.current;
-      const pageSizeChanged = next.pageSize != null && next.pageSize !== pageSizeRef.current;
 
       pageIndexRef.current = nextPageIndex;
       pageSizeRef.current = nextPageSize;
       setPageIndexState(nextPageIndex);
       setPageSizeState(nextPageSize);
-
-      writeUrl(
-        nextPageIndex,
-        nextPageSize,
-        Boolean(opts?.immediateUrl || pageSizeChanged),
-      );
+      writeUrl(nextPageIndex, nextPageSize);
     },
     [writeUrl],
   );
@@ -143,8 +121,10 @@ export function useUrlPageParams(defaultPageSize = 10) {
   const setPageSize = useCallback(
     (size: number) => {
       const safe =
-        Number.isFinite(size) && size > 0 ? Math.min(Math.floor(size), 1000) : defaultPageSizeRef.current;
-      commit({ pageIndex: 0, pageSize: safe }, { immediateUrl: true });
+        Number.isFinite(size) && size > 0
+          ? Math.min(Math.floor(size), 1000)
+          : defaultPageSizeRef.current;
+      commit({ pageIndex: 0, pageSize: safe });
     },
     [commit],
   );

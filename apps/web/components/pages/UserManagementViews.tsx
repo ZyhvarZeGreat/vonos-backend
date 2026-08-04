@@ -1,5 +1,7 @@
 "use client";
 
+
+import { matchSearchRows } from "@/lib/utils/listClientSearch";
 import { useMemo, useState } from "react";
 import { type ColumnConfig } from "@/components/organisms/DataTable";
 import { ServerPaginatedTable } from "@/components/organisms/ServerPaginatedTable";
@@ -59,11 +61,10 @@ export function RolesListView() {
 function RolesListViewBody() {
   const [search, setSearch] = useState("");
 
-  const filtered = useMemo(() => {
-    if (!search) return BUILT_IN_ROLES;
-    const q = search.toLowerCase();
-    return BUILT_IN_ROLES.filter((r) => r.name.toLowerCase().includes(q));
-  }, [search]);
+  const filtered = useMemo(
+    () => matchSearchRows(BUILT_IN_ROLES, search, ["name"]),
+    [search],
+  );
 
   return (
     <ListPageShell
