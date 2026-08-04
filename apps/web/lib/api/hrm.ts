@@ -368,7 +368,7 @@ function serviceStaffPickerFor(tenantId: string): StaffPicker {
 }
 
 /**
- * Service staff filter/picker — first ~80, scroll for more.
+ * Service staff filter/picker — first ~100, scroll for more.
  * Search uses loaded rows first; otherwise API.
  */
 export async function getServiceStaff(
@@ -430,7 +430,7 @@ function employeePickerFor(
 }
 
 /**
- * Employee filter/picker — first ~80, scroll for more.
+ * Employee filter/picker — first ~100, scroll for more.
  * Search uses loaded rows first; otherwise API.
  */
 export async function getEmployees(
@@ -458,6 +458,14 @@ export async function loadMoreEmployeesForPicker(
   const designationId = opts?.designationId ?? "";
   const key = employeePickerKey(tenantId, designationId);
   return employeePickerFor(tenantId, designationId).loadMore(key);
+}
+
+export function employeePickerHasMore(
+  tenantId: string,
+  designationId = "",
+): boolean {
+  const key = employeePickerKey(tenantId, designationId);
+  return employeePickerFor(tenantId, designationId).hasMore(key);
 }
 
 export async function getEmployeesPage(

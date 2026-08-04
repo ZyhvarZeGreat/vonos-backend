@@ -5,6 +5,7 @@ import type { SaleDetail, SalePaymentViewRow } from "@vonos/types";
 import { formatHq6Currency, formatHq6DateTime } from "@/lib/utils/hq6Format";
 import { amountToWords } from "@/lib/utils/amountToWords";
 import { saleVehicleFields } from "@/lib/utils/saleVehicleFields";
+import { parseSaleInvoiceNotes } from "@/lib/utils/saleInvoiceNotes";
 import { publicAssetPath } from "@/lib/utils/basePath";
 import { cn } from "@/lib/utils/cn";
 
@@ -13,7 +14,9 @@ export interface SaleInvoicePayslipDocumentProps {
   tenantName: string;
   tenantAddress?: string | null;
   tenantMobile?: string | null;
+  tenantMobileSecondary?: string | null;
   tenantEmail?: string | null;
+  tenantSection?: string | null;
   locationLabel?: string | null;
   /** Kept for call-site compat; classic HQ6 prints omit the payment table. */
   payments?: SalePaymentViewRow[];
@@ -155,6 +158,7 @@ function documentHeading(
   if (status === "paid") return "Invoice PAID";
   if (status === "partial") return "Invoice PARTIAL";
   if (sale.recordStatus === "quotation") return "Quotation";
+  if (status === "due" || status === "overdue" || !status) return "Invoice UNPAID";
   return "Invoice";
 }
 
@@ -164,6 +168,18 @@ function invoiceWords(amount: number): string {
     .trim()
     .toLowerCase();
   return raw || "zero";
+}
+
+/** Drop structured invoice meta lines from the free-text note footer. */
+function sellNoteOnly(notes: string | null | undefined): string | null {
+  if (!notes?.trim()) return null;
+  const structured =
+      /^(Sales person|Service staff|Mileage|Vehicle time in|Vehicle release|Customer location|Pay term|Invoice scheme|Shipping details|Delivered to|Delivery person|Shipping charges|Additional expense|Redeemed points):/i;
+  const kept = notes
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line && !structured.test(line));
+  return kept.length > 0 ? kept.join("\n") : null;
 }
 
 function BrandMark({ size = 72 }: { size?: number }) {
@@ -186,15 +202,19 @@ function BrandMark({ size = 72 }: { size?: number }) {
 
 function CompanyBlock({
   name,
+  section,
   address,
   mobile,
+  mobileSecondary,
   email,
   serviceStaff,
   align = "left",
 }: {
   name: string;
+  section?: string | null;
   address?: string | null;
   mobile?: string | null;
+  mobileSecondary?: string | null;
   email?: string | null;
   serviceStaff?: string | null;
   align?: "left" | "right";
@@ -207,10 +227,20 @@ function CompanyBlock({
       )}
     >
       <p className="text-[15px] font-bold">{name}</p>
-      {address ? <p>{address}</p> : null}
+      {section ? <p>{section}</p> : null}
+      {address ? (
+        <p>
+          <span className="font-bold">Address:</span> {address}
+        </p>
+      ) : null}
       {mobile ? (
         <p>
           <span className="font-bold">Mobile:</span> {mobile}
+          {mobileSecondary ? ` / ${mobileSecondary}` : ""}
+        </p>
+      ) : mobileSecondary ? (
+        <p>
+          <span className="font-bold">Mobile:</span> {mobileSecondary}
         </p>
       ) : null}
       {email ? (
@@ -231,6 +261,7 @@ function CustomerFields({
   phone,
   plateNumber,
   carModelYear,
+  mileage,
   salesPerson,
   repeatName = false,
 }: {
@@ -238,6 +269,7 @@ function CustomerFields({
   phone?: string | null;
   plateNumber?: string | null;
   carModelYear?: string | null;
+  mileage?: string | null;
   salesPerson?: string | null;
   repeatName?: boolean;
 }) {
@@ -249,11 +281,11 @@ function CustomerFields({
       <MetaRow label="Mobile" value={phone?.trim() || "NILL"} />
       <MetaRow label="Plate Number" value={plateNumber} />
       <MetaRow label="Car Model & Year" value={carModelYear} />
-      {salesPerson ? (
-        <div className="text-[12px] leading-[1.45] text-neutral-900">
-          <span className="font-bold">Sales Person :</span> {salesPerson}
-        </div>
-      ) : null}
+      <MetaRow label="Car Mileage" value={mileage} />
+      <div className="text-[12px] leading-[1.45] text-neutral-900">
+        <span className="font-bold">Sales Person :</span>{" "}
+        {salesPerson?.trim() || "—"}
+      </div>
     </div>
   );
 }
@@ -272,15 +304,17 @@ function LineItemsTable({
   }>;
   showMoney: boolean;
 }) {
+  // HQ6 print: vertical column rules only — no horizontal lines between item rows.
+  // Outer top/bottom + header underline frame the table (matches printed HQ6 slips).
   const th =
-    "border border-[#d1d5db] bg-[#f3f4f6] px-2 py-1.5 text-left text-[11px] font-semibold text-[#6b7280]";
+    "border-x border-[#d1d5db] border-y-0 bg-[#f3f4f6] px-2 py-1.5 text-left text-[11px] font-semibold text-[#6b7280]";
   const td =
-    "border border-[#d1d5db] px-2 py-1.5 text-[12px] text-neutral-900 align-top";
+    "border-x border-[#d1d5db] border-y-0 px-2 py-1.5 text-[12px] text-neutral-900 align-top";
 
   return (
     <table className="w-full border-collapse border border-[#d1d5db] text-[12px]">
       <thead>
-        <tr>
+        <tr className="border-b border-[#d1d5db]">
           <th className={`${th} w-10 text-center`}>#</th>
           <th className={`${th} text-center`}>Product</th>
           <th className={`${th} w-28 text-right`}>Quantity</th>
@@ -392,7 +426,9 @@ export function SaleInvoicePayslipDocument({
   tenantName,
   tenantAddress,
   tenantMobile,
+  tenantMobileSecondary,
   tenantEmail,
+  tenantSection,
   termsBody,
   termsTitle,
   disclaimer,
@@ -404,21 +440,18 @@ export function SaleInvoicePayslipDocument({
   const showMoney = kind === "invoice";
   const isPacking = kind === "packing_slip";
   const isDelivery = kind === "delivery_note";
-  const customerDisplay = [sale.customerName, sale.vehicleLabel]
-    .filter(Boolean)
-    .join(" ");
-  const { plateNumber, carModelYear } = saleVehicleFields({
+  const noteFields = parseSaleInvoiceNotes(sale.notes);
+  const { customerDisplay, plateNumber, carModelYear } = saleVehicleFields({
     customerName: sale.customerName,
     vehicleLabel: sale.vehicleLabel,
   });
+  // Sales person ≠ service staff. Prefer explicit note, then creator — never service staff.
   const salesPerson =
-    sale.createdByName ||
-    sale.serviceStaffEmployeeName ||
-    sale.cleanerName ||
-    null;
+    noteFields.salesPerson || sale.createdByName?.trim() || null;
   const serviceStaffName =
     sale.serviceStaffEmployeeName?.trim() ||
     sale.cleanerName?.trim() ||
+    noteFields.serviceStaff ||
     null;
   const heading = documentHeading(kind, sale);
 
@@ -436,9 +469,16 @@ export function SaleInvoicePayslipDocument({
   const totalPayable = sale.total ?? lineTotal;
   const totalQty = lines.reduce((sum, line) => sum + line.qty, 0);
   const totalPaid = sale.totalPaid ?? 0;
+  const totalDue =
+    sale.sellDue != null
+      ? Math.max(0, sale.sellDue)
+      : Math.max(0, totalPayable - totalPaid);
   const invoiceNo = sale.reference.replace(/^#/, "");
   const dateSource = sale.date ?? sale.createdAt;
   const dateLabel = formatHq6DateTime(dateSource);
+  const vehicleTimeInLabel = noteFields.vehicleTimeIn
+    ? formatHq6DateTime(noteFields.vehicleTimeIn) || noteFields.vehicleTimeIn
+    : dateLabel;
 
   return (
     <article
@@ -459,21 +499,27 @@ export function SaleInvoicePayslipDocument({
               <div className="min-w-0 flex-1 space-y-0.5">
                 <MetaRow label="Invoice No." value={invoiceNo} />
                 <MetaRow
+                  label="Total Due"
+                  value={formatHq6Currency(totalDue, currency)}
+                />
+                <MetaRow
                   label="Total Paid"
-                  value={formatHq6Currency(totalPaid || totalPayable, currency)}
+                  value={formatHq6Currency(totalPaid, currency)}
                 />
                 <MetaRow label="Date" value={dateLabel} />
                 <MetaRow
                   label="Vehicle Time in (Date entered)"
-                  value={dateLabel}
+                  value={vehicleTimeInLabel}
                 />
               </div>
 
               <div className="flex shrink-0 items-start gap-3">
                 <CompanyBlock
                   name={tenantName}
+                  section={tenantSection}
                   address={tenantAddress}
                   mobile={tenantMobile}
+                  mobileSecondary={tenantMobileSecondary}
                   email={tenantEmail}
                   serviceStaff={serviceStaffName}
                   align="right"
@@ -489,6 +535,7 @@ export function SaleInvoicePayslipDocument({
               phone={sale.customerPhone}
               plateNumber={plateNumber}
               carModelYear={carModelYear}
+              mileage={noteFields.mileage}
               salesPerson={salesPerson}
             />
           </section>
@@ -546,8 +593,10 @@ export function SaleInvoicePayslipDocument({
               <div className="mt-2">
                 <CompanyBlock
                   name={tenantName}
+                  section={tenantSection}
                   address={tenantAddress}
                   mobile={tenantMobile}
+                  mobileSecondary={tenantMobileSecondary}
                   email={tenantEmail}
                   serviceStaff={serviceStaffName}
                 />
@@ -572,6 +621,7 @@ export function SaleInvoicePayslipDocument({
               phone={sale.customerPhone}
               plateNumber={plateNumber}
               carModelYear={carModelYear}
+              mileage={noteFields.mileage}
               salesPerson={salesPerson}
               repeatName
             />
@@ -608,8 +658,10 @@ export function SaleInvoicePayslipDocument({
                 <div className="pt-1">
                   <CompanyBlock
                     name={tenantName}
+                    section={tenantSection}
                     address={tenantAddress}
                     mobile={tenantMobile}
+                    mobileSecondary={tenantMobileSecondary}
                     email={tenantEmail}
                     serviceStaff={serviceStaffName}
                   />
@@ -630,12 +682,11 @@ export function SaleInvoicePayslipDocument({
                 />
                 <MetaRow label="Plate Number" value={plateNumber} />
                 <MetaRow label="Car Model & Year" value={carModelYear} />
-                {salesPerson ? (
-                  <div className="text-[12px] leading-[1.45] text-neutral-900">
-                    <span className="font-bold">Sales Person :</span>{" "}
-                    {salesPerson}
-                  </div>
-                ) : null}
+                <MetaRow label="Car Mileage" value={noteFields.mileage} />
+                <div className="text-[12px] leading-[1.45] text-neutral-900">
+                  <span className="font-bold">Sales Person :</span>{" "}
+                  {salesPerson?.trim() || "—"}
+                </div>
               </div>
             </div>
           </header>
@@ -660,7 +711,7 @@ export function SaleInvoicePayslipDocument({
       ) : null}
 
       <FinePrintFooter
-        notes={sale.notes}
+        notes={sellNoteOnly(sale.notes)}
         disclaimer={disclaimer}
         supportLine={supportLine}
         termsTitle={termsTitle}

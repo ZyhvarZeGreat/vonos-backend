@@ -121,9 +121,7 @@ function PosTerminalViewBody() {
       if (!tenantId) throw new Error("No tenant selected");
       assertBusinessLocationSelected(locationRequired, locationCode);
       if (lines.length === 0) throw new Error("Add at least one product");
-      const reference = `POS-${Date.now().toString(36).toUpperCase()}`;
       return createSale(tenantId, {
-        reference,
         customerName: customerName.trim() || undefined,
         locationCode: locationCode.trim() || undefined,
         lines: lines.map((line) => ({

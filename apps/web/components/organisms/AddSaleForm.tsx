@@ -24,7 +24,7 @@ import { createCustomer, getCustomerContact, getCustomersForPicker, loadMoreCust
 import { getJob, getJobs } from "@/lib/api/jobs";
 import { createSale, getSale } from "@/lib/api/sales";
 import { getPaymentAccountsForPicker } from "@/lib/api/paymentAccounts";
-import { getServiceStaff, loadMoreServiceStaffForPicker, serviceStaffPickerHasMore } from "@/lib/api/hrm";
+import { getServiceStaff, loadMoreServiceStaffForPicker, serviceStaffPickerHasMore, getEmployees, loadMoreEmployeesForPicker, employeePickerHasMore } from "@/lib/api/hrm";
 import { getSuppliersForPicker, loadMoreSuppliersForPicker, suppliersPickerHasMore } from "@/lib/api/suppliers";
 import {
   assertBusinessLocationSelected,
@@ -34,7 +34,12 @@ import { useAppMutation } from "@/lib/hooks/useAppMutation";
 import { useIsVaHq6 } from "@/lib/hooks/useIsVaHq6";
 import { formatCurrency } from "@/lib/utils/formatCurrency";
 import { formatHq6Currency } from "@/lib/utils/hq6Format";
+import {
+  parseSaleInvoiceNotes,
+  withSaleInvoiceNoteFields,
+} from "@/lib/utils/saleInvoiceNotes";
 import type { SaleFormPresetStatus } from "@/stores/uiStore";
+import { useAuthStore } from "@/stores/authStore";
 import { useQuery } from "@tanstack/react-query";
 
 export interface SaleLineDraft {
@@ -75,6 +80,9 @@ function emptyForm(presetStatus: SaleFormPresetStatus = "final") {
     serviceStaffId: "",
     serviceStaffUserId: "",
     serviceStaffName: "",
+    salesPersonId: "",
+    salesPersonName: "",
+    mileage: "",
     payTermValue: "",
     payTermUnit: "",
     registerId: "",
@@ -103,6 +111,18 @@ function emptyForm(presetStatus: SaleFormPresetStatus = "final") {
   };
 }
 
+function employeeLabelName(label: string): string {
+  const base = label.split(" · ")[0]?.trim() || label.trim();
+  if (
+    !base ||
+    /^select service staff$/i.test(base) ||
+    /^select sales person$/i.test(base)
+  ) {
+    return "";
+  }
+  return base;
+}
+
 function buildNotes(
   form: ReturnType<typeof emptyForm>,
   additionalExpenses: Array<{ name: string; amount: string }> = [],
@@ -114,12 +134,6 @@ function buildNotes(
   }
   if (form.payTermValue.trim()) {
     parts.push(`Pay term: ${form.payTermValue.trim()} ${form.payTermUnit}`);
-  }
-  if (form.vehicleTimeIn) {
-    parts.push(`Vehicle time in: ${form.vehicleTimeIn}`);
-  }
-  if (form.vehicleReleaseDate) {
-    parts.push(`Vehicle release: ${form.vehicleReleaseDate}`);
   }
   if (form.shippingDetails.trim()) {
     parts.push(`Shipping details: ${form.shippingDetails.trim()}`);
@@ -149,7 +163,13 @@ function buildNotes(
   if (form.invoiceScheme && form.invoiceScheme !== "default") {
     parts.push(`Invoice scheme: ${form.invoiceScheme}`);
   }
-  return parts.length > 0 ? parts.join("\n") : undefined;
+  return withSaleInvoiceNoteFields(parts.join("\n") || undefined, {
+    salesPerson: form.salesPersonName.trim() || null,
+    serviceStaff: form.serviceStaffName.trim() || null,
+    mileage: form.mileage.trim() || null,
+    vehicleTimeIn: form.vehicleTimeIn || null,
+    vehicleRelease: form.vehicleReleaseDate || null,
+  });
 }
 
 export interface AddSaleFormProps {
@@ -177,6 +197,7 @@ export function AddSaleForm({
   onCancel,
 }: AddSaleFormProps) {
   const router = useRouter();
+  const authUserName = useAuthStore((s) => s.name);
   const {
     options: businessLocationOptions,
     required: locationRequired,
@@ -200,6 +221,15 @@ export function AddSaleForm({
     }
     return base;
   });
+
+  // Default Sales Person to the signed-in user (can be changed via dropdown).
+  useEffect(() => {
+    if (!authUserName?.trim()) return;
+    setForm((prev) => {
+      if (prev.salesPersonName.trim()) return prev;
+      return { ...prev, salesPersonName: authUserName.trim() };
+    });
+  }, [authUserName]);
   const isProvisional =
     form.status === "draft" || form.status === "quotation";
   const [lines, setLines] = useState<SaleLineDraft[]>([]);
@@ -288,6 +318,14 @@ export function AddSaleForm({
   useEffect(() => {
     if (!editSale || editPrefillDone.current) return;
     editPrefillDone.current = true;
+    const noteFields = parseSaleInvoiceNotes(editSale.notes);
+    const structured =
+      /^(Sales person|Service staff|Mileage|Vehicle time in|Vehicle release|Customer location|Pay term|Invoice scheme|Shipping details|Delivered to|Delivery person|Shipping charges|Additional expense|Redeemed points):/i;
+    const sellNote = (editSale.notes ?? "")
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line && !structured.test(line))
+      .join("\n");
     setForm((prev) => ({
       ...prev,
       locationCode: editSale.locationCode ?? "",
@@ -299,11 +337,25 @@ export function AddSaleForm({
       saleDate: editSale.date
         ? new Date(editSale.date).toISOString().slice(0, 16)
         : prev.saleDate,
-      sellNote: editSale.notes ?? "",
+      sellNote,
       shippingAddress: editSale.shippingAddress ?? "",
       shippingStatus: editSale.shippingStatus ?? "pending",
       discountAmount: String(editSale.discountAmount ?? 0),
       orderTax: String(editSale.taxAmount ?? 0),
+      serviceStaffId: editSale.serviceStaffEmployeeId ?? "",
+      serviceStaffName:
+        editSale.serviceStaffEmployeeName?.trim() ||
+        editSale.cleanerName?.trim() ||
+        noteFields.serviceStaff ||
+        "",
+      salesPersonName:
+        noteFields.salesPerson ||
+        editSale.createdByName?.trim() ||
+        prev.salesPersonName,
+      mileage: noteFields.mileage ?? "",
+      vehicleTimeIn: noteFields.vehicleTimeIn
+        ? noteFields.vehicleTimeIn.slice(0, 16)
+        : prev.vehicleTimeIn,
       status:
         editSale.recordStatus === "draft" || editSale.recordStatus === "quotation"
           ? editSale.recordStatus
@@ -438,6 +490,39 @@ export function AddSaleForm({
     };
   }, [tenantId]);
 
+  const loadSalesPersonOptions = useCallback(
+    async (query: string) => {
+      const rows = await getEmployees(tenantId, query || undefined);
+      return {
+        options: [
+          { value: "", label: "Select sales person" },
+          ...rows.map((row) => ({
+            value: row.id,
+            label: row.designationName
+              ? `${row.name} · ${row.designationName}`
+              : row.name,
+          })),
+        ],
+        hasMore: !query.trim() && employeePickerHasMore(tenantId),
+      };
+    },
+    [tenantId],
+  );
+
+  const loadMoreSalesPersonOptions = useCallback(async () => {
+    const page = await loadMoreEmployeesForPicker(tenantId);
+    return {
+      options: page.appended.map((row) => ({
+        value: row.id,
+        label: row.designationName
+          ? `${row.name} · ${row.designationName}`
+          : row.name,
+      })),
+      hasMore: page.hasMore,
+      append: true,
+    };
+  }, [tenantId]);
+
   const loadPaymentAccountOptions = useCallback(
     async (query: string) => {
       const rows = await getPaymentAccountsForPicker(tenantId, {
@@ -479,7 +564,7 @@ export function AddSaleForm({
         ...prev,
         jobId: job.id,
         jobReference: job.reference,
-        invoiceNo: prev.invoiceNo.trim() || job.reference,
+        invoiceNo: prev.invoiceNo.trim(),
         customerId: job.customerId ?? job.customer?.id ?? "",
         customerName: job.customer?.name ?? job.customerName ?? "",
         locationCode:
@@ -603,16 +688,23 @@ export function AddSaleForm({
           "Select a Payment Account so this money is posted to the account book",
         );
       }
-      const reference =
-        form.invoiceNo.trim() ||
-        form.jobReference.trim() ||
-        `SALE-${Date.now().toString(36).toUpperCase()}`;
+      const tenantCode = (tenantConfig?.code ?? "").trim().toUpperCase();
+      const serviceStaffName = form.serviceStaffName.trim();
+      const serviceStaffId = form.serviceStaffId.trim();
+      if (
+        (tenantCode === "VA" || tenantCode === "VP") &&
+        !serviceStaffId &&
+        !serviceStaffName
+      ) {
+        throw new Error("Select service staff before saving");
+      }
+      const reference = form.invoiceNo.trim() || undefined;
       const shippingAddress =
         form.shippingAddress.trim() ||
         form.shippingAddressDisplay.trim() ||
         undefined;
       return createSale(tenantId, {
-        reference,
+        ...(reference ? { reference } : {}),
         jobId: form.jobId.trim() || undefined,
         replaceSaleId: editSaleId || undefined,
         customerId: form.customerId || undefined,
@@ -623,9 +715,9 @@ export function AddSaleForm({
         discountAmount: orderDiscount,
         taxAmount: orderTax,
         notes: buildNotes(form, additionalExpenses),
-        serviceStaffEmployeeId: form.serviceStaffId || undefined,
+        serviceStaffEmployeeId: serviceStaffId || undefined,
         cleanerUserId: form.serviceStaffUserId || undefined,
-        cleanerName: form.serviceStaffName.trim() || undefined,
+        cleanerName: serviceStaffName || undefined,
         shippingStatus: (form.shippingStatus || undefined) as
           | "pending"
           | "packed"
@@ -670,18 +762,7 @@ export function AddSaleForm({
             : presetStatus === "quotation"
               ? "Quotation saved"
               : "Sale recorded",
-    progressLabel:
-      form.status === "final"
-        ? editSaleId
-          ? "Converting to sale"
-          : "Saving sale"
-        : editSaleId
-          ? "Updating sale"
-          : presetStatus === "draft"
-            ? "Saving draft"
-            : presetStatus === "quotation"
-              ? "Saving quotation"
-              : "Saving sale",
+    progressLabel: false,
     invalidateKeys: [
       ["sales"],
       ["items"],
@@ -738,17 +819,11 @@ export function AddSaleForm({
 
   if (isHq6Page) {
     const isEditing = Boolean(editSaleId);
-    const primaryLabel = isEditing
-      ? mutation.isPending
-        ? "Updating…"
-        : "Update"
-      : mutation.isPending
-        ? "Saving…"
-        : "Save";
+    const primaryLabel = isEditing ? "Update" : "Save";
     const printLabel = isEditing ? "Update and print" : "Save and print";
 
     return (
-      <div className="space-y-4" aria-busy={mutation.isPending || undefined}>
+      <div className="space-y-4">
         {/* Location — sell/create.blade.php input-group with map-marker */}
         <div className="row" style={{ marginBottom: 12 }}>
           <div className="col-sm-3">
@@ -1014,7 +1089,57 @@ export function AddSaleForm({
             </label>
 
             <label className="hq6-form-label">
-              <span>Select service staff:</span>
+              <span>Car mileage:</span>
+              <input
+                className="hq6-form-input"
+                value={form.mileage}
+                onChange={(e) => patchForm({ mileage: e.target.value })}
+                placeholder="e.g. 125000"
+              />
+            </label>
+
+            <label className="hq6-form-label">
+              <span>Sales person:</span>
+              <AsyncMenuSelect
+                value={form.salesPersonId}
+                selectedLabel={form.salesPersonName || "Select sales person"}
+                placeholder="Select sales person"
+                loadOptions={loadSalesPersonOptions}
+                loadMoreOptions={loadMoreSalesPersonOptions}
+                debounceMs={0}
+                prefetchKey={tenantId}
+                onChange={(id, option) => {
+                  if (!id) {
+                    patchForm({
+                      salesPersonId: "",
+                      salesPersonName: authUserName?.trim() || "",
+                    });
+                    return;
+                  }
+                  const fromOption = option
+                    ? employeeLabelName(option.label)
+                    : "";
+                  patchForm({
+                    salesPersonId: id,
+                    salesPersonName: fromOption,
+                  });
+                  void getEmployees(tenantId).then((rows) => {
+                    const match = rows.find((row) => row.id === id);
+                    if (match?.name) {
+                      patchForm({
+                        salesPersonId: id,
+                        salesPersonName: match.name,
+                      });
+                    }
+                  });
+                }}
+              />
+            </label>
+
+            <label className="hq6-form-label">
+              <span>
+                Select service staff: <span className="req">*</span>
+              </span>
               <AsyncMenuSelect
                 value={form.serviceStaffId}
                 selectedLabel={form.serviceStaffName || "Select service staff"}
@@ -1022,7 +1147,8 @@ export function AddSaleForm({
                 loadOptions={loadStaffOptions}
                 loadMoreOptions={loadMoreStaffOptions}
                 debounceMs={0}
-                onChange={async (id) => {
+                prefetchKey={tenantId}
+                onChange={(id, option) => {
                   if (!id) {
                     patchForm({
                       serviceStaffId: "",
@@ -1031,12 +1157,23 @@ export function AddSaleForm({
                     });
                     return;
                   }
-                  const rows = await getServiceStaff(tenantId);
-                  const match = rows.find((row) => row.id === id);
+                  const fromOption = option
+                    ? employeeLabelName(option.label)
+                    : "";
                   patchForm({
                     serviceStaffId: id,
-                    serviceStaffUserId: match?.userId ?? "",
-                    serviceStaffName: match?.name ?? "",
+                    serviceStaffUserId: "",
+                    serviceStaffName: fromOption,
+                  });
+                  void getServiceStaff(tenantId).then((rows) => {
+                    const match = rows.find((row) => row.id === id);
+                    if (match) {
+                      patchForm({
+                        serviceStaffId: id,
+                        serviceStaffUserId: match.userId ?? "",
+                        serviceStaffName: match.name,
+                      });
+                    }
                   });
                 }}
               />
@@ -1648,9 +1785,8 @@ export function AddSaleForm({
           ) : null}
           <Hq6BusyButton
             className="hq6-btn-purple"
-            busy={mutation.isPending}
-            busyLabel="Saving…"
-            disabled={lines.length === 0}
+            busy={false}
+            disabled={lines.length === 0 || mutation.isPending}
             onClick={() => {
               printAfterSaveRef.current = false;
               mutation.mutate();
@@ -1660,9 +1796,8 @@ export function AddSaleForm({
           </Hq6BusyButton>
           <Hq6BusyButton
             className="hq6-btn-green"
-            busy={mutation.isPending}
-            busyLabel="Saving…"
-            disabled={lines.length === 0}
+            busy={false}
+            disabled={lines.length === 0 || mutation.isPending}
             onClick={() => {
               printAfterSaveRef.current = true;
               mutation.mutate();
@@ -1690,17 +1825,12 @@ export function AddSaleForm({
   }
 
   return (
-    <div className={shellClass} aria-busy={mutation.isPending || undefined}>
+    <div className={shellClass}>
       {editSaleId && editSale ? (
         <p className="rounded-md border border-[var(--hq6-border,#ddd)] bg-[#f9f9f9] px-3 py-2 text-sm text-[#555]">
           Editing <strong>{editSale.reference}</strong>
           {editSale.recordStatus ? ` (${editSale.recordStatus})` : ""}. Saving replaces
           this document with your updates.
-        </p>
-      ) : null}
-      {mutation.isPending ? (
-        <p className="rounded-md border border-border bg-[var(--color-surface-muted)] px-3 py-2 text-sm text-muted">
-          Saving sale…
         </p>
       ) : null}
       {showLocationField ? (
@@ -1830,18 +1960,64 @@ export function AddSaleForm({
             value={form.customerLocation}
             onChange={(e) => patchForm({ customerLocation: e.target.value })}
           />
+          <Input
+            label="Car mileage"
+            value={form.mileage}
+            onChange={(e) => patchForm({ mileage: e.target.value })}
+            placeholder="e.g. 125000"
+          />
           <div>
             <label className="mb-1 block text-xs font-medium text-muted">
-              Service Staff
+              Sales Person
+            </label>
+            <AsyncMenuSelect
+              value={form.salesPersonId}
+              selectedLabel={form.salesPersonName || "Select sales person"}
+              placeholder="Select sales person"
+              loadOptions={loadSalesPersonOptions}
+              loadMoreOptions={loadMoreSalesPersonOptions}
+              debounceMs={0}
+              prefetchKey={tenantId}
+              onChange={(id, option) => {
+                if (!id) {
+                  patchForm({
+                    salesPersonId: "",
+                    salesPersonName: authUserName?.trim() || "",
+                  });
+                  return;
+                }
+                const fromOption = option
+                  ? employeeLabelName(option.label)
+                  : "";
+                patchForm({
+                  salesPersonId: id,
+                  salesPersonName: fromOption,
+                });
+                void getEmployees(tenantId).then((rows) => {
+                  const match = rows.find((row) => row.id === id);
+                  if (match?.name) {
+                    patchForm({
+                      salesPersonId: id,
+                      salesPersonName: match.name,
+                    });
+                  }
+                });
+              }}
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-muted">
+              Service Staff <span className="text-error">*</span>
             </label>
             <AsyncMenuSelect
               value={form.serviceStaffId}
               selectedLabel={form.serviceStaffName || "Select service staff"}
               placeholder="Select service staff"
               loadOptions={loadStaffOptions}
-                loadMoreOptions={loadMoreStaffOptions}
+              loadMoreOptions={loadMoreStaffOptions}
               debounceMs={0}
-              onChange={async (id) => {
+              prefetchKey={tenantId}
+              onChange={(id, option) => {
                 if (!id) {
                   patchForm({
                     serviceStaffId: "",
@@ -1850,12 +2026,23 @@ export function AddSaleForm({
                   });
                   return;
                 }
-                const rows = await getServiceStaff(tenantId);
-                const match = rows.find((row) => row.id === id);
+                const fromOption = option
+                  ? employeeLabelName(option.label)
+                  : "";
                 patchForm({
                   serviceStaffId: id,
-                  serviceStaffUserId: match?.userId ?? "",
-                  serviceStaffName: match?.name ?? "",
+                  serviceStaffUserId: "",
+                  serviceStaffName: fromOption,
+                });
+                void getServiceStaff(tenantId).then((rows) => {
+                  const match = rows.find((row) => row.id === id);
+                  if (match) {
+                    patchForm({
+                      serviceStaffId: id,
+                      serviceStaffUserId: match.userId ?? "",
+                      serviceStaffName: match.name,
+                    });
+                  }
                 });
               }}
             />
@@ -2295,9 +2482,7 @@ export function AddSaleForm({
         ) : null}
         <Button
           size="sm"
-          isLoading={mutation.isPending}
-          loadingText="Saving…"
-          disabled={lines.length === 0}
+          disabled={lines.length === 0 || mutation.isPending}
           onClick={() => {
             printAfterSaveRef.current = false;
             mutation.mutate();
@@ -2308,9 +2493,7 @@ export function AddSaleForm({
         <Button
           size="sm"
           variant="secondary"
-          isLoading={mutation.isPending}
-          loadingText="Saving…"
-          disabled={lines.length === 0}
+          disabled={lines.length === 0 || mutation.isPending}
           onClick={() => {
             printAfterSaveRef.current = true;
             mutation.mutate();

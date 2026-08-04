@@ -79,7 +79,7 @@ function PublicInvoiceContent({ token }: { token: string }) {
               className="inline-flex items-center gap-1.5 rounded-lg bg-[#1e3a5f] px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
             >
               <Printer className="h-4 w-4" />
-              {isLoading ? "Loading…" : "Print"}
+              {isLoading ? "Print" : "Print"}
             </button>
           </div>
 
@@ -92,10 +92,10 @@ function PublicInvoiceContent({ token }: { token: string }) {
               <SaleInvoicePayslipDocument
                 sale={data.sale}
                 tenantName={data.businessName}
-                tenantAddress={
-                  data.businessAddress || data.businessLocationAddress
-                }
+                tenantSection={data.businessSection}
+                tenantAddress={data.businessAddress || data.businessLocationAddress}
                 tenantMobile={data.businessMobile}
+                tenantMobileSecondary={data.businessMobileSecondary}
                 tenantEmail={data.businessEmail}
                 locationLabel={data.businessLocation}
                 payments={data.payments}

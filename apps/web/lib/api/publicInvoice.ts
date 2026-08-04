@@ -6,10 +6,12 @@ export type PublicInvoicePayment = SalePaymentViewRow;
 export type PublicInvoice = {
   token: string;
   businessName: string;
+  businessSection?: string | null;
   businessLocation: string | null;
   businessLocationAddress: string | null;
   businessAddress: string | null;
   businessMobile: string | null;
+  businessMobileSecondary?: string | null;
   businessEmail: string | null;
   sale: SaleDetail;
   payments: PublicInvoicePayment[];

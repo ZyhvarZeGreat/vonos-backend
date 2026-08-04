@@ -18,6 +18,25 @@ function str(value: unknown): string | null {
   return typeof value === 'string' && value.trim() ? value.trim() : null;
 }
 
+/** Legal letterhead on public invoices — group name, not per-tenant labels. */
+const INVOICE_BUSINESS_NAME = 'VONOS GROUP LTD';
+const INVOICE_ADDRESS = 'Vonos plaza, vonos roundabout, fo1, kubwa';
+const INVOICE_MOBILE_PRIMARY = '09128690691';
+const INVOICE_MOBILE_SECONDARY = '07075179952';
+const INVOICE_EMAIL = 'operations@vonosgroupltd.com';
+
+function invoiceSectionLabel(tenantCode?: string | null): string | null {
+  const code = (tenantCode ?? '').trim().toUpperCase();
+  if (code === 'VA') return 'Section — Mechanic';
+  if (code === 'VP') return 'Section — Painting';
+  if (code === 'VW') return 'Section — Warehouse';
+  if (code === 'VISP' || code === 'VSP') return 'Section — Spare Parts';
+  if (code === 'VC') return 'Section — Cafe';
+  if (code === 'VS') return 'Section — Saloon';
+  if (code === 'VKW') return 'Section — Kids Wear';
+  return null;
+}
+
 function resolveLocation(
   config: Record<string, unknown>,
   locationCode: string | null,
@@ -93,8 +112,6 @@ export class PublicInvoicesController {
     if (!sale) throw new NotFoundException('Invoice not found');
 
     const config = asRecord(sale.tenant.config);
-    const businessSettings = asRecord(config.businessSettings);
-    const businessBag = asRecord(businessSettings.business);
     const location = resolveLocation(config, sale.locationCode);
     const locationAddress = formatLocationAddress(location);
     const locationLabel = location?.name ?? sale.locationCode;
@@ -121,30 +138,16 @@ export class PublicInvoicesController {
       0,
     );
 
-    const businessMobile =
-      str(location?.mobile) ||
-      str(businessBag.mobile) ||
-      str(businessBag.phone) ||
-      null;
-    const businessEmail =
-      str(location?.email) || str(businessBag.email) || null;
-
-    const businessAddressParts = [
-      locationLabel,
-      locationAddress,
-      str(businessBag.landmark),
-      str(businessBag.city),
-    ].filter((part, index, arr) => part && arr.indexOf(part) === index);
-
     return {
       token,
-      businessName: sale.tenant.name,
+      businessName: INVOICE_BUSINESS_NAME,
+      businessSection: invoiceSectionLabel(sale.tenant.code),
       businessLocation: locationLabel,
       businessLocationAddress: locationAddress,
-      businessAddress:
-        businessAddressParts.filter(Boolean).join(', ') || null,
-      businessMobile,
-      businessEmail,
+      businessAddress: INVOICE_ADDRESS,
+      businessMobile: INVOICE_MOBILE_PRIMARY,
+      businessMobileSecondary: INVOICE_MOBILE_SECONDARY,
+      businessEmail: INVOICE_EMAIL,
       sale: {
         id: sale.id,
         tenantId: sale.tenantId,
@@ -163,8 +166,10 @@ export class PublicInvoicesController {
         paymentStatus: sale.paymentStatus,
         paymentMethod: sale.paymentMethod,
         locationCode: sale.locationCode,
+        cleanerName: sale.cleanerName ?? null,
         serviceStaffEmployeeId: sale.serviceStaffEmployeeId,
-        serviceStaffEmployeeName: sale.serviceStaffEmployee?.name ?? null,
+        serviceStaffEmployeeName:
+          sale.serviceStaffEmployee?.name ?? sale.cleanerName ?? null,
         createdByName: sale.createdByName,
         shippingStatus: sale.shippingStatus,
         shippingAddress: sale.shippingAddress,

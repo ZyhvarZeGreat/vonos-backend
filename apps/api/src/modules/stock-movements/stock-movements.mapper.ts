@@ -83,6 +83,7 @@ export function toMovementListRow(
     locationCode: row.locationCode,
     locationName: row.locationCode ?? '—',
     grandTotal,
+    totalPaid: safePaid,
     paymentStatus,
     paymentMethod: row.paymentMethod ?? null,
     paymentDue,

@@ -43,7 +43,7 @@ export interface AsyncMenuSelectProps {
   value: string;
   /** Label shown when the selected value is not in the current result set. */
   selectedLabel?: string;
-  onChange: (value: string) => void;
+  onChange: (value: string, option?: MenuSelectOption) => void;
   /**
    * Called on open and when the search query changes.
    * Return `{ options, hasMore }` to enable infinite scroll batches.
@@ -332,7 +332,7 @@ export function AsyncMenuSelect({
                       option.value === value && "tw-bg-gray-100 tw-font-medium",
                     )}
                     onClick={() => {
-                      onChange(option.value);
+                      onChange(option.value, option);
                       setOpen(false);
                     }}
                   >

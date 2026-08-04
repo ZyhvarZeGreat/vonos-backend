@@ -16,6 +16,7 @@ import { CacheService } from '../../common/cache/cache.service';
 import { TenantDbService } from '../../common/prisma/tenant-db.service';
 import type { TenantScopedPrisma } from '../../common/prisma/prisma.service';
 import { toIso } from '../../common/utils/serializers';
+import { defaultYearInvoicePrefix } from '../../common/utils/allocateInvoiceNumber';
 
 const DEFAULT_LAYOUTS = [
   { name: 'Classic', design: 'classic' },
@@ -68,7 +69,7 @@ export class InvoiceSettingsService {
         data: {
           tenantId,
           name: 'Default',
-          prefix: null,
+          prefix: defaultYearInvoicePrefix(),
           startNumber: 1,
           invoiceCount: 0,
           totalDigits: 4,

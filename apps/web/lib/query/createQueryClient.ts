@@ -25,6 +25,7 @@ export function createQueryClient() {
     }),
     mutationCache: new MutationCache({
       onMutate: (_variables, mutation) => {
+        if (mutation.meta?.suppressWriteProgress) return;
         const labelMeta = mutation.meta?.progressLabel;
         const label =
           typeof labelMeta === "string" && labelMeta.trim()
@@ -32,7 +33,8 @@ export function createQueryClient() {
             : "Saving";
         useMutationBusyStore.getState().begin(label);
       },
-      onSettled: () => {
+      onSettled: (_data, _error, _variables, _context, mutation) => {
+        if (mutation.meta?.suppressWriteProgress) return;
         useMutationBusyStore.getState().end();
       },
       onError: (error, _variables, _context, mutation) => {

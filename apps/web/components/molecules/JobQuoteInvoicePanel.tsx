@@ -6,6 +6,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useAppMutation } from "@/lib/hooks/useAppMutation";
 import { useRouteTenant } from "@/lib/hooks/useRouteTenant";
+import { VONOS_INVOICE_BUSINESS_NAME } from "@/lib/branding";
 import type { JobDetail } from "@/lib/api/jobs";
 import { updateJobBilling } from "@/lib/api/jobs";
 import { getInvoiceSettings } from "@/lib/api/invoiceSettings";
@@ -64,7 +65,7 @@ function toInvoiceLines(
 
 export function JobQuoteInvoicePanel({ job, onJobChange }: JobQuoteInvoicePanelProps) {
   const router = useRouter();
-  const { tenantName, tenantId, tenantCode } = useRouteTenant();
+  const { tenantId, tenantCode } = useRouteTenant();
   const openAddSaleModal = useUiStore((state) => state.openAddSaleModal);
   const [tab, setTab] = useState<BillingTab>("quotation");
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -158,7 +159,7 @@ export function JobQuoteInvoicePanel({ job, onJobChange }: JobQuoteInvoicePanelP
   const previewDocument = (
     <InvoiceDocument
       kind={tab}
-      tenantName={tenantName}
+      tenantName={VONOS_INVOICE_BUSINESS_NAME}
       reference={
         tab === "quotation" ? `QT-${job.reference}` : `INV-${job.reference}`
       }

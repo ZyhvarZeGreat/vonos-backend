@@ -44,6 +44,20 @@ function fallbackForStatus(status: number, fallback: string): string {
   }
 }
 
+function sanitizeClientMessage(message: string, fallback: string): string {
+  const trimmed = message.trim();
+  if (!trimmed) return fallback;
+  const lower = trimmed.toLowerCase();
+  if (
+    lower === "internal server error" ||
+    lower === "internalservererror" ||
+    lower === "error"
+  ) {
+    return fallback || "Something went wrong — please try again.";
+  }
+  return trimmed;
+}
+
 /**
  * Read a failed fetch Response and throw Error with the best available message.
  * Always rejects — return type is `never`.
@@ -56,9 +70,8 @@ export async function throwApiError(
   const fromBody =
     flattenMessage(body?.message) ??
     (typeof body?.error === "string" ? body.error.trim() : null);
-  throw new Error(
-    fromBody || fallbackForStatus(response.status, fallback),
-  );
+  const raw = fromBody || fallbackForStatus(response.status, fallback);
+  throw new Error(sanitizeClientMessage(raw, fallback));
 }
 
 /** Same parsing without throwing — for custom handling. */
@@ -70,5 +83,6 @@ export async function readApiErrorMessage(
   const fromBody =
     flattenMessage(body?.message) ??
     (typeof body?.error === "string" ? body.error.trim() : null);
-  return fromBody || fallbackForStatus(response.status, fallback);
+  const raw = fromBody || fallbackForStatus(response.status, fallback);
+  return sanitizeClientMessage(raw, fallback);
 }

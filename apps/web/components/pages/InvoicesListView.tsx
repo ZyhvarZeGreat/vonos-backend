@@ -14,7 +14,8 @@ import { getInvoice, getInvoicesPage } from "@/lib/api/invoices";
 import { getInvoiceSettings } from "@/lib/api/invoiceSettings";
 import { serverPaginationBarProps, useServerListPage } from "@/lib/hooks/useServerListPage";
 import { useListPageFilters } from "@/lib/hooks/useListPageFilters";
-import { useRouteTenant, useTenantId } from "@/lib/hooks/useRouteTenant";
+import { useTenantId } from "@/lib/hooks/useRouteTenant";
+import { VONOS_INVOICE_BUSINESS_NAME } from "@/lib/branding";
 import { formatCurrency } from "@/lib/utils/formatCurrency";
 import { formatDate } from "@/lib/utils/formatDate";
 import {
@@ -45,7 +46,6 @@ const PAYMENT_OPTIONS = [
 
 export function InvoicesListView() {
   const tenantId = useTenantId();
-  const { tenantName } = useRouteTenant();
   const { search, setSearch, dateRange, setDateRange, bounds } =
     useListPageFilters();
   const [kindFilter, setKindFilter] = useState("");
@@ -150,7 +150,7 @@ export function InvoicesListView() {
         previewDetail.paymentStatus,
         previewDetail.status,
       )}
-      tenantName={tenantName}
+      tenantName={VONOS_INVOICE_BUSINESS_NAME}
       reference={previewDetail.reference}
       date={previewDetail.documentDate}
       contact={invoiceDetailToContact(previewDetail)}

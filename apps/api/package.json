@@ -36,6 +36,7 @@
     "prisma:seed-expense-categories": "ts-node --transpile-only prisma/scripts/seed-expense-categories.ts",
     "prisma:clone-va-master-data": "ts-node --transpile-only prisma/scripts/clone-va-master-data.ts",
     "prisma:sync-group-master-data": "ts-node --transpile-only prisma/scripts/sync-group-master-data.ts",
+    "prisma:sync-group-service-staff": "ts-node --transpile-only prisma/scripts/sync-group-service-staff.ts",
     "prisma:studio": "prisma studio"
   },
   "prisma": {

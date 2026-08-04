@@ -5,8 +5,8 @@ import {
 } from "@/lib/api/fetchAllPages";
 import { matchSorter, rankings } from "match-sorter";
 
-/** Batch size for filter dropdown infinite scroll (~80 first, then more). */
-export const FILTER_DROPDOWN_BATCH_SIZE = 80;
+/** Batch size for filter dropdown infinite scroll (~100 first, then more). */
+export const FILTER_DROPDOWN_BATCH_SIZE = 100;
 
 export type AccumulatingPickerPage<T> = {
   /** Full accumulated list so far (browse mode) or search hits. */
@@ -44,7 +44,7 @@ function asPage<T extends { id: string }>(
 
 /**
  * Progressive filter-catalog loader:
- * - Open → first batch (~80)
+ * - Open → first batch (~100)
  * - Scroll → keep appending batches until exhausted
  * - Search → match loaded rows first; if none, fetch from API and merge
  */

@@ -44,6 +44,8 @@ export interface StockMovementListRow {
   locationCode?: string | null;
   locationName?: string | null;
   grandTotal?: number;
+  /** Cached sum of purchase payments — used for optimistic pay updates. */
+  totalPaid?: number;
   paymentStatus?: string | null;
   paymentMethod?: string | null;
   paymentDue?: number;

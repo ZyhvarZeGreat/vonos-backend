@@ -14,10 +14,10 @@ export const DEFAULT_LIST_LIMIT = DEFAULT_TABLE_PAGE_SIZE;
 export const TYPEAHEAD_PAGE_SIZE = 40;
 
 /**
- * Filter / picker dropdowns: first batch size (~80). Scroll loads more.
+ * Filter / picker dropdowns: first batch size (~100). Scroll loads more.
  * Prefer FILTER_DROPDOWN_BATCH_SIZE from accumulatingPicker.ts.
  */
-export const FILTER_DROPDOWN_INITIAL_LIMIT = 80;
+export const FILTER_DROPDOWN_INITIAL_LIMIT = 100;
 
 /**
  * Upper bound if a caller still needs a large in-memory dump (exports).

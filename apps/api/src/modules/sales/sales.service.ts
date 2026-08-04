@@ -56,6 +56,7 @@ import {
   softDeletePaymentAccountTxns,
   syncSalePaymentAccountCredit,
 } from '../../common/utils/recordPaymentAccountTxn';
+import { allocateNextInvoiceNumber } from '../../common/utils/allocateInvoiceNumber';
 
 function normalizeCreateStatus(
   status?: SaleStatus | 'final',
@@ -1082,7 +1083,7 @@ export class SalesService {
   }
 
   async create(body: {
-    reference: string;
+    reference?: string;
     customerName?: string;
     customerId?: string;
     jobId?: string;
@@ -1122,7 +1123,6 @@ export class SalesService {
     const isProvisional = status === 'draft' || status === 'quotation';
 
     let jobId: string | null = body.jobId?.trim() || null;
-    let jobReference: string | null = null;
     let linkedJob: {
       id: string;
       reference: string;
@@ -1177,7 +1177,6 @@ export class SalesService {
       if (!linkedJob) {
         throw new BadRequestException('Job not found');
       }
-      jobReference = linkedJob.reference;
       const existingForJob = await this.tenantDb.db.sale.findFirst({
         where: {
           tenantId,
@@ -1202,15 +1201,27 @@ export class SalesService {
     let cleanerName = body.cleanerName?.trim() || null;
 
     if (body.serviceStaffEmployeeId?.trim()) {
-      const employee = await this.tenantDb.db.employee.findFirst({
+      const employeeId = body.serviceStaffEmployeeId.trim();
+      let employee = await this.tenantDb.db.employee.findFirst({
         where: {
-          id: body.serviceStaffEmployeeId.trim(),
+          id: employeeId,
           tenantId,
           deletedAt: null,
           isServiceStaff: true,
         },
         select: { id: true, name: true, userId: true },
       });
+      // Fall back if the flag was never marked but the employee exists.
+      if (!employee) {
+        employee = await this.tenantDb.db.employee.findFirst({
+          where: {
+            id: employeeId,
+            tenantId,
+            deletedAt: null,
+          },
+          select: { id: true, name: true, userId: true },
+        });
+      }
       if (!employee) {
         throw new BadRequestException('Service staff employee not found');
       }
@@ -1273,9 +1284,21 @@ export class SalesService {
           ? []
           : [{ amount: 0, method: 'cash' }];
 
-    const saleReference =
-      body.reference?.trim() ||
-      (jobReference ? jobReference : `SALE-${Date.now().toString(36).toUpperCase()}`);
+    const explicitReference = body.reference?.trim() || null;
+    let saleReference = explicitReference;
+    if (!saleReference && replaceSaleId) {
+      const prior = await this.tenantDb.db.sale.findFirst({
+        where: { id: replaceSaleId, tenantId, deletedAt: null },
+        select: { reference: true },
+      });
+      saleReference = prior?.reference ?? null;
+    }
+    if (!saleReference) {
+      saleReference = await allocateNextInvoiceNumber(
+        this.tenantDb.db,
+        tenantId,
+      );
+    }
 
     // Provisional create (no archive): single insert, no interactive tx / stock /
     // payments. Invoice hub runs after response. List-only cache bust so hq6/reports
@@ -1314,6 +1337,7 @@ export class SalesService {
           include: {
             customer: true,
             job: { select: { reference: true } },
+            serviceStaffEmployee: { select: { name: true } },
             lines: true,
           },
         });
@@ -1526,7 +1550,7 @@ export class SalesService {
             data: {
               tenantId,
               type: 'inbound',
-              reference: `${body.reference}-P${index + 1}`,
+              reference: `${saleReference}-P${index + 1}`,
               status: 'Received',
               locationCode: locationCode ?? undefined,
               paymentStatus: 'due',
@@ -1534,7 +1558,7 @@ export class SalesService {
               lines: purchaseLines,
               itemCount: purchaseRollups.itemCount,
               grandTotal: purchaseRollups.grandTotal,
-              notes: `Ad-hoc purchase for sale ${body.reference}`,
+              notes: `Ad-hoc purchase for sale ${saleReference}`,
               date: saleDate,
               ...createdBy,
             },
@@ -1692,6 +1716,7 @@ export class SalesService {
         include: {
           customer: true,
           job: { select: { reference: true } },
+          serviceStaffEmployee: { select: { name: true } },
           lines: true,
         },
       });

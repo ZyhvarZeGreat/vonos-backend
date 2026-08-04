@@ -81,7 +81,7 @@ export class SalesController {
   create(
     @Body()
     body: {
-      reference: string;
+      reference?: string;
       customerName?: string;
       locationCode?: string;
       paymentMethod?: string;

@@ -44,7 +44,9 @@ export function Hq6InvoiceSchemeModal({
   useEffect(() => {
     if (!open) return;
     if (initial) {
-      const isYear = Boolean(initial.prefix && /^\d{4}-?$/.test(initial.prefix));
+      const isYear = Boolean(
+        initial.prefix && /^\d{4}[/\\-]?$/.test(initial.prefix),
+      );
       setFormat(isYear ? "year" : "blank");
       setName(initial.name);
       setPrefix(initial.prefix ?? "");
@@ -65,7 +67,7 @@ export function Hq6InvoiceSchemeModal({
     format === "blank"
       ? "X".repeat(totalDigits)
       : format === "year"
-        ? `${year}-${"X".repeat(totalDigits)}`
+        ? `${year}/${"X".repeat(totalDigits)}`
         : "Not selected";
 
   return (
@@ -87,7 +89,7 @@ export function Hq6InvoiceSchemeModal({
               numberType,
               prefix:
                 format === "year"
-                  ? prefix.trim() || `${year}-`
+                  ? prefix.trim() || `${year}/`
                   : prefix.trim(),
               startNumber,
               totalDigits,
@@ -108,10 +110,10 @@ export function Hq6InvoiceSchemeModal({
           />
           <FormatCard
             selected={format === "year"}
-            label={`FORMAT:\n${year}-XXXX`}
+            label={`FORMAT:\n${year}/XXXX`}
             onClick={() => {
               setFormat("year");
-              setPrefix(`${year}-`);
+              setPrefix(`${year}/`);
             }}
           />
           <div className="flex flex-col justify-center text-sm">

@@ -4,6 +4,7 @@ import type { INestApplication } from '@nestjs/common';
 import cookieParser from 'cookie-parser';
 import type { Express } from 'express';
 import { AppModule } from './app.module';
+import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { resolveWebOrigins } from './common/utils/webOrigin';
 
 async function createNestApp(): Promise<INestApplication> {
@@ -15,6 +16,7 @@ async function createNestApp(): Promise<INestApplication> {
     origin: resolveWebOrigins(),
     credentials: true,
   });
+  app.useGlobalFilters(new AllExceptionsFilter());
   await app.init();
   return app;
 }

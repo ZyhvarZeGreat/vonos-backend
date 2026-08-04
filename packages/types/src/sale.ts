@@ -202,7 +202,8 @@ export interface CreateSalePaymentRequest {
 }
 
 export interface CreateSaleRequest {
-  reference: string;
+  /** Omit to auto-allocate from the tenant invoice scheme (e.g. 2026/0001). */
+  reference?: string;
   customerName?: string;
   customerId?: string;
   /** Optional link to a job (Automotive). Not required to create or update a sale. */

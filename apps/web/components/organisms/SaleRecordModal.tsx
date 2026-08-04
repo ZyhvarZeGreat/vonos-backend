@@ -17,6 +17,7 @@ import { createSaleReturn, finalizeSale, getSaleView } from "@/lib/api/sales";
 import { useAppMutation } from "@/lib/hooks/useAppMutation";
 import { useIsVaHq6 } from "@/lib/hooks/useIsVaHq6";
 import { useRouteTenant } from "@/lib/hooks/useRouteTenant";
+import { VONOS_INVOICE_BUSINESS_NAME } from "@/lib/branding";
 import {
   MODAL_RECORD_STALE_MS,
   MODAL_REF_STALE_MS,
@@ -53,7 +54,7 @@ export function SaleRecordModal({
   showBack = false,
 }: SaleRecordModalProps) {
   const isHq6 = useIsVaHq6();
-  const { tenantId, tenantName, tenantCode } = useRouteTenant();
+  const { tenantId, tenantCode } = useRouteTenant();
   const [docPreviewOpen, setDocPreviewOpen] = useState(false);
   const [hq6PrintKind, setHq6PrintKind] = useState<
     "invoice" | "packing_slip" | null
@@ -99,7 +100,7 @@ export function SaleRecordModal({
   const document = sale ? (
     <InvoiceDocument
       kind={documentKind}
-      tenantName={tenantName}
+      tenantName={VONOS_INVOICE_BUSINESS_NAME}
       reference={sale.reference}
       date={sale.date}
       contact={saleToInvoiceContact(sale)}

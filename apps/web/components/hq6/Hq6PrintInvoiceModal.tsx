@@ -8,21 +8,23 @@ import {
   FormattedTermsBlock,
   SaleInvoicePayslipDocument,
 } from "@/components/organisms/SaleInvoicePayslipDocument";
-import { Hq6LoadProgress } from "@/components/hq6/Hq6LoadProgress";
 import { getSaleView } from "@/lib/api/sales";
 import { getInvoiceSettings } from "@/lib/api/invoiceSettings";
 import { useRouteTenant, useTenantId } from "@/lib/hooks/useRouteTenant";
-import { useSimulatedLoadPercent } from "@/lib/hooks/useSimulatedLoadPercent";
 import {
   MODAL_RECORD_STALE_MS,
   MODAL_REF_STALE_MS,
   modalKeys,
 } from "@/lib/query/modalQueryKeys";
-import {
-  formatBusinessLocationAddress,
-  resolveBusinessLocation,
-} from "@/lib/utils/locationLabels";
 import { stripHtmlToText } from "@/lib/utils/stripHtml";
+import {
+  VONOS_INVOICE_ADDRESS,
+  VONOS_INVOICE_BUSINESS_NAME,
+  VONOS_INVOICE_EMAIL,
+  VONOS_INVOICE_MOBILE_PRIMARY,
+  VONOS_INVOICE_MOBILE_SECONDARY,
+  vonosInvoiceSectionLabel,
+} from "@/lib/branding";
 import {
   VONOS_AUTOMOTIVE_DISCLAIMER,
   VONOS_AUTOMOTIVE_SUPPORT_LINE,
@@ -53,8 +55,8 @@ function invoiceTitle(sale: SaleDetail | null, kind: Hq6PrintDocKind): string {
 }
 
 /**
- * Print Invoice — waits for full sale detail (line items) before print.
- * Shows Loading 0–100% while invoice lines / settings load.
+ * Print Invoice — waits for full sale detail (line items) before auto-print.
+ * Does not replace the document with a loading % overlay.
  */
 export function Hq6PrintInvoiceModal({
   open,
@@ -72,7 +74,7 @@ export function Hq6PrintInvoiceModal({
   onClose: () => void;
 }) {
   const tenantId = useTenantId();
-  const { tenantId: routeTenantId, config, tenantName } = useRouteTenant();
+  const { tenantId: routeTenantId, config, tenantCode } = useRouteTenant();
   const effectiveTenantId = tenantId ?? routeTenantId;
 
   const seeded =
@@ -80,14 +82,14 @@ export function Hq6PrintInvoiceModal({
       ? seedToDetail(initialSale)
       : null;
 
-  const { data: bundle, isLoading, isFetching, isError } = useQuery({
+  const { data: bundle, isError } = useQuery({
     queryKey: modalKeys.saleView(effectiveTenantId, saleId),
     queryFn: () => getSaleView(saleId!, effectiveTenantId!),
     enabled: Boolean(open && effectiveTenantId && saleId),
     staleTime: MODAL_RECORD_STALE_MS,
   });
 
-  const { data: invoiceSettings, isLoading: settingsLoading } = useQuery({
+  const { data: invoiceSettings } = useQuery({
     queryKey: modalKeys.invoiceSettings(effectiveTenantId),
     queryFn: getInvoiceSettings,
     enabled: Boolean(open && effectiveTenantId),
@@ -98,13 +100,10 @@ export function Hq6PrintInvoiceModal({
   const detailSale = bundle?.sale?.id === saleId ? bundle.sale : null;
   const payments = detailSale ? (bundle?.payments ?? []) : [];
   const itemsReady = Boolean(detailSale && Array.isArray(detailSale.lines));
-  const titleSale = detailSale ?? seeded;
+  const displaySale = detailSale ?? seeded;
+  const titleSale = displaySale;
   const didAutoPrint = useRef(false);
-  const printLoading =
-    open &&
-    !isError &&
-    (!itemsReady || isLoading || (isFetching && !detailSale) || settingsLoading);
-  const loadPercent = useSimulatedLoadPercent(printLoading);
+  const printLoading = open && !isError && !itemsReady;
 
   useEffect(() => {
     if (!open) {
@@ -131,41 +130,14 @@ export function Hq6PrintInvoiceModal({
     };
   }, [autoPrint, detailSale, itemsReady, kind, open, printLoading]);
 
-  const business = config?.businessSettings?.business as
-    | Record<string, unknown>
-    | undefined;
-  const businessName =
-    (typeof business?.name === "string" && business.name) ||
-    tenantName ||
-    config?.name ||
-    "Vonos Autos";
-  const businessAddress = [
-    typeof business?.landmark === "string" ? business.landmark : "",
-    typeof business?.city === "string" ? business.city : "",
-  ]
-    .map((part) => part.trim())
-    .filter(Boolean)
-    .join(", ");
-  const businessMobile =
-    (typeof business?.mobile === "string" && business.mobile) ||
-    (typeof business?.phone === "string" && business.phone) ||
-    "";
-  const businessEmail =
-    typeof business?.email === "string" ? business.email : "";
-
-  const location = resolveBusinessLocation(
-    detailSale?.locationCode ?? titleSale?.locationCode ?? null,
-    config?.businessLocations,
+  const businessName = VONOS_INVOICE_BUSINESS_NAME;
+  const letterheadAddress = VONOS_INVOICE_ADDRESS;
+  const letterheadMobile = VONOS_INVOICE_MOBILE_PRIMARY;
+  const letterheadMobileSecondary = VONOS_INVOICE_MOBILE_SECONDARY;
+  const letterheadEmail = VONOS_INVOICE_EMAIL;
+  const letterheadSection = vonosInvoiceSectionLabel(
+    tenantCode ?? config?.code,
   );
-  const locationAddress = formatBusinessLocationAddress(location);
-  // Letterhead uses the physical address only (e.g. ARK GARDEN, KUBWA) — not the
-  // location display name, which already appears as the business title.
-  const letterheadAddress =
-    locationAddress ||
-    businessAddress ||
-    "ARK GARDEN, KUBWA";
-  const letterheadMobile = location?.mobile?.trim() || businessMobile || null;
-  const letterheadEmail = location?.email?.trim() || businessEmail || null;
 
   const termsFromSettings = stripHtmlToText(invoiceSettings?.termsText ?? "");
   const termsBody = termsFromSettings || VONOS_AUTOMOTIVE_TERMS_BODY;
@@ -173,15 +145,12 @@ export function Hq6PrintInvoiceModal({
   const printFileName = titleSale
     ? saleDocumentPrintFileName(titleSale.customerName, kind)
     : null;
-  const printDisabled = printLoading;
   const printLabel =
-    kind === "packing_slip"
+    kind === "packing_slip" ||
+    kind === "delivery_note" ||
+    kind === "terms"
       ? "Print"
-      : kind === "delivery_note"
-        ? "Print"
-        : kind === "terms"
-          ? "Print"
-          : "Print Invoice";
+      : "Print Invoice";
 
   return (
     <DocumentPreviewModal
@@ -192,24 +161,17 @@ export function Hq6PrintInvoiceModal({
       onBack={onClose}
       backLabel="Back"
       printFileName={printFileName}
-      printDisabled={printDisabled}
-      printDisabledLabel={
-        printDisabled ? `Loading ${loadPercent}%` : undefined
-      }
+      printDisabled={!itemsReady}
       printLabel={printLabel}
     >
-      {isError && !detailSale ? (
+      {isError && !displaySale ? (
         <p className="p-4 text-sm text-red-700">Sale not found.</p>
-      ) : printLoading || !detailSale ? (
-        <Hq6LoadProgress
-          percent={loadPercent}
-          label="Loading invoice"
-          className="px-4"
-        />
+      ) : !displaySale ? (
+        <div className="p-6 text-sm text-neutral-500">Preparing invoice…</div>
       ) : kind === "terms" ? (
         <div className="invoice-print-root mx-auto max-w-[210mm] border border-neutral-300 bg-white p-7 print:border-0">
           <p className="mb-3 text-[10px] text-neutral-500">
-            Invoice No. #{detailSale.reference.replace(/^#/, "")}
+            Invoice No. #{displaySale.reference.replace(/^#/, "")}
           </p>
           <FormattedTermsBlock
             title={VONOS_AUTOMOTIVE_TERMS_TITLE}
@@ -220,10 +182,12 @@ export function Hq6PrintInvoiceModal({
       ) : (
         <div className="invoice-print-root p-2 sm:p-4">
           <SaleInvoicePayslipDocument
-            sale={detailSale}
+            sale={displaySale}
             tenantName={businessName}
+            tenantSection={letterheadSection}
             tenantAddress={letterheadAddress}
             tenantMobile={letterheadMobile}
+            tenantMobileSecondary={letterheadMobileSecondary}
             tenantEmail={letterheadEmail}
             payments={payments}
             termsBody={termsBody}
