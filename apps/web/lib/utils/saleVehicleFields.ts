@@ -63,7 +63,7 @@ export function saleVehicleFields(input: {
 
   // Prefer model from dedicated vehicle label, then from customer string —
   // but always via extractModelYear (never the raw person+model blob).
-  let carModelYear =
+  const carModelYear =
     extractModelYear(stripPlate(vehicle, plateNumber)) ||
     extractModelYear(stripPlate(customer, plateNumber)) ||
     null;
