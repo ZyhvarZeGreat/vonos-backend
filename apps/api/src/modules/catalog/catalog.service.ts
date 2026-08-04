@@ -33,23 +33,30 @@ export class CatalogService {
     private readonly cache: CacheService,
   ) {}
 
-  /** Spare Shop catalog = local retail items + Warehouse (VW) items flagged for retail. */
-  private async catalogTenantIds(requestTenantId: string): Promise<string[]> {
+  /**
+   * VISP/VSP share Warehouse (VW) retail stock — one catalog, not local copies.
+   * Local VISP/VSP Item rows are migration duplicates of the same SKUs; the old
+   * "local ∪ VW" OR made every product appear twice (~8.9k vs ~4.3k).
+   */
+  private async catalogScope(requestTenantId: string): Promise<{
+    tenantIds: string[];
+    sharedRetailOnly: boolean;
+  }> {
     const tenant = await this.prisma.tenant.findUnique({
       where: { id: requestTenantId },
       select: { code: true },
     });
-    // VA / VW / cafe / etc. — own tenant only. Skip extra VW lookup.
     if (tenant?.code !== 'VISP' && tenant?.code !== 'VSP') {
-      return [requestTenantId];
+      return { tenantIds: [requestTenantId], sharedRetailOnly: false };
     }
-    const ids = new Set<string>([requestTenantId]);
     const warehouse = await this.prisma.tenant.findUnique({
       where: { code: 'VW' },
       select: { id: true },
     });
-    if (warehouse) ids.add(warehouse.id);
-    return [...ids];
+    if (!warehouse) {
+      return { tenantIds: [requestTenantId], sharedRetailOnly: false };
+    }
+    return { tenantIds: [warehouse.id], sharedRetailOnly: true };
   }
 
   private async withAvailableQuantity(rows: Item[]): Promise<Item[]> {
@@ -79,17 +86,14 @@ export class CatalogService {
   }
 
   private catalogBaseWhere(
-    requestTenantId: string,
     tenantIds: string[],
     filters: ItemFilters,
+    sharedRetailOnly: boolean,
   ) {
     return {
       tenantId: { in: tenantIds },
       deletedAt: null,
-      OR: [
-        { tenantId: requestTenantId },
-        { availableForRetail: true },
-      ],
+      ...(sharedRetailOnly ? { availableForRetail: true } : {}),
       ...(filters.status ? { status: filters.status } : {}),
       ...(filters.category ? { category: filters.category } : {}),
       ...(filters.unit
@@ -105,7 +109,7 @@ export class CatalogService {
             },
           }
         : {}),
-      ...(filters.availableForRetail !== undefined
+      ...(filters.availableForRetail !== undefined && !sharedRetailOnly
         ? { availableForRetail: filters.availableForRetail }
         : {}),
       ...(filters.locationCode || filters.search
@@ -174,7 +178,7 @@ export class CatalogService {
     return withListPageCache(
       this.cache,
       requestTenantId,
-      'catalog',
+      'catalog:v2',
       filterKey,
       () => this.listUncached(filters, requestTenantId),
     );
@@ -184,7 +188,8 @@ export class CatalogService {
     filters: ItemFilters,
     requestTenantId: string,
   ): Promise<PaginatedList<Item>> {
-    const tenantIds = await this.catalogTenantIds(requestTenantId);
+    const { tenantIds, sharedRetailOnly } =
+      await this.catalogScope(requestTenantId);
     const limit = filters.limit ?? 10;
     const includeSummary = filters.includeSummary !== false;
 
@@ -209,8 +214,6 @@ export class CatalogService {
       },
     );
 
-    // Own-tenant items always appear. Cross-tenant (VW → VISP/VSP) stock
-    // requires availableForRetail so warehouse can gate what retail sees.
     const pagination = buildCompositeCursorQuery({
       sortField: sort.sortField,
       sortDir: sort.sortDir,
@@ -219,9 +222,9 @@ export class CatalogService {
       sortValueType: sort.sortValueType,
     });
     const baseWhere = this.catalogBaseWhere(
-      requestTenantId,
       tenantIds,
       filters,
+      sharedRetailOnly,
     );
 
     // Summary-only (limit=1 from deferred count) — skip heavy row mapping.
@@ -266,17 +269,15 @@ export class CatalogService {
 
   async getById(id: string): Promise<Item> {
     const requestTenantId = this.tenantDb.requireTenantId();
-    const tenantIds = await this.catalogTenantIds(requestTenantId);
+    const { tenantIds, sharedRetailOnly } =
+      await this.catalogScope(requestTenantId);
 
     const row = await this.prisma.item.findFirst({
       where: {
         id,
         tenantId: { in: tenantIds },
         deletedAt: null,
-        OR: [
-          { tenantId: requestTenantId },
-          { availableForRetail: true },
-        ],
+        ...(sharedRetailOnly ? { availableForRetail: true } : {}),
       },
     });
     if (!row) throw new NotFoundException('Catalog item not found');
@@ -314,12 +315,29 @@ export async function warmDefaultCatalogListPages(
         await withListPageCache(
           cache,
           tenantId,
-          'catalog',
+          'catalog:v2',
           filterKey,
           async () => {
+            const tenant = await prisma.tenant.findUnique({
+              where: { id: tenantId },
+              select: { code: true },
+            });
+            let scopeTenantId = tenantId;
+            let sharedRetailOnly = false;
+            if (tenant?.code === 'VISP' || tenant?.code === 'VSP') {
+              const warehouse = await prisma.tenant.findUnique({
+                where: { code: 'VW' },
+                select: { id: true },
+              });
+              if (warehouse) {
+                scopeTenantId = warehouse.id;
+                sharedRetailOnly = true;
+              }
+            }
             const baseWhere = {
-              tenantId,
+              tenantId: scopeTenantId,
               deletedAt: null as null,
+              ...(sharedRetailOnly ? { availableForRetail: true } : {}),
             };
             const [rows, totalCount] = await Promise.all([
               prisma.item.findMany({
