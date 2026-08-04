@@ -189,9 +189,10 @@ export function Hq6PaySaleModal({
           partyLabel: "Customer",
           partyName: sale?.customerName ?? "—",
           docLabel: "Invoice No",
-          docNo: sale?.reference ?? "—",
-          remainingDue: due,
-          currency: sale?.currency,
+          docRef: sale?.reference ?? "—",
+          locationName: sale?.locationCode ?? null,
+          totalAmount: formatHq6Currency(sale?.total ?? 0, sale?.currency),
+          paymentDue: formatHq6Currency(due, sale?.currency),
         }}
       />
       <Hq6AddPaymentFormFields
@@ -200,7 +201,7 @@ export function Hq6PaySaleModal({
         method={method}
         onMethodChange={setMethod}
         accountId={accountId}
-        onAccountIdChange={setAccountId}
+        onAccountChange={setAccountId}
         accounts={accounts}
         paidOn={paidOn}
         onPaidOnChange={setPaidOn}

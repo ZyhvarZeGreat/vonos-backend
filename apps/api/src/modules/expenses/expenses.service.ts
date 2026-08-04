@@ -246,59 +246,68 @@ export class ExpensesService {
       paymentStatus !== 'due' &&
       Number(dto.totalAmount) > 0;
 
-    const row = await this.tenantDb.db.$transaction(async (tx) => {
-      const authUserId = this.tenantDb.getAuthUserId();
-      let createdByName: string | null = null;
-      if (authUserId) {
-        const user = await tx.user.findFirst({
-          where: { id: authUserId },
-          select: { name: true },
-        });
-        createdByName = user?.name ?? null;
-      }
-      const created = await tx.expense.create({
-        data: {
-          tenantId,
-          categoryId: dto.categoryId ?? null,
-          refNo: dto.refNo ?? null,
-          subCategory: dto.subCategory ?? null,
-          locationCode: dto.locationCode ?? null,
-          expenseForCustomerId: dto.expenseForCustomerId ?? null,
-          contactCustomerId: dto.contactCustomerId ?? null,
-          expenseFor: dto.expenseFor ?? null,
-          contactName: dto.contactName ?? null,
-          totalAmount: dto.totalAmount,
-          taxAmount: dto.taxAmount ?? 0,
-          paymentStatus,
-          paymentDue:
-            paymentStatus === 'paid' ? 0 : dto.totalAmount,
-          note: dto.note ?? null,
-          accountId,
-          isRecurring: dto.isRecurring ?? false,
-          recurInterval: dto.recurInterval ?? null,
-          recurIntervalType: dto.recurIntervalType ?? null,
-          expenseDate: dto.expenseDate ? new Date(dto.expenseDate) : new Date(),
-          createdById: authUserId,
-          createdByName,
-        },
-        include: expenseInclude,
+    const authUserId = this.tenantDb.getAuthUserId();
+    let createdByName: string | null = null;
+    if (authUserId) {
+      const user = await this.tenantDb.db.user.findFirst({
+        where: { id: authUserId },
+        select: { name: true },
       });
+      createdByName = user?.name ?? null;
+    }
 
-      if (shouldDebit && accountId) {
-        await syncExpenseAccountDebit(tx, {
-          tenantId,
-          expenseId: created.id,
-          accountId,
-          amount: dto.totalAmount,
-          operationDate: created.expenseDate,
-          refNo: created.refNo,
-          note: dto.paymentNote?.trim() || dto.note || `Expense — ${created.refNo ?? created.id}`,
-          paymentMethod: dto.paymentMethod ?? null,
+    const expenseData = {
+      tenantId,
+      categoryId: dto.categoryId ?? null,
+      refNo: dto.refNo ?? null,
+      subCategory: dto.subCategory ?? null,
+      locationCode: dto.locationCode ?? null,
+      expenseForCustomerId: dto.expenseForCustomerId ?? null,
+      contactCustomerId: dto.contactCustomerId ?? null,
+      expenseFor: dto.expenseFor ?? null,
+      contactName: dto.contactName ?? null,
+      totalAmount: dto.totalAmount,
+      taxAmount: dto.taxAmount ?? 0,
+      paymentStatus,
+      paymentDue: paymentStatus === 'paid' ? 0 : dto.totalAmount,
+      note: dto.note ?? null,
+      accountId,
+      isRecurring: dto.isRecurring ?? false,
+      recurInterval: dto.recurInterval ?? null,
+      recurIntervalType: dto.recurIntervalType ?? null,
+      expenseDate: dto.expenseDate ? new Date(dto.expenseDate) : new Date(),
+      createdById: authUserId,
+      createdByName,
+    };
+
+    // Due / unpaid with no account debit: single insert, no interactive tx.
+    // Paid+debit still needs atomic expense + account transaction.
+    const row = shouldDebit
+      ? await this.tenantDb.db.$transaction(async (tx) => {
+          const created = await tx.expense.create({
+            data: expenseData,
+            include: expenseInclude,
+          });
+          await syncExpenseAccountDebit(tx, {
+            tenantId,
+            expenseId: created.id,
+            accountId: accountId!,
+            amount: dto.totalAmount,
+            operationDate: created.expenseDate,
+            refNo: created.refNo,
+            note:
+              dto.paymentNote?.trim() ||
+              dto.note ||
+              `Expense — ${created.refNo ?? created.id}`,
+            paymentMethod: dto.paymentMethod ?? null,
+          });
+          return created;
+        })
+      : await this.tenantDb.db.expense.create({
+          data: expenseData,
+          include: expenseInclude,
         });
-      }
 
-      return created;
-    });
     // Defer invoice + rollup so concurrent creates aren't serialized on extra
     // round-trips (bench: 15 writers were ~22s with awaited invoice hub).
     void this.invoiceHub

@@ -23,7 +23,7 @@ import { parseCustomerContactDetails } from '@vonos/types';
 import { Prisma } from '@prisma/client';
 import { TenantDbService } from '../../common/prisma/tenant-db.service';
 import { CacheService } from '../../common/cache/cache.service';
-import { invalidateTenantDashboardCache } from '../../common/cache/cacheInvalidation';
+import { invalidateTenantDashboardCache, invalidateTenantListCache } from '../../common/cache/cacheInvalidation';
 import {
   listPageFilterKey,
   withListPageCache,
@@ -513,7 +513,7 @@ export class CustomersService {
       entityId: row.id,
       summary: `Created customer ${row.name}`,
     });
-    void invalidateTenantDashboardCache(this.cache, tenantId);
+    void invalidateTenantListCache(this.cache, tenantId, ['customers']);
     return serializeCustomer({ ...row, sales: [] });
   }
 
@@ -577,7 +577,7 @@ export class CustomersService {
       entityId: id,
       summary: `Updated customer ${row.name}`,
     });
-    void invalidateTenantDashboardCache(this.cache, tenantId);
+    void invalidateTenantListCache(this.cache, tenantId, ['customers']);
     return serializeCustomer({ ...row, sales: [] });
   }
 
@@ -604,7 +604,7 @@ export class CustomersService {
       entityId: id,
       summary: `Deleted customer ${existing.name}`,
     });
-    void invalidateTenantDashboardCache(this.cache, tenantId);
+    void invalidateTenantListCache(this.cache, tenantId, ['customers']);
   }
 
   /** Apply a contact payment across oldest due/partial sales (HQ6 pay-contact-due). */
@@ -728,6 +728,7 @@ export class CustomersService {
     }
 
     await refreshCustomerFinancialRollups(this.tenantDb.db, id);
+    void invalidateTenantDashboardCache(this.cache, tenantId);
     const summary = await this.getSummary(id);
     await this.auditService.log({
       action: 'updated',

@@ -237,7 +237,7 @@ function prefetchTenantListSection(
       break;
     }
     case "products": {
-      const sort = { sortBy: "name", sortDir: "asc" };
+      const sort: ListSortState = { sortBy: "name", sortDir: "asc" };
       const filters = {};
       prefetchQuery(queryClient, {
         queryKey: hq6Page0QueryKey(["catalog", tenantId, "hq6-upos"], filters, sort),
@@ -257,7 +257,7 @@ function prefetchTenantListSection(
     }
     case "purchases":
     case "inbound": {
-      const sort = { sortBy: "date", sortDir: "desc" };
+      const sort: ListSortState = { sortBy: "date", sortDir: "desc" };
       const filters = { type: "inbound" as const };
       prefetchQuery(queryClient, {
         queryKey: hq6Page0QueryKey(
@@ -394,7 +394,7 @@ function prefetchTenantListSection(
       break;
     }
     case "sales": {
-      const sort = { sortBy: "date", sortDir: "desc" };
+      const sort: ListSortState = { sortBy: "date", sortDir: "desc" };
       const filters = {};
       prefetchQuery(queryClient, {
         queryKey: hq6Page0QueryKey(["sales", tenantId, "all", "hq6"], filters, sort),

@@ -8,6 +8,7 @@ import {
   type ListPage,
 } from "@/lib/api/fetchAllPages";
 import { appendListQuery, fetchJsonListPage, fetchTenantListPage } from "@/lib/api/listPageHelpers";
+import type { AccountTransaction, PaymentRecord } from "@vonos/types";
 
 const PAYMENTS_PATH = "/payments";
 

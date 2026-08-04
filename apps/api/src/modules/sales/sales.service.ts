@@ -19,7 +19,7 @@ import { isGroupStockConsumerTenant } from '@vonos/types';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { TenantDbService } from '../../common/prisma/tenant-db.service';
 import { CacheService } from '../../common/cache/cache.service';
-import { invalidateTenantDashboardCache } from '../../common/cache/cacheInvalidation';
+import { invalidateTenantDashboardCache, invalidateTenantListCache } from '../../common/cache/cacheInvalidation';
 import { refreshCustomerFinancialRollups } from '../../common/utils/customerRollups';
 import { applyDailyFinanceDelta } from '../../common/utils/dailyFinanceRollup';
 import {
@@ -128,6 +128,8 @@ export class SalesService {
 
   private refreshSaleSideEffects(options: {
     customerId?: string | null;
+    /** When true, only bust sales list caches (quotation/draft). */
+    listsOnly?: boolean;
     ledgerEntry?: {
       type: 'revenue' | 'expense';
       amount: number;
@@ -136,7 +138,11 @@ export class SalesService {
     };
   }): void {
     const tenantId = this.tenantDb.requireTenantId();
-    void invalidateTenantDashboardCache(this.cache, tenantId);
+    if (options.listsOnly) {
+      void invalidateTenantListCache(this.cache, tenantId, ['sales']);
+    } else {
+      void invalidateTenantDashboardCache(this.cache, tenantId);
+    }
     if (options.ledgerEntry) {
       void applyDailyFinanceDelta(
         this.prisma,
@@ -1258,6 +1264,80 @@ export class SalesService {
     const saleReference =
       body.reference?.trim() ||
       (jobReference ? jobReference : `SALE-${Date.now().toString(36).toUpperCase()}`);
+
+    // Provisional create (no archive): single insert, no interactive tx / stock /
+    // payments. Invoice hub runs after response. List-only cache bust so hq6/reports
+    // stay warm.
+    if (isProvisional && !replaceSaleId) {
+      const lineData = buildSaleLineRows(workingLines);
+      const total = computeSaleTotal(lineData, orderDiscount, taxAmount);
+      try {
+        const row = await this.tenantDb.db.sale.create({
+          data: {
+            tenantId,
+            reference: saleReference,
+            customerId,
+            jobId,
+            total,
+            discountAmount: orderDiscount > 0 ? orderDiscount : null,
+            taxAmount: taxAmount > 0 ? taxAmount : null,
+            notes: body.notes?.trim() || null,
+            currency,
+            status,
+            paymentStatus: 'due',
+            paymentMethod: body.paymentMethod?.trim() || null,
+            totalPaid: 0,
+            itemCount: lineData.length,
+            cleanerUserId,
+            cleanerName,
+            serviceStaffEmployeeId,
+            locationCode,
+            shippingStatus: body.shippingStatus ?? null,
+            shippingAddress: body.shippingAddress?.trim() || null,
+            trackingNumber: body.trackingNumber?.trim() || null,
+            date: saleDate,
+            lines: { create: lineData },
+            ...createdBy,
+          },
+          include: {
+            customer: true,
+            job: { select: { reference: true } },
+            lines: true,
+          },
+        });
+
+        void this.invoiceHub
+          .ensureSaleInvoice(this.tenantDb.db, row, row.lines)
+          .catch((err: unknown) => {
+            console.error('[sales] ensureSaleInvoice failed', err);
+          });
+
+        void this.auditService.log({
+          action: 'created',
+          entityType: 'sale',
+          entityId: row.id,
+          summary: `Recorded sale ${row.reference}`,
+          metadata: { total: toNumber(row.total), paymentStatus: row.paymentStatus },
+        });
+
+        this.refreshSaleSideEffects({
+          customerId: row.customerId,
+          listsOnly: true,
+        });
+
+        return this.toSaleDetail(row);
+      } catch (error) {
+        if (
+          error instanceof Prisma.PrismaClientKnownRequestError &&
+          error.code === 'P2002'
+        ) {
+          throw new BadRequestException(
+            `Sale reference ${saleReference} already exists`,
+          );
+        }
+        throw error;
+      }
+    }
 
     let row;
     const replacedFinalizedHolder: {

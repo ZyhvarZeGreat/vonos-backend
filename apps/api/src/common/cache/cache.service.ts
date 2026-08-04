@@ -56,6 +56,16 @@ export class CacheService implements OnModuleInit {
     return `cacheVer:${tenantId}`;
   }
 
+  /** Shared epoch bumped with dashboard invalidation so list keys still drop. */
+  private listEpochKey(tenantId: string): string {
+    return `listEpoch:${tenantId}`;
+  }
+
+  /** Per-list-resource version — provisional writes bust one resource only. */
+  private listVersionKey(tenantId: string, resource: string): string {
+    return `listVer:${tenantId}:${resource}`;
+  }
+
   private readL1<T>(key: string): T | null {
     const entry = this.l1.get(key);
     if (!entry) return null;
@@ -104,18 +114,69 @@ export class CacheService implements OnModuleInit {
 
   async bumpTenantVersion(tenantId: string): Promise<void> {
     const current = await this.getTenantCacheVersion(tenantId);
+    const listEpoch = await this.getListEpoch(tenantId);
     // Drop L1 entries for this tenant so bump takes effect immediately.
     for (const key of [...this.l1.keys()]) {
-      if (key.includes(tenantId) || key.startsWith(`v${current}:`)) {
+      if (
+        key.includes(tenantId) ||
+        key.startsWith(`v${current}:`) ||
+        key.startsWith(`le${listEpoch}:`)
+      ) {
         this.l1.delete(key);
       }
     }
-    await this.set(this.versionKey(tenantId), current + 1, 60 * 60 * 24 * 30);
+    await Promise.all([
+      this.set(this.versionKey(tenantId), current + 1, 60 * 60 * 24 * 30),
+      this.set(this.listEpochKey(tenantId), listEpoch + 1, 60 * 60 * 24 * 30),
+    ]);
   }
 
   async tenantScopedKey(tenantId: string, key: string): Promise<string> {
     const version = await this.getTenantCacheVersion(tenantId);
     return `v${version}:${key}`;
+  }
+
+  async getListEpoch(tenantId: string): Promise<number> {
+    const epoch = await this.get<number>(this.listEpochKey(tenantId));
+    return epoch ?? 1;
+  }
+
+  async getListCacheVersion(
+    tenantId: string,
+    resource: string,
+  ): Promise<number> {
+    const version = await this.get<number>(
+      this.listVersionKey(tenantId, resource),
+    );
+    return version ?? 1;
+  }
+
+  async bumpListVersion(tenantId: string, resource: string): Promise<void> {
+    const current = await this.getListCacheVersion(tenantId, resource);
+    const prefix = `list:${resource}:`;
+    this.clearL1Prefix(prefix);
+    for (const key of [...this.l1.keys()]) {
+      if (key.includes(prefix) || key.includes(`:${prefix}`)) {
+        this.l1.delete(key);
+      }
+    }
+    await this.set(
+      this.listVersionKey(tenantId, resource),
+      current + 1,
+      60 * 60 * 24 * 30,
+    );
+  }
+
+  async tenantScopedListKey(
+    tenantId: string,
+    resource: string,
+    key: string,
+  ): Promise<string> {
+    const [epoch, version] = await Promise.all([
+      this.getListEpoch(tenantId),
+      this.getListCacheVersion(tenantId, resource),
+    ]);
+    return `le${epoch}:listv${version}:${tenantId}:${key}`;
   }
 
   async get<T>(key: string): Promise<T | null> {

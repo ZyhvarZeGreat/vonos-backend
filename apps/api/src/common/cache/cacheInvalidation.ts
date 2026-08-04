@@ -34,3 +34,19 @@ export async function invalidateTenantDashboardCache(
     `group-overview:details:${window}`,
   );
 }
+
+/**
+ * Bust only list-page caches for the given resources (sales, customers, …).
+ * Use for provisional / metadata writes that must not cold-miss hq6-home or
+ * reports. Finance-affecting writes should still call
+ * {@link invalidateTenantDashboardCache}.
+ */
+export async function invalidateTenantListCache(
+  cache: CacheService,
+  tenantId: string,
+  resources: string[],
+): Promise<void> {
+  for (const resource of resources) {
+    await cache.bumpListVersion(tenantId, resource);
+  }
+}

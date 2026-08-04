@@ -18,9 +18,13 @@ export function listPageFilterKey(
 
 /**
  * Cache a tenant list page under `list:{resource}:{filterKey}`.
- * Keys are version-scoped so writes that bumpTenantVersion bust them.
+ * Keys use a per-resource list version so provisional writes can bust sales
+ * lists without cold-missing hq6/reports (those use the global tenant version).
  * Concurrent identical misses share one loader (single-flight) so 15 users
  * opening Sales at once hit Neon once, not 15×.
+ *
+ * Finance-affecting writes should still bump the global tenant version (which
+ * also invalidates older list keys that still embed `v{n}:`).
  */
 export async function withListPageCache<T>(
   cache: CacheService,
@@ -30,8 +34,9 @@ export async function withListPageCache<T>(
   loader: () => Promise<T>,
   ttlSeconds = LIST_PAGE_CACHE_TTL_S,
 ): Promise<T> {
-  const cacheKey = await cache.tenantScopedKey(
+  const cacheKey = await cache.tenantScopedListKey(
     tenantId,
+    resource,
     `list:${resource}:${filterKey}`,
   );
   const hit = await cache.get<T>(cacheKey);

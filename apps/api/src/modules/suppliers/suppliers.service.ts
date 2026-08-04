@@ -15,7 +15,7 @@ import type {
 } from '@vonos/types';
 import { TenantDbService } from '../../common/prisma/tenant-db.service';
 import { CacheService } from '../../common/cache/cache.service';
-import { invalidateTenantDashboardCache } from '../../common/cache/cacheInvalidation';
+import { invalidateTenantDashboardCache, invalidateTenantListCache } from '../../common/cache/cacheInvalidation';
 import { AuditService } from '../audit/audit.service';
 import {
   listPageFilterKey,
@@ -352,7 +352,7 @@ export class SuppliersService {
       entityId: row.id,
       summary: `Created supplier ${row.name}`,
     });
-    void invalidateTenantDashboardCache(this.cache, tenantId);
+    void invalidateTenantListCache(this.cache, tenantId, ['suppliers']);
     return toListRow(row);
   }
 
@@ -417,7 +417,7 @@ export class SuppliersService {
       entityId: id,
       summary: `Updated supplier ${row.name}`,
     });
-    void invalidateTenantDashboardCache(this.cache, tenantId);
+    void invalidateTenantListCache(this.cache, tenantId, ['suppliers']);
     return toListRow(row);
   }
 
@@ -522,7 +522,7 @@ export class SuppliersService {
       entityId: id,
       summary: `Deleted supplier ${existing.name}`,
     });
-    void invalidateTenantDashboardCache(this.cache, tenantId);
+    void invalidateTenantListCache(this.cache, tenantId, ['suppliers']);
   }
 
   /** Apply contact payment across oldest due/partial inbound purchases (HQ6 pay-contact-due). */
@@ -654,6 +654,7 @@ export class SuppliersService {
     }
 
     await refreshSupplierPurchaseRollups(this.tenantDb.db, id);
+    void invalidateTenantDashboardCache(this.cache, tenantId);
     const summary = await this.getSummary(id);
     await this.auditService.log({
       action: 'updated',
