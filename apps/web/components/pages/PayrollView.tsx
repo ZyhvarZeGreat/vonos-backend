@@ -11,6 +11,7 @@ import { Modal, ModalFooter, ModalHeader } from "@/components/atoms/Modal";
 import { StatusPill } from "@/components/atoms/StatusPill";
 import { EntityContextBanner } from "@/components/molecules/EntityContextBanner";
 import { Hq6ActionsMenu } from "@/components/hq6/Hq6ActionsMenu";
+import { Hq6BusyButton } from "@/components/hq6/Hq6BusyButton";
 import { Hq6Field, Hq6Modal, Hq6ModalSaveClose } from "@/components/hq6/Hq6Modal";
 import { type ColumnConfig } from "@/components/organisms/DataTable";
 import { DocumentPreviewModal } from "@/components/organisms/DocumentPreviewModal";
@@ -32,8 +33,14 @@ import {
   getPayrollsPage,
   getDesignations,
   getWorkforcePage,
+  payPayrolls,
 } from "@/lib/api/hrm";
 import { findInvoiceForPayroll } from "@/lib/api/invoices";
+import { PaymentAccountSelect } from "@/components/hq6/PaymentAccountSelect";
+import { Hq6DateTimeInput } from "@/components/hq6/Hq6DateTimeInput";
+import { HQ6_PAYMENT_METHOD_OPTIONS } from "@/lib/utils/hq6PaymentMethods";
+import { toast } from "@/stores/toastStore";
+import { formatHq6Currency } from "@/lib/utils/hq6Format";
 import { useServerListPage } from "@/lib/hooks/useServerListPage";
 import { useRouteTenant, useTenantId } from "@/lib/hooks/useRouteTenant";
 import { formatCurrency } from "@/lib/utils/formatCurrency";
@@ -42,6 +49,18 @@ import {
   nameListCursor,
   payrollListCursor,
 } from "@/lib/utils/pagination";
+
+function nowPaidOnLocal(): string {
+  const d = new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function paidOnToIso(value: string): string {
+  if (!value) return new Date().toISOString();
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? new Date().toISOString() : d.toISOString();
+}
 
 type AmountType = "fixed" | "percent";
 
@@ -315,6 +334,11 @@ export function PayrollView({
   const [monthFilter, setMonthFilter] = useState("");
   const [selectedPayroll, setSelectedPayroll] = useState<Payroll | null>(null);
   const [deductionTarget, setDeductionTarget] = useState<Payroll | null>(null);
+  const [payTargetIds, setPayTargetIds] = useState<string[] | null>(null);
+  const [payAccountId, setPayAccountId] = useState("");
+  const [payMethod, setPayMethod] = useState("cash");
+  const [payPaidOn, setPayPaidOn] = useState(nowPaidOnLocal);
+  const [payNote, setPayNote] = useState("");
   const [deductionForm, setDeductionForm] = useState({
     amount: "",
     note: "",
@@ -660,6 +684,63 @@ export function PayrollView({
     addDeductionMutation.reset();
   }
 
+  const payTargets = useMemo(() => {
+    if (!payTargetIds) return [];
+    const idSet = new Set(payTargetIds);
+    return payrollsPage.items.filter(
+      (row) => idSet.has(row.id) && row.paymentStatus !== "paid",
+    );
+  }, [payTargetIds, payrollsPage.items]);
+
+  const payTotal = useMemo(
+    () => payTargets.reduce((sum, row) => sum + (row.netPay || 0), 0),
+    [payTargets],
+  );
+
+  function openPayModal(ids: string[]) {
+    const unpaid = payrollsPage.items.filter(
+      (row) => ids.includes(row.id) && row.paymentStatus !== "paid",
+    );
+    if (unpaid.length === 0) {
+      toast.error("Select unpaid payrolls to pay");
+      return;
+    }
+    setPayTargetIds(unpaid.map((row) => row.id));
+    setPayAccountId("");
+    setPayMethod("cash");
+    setPayPaidOn(nowPaidOnLocal());
+    setPayNote("");
+  }
+
+  function closePayModal() {
+    setPayTargetIds(null);
+  }
+
+  const payMutation = useAppMutation({
+    mutationFn: () => {
+      if (!tenantId || !payTargetIds?.length) {
+        throw new Error("No payroll selected");
+      }
+      if (!payAccountId.trim()) {
+        throw new Error("Select a payment account");
+      }
+      return payPayrolls(tenantId, {
+        payrollIds: payTargetIds,
+        accountId: payAccountId,
+        method: payMethod,
+        paidOn: paidOnToIso(payPaidOn),
+        note: payNote.trim() || undefined,
+      });
+    },
+    progressLabel: "Paying payroll",
+    successMessage: (result) =>
+      `Paid ${result.paid} payroll${result.paid === 1 ? "" : "s"} — ${formatHq6Currency(result.totalDebited)} from ${result.accountName}`,
+    invalidateKeys: [["payrolls", tenantId], ["payment-accounts", tenantId]],
+    onSuccess: () => {
+      closePayModal();
+    },
+  });
+
   const payslipInvoiceQuery = useQuery({
     queryKey: ["payroll-invoice", tenantId, selectedPayroll?.id],
     enabled: Boolean(tenantId && selectedPayroll?.id),
@@ -749,6 +830,15 @@ export function PayrollView({
             label: "View payslip",
             onClick: () => setSelectedPayroll(r),
           },
+          ...(r.paymentStatus !== "paid"
+            ? [
+                {
+                  id: "pay",
+                  label: "Pay",
+                  onClick: () => openPayModal([r.id]),
+                },
+              ]
+            : []),
           {
             id: "edit",
             label: "Add deduction",
@@ -1297,19 +1387,30 @@ export function PayrollView({
               locationLabel={selectedPayroll.locationCode}
               invoice={payslipInvoice}
             />
-            <div className="no-print mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4">
+              <div className="no-print mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4">
               <p className="text-sm text-muted">
                 Gross stays fixed. Deductions reduce take-home (net) for the month.
                 Payroll list shows {currentYear} year-to-date from imported SQL.
               </p>
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                onClick={() => openDeductionModal(selectedPayroll)}
-              >
-                Add deduction
-              </Button>
+              <div className="flex flex-wrap gap-2">
+                {selectedPayroll.paymentStatus !== "paid" ? (
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={() => openPayModal([selectedPayroll.id])}
+                  >
+                    Pay
+                  </Button>
+                ) : null}
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => openDeductionModal(selectedPayroll)}
+                >
+                  Add deduction
+                </Button>
+              </div>
             </div>
           </>
         ) : null}
@@ -1394,12 +1495,13 @@ export function PayrollView({
         >
           Cancel
         </button>
-        <button
+        <Hq6BusyButton
           type="button"
           className="hq6-btn hq6-btn-blue"
+          busy={createPayrollsMutation.isPending}
+          busyLabel="Saving…"
           onClick={() => createPayrollsMutation.mutate()}
           disabled={
-            createPayrollsMutation.isPending ||
             !payrollGroupName.trim() ||
             selectedEmployeesForPayroll.length === 0 ||
             selectedEmployeesForPayroll.some((employee) => {
@@ -1408,8 +1510,8 @@ export function PayrollView({
             })
           }
         >
-          {createPayrollsMutation.isPending ? "Saving…" : "Save"}
-        </button>
+          Save
+        </Hq6BusyButton>
       </div>
     ) : activeTab === "payrolls" ? (
       <UposGradientActionButton
@@ -1446,6 +1548,14 @@ export function PayrollView({
           isLoading={payrollsPage.isLoading}
           isFetching={payrollsPage.isFetching}
           isPaging={payrollsPage.isPaging}
+          selectable
+          bulkActions={[
+            {
+              id: "pay",
+              label: "Pay selected",
+              onClick: (selectedIds) => openPayModal(selectedIds),
+            },
+          ]}
           error={listLoadError(payrollsPage.error, "Failed to load payrolls.")}
           emptyState={{ message: "No payroll records yet." }}
           stickyFirstColumn
@@ -1560,6 +1670,88 @@ export function PayrollView({
       ) : null}
 
       {addPayrollSelectModal}
+
+      <Hq6Modal
+        open={Boolean(payTargetIds)}
+        onClose={closePayModal}
+        title={
+          payTargets.length === 1
+            ? `Pay — ${payTargets[0]?.employeeName ?? "Payroll"}`
+            : `Pay ${payTargets.length} payrolls`
+        }
+        size="md"
+        footer={
+          <Hq6ModalSaveClose
+            onSave={() => {
+              if (!payAccountId.trim()) {
+                toast.error("Select a payment account");
+                return;
+              }
+              payMutation.mutate();
+            }}
+            onClose={closePayModal}
+            saving={payMutation.isPending}
+            saveLabel={
+              payTargets.length > 1
+                ? `Pay ${payTargets.length} · ${formatCurrency(payTotal, "NGN")}`
+                : `Pay ${formatCurrency(payTotal, "NGN")}`
+            }
+            saveDisabled={payTargets.length === 0 || !payAccountId.trim()}
+          />
+        }
+      >
+        <div className="space-y-3">
+          <p className="text-sm text-muted">
+            Debits the selected payment account and marks{" "}
+            {payTargets.length === 1 ? "this payroll" : "these payrolls"} paid.
+          </p>
+          {payTargets.length > 1 ? (
+            <ul className="max-h-40 overflow-auto rounded border border-border bg-surface px-3 py-2 text-sm">
+              {payTargets.map((row) => (
+                <li
+                  key={row.id}
+                  className="flex justify-between gap-2 border-b border-border/60 py-1 last:border-0"
+                >
+                  <span>{row.employeeName}</span>
+                  <span className="tabular-nums">
+                    {formatCurrency(row.netPay, "NGN")}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+          <Hq6Field label="Payment account" required>
+            <PaymentAccountSelect
+              value={payAccountId}
+              onChange={setPayAccountId}
+            />
+          </Hq6Field>
+          <Hq6Field label="Payment method">
+            <select
+              className="form-control"
+              value={payMethod}
+              onChange={(e) => setPayMethod(e.target.value)}
+            >
+              {HQ6_PAYMENT_METHOD_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </Hq6Field>
+          <Hq6Field label="Paid on">
+            <Hq6DateTimeInput value={payPaidOn} onChange={setPayPaidOn} />
+          </Hq6Field>
+          <Hq6Field label="Note">
+            <input
+              className="form-control"
+              value={payNote}
+              onChange={(e) => setPayNote(e.target.value)}
+              placeholder="Optional"
+            />
+          </Hq6Field>
+        </div>
+      </Hq6Modal>
       {deductionModals}
     </>
   );

@@ -16,6 +16,8 @@ import type {
   CreateDesignationRequest,
   CreateEmployeeRequest,
   UpdatePayrollDeductionRequest,
+  PayPayrollsRequest,
+  PayPayrollsResult,
   PayrollFilters,
 } from '@vonos/types';
 import { TenantDbService } from '../../common/prisma/tenant-db.service';
@@ -23,6 +25,7 @@ import { buildCompositeCursorQuery } from '../../common/utils/pagination';
 import { resolveListSort } from '../../common/utils/listSort';
 import { toIso, toNumber } from '../../common/utils/serializers';
 import { isServiceStaffDesignation } from '../../common/utils/serviceStaffDesignations';
+import { recordPaymentAccountTxn } from '../../common/utils/recordPaymentAccountTxn';
 import { InvoiceHubService } from '../invoices/invoice-hub.service';
 import { CacheService } from '../../common/cache/cache.service';
 import { invalidateTenantDashboardCache } from '../../common/cache/cacheInvalidation';
@@ -962,6 +965,168 @@ export class HrmService {
     await this.invoiceHub.ensurePayrollInvoice(this.tenantDb.db, row);
     void invalidateTenantDashboardCache(this.cache, tenantId);
     return this.serializePayroll(row);
+  }
+
+  async payPayrolls(dto: PayPayrollsRequest): Promise<PayPayrollsResult> {
+    const tenantId = this.tenantDb.requireTenantId();
+    const payrollIds = [
+      ...new Set(
+        (dto.payrollIds ?? [])
+          .map((id) => id?.trim())
+          .filter((id): id is string => Boolean(id)),
+      ),
+    ];
+    if (payrollIds.length === 0) {
+      throw new BadRequestException('Select at least one payroll to pay');
+    }
+    const accountId = dto.accountId?.trim();
+    if (!accountId) {
+      throw new BadRequestException('Payment account is required');
+    }
+
+    const account = await this.tenantDb.db.paymentAccount.findFirst({
+      where: { id: accountId, tenantId, deletedAt: null },
+      select: { id: true, name: true, isClosed: true },
+    });
+    if (!account) {
+      throw new BadRequestException('Payment account not found');
+    }
+    if (account.isClosed) {
+      throw new BadRequestException('Payment account is closed');
+    }
+
+    const paidOn = dto.paidOn ? new Date(dto.paidOn) : new Date();
+    if (Number.isNaN(paidOn.getTime())) {
+      throw new BadRequestException('Invalid paidOn date');
+    }
+    const method = dto.method?.trim() || 'cash';
+    const note = dto.note?.trim() || null;
+
+    const result = await this.tenantDb.db.$transaction(async (tx) => {
+      const rows = await tx.payroll.findMany({
+        where: { id: { in: payrollIds }, tenantId, deletedAt: null },
+        include: {
+          payrollGroup: true,
+          designation: { select: { name: true } },
+          employeeRecord: {
+            select: {
+              accountHolderName: true,
+              bankName: true,
+              bankBranch: true,
+              bankCode: true,
+              bankAccountNo: true,
+              taxPayerId: true,
+            },
+          },
+          invoice: { select: { id: true, reference: true, paymentStatus: true } },
+        },
+      });
+      if (rows.length === 0) {
+        throw new BadRequestException('No matching payrolls found');
+      }
+
+      let paid = 0;
+      let skipped = 0;
+      let totalDebited = 0;
+      const updated: typeof rows = [];
+
+      for (const row of rows) {
+        if (row.paymentStatus === 'paid') {
+          skipped += 1;
+          updated.push(row);
+          continue;
+        }
+
+        const netPay = toNumber(row.netPay);
+        if (netPay <= 0) {
+          skipped += 1;
+          updated.push(row);
+          continue;
+        }
+
+        let invoice = row.invoice;
+        if (!invoice) {
+          invoice = await this.invoiceHub.ensurePayrollInvoice(tx, row);
+        }
+
+        const payment = await tx.payment.create({
+          data: {
+            tenantId,
+            amount: netPay,
+            currency: 'NGN',
+            method,
+            paidOn,
+            paymentFor: 'payroll',
+            accountId: account.id,
+            invoiceId: invoice.id,
+            note:
+              note ||
+              `Payroll — ${row.employeeName} (${toIso(row.payrollMonth).slice(0, 7)})`,
+          },
+        });
+
+        await recordPaymentAccountTxn(tx, {
+          tenantId,
+          accountId: account.id,
+          type: 'debit',
+          subType: 'payroll',
+          amount: netPay,
+          operationDate: paidOn,
+          refNo: invoice.reference,
+          note: payment.note,
+          paymentMethod: method,
+          paymentId: payment.id,
+          invoiceId: invoice.id,
+        });
+
+        await tx.invoice.update({
+          where: { id: invoice.id },
+          data: { paymentStatus: 'paid' },
+        });
+
+        const next = await tx.payroll.update({
+          where: { id: row.id },
+          data: {
+            paymentStatus: 'paid',
+            status: 'paid',
+          },
+          include: {
+            payrollGroup: true,
+            designation: { select: { name: true } },
+            employeeRecord: {
+              select: {
+                accountHolderName: true,
+                bankName: true,
+                bankBranch: true,
+                bankCode: true,
+                bankAccountNo: true,
+                taxPayerId: true,
+              },
+            },
+            invoice: {
+              select: { id: true, reference: true, paymentStatus: true },
+            },
+          },
+        });
+
+        paid += 1;
+        totalDebited += netPay;
+        updated.push(next);
+      }
+
+      return { paid, skipped, totalDebited, updated };
+    });
+
+    void invalidateTenantDashboardCache(this.cache, tenantId);
+
+    return {
+      paid: result.paid,
+      skipped: result.skipped,
+      totalDebited: result.totalDebited,
+      accountId: account.id,
+      accountName: account.name,
+      payrolls: result.updated.map((row) => this.serializePayroll(row)),
+    };
   }
 
   async addPayrollDeduction(

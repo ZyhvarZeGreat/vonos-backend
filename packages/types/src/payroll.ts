@@ -112,6 +112,24 @@ export interface UpdatePayrollDeductionRequest {
   reason?: string;
 }
 
+/** Mark one or more payroll runs paid and debit a payment account. */
+export interface PayPayrollsRequest {
+  payrollIds: string[];
+  accountId: string;
+  method?: string;
+  paidOn?: string;
+  note?: string;
+}
+
+export interface PayPayrollsResult {
+  paid: number;
+  skipped: number;
+  totalDebited: number;
+  accountId: string;
+  accountName: string;
+  payrolls: Payroll[];
+}
+
 export interface CreatePayrollGroupRequest {
   name: string;
   code?: string;

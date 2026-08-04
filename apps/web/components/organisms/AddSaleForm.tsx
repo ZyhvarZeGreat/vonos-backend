@@ -19,6 +19,7 @@ import {
   type CatalogPartPick,
 } from "@/components/molecules/ProductItemSearch";
 import { Hq6AddSupplierModal } from "@/components/hq6/Hq6AddSupplierModal";
+import { Hq6BusyButton } from "@/components/hq6/Hq6BusyButton";
 import { createCustomer, getCustomerContact, getCustomersForPicker, loadMoreCustomersForPicker, customersPickerHasMore } from "@/lib/api/customers";
 import { getJob, getJobs } from "@/lib/api/jobs";
 import { createSale, getSale } from "@/lib/api/sales";
@@ -1564,10 +1565,13 @@ export function AddSaleForm({
                 Amount <span className="req">*</span>:
               </span>
               <input
-                type="number"
-                min={0}
+                type="text"
+                inputMode="decimal"
                 className="hq6-form-input"
-                value={form.paymentAmount || String(totalPayable)}
+                placeholder={
+                  totalPayable > 0 ? totalPayable.toFixed(2) : "0.00"
+                }
+                value={form.paymentAmount}
                 onChange={(e) => patchForm({ paymentAmount: e.target.value })}
               />
             </label>
@@ -1636,33 +1640,36 @@ export function AddSaleForm({
             <button
               type="button"
               className="hq6-modal-btn hq6-modal-btn-close"
+              disabled={mutation.isPending}
               onClick={onCancel}
             >
               Cancel
             </button>
           ) : null}
-          <button
-            type="button"
+          <Hq6BusyButton
             className="hq6-btn-purple"
-            disabled={lines.length === 0 || mutation.isPending}
+            busy={mutation.isPending}
+            busyLabel="Saving…"
+            disabled={lines.length === 0}
             onClick={() => {
               printAfterSaveRef.current = false;
               mutation.mutate();
             }}
           >
             {primaryLabel}
-          </button>
-          <button
-            type="button"
+          </Hq6BusyButton>
+          <Hq6BusyButton
             className="hq6-btn-green"
-            disabled={lines.length === 0 || mutation.isPending}
+            busy={mutation.isPending}
+            busyLabel="Saving…"
+            disabled={lines.length === 0}
             onClick={() => {
               printAfterSaveRef.current = true;
               mutation.mutate();
             }}
           >
             {printLabel}
-          </button>
+          </Hq6BusyButton>
         </div>
 
         <Hq6AddSupplierModal
@@ -2227,9 +2234,10 @@ export function AddSaleForm({
         <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
           <Input
             label="Amount"
-            type="number"
-            min="0"
-            value={form.paymentAmount || String(totalPayable)}
+            type="text"
+            inputMode="decimal"
+            placeholder={totalPayable > 0 ? totalPayable.toFixed(2) : "0.00"}
+            value={form.paymentAmount}
             onChange={(e) => patchForm({ paymentAmount: e.target.value })}
           />
           <Input

@@ -29,6 +29,7 @@ import type {
   UpdatePayrollDeductionRequest,
   UpdateDesignationRequest,
   UpdatePayrollGroupRequest,
+  PayPayrollsRequest,
 } from '@vonos/types';
 
 type AuthedRequest = Request & { user: AuthenticatedUser };
@@ -186,6 +187,12 @@ export class HrmController {
   @Roles('admin', 'manager', 'super_admin')
   createPayroll(@Body() dto: CreatePayrollRequest) {
     return this.service.createPayroll(dto);
+  }
+
+  @Post('payroll/pay')
+  @Roles('admin', 'manager', 'super_admin')
+  payPayrolls(@Body() dto: PayPayrollsRequest) {
+    return this.service.payPayrolls(dto);
   }
 
   @Patch('payroll/:id/deduction')

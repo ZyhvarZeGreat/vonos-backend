@@ -21,6 +21,7 @@ import {
   modalKeys,
 } from "@/lib/query/modalQueryKeys";
 import { patchEntityInQueries } from "@/lib/query/optimistic";
+import { getTenantCodeFromId } from "@/lib/registries/tenants";
 import { formatDate } from "@/lib/utils/formatDate";
 import { formatNumber } from "@/lib/utils/formatCurrency";
 import { hasPermission } from "@/lib/utils/permissions";
@@ -143,13 +144,14 @@ export function RequisitionRecordModal({
     fulfillMutation.isPending ||
     cancelMutation.isPending;
 
-  const jobHref = requisition?.jobId
-    ? mode === "incoming"
-      ? `/VA/jobs/${requisition.jobId}`
-      : tenantCode
-        ? `/${tenantCode}/jobs/${requisition.jobId}`
-        : undefined
-    : undefined;
+  const jobTenantCode =
+    (requisition?.tenantId
+      ? getTenantCodeFromId(requisition.tenantId)
+      : null) ?? tenantCode;
+  const jobHref =
+    requisition?.jobId && jobTenantCode
+      ? `/${jobTenantCode}/jobs/${requisition.jobId}`
+      : undefined;
 
   let footer: ReactNode;
   if (mode === "incoming" && requisition && canApprove) {

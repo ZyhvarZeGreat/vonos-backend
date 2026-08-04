@@ -16,6 +16,7 @@ import { ListPageShell } from "@/components/organisms/ListPageShell";
 import { RowActionsMenu } from "@/components/molecules/RowActionsMenu";
 import { useIsVaHq6 } from "@/lib/hooks/useIsVaHq6";
 import { Hq6FormShell } from "@/components/hq6/Hq6Chrome";
+import { Hq6BusyButton } from "@/components/hq6/Hq6BusyButton";
 import { PaymentAccountSelect } from "@/components/hq6/PaymentAccountSelect";
 import { getPaymentAccountsForPicker } from "@/lib/api/paymentAccounts";
 import { Hq6ExpenseCategoriesListView } from "@/components/pages/Hq6ExpenseCategoriesListView";
@@ -863,17 +864,19 @@ export function AddExpenseView() {
         </section>
 
         <div className="hq6-form-save-row">
-          <button
-            type="button"
+          <Hq6BusyButton
             className="tw-dw-btn tw-dw-btn-primary tw-dw-btn-lg tw-text-white"
-            disabled={saveMutation.isPending || !form.totalAmount}
+            busy={saveMutation.isPending}
+            busyLabel="Saving…"
+            disabled={!form.totalAmount}
             onClick={() => saveMutation.mutate()}
           >
-            {saveMutation.isPending ? "Saving…" : "Save"}
-          </button>
+            Save
+          </Hq6BusyButton>
           <button
             type="button"
             className="tw-dw-btn tw-dw-btn-lg"
+            disabled={saveMutation.isPending}
             onClick={handleCancel}
           >
             Cancel

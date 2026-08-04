@@ -29,7 +29,6 @@ import { useTenantId } from "@/lib/hooks/useRouteTenant";
 import { usePathname } from "next/navigation";
 import { useHq6Permissions } from "@/lib/hooks/useHq6Permissions";
 import { prefetchUserDetail } from "@/lib/query/prefetchListDetails";
-import { getTenantByCode } from "@/lib/registries/tenants";
 import { matchSearchRows } from "@/lib/utils/listClientSearch";
 import { toast } from "@/stores/toastStore";
 import type { User } from "@vonos/types";
@@ -115,12 +114,10 @@ export function Hq6UsersListView() {
   /** Warm create route + default-home roles so Add User isn't a cold start. */
   useEffect(() => {
     router.prefetch(createHref);
-    const homeTenantId =
-      tenantId ?? getTenantByCode("VA")?.tenantId ?? null;
-    if (!homeTenantId) return;
+    if (!tenantId) return;
     void queryClient.prefetchQuery({
-      queryKey: ["tenant-roles", homeTenantId],
-      queryFn: () => getTenantRoles(homeTenantId),
+      queryKey: ["tenant-roles", tenantId],
+      queryFn: () => getTenantRoles(tenantId),
       staleTime: 5 * 60_000,
     });
   }, [createHref, queryClient, router, tenantId]);

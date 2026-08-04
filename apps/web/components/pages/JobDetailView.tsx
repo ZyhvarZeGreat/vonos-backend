@@ -25,6 +25,7 @@ import { JobWarehouseRequestPanel } from "@/components/organisms/JobWarehouseReq
 import { JobVehiclePanel } from "@/components/organisms/JobVehiclePanel";
 import { useTenantId } from "@/lib/hooks/useRouteTenant";
 import { patchEntityInQueries } from "@/lib/query/optimistic";
+import { isJobCentricTenant } from "@/lib/utils/isHq6Tenant";
 
 const QC_ITEMS = ["Welds inspected", "Finish quality checked", "Road test completed"];
 
@@ -120,7 +121,7 @@ export interface JobDetailViewProps {
 export function JobDetailView({ job, listPath, onJobChange }: JobDetailViewProps) {
   const params = useParams<{ tenant: string }>();
   const tenantId = useTenantId();
-  const isMechanics = params.tenant === "VA";
+  const isMechanics = isJobCentricTenant(params.tenant);
 
   const stages = buildAdaptiveJobStages(job.hasQuote);
   const currentStage = coerceJobStatusForStepper(job.status, job.hasQuote);

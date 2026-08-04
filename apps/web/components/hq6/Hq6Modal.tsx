@@ -3,6 +3,7 @@
 import { useEffect, useRef, useSyncExternalStore, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { ArrowLeft, X } from "lucide-react";
+import { Hq6BusyButton } from "@/components/hq6/Hq6BusyButton";
 import { cn } from "@/lib/utils/cn";
 
 export interface Hq6ModalProps {
@@ -153,6 +154,7 @@ export function Hq6ModalSaveClose({
   closeLabel = "Close",
   saving = false,
   saveDisabled = false,
+  savingLabel = "Saving…",
 }: {
   onSave?: () => void;
   onClose: () => void;
@@ -160,22 +162,25 @@ export function Hq6ModalSaveClose({
   closeLabel?: string;
   saving?: boolean;
   saveDisabled?: boolean;
+  savingLabel?: string;
 }) {
   return (
     <>
       {onSave ? (
-        <button
-          type="button"
+        <Hq6BusyButton
           className="hq6-modal-btn hq6-modal-btn-save"
-          disabled={saving || saveDisabled}
+          busy={saving}
+          busyLabel={savingLabel}
+          disabled={saveDisabled}
           onClick={onSave}
         >
-          {saving ? "Saving…" : saveLabel}
-        </button>
+          {saveLabel}
+        </Hq6BusyButton>
       ) : null}
       <button
         type="button"
         className="hq6-modal-btn hq6-modal-btn-close"
+        disabled={saving}
         onClick={onClose}
       >
         {closeLabel}

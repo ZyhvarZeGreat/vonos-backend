@@ -165,14 +165,16 @@ export function AddExpenseModal() {
         {error ? <p className="text-sm text-red-600">{error}</p> : null}
       </div>
       <ModalFooter>
-        <Button variant="ghost" onClick={handleClose}>
+        <Button variant="ghost" onClick={handleClose} disabled={mutation.isPending}>
           Cancel
         </Button>
         <Button
           onClick={() => mutation.mutate()}
-          disabled={mutation.isPending || !tenantId}
+          isLoading={mutation.isPending}
+          loadingText="Saving…"
+          disabled={!tenantId}
         >
-          {mutation.isPending ? "Saving…" : "Add expense"}
+          Add expense
         </Button>
       </ModalFooter>
     </Modal>

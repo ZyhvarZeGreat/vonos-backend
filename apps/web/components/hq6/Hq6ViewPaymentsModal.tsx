@@ -8,6 +8,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Eye, Mail, Pencil, Plus, Printer, Trash2 } from "lucide-react";
 import { Hq6ConfirmModal } from "@/components/hq6/Hq6ConfirmModal";
+import { Hq6BusyButton } from "@/components/hq6/Hq6BusyButton";
 import { Hq6Field, Hq6Modal } from "@/components/hq6/Hq6Modal";
 import {
   deleteSalePayment,
@@ -686,17 +687,18 @@ export function Hq6ViewPaymentsModal({
         size="lg"
         footer={
           <>
-            <button
-              type="button"
+            <Hq6BusyButton
               className="hq6-modal-btn hq6-modal-btn-print"
-              disabled={saveMutation.isPending}
+              busy={saveMutation.isPending}
+              busyLabel="Updating…"
               onClick={() => saveMutation.mutate()}
             >
-              {saveMutation.isPending ? "Updating…" : "Update"}
-            </button>
+              Update
+            </Hq6BusyButton>
             <button
               type="button"
               className="hq6-modal-btn hq6-modal-btn-close"
+              disabled={saveMutation.isPending}
               onClick={() => setEditing(null)}
             >
               Close

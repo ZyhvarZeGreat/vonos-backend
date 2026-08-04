@@ -1,5 +1,6 @@
 "use client";
 
+import { Hq6BusyButton } from "@/components/hq6/Hq6BusyButton";
 import { Hq6Modal } from "@/components/hq6/Hq6Modal";
 import { cn } from "@/lib/utils/cn";
 
@@ -45,14 +46,14 @@ export function Hq6ConfirmModal({
             >
               {cancelLabel === "Close" ? "Cancel" : cancelLabel}
             </button>
-            <button
-              type="button"
+            <Hq6BusyButton
               className="hq6-modal-btn hq6-modal-btn-danger"
-              disabled={confirming}
+              busy={confirming}
+              busyLabel="Please wait…"
               onClick={onConfirm}
             >
-              {confirming ? "Please wait…" : confirmLabel === "Confirm" ? "OK" : confirmLabel}
-            </button>
+              {confirmLabel === "Confirm" ? "OK" : confirmLabel}
+            </Hq6BusyButton>
           </div>
         }
       >
@@ -90,18 +91,18 @@ export function Hq6ConfirmModal({
           >
             {cancelLabel}
           </button>
-          <button
-            type="button"
+          <Hq6BusyButton
             className={cn(
               danger
                 ? "hq6-modal-btn hq6-modal-btn-danger"
                 : "hq6-modal-btn hq6-modal-btn-save",
             )}
-            disabled={confirming}
+            busy={confirming}
+            busyLabel="Please wait…"
             onClick={onConfirm}
           >
-            {confirming ? "Please wait…" : confirmLabel}
-          </button>
+            {confirmLabel}
+          </Hq6BusyButton>
         </div>
       }
     >

@@ -22,6 +22,7 @@ import {
   MODAL_REF_STALE_MS,
   modalKeys,
 } from "@/lib/query/modalQueryKeys";
+import { dismissFirstWrite } from "@/lib/utils/dismissFirstWrite";
 import { formatHq6Currency, formatHq6DateTime } from "@/lib/utils/hq6Format";
 import { HQ6_PAYMENT_METHOD_OPTIONS } from "@/lib/utils/hq6PaymentMethods";
 import { toast } from "@/stores/toastStore";
@@ -59,7 +60,6 @@ export function Hq6PaySupplierModal({
   const [accountId, setAccountId] = useState("");
   const [note, setNote] = useState("");
   const [paidOn, setPaidOn] = useState(nowPaidOnLocal);
-  const [saving, setSaving] = useState(false);
 
   const accountsQuery = useQuery({
     queryKey: modalKeys.paymentAccounts(tenantId),
@@ -108,25 +108,23 @@ export function Hq6PaySupplierModal({
       return;
     }
     const value = Number(valid.amount);
-    setSaving(true);
-    try {
-      const result = await paySupplierDue(tenantId, supplier.id, {
-        amount: value,
-        method,
-        accountId,
-        note: note.trim() || undefined,
-        paidOn: paidOnToIso(paidOn),
-      });
-      toast.success(
+    const supplierId = supplier.id;
+    await dismissFirstWrite({
+      dismiss: onClose,
+      label: "Recording payment",
+      write: () =>
+        paySupplierDue(tenantId, supplierId, {
+          amount: value,
+          method,
+          accountId,
+          note: note.trim() || undefined,
+          paidOn: paidOnToIso(paidOn),
+        }),
+      successMessage: (result) =>
         `Applied ${formatHq6Currency(result.amountApplied, result.currency)} — remaining due ${formatHq6Currency(result.remainingDue, result.currency)}`,
-      );
-      onPaid?.();
-      onClose();
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Payment failed");
-    } finally {
-      setSaving(false);
-    }
+      errorMessage: "Payment failed",
+      onSuccess: () => onPaid?.(),
+    });
   };
 
   const displayName = `${supplier?.businessName ?? supplier?.name ?? ""} ${supplier?.contactId ?? ""}`.trim();
@@ -141,7 +139,7 @@ export function Hq6PaySupplierModal({
         <Hq6ModalSaveClose
           onSave={handleSave}
           onClose={onClose}
-          saving={saving}
+          saving={false}
           saveLabel="Save"
         />
       }

@@ -26,6 +26,7 @@ import { recordDetailPath } from "@/lib/utils/recordDetailPath";
 import { Spinner } from "@/components/atoms/Spinner";
 import { OverviewPanelsLazy } from "@/components/organisms/OverviewPanelsLazy";
 import { getTenantConfigByCode } from "@/lib/registries/tenantConfigs";
+import { isJobCentricTenant } from "@/lib/utils/isHq6Tenant";
 
 type OverviewTableRow = Record<string, string | number> & { id: string };
 
@@ -161,7 +162,7 @@ export function OverviewLiveBody({
   const periodLabel = ledgerChartSubtitle(dateRange);
   const isCafe = tenantCode === "VC";
   const isRetailCatalog = tenantCode === "VISP" || tenantCode === "VSP";
-  const isMechanics = tenantCode === "VA";
+  const isMechanics = isJobCentricTenant(tenantCode);
 
   if (error) {
     return (

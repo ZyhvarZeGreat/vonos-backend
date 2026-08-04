@@ -19,6 +19,7 @@ import {
   MODAL_REF_STALE_MS,
   modalKeys,
 } from "@/lib/query/modalQueryKeys";
+import { dismissFirstWrite } from "@/lib/utils/dismissFirstWrite";
 import { formatHq6Currency } from "@/lib/utils/hq6Format";
 import { toast } from "@/stores/toastStore";
 
@@ -54,7 +55,6 @@ export function Hq6PayPurchaseModal({
   const [accountId, setAccountId] = useState("");
   const [note, setNote] = useState("");
   const [paidOn, setPaidOn] = useState(nowPaidOnLocal);
-  const [saving, setSaving] = useState(false);
 
   const { data: accounts = [] } = useQuery({
     queryKey: modalKeys.paymentAccounts(tenantId),
@@ -85,25 +85,23 @@ export function Hq6PayPurchaseModal({
       return;
     }
     const value = Number(valid.amount);
-    setSaving(true);
-    try {
-      const result = await payStockMovement(tenantId, purchase.id, {
-        amount: value,
-        method,
-        accountId,
-        note: note.trim() || undefined,
-        paidOn: paidOnToIso(paidOn),
-      });
-      toast.success(
+    const purchaseId = purchase.id;
+    await dismissFirstWrite({
+      dismiss: onClose,
+      label: "Recording payment",
+      write: () =>
+        payStockMovement(tenantId, purchaseId, {
+          amount: value,
+          method,
+          accountId,
+          note: note.trim() || undefined,
+          paidOn: paidOnToIso(paidOn),
+        }),
+      successMessage: (result) =>
         `Applied ${formatHq6Currency(result.amountApplied, result.currency)} — remaining due ${formatHq6Currency(result.remainingDue, result.currency)}`,
-      );
-      onPaid?.();
-      onClose();
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Payment failed");
-    } finally {
-      setSaving(false);
-    }
+      errorMessage: "Payment failed",
+      onSuccess: () => onPaid?.(),
+    });
   };
 
   return (
@@ -117,7 +115,7 @@ export function Hq6PayPurchaseModal({
         <Hq6ModalSaveClose
           onSave={handleSave}
           onClose={onClose}
-          saving={saving}
+          saving={false}
           saveLabel="Save"
         />
       }

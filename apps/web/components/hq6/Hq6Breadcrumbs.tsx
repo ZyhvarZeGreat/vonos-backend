@@ -70,7 +70,10 @@ export function useHq6Breadcrumbs(options?: {
   const extras = options?.extras;
 
   return useMemo(() => {
-    const code = (tenantCode || "VA").toUpperCase();
+    const code = (tenantCode ?? "").toUpperCase();
+    if (!code) {
+      return [{ label: "Home", href: "/admin" }];
+    }
     const homeHref = `/${code}/overview`;
     const crumbs: Hq6BreadcrumbItem[] = [
       { label: "Home", href: homeHref },

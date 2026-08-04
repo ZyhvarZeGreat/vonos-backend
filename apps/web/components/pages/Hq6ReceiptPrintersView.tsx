@@ -28,7 +28,7 @@ export function Hq6ReceiptPrintersView() {
 
   const createHref = tenantCode
     ? `${tenantListPath(tenantCode, "receipt-printers")}/create`
-    : "/VA/receipt-printers/create";
+    : "#";
 
   const { data: settings, isLoading } = useQuery({
     queryKey: ["invoice-settings", tenantId],

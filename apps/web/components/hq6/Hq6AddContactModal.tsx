@@ -27,6 +27,7 @@ import {
 import {
   sanitizePersonNameInput,
 } from "@/lib/utils/formValidation";
+import { isJobCentricTenant } from "@/lib/utils/isHq6Tenant";
 import { contactFormSchema } from "@/lib/validation/schemas";
 import type {
   Customer,
@@ -249,8 +250,8 @@ export function Hq6AddContactModal({
     form.contactType === "supplier" || form.contactType === "both";
   const showMiddleName = form.contactType === "customer";
 
-  // Automotive tenants use the vehicle registration number as the Contact ID.
-  const isAutomotive = tenantCode === "VA";
+  // Job-centric tenants use the vehicle registration number as the Contact ID.
+  const isAutomotive = isJobCentricTenant(tenantCode);
   const contactIdLabel = isAutomotive
     ? "Vehicle Registration No."
     : "Contact ID";

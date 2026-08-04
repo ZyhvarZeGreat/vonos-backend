@@ -7,6 +7,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Hq6BusyButton } from "@/components/hq6/Hq6BusyButton";
 import { Hq6FormShell } from "@/components/hq6/Hq6Chrome";
 import {
   createReceiptPrinter,
@@ -23,7 +24,7 @@ export function Hq6ReceiptPrinterCreateView() {
   const queryClient = useQueryClient();
   const listHref = tenantCode
     ? tenantListPath(tenantCode, "receipt-printers")
-    : "/VA/receipt-printers";
+    : "#";
 
   const [name, setName] = useState("");
   const [connectionType, setConnectionType] = useState("network");
@@ -59,7 +60,7 @@ export function Hq6ReceiptPrinterCreateView() {
       void queryClient.invalidateQueries({
         queryKey: ["invoice-settings", tenantId],
       });
-      router.push(listHref);
+      if (listHref !== "#") router.push(listHref);
     },
   });
 
@@ -150,14 +151,15 @@ export function Hq6ReceiptPrinterCreateView() {
         )}
       </div>
       <div className="mt-6 flex flex-wrap gap-2">
-        <button
-          type="button"
+        <Hq6BusyButton
           className="hq6-btn-purple"
-          disabled={!name.trim() || createMutation.isPending}
+          busy={createMutation.isPending}
+          busyLabel="Saving…"
+          disabled={!name.trim()}
           onClick={() => createMutation.mutate()}
         >
-          {createMutation.isPending ? "Saving…" : "Save"}
-        </button>
+          Save
+        </Hq6BusyButton>
         <Link href={listHref} className="btn btn-default">
           Cancel
         </Link>

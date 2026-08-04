@@ -237,13 +237,25 @@ export class SalesService {
       },
       data: { deletedAt: new Date() },
     });
+    // Invoice uniqueness is enforced on (tenantId, reference, kind) and
+    // (tenantId, jobId, kind). Because we only soft-delete invoices
+    // (deletedAt != null still keeps the row), we must rewrite fields that
+    // participate in those unique constraints to avoid collisions when the
+    // replacement sale is created with the same reference/job.
+    const archivedInvoiceReference = `${existing.reference}__del_${opts.saleId.slice(
+      -8,
+    )}`;
     await tx.invoice.updateMany({
       where: {
         tenantId: opts.tenantId,
         saleId: opts.saleId,
         deletedAt: null,
       },
-      data: { deletedAt: new Date() },
+      data: {
+        deletedAt: new Date(),
+        reference: archivedInvoiceReference,
+        jobId: null,
+      },
     });
 
     await tx.sale.update({
@@ -2391,7 +2403,15 @@ export class SalesService {
 
       await tx.invoice.updateMany({
         where: { tenantId, saleId: id, deletedAt: null },
-        data: { deletedAt: new Date() },
+        // Prisma uniqueness is enforced on (tenantId, reference, kind) and
+        // (tenantId, jobId, kind). Soft-deleting invoices without rewriting
+        // those fields can block re-sell / re-invoice with the same
+        // reference/job.
+        data: {
+          deletedAt: new Date(),
+          reference: `${existing.reference}__del_${id.slice(-8)}`,
+          jobId: null,
+        },
       });
 
       // Free unique (tenantId, jobId) / reference so re-sell / re-invoice works.

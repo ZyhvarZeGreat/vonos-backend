@@ -11,7 +11,8 @@ function isAdminPath(pathname: string | null): boolean {
 
 /**
  * True when the current shell should use the HQ6 Ultimate POS visual theme.
- * Operating tenants always; all `/admin/*` VAG routes match VA HQ6 as well.
+ * All operating tenants (VA, VP, VW, VISP, VSP, VC, VS, VKW); `/admin/*` too.
+ * Name is historical — not VA-only.
  */
 export function useIsVaHq6(): boolean {
   const pathname = usePathname();
@@ -19,3 +20,6 @@ export function useIsVaHq6(): boolean {
   if (isAdminPath(pathname)) return true;
   return isHq6Tenant(tenantCode);
 }
+
+/** Alias — prefer this name in new code. */
+export const useIsHq6 = useIsVaHq6;

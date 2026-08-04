@@ -15,6 +15,8 @@ export type {
 export { Hq6InlineActions } from "./Hq6InlineActions";
 export type { Hq6InlineAction, Hq6InlineActionTone } from "./Hq6InlineActions";
 export { Hq6Modal, Hq6ModalSaveClose, Hq6Field } from "./Hq6Modal";
+export { Hq6BusyButton } from "./Hq6BusyButton";
+export type { Hq6BusyButtonProps } from "./Hq6BusyButton";
 export { Hq6ActionsMenu, Hq6ActionsCell } from "./Hq6ActionsMenu";
 export { Hq6ColumnVisibilityModal } from "./Hq6ColumnVisibilityModal";
 export { Hq6PrintModal } from "./Hq6PrintModal";

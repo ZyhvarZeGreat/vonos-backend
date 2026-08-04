@@ -5,8 +5,9 @@ import { useMutationBusyStore } from "@/stores/mutationBusyStore";
 import { cn } from "@/lib/utils/cn";
 
 /**
- * Thin top write bar — quiet network hint while optimistic UI already updated.
- * No fake percentage chip (that made slow Neon writes feel slower).
+ * Quiet write hint only — no loud % chip (that makes slow Neon feels slower).
+ * Optimistic UI + instant modal dismiss do the real perceived-speed work;
+ * this bar is background reassurance.
  */
 export function MutationProgressBar() {
   const pendingCount = useMutationBusyStore((s) => s.pendingCount);

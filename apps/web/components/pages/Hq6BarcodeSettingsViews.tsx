@@ -123,7 +123,7 @@ export function Hq6BarcodeSettingsListView() {
 
   const base = tenantCode
     ? tenantListPath(tenantCode, "barcode-settings")
-    : "/VA/barcode-settings";
+    : "#";
 
   const columns: ColumnConfig<BarcodeSettingRow>[] = useMemo(
     () => [
@@ -237,7 +237,7 @@ export function Hq6BarcodeSettingFormView({
   const router = useRouter();
   const listHref = tenantCode
     ? tenantListPath(tenantCode, "barcode-settings")
-    : "/VA/barcode-settings";
+    : "#";
 
   const [form, setForm] = useState(emptyForm);
   const [isDefault, setIsDefault] = useState(false);
@@ -249,7 +249,7 @@ export function Hq6BarcodeSettingFormView({
     const row = rows.find((r) => r.id === settingId);
     if (!row) {
       toast.error("Barcode setting not found");
-      router.replace(listHref);
+      if (listHref !== "#") router.replace(listHref);
       return;
     }
     setForm({
@@ -321,7 +321,7 @@ export function Hq6BarcodeSettingFormView({
       saveBarcodeSettings(tenantId, next);
       toast.success("Barcode setting saved on this device");
     }
-    router.push(listHref);
+    if (listHref !== "#") router.push(listHref);
   };
 
   if (!ready) {

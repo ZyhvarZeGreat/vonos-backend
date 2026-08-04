@@ -150,7 +150,6 @@ export function Hq6PaySaleModal({
           ]);
         }
         onPaid?.();
-        onClose();
       },
     },
   });
@@ -165,6 +164,8 @@ export function Hq6PaySaleModal({
       );
       return;
     }
+    // Instant dismiss — optimistic patch + background API (slow Neon RTT).
+    onClose();
     payMutation.mutate();
   };
 
@@ -179,7 +180,7 @@ export function Hq6PaySaleModal({
         <Hq6ModalSaveClose
           onSave={handleSave}
           onClose={onClose}
-          saving={payMutation.isPending}
+          saving={false}
           saveLabel="Save"
         />
       }

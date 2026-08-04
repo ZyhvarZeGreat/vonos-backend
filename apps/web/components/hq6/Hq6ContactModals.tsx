@@ -29,6 +29,7 @@ import {
   MODAL_REF_STALE_MS,
   modalKeys,
 } from "@/lib/query/modalQueryKeys";
+import { dismissFirstWrite } from "@/lib/utils/dismissFirstWrite";
 import { formatHq6Currency, formatHq6DateTime } from "@/lib/utils/hq6Format";
 import { HQ6_PAYMENT_METHOD_OPTIONS } from "@/lib/utils/hq6PaymentMethods";
 import {
@@ -39,6 +40,7 @@ import {
   validatePhone,
 } from "@/lib/utils/formValidation";
 import { useRouteTenant } from "@/lib/hooks/useRouteTenant";
+import { isJobCentricTenant } from "@/lib/utils/isHq6Tenant";
 import { toast } from "@/stores/toastStore";
 
 const PAYMENT_METHODS = HQ6_PAYMENT_METHOD_OPTIONS;
@@ -187,8 +189,8 @@ export function Hq6ContactEditModal({
     setCustomFields(nextCustoms);
   }, [customer, open]);
 
-  // Automotive tenants use the vehicle registration as the (required) Contact ID.
-  const isAutomotive = tenantCode === "VA";
+  // Job-centric tenants use the vehicle registration as the (required) Contact ID.
+  const isAutomotive = isJobCentricTenant(tenantCode);
   const contactIdLabel = isAutomotive
     ? "Vehicle Registration No."
     : "Contact ID";
@@ -686,7 +688,6 @@ export function Hq6PayContactModal({
   const [accountId, setAccountId] = useState("");
   const [note, setNote] = useState("");
   const [paidOn, setPaidOn] = useState(nowPaidOnLocal);
-  const [saving, setSaving] = useState(false);
 
   const { data: summary } = useQuery({
     queryKey: ["customer-summary", tenantId, customer?.id, "pay-modal"],
@@ -724,25 +725,23 @@ export function Hq6PayContactModal({
       return;
     }
     const value = Number(valid.amount);
-    setSaving(true);
-    try {
-      const result = await payCustomerDue(tenantId, customer.id, {
-        amount: value,
-        method,
-        accountId,
-        note: note.trim() || undefined,
-        paidOn: paidOnToIso(paidOn),
-      });
-      toast.success(
+    const customerId = customer.id;
+    await dismissFirstWrite({
+      dismiss: onClose,
+      label: "Recording payment",
+      write: () =>
+        payCustomerDue(tenantId, customerId, {
+          amount: value,
+          method,
+          accountId,
+          note: note.trim() || undefined,
+          paidOn: paidOnToIso(paidOn),
+        }),
+      successMessage: (result) =>
         `Applied ${formatHq6Currency(result.amountApplied, result.currency)} — remaining due ${formatHq6Currency(result.remainingDue, result.currency)}`,
-      );
-      onPaid();
-      onClose();
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Payment failed");
-    } finally {
-      setSaving(false);
-    }
+      errorMessage: "Payment failed",
+      onSuccess: () => onPaid(),
+    });
   };
 
   const displayName =
@@ -760,7 +759,7 @@ export function Hq6PayContactModal({
         <Hq6ModalSaveClose
           onSave={handleSave}
           onClose={onClose}
-          saving={saving}
+          saving={false}
           saveLabel="Save"
         />
       }

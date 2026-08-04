@@ -13,6 +13,8 @@ import type {
   CreateEmployeeRequest,
   UpdateDesignationRequest,
   UpdatePayrollGroupRequest,
+  PayPayrollsRequest,
+  PayPayrollsResult,
   LeaveTypeRow,
   LeaveRow,
   HolidayRow,
@@ -593,6 +595,20 @@ export async function addPayrollDeduction(
   );
   if (!res.ok) {
     return throwApiError(res, "Failed to add deduction");
+  }
+  return res.json();
+}
+
+export async function payPayrolls(
+  tenantId: string,
+  dto: PayPayrollsRequest,
+): Promise<PayPayrollsResult> {
+  const res = await apiFetch(withTenantQuery(`${PAYROLL_PATH}/pay`, tenantId), {
+    method: "POST",
+    body: JSON.stringify(dto),
+  });
+  if (!res.ok) {
+    return throwApiError(res, "Failed to pay payrolls");
   }
   return res.json();
 }

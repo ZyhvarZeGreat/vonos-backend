@@ -13,6 +13,7 @@ import { Button } from "@/components/atoms/Button";
 import { ClearableNumberInput } from "@/components/atoms/ClearableNumberInput";
 import { AsyncMenuSelect } from "@/components/molecules/AsyncMenuSelect";
 import { ProductItemSearch, type CatalogPartPick } from "@/components/molecules/ProductItemSearch";
+import { Hq6BusyButton } from "@/components/hq6/Hq6BusyButton";
 import { Hq6FormShell } from "@/components/hq6/Hq6Chrome";
 import {
   createStockMovement,
@@ -933,14 +934,15 @@ export function AddPurchaseView() {
             </span>
           </div>
           <div className="hq6-form-save-row">
-            <button
-              type="button"
+            <Hq6BusyButton
               className="hq6-btn-purple"
-              disabled={!canSave || mutation.isPending}
+              busy={mutation.isPending}
+              busyLabel="Saving…"
+              disabled={!canSave}
               onClick={() => mutation.mutate()}
             >
-              {mutation.isPending ? "Saving…" : "Save"}
-            </button>
+              Save
+            </Hq6BusyButton>
           </div>
           {mutation.isError ? (
             <p className="mt-2 text-center text-sm text-[#dc2626]">

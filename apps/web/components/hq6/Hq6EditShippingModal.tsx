@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Hq6BusyButton } from "@/components/hq6/Hq6BusyButton";
 import { Hq6Field, Hq6Modal } from "@/components/hq6/Hq6Modal";
 import { updateSaleShipping } from "@/lib/api/sales";
 import { toast } from "@/stores/toastStore";
@@ -75,14 +76,15 @@ export function Hq6EditShippingModal({
           >
             Close
           </button>
-          <button
-            type="button"
+          <Hq6BusyButton
             className="hq6-modal-btn hq6-modal-btn-save"
+            busy={saving}
+            busyLabel="Saving…"
+            disabled={!sale}
             onClick={() => void save()}
-            disabled={saving || !sale}
           >
-            {saving ? "Saving…" : "Save"}
-          </button>
+            Save
+          </Hq6BusyButton>
         </>
       }
     >
