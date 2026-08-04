@@ -1,13 +1,14 @@
 /**
- * Clone VA payment accounts, expense categories, product categories, and brands
- * into other operating tenants that are missing matching rows (by name).
+ * Clone VA payment accounts, expense categories, product categories, brands,
+ * product units, designations, and invoice schemes into other operating
+ * tenants that are missing matching rows (by name).
  *
- * Does NOT clone suppliers/customers (balances are tenant-specific) or
+ * Does NOT clone suppliers/customers/employees/payroll (tenant-specific) or
  * transaction history — each tenant gets local IDs for pickers/FK writes.
  *
  * Usage (from apps/api):
  *   npx ts-node --transpile-only prisma/scripts/clone-va-master-data.ts
- *   TENANT_CODE=VW npx ts-node --transpile-only prisma/scripts/clone-va-master-data.ts
+ *   TENANT_CODE=VP npx ts-node --transpile-only prisma/scripts/clone-va-master-data.ts
  *   npx ts-node --transpile-only prisma/scripts/clone-va-master-data.ts --dry-run
  */
 import { PrismaClient } from '@prisma/client';
@@ -182,6 +183,132 @@ async function cloneBrands(sourceId: string, targetId: string) {
   return { created, skipped, source: source.length };
 }
 
+async function cloneProductUnits(sourceId: string, targetId: string) {
+  const source = await prisma.productUnit.findMany({
+    where: { tenantId: sourceId, deletedAt: null },
+  });
+  const existing = await prisma.productUnit.findMany({
+    where: { tenantId: targetId, deletedAt: null },
+    select: { name: true, shortName: true },
+  });
+  const byName = new Set(existing.map((r) => nameKey(r.name)));
+  const byShort = new Set(existing.map((r) => nameKey(r.shortName)));
+
+  let created = 0;
+  let skipped = 0;
+  for (const row of source) {
+    if (byName.has(nameKey(row.name)) || byShort.has(nameKey(row.shortName))) {
+      skipped += 1;
+      continue;
+    }
+    if (!dryRun) {
+      await prisma.productUnit.create({
+        data: {
+          tenantId: targetId,
+          name: row.name,
+          shortName: row.shortName,
+          allowDecimal: row.allowDecimal,
+        },
+      });
+    }
+    byName.add(nameKey(row.name));
+    byShort.add(nameKey(row.shortName));
+    created += 1;
+  }
+  return { created, skipped, source: source.length };
+}
+
+async function cloneDesignations(sourceId: string, targetId: string) {
+  const source = await prisma.designation.findMany({
+    where: { tenantId: sourceId, deletedAt: null },
+  });
+  const existing = await prisma.designation.findMany({
+    where: { tenantId: targetId, deletedAt: null },
+    select: { name: true },
+  });
+  const byName = new Set(existing.map((r) => nameKey(r.name)));
+
+  let created = 0;
+  let skipped = 0;
+  for (const row of source) {
+    if (byName.has(nameKey(row.name))) {
+      skipped += 1;
+      continue;
+    }
+    if (!dryRun) {
+      await prisma.designation.create({
+        data: {
+          tenantId: targetId,
+          name: row.name,
+          description: row.description,
+        },
+      });
+    }
+    byName.add(nameKey(row.name));
+    created += 1;
+  }
+  return { created, skipped, source: source.length };
+}
+
+async function cloneInvoiceSchemes(
+  sourceId: string,
+  targetId: string,
+  targetCode: string,
+) {
+  const source = await prisma.invoiceScheme.findMany({
+    where: { tenantId: sourceId, deletedAt: null },
+    orderBy: { createdAt: 'asc' },
+  });
+  const existing = await prisma.invoiceScheme.findMany({
+    where: { tenantId: targetId, deletedAt: null },
+  });
+
+  let created = 0;
+  let updated = 0;
+  let skipped = 0;
+
+  // Prefer a single usable Default scheme with the target entity prefix.
+  const defaultExisting = existing.find(
+    (r) => nameKey(r.name) === 'default',
+  );
+  if (defaultExisting) {
+    if (!defaultExisting.prefix || defaultExisting.prefix === 'VA') {
+      if (!dryRun) {
+        await prisma.invoiceScheme.update({
+          where: { id: defaultExisting.id },
+          data: { prefix: targetCode, isDefault: true },
+        });
+      }
+      updated += 1;
+    } else {
+      skipped += 1;
+    }
+  } else if (source.length > 0) {
+    const template = source[0]!;
+    if (!dryRun) {
+      await prisma.invoiceScheme.create({
+        data: {
+          tenantId: targetId,
+          name: template.name || 'Default',
+          prefix: targetCode,
+          startNumber: template.startNumber,
+          invoiceCount: 0,
+          totalDigits: template.totalDigits,
+          isDefault: true,
+        },
+      });
+    }
+    created += 1;
+  }
+
+  return {
+    created,
+    updated,
+    skipped,
+    source: source.length,
+  };
+}
+
 async function main() {
   const tenants = await prisma.tenant.findMany({
     where: { code: { in: [...OPERATING] } },
@@ -208,6 +335,13 @@ async function main() {
     const expenses = await cloneExpenseCategories(source.id, target.id);
     const categories = await cloneProductCategories(source.id, target.id);
     const brands = await cloneBrands(source.id, target.id);
+    const units = await cloneProductUnits(source.id, target.id);
+    const designations = await cloneDesignations(source.id, target.id);
+    const schemes = await cloneInvoiceSchemes(
+      source.id,
+      target.id,
+      target.code,
+    );
     console.log(
       JSON.stringify({
         tenant: target.code,
@@ -215,6 +349,9 @@ async function main() {
         expenseCategories: expenses,
         productCategories: categories,
         brands,
+        productUnits: units,
+        designations,
+        invoiceSchemes: schemes,
       }),
     );
   }

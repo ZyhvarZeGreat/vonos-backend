@@ -149,6 +149,23 @@ export function Hq6PaySaleModal({
             ...prev,
           ]);
         }
+        // Do NOT invalidate / onPaid here — that refetches before the write
+        // lands and stomps Due/Partial back over the optimistic Paid badge.
+      },
+      commit: (qc, result) => {
+        if (!sale) return;
+        const nextPaid = Math.max(
+          0,
+          sale.total - Number(result.remainingDue ?? 0),
+        );
+        patchEntityInQueries(qc, ["sales"], sale.id, {
+          totalPaid: nextPaid,
+          sellDue: Math.max(0, Number(result.remainingDue ?? 0)),
+          paymentStatus:
+            result.paymentStatus ??
+            paymentStatusFromPaid(sale.total, nextPaid),
+          paymentMethod: method,
+        });
         onPaid?.();
       },
     },

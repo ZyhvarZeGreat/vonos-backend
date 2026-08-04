@@ -534,7 +534,8 @@ export async function buildJobOverview(
   from?: string,
   to?: string,
 ): Promise<OverviewDashboard> {
-  const isMechanics = tenantCode === 'VA';
+  // VA + VP share the job-centric HQ6 home shape (painting is a clone of mechanic).
+  const isMechanics = tenantCode === 'VA' || tenantCode === 'VP';
   const now = new Date();
   const soon = new Date(now);
   soon.setDate(soon.getDate() + 7);

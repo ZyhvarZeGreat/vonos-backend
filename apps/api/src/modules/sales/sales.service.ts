@@ -2663,11 +2663,14 @@ export class SalesService {
     });
 
     const remainingDue = Math.max(0, due - apply);
+    const totalPaidAfter = alreadyPaid + apply;
     return {
       id: created.id,
       amount: toNumber(created.amount),
       amountApplied: apply,
       remainingDue,
+      paymentStatus: paymentStatusFromAmounts(total, totalPaidAfter),
+      totalPaid: totalPaidAfter,
       currency: created.currency,
       method: created.method,
       paymentRefNo: created.paymentRefNo,

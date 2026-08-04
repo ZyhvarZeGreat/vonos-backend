@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Hq6BusyButton } from "@/components/hq6/Hq6BusyButton";
 import { Hq6Field, Hq6Modal } from "@/components/hq6/Hq6Modal";
 import { updateSaleShipping } from "@/lib/api/sales";
-import { toast } from "@/stores/toastStore";
+import { patchEntityInQueries } from "@/lib/query/optimistic";
+import { dismissFirstWrite } from "@/lib/utils/dismissFirstWrite";
 import {
   SHIPPING_STATUSES,
   type Sale,
@@ -24,9 +26,10 @@ export function Hq6EditShippingModal({
   onClose: () => void;
   onSaved?: () => void;
 }) {
-  const [shippingStatus, setShippingStatus] = useState<ShippingStatus>("pending");
+  const queryClient = useQueryClient();
+  const [shippingStatus, setShippingStatus] =
+    useState<ShippingStatus>("pending");
   const [shippingAddress, setShippingAddress] = useState("");
-  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (!open || !sale) return;
@@ -37,23 +40,26 @@ export function Hq6EditShippingModal({
   }, [open, sale]);
 
   const save = async () => {
-    if (!tenantId || !sale || saving) return;
-    setSaving(true);
-    try {
-      await updateSaleShipping(tenantId, sale.id, {
-        shippingStatus,
-        shippingAddress: shippingAddress.trim() || null,
-      });
-      toast.success(`Shipping updated for ${sale.reference}`);
-      onSaved?.();
-      onClose();
-    } catch (err) {
-      toast.error(
-        err instanceof Error ? err.message : "Failed to update shipping",
-      );
-    } finally {
-      setSaving(false);
-    }
+    if (!tenantId || !sale) return;
+    const nextStatus = shippingStatus;
+    const nextAddress = shippingAddress.trim() || null;
+    // Instant list badge — don't wait for Neon then invalidate.
+    patchEntityInQueries(queryClient, ["sales"], sale.id, {
+      shippingStatus: nextStatus,
+      shippingAddress: nextAddress,
+    });
+    await dismissFirstWrite({
+      dismiss: onClose,
+      label: "Updating shipping",
+      write: () =>
+        updateSaleShipping(tenantId, sale.id, {
+          shippingStatus: nextStatus,
+          shippingAddress: nextAddress,
+        }),
+      successMessage: `Shipping updated for ${sale.reference}`,
+      errorMessage: "Failed to update shipping",
+      onSuccess: () => onSaved?.(),
+    });
   };
 
   return (
@@ -61,9 +67,7 @@ export function Hq6EditShippingModal({
       open={open}
       onClose={onClose}
       title={
-        sale
-          ? `Edit Shipping — ${sale.reference}`
-          : "Edit Shipping"
+        sale ? `Edit Shipping — ${sale.reference}` : "Edit Shipping"
       }
       size="md"
       footer={
@@ -72,24 +76,21 @@ export function Hq6EditShippingModal({
             type="button"
             className="hq6-modal-btn hq6-modal-btn-close"
             onClick={onClose}
-            disabled={saving}
           >
             Close
           </button>
           <Hq6BusyButton
             className="hq6-modal-btn hq6-modal-btn-save"
-            busy={saving}
-            busyLabel="Saving…"
-            disabled={!sale}
             onClick={() => void save()}
+            busy={false}
           >
-            Save
+            Update
           </Hq6BusyButton>
         </>
       }
     >
       <div className="space-y-3">
-        <Hq6Field label="Shipping Status" required>
+        <Hq6Field label="Shipping Status">
           <select
             className="hq6-modal-input"
             value={shippingStatus}
@@ -97,20 +98,18 @@ export function Hq6EditShippingModal({
               setShippingStatus(e.target.value as ShippingStatus)
             }
           >
-            {SHIPPING_STATUSES.map((status) => (
-              <option key={status} value={status}>
-                {status.charAt(0).toUpperCase() + status.slice(1)}
+            {SHIPPING_STATUSES.map((s) => (
+              <option key={s} value={s}>
+                {s.charAt(0).toUpperCase() + s.slice(1)}
               </option>
             ))}
           </select>
         </Hq6Field>
         <Hq6Field label="Shipping Address">
           <textarea
-            className="hq6-modal-input"
-            rows={3}
+            className="hq6-modal-input min-h-[88px]"
             value={shippingAddress}
             onChange={(e) => setShippingAddress(e.target.value)}
-            placeholder="Delivery address"
           />
         </Hq6Field>
       </div>

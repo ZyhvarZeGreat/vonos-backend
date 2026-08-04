@@ -304,17 +304,27 @@ export function Hq6ViewPaymentsModal({
         );
         qc.setQueryData(paymentsQueryKey, nextRows);
 
+        const paid = nextRows.reduce((sum, row) => sum + row.amount, 0);
+        const prevPaid = prevRows.reduce((sum, row) => sum + row.amount, 0);
+        const docTotal =
+          context?.remainingDue != null
+            ? prevPaid + context.remainingDue
+            : paid;
+        const due = Math.max(0, docTotal - paid);
+        const paymentStatus = paymentStatusFromPaid(docTotal, paid);
+
         if (kind === "sale" && recordId) {
-          const paid = nextRows.reduce((sum, row) => sum + row.amount, 0);
-          const prevPaid = prevRows.reduce((sum, row) => sum + row.amount, 0);
-          const saleTotal =
-            context?.remainingDue != null
-              ? prevPaid + context.remainingDue
-              : paid;
           patchEntityInQueries(qc, ["sales"], recordId, {
             totalPaid: paid,
-            sellDue: Math.max(0, saleTotal - paid),
-            paymentStatus: paymentStatusFromPaid(saleTotal, paid),
+            sellDue: due,
+            paymentStatus,
+          });
+        }
+        if (kind === "purchase" && recordId) {
+          patchEntityInQueries(qc, ["stock-movements"], recordId, {
+            totalPaid: paid,
+            paymentDue: due,
+            paymentStatus,
           });
         }
         setEditing(null);
@@ -348,17 +358,27 @@ export function Hq6ViewPaymentsModal({
           qc.getQueryData<SalePaymentRow[]>(paymentsQueryKey) ?? payments;
         const nextRows = prevRows.filter((row) => row.id !== paymentId);
         qc.setQueryData(paymentsQueryKey, nextRows);
+        const paid = nextRows.reduce((sum, row) => sum + row.amount, 0);
+        const prevPaid = prevRows.reduce((sum, row) => sum + row.amount, 0);
+        const docTotal =
+          context?.remainingDue != null
+            ? prevPaid + context.remainingDue
+            : paid;
+        const due = Math.max(0, docTotal - paid);
+        const paymentStatus = paymentStatusFromPaid(docTotal, paid);
+
         if (kind === "sale" && recordId) {
-          const paid = nextRows.reduce((sum, row) => sum + row.amount, 0);
-          const prevPaid = prevRows.reduce((sum, row) => sum + row.amount, 0);
-          const saleTotal =
-            context?.remainingDue != null
-              ? prevPaid + context.remainingDue
-              : paid;
           patchEntityInQueries(qc, ["sales"], recordId, {
             totalPaid: paid,
-            sellDue: Math.max(0, saleTotal - paid),
-            paymentStatus: paymentStatusFromPaid(saleTotal, paid),
+            sellDue: due,
+            paymentStatus,
+          });
+        }
+        if (kind === "purchase" && recordId) {
+          patchEntityInQueries(qc, ["stock-movements"], recordId, {
+            totalPaid: paid,
+            paymentDue: due,
+            paymentStatus,
           });
         }
         setDeleting(null);

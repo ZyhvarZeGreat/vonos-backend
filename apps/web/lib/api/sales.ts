@@ -260,7 +260,14 @@ export async function addSalePayment(
     accountId: string;
     paymentRefNo?: string;
   },
-): Promise<SalePaymentRow & { amountApplied: number; remainingDue: number }> {
+): Promise<
+  SalePaymentRow & {
+    amountApplied: number;
+    remainingDue: number;
+    paymentStatus?: "paid" | "partial" | "due" | "overdue";
+    totalPaid?: number;
+  }
+> {
   const response = await apiFetch(
     withTenantQuery(`/sales/${saleId}/payments`, tenantId),
     {

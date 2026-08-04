@@ -5,7 +5,7 @@ import { Hq6DateTimeInput } from "@/components/hq6/Hq6DateTimeInput";
 import { paymentAmountSchema } from "@/lib/validation/schemas";
 import { parseForm } from "@/lib/validation/parseForm";
 import { useEffect, useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Hq6Field,
   Hq6Modal,
@@ -22,6 +22,7 @@ import {
   MODAL_REF_STALE_MS,
   modalKeys,
 } from "@/lib/query/modalQueryKeys";
+import { patchEntityInQueries } from "@/lib/query/optimistic";
 import { dismissFirstWrite } from "@/lib/utils/dismissFirstWrite";
 import { formatHq6Currency, formatHq6DateTime } from "@/lib/utils/hq6Format";
 import { HQ6_PAYMENT_METHOD_OPTIONS } from "@/lib/utils/hq6PaymentMethods";
@@ -55,6 +56,7 @@ export function Hq6PaySupplierModal({
   onClose: () => void;
   onPaid?: () => void;
 }) {
+  const queryClient = useQueryClient();
   const [amount, setAmount] = useState("");
   const [method, setMethod] = useState("cash");
   const [accountId, setAccountId] = useState("");
@@ -109,6 +111,13 @@ export function Hq6PaySupplierModal({
     }
     const value = Number(valid.amount);
     const supplierId = supplier.id;
+    const apply = Math.min(value, totals.totalDue > 0 ? totals.totalDue : value);
+    const nextPaid = (totals.totalPaid ?? 0) + apply;
+    const remaining = Math.max(0, totals.totalDue - apply);
+    patchEntityInQueries(queryClient, ["suppliers"], supplierId, {
+      totalPurchasePaid: nextPaid,
+      totalPurchaseDue: remaining,
+    });
     await dismissFirstWrite({
       dismiss: onClose,
       label: "Recording payment",
@@ -123,7 +132,16 @@ export function Hq6PaySupplierModal({
       successMessage: (result) =>
         `Applied ${formatHq6Currency(result.amountApplied, result.currency)} — remaining due ${formatHq6Currency(result.remainingDue, result.currency)}`,
       errorMessage: "Payment failed",
-      onSuccess: () => onPaid?.(),
+      onSuccess: (result) => {
+        patchEntityInQueries(queryClient, ["suppliers"], supplierId, {
+          totalPurchasePaid: Math.max(
+            0,
+            (totals.totalAmount ?? 0) - Number(result.remainingDue ?? 0),
+          ),
+          totalPurchaseDue: Math.max(0, Number(result.remainingDue ?? 0)),
+        });
+        onPaid?.();
+      },
     });
   };
 

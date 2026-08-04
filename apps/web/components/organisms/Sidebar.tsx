@@ -465,8 +465,12 @@ export function Sidebar({
           );
         })}
 
-        {/* 2FA promo card — not on VA HQ6 sidebar */}
-        {showPromo && !effectiveCollapsed && !promoDismissed && tenantCode !== "VA" ? (
+        {/* 2FA promo card — not on job-centric HQ6 sidebars (VA / VP) */}
+        {showPromo &&
+        !effectiveCollapsed &&
+        !promoDismissed &&
+        tenantCode !== "VA" &&
+        tenantCode !== "VP" ? (
           <div className="relative mx-2 mt-auto rounded-xl border border-border bg-card p-4 shadow-sm">
             <button
               type="button"

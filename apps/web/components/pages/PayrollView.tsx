@@ -36,6 +36,7 @@ import {
   payPayrolls,
 } from "@/lib/api/hrm";
 import { findInvoiceForPayroll } from "@/lib/api/invoices";
+import { mapQueriesByPrefix } from "@/lib/query/optimistic";
 import { PaymentAccountSelect } from "@/components/hq6/PaymentAccountSelect";
 import { Hq6DateTimeInput } from "@/components/hq6/Hq6DateTimeInput";
 import { HQ6_PAYMENT_METHOD_OPTIONS } from "@/lib/utils/hq6PaymentMethods";
@@ -735,7 +736,21 @@ export function PayrollView({
     progressLabel: "Paying payroll",
     successMessage: (result) =>
       `Paid ${result.paid} payroll${result.paid === 1 ? "" : "s"} — ${formatHq6Currency(result.totalDebited)} from ${result.accountName}`,
-    invalidateKeys: [["payrolls", tenantId], ["payment-accounts", tenantId]],
+    optimistic: {
+      keys: [["payrolls", tenantId], ["payment-accounts", tenantId]],
+      update: (qc) => {
+        const ids = new Set(payTargetIds ?? []);
+        if (ids.size === 0) return;
+        mapQueriesByPrefix<{ id: string; paymentStatus?: string }>(
+          qc,
+          ["payrolls", tenantId],
+          (items) =>
+            items.map((row) =>
+              ids.has(row.id) ? { ...row, paymentStatus: "paid" } : row,
+            ),
+        );
+      },
+    },
     onSuccess: () => {
       closePayModal();
     },

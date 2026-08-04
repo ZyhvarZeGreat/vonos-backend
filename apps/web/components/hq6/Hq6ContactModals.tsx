@@ -5,7 +5,7 @@ import { Hq6DateTimeInput } from "@/components/hq6/Hq6DateTimeInput";
 import { paymentAmountSchema } from "@/lib/validation/schemas";
 import { parseForm } from "@/lib/validation/parseForm";
 import { useEffect, useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Customer, CustomerContactDetails } from "@vonos/types";
 import {
   CONTACT_CUSTOM_FIELD_KEYS,
@@ -30,6 +30,7 @@ import {
   modalKeys,
 } from "@/lib/query/modalQueryKeys";
 import { dismissFirstWrite } from "@/lib/utils/dismissFirstWrite";
+import { patchEntityInQueries } from "@/lib/query/optimistic";
 import { formatHq6Currency, formatHq6DateTime } from "@/lib/utils/hq6Format";
 import { HQ6_PAYMENT_METHOD_OPTIONS } from "@/lib/utils/hq6PaymentMethods";
 import {
@@ -683,6 +684,7 @@ export function Hq6PayContactModal({
   onPaid: () => void;
   contactLabel?: string;
 }) {
+  const queryClient = useQueryClient();
   const [amount, setAmount] = useState("");
   const [method, setMethod] = useState("cash");
   const [accountId, setAccountId] = useState("");
@@ -726,6 +728,16 @@ export function Hq6PayContactModal({
     }
     const value = Number(valid.amount);
     const customerId = customer.id;
+    const apply = Math.min(
+      value,
+      totals.totalDue > 0 ? totals.totalDue : value,
+    );
+    const nextPaid = (totals.totalPaid ?? 0) + apply;
+    const remaining = Math.max(0, totals.totalDue - apply);
+    patchEntityInQueries(queryClient, ["customers"], customerId, {
+      totalSellPaid: nextPaid,
+      totalSellDue: remaining,
+    });
     await dismissFirstWrite({
       dismiss: onClose,
       label: "Recording payment",
@@ -740,7 +752,16 @@ export function Hq6PayContactModal({
       successMessage: (result) =>
         `Applied ${formatHq6Currency(result.amountApplied, result.currency)} — remaining due ${formatHq6Currency(result.remainingDue, result.currency)}`,
       errorMessage: "Payment failed",
-      onSuccess: () => onPaid(),
+      onSuccess: (result) => {
+        patchEntityInQueries(queryClient, ["customers"], customerId, {
+          totalSellPaid: Math.max(
+            0,
+            (totals.totalAmount ?? 0) - Number(result.remainingDue ?? 0),
+          ),
+          totalSellDue: Math.max(0, Number(result.remainingDue ?? 0)),
+        });
+        onPaid();
+      },
     });
   };
 

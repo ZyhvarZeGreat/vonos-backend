@@ -3,7 +3,7 @@
 import { paymentAmountSchema } from "@/lib/validation/schemas";
 import { parseForm } from "@/lib/validation/parseForm";
 import { useEffect, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Hq6Modal,
   Hq6ModalSaveClose,
@@ -19,6 +19,7 @@ import {
   MODAL_REF_STALE_MS,
   modalKeys,
 } from "@/lib/query/modalQueryKeys";
+import { patchEntityInQueries } from "@/lib/query/optimistic";
 import { dismissFirstWrite } from "@/lib/utils/dismissFirstWrite";
 import { formatHq6Currency } from "@/lib/utils/hq6Format";
 import { toast } from "@/stores/toastStore";
@@ -35,6 +36,12 @@ function paidOnToIso(value: string): string {
   return Number.isNaN(d.getTime()) ? new Date().toISOString() : d.toISOString();
 }
 
+function paymentStatusFromPaid(total: number, paid: number): string {
+  if (paid <= 0) return "due";
+  if (paid + 0.0001 >= total) return "paid";
+  return "partial";
+}
+
 /** HQ6 purchases row “Add payment” modal (UPOS layout). */
 export function Hq6PayPurchaseModal({
   open,
@@ -49,6 +56,7 @@ export function Hq6PayPurchaseModal({
   onClose: () => void;
   onPaid?: () => void;
 }) {
+  const queryClient = useQueryClient();
   const due = purchase?.paymentDue ?? 0;
   const [amount, setAmount] = useState("");
   const [method, setMethod] = useState("cash");
@@ -86,6 +94,16 @@ export function Hq6PayPurchaseModal({
     }
     const value = Number(valid.amount);
     const purchaseId = purchase.id;
+    const apply = Math.min(value, due > 0 ? due : value);
+    const total = purchase.grandTotal ?? due + (purchase.totalPaid ?? 0);
+    const nextPaid = (purchase.totalPaid ?? 0) + apply;
+    const remaining = Math.max(0, total - nextPaid);
+    // Instant list badge update (due → partial/paid) before the API returns.
+    patchEntityInQueries(queryClient, ["stock-movements"], purchaseId, {
+      totalPaid: nextPaid,
+      paymentDue: remaining,
+      paymentStatus: paymentStatusFromPaid(total, nextPaid),
+    });
     await dismissFirstWrite({
       dismiss: onClose,
       label: "Recording payment",
@@ -100,7 +118,20 @@ export function Hq6PayPurchaseModal({
       successMessage: (result) =>
         `Applied ${formatHq6Currency(result.amountApplied, result.currency)} — remaining due ${formatHq6Currency(result.remainingDue, result.currency)}`,
       errorMessage: "Payment failed",
-      onSuccess: () => onPaid?.(),
+      onSuccess: (result) => {
+        const paidAfter = Math.max(
+          0,
+          total - Number(result.remainingDue ?? remaining),
+        );
+        patchEntityInQueries(queryClient, ["stock-movements"], purchaseId, {
+          totalPaid: paidAfter,
+          paymentDue: Math.max(0, Number(result.remainingDue ?? 0)),
+          paymentStatus:
+            result.paymentStatus ??
+            paymentStatusFromPaid(total, paidAfter),
+        });
+        onPaid?.();
+      },
     });
   };
 
