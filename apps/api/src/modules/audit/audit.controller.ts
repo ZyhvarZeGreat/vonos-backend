@@ -1,8 +1,14 @@
-import { Controller, Get, Query } from '@nestjs/common';
+import { Controller, Get, Query, UseGuards } from '@nestjs/common';
 import type { AuditLogEntry } from '@vonos/types';
+import {
+  JwtAuthGuard,
+  RolesGuard,
+  TenantGuard,
+} from '../../common/guards/auth.guards';
 import { AuditService } from './audit.service';
 
 @Controller('audit')
+@UseGuards(JwtAuthGuard, TenantGuard, RolesGuard)
 export class AuditController {
   constructor(private readonly auditService: AuditService) {}
 
