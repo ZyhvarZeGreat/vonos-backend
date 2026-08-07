@@ -4,7 +4,7 @@
  * Discount, Moniepoint, Providus, Fidelity, etc.) remain selectable.
  */
 const JUNK_PAYMENT_ACCOUNT_NAME_RE =
-  /^(assets?|liabilit(y|ies)|equity|income|expense|address\s+to\s+new\s+bill|accounts?\s+payable|accounts?\s+receivable)\b/i;
+  /^(assets?|liabilit(y|ies)|equity|income|expense|address\s+to\s+new\s+bill|accounts?\s+payable|accounts?\s+receivable|cash\s+express\s+payment|cash\s+payment\s+received)\b/i;
 
 /** True when this row should appear in sale/purchase/expense payment pickers. */
 export function isSelectablePaymentAccount(account: {

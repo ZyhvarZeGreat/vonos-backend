@@ -28,6 +28,7 @@ export class PaymentsController {
     @Query('search') search?: string,
     @Query('cursor') cursor?: string,
     @Query('limit') limit?: string,
+    @Query('includeSummary') includeSummary?: string,
   ) {
     return this.service.listPayments({
       accountId,
@@ -40,6 +41,12 @@ export class PaymentsController {
       search,
       cursor,
       limit: limit ? Number(limit) : undefined,
+      includeSummary:
+        includeSummary === '0' || includeSummary === 'false'
+          ? false
+          : includeSummary === '1' || includeSummary === 'true'
+            ? true
+            : undefined,
     });
   }
 

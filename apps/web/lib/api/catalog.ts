@@ -105,3 +105,18 @@ export async function getCatalogItem(id: string): Promise<Item> {
   if (!response.ok) throw new Error("Failed to fetch catalog item");
   return response.json();
 }
+
+/**
+ * Edit/duplicate form loader. Prefers `/catalog/:id` (own-tenant catalog),
+ * then `/items/:id` so local migration rows and transient catalog misses still
+ * open the form instead of flashing "Could not load".
+ */
+export async function getProductForForm(id: string): Promise<Item> {
+  const catalogRes = await apiFetch(`/catalog/${id}`);
+  if (catalogRes.ok) return catalogRes.json();
+
+  const itemRes = await apiFetch(`/items/${id}`);
+  if (itemRes.ok) return itemRes.json();
+
+  throw new Error("Failed to fetch product for form");
+}

@@ -1,9 +1,9 @@
 import type { BusinessLocation } from "./tenantConfig";
 
 /**
- * Stock-holding business locations for the product catalog.
- * Products live at VW / VISP / VSP (any one, or several, based on stock).
- * VA / VP only receive stock via moves — they are not product home locations.
+ * Stock-holding business locations (cross-entity moves / group stock views).
+ * Each of VA / VP / VW / VISP / VSP keeps products in its own tenant catalog;
+ * these codes are still used when stock is moved between stock homes.
  */
 export const PRODUCT_STOCK_LOCATION_CODES = ["VW", "VISP", "VSP"] as const;
 
@@ -11,19 +11,38 @@ export type ProductStockLocationCode =
   (typeof PRODUCT_STOCK_LOCATION_CODES)[number];
 
 /**
- * Job/service tenants that consume group stock (VW/VISP/VSP) or purchase —
- * they do not maintain their own sellable product catalog.
+ * Job/service tenants with a local product price catalog (no stock).
+ * Parts stock lives at VW / VISP / VSP; VA / VP bill from their own catalog.
  */
 export const GROUP_STOCK_CONSUMER_CODES = ["VA", "VP"] as const;
 
 export type GroupStockConsumerCode =
   (typeof GROUP_STOCK_CONSUMER_CODES)[number];
 
+/** Tenants that own a product catalog scoped to that entity only. */
+export const PRODUCT_OWN_SCOPE_CODES = [
+  "VA",
+  "VP",
+  "VW",
+  "VISP",
+  "VSP",
+] as const;
+
+export type ProductOwnScopeCode = (typeof PRODUCT_OWN_SCOPE_CODES)[number];
+
 export const PRODUCT_STOCK_BUSINESS_LOCATIONS: BusinessLocation[] = [
   { code: "VW", name: "Vonos Warehouse" },
   { code: "VISP", name: "Vonos Institute Spare Parts" },
   { code: "VSP", name: "Vonos SP Marketplace" },
 ];
+
+const PRODUCT_HOME_BY_CODE: Record<ProductOwnScopeCode, BusinessLocation> = {
+  VA: { code: "VA", name: "Vonos Mechanic" },
+  VP: { code: "VP", name: "Vonos Painting" },
+  VW: { code: "VW", name: "Vonos Warehouse" },
+  VISP: { code: "VISP", name: "Vonos Institute Spare Parts" },
+  VSP: { code: "VSP", name: "Vonos SP Marketplace" },
+};
 
 export function isProductStockLocationCode(
   code: string | null | undefined,
@@ -37,7 +56,26 @@ export function isProductStockTenant(code: string | null | undefined): boolean {
   return isProductStockLocationCode(code);
 }
 
-/** VA / VP — source parts from VW/VISP/VSP or purchases, not a local catalog. */
+export function isProductOwnScopeTenant(
+  code: string | null | undefined,
+): code is ProductOwnScopeCode {
+  if (!code?.trim()) return false;
+  const upper = code.trim().toUpperCase();
+  return (PRODUCT_OWN_SCOPE_CODES as readonly string[]).includes(upper);
+}
+
+/**
+ * Product form / list location for this tenant — own home only
+ * (VA→VA, VISP→VISP, …). Cross-entity moves still use PRODUCT_STOCK_*.
+ */
+export function productHomeLocationsForTenant(
+  code: string | null | undefined,
+): BusinessLocation[] {
+  if (!isProductOwnScopeTenant(code)) return [];
+  return [PRODUCT_HOME_BY_CODE[code.trim().toUpperCase() as ProductOwnScopeCode]];
+}
+
+/** VA / VP — source parts from VW/VISP/VSP or purchases, not a local stock warehouse. */
 export function isGroupStockConsumerTenant(
   code: string | null | undefined,
 ): boolean {
@@ -48,10 +86,10 @@ export function isGroupStockConsumerTenant(
 
 /** Legacy WordPress `business_locations` — branch / POS sites per entity. */
 export const BUSINESS_LOCATION_PRESETS: Record<string, BusinessLocation[]> = {
-  /** Shared product stock locations — not VA/VP. */
-  VW: [...PRODUCT_STOCK_BUSINESS_LOCATIONS],
-  VISP: [...PRODUCT_STOCK_BUSINESS_LOCATIONS],
-  VSP: [...PRODUCT_STOCK_BUSINESS_LOCATIONS],
+  /** Own-scope product + sale locations (not shared VW∪VISP∪VSP). */
+  VW: [PRODUCT_HOME_BY_CODE.VW],
+  VISP: [PRODUCT_HOME_BY_CODE.VISP],
+  VSP: [PRODUCT_HOME_BY_CODE.VSP],
   VC: [{ code: "BL0001", name: "Vonos Cafe" }],
   VM: [
     { code: "BL0001", name: "VONOS AUTOS WAREHOUSE" },
@@ -67,9 +105,9 @@ export const BUSINESS_LOCATION_PRESETS: Record<string, BusinessLocation[]> = {
   ],
   VS: [{ code: "BL0003", name: "Vonos saloon" }],
   /** Mechanic own branch only — sister entities are not sale/expense locations. */
-  VA: [{ code: "VA", name: "Vonos Mechanic" }],
+  VA: [PRODUCT_HOME_BY_CODE.VA],
   /** Painting own branch only. */
-  VP: [{ code: "VP", name: "Vonos Painting" }],
+  VP: [PRODUCT_HOME_BY_CODE.VP],
   /** Group / payroll primary locations — VISP + All. */
   VAG: [
     { code: "ALL", name: "All Locations" },

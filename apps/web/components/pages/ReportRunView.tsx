@@ -67,8 +67,35 @@ export function ReportRunView({ slug }: ReportRunViewProps) {
 
   const [expiryEdit, setExpiryEdit] = useState<ExpiryEditPayload | null>(null);
   const [fixStock, setFixStock] = useState<FixStockPayload | null>(null);
-  const [filters, setFilters] = useState<ReportRunOptions>(() => emptyReportFilters());
-  const debouncedFilters = useDebouncedValue(filters, 400);
+  const isProfitLoss = entry?.id === "profit-loss";
+  const isPaginated = Boolean(entry && isPaginatedTableReport(entry.id));
+  const tableUi = entry ? REPORT_TABLE_UI[entry.id] : undefined;
+  const hasFilters = Boolean(tableUi && tableUi.filters.length > 0);
+
+  const [draftFilters, setDraftFilters] = useState<ReportRunOptions>(() =>
+    emptyReportFilters(),
+  );
+  const [appliedFilters, setAppliedFilters] = useState<ReportRunOptions>(() =>
+    emptyReportFilters(),
+  );
+  /** Live search stays snappy; select filters batch via Apply on paginated reports. */
+  const filters = isPaginated
+    ? { ...appliedFilters, search: draftFilters.search }
+    : draftFilters;
+  const debouncedSearch = useDebouncedValue(filters.search ?? "", 400);
+  const debouncedFilters = useMemo(
+    () => ({ ...filters, search: debouncedSearch }),
+    [debouncedSearch, filters],
+  );
+  const filtersDirty = useMemo(() => {
+    if (!isPaginated) return false;
+    const draftSansSearch = { ...draftFilters, search: "" };
+    const appliedSansSearch = { ...appliedFilters, search: "" };
+    return (
+      JSON.stringify(compactReportFilters(draftSansSearch)) !==
+      JSON.stringify(compactReportFilters(appliedSansSearch))
+    );
+  }, [appliedFilters, draftFilters, isPaginated]);
 
   const {
     openReportRecord,
@@ -76,10 +103,6 @@ export function ReportRunView({ slug }: ReportRunViewProps) {
     modals: recordModals,
   } = useReportRecordModals();
 
-  const isProfitLoss = entry?.id === "profit-loss";
-  const isPaginated = Boolean(entry && isPaginatedTableReport(entry.id));
-  const tableUi = entry ? REPORT_TABLE_UI[entry.id] : undefined;
-  const hasFilters = Boolean(tableUi && tableUi.filters.length > 0);
   const reportStaleMs = 5 * 60_000;
   const periodFrom = bounds?.from ?? "all";
   const periodTo = bounds?.to ?? "all";
@@ -315,7 +338,7 @@ export function ReportRunView({ slug }: ReportRunViewProps) {
                 label: view.label,
                 active: activeView === view.id,
                 onClick: () =>
-                  setFilters((prev) => ({ ...prev, view: view.id })),
+                  setDraftFilters((prev) => ({ ...prev, view: view.id })),
               }))}
             >
               <div className="tab-pane active" />
@@ -336,7 +359,7 @@ export function ReportRunView({ slug }: ReportRunViewProps) {
                 id="profit_loss_location_filter"
                 value={filters.locationCode ?? ""}
                 onChange={(e) =>
-                  setFilters((prev) => ({
+                  setDraftFilters((prev) => ({
                     ...prev,
                     locationCode: e.target.value,
                   }))
@@ -372,9 +395,9 @@ export function ReportRunView({ slug }: ReportRunViewProps) {
       {isHq6 && !isProfitLoss ? (
         <Hq6ReportFiltersPanel
           fields={tableUi?.filters ?? []}
-          values={filters}
+          values={draftFilters}
           optionSets={optionSets}
-          onChange={(patch) => setFilters((prev) => ({ ...prev, ...patch }))}
+          onChange={(patch) => setDraftFilters((prev) => ({ ...prev, ...patch }))}
           dateFrom={bounds?.from?.slice(0, 10) ?? ""}
           dateTo={bounds?.to?.slice(0, 10) ?? ""}
           onDateFromChange={(from) => {
@@ -390,15 +413,45 @@ export function ReportRunView({ slug }: ReportRunViewProps) {
             });
           }}
           defaultOpen
+          onApply={
+            isPaginated
+              ? () => setAppliedFilters({ ...draftFilters })
+              : undefined
+          }
+          onClear={
+            isPaginated
+              ? () => {
+                  const empty = emptyReportFilters();
+                  setDraftFilters(empty);
+                  setAppliedFilters(empty);
+                }
+              : undefined
+          }
+          dirty={filtersDirty}
         />
       ) : null}
 
       {!isHq6 && tableUi && tableUi.filters.length > 0 ? (
         <ReportFilterShell
           fields={tableUi.filters}
-          values={filters}
+          values={draftFilters}
           optionSets={optionSets}
-          onChange={(patch) => setFilters((prev) => ({ ...prev, ...patch }))}
+          onChange={(patch) => setDraftFilters((prev) => ({ ...prev, ...patch }))}
+          onApply={
+            isPaginated
+              ? () => setAppliedFilters({ ...draftFilters })
+              : undefined
+          }
+          onClear={
+            isPaginated
+              ? () => {
+                  const empty = emptyReportFilters();
+                  setDraftFilters(empty);
+                  setAppliedFilters(empty);
+                }
+              : undefined
+          }
+          dirty={filtersDirty}
         />
       ) : null}
 
@@ -415,7 +468,7 @@ export function ReportRunView({ slug }: ReportRunViewProps) {
                   : "border-border bg-card text-muted hover:text-foreground",
               )}
               onClick={() =>
-                setFilters((prev) => ({ ...prev, view: view.id }))
+                setDraftFilters((prev) => ({ ...prev, view: view.id }))
               }
             >
               {view.label}
@@ -443,7 +496,7 @@ export function ReportRunView({ slug }: ReportRunViewProps) {
           tablePagination={tablePagination}
           tableSearch={filters.search ?? ""}
           onTableSearchChange={(search) =>
-            setFilters((prev) => ({ ...prev, search }))
+            setDraftFilters((prev) => ({ ...prev, search }))
           }
           searchPlaceholder={searchPlaceholder}
           onRowClick={handleRowClick}

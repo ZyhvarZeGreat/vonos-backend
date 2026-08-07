@@ -17,6 +17,7 @@ import {
   updateSalePayment,
 } from "@/lib/api/sales";
 import { getPaymentAccountsForPicker } from "@/lib/api/paymentAccounts";
+import { paymentAccountPickerLabel } from "@/lib/utils/pickerLabels";
 import {
   deleteStockMovementPayment,
   getStockMovementPayments,
@@ -218,42 +219,31 @@ export function Hq6ViewPaymentsModal({
   }, [editing]);
 
   const saveMutation = useAppMutation({
-    mutationFn: async () => {
-      if (!tenantId || !recordId || !editing) throw new Error("Missing payment");
-      const valid = parseForm(
-        paymentAmountSchema,
-        { amount: editAmount },
-        { toast: false },
-      );
-      if (!valid) throw new Error("Enter a valid amount");
-      const amount = Number(valid.amount);
-      if (!editAccountId.trim()) {
-        throw new Error(
-          "Select a Payment Account so this payment stays on the account book",
-        );
-      }
+    mutationFn: async (vars: {
+      paymentId: string;
+      amount: number;
+      method: string;
+      note: string | null;
+      paidOn: string | null;
+      paymentRefNo: string | null;
+      accountId: string;
+    }) => {
+      if (!tenantId || !recordId) throw new Error("Missing payment");
       const payload = {
-        amount,
-        method: editMethod,
-        note: [
-          editNote.trim(),
-          editBankAccountNo.trim()
-            ? `Bank Account No: ${editBankAccountNo.trim()}`
-            : "",
-        ]
-          .filter(Boolean)
-          .join(" | ") || null,
-        paidOn: editPaidOn ? new Date(editPaidOn).toISOString() : null,
-        paymentRefNo: editRef.trim() || null,
-        accountId: editAccountId || null,
+        amount: vars.amount,
+        method: vars.method,
+        note: vars.note,
+        paidOn: vars.paidOn,
+        paymentRefNo: vars.paymentRefNo,
+        accountId: vars.accountId,
       };
       if (kind === "sale") {
-        return updateSalePayment(tenantId, recordId, editing.id, payload);
+        return updateSalePayment(tenantId, recordId, vars.paymentId, payload);
       }
       return updateStockMovementPayment(
         tenantId,
         recordId,
-        editing.id,
+        vars.paymentId,
         payload,
       );
     },
@@ -268,37 +258,23 @@ export function Hq6ViewPaymentsModal({
           : modalKeys.purchaseView(tenantId, recordId),
         ["payment-accounts", tenantId],
       ],
-      update: (qc) => {
-        if (!editing) return;
-        const amount = Number(editAmount);
+      update: (qc, vars) => {
+        const amount = vars.amount;
         const accountName =
-          paymentAccounts.find((a) => a.id === editAccountId)?.name ??
-          editing.accountName ??
-          null;
-        const note =
-          [
-            editNote.trim(),
-            editBankAccountNo.trim()
-              ? `Bank Account No: ${editBankAccountNo.trim()}`
-              : "",
-          ]
-            .filter(Boolean)
-            .join(" | ") || null;
+          paymentAccounts.find((a) => a.id === vars.accountId)?.name ?? null;
         const prevRows =
           qc.getQueryData<SalePaymentRow[]>(paymentsQueryKey) ?? payments;
         const nextRows = prevRows.map((row) =>
-          row.id === editing.id
+          row.id === vars.paymentId
             ? {
                 ...row,
                 amount: Number.isFinite(amount) ? amount : row.amount,
-                method: editMethod,
-                note,
-                paidOn: editPaidOn
-                  ? new Date(editPaidOn).toISOString()
-                  : row.paidOn,
-                paymentRefNo: editRef.trim() || null,
-                accountId: editAccountId || null,
-                accountName,
+                method: vars.method,
+                note: vars.note,
+                paidOn: vars.paidOn ?? row.paidOn,
+                paymentRefNo: vars.paymentRefNo,
+                accountId: vars.accountId || null,
+                accountName: accountName ?? row.accountName ?? null,
               }
             : row,
         );
@@ -327,11 +303,43 @@ export function Hq6ViewPaymentsModal({
             paymentStatus,
           });
         }
-        setEditing(null);
       },
     },
   });
 
+  const handleUpdatePayment = () => {
+    if (!editing || !tenantId || !recordId) return;
+    const valid = parseForm(paymentAmountSchema, { amount: editAmount });
+    if (!valid) return;
+    if (!editAccountId.trim()) {
+      toast.error(
+        "Select a Payment Account so this payment stays on the account book",
+      );
+      return;
+    }
+    const amount = Number(valid.amount);
+    const note =
+      [
+        editNote.trim(),
+        editBankAccountNo.trim()
+          ? `Bank Account No: ${editBankAccountNo.trim()}`
+          : "",
+      ]
+        .filter(Boolean)
+        .join(" | ") || null;
+    // Capture before closing edit pane — mutation must not read live `editing`.
+    const vars = {
+      paymentId: editing.id,
+      amount,
+      method: editMethod,
+      note,
+      paidOn: editPaidOn ? new Date(editPaidOn).toISOString() : null,
+      paymentRefNo: editRef.trim() || null,
+      accountId: editAccountId,
+    };
+    setEditing(null);
+    saveMutation.mutate(vars);
+  };
   const deleteMutation = useAppMutation({
     mutationFn: async (paymentId: string) => {
       if (!tenantId || !recordId) throw new Error("Missing payment");
@@ -711,7 +719,7 @@ export function Hq6ViewPaymentsModal({
               className="hq6-modal-btn hq6-modal-btn-print"
               busy={saveMutation.isPending}
               busyLabel="Updating…"
-              onClick={() => saveMutation.mutate()}
+              onClick={handleUpdatePayment}
             >
               Update
             </Hq6BusyButton>
@@ -821,10 +829,7 @@ export function Hq6ViewPaymentsModal({
               <option value="">Please Select</option>
               {paymentAccounts.map((acc) => (
                 <option key={acc.id} value={acc.id}>
-                  {acc.name}
-                  {typeof acc.balance === "number"
-                    ? ` (Balance: ${acc.balance.toLocaleString()})`
-                    : ""}
+                  {paymentAccountPickerLabel(acc)}
                 </option>
               ))}
             </select>

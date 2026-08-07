@@ -10,6 +10,7 @@ import { DataTable, type ColumnConfig } from "@/components/organisms/DataTable";
 import { Hq6ActionsMenu } from "@/components/hq6/Hq6ActionsMenu";
 import { Hq6ConfirmModal } from "@/components/hq6/Hq6ConfirmModal";
 import { Hq6DtSearchFilter } from "@/components/hq6/Hq6DtSearchFilter";
+import { slidingPageIndices, listEntryRange, formatListEntriesLabel } from "@/lib/utils/paginationWindow";
 import {
   Hq6Field,
   Hq6Modal,
@@ -289,8 +290,12 @@ export function Hq6RolesListView() {
     return filtered.slice(start, start + effectiveSize);
   }, [filtered, safePage, effectiveSize]);
 
-  const from = visible.length === 0 ? 0 : safePage * effectiveSize + 1;
-  const to = safePage * effectiveSize + visible.length;
+  const { from, to } = listEntryRange({
+    pageIndex: safePage,
+    pageSize: effectiveSize,
+    itemCount: visible.length,
+    totalCount: total,
+  });
 
   const deleteMutation = useMutation({
     mutationFn: (role: TenantRole) => {
@@ -318,12 +323,14 @@ export function Hq6RolesListView() {
     deleteMutation.mutate(deleteRole);
   };
 
-  const pageNumbers = useMemo(() => {
-    const pages: number[] = [];
-    const max = Math.min(pageCount, 7);
-    for (let i = 0; i < max; i++) pages.push(i);
-    return pages;
-  }, [pageCount]);
+  const pageNumbers = useMemo(
+    () =>
+      slidingPageIndices(safePage, {
+        totalPages: pageCount,
+        maxButtons: 5,
+      }),
+    [pageCount, safePage],
+  );
 
   const PlusIcon = (
     <svg
@@ -563,7 +570,7 @@ export function Hq6RolesListView() {
                       role="status"
                       aria-live="polite"
                     >
-                      {`Showing ${from} to ${to} of ${total.toLocaleString()} entries`}
+                      {formatListEntriesLabel({ from, to, total })}
                     </div>
                     <div
                       className="dataTables_paginate paging_simple_numbers"
@@ -752,8 +759,12 @@ export function Hq6CommissionAgentsListView() {
     const start = safePage * effectiveSize;
     return filtered.slice(start, start + effectiveSize);
   }, [filtered, safePage, effectiveSize]);
-  const from = visible.length === 0 ? 0 : safePage * effectiveSize + 1;
-  const to = safePage * effectiveSize + visible.length;
+  const { from, to } = listEntryRange({
+    pageIndex: safePage,
+    pageSize: effectiveSize,
+    itemCount: visible.length,
+    totalCount: total,
+  });
 
   const resetForm = () => {
     setSurname("");
@@ -1118,7 +1129,7 @@ export function Hq6CommissionAgentsListView() {
                         role="status"
                         aria-live="polite"
                       >
-                        {`Showing ${from} to ${to} of ${total.toLocaleString()} entries`}
+                        {formatListEntriesLabel({ from, to, total })}
                       </div>
                       <div
                         className="dataTables_paginate paging_simple_numbers"
@@ -1138,9 +1149,10 @@ export function Hq6CommissionAgentsListView() {
                               Previous
                             </a>
                           </li>
-                          {Array.from(
-                            { length: Math.min(pageCount, 7) },
-                            (_, i) => (
+                          {slidingPageIndices(safePage, {
+                            totalPages: pageCount,
+                            maxButtons: 5,
+                          }).map((i) => (
                               <li
                                 key={i}
                                 className={`paginate_button${i === safePage ? " active" : ""}`}
@@ -1155,8 +1167,7 @@ export function Hq6CommissionAgentsListView() {
                                   {i + 1}
                                 </a>
                               </li>
-                            ),
-                          )}
+                            ))}
                           <li
                             className={`paginate_button next${safePage >= pageCount - 1 ? " disabled" : ""}`}
                           >

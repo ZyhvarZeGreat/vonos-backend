@@ -6,6 +6,8 @@ import { useHq6Permissions } from "@/lib/hooks/useHq6Permissions";
 import { HQ6_NAV_VIEW_PERMISSIONS } from "@/lib/registries/hq6NavPermissions";
 import { notifyInsufficientPrivilege } from "@/lib/utils/privilegeToast";
 import { parseTenantPath } from "@/lib/utils/tenantRoutes";
+import { isAuthSkipped } from "@/lib/utils/devAccess";
+import { useAuthStore } from "@/stores/authStore";
 
 function routeSlugFromPath(pathname: string): string {
   const { section } = parseTenantPath(pathname);
@@ -23,9 +25,12 @@ export function PrivilegeRouteGuard({
   const pathname = usePathname();
   const router = useRouter();
   const { canAny, isFullAccess } = useHq6Permissions();
+  const hydrated = useAuthStore((s) => s.hydrated);
   const lastDenied = useRef<string | null>(null);
 
   useEffect(() => {
+    if (isAuthSkipped()) return;
+    if (!hydrated) return;
     if (isFullAccess) return;
     const slug = routeSlugFromPath(pathname);
     if (!slug || slug === "overview") return;
@@ -39,7 +44,7 @@ export function PrivilegeRouteGuard({
     lastDenied.current = pathname;
     notifyInsufficientPrivilege("view");
     router.replace(`/${tenantCode}/overview`);
-  }, [pathname, canAny, isFullAccess, router, tenantCode]);
+  }, [pathname, canAny, isFullAccess, hydrated, router, tenantCode]);
 
   return null;
 }

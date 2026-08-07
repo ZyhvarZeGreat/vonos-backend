@@ -5,7 +5,7 @@
  */
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import type { User } from "@vonos/types";
 import { EmptyState } from "@/components/atoms/EmptyState";
 import { PasswordField } from "@/components/atoms/PasswordField";
@@ -17,7 +17,8 @@ import {
   createEmployee,
   createPayroll,
   getDesignations,
-  getEmployees,
+  getEmployeeByUserId,
+  getLatestPayrollForEmployee,
   syncEmployeeWorkLocations,
 } from "@/lib/api/hrm";
 import { useRecordNavigation } from "@/lib/hooks/useRecordNavigation";
@@ -25,6 +26,7 @@ import { useTenantId, useRouteTenant } from "@/lib/hooks/useRouteTenant";
 import { mapTenantRoleToJwtRole } from "@vonos/types";
 import { getTenantRoles } from "@/lib/api/tenantRoles";
 import { DETAIL_RECORD_STALE_MS } from "@/lib/query/prefetchListDetails";
+import { patchEntityInQueries } from "@/lib/query/optimistic";
 import { cn } from "@/lib/utils/cn";
 import {
   firstValidationError,
@@ -36,7 +38,13 @@ import {
   validateUsername,
 } from "@/lib/utils/formValidation";
 import { toast } from "@/stores/toastStore";
+import { Hq6BusyButton } from "@/components/hq6/Hq6BusyButton";
+import { BusyFormShell } from "@/components/molecules/BusyFormShell";
 import { withWriteProgress } from "@/stores/mutationBusyStore";
+import {
+  newIdempotencyKey,
+  withIdempotencyKey,
+} from "@/lib/utils/idempotency";
 import { primaryTenantIdFromWorkLocations } from "@/lib/utils/workLocationTenant";
 import { welcomeFirstName } from "@/lib/utils/welcomeFirstName";
 
@@ -91,6 +99,132 @@ function avatarUrl(name: string): string {
   return `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=e5e7eb&color=374151`;
 }
 
+async function resolveDesignationId(
+  tenantId: string,
+  designationName: string,
+): Promise<string> {
+  const designations = await getDesignations(tenantId);
+  const desired = designationName.trim();
+  const matched =
+    desired.length > 0
+      ? designations.find(
+          (d) => d.name.trim().toLowerCase() === desired.toLowerCase(),
+        )?.id
+      : undefined;
+  if (matched) return matched;
+  const fallbackId = designations[0]?.id;
+  if (fallbackId) return fallbackId;
+  const createdDes = await createDesignation(tenantId, {
+    name: desired || "Staff",
+  });
+  return createdDes.id;
+}
+
+type UserHrProfileInput = {
+  accountHolderName?: string;
+  bankName?: string;
+  bankBranch?: string;
+  bankCode?: string;
+  bankAccountNo?: string;
+  taxPayerId?: string;
+  mobile?: string;
+  altContact?: string;
+  familyContact?: string;
+  guardianName?: string;
+  dateOfBirth?: string;
+  gender?: string;
+  maritalStatus?: string;
+  bloodGroup?: string;
+  idProofName?: string;
+  idProofNumber?: string;
+  permanentAddress?: string;
+  currentAddress?: string;
+  salesCommission?: string;
+  maxDiscount?: string;
+  department?: string;
+};
+
+function parseOptionalNumber(raw: string | undefined): number | null {
+  if (raw == null || !raw.trim()) return null;
+  const n = Number.parseFloat(raw);
+  return Number.isFinite(n) ? n : null;
+}
+
+function hrProfilePayload(args: UserHrProfileInput) {
+  return {
+    accountHolderName: args.accountHolderName?.trim() || null,
+    bankName: args.bankName?.trim() || null,
+    bankBranch: args.bankBranch?.trim() || null,
+    bankCode: args.bankCode?.trim() || null,
+    bankAccountNo: args.bankAccountNo?.trim() || null,
+    taxPayerId: args.taxPayerId?.trim() || null,
+    mobile: args.mobile?.trim() || null,
+    altContact: args.altContact?.trim() || null,
+    familyContact: args.familyContact?.trim() || null,
+    guardianName: args.guardianName?.trim() || null,
+    dateOfBirth: args.dateOfBirth?.trim() || null,
+    gender: args.gender?.trim() || null,
+    maritalStatus: args.maritalStatus?.trim() || null,
+    bloodGroup: args.bloodGroup?.trim() || null,
+    idProofName: args.idProofName?.trim() || null,
+    idProofNumber: args.idProofNumber?.trim() || null,
+    permanentAddress: args.permanentAddress?.trim() || null,
+    currentAddress: args.currentAddress?.trim() || null,
+    salesCommission: parseOptionalNumber(args.salesCommission) ?? 0,
+    maxSalesDiscountPercent: parseOptionalNumber(args.maxDiscount),
+    department: args.department?.trim() || null,
+  };
+}
+
+/** Map user form fields → payroll/HR sync payload. */
+function formHrProfile(form: {
+  bankAccountName: string;
+  bankName: string;
+  bankBranch: string;
+  bankCode: string;
+  bankAccountNumber: string;
+  taxPayerId: string;
+  mobile: string;
+  altContact: string;
+  familyContact: string;
+  guardianName: string;
+  dob: string;
+  gender: string;
+  maritalStatus: string;
+  bloodGroup: string;
+  idProofName: string;
+  idProofNumber: string;
+  permanentAddress: string;
+  currentAddress: string;
+  salesCommission: string;
+  maxDiscount: string;
+  department: string;
+}): UserHrProfileInput {
+  return {
+    accountHolderName: form.bankAccountName,
+    bankName: form.bankName,
+    bankBranch: form.bankBranch,
+    bankCode: form.bankCode,
+    bankAccountNo: form.bankAccountNumber,
+    taxPayerId: form.taxPayerId,
+    mobile: form.mobile,
+    altContact: form.altContact,
+    familyContact: form.familyContact,
+    guardianName: form.guardianName,
+    dateOfBirth: form.dob,
+    gender: form.gender,
+    maritalStatus: form.maritalStatus,
+    bloodGroup: form.bloodGroup,
+    idProofName: form.idProofName,
+    idProofNumber: form.idProofNumber,
+    permanentAddress: form.permanentAddress,
+    currentAddress: form.currentAddress,
+    salesCommission: form.salesCommission,
+    maxDiscount: form.maxDiscount,
+    department: form.department,
+  };
+}
+
 async function linkUserToPayroll(args: {
   tenantId: string;
   userId: string;
@@ -99,53 +233,28 @@ async function linkUserToPayroll(args: {
   locationCodes: string[];
   basicSalary: string;
   salaryPeriod: string;
-}): Promise<void> {
-  const {
-    tenantId,
-    userId,
-    name,
-    designationName,
-    locationCodes,
-    basicSalary,
-    salaryPeriod,
-  } = args;
+} & UserHrProfileInput): Promise<void> {
+  const designationId = await resolveDesignationId(
+    args.tenantId,
+    args.designationName,
+  );
 
-  const designations = await getDesignations(tenantId);
-  const desired = designationName.trim();
-  let designationId =
-    desired.length > 0
-      ? designations.find(
-          (d) => d.name.trim().toLowerCase() === desired.toLowerCase(),
-        )?.id
-      : undefined;
-
-  if (!designationId) {
-    const fallbackId = designations[0]?.id;
-    if (fallbackId) {
-      designationId = fallbackId;
-    } else {
-      const createdDes = await createDesignation(tenantId, {
-        name: desired || "Staff",
-      });
-      designationId = createdDes.id;
-    }
-  }
-
-  const employee = await createEmployee(tenantId, {
-    name,
-    userId,
+  const employee = await createEmployee(args.tenantId, {
+    name: args.name,
+    userId: args.userId,
     designationId,
-    locationCodes,
-    locationCode: locationCodes[0],
+    locationCodes: args.locationCodes,
+    locationCode: args.locationCodes[0],
     isServiceStaff: false,
+    ...hrProfilePayload(args),
   });
 
-  const basic = Number.parseFloat(basicSalary);
+  const basic = Number.parseFloat(args.basicSalary);
   const base = Number.isFinite(basic) ? basic : 0;
   const grossPay =
-    salaryPeriod === "week"
+    args.salaryPeriod === "week"
       ? base * 4
-      : salaryPeriod === "day"
+      : args.salaryPeriod === "day"
         ? base * 30
         : base;
 
@@ -155,10 +264,55 @@ async function linkUserToPayroll(args: {
   );
   const payrollMonthIso = payrollMonth.toISOString().slice(0, 10);
 
-  await createPayroll(tenantId, {
+  await createPayroll(args.tenantId, {
     employeeRecordId: employee.id,
     grossPay,
     payrollMonth: payrollMonthIso,
+  });
+}
+
+async function syncUserHrFields(args: {
+  tenantId: string;
+  userId: string;
+  name: string;
+  locationCodes: string[];
+  designationName: string;
+  basicSalary: string;
+  salaryPeriod: string;
+} & UserHrProfileInput): Promise<void> {
+  const designationId = await resolveDesignationId(
+    args.tenantId,
+    args.designationName,
+  );
+  const employee = await syncEmployeeWorkLocations(args.tenantId, args.userId, {
+    locationCodes: args.locationCodes,
+    locationCode: args.locationCodes[0],
+    name: args.name,
+    designationId,
+    ...hrProfilePayload(args),
+  });
+
+  const basic = Number.parseFloat(args.basicSalary);
+  if (!Number.isFinite(basic) || basic <= 0 || !employee) return;
+
+  const grossPay =
+    args.salaryPeriod === "week"
+      ? basic * 4
+      : args.salaryPeriod === "day"
+        ? basic * 30
+        : basic;
+
+  const latest = await getLatestPayrollForEmployee(args.tenantId, employee.id);
+  if (latest && Math.abs(latest.grossPay - grossPay) < 0.01) return;
+
+  const now = new Date();
+  const payrollMonth = new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1),
+  );
+  await createPayroll(args.tenantId, {
+    employeeRecordId: employee.id,
+    grossPay,
+    payrollMonth: payrollMonth.toISOString().slice(0, 10),
   });
 }
 
@@ -173,6 +327,7 @@ export function Hq6UserDetailView({
   mode?: "view" | "edit";
 }) {
   const router = useRouter();
+  const pathname = usePathname() ?? "";
   const searchParams = useSearchParams();
   const queryClient = useQueryClient();
   const viewingTenantId = useTenantId();
@@ -180,6 +335,7 @@ export function Hq6UserDetailView({
   const { listPath, detailPath, goToList } = useRecordNavigation("users");
   const isCreate = recordId === "new" || recordId === "create";
   const isEdit = mode === "edit" || isCreate;
+  const isAdminHrmUsers = pathname.startsWith("/admin/hrm/users");
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [activeTab, setActiveTab] = useState<"info" | "docs" | "activities">(
@@ -200,50 +356,132 @@ export function Hq6UserDetailView({
     return allowed.has(mapped) ? [mapped] : (["VM"] as string[]);
   }, [config?.code]);
 
-  /** Seed immediately so roles fetch on first paint (avoids empty→load delay). */
-  const [formLocationCodes, setFormLocationCodes] =
-    useState<string[]>(defaultLocationCodes);
-
-  /** Home entity for API calls: first selected entity, else viewing tenant. */
-  const homeTenantId = useMemo(() => {
-    const fromForm = primaryTenantIdFromWorkLocations(formLocationCodes);
-    if (fromForm) return fromForm;
-    return viewingTenantId;
-  }, [formLocationCodes, viewingTenantId]);
-
-  const tenantId = homeTenantId;
-
-  const { data: hq6Roles = [] } = useQuery({
-    queryKey: ["tenant-roles", tenantId],
-    queryFn: () => getTenantRoles(tenantId!),
-    enabled: Boolean(tenantId),
-    staleTime: 5 * 60_000,
-    placeholderData: (previous) => previous,
-  });
+  /**
+   * On create / entity context: seed work locations so roles load immediately.
+   * On VAG edit (no viewing tenant): start empty until the user record loads —
+   * otherwise we wrongly default to VA and fetch the wrong HR profile.
+   */
+  const [formLocationCodes, setFormLocationCodes] = useState<string[]>(() =>
+    isCreate || (!isAdminHrmUsers && viewingTenantId)
+      ? defaultLocationCodes
+      : [],
+  );
 
   const {
     data: user,
     isLoading,
     isError,
   } = useQuery({
-    queryKey: ["user", viewingTenantId ?? "any", recordId],
-    queryFn: () => getUser(recordId, viewingTenantId),
+    // VAG manage-users is cross-entity — never key/fetch under the switcher tenant.
+    queryKey: [
+      "user",
+      isAdminHrmUsers ? "vag" : (viewingTenantId ?? "vag"),
+      recordId,
+    ],
+    queryFn: () =>
+      getUser(recordId, isAdminHrmUsers ? null : viewingTenantId),
     enabled: Boolean(recordId && !isCreate),
     staleTime: DETAIL_RECORD_STALE_MS,
   });
 
-  const { data: linkedEmployeeLocations } = useQuery({
-    queryKey: ["user-work-locations", tenantId, recordId],
+  /** Home entity for API calls: form selection, else user's home, else viewing tenant. */
+  const homeTenantId = useMemo(() => {
+    const fromForm = primaryTenantIdFromWorkLocations(formLocationCodes);
+    if (fromForm) return fromForm;
+    if (user?.tenantId) return user.tenantId;
+    return viewingTenantId;
+  }, [formLocationCodes, user?.tenantId, viewingTenantId]);
+
+  const tenantId = homeTenantId;
+
+  /** Job roles live on the user's home entity — not the first work-location tag. */
+  const rolesTenantId = isCreate
+    ? homeTenantId
+    : (user?.tenantId ?? homeTenantId);
+
+  const { data: hq6Roles = [] } = useQuery({
+    queryKey: ["tenant-roles", rolesTenantId],
+    queryFn: () => getTenantRoles(rolesTenantId!),
+    enabled: Boolean(rolesTenantId),
+    staleTime: 5 * 60_000,
+    placeholderData: (previous) => previous,
+  });
+
+  const { data: linkedHr } = useQuery({
+    queryKey: ["user-hr-profile", tenantId, recordId],
     queryFn: async () => {
-      const employees = await getEmployees(tenantId!);
-      const match = employees.find((row) => row.userId === recordId);
-      if (!match) return [] as string[];
-      if (match.locationCodes?.length) return match.locationCodes;
-      return match.locationCode ? [match.locationCode] : [];
+      const empty = {
+        locationCodes: [] as string[],
+        designation: "",
+        bankAccountName: "",
+        bankAccountNumber: "",
+        bankName: "",
+        bankCode: "",
+        bankBranch: "",
+        taxPayerId: "",
+        basicSalary: "",
+        salesCommission: "0.00",
+        maxDiscount: "",
+        dob: "",
+        gender: "",
+        maritalStatus: "",
+        bloodGroup: "",
+        mobile: "",
+        altContact: "",
+        familyContact: "",
+        guardianName: "",
+        idProofName: "",
+        idProofNumber: "",
+        permanentAddress: "",
+        currentAddress: "",
+        department: "",
+      };
+      const employee = await getEmployeeByUserId(tenantId!, recordId);
+      if (!employee) return empty;
+      const payroll = await getLatestPayrollForEmployee(tenantId!, employee.id);
+      return {
+        locationCodes: employee.locationCodes?.length
+          ? employee.locationCodes
+          : employee.locationCode
+            ? [employee.locationCode]
+            : [],
+        designation: employee.designationName ?? "",
+        bankAccountName: employee.accountHolderName ?? "",
+        bankAccountNumber: employee.bankAccountNo ?? "",
+        bankName: employee.bankName ?? "",
+        bankCode: employee.bankCode ?? "",
+        bankBranch: employee.bankBranch ?? "",
+        taxPayerId: employee.taxPayerId ?? "",
+        basicSalary:
+          payroll && payroll.grossPay > 0 ? String(payroll.grossPay) : "",
+        salesCommission:
+          employee.salesCommission != null
+            ? String(employee.salesCommission)
+            : "0.00",
+        maxDiscount:
+          employee.maxSalesDiscountPercent != null
+            ? String(employee.maxSalesDiscountPercent)
+            : "",
+        dob: employee.dateOfBirth ?? "",
+        gender: employee.gender ?? "",
+        maritalStatus: employee.maritalStatus ?? "",
+        bloodGroup: employee.bloodGroup ?? "",
+        mobile: employee.mobile ?? "",
+        altContact: employee.altContact ?? "",
+        familyContact: employee.familyContact ?? "",
+        guardianName: employee.guardianName ?? "",
+        idProofName: employee.idProofName ?? "",
+        idProofNumber: employee.idProofNumber ?? "",
+        permanentAddress: employee.permanentAddress ?? "",
+        currentAddress: employee.currentAddress ?? "",
+        department: employee.department ?? "",
+      };
     },
     enabled: Boolean(tenantId && recordId && !isCreate),
     staleTime: DETAIL_RECORD_STALE_MS,
   });
+
+  const linkedEmployeeLocations = linkedHr?.locationCodes;
 
   const defaultHq6RoleId = useMemo(() => {
     return (
@@ -309,39 +547,39 @@ export function Hq6UserDetailView({
       firstName: parts.first,
       lastName: parts.last,
       email: user.email,
-      username: user.username ?? user.email.split("@")[0] ?? "",
+      username: user.username?.trim() || "",
       hq6RoleId: user.tenantRoleId ?? "",
       isActive: user.status === "active",
       allowLogin: user.status === "active" || user.status === "invited",
       password: "",
       confirmPassword: "",
-      salesCommission: "0.00",
-      maxDiscount: "",
-      dob: "",
-      gender: "",
-      maritalStatus: "",
-      bloodGroup: "",
-      mobile: "",
-      altContact: "",
-      familyContact: "",
-      guardianName: "",
-      idProofName: "",
-      idProofNumber: "",
-      permanentAddress: "",
-      currentAddress: "",
-      bankAccountName: "",
-      bankAccountNumber: "",
-      bankName: "",
-      bankCode: "",
-      bankBranch: "",
-      taxPayerId: "",
-      department: "",
-      designation: "",
+      salesCommission: linkedHr?.salesCommission ?? "0.00",
+      maxDiscount: linkedHr?.maxDiscount ?? "",
+      dob: linkedHr?.dob ?? "",
+      gender: linkedHr?.gender ?? "",
+      maritalStatus: linkedHr?.maritalStatus ?? "",
+      bloodGroup: linkedHr?.bloodGroup ?? "",
+      mobile: linkedHr?.mobile ?? "",
+      altContact: linkedHr?.altContact ?? "",
+      familyContact: linkedHr?.familyContact ?? "",
+      guardianName: linkedHr?.guardianName ?? "",
+      idProofName: linkedHr?.idProofName ?? "",
+      idProofNumber: linkedHr?.idProofNumber ?? "",
+      permanentAddress: linkedHr?.permanentAddress ?? "",
+      currentAddress: linkedHr?.currentAddress ?? "",
+      bankAccountName: linkedHr?.bankAccountName ?? "",
+      bankAccountNumber: linkedHr?.bankAccountNumber ?? "",
+      bankName: linkedHr?.bankName ?? "",
+      bankCode: linkedHr?.bankCode ?? "",
+      bankBranch: linkedHr?.bankBranch ?? "",
+      taxPayerId: linkedHr?.taxPayerId ?? "",
+      department: linkedHr?.department ?? "",
+      designation: linkedHr?.designation ?? "",
       locationCodes: resolvedLocations,
-      basicSalary: "",
+      basicSalary: linkedHr?.basicSalary ?? "",
       salaryPeriod: "month",
     };
-  }, [isCreate, user, defaultLocationCodes, linkedEmployeeLocations]);
+  }, [isCreate, user, defaultLocationCodes, linkedEmployeeLocations, linkedHr]);
 
   const [form, setForm] = useState(initial);
   useEffect(() => setForm(initial), [initial]);
@@ -374,7 +612,7 @@ export function Hq6UserDetailView({
       toast.success("User deactivated");
       void queryClient.invalidateQueries({ queryKey: ["users"] });
       setDeleteOpen(false);
-      goToList();
+      goToList("Redirecting to users…");
     },
     onError: (err: Error) => {
       toast.error(err.message || "Failed to deactivate user");
@@ -416,7 +654,7 @@ export function Hq6UserDetailView({
         title="User not found"
         message="This user could not be loaded."
         ctaLabel="Back to users"
-        onCta={() => goToList()}
+        onCta={() => goToList("Redirecting to users…")}
       />
     );
   }
@@ -426,7 +664,11 @@ export function Hq6UserDetailView({
     : user?.name ?? [form.surname, form.firstName, form.lastName]
         .filter(Boolean)
         .join(" ");
-  const username = form.username || (user?.email.split("@")[0] ?? "");
+  const username =
+    form.username.trim() ||
+    user?.username?.trim() ||
+    user?.email.split("@")[0] ||
+    "";
 
   const patch = <K extends keyof typeof form>(key: K, value: (typeof form)[K]) =>
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -476,17 +718,25 @@ export function Hq6UserDetailView({
     }
     const jwtRole = mapTenantRoleToJwtRole(selectedHq6);
 
+    // Validate password before leaving so we don't dump the user on the list
+    // with a failed create.
+    if (isCreate && form.allowLogin) {
+      const pwdErr = validatePassword(form.password, { strong: true });
+      if (pwdErr) {
+        toast.error(pwdErr);
+        return;
+      }
+    }
+
     setSaving(true);
-    try {
-      await withWriteProgress(async () => {
+    // Leave first — write (+ retries) finishes in the background.
+    goToList(isCreate ? "Creating user…" : "Saving & returning to users…");
+    const idempotencyKey = newIdempotencyKey();
+    void withWriteProgress(
+      () =>
+        withIdempotencyKey(idempotencyKey, async () => {
       if (isCreate) {
         if (form.allowLogin) {
-          const pwdErr = validatePassword(form.password, { strong: true });
-          if (pwdErr) {
-            toast.error(pwdErr);
-            setSaving(false);
-            return;
-          }
           const created = await createUser(
             {
               email: form.email.trim(),
@@ -509,6 +759,7 @@ export function Hq6UserDetailView({
                 locationCodes: form.locationCodes,
                 basicSalary: form.basicSalary,
                 salaryPeriod: form.salaryPeriod,
+                ...formHrProfile(form),
               });
               void queryClient.invalidateQueries({ queryKey: ["employees"] });
               void queryClient.invalidateQueries({ queryKey: ["payrolls"] });
@@ -549,6 +800,7 @@ export function Hq6UserDetailView({
                 locationCodes: form.locationCodes,
                 basicSalary: form.basicSalary,
                 salaryPeriod: form.salaryPeriod,
+                ...formHrProfile(form),
               });
               void queryClient.invalidateQueries({ queryKey: ["employees"] });
               void queryClient.invalidateQueries({ queryKey: ["payrolls"] });
@@ -588,39 +840,78 @@ export function Hq6UserDetailView({
           },
           { tenantId },
         );
-        if (tenantId && form.locationCodes.length > 0) {
-          try {
-            await syncEmployeeWorkLocations(tenantId, recordId, {
-              locationCodes: form.locationCodes,
-              locationCode: form.locationCodes[0],
-              name,
-            });
-          } catch (locErr) {
-            console.error("[user→locations]", locErr);
-            toast.warning(
-              `Updated ${name}, but work locations failed to save. Re-edit locations if needed.`,
-            );
-          }
-        }
         toast.success(`Updated ${name}`);
+        const userPatch = {
+          name,
+          email: form.email.trim(),
+          role: jwtRole,
+          tenantRoleId: selectedHq6.id,
+          username: form.username.trim() || null,
+          status: (form.isActive ? "active" : "suspended") as User["status"],
+        };
+        queryClient.setQueryData(
+          [
+            "user",
+            isAdminHrmUsers ? "vag" : (viewingTenantId ?? "vag"),
+            recordId,
+          ],
+          (prev: User | undefined) =>
+            prev ? { ...prev, ...userPatch } : prev,
+        );
+        patchEntityInQueries(queryClient, ["users"], recordId, userPatch);
+        void queryClient.invalidateQueries({ queryKey: ["users"] });
         void queryClient.invalidateQueries({
-          queryKey: ["user", viewingTenantId ?? "any", recordId],
+          queryKey: [
+            "user",
+            isAdminHrmUsers ? "vag" : (viewingTenantId ?? "vag"),
+            recordId,
+          ],
         });
+        // HR sync in background — don't hold the redirect for payroll fields.
+        if (tenantId) {
+          void syncUserHrFields({
+            tenantId,
+            userId: recordId,
+            name,
+            locationCodes: form.locationCodes,
+            designationName: form.designation,
+            basicSalary: form.basicSalary,
+            salaryPeriod: form.salaryPeriod,
+            ...formHrProfile(form),
+          })
+            .then(() => {
+              void queryClient.invalidateQueries({
+                queryKey: ["user-hr-profile", tenantId, recordId],
+              });
+              void queryClient.invalidateQueries({ queryKey: ["employees"] });
+              void queryClient.invalidateQueries({ queryKey: ["payrolls"] });
+            })
+            .catch((hrErr) => {
+              console.error("[user→hr]", hrErr);
+              toast.warning(
+                `Updated ${name}, but HR/payroll fields failed to save. Re-edit if needed.`,
+              );
+            });
+        }
       }
-      void queryClient.invalidateQueries({ queryKey: ["users"] });
-      goToList();
-      }, isCreate ? "Creating user" : "Updating user");
-    } catch (err) {
-      toast.error(
-        err instanceof Error
-          ? err.message
-          : isCreate
-            ? "Failed to create user"
-            : "Failed to update user",
-      );
-    } finally {
-      setSaving(false);
-    }
+      if (isCreate) {
+        void queryClient.invalidateQueries({ queryKey: ["users"] });
+      }
+        }),
+      isCreate ? "Creating user" : "Updating user",
+    )
+      .catch((err: unknown) => {
+        toast.error(
+          err instanceof Error
+            ? err.message
+            : isCreate
+              ? "Failed to create user"
+              : "Failed to update user",
+        );
+      })
+      .finally(() => {
+        setSaving(false);
+      });
   };
 
   /* ——— Edit / Create form (manage_user/edit|create.blade.php) ——— */
@@ -633,6 +924,7 @@ export function Hq6UserDetailView({
           </h1>
         </section>
         <section className="content">
+          <BusyFormShell busy={saving}>
           <form id="user_edit_form" onSubmit={handleSave}>
             <div className="row">
               <div className="col-md-12">
@@ -853,7 +1145,7 @@ export function Hq6UserDetailView({
                               >
                                 {hq6Roles.length === 0 ? (
                                   <option value="">
-                                    {tenantId
+                                    {rolesTenantId
                                       ? "No roles — create one under Roles"
                                       : "Pick an entity below to load roles"}
                                   </option>
@@ -1350,24 +1642,27 @@ export function Hq6UserDetailView({
               </div>
 
               <div className="col-md-12">
-                <button
+                <Hq6BusyButton
                   type="submit"
                   id="submit_user_button"
                   className="tw-dw-btn tw-dw-btn-primary tw-text-white tw-dw-btn-lg"
-                  disabled={saving}
+                  busy={saving}
+                  busyLabel={isCreate ? "Creating…" : "Updating…"}
                 >
-                  {saving ? "Saving…" : isCreate ? "Save" : "Update"}
-                </button>{" "}
+                  {isCreate ? "Save" : "Update"}
+                </Hq6BusyButton>{" "}
                 <button
                   type="button"
                   className="tw-dw-btn"
-                  onClick={() => goToList()}
+                  disabled={saving}
+                  onClick={() => goToList("Redirecting to users…")}
                 >
                   Cancel
                 </button>
               </div>
             </div>
           </form>
+          </BusyFormShell>
         </section>
       </div>
     );

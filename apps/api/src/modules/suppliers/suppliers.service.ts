@@ -621,20 +621,6 @@ export class SuppliersService {
           createdByName: createdBy.createdByName ?? null,
         });
 
-        await tx.ledgerEntry.create({
-          data: {
-            tenantId,
-            type: 'cost',
-            amount: apply,
-            currency: 'NGN',
-            category: 'Supplier Payment',
-            description: `Payment on ${movement.reference}`,
-            linkedRecordType: 'payment',
-            linkedRecordId: payment.id,
-            date: paidOn,
-          },
-        });
-
         const paymentStatus = apply >= total - 0.001 ? 'paid' : 'partial';
         await tx.stockMovement.update({
           where: { id: movement.id },

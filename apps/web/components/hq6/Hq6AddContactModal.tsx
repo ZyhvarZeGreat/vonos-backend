@@ -25,6 +25,7 @@ import {
   removeEntityFromQueries,
 } from "@/lib/query/optimistic";
 import {
+  sanitizeContactLastNameInput,
   sanitizePersonNameInput,
 } from "@/lib/utils/formValidation";
 import { isJobCentricTenant } from "@/lib/utils/isHq6Tenant";
@@ -84,7 +85,7 @@ function resetAddContactForm(defaultType: Hq6ContactType) {
     openingBalance: "",
     payTermNumber: "",
     payTermType: "" as "" | "days" | "months",
-    creditLimit: "10000",
+    creditLimit: "",
     address1: "",
     address2: "",
     city: "",
@@ -702,8 +703,12 @@ export function Hq6AddContactModal({
             <input
               className="hq6-modal-input"
               value={form.lastName}
+              placeholder="Name or plate / reg. no."
               onChange={(e) =>
-                setField("lastName", sanitizePersonNameInput(e.target.value))
+                setField(
+                  "lastName",
+                  sanitizeContactLastNameInput(e.target.value),
+                )
               }
             />
           </Hq6Field>
@@ -744,6 +749,43 @@ export function Hq6AddContactModal({
             />
           </Hq6Field>
         </div>
+
+        {isAutomotive && isCustomerSide ? (
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <Hq6Field label="Car Model & Year">
+              <input
+                className="hq6-modal-input"
+                placeholder="e.g. COROLLA 2009"
+                value={form.customField3}
+                onChange={(e) => setField("customField3", e.target.value)}
+              />
+            </Hq6Field>
+            <Hq6Field label="Milage">
+              <input
+                className="hq6-modal-input"
+                placeholder="Milage"
+                value={form.customField1}
+                onChange={(e) => setField("customField1", e.target.value)}
+              />
+            </Hq6Field>
+            <Hq6Field label="VIN Number">
+              <input
+                className="hq6-modal-input"
+                placeholder="VIN Number"
+                value={form.customField2}
+                onChange={(e) => setField("customField2", e.target.value)}
+              />
+            </Hq6Field>
+            <Hq6Field label="Customer Location">
+              <input
+                className="hq6-modal-input"
+                placeholder="Customer Location"
+                value={form.customField4}
+                onChange={(e) => setField("customField4", e.target.value)}
+              />
+            </Hq6Field>
+          </div>
+        ) : null}
 
         {isCustomerSide ? (
           <Hq6Field label="Assigned to">
@@ -956,16 +998,32 @@ export function Hq6AddContactModal({
             </div>
 
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {CONTACT_CUSTOM_FIELD_KEYS.map((key, index) => (
-                <Hq6Field key={key} label={CONTACT_CUSTOM_FIELD_LABELS[index]!}>
-                  <input
-                    className="hq6-modal-input"
-                    placeholder={CONTACT_CUSTOM_FIELD_LABELS[index]}
-                    value={form[key]}
-                    onChange={(e) => setField(key, e.target.value)}
-                  />
-                </Hq6Field>
-              ))}
+              {CONTACT_CUSTOM_FIELD_KEYS.filter(
+                (key) =>
+                  !(
+                    isAutomotive &&
+                    isCustomerSide &&
+                    (key === "customField1" ||
+                      key === "customField2" ||
+                      key === "customField3" ||
+                      key === "customField4")
+                  ),
+              ).map((key) => {
+                const index = CONTACT_CUSTOM_FIELD_KEYS.indexOf(key);
+                return (
+                  <Hq6Field
+                    key={key}
+                    label={CONTACT_CUSTOM_FIELD_LABELS[index]!}
+                  >
+                    <input
+                      className="hq6-modal-input"
+                      placeholder={CONTACT_CUSTOM_FIELD_LABELS[index]}
+                      value={form[key]}
+                      onChange={(e) => setField(key, e.target.value)}
+                    />
+                  </Hq6Field>
+                );
+              })}
             </div>
 
             <Hq6Field label="Shipping Address">

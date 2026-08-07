@@ -187,7 +187,7 @@ function serializeCustomer(
       plateFromCustomerName(row.name) ||
       extras?.contactId ||
       row.id.slice(0, 8).toUpperCase(),
-    businessName: details.businessName ?? row.name,
+    businessName: details.businessName ?? null,
     taxNumber: row.taxNumber?.trim() || null,
     details,
     totalSell: extras?.totalSell ?? storedTotalSell ?? computed?.totalSell ?? 0,
@@ -696,20 +696,6 @@ export class CustomersService {
           createdByName: createdBy.createdByName ?? null,
         });
 
-        await tx.ledgerEntry.create({
-          data: {
-            tenantId,
-            type: 'revenue',
-            amount: apply,
-            currency: sale.currency || 'NGN',
-            category: 'Customer Payment',
-            description: `Payment on ${sale.reference}`,
-            linkedRecordType: 'payment',
-            linkedRecordId: payment.id,
-            date: paidOn,
-          },
-        });
-
         const newPaid = paid + apply;
         const paymentStatus =
           newPaid >= total - 0.001 ? 'paid' : newPaid > 0 ? 'partial' : 'due';
@@ -865,9 +851,13 @@ export class CustomersService {
     email: string | null;
     phone: string | null;
     totalSellDue: number;
+    totalAdvance: number;
     visitCount: number;
     createdAt: string;
     status: 'active' | 'inactive';
+    contactId: string | null;
+    businessName: string | null;
+    details: CustomerContactDetails | null;
   }> {
     const tenantId = this.tenantDb.requireTenantId();
     const row = await this.tenantDb.db.customer.findFirst({
@@ -878,21 +868,28 @@ export class CustomersService {
         email: true,
         phone: true,
         totalSellDue: true,
+        totalAdvance: true,
         visitCount: true,
         createdAt: true,
         status: true,
+        details: true,
       },
     });
     if (!row) throw new NotFoundException('Customer not found');
+    const details = parseCustomerContactDetails(row.details);
     return {
       id: row.id,
       name: row.name,
       email: row.email,
       phone: row.phone,
       totalSellDue: toNumber(row.totalSellDue),
+      totalAdvance: toNumber(row.totalAdvance),
       visitCount: row.visitCount,
       createdAt: toIso(row.createdAt),
       status: row.status === 'inactive' ? 'inactive' : 'active',
+      contactId: details.contactId ?? null,
+      businessName: details.businessName ?? null,
+      details,
     };
   }
 

@@ -22,7 +22,7 @@ import { Hq6AddSupplierModal } from "@/components/hq6/Hq6AddSupplierModal";
 import { Hq6BusyButton } from "@/components/hq6/Hq6BusyButton";
 import { createCustomer, getCustomerContact, getCustomersForPicker, loadMoreCustomersForPicker, customersPickerHasMore } from "@/lib/api/customers";
 import { getJob, getJobs } from "@/lib/api/jobs";
-import { createSale, getSale } from "@/lib/api/sales";
+import { createSale, getSale, updateSale, addSalePayment } from "@/lib/api/sales";
 import { getPaymentAccountsForPicker } from "@/lib/api/paymentAccounts";
 import { getServiceStaff, loadMoreServiceStaffForPicker, serviceStaffPickerHasMore, getEmployees, loadMoreEmployeesForPicker, employeePickerHasMore } from "@/lib/api/hrm";
 import { getSuppliersForPicker, loadMoreSuppliersForPicker, suppliersPickerHasMore } from "@/lib/api/suppliers";
@@ -34,10 +34,16 @@ import { useAppMutation } from "@/lib/hooks/useAppMutation";
 import { useIsVaHq6 } from "@/lib/hooks/useIsVaHq6";
 import { formatCurrency } from "@/lib/utils/formatCurrency";
 import { formatHq6Currency } from "@/lib/utils/hq6Format";
+import { canAddPaymentForStatus } from "@/lib/utils/hq6PaymentBadge";
+import {
+  customerPickerLabel,
+  paymentAccountPickerLabel,
+} from "@/lib/utils/pickerLabels";
 import {
   parseSaleInvoiceNotes,
   withSaleInvoiceNoteFields,
 } from "@/lib/utils/saleInvoiceNotes";
+import { toast } from "@/stores/toastStore";
 import type { SaleFormPresetStatus } from "@/stores/uiStore";
 import { useAuthStore } from "@/stores/authStore";
 import { useQuery } from "@tanstack/react-query";
@@ -51,6 +57,8 @@ export interface SaleLineDraft {
   description?: string;
   quantity: number;
   unitPrice: number;
+  /** Catalog cost — shown on the line, not used for sale total. */
+  costPrice?: number;
   discount: number;
   /** Line tax percent for display (HQ6). */
   taxPercent?: number;
@@ -82,6 +90,8 @@ function emptyForm(presetStatus: SaleFormPresetStatus = "final") {
     serviceStaffName: "",
     salesPersonId: "",
     salesPersonName: "",
+    plateNumber: "",
+    carModelYear: "",
     mileage: "",
     payTermValue: "",
     payTermUnit: "",
@@ -167,6 +177,8 @@ function buildNotes(
     salesPerson: form.salesPersonName.trim() || null,
     serviceStaff: form.serviceStaffName.trim() || null,
     mileage: form.mileage.trim() || null,
+    plateNumber: form.plateNumber.trim() || null,
+    carModelYear: form.carModelYear.trim() || null,
     vehicleTimeIn: form.vehicleTimeIn || null,
     vehicleRelease: form.vehicleReleaseDate || null,
   });
@@ -182,6 +194,8 @@ export interface AddSaleFormProps {
   editSaleId?: string | null;
   /** `page` = full Add Sale screen; `modal` = compact dialog body */
   variant?: "page" | "modal";
+  /** Leave the form immediately (list redirect) — write continues in background. */
+  onOptimisticLeave?: (status: SaleFormPresetStatus) => void;
   onSuccess?: (sale: SaleDetail, options?: { print?: boolean }) => void;
   onCancel?: () => void;
 }
@@ -193,6 +207,7 @@ export function AddSaleForm({
   initialJobId = null,
   editSaleId = null,
   variant = "page",
+  onOptimisticLeave,
   onSuccess,
   onCancel,
 }: AddSaleFormProps) {
@@ -242,6 +257,8 @@ export function AddSaleForm({
   ]);
   const [error, setError] = useState<string | null>(null);
   const printAfterSaveRef = useRef(false);
+  const [saveIntent, setSaveIntent] = useState<"save" | "print" | null>(null);
+  const [customerAdvanceBalance, setCustomerAdvanceBalance] = useState(0);
   const [quickCustomerOpen, setQuickCustomerOpen] = useState(false);
   const [quickCustomerName, setQuickCustomerName] = useState("");
   const [customerInfoOpen, setCustomerInfoOpen] = useState(false);
@@ -249,7 +266,17 @@ export function AddSaleForm({
     string | null
   >(null);
   const jobPrefillDone = useRef(false);
-  const editPrefillDone = useRef(false);
+  const editPrefillDone = useRef<string | false>(false);
+  /** Locked at Save click so optimistic leave cannot race form.status. */
+  const pendingSaveStatusRef = useRef<SaleFormPresetStatus | null>(null);
+
+  // New quotation/draft/sale pages must keep the route preset (do not drift to Final).
+  useEffect(() => {
+    if (editSaleId) return;
+    setForm((prev) =>
+      prev.status === presetStatus ? prev : { ...prev, status: presetStatus },
+    );
+  }, [editSaleId, presetStatus]);
 
   // Warm customer / staff / payment-account pickers with the page.
   useEffect(() => {
@@ -313,11 +340,38 @@ export function AddSaleForm({
     queryKey: ["sale", "edit", editSaleId],
     queryFn: () => getSale(editSaleId!, tenantId),
     enabled: Boolean(editSaleId),
+    // Always prefer the latest saved bill (including after prior edits).
+    staleTime: 0,
+    refetchOnMount: "always",
   });
+  const loadedAsFinal =
+    Boolean(editSaleId) &&
+    Boolean(editSale) &&
+    editSale?.recordStatus !== "draft" &&
+    editSale?.recordStatus !== "quotation";
+  /** Form still treating this as a completed invoice (not demoted in the UI). */
+  const editingFinalized = loadedAsFinal && form.status === "final";
+  const remainingDue = Math.max(
+    0,
+    editSale?.sellDue ??
+      (editSale
+        ? Number(editSale.total ?? 0) - Number(editSale.totalPaid ?? 0)
+        : 0),
+  );
+  const showAddPayment =
+    !editingFinalized ||
+    canAddPaymentForStatus(editSale?.paymentStatus, remainingDue);
 
   useEffect(() => {
-    if (!editSale || editPrefillDone.current) return;
-    editPrefillDone.current = true;
+    editPrefillDone.current = false;
+  }, [editSaleId]);
+
+  useEffect(() => {
+    if (!editSale) return;
+    // Re-apply when the server returns a newer saved version (edited bills).
+    const stamp = `${editSale.id}:${editSale.updatedAt ?? editSale.date}`;
+    if (editPrefillDone.current === stamp) return;
+    editPrefillDone.current = stamp;
     const noteFields = parseSaleInvoiceNotes(editSale.notes);
     const structured =
       /^(Sales person|Service staff|Mileage|Vehicle time in|Vehicle release|Customer location|Pay term|Invoice scheme|Shipping details|Delivered to|Delivery person|Shipping charges|Additional expense|Redeemed points):/i;
@@ -326,6 +380,7 @@ export function AddSaleForm({
       .map((line) => line.trim())
       .filter((line) => line && !structured.test(line))
       .join("\n");
+    const storedDiscount = Number(editSale.discountAmount ?? 0);
     setForm((prev) => ({
       ...prev,
       locationCode: editSale.locationCode ?? "",
@@ -333,15 +388,37 @@ export function AddSaleForm({
       jobReference: editSale.jobReference ?? "",
       customerId: editSale.customerId ?? "",
       customerName: editSale.customerName ?? "",
+      customerLocation: noteFields.customerLocation ?? "",
       invoiceNo: editSale.reference,
       saleDate: editSale.date
         ? new Date(editSale.date).toISOString().slice(0, 16)
         : prev.saleDate,
       sellNote,
+      shippingDetails: noteFields.shippingDetails ?? "",
       shippingAddress: editSale.shippingAddress ?? "",
       shippingStatus: editSale.shippingStatus ?? "pending",
-      discountAmount: String(editSale.discountAmount ?? 0),
+      shippingCharges: noteFields.shippingCharges ?? "",
+      deliveredTo: noteFields.deliveredTo ?? "",
+      deliveryPerson: noteFields.deliveryPerson ?? "",
+      discountType: storedDiscount > 0 ? "fixed" : prev.discountType,
+      discountAmount: storedDiscount > 0 ? String(storedDiscount) : "",
       orderTax: String(editSale.taxAmount ?? 0),
+      redeemedPoints: noteFields.redeemedPoints ?? "",
+      paymentAmount: (() => {
+        const due = Math.max(
+          0,
+          editSale.sellDue ??
+            Number(editSale.total ?? 0) - Number(editSale.totalPaid ?? 0),
+        );
+        return due > 0 ? String(due) : "";
+      })(),
+      paidOn: new Date().toISOString().slice(0, 16),
+      paymentMethod: "cash",
+      paymentAccountId: "",
+      paymentNote: "",
+      payTermValue: noteFields.payTermValue ?? "",
+      payTermUnit: noteFields.payTermUnit ?? "",
+      invoiceScheme: noteFields.invoiceScheme || prev.invoiceScheme,
       serviceStaffId: editSale.serviceStaffEmployeeId ?? "",
       serviceStaffName:
         editSale.serviceStaffEmployeeName?.trim() ||
@@ -353,14 +430,28 @@ export function AddSaleForm({
         editSale.createdByName?.trim() ||
         prev.salesPersonName,
       mileage: noteFields.mileage ?? "",
+      plateNumber: noteFields.plateNumber ?? "",
+      carModelYear: noteFields.carModelYear ?? "",
       vehicleTimeIn: noteFields.vehicleTimeIn
         ? noteFields.vehicleTimeIn.slice(0, 16)
         : prev.vehicleTimeIn,
+      vehicleReleaseDate: noteFields.vehicleRelease
+        ? noteFields.vehicleRelease.slice(0, 16)
+        : prev.vehicleReleaseDate,
       status:
         editSale.recordStatus === "draft" || editSale.recordStatus === "quotation"
           ? editSale.recordStatus
-          : prev.status,
+          : "final",
     }));
+    if (noteFields.additionalExpenses.length > 0) {
+      setAdditionalExpenses(
+        noteFields.additionalExpenses.map((row, index) => ({
+          key: `exp-edit-${index}`,
+          name: row.name === "Untitled" ? "" : row.name,
+          amount: row.amount,
+        })),
+      );
+    }
     setLines(
       editSale.lines.map((line, index) => ({
         key: `edit-${line.id}-${index}`,
@@ -370,9 +461,38 @@ export function AddSaleForm({
         quantity: line.quantity,
         unitPrice: line.unitPrice,
         discount: line.discountAmount ?? 0,
+        sourceTenantCode: line.sourceTenantCode ?? undefined,
+        supplierId: line.supplierId ?? undefined,
       })),
     );
   }, [editSale]);
+
+  // Load customer advance balance when editing an existing sale.
+  useEffect(() => {
+    const customerId = editSale?.customerId;
+    if (!customerId) return;
+    let cancelled = false;
+    void getCustomerContact(customerId)
+      .then((contact) => {
+        if (cancelled) return;
+        setCustomerAdvanceBalance(Math.max(0, contact.totalAdvance ?? 0));
+        const addressBits = [contact.phone, contact.email]
+          .filter(Boolean)
+          .join(" · ");
+        if (!addressBits) return;
+        setForm((prev) => ({
+          ...prev,
+          billingAddress: prev.billingAddress || addressBits,
+          shippingAddressDisplay: prev.shippingAddressDisplay || addressBits,
+        }));
+      })
+      .catch(() => {
+        if (!cancelled) setCustomerAdvanceBalance(0);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [editSale?.customerId]);
 
   const patchForm = useCallback(
     (patch: Partial<ReturnType<typeof emptyForm>>) => {
@@ -424,15 +544,10 @@ export function AddSaleForm({
       return {
         options: [
           { value: "", label: "Walk-in customer" },
-          ...rows.map((row) => {
-            const name = row.name?.trim() || "";
-            const business = row.businessName?.trim() || "";
-            const label =
-              business && business.toLowerCase() !== name.toLowerCase()
-                ? `${name} · ${business}`
-                : name || business;
-            return { value: row.id, label };
-          }),
+          ...rows.map((row) => ({
+            value: row.id,
+            label: customerPickerLabel(row),
+          })),
         ],
         hasMore: !query.trim() && customersPickerHasMore(tenantId),
       };
@@ -443,15 +558,10 @@ export function AddSaleForm({
   const loadMoreCustomerOptions = useCallback(async () => {
     const page = await loadMoreCustomersForPicker(tenantId);
     return {
-      options: page.appended.map((row) => {
-        const name = row.name?.trim() || "";
-        const business = row.businessName?.trim() || "";
-        const label =
-          business && business.toLowerCase() !== name.toLowerCase()
-            ? `${name} · ${business}`
-            : name || business;
-        return { value: row.id, label };
-      }),
+      options: page.appended.map((row) => ({
+        value: row.id,
+        label: customerPickerLabel(row),
+      })),
       hasMore: page.hasMore,
       append: true,
     };
@@ -532,7 +642,7 @@ export function AddSaleForm({
         { value: "", label: "Select payment account" },
         ...rows.map((row) => ({
           value: row.id,
-          label: row.name,
+          label: paymentAccountPickerLabel(row),
         })),
       ];
     },
@@ -637,7 +747,8 @@ export function AddSaleForm({
           sku: pick.sku,
           name: pick.name,
           quantity: 1,
-          unitPrice: pick.sellPrice || pick.costPrice || 0,
+          unitPrice: pick.sellPrice || 0,
+          costPrice: pick.costPrice || 0,
           discount: 0,
           availableQty: pick.availableQty,
           sourceLabel: pick.sourceLabel,
@@ -660,30 +771,81 @@ export function AddSaleForm({
 
   const applyCustomer = (customer: Customer | null) => {
     if (!customer) {
+      setCustomerAdvanceBalance(0);
       patchForm({
         customerId: "",
         customerName: "",
         billingAddress: "",
         shippingAddressDisplay: "",
+        plateNumber: "",
+        carModelYear: "",
+        mileage: "",
+        customerLocation: "",
       });
       return;
     }
-    const addressBits = [customer.phone, customer.email].filter(Boolean).join(" · ");
+    setCustomerAdvanceBalance(Math.max(0, customer.totalAdvance ?? 0));
+    const details = customer.details;
+    const addressBits = [
+      customer.phone,
+      customer.email,
+      details?.addressLine1,
+      details?.city,
+    ]
+      .filter(Boolean)
+      .join(" · ");
+    // Automotive contact fields: plate = Contact ID; customField1–4 = UPOS labels.
+    const plate =
+      customer.contactId?.trim() ||
+      details?.contactId?.trim() ||
+      "";
+    const mileage = details?.customField1?.trim() || "";
+    const carModelYear = details?.customField3?.trim() || "";
+    const customerLocation = details?.customField4?.trim() || "";
     patchForm({
       customerId: customer.id,
       customerName: customer.name,
       billingAddress: addressBits,
-      shippingAddressDisplay: addressBits,
+      shippingAddressDisplay:
+        details?.shippingAddress?.trim() || addressBits,
+      plateNumber: plate,
+      carModelYear,
+      mileage,
+      customerLocation,
     });
   };
 
   const mutation = useAppMutation({
     mutationFn: async () => {
+      const statusToSave =
+        pendingSaveStatusRef.current ??
+        (editSaleId ? form.status : presetStatus);
+
       assertBusinessLocationSelected(locationRequired, form.locationCode);
       if (lines.length === 0) throw new Error("Add at least one product");
       const isProvisional =
-        form.status === "draft" || form.status === "quotation";
-      if (!isProvisional && paidAmount > 0 && !form.paymentAccountId.trim()) {
+        statusToSave === "draft" || statusToSave === "quotation";
+      const convertingToFinal =
+        Boolean(editSaleId) &&
+        (editSale?.recordStatus === "draft" ||
+          editSale?.recordStatus === "quotation") &&
+        statusToSave === "final";
+      const needsNewPayment = !isProvisional && (!editSaleId || convertingToFinal);
+      const addingPaymentOnEdit =
+        !isProvisional &&
+        loadedAsFinal &&
+        statusToSave === "final" &&
+        paidAmount > 0 &&
+        canAddPaymentForStatus(editSale?.paymentStatus, remainingDue);
+      // Empty payment field must not imply "pay full total" on quotations/drafts.
+      const amountToCharge = isProvisional
+        ? Number(form.paymentAmount) || 0
+        : paidAmount;
+      if (
+        (needsNewPayment || addingPaymentOnEdit) &&
+        amountToCharge > 0 &&
+        !form.paymentAccountId.trim()
+      ) {
         throw new Error(
           "Select a Payment Account so this money is posted to the account book",
         );
@@ -703,15 +865,14 @@ export function AddSaleForm({
         form.shippingAddress.trim() ||
         form.shippingAddressDisplay.trim() ||
         undefined;
-      return createSale(tenantId, {
+      const payload = {
         ...(reference ? { reference } : {}),
         jobId: form.jobId.trim() || undefined,
-        replaceSaleId: editSaleId || undefined,
         customerId: form.customerId || undefined,
         customerName: form.customerName.trim() || undefined,
         locationCode: form.locationCode.trim() || undefined,
         date: form.saleDate ? new Date(form.saleDate).toISOString() : undefined,
-        status: form.status as "final" | "draft" | "quotation",
+        status: statusToSave as "final" | "draft" | "quotation",
         discountAmount: orderDiscount,
         taxAmount: orderTax,
         notes: buildNotes(form, additionalExpenses),
@@ -737,34 +898,61 @@ export function AddSaleForm({
           sourceTenantCode: line.sourceTenantCode,
           supplierId: line.createPurchase ? line.supplierId || undefined : undefined,
         })),
-        payments: isProvisional
-          ? []
-          : [
+        payments: needsNewPayment
+          ? [
               {
-                amount: paidAmount,
+                amount: amountToCharge,
                 method: form.paymentMethod,
                 note: form.paymentNote.trim() || undefined,
                 accountId: form.paymentAccountId || undefined,
               },
-            ],
-      });
+            ]
+          : isProvisional
+            ? []
+            : undefined,
+      };
+      if (editSaleId) {
+        const updated = await updateSale(tenantId, editSaleId, payload);
+        if (addingPaymentOnEdit && amountToCharge > 0) {
+          await addSalePayment(tenantId, editSaleId, {
+            amount: amountToCharge,
+            method: form.paymentMethod,
+            note: form.paymentNote.trim() || undefined,
+            paidOn: form.paidOn
+              ? new Date(form.paidOn).toISOString()
+              : undefined,
+            accountId: form.paymentAccountId,
+          });
+        }
+        return updated;
+      }
+      return createSale(tenantId, payload);
     },
-    successMessage:
-      form.status === "final"
-        ? editSaleId &&
-          (presetStatus === "quotation" || presetStatus === "draft")
-          ? "Converted to sale"
-          : "Sale recorded"
-        : editSaleId
-          ? "Document updated"
-          : presetStatus === "draft"
-            ? "Draft saved"
-            : presetStatus === "quotation"
-              ? "Quotation saved"
-              : "Sale recorded",
-    progressLabel: false,
+    successMessage: (sale) => {
+      const record = sale.recordStatus;
+      if (record === "quotation") {
+        return editSaleId && loadedAsFinal
+          ? "Moved to quotation"
+          : "Quotation saved";
+      }
+      if (record === "draft") {
+        return editSaleId && loadedAsFinal ? "Moved to draft" : "Draft saved";
+      }
+      if (
+        editSaleId &&
+        (editSale?.recordStatus === "quotation" ||
+          editSale?.recordStatus === "draft" ||
+          presetStatus === "quotation" ||
+          presetStatus === "draft")
+      ) {
+        return "Converted to sale";
+      }
+      return "Sale recorded";
+    },
+    progressLabel: editSaleId ? "Updating" : "Saving",
     invalidateKeys: [
       ["sales"],
+      ["sale"],
       ["items"],
       ["catalog"],
       ["jobs"],
@@ -778,17 +966,79 @@ export function AddSaleForm({
     onSuccess: async (sale) => {
       const shouldPrint = printAfterSaveRef.current;
       printAfterSaveRef.current = false;
-      setForm(emptyForm(presetStatus));
-      setLines([]);
+      setSaveIntent(null);
       setError(null);
       try {
         await onSuccess?.(sale, { print: shouldPrint });
       } catch {
         // Sale already saved — invoice redirect must not fail the mutation.
       }
+      // Only clear the form if the parent did not navigate away (e.g. modal).
+      if (variant === "modal") {
+        setCustomerAdvanceBalance(0);
+        setForm(emptyForm(presetStatus));
+        setLines([]);
+      }
     },
-    onError: (err: Error) => setError(err.message),
+    onError: (err: Error) => {
+      setSaveIntent(null);
+      setError(err.message);
+    },
   });
+
+  const kickSave = (intent: "save" | "print") => {
+    // New docs always use the page preset (add-quotation → quotation).
+    // Edits may change Final ↔ Quotation ↔ Draft.
+    const statusToSave = (
+      editSaleId ? form.status : presetStatus
+    ) as SaleFormPresetStatus;
+
+    try {
+      assertBusinessLocationSelected(locationRequired, form.locationCode);
+      if (lines.length === 0) throw new Error("Add at least one product");
+      const tenantCode = (tenantConfig?.code ?? "").trim().toUpperCase();
+      if (
+        (tenantCode === "VA" || tenantCode === "VP") &&
+        !form.serviceStaffId.trim() &&
+        !form.serviceStaffName.trim()
+      ) {
+        throw new Error("Select service staff before saving");
+      }
+      const isProvisional =
+        statusToSave === "draft" || statusToSave === "quotation";
+      const amountToCharge = isProvisional
+        ? Number(form.paymentAmount) || 0
+        : paidAmount;
+      if (
+        !isProvisional &&
+        amountToCharge > 0 &&
+        !form.paymentAccountId.trim()
+      ) {
+        throw new Error(
+          "Select a Payment Account so this money is posted to the account book",
+        );
+      }
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Cannot save this document";
+      setError(message);
+      toast.error(message);
+      return;
+    }
+
+    pendingSaveStatusRef.current = statusToSave;
+    // Keep form.status aligned so leave/list routing matches the write.
+    if (form.status !== statusToSave) {
+      patchForm({ status: statusToSave });
+    }
+    printAfterSaveRef.current = intent === "print";
+    setSaveIntent(intent);
+    // Page saves: hit the list immediately; write + retries finish in background.
+    if (variant === "page") {
+      onOptimisticLeave?.(statusToSave);
+    }
+    mutation.mutate();
+  };
 
   const quickCustomerMutation = useAppMutation({
     mutationFn: async () => {
@@ -899,7 +1149,11 @@ export function AddSaleForm({
                             createdAt: contact.createdAt,
                             updatedAt: contact.createdAt,
                             totalSellDue: contact.totalSellDue,
+                            totalAdvance: contact.totalAdvance,
                             status: contact.status,
+                            contactId: contact.contactId,
+                            businessName: contact.businessName,
+                            details: contact.details,
                           });
                         } catch {
                           patchForm({ customerId: id, customerName: id });
@@ -931,6 +1185,15 @@ export function AddSaleForm({
                 <div className="rounded border border-[#e5e7eb] bg-[#f9fafb] px-3 py-2 text-xs text-[#374151]">
                   <div>
                     <strong>Customer:</strong> {form.customerName || "—"}
+                  </div>
+                  <div>
+                    <strong>Plate:</strong> {form.plateNumber || "—"}
+                  </div>
+                  <div>
+                    <strong>Car:</strong> {form.carModelYear || "—"}
+                  </div>
+                  <div>
+                    <strong>Mileage:</strong> {form.mileage || "—"}
                   </div>
                   <div>
                     <strong>Billing:</strong> {form.billingAddress || "—"}
@@ -1016,20 +1279,18 @@ export function AddSaleForm({
               </span>
               <select
                 className="hq6-form-input"
-                value={form.status}
-                onChange={(e) => {
-                  const next = e.target.value as SaleFormPresetStatus;
+                value={editSaleId ? form.status : presetStatus}
+                disabled={!editSaleId}
+                aria-readonly={!editSaleId ? "true" : undefined}
+                onChange={(e) =>
                   patchForm({
-                    status: next,
-                    ...(next === "final" && !form.paymentAmount.trim()
-                      ? { paymentAmount: String(totalPayable) }
-                      : {}),
-                  });
-                }}
+                    status: e.target.value as "final" | "draft" | "quotation",
+                  })
+                }
               >
                 <option value="final">Final</option>
-                <option value="draft">Draft</option>
                 <option value="quotation">Quotation</option>
+                <option value="draft">Draft</option>
               </select>
             </label>
 
@@ -1085,6 +1346,29 @@ export function AddSaleForm({
                 className="hq6-form-input"
                 value={form.customerLocation}
                 onChange={(e) => patchForm({ customerLocation: e.target.value })}
+              />
+            </label>
+
+            <label className="hq6-form-label">
+              <span>
+                Vehicle Registration (Plate){" "}
+                {isJobTenant ? <span className="req">*</span> : null}
+              </span>
+              <input
+                className="hq6-form-input"
+                value={form.plateNumber}
+                onChange={(e) => patchForm({ plateNumber: e.target.value })}
+                placeholder="e.g. ABC-123-XY"
+              />
+            </label>
+
+            <label className="hq6-form-label">
+              <span>Car Model &amp; Year:</span>
+              <input
+                className="hq6-form-input"
+                value={form.carModelYear}
+                onChange={(e) => patchForm({ carModelYear: e.target.value })}
+                placeholder="e.g. Camry 2018"
               />
             </label>
 
@@ -1190,6 +1474,7 @@ export function AddSaleForm({
                   <th>Product</th>
                   <th style={{ width: "7.5rem" }}>Source</th>
                   <th>Quantity</th>
+                  <th>Cost Price</th>
                   <th>Unit Price</th>
                   <th>Discount</th>
                   <th>Tax</th>
@@ -1203,7 +1488,7 @@ export function AddSaleForm({
               <tbody>
                 {lines.length === 0 ? (
                   <tr>
-                    <td colSpan={10} className="text-center text-[#9ca3af]">
+                    <td colSpan={11} className="text-center text-[#9ca3af]">
                       &nbsp;
                     </td>
                   </tr>
@@ -1340,8 +1625,14 @@ export function AddSaleForm({
                           </div>
                         </td>
                         <td>
+                          <span className="tabular-nums text-[#6b7280]">
+                            {formatHq6Currency(line.costPrice ?? 0)}
+                          </span>
+                        </td>
+                        <td>
                           <ClearableNumberInput
                             min={0}
+                            showZero
                             value={line.unitPrice}
                             onChange={(n) =>
                               updateLine(line.key, { unitPrice: n })
@@ -1686,16 +1977,30 @@ export function AddSaleForm({
 
         <section className="hq6-form-card">
           <h2 className="hq6-form-card-title">Add payment</h2>
-          {isProvisional ? (
+          {editingFinalized && !showAddPayment ? (
+            <p className="mb-3 text-sm text-[#6b7280]">
+              This sale is fully paid. Use{" "}
+              <strong>View Payments</strong> on the sales list to review or edit
+              existing payments.
+            </p>
+          ) : editingFinalized ? (
+            <p className="mb-3 text-sm text-[#6b7280]">
+              Remaining due: {formatHq6Currency(remainingDue)}. Existing
+              payments stay as they are — enter an amount below to add another
+              payment on Update.
+            </p>
+          ) : isProvisional ? (
             <p className="mb-3 text-sm text-[#6b7280]">
               Payment posts when Status is <strong>Final</strong> (converts this{" "}
               {form.status === "draft" ? "draft" : "quotation"} to a real sale).
             </p>
           ) : (
             <p className="mb-3 text-sm text-[#6b7280]">
-              Advance Balance: {formatHq6Currency(0)}
+              Advance Balance: {formatHq6Currency(customerAdvanceBalance)}
             </p>
           )}
+          {showAddPayment ? (
+          <>
           <div className="hq6-form-grid hq6-form-grid-3">
             <label className="hq6-form-label">
               <span>
@@ -1706,7 +2011,9 @@ export function AddSaleForm({
                 inputMode="decimal"
                 className="hq6-form-input"
                 placeholder={
-                  totalPayable > 0 ? totalPayable.toFixed(2) : "0.00"
+                  (editingFinalized ? remainingDue : totalPayable) > 0
+                    ? (editingFinalized ? remainingDue : totalPayable).toFixed(2)
+                    : "0.00"
                 }
                 value={form.paymentAmount}
                 onChange={(e) => patchForm({ paymentAmount: e.target.value })}
@@ -1768,6 +2075,8 @@ export function AddSaleForm({
               <strong>{formatHq6Currency(changeReturn)}</strong>
             </span>
           </div>
+          </>
+          ) : null}
         </section>
 
         {error ? <p className="text-sm text-[#dc2626]">{error}</p> : null}
@@ -1785,22 +2094,22 @@ export function AddSaleForm({
           ) : null}
           <Hq6BusyButton
             className="hq6-btn-purple"
-            busy={false}
+            busy={mutation.isPending && saveIntent === "save"}
+            busyLabel={isEditing ? "Updating…" : "Saving…"}
             disabled={lines.length === 0 || mutation.isPending}
             onClick={() => {
-              printAfterSaveRef.current = false;
-              mutation.mutate();
+              kickSave("save");
             }}
           >
             {primaryLabel}
           </Hq6BusyButton>
           <Hq6BusyButton
             className="hq6-btn-green"
-            busy={false}
+            busy={mutation.isPending && saveIntent === "print"}
+            busyLabel={isEditing ? "Updating…" : "Saving…"}
             disabled={lines.length === 0 || mutation.isPending}
             onClick={() => {
-              printAfterSaveRef.current = true;
-              mutation.mutate();
+              kickSave("print");
             }}
           >
             {printLabel}
@@ -1829,8 +2138,9 @@ export function AddSaleForm({
       {editSaleId && editSale ? (
         <p className="rounded-md border border-[var(--hq6-border,#ddd)] bg-[#f9f9f9] px-3 py-2 text-sm text-[#555]">
           Editing <strong>{editSale.reference}</strong>
-          {editSale.recordStatus ? ` (${editSale.recordStatus})` : ""}. Saving replaces
-          this document with your updates.
+          {editSale.recordStatus ? ` (${editSale.recordStatus})` : ""}. Changes
+          update this document in place. Change Status to Quotation or Draft to
+          move it off final sales.
         </p>
       ) : null}
       {showLocationField ? (
@@ -1904,7 +2214,11 @@ export function AddSaleForm({
                       createdAt: contact.createdAt,
                       updatedAt: contact.createdAt,
                       totalSellDue: contact.totalSellDue,
+                      totalAdvance: contact.totalAdvance,
                       status: contact.status,
+                      contactId: contact.contactId,
+                      businessName: contact.businessName,
+                      details: contact.details,
                     });
                   } catch {
                     patchForm({ customerId: id, customerName: id });
@@ -2077,20 +2391,17 @@ export function AddSaleForm({
           />
           <Select
             label="Status"
-            value={form.status}
-            onChange={(e) => {
-              const next = e.target.value as SaleFormPresetStatus;
+            value={editSaleId ? form.status : presetStatus}
+            disabled={!editSaleId}
+            onChange={(e) =>
               patchForm({
-                status: next,
-                ...(next === "final" && !form.paymentAmount.trim()
-                  ? { paymentAmount: String(totalPayable) }
-                  : {}),
-              });
-            }}
+                status: e.target.value as "final" | "draft" | "quotation",
+              })
+            }
             options={[
               { value: "final", label: "Final" },
-              { value: "draft", label: "Draft" },
               { value: "quotation", label: "Quotation" },
+              { value: "draft", label: "Draft" },
             ]}
           />
           <Select
@@ -2132,6 +2443,7 @@ export function AddSaleForm({
                 <th className="px-3 py-2 font-medium">Product</th>
                 <th className="px-3 py-2 font-medium">Source</th>
                 <th className="px-3 py-2 font-medium">Quantity</th>
+                <th className="px-3 py-2 font-medium">Cost Price</th>
                 <th className="px-3 py-2 font-medium">Unit Price</th>
                 <th className="px-3 py-2 font-medium">Discount</th>
                 <th className="px-3 py-2 font-medium text-right">Subtotal</th>
@@ -2141,7 +2453,7 @@ export function AddSaleForm({
             <tbody>
               {lines.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-3 py-8 text-center text-muted">
+                  <td colSpan={9} className="px-3 py-8 text-center text-muted">
                     Search and add products below
                   </td>
                 </tr>
@@ -2231,9 +2543,13 @@ export function AddSaleForm({
                         className="w-16 rounded border border-border px-2 py-1"
                       />
                     </td>
+                    <td className="px-3 py-2 text-muted tabular-nums">
+                      {formatCurrency(line.costPrice ?? 0)}
+                    </td>
                     <td className="px-3 py-2">
                       <ClearableNumberInput
                         min={0}
+                        showZero
                         value={line.unitPrice}
                         onChange={(n) =>
                           updateLine(line.key, { unitPrice: n })
@@ -2408,22 +2724,39 @@ export function AddSaleForm({
 
       <section className="space-y-3 rounded-lg border border-border bg-card p-4">
         <p className="text-sm font-medium text-foreground">Add payment</p>
-        {isProvisional ? (
+        {editingFinalized && !showAddPayment ? (
+          <p className="text-sm text-muted">
+            This sale is fully paid. Use View Payments on the sales list to
+            review or edit existing payments.
+          </p>
+        ) : editingFinalized ? (
+          <p className="text-sm text-muted">
+            Remaining due: {formatCurrency(remainingDue)}. Existing payments
+            stay as they are — enter an amount below to add another payment on
+            Update.
+          </p>
+        ) : isProvisional ? (
           <p className="text-sm text-muted">
             Payment posts when Status is <strong>Final</strong> (converts this{" "}
             {form.status === "draft" ? "draft" : "quotation"} to a real sale).
           </p>
         ) : (
           <p className="text-sm text-muted">
-            Advance Balance: {formatCurrency(0)}
+            Advance Balance: {formatCurrency(customerAdvanceBalance)}
           </p>
         )}
+        {showAddPayment ? (
+        <>
         <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
           <Input
             label="Amount"
             type="text"
             inputMode="decimal"
-            placeholder={totalPayable > 0 ? totalPayable.toFixed(2) : "0.00"}
+            placeholder={
+              (editingFinalized ? remainingDue : totalPayable) > 0
+                ? (editingFinalized ? remainingDue : totalPayable).toFixed(2)
+                : "0.00"
+            }
             value={form.paymentAmount}
             onChange={(e) => patchForm({ paymentAmount: e.target.value })}
           />
@@ -2470,6 +2803,8 @@ export function AddSaleForm({
         <div className="flex flex-wrap justify-between gap-4 text-sm font-semibold">
           <span>Change Return: {formatCurrency(changeReturn)}</span>
         </div>
+        </>
+        ) : null}
       </section>
 
       {error ? <p className="text-sm text-error">{error}</p> : null}
@@ -2482,24 +2817,22 @@ export function AddSaleForm({
         ) : null}
         <Button
           size="sm"
+          isLoading={mutation.isPending && saveIntent === "save"}
+          loadingText={editSaleId ? "Updating…" : "Saving…"}
           disabled={lines.length === 0 || mutation.isPending}
-          onClick={() => {
-            printAfterSaveRef.current = false;
-            mutation.mutate();
-          }}
+          onClick={() => kickSave("save")}
         >
-          Save
+          {editSaleId ? "Update" : "Save"}
         </Button>
         <Button
           size="sm"
           variant="secondary"
+          isLoading={mutation.isPending && saveIntent === "print"}
+          loadingText={editSaleId ? "Updating…" : "Saving…"}
           disabled={lines.length === 0 || mutation.isPending}
-          onClick={() => {
-            printAfterSaveRef.current = true;
-            mutation.mutate();
-          }}
+          onClick={() => kickSave("print")}
         >
-          Save and print
+          {editSaleId ? "Update and print" : "Save and print"}
         </Button>
       </div>
 

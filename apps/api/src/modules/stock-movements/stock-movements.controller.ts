@@ -129,6 +129,9 @@ export class StockMovementsController {
         name: string;
         quantity: number;
         unitCost?: number;
+        discountPercent?: number;
+        unitSellingPrice?: number;
+        expDate?: string;
       }>;
       notes?: string;
       supplierId?: string;
@@ -138,6 +141,37 @@ export class StockMovementsController {
     },
   ) {
     return this.movementsService.create(body);
+  }
+
+  @Patch(':id')
+  @Roles('staff', 'manager', 'admin', 'super_admin')
+  update(
+    @Param('id') id: string,
+    @Body()
+    body: {
+      type?: MovementType;
+      reference?: string;
+      status?: MovementStatus;
+      paymentStatus?: 'paid' | 'due' | 'partial' | 'overdue';
+      paymentMethod?: string;
+      lines?: Array<{
+        itemId: string;
+        sku: string;
+        name: string;
+        quantity: number;
+        unitCost?: number;
+        discountPercent?: number;
+        unitSellingPrice?: number;
+        expDate?: string;
+      }>;
+      notes?: string;
+      supplierId?: string;
+      source?: MovementSource;
+      locationCode?: string;
+      date?: string;
+    },
+  ) {
+    return this.movementsService.update(id, body);
   }
 
   @Post(':id/pay')

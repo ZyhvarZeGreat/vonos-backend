@@ -34,6 +34,8 @@ import {
 } from "@/lib/api/paymentAccounts";
 import { runReport } from "@/lib/api/reports";
 import { useServerListPage, serverPaginationBarProps } from "@/lib/hooks/useServerListPage";
+import { nameListCursor } from "@/lib/utils/pagination";
+
 import { useRouteTenant, useTenantId } from "@/lib/hooks/useRouteTenant";
 import { useListPageFilters } from "@/lib/hooks/useListPageFilters";
 import { usePaymentAccountPageTabs } from "@/lib/hooks/usePaymentAccountPageTabs";
@@ -101,6 +103,7 @@ function PaymentAccountsListViewBody() {
       getPaymentAccountsPage(tenantId!, cursor, limit, {
         includeSummary: opts?.includeSummary,
       }),
+    getCursor: (row) => nameListCursor(row),
   });
 
   const { items, isLoading, isFetching, error } = listPage;

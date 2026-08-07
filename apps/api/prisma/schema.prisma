@@ -1375,6 +1375,22 @@ model Employee {
   bankCode          String?
   bankAccountNo     String?
   taxPayerId        String?
+  /// HQ6 user profile fields (Ultimate POS manage_user parity).
+  mobile            String?
+  altContact        String?
+  familyContact     String?
+  guardianName      String?
+  dateOfBirth       DateTime? @db.Date
+  gender            String?
+  maritalStatus     String?
+  bloodGroup        String?
+  idProofName       String?
+  idProofNumber     String?
+  permanentAddress  String?
+  currentAddress    String?
+  salesCommission   Decimal?  @default(0)
+  maxSalesDiscountPercent Decimal?
+  department        String?
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
   deletedAt       DateTime?
@@ -1437,4 +1453,27 @@ model Payroll {
   @@index([employeeRecordId])
   @@index([designationId])
   @@index([tenantId, payrollMonth])
+}
+
+/// Opt-in write dedupe for leave-first / client retries.
+/// Requests without X-Idempotency-Key are untouched (zero ops impact).
+model IdempotencyRecord {
+  id             String   @id @default(cuid())
+  /// Usually authenticated userId; "system" when unauthenticated.
+  scope          String
+  key            String
+  method         String
+  path           String
+  requestHash    String
+  /// processing | completed
+  status         String
+  responseStatus Int?
+  responseBody   Json?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  expiresAt      DateTime
+
+  @@unique([scope, key])
+  @@index([expiresAt])
+  @@index([status, updatedAt])
 }

@@ -7,11 +7,16 @@ import type {
 } from '@vonos/types';
 import { paymentStatusFromAmounts } from '../../common/utils/paymentStatus';
 import { parseMovementLines, toIso, toNumber } from '../../common/utils/serializers';
+import { movementLineRollups } from '../../common/utils/stockQuantity';
 
 export type { StockMovementListRow };
 
 export function serializeMovement(row: PrismaMovement): StockMovement {
   const lines = parseMovementLines(row.lines) as StockMovementLine[];
+  const rollups = movementLineRollups(row.lines ?? []);
+  const totalPaid =
+    row.totalPaid != null ? toNumber(row.totalPaid) : 0;
+  const paymentDue = Math.max(0, rollups.grandTotal - totalPaid);
   return {
     id: row.id,
     tenantId: row.tenantId,
@@ -25,6 +30,8 @@ export function serializeMovement(row: PrismaMovement): StockMovement {
     source: row.source,
     paymentStatus: row.paymentStatus ?? null,
     paymentMethod: row.paymentMethod ?? null,
+    totalPaid,
+    paymentDue,
     date: toIso(row.date),
     createdByUserId: row.createdByUserId,
     createdByName: row.createdByName,
@@ -52,16 +59,9 @@ export function toMovementListRow(
   let grandTotal =
     row.grandTotal == null ? undefined : toNumber(row.grandTotal);
   if (itemCount == null || grandTotal == null) {
-    const lines = parseMovementLines(row.lines ?? []);
-    itemCount = itemCount ?? lines.length;
-    grandTotal =
-      grandTotal ??
-      lines.reduce(
-        (sum, line) =>
-          sum +
-          line.quantity * toNumber((line as StockMovementLine).unitCost ?? 0),
-        0,
-      );
+    const rollups = movementLineRollups(row.lines ?? []);
+    itemCount = itemCount ?? rollups.itemCount;
+    grandTotal = grandTotal ?? rollups.grandTotal;
   }
   const denormPaid =
     row.totalPaid != null ? toNumber(row.totalPaid) : 0;

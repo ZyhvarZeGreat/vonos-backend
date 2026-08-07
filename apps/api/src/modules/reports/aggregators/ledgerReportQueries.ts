@@ -1,5 +1,6 @@
 import { Prisma } from '@prisma/client';
 import type { TenantScopedPrisma } from '../../../common/prisma/prisma.service';
+import { EXCLUDE_CASH_BOOK_LEDGER_SQL } from '../../../common/utils/ledgerCashBook';
 import { toNumber } from '../../../common/utils/serializers';
 import { bucketLabel, type DateWindow } from './date-utils';
 
@@ -48,6 +49,7 @@ export async function ledgerSummaryInWindow(
       AND "deletedAt" IS NULL
       AND date >= ${from}
       AND date <= ${to}
+      ${EXCLUDE_CASH_BOOK_LEDGER_SQL}
     GROUP BY type
   `;
   return summarizeByType(rows);
@@ -93,6 +95,7 @@ export async function ledgerPlTrend(
       AND "deletedAt" IS NULL
       AND date >= ${window.from}
       AND date <= ${window.to}
+      ${EXCLUDE_CASH_BOOK_LEDGER_SQL}
     GROUP BY bucket, type
     ORDER BY bucket ASC
   `;
@@ -129,6 +132,7 @@ export async function ledgerExpenseBreakdown(
       AND type <> 'revenue'
       AND date >= ${from}
       AND date <= ${to}
+      ${EXCLUDE_CASH_BOOK_LEDGER_SQL}
     GROUP BY category
     ORDER BY total DESC
     LIMIT 8
@@ -157,6 +161,7 @@ export async function ledgerRevenueBreakdown(
       AND type = 'revenue'
       AND date >= ${from}
       AND date <= ${to}
+      ${EXCLUDE_CASH_BOOK_LEDGER_SQL}
     GROUP BY category
     ORDER BY total DESC
     LIMIT 12

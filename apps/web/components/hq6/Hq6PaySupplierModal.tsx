@@ -12,6 +12,7 @@ import {
   Hq6ModalSaveClose,
 } from "@/components/hq6/Hq6Modal";
 import { getPaymentAccountsForPicker } from "@/lib/api/paymentAccounts";
+import { paymentAccountPickerLabel } from "@/lib/utils/pickerLabels";
 import {
   getSupplierSummary,
   paySupplierDue,
@@ -213,7 +214,7 @@ export function Hq6PaySupplierModal({
             <option value="">Please Select</option>
             {accounts.map((account) => (
               <option key={account.id} value={account.id}>
-                {account.name}
+                {paymentAccountPickerLabel(account)}
               </option>
             ))}
           </select>

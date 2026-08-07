@@ -1,6 +1,7 @@
 import type { LoginSuccessResponse } from "@vonos/types";
 import { useAuthStore } from "@/stores/authStore";
 import { stripBasePath, withBasePath } from "@/lib/utils/basePath";
+import { applyIdempotencyHeaders } from "@/lib/utils/idempotency";
 import { resolveViewingTenantId } from "./viewingTenant";
 
 const API_BASE = (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001").replace(
@@ -115,6 +116,7 @@ export async function apiFetch(
   if (init?.body && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
   }
+  applyIdempotencyHeaders(headers);
 
   const response = await fetch(apiUrl(path), {
     ...init,
@@ -140,6 +142,7 @@ export async function apiFetch(
   if (init?.body && !retryHeaders.has("Content-Type")) {
     retryHeaders.set("Content-Type", "application/json");
   }
+  applyIdempotencyHeaders(retryHeaders);
 
   return fetch(apiUrl(path), {
     ...init,

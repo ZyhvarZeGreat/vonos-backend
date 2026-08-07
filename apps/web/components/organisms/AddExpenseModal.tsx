@@ -10,8 +10,7 @@ import { Button } from "@/components/atoms/Button";
 import { Input } from "@/components/atoms/Input";
 import { Modal, ModalFooter, ModalHeader } from "@/components/atoms/Modal";
 import { Select } from "@/components/atoms/Select";
-import { getExpenseCategories } from "@/lib/api/expenses";
-import { createManualExpense } from "@/lib/api/ledger";
+import { createExpense, getExpenseCategories } from "@/lib/api/expenses";
 import { useIsVaHq6 } from "@/lib/hooks/useIsVaHq6";
 import { useRouteTenant, useTenantId } from "@/lib/hooks/useRouteTenant";
 import { ENTITY_LIST } from "@/lib/registries/tenants";
@@ -91,18 +90,22 @@ export function AddExpenseModal() {
         throw new Error("Enter a valid amount and description");
       }
       const parsed = Number(valid.amount);
-      return createManualExpense(tenantId, {
-        type: "expense",
-        amount: parsed,
-        category,
-        description: String(valid.description).trim(),
-        date,
+      const categoryId = dbCategories.find(
+        (row) => row.name.toLowerCase() === category.trim().toLowerCase(),
+      )?.id;
+      return createExpense(tenantId, {
+        categoryId,
+        totalAmount: parsed,
+        note: String(valid.description).trim(),
+        expenseDate: date,
+        paymentStatus: "due",
       });
     },
     successMessage: entityLabel
       ? `Expense added for ${entityLabel}`
-      : "Expense added to ledger",
+      : "Expense added",
     invalidateKeys: [
+      ["expenses"],
       ["ledgerEntries"],
       ["ledgerTablePage"],
       ["ledgerSummary"],
@@ -131,8 +134,8 @@ export function AddExpenseModal() {
         title="Add Expense"
         subtitle={
           entityLabel
-            ? `Posting to ${entityLabel} ledger`
-            : "Record a manual expense in the ledger"
+            ? `Posting to ${entityLabel} expenses`
+            : "Record an expense (shows on Expenses and Finance)"
         }
         onClose={handleClose}
       />

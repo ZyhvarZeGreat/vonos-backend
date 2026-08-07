@@ -637,23 +637,37 @@ export class AuthService {
     const normalized = identifier.trim().toLowerCase();
     if (!normalized) return null;
 
-    const user = normalized.includes('@')
-      ? await this.prisma.user.findFirst({
-          where: {
-            email: { equals: normalized, mode: 'insensitive' },
-            deletedAt: null,
-            status: 'active',
-          },
-        })
-      : await this.prisma.user.findFirst({
-          where: {
-            username: { equals: normalized, mode: 'insensitive' },
-            deletedAt: null,
-            status: 'active',
-          },
-        });
+    if (normalized.includes('@')) {
+      return this.prisma.user.findFirst({
+        where: {
+          email: { equals: normalized, mode: 'insensitive' },
+          deletedAt: null,
+          status: 'active',
+        },
+      });
+    }
 
-    return user ?? null;
+    const byUsername = await this.prisma.user.findFirst({
+      where: {
+        username: { equals: normalized, mode: 'insensitive' },
+        deletedAt: null,
+        status: 'active',
+      },
+    });
+    if (byUsername) return byUsername;
+
+    // Legacy / seed rows often have username NULL while the UI showed the
+    // email local-part as "username". Allow that handle when unambiguous.
+    const byEmailLocal = await this.prisma.user.findMany({
+      where: {
+        username: null,
+        deletedAt: null,
+        status: 'active',
+        email: { startsWith: `${normalized}@`, mode: 'insensitive' },
+      },
+      take: 2,
+    });
+    return byEmailLocal.length === 1 ? byEmailLocal[0]! : null;
   }
 
   private async findActiveUserByEmail(email: string) {

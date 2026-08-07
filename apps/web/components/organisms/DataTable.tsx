@@ -593,11 +593,10 @@ export function DataTable<T extends { id: string }>({
   }
 
   const showBodyLoading = isLoading || (isFetching && data.length === 0);
-  // Soft overlay while filters/search refetch — keeps rows visible so users
-  // see that results are updating.
-  const showFetchOverlay = isFetching && data.length > 0 && !isLoading;
+  // Never overlay a loader on existing rows — keep previous page visible.
+  const showFetchOverlay = false;
   const loadPercent = useSimulatedLoadPercent(
-    displayMode === "table" && (showBodyLoading || showFetchOverlay),
+    displayMode === "table" && showBodyLoading,
   );
 
   if (

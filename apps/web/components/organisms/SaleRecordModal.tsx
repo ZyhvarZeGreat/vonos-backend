@@ -24,6 +24,7 @@ import {
   modalKeys,
 } from "@/lib/query/modalQueryKeys";
 import { patchEntityInQueries } from "@/lib/query/optimistic";
+import { formatSaleNotesForDisplay } from "@/lib/utils/saleInvoiceNotes";
 import {
   saleDocumentKind,
   saleToInvoiceContact,
@@ -338,7 +339,9 @@ export function SaleRecordModal({
               </p>
             ) : null}
             {sale.notes ? (
-              <p className="text-sm text-muted">{sale.notes}</p>
+              <p className="text-sm text-muted whitespace-pre-wrap">
+                {formatSaleNotesForDisplay(sale.notes)}
+              </p>
             ) : null}
             <dl className="grid gap-3 sm:grid-cols-2">
               <div>

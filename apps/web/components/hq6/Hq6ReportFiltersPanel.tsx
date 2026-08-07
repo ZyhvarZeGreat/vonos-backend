@@ -48,6 +48,9 @@ export function Hq6ReportFiltersPanel({
   onDateFromChange,
   onDateToChange,
   defaultOpen = true,
+  onApply,
+  onClear,
+  dirty = false,
 }: {
   fields: ReportFilterField[];
   values: ReportRunOptions;
@@ -58,6 +61,9 @@ export function Hq6ReportFiltersPanel({
   onDateFromChange?: (value: string) => void;
   onDateToChange?: (value: string) => void;
   defaultOpen?: boolean;
+  onApply?: () => void;
+  onClear?: () => void;
+  dirty?: boolean;
 }) {
   const selectFields = fields.filter((field) => field.kind !== "search");
   const showDates = Boolean(onDateFromChange && onDateToChange);
@@ -121,6 +127,27 @@ export function Hq6ReportFiltersPanel({
               </div>
             ) : null}
           </div>
+          {onApply ? (
+            <div className="mt-3 flex flex-wrap items-center justify-end gap-2">
+              {onClear ? (
+                <button
+                  type="button"
+                  className="btn btn-default btn-sm"
+                  onClick={onClear}
+                >
+                  Clear all
+                </button>
+              ) : null}
+              <button
+                type="button"
+                className="btn btn-primary btn-sm"
+                onClick={onApply}
+                disabled={!dirty}
+              >
+                Apply filters
+              </button>
+            </div>
+          ) : null}
         </UposFiltersPanel>
       </div>
     </div>

@@ -76,6 +76,7 @@ async function fetchCustomersRaw(
   filters: CustomerFilters | undefined,
   cursor?: string,
   limit?: number,
+  signal?: AbortSignal,
 ): Promise<Customer[] | { items: Customer[]; totalCount: number }> {
   const params = new URLSearchParams();
   if (filters?.search) params.set("search", filters.search);
@@ -105,7 +106,7 @@ async function fetchCustomersRaw(
     query ? `/customers?${query}` : "/customers",
     tenantId,
   );
-  const response = await apiFetch(path);
+  const response = await apiFetch(path, signal ? { signal } : undefined);
   if (!response.ok) throw new Error("Failed to fetch customers");
   return response.json();
 }
@@ -115,6 +116,7 @@ export async function getCustomersPage(
   filters: CustomerFilters | undefined,
   cursor: string | undefined,
   limit = DEFAULT_TABLE_PAGE_SIZE,
+  init?: { signal?: AbortSignal },
 ): Promise<ListPage<Customer>> {
   return fetchListPage(
     (pageCursor, pageLimit) =>
@@ -123,6 +125,7 @@ export async function getCustomersPage(
         { ...filters, includeSummary: filters?.includeSummary ?? false },
         pageCursor,
         pageLimit,
+        init?.signal,
       ),
     cursor,
     limit,

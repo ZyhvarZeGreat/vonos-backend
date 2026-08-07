@@ -6,6 +6,8 @@ import { DataTable, type ColumnConfig } from "@/components/organisms/DataTable";
 import { ListPageShell } from "@/components/organisms/ListPageShell";
 import { getItems, getItemsPage } from "@/lib/api/items";
 import { useServerListPage } from "@/lib/hooks/useServerListPage";
+import { itemListCursor } from "@/lib/utils/pagination";
+
 import { ServerPaginatedTable } from "@/components/organisms/ServerPaginatedTable";
 import { useRecordNavigation } from "@/lib/hooks/useRecordNavigation";
 import { useListPageFilters } from "@/lib/hooks/useListPageFilters";
@@ -43,6 +45,12 @@ const columns: ColumnConfig<Item>[] = [
     header: "Unit Cost",
     sortValue: (r) => r.costPrice,
     render: (r) => formatCurrency(r.costPrice, r.currency),
+  },
+  {
+    key: "sellPrice",
+    header: "Selling Price",
+    sortValue: (r) => r.sellPrice ?? 0,
+    render: (r) => formatCurrency(r.sellPrice ?? 0, r.currency),
   },
 ];
 
@@ -83,7 +91,8 @@ export function KidsWearInventoryView() {
     enabled: Boolean(tenantId),
     filters: apiFilters,
     search,
-    fetchPage: (cursor, limit, _sort, opts) => getItemsPage(tenantId!, { ...apiFilters, includeSummary: opts?.includeSummary }, cursor, limit),
+    fetchPage: (cursor, limit, _sort, opts) => getItemsPage(tenantId!, { ...apiFilters, includeSummary: opts?.includeSummary }, cursor, limit, { signal: opts?.signal }),
+    getCursor: (row) => itemListCursor(row),
   });
 
   const filtered = useMemo(() => {

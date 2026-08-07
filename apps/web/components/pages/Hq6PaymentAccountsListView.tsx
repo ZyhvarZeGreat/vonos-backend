@@ -35,6 +35,8 @@ import {
   updatePaymentAccount,
 } from "@/lib/api/paymentAccounts";
 import { useServerListPage } from "@/lib/hooks/useServerListPage";
+import { nameListCursor } from "@/lib/utils/pagination";
+
 import { HQ6_TABLE_PAGE_SIZE } from "@/lib/api/fetchAllPages";
 import { useListExport } from "@/lib/hooks/useListExport";
 import { useRouteTenant, useTenantId } from "@/lib/hooks/useRouteTenant";
@@ -81,6 +83,7 @@ export function Hq6PaymentAccountsListView() {
       getPaymentAccountsPage(tenantId!, cursor, limit, {
         includeSummary: opts?.includeSummary,
       }),
+    getCursor: (row) => nameListCursor(row),
   });
 
   const {

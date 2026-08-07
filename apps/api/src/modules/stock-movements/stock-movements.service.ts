@@ -556,9 +556,11 @@ export class StockMovementsService {
     });
     if (!existing) throw new NotFoundException('Movement not found');
 
-    await this.tenantDb.db.stockMovement.update({
-      where: { id },
-      data: { deletedAt: new Date() },
+    await this.tenantDb.db.$transaction(async (tx) => {
+      await this.archiveReplacedPurchaseInTx(tx, {
+        movementId: id,
+        tenantId,
+      });
     });
 
     if (existing.supplierId) {
@@ -575,6 +577,106 @@ export class StockMovementsService {
       summary: `Deleted movement ${existing.reference}`,
     });
     void invalidateTenantDashboardCache(this.cache, tenantId);
+  }
+
+  /**
+   * Soft-delete a purchase being replaced/deleted and free Invoice unique
+   * `(tenantId, reference, kind)` so a replacement can reuse the PO number.
+   */
+  private async archiveReplacedPurchaseInTx(
+    tx: Prisma.TransactionClient,
+    opts: { movementId: string; tenantId: string },
+  ): Promise<{ supplierId: string | null; reference: string }> {
+    const existing = await tx.stockMovement.findFirst({
+      where: {
+        id: opts.movementId,
+        tenantId: opts.tenantId,
+        deletedAt: null,
+      },
+      select: { id: true, reference: true, supplierId: true },
+    });
+    if (!existing) {
+      throw new NotFoundException('Purchase to replace was not found');
+    }
+
+    const invoice = await tx.invoice.findFirst({
+      where: {
+        tenantId: opts.tenantId,
+        stockMovementId: opts.movementId,
+        deletedAt: null,
+      },
+      select: { id: true },
+    });
+    const invoiceId = invoice?.id ?? null;
+
+    const payments = await tx.payment.findMany({
+      where: this.purchasePaymentWhere(
+        opts.tenantId,
+        existing.reference,
+        invoiceId,
+      ),
+      select: { id: true },
+    });
+    for (const payment of payments) {
+      await softDeletePaymentAccountTxns(tx, {
+        tenantId: opts.tenantId,
+        paymentId: payment.id,
+      });
+    }
+    if (payments.length > 0) {
+      await tx.payment.updateMany({
+        where: { id: { in: payments.map((p) => p.id) } },
+        data: { deletedAt: new Date() },
+      });
+    }
+
+    await tx.ledgerEntry.updateMany({
+      where: {
+        tenantId: opts.tenantId,
+        linkedRecordType: 'stock_movement',
+        linkedRecordId: opts.movementId,
+        deletedAt: null,
+      },
+      data: { deletedAt: new Date() },
+    });
+    if (invoiceId || payments.length > 0) {
+      await tx.accountTransaction.updateMany({
+        where: {
+          tenantId: opts.tenantId,
+          deletedAt: null,
+          OR: [
+            ...(invoiceId ? [{ invoiceId }] : []),
+            ...(payments.length > 0
+              ? [{ paymentId: { in: payments.map((p) => p.id) } }]
+              : []),
+          ],
+        },
+        data: { deletedAt: new Date() },
+      });
+    }
+
+    const archivedRef = `${existing.reference}__del_${opts.movementId.slice(-8)}`;
+    await tx.invoice.updateMany({
+      where: {
+        tenantId: opts.tenantId,
+        stockMovementId: opts.movementId,
+        deletedAt: null,
+      },
+      data: {
+        deletedAt: new Date(),
+        reference: archivedRef,
+      },
+    });
+
+    await tx.stockMovement.update({
+      where: { id: opts.movementId },
+      data: {
+        deletedAt: new Date(),
+        reference: archivedRef,
+      },
+    });
+
+    return { supplierId: existing.supplierId, reference: existing.reference };
   }
 
   /** Pay against a single inbound purchase (HQ6 purchases “Add payment”). */
@@ -605,12 +707,7 @@ export class StockMovementsService {
     });
     if (!movement) throw new NotFoundException('Purchase not found');
 
-    const total = parseMovementLines(movement.lines).reduce(
-      (sum, line) =>
-        sum +
-        line.quantity * toNumber((line as { unitCost?: number }).unitCost ?? 0),
-      0,
-    );
+    const total = movementLineRollups(movement.lines).grandTotal;
     if (total <= 0) {
       throw new BadRequestException('Purchase has no payable amount');
     }
@@ -671,20 +768,6 @@ export class StockMovementsService {
         paymentMethod: method,
         paymentId: payment.id,
         createdByName: createdBy.createdByName ?? null,
-      });
-
-      await tx.ledgerEntry.create({
-        data: {
-          tenantId,
-          type: 'cost',
-          amount: apply,
-          currency: 'NGN',
-          category: 'Supplier Payment',
-          description: `Payment on ${movement.reference}`,
-          linkedRecordType: 'payment',
-          linkedRecordId: payment.id,
-          date: paidOn,
-        },
       });
 
       const newPaid = alreadyPaid + apply;
@@ -770,12 +853,7 @@ export class StockMovementsService {
     });
     if (!movement) return;
 
-    const total = parseMovementLines(movement.lines).reduce(
-      (sum, line) =>
-        sum +
-        line.quantity * toNumber((line as { unitCost?: number }).unitCost ?? 0),
-      0,
-    );
+    const total = movementLineRollups(movement.lines).grandTotal;
     const invoiceId = await this.purchaseInvoiceId(movementId, tenantId);
     const paidAgg = await this.tenantDb.db.payment.aggregate({
       where: this.purchasePaymentWhere(tenantId, reference, invoiceId),
@@ -942,6 +1020,9 @@ export class StockMovementsService {
       name: string;
       quantity: number;
       unitCost?: number;
+      discountPercent?: number;
+      unitSellingPrice?: number;
+      expDate?: string;
     }>;
     notes?: string;
     locationCode?: string;
@@ -963,7 +1044,7 @@ export class StockMovementsService {
         status: body.status ?? 'Ordered',
         paymentStatus: body.paymentStatus ?? null,
         paymentMethod: body.paymentMethod?.trim() || null,
-        lines: body.lines,
+        lines: body.lines as unknown as import('@prisma/client').Prisma.InputJsonValue,
         itemCount: rollups.itemCount,
         grandTotal: rollups.grandTotal,
         notes: body.notes ?? null,
@@ -988,6 +1069,155 @@ export class StockMovementsService {
     void invalidateTenantDashboardCache(this.cache, tenantId);
     if (row.supplierId) {
       void refreshSupplierPurchaseRollups(this.tenantDb.db, row.supplierId);
+    }
+    return serializeMovement(row);
+  }
+
+  /** In-place purchase edit — same id, update invoice; keep existing payments. */
+  async update(
+    id: string,
+    body: {
+      type?: MovementType;
+      reference?: string;
+      status?: MovementStatus;
+      paymentStatus?: PurchasePaymentStatus;
+      paymentMethod?: string;
+      lines?: Array<{
+        itemId: string;
+        sku: string;
+        name: string;
+        quantity: number;
+        unitCost?: number;
+        discountPercent?: number;
+        unitSellingPrice?: number;
+        expDate?: string;
+      }>;
+      notes?: string;
+      locationCode?: string;
+      supplierId?: string;
+      source?: MovementSource;
+      date?: string;
+    },
+  ) {
+    const tenantId = this.tenantDb.requireTenantId();
+    const existing = await this.tenantDb.db.stockMovement.findFirst({
+      where: { id, tenantId, deletedAt: null },
+      include: { supplier: { select: { name: true } } },
+    });
+    if (!existing) throw new NotFoundException('Movement not found');
+
+    const nextLines = body.lines ?? parseMovementLines(existing.lines);
+    const rollups = movementLineRollups(nextLines);
+    const locationCode =
+      body.locationCode !== undefined
+        ? await this.tenantDb.resolveBusinessLocation(body.locationCode)
+        : existing.locationCode;
+    const nextStatus = body.status ?? existing.status;
+    const nextReference = body.reference?.trim() || existing.reference;
+    const nextPaymentStatus =
+      body.paymentStatus !== undefined
+        ? body.paymentStatus
+        : existing.paymentStatus;
+    const nextSupplierId =
+      body.supplierId !== undefined ? body.supplierId : existing.supplierId;
+    const nextDate = body.date ? new Date(body.date) : existing.date;
+    const nextNotes =
+      body.notes !== undefined ? body.notes : existing.notes;
+
+    const prevLines = parseMovementLines(existing.lines);
+    const wasReceived = existing.status === 'Received';
+    const willReceive = nextStatus === 'Received';
+
+    const row = await this.tenantDb.db.$transaction(async (tx) => {
+      // Net stock when Received ↔ lines/status change (inbound only).
+      if (existing.type === 'inbound' && (wasReceived || willReceive)) {
+        const qtyByItem = new Map<string, number>();
+        const bump = (itemId: string, delta: number) => {
+          qtyByItem.set(itemId, (qtyByItem.get(itemId) ?? 0) + delta);
+        };
+        if (wasReceived) {
+          for (const line of prevLines) {
+            if (line.itemId) bump(line.itemId, -line.quantity);
+          }
+        }
+        if (willReceive) {
+          for (const line of nextLines) {
+            if (line.itemId) bump(line.itemId, line.quantity);
+          }
+        }
+        for (const [itemId, delta] of qtyByItem) {
+          if (delta === 0) continue;
+          const item = await resolveActiveItem(tx, {
+            tenantId,
+            itemId,
+          });
+          if (!item) {
+            throw new BadRequestException(`Item not found: ${itemId}`);
+          }
+          const nextQuantity = item.quantity + delta;
+          if (nextQuantity < 0) {
+            throw new BadRequestException(
+              `Insufficient stock for ${item.sku} (delta ${delta}, have ${item.quantity})`,
+            );
+          }
+          await tx.item.update({
+            where: { id: item.id },
+            data: {
+              quantity: nextQuantity,
+              status: computeStockStatus(nextQuantity, item.reorderPoint),
+            },
+          });
+          await adjustItemLocationStock(tx, {
+            tenantId,
+            itemId: item.id,
+            locationCode: locationCode ?? item.locationCode,
+            binLocation: item.binLocation,
+            delta,
+          });
+        }
+      }
+
+      const updated = await tx.stockMovement.update({
+        where: { id },
+        data: {
+          ...(body.type ? { type: body.type } : {}),
+          reference: nextReference,
+          status: nextStatus,
+          paymentStatus: nextPaymentStatus,
+          ...(body.paymentMethod !== undefined
+            ? { paymentMethod: body.paymentMethod?.trim() || null }
+            : {}),
+          lines: nextLines as unknown as import('@prisma/client').Prisma.InputJsonValue,
+          itemCount: rollups.itemCount,
+          grandTotal: rollups.grandTotal,
+          notes: nextNotes ?? null,
+          supplierId: nextSupplierId ?? null,
+          ...(body.source ? { source: body.source } : {}),
+          locationCode,
+          date: nextDate,
+        },
+        include: { supplier: { select: { name: true } } },
+      });
+
+      if (updated.type === 'inbound') {
+        await this.invoiceHub.ensurePurchaseInvoice(tx, updated);
+      }
+
+      return updated;
+    });
+
+    await this.auditService.log({
+      action: 'updated',
+      entityType: 'stockMovement',
+      entityId: row.id,
+      summary: `Updated ${row.type} movement ${row.reference}`,
+    });
+    void invalidateTenantDashboardCache(this.cache, tenantId);
+    const supplierIds = new Set<string>();
+    if (existing.supplierId) supplierIds.add(existing.supplierId);
+    if (row.supplierId) supplierIds.add(row.supplierId);
+    for (const supplierId of supplierIds) {
+      void refreshSupplierPurchaseRollups(this.tenantDb.db, supplierId);
     }
     return serializeMovement(row);
   }

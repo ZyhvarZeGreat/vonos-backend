@@ -9,6 +9,12 @@ const EMAIL_RE =
 /** Letters, spaces, hyphens, apostrophes, periods — no digits. */
 const PERSON_NAME_RE = /^[\p{L}\s.'’-]+$/u;
 
+/**
+ * Contact last name may include registration / plate numbers
+ * (alphanumeric + common separators).
+ */
+const CONTACT_LAST_NAME_RE = /^[\p{L}\p{N}\s.'’\-]+$/u;
+
 /** Login username: letters, digits, . _ - (not an email unless it looks like one). */
 const USERNAME_RE = /^[a-zA-Z][a-zA-Z0-9._-]{1,63}$/;
 
@@ -71,6 +77,22 @@ export function validatePersonName(
     return `${label} can only include letters, spaces, hyphens, and apostrophes.`;
   }
   if (v.length < 2) return `${label} must be at least 2 characters.`;
+  return null;
+}
+
+/** Last name on contacts — letters + digits (plates / registration nos). */
+export function validateContactLastName(
+  value: string,
+  options?: { required?: boolean; label?: string },
+): string | null {
+  const label = options?.label ?? "Last name";
+  const required = options?.required === true;
+  const v = value.trim();
+  if (!v) return required ? `${label} is required.` : null;
+  if (!CONTACT_LAST_NAME_RE.test(v)) {
+    return `${label} can include letters, numbers, spaces, hyphens, and apostrophes.`;
+  }
+  if (v.length < 1) return `${label} must be at least 1 character.`;
   return null;
 }
 
@@ -167,6 +189,14 @@ export function validatePasswordConfirm(
 /** Strip digits from a person-name field as the user types. */
 export function sanitizePersonNameInput(raw: string): string {
   return raw.replace(/\d/g, "");
+}
+
+/**
+ * Contact last name — keep digits so registration / plate numbers can be typed.
+ * Strips characters outside letters, numbers, and common separators.
+ */
+export function sanitizeContactLastNameInput(raw: string): string {
+  return raw.replace(/[^\p{L}\p{N}\s.'’\-]/gu, "");
 }
 
 /** First non-null validation error from a list. */

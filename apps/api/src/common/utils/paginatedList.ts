@@ -10,6 +10,9 @@ export interface ListAmountSummary {
 
 export interface PaginatedList<T> {
   items: T[];
+  /** True when another page may exist (full page returned). */
+  hasMore?: boolean;
+  pageSize?: number;
   /** Filtered row count. Omitted when `includeSummary=0` (rows-first paint). */
   totalCount?: number;
   amountSummary?: ListAmountSummary;

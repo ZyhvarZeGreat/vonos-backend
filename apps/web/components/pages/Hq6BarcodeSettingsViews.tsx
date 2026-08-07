@@ -16,6 +16,7 @@ import {
 import { Hq6FormShell } from "@/components/hq6/Hq6Chrome";
 import { HQ6_TABLE_PAGE_SIZE } from "@/lib/api/fetchAllPages";
 import { useRouteTenant, useTenantId } from "@/lib/hooks/useRouteTenant";
+import { announceRedirect } from "@/lib/utils/announceRedirect";
 import { tenantListPath } from "@/lib/utils/tenantRoutes";
 import { toast } from "@/stores/toastStore";
 
@@ -321,7 +322,10 @@ export function Hq6BarcodeSettingFormView({
       saveBarcodeSettings(tenantId, next);
       toast.success("Barcode setting saved on this device");
     }
-    if (listHref !== "#") router.push(listHref);
+    if (listHref !== "#") {
+      announceRedirect("Redirecting to barcode settings…");
+      router.push(listHref);
+    }
   };
 
   if (!ready) {

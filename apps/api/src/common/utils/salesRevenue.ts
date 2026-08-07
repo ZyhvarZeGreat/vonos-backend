@@ -12,7 +12,7 @@ export async function computeSalesRevenueTotal(
   const agg = await db.sale.aggregate({
     where: {
       deletedAt: null,
-      status: { not: 'draft' },
+      status: { in: ['completed', 'refunded', 'partially_refunded', 'written_off'] },
       date: { gte: window.from, lte: window.to },
     },
     _sum: { total: true },

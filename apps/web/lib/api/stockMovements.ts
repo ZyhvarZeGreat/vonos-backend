@@ -179,6 +179,23 @@ export async function createStockMovement(
   return response.json();
 }
 
+export async function updateStockMovement(
+  tenantId: string,
+  id: string,
+  body: Partial<CreateStockMovementRequest>,
+): Promise<StockMovement> {
+  const path = withTenantQuery(`/stock-movements/${id}`, tenantId);
+  const response = await apiFetch(path, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    return throwApiError(response, "Failed to update purchase");
+  }
+  return response.json();
+}
+
 export async function updateStockMovementStatus(
   id: string,
   status: MovementStatus,

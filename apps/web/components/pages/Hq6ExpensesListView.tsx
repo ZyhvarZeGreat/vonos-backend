@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import type { Expense } from "@vonos/types";
 import { DataTable, type ColumnConfig } from "@/components/organisms/DataTable";
@@ -23,6 +23,7 @@ import { UposGradientActionButton } from "@/components/upos/UposNavTabs";
 import {
   deleteExpense,
   getAllExpenses,
+  getExpense,
   getExpenseCategories,
   getExpensesPage,
 } from "@/lib/api/expenses";
@@ -30,16 +31,24 @@ import { getCustomersForPicker, loadMoreCustomersForPicker, customersPickerHasMo
 import { getUsersForPicker, loadMoreUsersForPicker, usersPickerHasMore } from "@/lib/api/users";
 import { useAppMutation } from "@/lib/hooks/useAppMutation";
 import { useServerListPage } from "@/lib/hooks/useServerListPage";
+import { expenseListCursor } from "@/lib/utils/pagination";
+
 import { HQ6_TABLE_PAGE_SIZE } from "@/lib/api/fetchAllPages";
 import { useListExport } from "@/lib/hooks/useListExport";
 import { useListPageFilters } from "@/lib/hooks/useListPageFilters";
 import { useRouteTenant, useTenantId } from "@/lib/hooks/useRouteTenant";
 import { removeEntityFromQueries } from "@/lib/query/optimistic";
 import { prefetchPaymentAccountsRef } from "@/lib/query/prefetchListModals";
+import {
+  MODAL_RECORD_STALE_MS,
+  modalKeys,
+} from "@/lib/query/modalQueryKeys";
 import { expensePageRoute } from "@/lib/registries/expenseNav";
 import {
   formatHq6Currency,
+  formatHq6Date,
   formatHq6DateTime,
+  formatHq6PaymentMethod,
   formatHq6PaymentStatus,
 } from "@/lib/utils/hq6Format";
 import { parseExpenseNotes } from "@/lib/utils/expenseNotes";
@@ -90,6 +99,14 @@ export function Hq6ExpensesListView() {
   const [viewExpense, setViewExpense] = useState<Expense | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Expense | null>(null);
   const [paymentsExpense, setPaymentsExpense] = useState<Expense | null>(null);
+  const { data: paymentsDetail } = useQuery({
+    queryKey: modalKeys.expense(tenantId, paymentsExpense?.id ?? null),
+    queryFn: () => getExpense(tenantId!, paymentsExpense!.id),
+    enabled: Boolean(tenantId && paymentsExpense?.id),
+    staleTime: MODAL_RECORD_STALE_MS,
+    placeholderData: () => paymentsExpense ?? undefined,
+  });
+  const paymentsView = paymentsDetail ?? paymentsExpense;
 
   const customerLabelById = useRef(new Map<string, string>());
   const userLabelById = useRef(new Map<string, string>());
@@ -226,6 +243,7 @@ export function Hq6ExpensesListView() {
         ...listFilters,
         includeSummary: opts?.includeSummary,
       }),
+    getCursor: (row) => expenseListCursor(row),
   });
 
   const deleteMutation = useAppMutation({
@@ -657,9 +675,10 @@ export function Hq6ExpensesListView() {
           <Hq6Modal
             open={Boolean(paymentsExpense)}
             onClose={() => setPaymentsExpense(null)}
+            size="2xl"
             title={
-              paymentsExpense
-                ? `View Payments ( Reference No: ${paymentsExpense.refNo ?? paymentsExpense.id} )`
+              paymentsView
+                ? `View Payments ( Reference No: ${paymentsView.refNo ?? paymentsView.id} )`
                 : "View Payments"
             }
             footer={
@@ -669,28 +688,8 @@ export function Hq6ExpensesListView() {
               />
             }
           >
-            {paymentsExpense ? (
-              <div className="space-y-3 text-sm text-[#374151]">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="font-semibold">Payment status:</span>
-                  <span
-                    className={cn(
-                      "hq6-pay-badge",
-                      hq6PaymentBadgeClass(paymentsExpense.paymentStatus),
-                    )}
-                  >
-                    {formatHq6PaymentStatus(paymentsExpense.paymentStatus)}
-                  </span>
-                </div>
-                <div>
-                  <span className="font-semibold">Total:</span>{" "}
-                  {formatHq6Currency(paymentsExpense.totalAmount)}
-                </div>
-                <div>
-                  <span className="font-semibold">Payment due:</span>{" "}
-                  {formatHq6Currency(paymentsExpense.paymentDue)}
-                </div>
-              </div>
+            {paymentsView ? (
+              <ExpensePaymentsViewBody expense={paymentsView} />
             ) : null}
           </Hq6Modal>
         </>
@@ -712,5 +711,103 @@ export function Hq6ExpensesListView() {
         emptyState={{ message: "No data available in table" }}
       />
     </Hq6StandardListShell>
+  );
+}
+
+/** HQ6 View Payments — status, amount paid, method, note, payment account. */
+function ExpensePaymentsViewBody({ expense }: { expense: Expense }) {
+  const { config, tenantName } = useRouteTenant();
+  const notes = parseExpenseNotes(expense.note);
+  const due = expense.paymentDue ?? 0;
+  const paid = Math.max(0, (expense.totalAmount ?? 0) - due);
+  const isPaid = expense.paymentStatus === "paid" || Boolean(expense.accountId);
+  const status = isPaid ? "paid" : expense.paymentStatus;
+  const locationLabel = businessLocationName(
+    expense.locationCode ?? null,
+    config?.businessLocations,
+  );
+
+  return (
+    <div className="hq6-purchase-view hq6-expense-view space-y-4 text-sm text-[#374151]">
+      <div className="hq6-purchase-view-meta grid gap-4 sm:grid-cols-3">
+        <div>
+          <div className="hq6-purchase-view-meta-label font-semibold">
+            Expense for:
+          </div>
+          <div>{expense.expenseFor || expense.contactName || "—"}</div>
+        </div>
+        <div>
+          <div className="hq6-purchase-view-meta-label font-semibold">
+            Business:
+          </div>
+          <div>{tenantName || "—"}</div>
+          <div className="text-[#6b7280]">
+            {locationLabel || expense.locationCode || ""}
+          </div>
+        </div>
+        <div className="space-y-1">
+          <div>
+            <span className="font-semibold">Reference No:</span> #
+            {expense.refNo ?? expense.id.slice(-8)}
+          </div>
+          <div>
+            <span className="font-semibold">Date:</span>{" "}
+            {formatHq6Date(expense.expenseDate)}
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-semibold">Payment Status:</span>
+            <span className={cn("hq6-pay-badge", hq6PaymentBadgeClass(status))}>
+              {formatHq6PaymentStatus(status)}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {isPaid || paid > 0 ? (
+        <div className="hq6-product-view-table-wrap overflow-x-auto">
+          <table className="hq6-product-view-table w-full min-w-[640px]">
+            <thead>
+              <tr>
+                <th>Reference No</th>
+                <th className="text-right">Amount</th>
+                <th>Payment Method</th>
+                <th>Payment Note</th>
+                <th>Payment Account</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>{expense.refNo ?? expense.id.slice(-8)}</td>
+                <td className="text-right tabular-nums">
+                  {formatHq6Currency(paid || expense.totalAmount, "NGN")}
+                </td>
+                <td>
+                  {formatHq6PaymentMethod(expense.paymentMethod) || "—"}
+                </td>
+                <td>{notes.paymentNote || notes.expenseNote || "—"}</td>
+                <td>{expense.accountName || "—"}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <p className="text-[#6b7280]">No payments recorded for this expense.</p>
+      )}
+
+      <div className="flex flex-wrap gap-6 border-t border-[#e5e7eb] pt-3">
+        <div>
+          <span className="font-semibold">Total:</span>{" "}
+          {formatHq6Currency(expense.totalAmount, "NGN")}
+        </div>
+        <div>
+          <span className="font-semibold">Total paid:</span>{" "}
+          {formatHq6Currency(isPaid ? expense.totalAmount : paid, "NGN")}
+        </div>
+        <div>
+          <span className="font-semibold">Payment due:</span>{" "}
+          {formatHq6Currency(isPaid ? 0 : due, "NGN")}
+        </div>
+      </div>
+    </div>
   );
 }

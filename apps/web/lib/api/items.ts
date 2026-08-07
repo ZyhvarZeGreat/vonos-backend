@@ -63,8 +63,12 @@ async function fetchItemsRaw(
   filters: ItemFilters | undefined,
   cursor?: string,
   limit?: number,
+  signal?: AbortSignal,
 ): Promise<Item[]> {
-  const response = await apiFetch(buildItemsPath(tenantId, filters, cursor, limit));
+  const response = await apiFetch(
+    buildItemsPath(tenantId, filters, cursor, limit),
+    signal ? { signal } : undefined,
+  );
   if (!response.ok) throw new Error("Failed to fetch items");
   return response.json();
 }
@@ -74,9 +78,11 @@ export async function getItemsPage(
   filters: ItemFilters | undefined,
   cursor: string | undefined,
   limit = DEFAULT_TABLE_PAGE_SIZE,
+  init?: { signal?: AbortSignal },
 ): Promise<ListPage<Item>> {
   return fetchListPage(
-    (pageCursor, pageLimit) => fetchItemsRaw(tenantId, filters, pageCursor, pageLimit),
+    (pageCursor, pageLimit) =>
+      fetchItemsRaw(tenantId, filters, pageCursor, pageLimit, init?.signal),
     cursor,
     limit,
   );
@@ -149,7 +155,7 @@ export async function getItemsForPicker(
     ? matchSorter(roster, q, {
         keys: ["name", "sku", "category", "brandName", "carModel", "description"],
         threshold: rankings.CONTAINS,
-        keepDiacritics: true,
+        keepDiacritics: false,
       })
     : roster;
   const limit = opts?.limit;
@@ -317,7 +323,7 @@ export interface CreateItemRequest {
   locationCode?: string;
   reorderPoint?: number;
   costPrice: number;
-  sellPrice?: number;
+  sellPrice?: number | null;
   currency?: string;
   status?: StockStatus;
   availableForRetail?: boolean;
@@ -338,7 +344,7 @@ export async function createItem(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  if (!response.ok) throw new Error("Failed to create item");
+  if (!response.ok) return throwApiError(response, "Failed to create item");
   clearItemOptionCache();
   return response.json();
 }
@@ -346,13 +352,15 @@ export async function createItem(
 export async function updateItem(
   id: string,
   body: UpdateItemRequest,
+  tenantId?: string,
 ): Promise<Item> {
-  const response = await apiFetch(`/items/${id}`, {
+  const path = tenantId ? withTenantQuery(`/items/${id}`, tenantId) : `/items/${id}`;
+  const response = await apiFetch(path, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  if (!response.ok) throw new Error("Failed to update item");
+  if (!response.ok) return throwApiError(response, "Failed to update item");
   clearItemOptionCache();
   return response.json();
 }

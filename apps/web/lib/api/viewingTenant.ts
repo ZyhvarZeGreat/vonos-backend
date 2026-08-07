@@ -36,6 +36,11 @@ export function resolveViewingTenantId(): string | null {
     }
 
     if (segment === "admin") {
+      // Manage users is group-wide — do not inherit the entity switcher scope
+      // (otherwise GET/PATCH user + HR sync hit the wrong tenant).
+      if (parts[1] === "hrm" && parts[2] === "users") {
+        return null;
+      }
       const viewingCode = useAdminEntityStore.getState().viewingCode;
       // SP combined → primary VSP for single-tenant headers
       return adminViewingTenantId(viewingCode);

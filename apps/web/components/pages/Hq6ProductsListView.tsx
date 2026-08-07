@@ -5,21 +5,22 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useServerListPage, withListSort, hq6ListPaginationProps } from "@/lib/hooks/useServerListPage";
 import { HQ6_TABLE_PAGE_SIZE } from "@/lib/api/fetchAllPages";
-import { getCatalogPage, getCatalogListSummary } from "@/lib/api/catalog";
-import { deleteItem as deleteItemApi, getAllItems, getItemRoster } from "@/lib/api/items";
+import { getCatalogPage, getCatalogListSummary, getAllCatalog } from "@/lib/api/catalog";
+import { deleteItem as deleteItemApi, updateItem } from "@/lib/api/items";
 import { getAllCatalogMeta } from "@/lib/api/catalogMeta";
 import { useListExport } from "@/lib/hooks/useListExport";
 import type { Brand, Item, ProductCategory, ProductUnit, StockStatus } from "@vonos/types";
 import {
   BUSINESS_LOCATION_PRESETS,
   PRODUCT_STOCK_BUSINESS_LOCATIONS,
+  productHomeLocationsForTenant,
 } from "@vonos/types";
-import { formatCurrency } from "@/lib/utils/formatCurrency";
 import { useRecordNavigation } from "@/lib/hooks/useRecordNavigation";
 import { useRouteTenant, useTenantId } from "@/lib/hooks/useRouteTenant";
 import { useListPageFilters } from "@/lib/hooks/useListPageFilters";
 import { useHq6Permissions } from "@/lib/hooks/useHq6Permissions";
 import { ItemLocationCell } from "@/components/molecules/ItemLocationCell";
+import { InlinePriceCell } from "@/components/molecules/InlinePriceCell";
 import { ProductThumbnail } from "@/components/atoms/ProductThumbnail";
 import { productStockLocationFilterOptions } from "@/lib/utils/locationLabels";
 import { toast } from "@/stores/toastStore";
@@ -42,7 +43,10 @@ import {
   UposNavTabs,
 } from "@/components/upos/UposNavTabs";
 import { useHq6ListChrome } from "@/components/hq6/Hq6StandardListShell";
-import { prefetchCatalogDetail } from "@/lib/query/prefetchListDetails";
+import {
+  prefetchCatalogDetail,
+  prefetchProductForm,
+} from "@/lib/query/prefetchListDetails";
 import { hq6CopyForSlug } from "@/lib/registries/hq6PageCopy";
 import {
   Hq6Breadcrumbs,
@@ -204,27 +208,8 @@ export function Hq6ProductsListView({
     staleTime: 5 * 60_000,
   });
 
-  // Full catalog for search — warms in parallel with page 1 so typing
-  // matches the entire product list, not just the visible page.
-  const searchCatalogQuery = useQuery({
-    queryKey: [
-      "item-roster",
-      tenantId,
-      "products-list-search",
-      apiFilters.status ?? null,
-      apiFilters.category ?? null,
-      apiFilters.availableForRetail ?? null,
-    ],
-    queryFn: () =>
-      getItemRoster(tenantId!, {
-        status: apiFilters.status,
-        category: apiFilters.category,
-        availableForRetail: apiFilters.availableForRetail,
-      }),
-    enabled: Boolean(tenantId) && listTab === "products",
-    staleTime: 5 * 60_000,
-  });
-
+  // Debounced API search across the full catalog — avoids downloading ~4k
+  // rows on mount (which fought the sliding-window page warm on Neon).
   const {
     items,
     hasMore,
@@ -244,14 +229,13 @@ export function Hq6ProductsListView({
     totalCount,
     sort,
     setSort,
+    reset,
   } = useServerListPage({
     queryKey: ["catalog", tenantId, "hq6-upos"],
     enabled: Boolean(tenantId) && listTab === "products",
     filters: apiFilters,
-    search: search,
-    localSearchWarmPages: 10,
-    searchCatalog: searchCatalogQuery.data,
-    searchCatalogLoading: searchCatalogQuery.isLoading,
+    search,
+    searchMode: "server",
     defaultPageSize: HQ6_TABLE_PAGE_SIZE,
     defaultSort: { sortBy: "name", sortDir: "asc" },
     fetchPage: (cursor, limit, listSort, opts) =>
@@ -260,6 +244,7 @@ export function Hq6ProductsListView({
         withListSort(
           {
             ...apiFilters,
+            search: opts?.search,
             includeSummary: opts?.includeSummary,
           },
           listSort,
@@ -267,9 +252,10 @@ export function Hq6ProductsListView({
         cursor,
         limit,
       ),
-    fetchSummary: () =>
+    fetchSummary: (opts) =>
       getCatalogListSummary(tenantId!, {
         ...apiFilters,
+        search: opts?.search,
       }),
     getCursor: (row, listSort) => {
       const sortBy = listSort?.sortBy ?? "name";
@@ -298,10 +284,13 @@ export function Hq6ProductsListView({
   });
 
   const locationOptions = useMemo(
-    () => productStockLocationFilterOptions(),
-    [],
+    () => productStockLocationFilterOptions(tenantCode),
+    [tenantCode],
   );
-  const productLocations = PRODUCT_STOCK_BUSINESS_LOCATIONS;
+  const productLocations = useMemo(() => {
+    const home = productHomeLocationsForTenant(tenantCode);
+    return home.length > 0 ? home : PRODUCT_STOCK_BUSINESS_LOCATIONS;
+  }, [tenantCode]);
 
   const categoryOptions = useMemo(() => {
     const names = new Set<string>();
@@ -361,7 +350,7 @@ export function Hq6ProductsListView({
     (format: "csv" | "excel" | "pdf" | "print") => {
       if (!tenantId) return;
       void (async () => {
-        const rows = await getAllItems(tenantId, apiFilters);
+        const rows = await getAllCatalog(tenantId, apiFilters);
         exportList(
           format === "print" ? "products-print" : `products-${format}`,
           [
@@ -382,7 +371,7 @@ export function Hq6ProductsListView({
             brand: row.brandName ?? "",
             ...(priceCatalogOnly ? {} : { quantity: row.quantity }),
             costPrice: row.costPrice,
-            sellPrice: row.sellPrice ?? row.costPrice,
+            sellPrice: row.sellPrice ?? 0,
           })),
           "Export Products",
         );
@@ -918,6 +907,13 @@ export function Hq6ProductsListView({
                                     row.id,
                                     row,
                                   );
+                                  prefetchProductForm(
+                                    queryClient,
+                                    tenantId,
+                                    row.id,
+                                    "edit",
+                                    row,
+                                  );
                                 }
                               }}
                               onDoubleClick={() => {
@@ -997,9 +993,18 @@ export function Hq6ProductsListView({
                                           onClick: () => {
                                             if (!requireCan("product.update"))
                                               return;
-                                            router.push(
-                                              `/${tenantCode}/add-product?edit=${row.id}`,
-                                            );
+                                            if (tenantId) {
+                                              prefetchProductForm(
+                                                queryClient,
+                                                tenantId,
+                                                row.id,
+                                                "edit",
+                                                row,
+                                              );
+                                            }
+                                            const href = `/${tenantCode}/add-product?edit=${row.id}`;
+                                            router.prefetch(href);
+                                            router.push(href);
                                           },
                                         },
                                         {
@@ -1051,9 +1056,18 @@ export function Hq6ProductsListView({
                                             if (!requireCan("product.create"))
                                               return;
                                             if (!tenantCode) return;
-                                            router.push(
-                                              `/${tenantCode}/add-product?d=${row.id}`,
-                                            );
+                                            if (tenantId) {
+                                              prefetchProductForm(
+                                                queryClient,
+                                                tenantId,
+                                                row.id,
+                                                "duplicate",
+                                                row,
+                                              );
+                                            }
+                                            const href = `/${tenantCode}/add-product?d=${row.id}`;
+                                            router.prefetch(href);
+                                            router.push(href);
                                           },
                                         },
                                       ]}
@@ -1080,23 +1094,29 @@ export function Hq6ProductsListView({
                                     item={row}
                                     locations={productLocations}
                                     productStockMode
+                                    fallbackLocationCode={tenantCode}
                                   />
                                 </td>
                               ) : null}
                               {isColVisible("costPrice") ? (
                                 <td>
                                   <div style={{ whiteSpace: "nowrap" }}>
-                                    {formatCurrency(row.costPrice, row.currency)}
+                                    <InlinePriceCell
+                                      item={row}
+                                      label="Unit purchase price"
+                                      field="costPrice"
+                                    />
                                   </div>
                                 </td>
                               ) : null}
                               {isColVisible("sellPrice") ? (
                                 <td>
                                   <div style={{ whiteSpace: "nowrap" }}>
-                                    {formatCurrency(
-                                      row.sellPrice ?? row.costPrice,
-                                      row.currency,
-                                    )}
+                                    <InlinePriceCell
+                                      item={row}
+                                      label="Selling price"
+                                      field="sellPrice"
+                                    />
                                   </div>
                                 </td>
                               ) : null}
@@ -1153,6 +1173,52 @@ export function Hq6ProductsListView({
         open={Boolean(stockItem)}
         onClose={() => setStockItem(null)}
         item={stockItem}
+        onSave={async (nextQty, locationCode, unitCost) => {
+          if (!tenantId || !stockItem) return;
+          const loc = locationCode.trim();
+          if (!loc) throw new Error("Select a location");
+
+          // Preserve existing location rows (so editing one location doesn't wipe others).
+          const existingRows =
+            stockItem.locationStock && stockItem.locationStock.length > 0
+              ? stockItem.locationStock
+              : stockItem.locationCode
+                ? [
+                    {
+                      locationCode: stockItem.locationCode,
+                      binLocation: stockItem.binLocation,
+                      quantity: stockItem.quantity,
+                    },
+                  ]
+                : [];
+
+          const chosenBin =
+            existingRows.find((r) => r.locationCode === loc)?.binLocation ??
+            stockItem.binLocation ??
+            null;
+
+          const others = existingRows.filter((r) => r.locationCode !== loc);
+          const chosenRow = {
+            locationCode: loc,
+            binLocation: chosenBin,
+            quantity: nextQty,
+          };
+
+          // Put the chosen location first so it becomes the primary location.
+          const nextLocationStock = [chosenRow, ...others];
+
+          await updateItem(
+            stockItem.id,
+            {
+              locationStock: nextLocationStock,
+              costPrice: unitCost,
+            },
+            tenantId,
+          );
+
+          void queryClient.invalidateQueries({ queryKey: ["catalog"] });
+          void queryClient.invalidateQueries({ queryKey: ["items"] });
+        }}
       />
       <Hq6MoveProductModal
         open={Boolean(moveItem)}
@@ -1204,6 +1270,7 @@ export function Hq6ProductsListView({
               setDeleteItem(null);
               void queryClient.invalidateQueries({ queryKey: ["catalog"] });
               void queryClient.invalidateQueries({ queryKey: ["items"] });
+              reset();
             })
             .catch((err) =>
               toast.error(
@@ -1240,6 +1307,7 @@ export function Hq6ProductsListView({
               setSelectedIds(new Set());
               void queryClient.invalidateQueries({ queryKey: ["catalog"] });
               void queryClient.invalidateQueries({ queryKey: ["items"] });
+              reset();
             } catch (err) {
               toast.error(
                 err instanceof Error
@@ -1278,6 +1346,7 @@ export function Hq6ProductsListView({
               setSelectedIds(new Set());
               void queryClient.invalidateQueries({ queryKey: ["catalog"] });
               void queryClient.invalidateQueries({ queryKey: ["items"] });
+              reset();
             } catch (err) {
               toast.error(
                 err instanceof Error

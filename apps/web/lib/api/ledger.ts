@@ -248,6 +248,11 @@ export async function getGroupLedgerCharts(
   return response.json();
 }
 
+/**
+ * @deprecated Prefer `createExpense` from `@/lib/api/expenses`.
+ * Routes through POST /expenses (via POST /ledger → ExpensesService) so Finance
+ * and the Expenses list share one book.
+ */
 export async function createManualExpense(
   tenantId: string,
   body: CreateManualExpenseRequest,
@@ -256,7 +261,14 @@ export async function createManualExpense(
   const response = await apiFetch(path, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
+    body: JSON.stringify({
+      type: "expense",
+      amount: body.amount,
+      category: body.category,
+      description: body.description,
+      date: body.date,
+      currency: body.currency,
+    }),
   });
   if (!response.ok) {
     const message = await response.text();

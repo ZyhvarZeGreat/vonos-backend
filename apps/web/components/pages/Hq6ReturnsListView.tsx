@@ -21,6 +21,8 @@ import { Hq6StandardListShell, useHq6ListChrome } from "@/components/hq6/Hq6Stan
 import { getCustomersForPicker, loadMoreCustomersForPicker, customersPickerHasMore } from "@/lib/api/customers";
 import { getReturnsPage } from "@/lib/api/returns";
 import { useServerListPage } from "@/lib/hooks/useServerListPage";
+import { saleListCursor } from "@/lib/utils/pagination";
+
 import { HQ6_TABLE_PAGE_SIZE } from "@/lib/api/fetchAllPages";
 import { useListPageFilters } from "@/lib/hooks/useListPageFilters";
 import { useListRecordModal } from "@/lib/hooks/useListRecordModal";
@@ -140,6 +142,7 @@ export function Hq6ReturnsListView() {
     search: search,
     defaultPageSize: HQ6_TABLE_PAGE_SIZE,
     fetchPage: (cursor, limit, _sort, opts) => getReturnsPage(tenantId!, { ...apiFilters, includeSummary: opts?.includeSummary }, cursor, limit),
+    getCursor: (row) => saleListCursor(row),
   });
 
   const exportList = useListExport();

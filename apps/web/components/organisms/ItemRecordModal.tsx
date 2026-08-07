@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Hq6Modal } from "@/components/hq6/Hq6Modal";
 import { Hq6ViewProductModal } from "@/components/hq6/Hq6ProductModals";
 import { RecordViewModal } from "@/components/organisms/RecordViewModal";
-import { getItem } from "@/lib/api/items";
+import { getCatalogItem } from "@/lib/api/catalog";
 import { useIsVaHq6 } from "@/lib/hooks/useIsVaHq6";
 import { useRouteTenant } from "@/lib/hooks/useRouteTenant";
 import {
@@ -30,7 +30,8 @@ export function ItemRecordModal({
 
   const { data: item, isLoading, error } = useQuery({
     queryKey: modalKeys.item(tenantId, itemId),
-    queryFn: () => getItem(itemId!),
+    // Catalog scope works for every entity (own-tenant product catalogs).
+    queryFn: () => getCatalogItem(itemId!),
     enabled: Boolean(tenantId && itemId),
     staleTime: MODAL_RECORD_STALE_MS,
     placeholderData: (prev) => prev,
@@ -103,7 +104,7 @@ export function ItemRecordModal({
             <dt className="text-muted">Sell price</dt>
             <dd className="font-medium text-foreground">
               {formatCurrency(
-                item.sellPrice ?? item.costPrice ?? 0,
+                item.sellPrice ?? 0,
                 item.currency ?? "NGN",
               )}
             </dd>

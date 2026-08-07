@@ -49,11 +49,18 @@ export function ReportFilterShell({
   values,
   onChange,
   optionSets,
+  onApply,
+  onClear,
+  dirty = false,
 }: {
   fields: ReportFilterField[];
   values: ReportRunOptions;
   onChange: (patch: Partial<ReportRunOptions>) => void;
   optionSets: ReportFilterOptionSets;
+  /** When set, filters are draft until Apply (batch mode for heavy reports). */
+  onApply?: () => void;
+  onClear?: () => void;
+  dirty?: boolean;
 }) {
   // Search lives on the report table itself — keep only select filters here.
   const selectFields = fields.filter((field) => field.kind !== "search");
@@ -61,7 +68,30 @@ export function ReportFilterShell({
 
   return (
     <section className="rounded-xl border border-border bg-card p-4 shadow-card">
-      <h3 className="mb-3 text-sm font-semibold text-foreground">Filters</h3>
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <h3 className="text-sm font-semibold text-foreground">Filters</h3>
+        {onApply ? (
+          <div className="flex items-center gap-2">
+            {onClear ? (
+              <button
+                type="button"
+                className="text-sm text-muted-foreground underline-offset-2 hover:underline"
+                onClick={onClear}
+              >
+                Clear all
+              </button>
+            ) : null}
+            <button
+              type="button"
+              className="rounded-md bg-foreground px-3 py-1.5 text-sm font-medium text-background disabled:opacity-50"
+              onClick={onApply}
+              disabled={!dirty}
+            >
+              Apply
+            </button>
+          </div>
+        ) : null}
+      </div>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {selectFields.map((field) => {
           const value = String(values[field.key] ?? "");

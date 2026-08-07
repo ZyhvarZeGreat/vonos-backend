@@ -136,8 +136,21 @@ export class UsersService {
 
   /**
    * Single user for detail pages — tenant-scoped, including legacy-linked users.
+   * Super-admin may always load by id (VAG users list is cross-entity; an active
+   * "viewing" tenant must not 404 users from other entities).
    */
-  async getById(id: string): Promise<User> {
+  async getById(id: string, actor?: AuthenticatedUser): Promise<User> {
+    if (actor?.role === 'super_admin') {
+      const row = await this.prisma.user.findFirst({
+        where: { id, deletedAt: null },
+        include: {
+          tenantRole: { select: { id: true, name: true } },
+        },
+      });
+      if (!row) throw new NotFoundException('User not found');
+      return this.toUser(row);
+    }
+
     const tenantId = this.tenantDb.requireTenantId();
     const legacyLink = await this.prisma.migrationLegacyId.findFirst({
       where: { tenantId, entityType: 'user', newId: id },
@@ -644,9 +657,28 @@ export class UsersService {
         'Tenant job roles can only be assigned to tenant-scoped users',
       );
     }
-    const role = await this.prisma.tenantRole.findFirst({
+
+    let role = await this.prisma.tenantRole.findFirst({
       where: { id: tenantRoleId, tenantId, deletedAt: null },
     });
+
+    // Shared HQ6 catalog: each entity has its own row ids for the same role
+    // name. VAG edit may submit a peer-tenant role id — map by name.
+    if (!role) {
+      const any = await this.prisma.tenantRole.findFirst({
+        where: { id: tenantRoleId, deletedAt: null },
+      });
+      if (any) {
+        role = await this.prisma.tenantRole.findFirst({
+          where: {
+            tenantId,
+            deletedAt: null,
+            name: { equals: any.name, mode: 'insensitive' },
+          },
+        });
+      }
+    }
+
     if (!role) {
       throw new BadRequestException('Invalid tenant role');
     }

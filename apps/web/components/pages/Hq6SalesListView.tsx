@@ -49,11 +49,37 @@ import {
   formatHq6PaymentMethod,
   formatHq6PaymentStatus,
 } from "@/lib/utils/hq6Format";
+import { formatSaleNotesForDisplay, parseSaleInvoiceNotes } from "@/lib/utils/saleInvoiceNotes";
+import { saleVehicleFields } from "@/lib/utils/saleVehicleFields";
 import { businessLocationName } from "@/lib/utils/locationLabels";
 import { entitySaleLocations } from "@/lib/hooks/useBusinessLocationOptions";
 import { hq6PaymentBadgeClass, canAddPaymentForStatus } from "@/lib/utils/hq6PaymentBadge";
 import type { Sale, SaleReturnStatus, SaleStatus } from "@vonos/types";
 import { cn } from "@/lib/utils/cn";
+import { removeEntityFromQueries } from "@/lib/query/optimistic";
+import { dismissFirstWrite } from "@/lib/utils/dismissFirstWrite";
+import { announceRedirect } from "@/lib/utils/announceRedirect";
+
+function SaleCustomerCell({ row }: { row: Sale }) {
+  const notes = parseSaleInvoiceNotes(row.notes);
+  const { customerDisplay, plateNumber, carModelYear } = saleVehicleFields({
+    customerName: row.customerName,
+    plateNumber: notes.plateNumber,
+    carModelYear: notes.carModelYear,
+  });
+  const meta = [carModelYear, plateNumber].filter(Boolean).join(" · ");
+
+  return (
+    <div>
+      <div className="font-medium">{customerDisplay}</div>
+      {meta ? (
+        <div className="text-xs text-[#6b7280]">{meta}</div>
+      ) : row.jobReference ? (
+        <div className="text-xs text-[#6b7280]">{row.jobReference}</div>
+      ) : null}
+    </div>
+  );
+}
 
 export interface Hq6SalesListViewProps {
   saleStatus?: SaleStatus;
@@ -128,8 +154,6 @@ export function Hq6SalesListView({
     kind: Hq6PrintDocKind;
   } | null>(null);
   const [convertTarget, setConvertTarget] = useState<Sale | null>(null);
-  const [deleting, setDeleting] = useState(false);
-  const [converting, setConverting] = useState(false);
 
   const sendSaleNotification = useCallback(
     async (row: Sale, kind: "quotation" | "draft" | "sale") => {
@@ -245,6 +269,7 @@ export function Hq6SalesListView({
         ),
         cursor,
         limit,
+        { signal: opts?.signal },
       ),
     getCursor: (row, listSort) => {
       const sortBy = listSort?.sortBy ?? "date";
@@ -366,10 +391,8 @@ export function Hq6SalesListView({
       header: "Action",
       sortable: false,
       render: (row) => {
-        const isQuotation =
-          saleStatus === "quotation" || row.recordStatus === "quotation";
-        const isDraft =
-          saleStatus === "draft" || row.recordStatus === "draft";
+        const isQuotation = row.recordStatus === "quotation";
+        const isDraft = row.recordStatus === "draft";
         const isProvisional = isQuotation || isDraft;
         const editPath = isQuotation
           ? `/${tenantCode}/add-quotation?edit=${row.id}`
@@ -587,7 +610,7 @@ export function Hq6SalesListView({
           key: "customerName",
           header: "Customer name",
           sortable: false,
-          render: (row) => row.customerName,
+          render: (row) => <SaleCustomerCell row={row} />,
         },
         {
           key: "customerPhone",
@@ -639,7 +662,7 @@ export function Hq6SalesListView({
           key: "customerName",
           header: "Customer name",
           sortable: false,
-          render: (row) => row.customerName,
+          render: (row) => <SaleCustomerCell row={row} />,
         },
         {
           key: "customerPhone",
@@ -733,14 +756,7 @@ export function Hq6SalesListView({
         key: "customerName",
         header: "Customer name",
         sortable: false,
-        render: (row) => (
-          <div>
-            <div className="font-medium">{row.customerName}</div>
-            {row.jobReference ? (
-              <div className="text-xs text-[#6b7280]">{row.jobReference}</div>
-            ) : null}
-          </div>
-        ),
+        render: (row) => <SaleCustomerCell row={row} />,
       },
       {
         key: "customerPhone",
@@ -866,7 +882,7 @@ export function Hq6SalesListView({
         key: "sellNote",
         header: "Sell note",
         sortable: false,
-        render: (row) => row.notes ?? "",
+        render: (row) => formatSaleNotesForDisplay(row.notes),
       },
       {
         key: "staffNote",
@@ -1182,48 +1198,25 @@ export function Hq6SalesListView({
               open={Boolean(deleteTarget)}
               onClose={() => setDeleteTarget(null)}
               onConfirm={() => {
-                if (!tenantId || !deleteTarget || deleting) return;
+                if (!tenantId || !deleteTarget) return;
                 const target = deleteTarget;
-                setDeleting(true);
-                void deleteSale(tenantId, target.id)
-                  .then(async () => {
-                    toast.success(`Deleted sale ${target.reference}`);
+                void dismissFirstWrite({
+                  dismiss: () => {
                     setDeleteTarget(null);
-                    // Drop the row immediately so the table never paints a
-                    // stale cursor page that can error after Soft-delete.
-                    queryClient.setQueriesData(
-                      { queryKey: ["sales", tenantId] },
-                      (prev: unknown) => {
-                        if (!prev || typeof prev !== "object") return prev;
-                        const page = prev as {
-                          items?: Sale[];
-                          hasMore?: boolean;
-                          totalCount?: number;
-                        };
-                        if (!Array.isArray(page.items)) return prev;
-                        return {
-                          ...page,
-                          items: page.items.filter((row) => row.id !== target.id),
-                          totalCount:
-                            typeof page.totalCount === "number"
-                              ? Math.max(0, page.totalCount - 1)
-                              : page.totalCount,
-                        };
-                      },
-                    );
+                    removeEntityFromQueries(queryClient, ["sales"], target.id);
                     reset();
+                  },
+                  write: () => deleteSale(tenantId, target.id),
+                  label: "Deleting",
+                  successMessage: `Deleted sale ${target.reference}`,
+                  onSuccess: () => {
                     void queryClient.invalidateQueries({ queryKey: ["sales"] });
                     void queryClient.invalidateQueries({ queryKey: ["items"] });
                     void queryClient.invalidateQueries({
                       queryKey: ["catalog"],
                     });
-                  })
-                  .catch((err) => {
-                    toast.error(
-                      err instanceof Error ? err.message : "Failed to delete sale",
-                    );
-                  })
-                  .finally(() => setDeleting(false));
+                  },
+                });
               }}
               title="Are you sure ?"
               message={
@@ -1233,33 +1226,36 @@ export function Hq6SalesListView({
               }
               confirmLabel="Delete"
               danger
-              confirming={deleting}
             />
             <Hq6ConfirmModal
               open={Boolean(convertTarget)}
               onClose={() => setConvertTarget(null)}
-              confirming={converting}
               onConfirm={() => {
-                if (!tenantId || !convertTarget || converting) return;
-                setConverting(true);
-                void finalizeSale(tenantId, convertTarget.id, {
-                  payments: [{ amount: 0, method: "cash" }],
-                })
-                  .then(async () => {
-                    toast.success(
-                      `Converted ${convertTarget.reference} to invoice`,
-                    );
+                if (!tenantId || !convertTarget) return;
+                const target = convertTarget;
+                const leaveToSales =
+                  Boolean(tenantCode) &&
+                  (saleStatus === "draft" || saleStatus === "quotation");
+                void dismissFirstWrite({
+                  dismiss: () => {
                     setConvertTarget(null);
+                    removeEntityFromQueries(queryClient, ["sales"], target.id);
+                    if (leaveToSales && tenantCode) {
+                      announceRedirect("Converting & opening sales…");
+                      router.push(`/${tenantCode}/sales`);
+                    }
+                  },
+                  write: () =>
+                    finalizeSale(tenantId, target.id, {
+                      payments: [{ amount: 0, method: "cash" }],
+                    }),
+                  label: "Converting",
+                  successMessage: `Converted ${target.reference} to invoice`,
+                  onSuccess: () => {
                     void queryClient.invalidateQueries({ queryKey: ["sales"] });
-                  })
-                  .catch((err) => {
-                    toast.error(
-                      err instanceof Error
-                        ? err.message
-                        : "Failed to convert to invoice",
-                    );
-                  })
-                  .finally(() => setConverting(false));
+                    void queryClient.invalidateQueries({ queryKey: ["items"] });
+                  },
+                });
               }}
               title="Convert to Proforma Invoice?"
               message={
@@ -1342,16 +1338,14 @@ export function Hq6SalesListView({
               sale={paySale}
               tenantId={tenantId}
               onClose={() => setPaySale(null)}
-              onPaid={() => {
+              onPaid={(saleId) => {
                 void queryClient.invalidateQueries({ queryKey: ["sales"] });
-                if (paySale) {
-                  void queryClient.invalidateQueries({
-                    queryKey: modalKeys.saleView(tenantId, paySale.id),
-                  });
-                  void queryClient.invalidateQueries({
-                    queryKey: modalKeys.salePayments(tenantId, paySale.id),
-                  });
-                }
+                void queryClient.invalidateQueries({
+                  queryKey: modalKeys.saleView(tenantId, saleId),
+                });
+                void queryClient.invalidateQueries({
+                  queryKey: modalKeys.salePayments(tenantId, saleId),
+                });
               }}
             />
             <Hq6InvoiceUrlModal

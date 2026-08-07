@@ -11,6 +11,7 @@ import type {
   CreatePayComponentRequest,
   CreateDesignationRequest,
   CreateEmployeeRequest,
+  SyncEmployeeByUserRequest,
   UpdateDesignationRequest,
   UpdatePayrollGroupRequest,
   PayPayrollsRequest,
@@ -495,11 +496,7 @@ export async function createEmployee(
 export async function syncEmployeeWorkLocations(
   tenantId: string,
   userId: string,
-  dto: {
-    locationCodes: string[];
-    locationCode?: string | null;
-    name?: string;
-  },
+  dto: SyncEmployeeByUserRequest & { locationCodes: string[] },
 ): Promise<Employee | null> {
   const res = await apiFetch(
     withTenantQuery(
@@ -516,6 +513,35 @@ export async function syncEmployeeWorkLocations(
   }
   clearEmployeeOptionCache();
   return res.json();
+}
+
+export async function getEmployeeByUserId(
+  tenantId: string,
+  userId: string,
+): Promise<Employee | null> {
+  const res = await apiFetch(
+    withTenantQuery(
+      `${EMPLOYEES_PATH}/by-user/${encodeURIComponent(userId)}`,
+      tenantId,
+    ),
+  );
+  if (res.status === 404) return null;
+  if (!res.ok) return throwApiError(res, "Failed to load employee");
+  const body = (await res.json()) as Employee | null;
+  return body ?? null;
+}
+
+export async function getLatestPayrollForEmployee(
+  tenantId: string,
+  employeeRecordId: string,
+): Promise<Payroll | null> {
+  const page = await getPayrollsPage(tenantId, undefined, 1, {
+    employeeRecordId,
+    sortBy: "payrollMonth",
+    sortDir: "desc",
+    includeSummary: false,
+  });
+  return page.items[0] ?? null;
 }
 
 export async function getPayrollGroupsPage(

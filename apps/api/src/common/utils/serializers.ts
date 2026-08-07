@@ -103,6 +103,8 @@ export function parseMovementLines(lines: unknown): Array<{
   quantity: number;
   unitCost?: number;
   expDate?: string;
+  discountPercent?: number;
+  unitSellingPrice?: number;
 }> {
   if (!Array.isArray(lines)) return [];
   return lines.map((line) => {
@@ -114,6 +116,16 @@ export function parseMovementLines(lines: unknown): Array<{
         : toNumber(unitCostRaw as Prisma.Decimal | number | string | null);
     const expDate =
       typeof row.expDate === 'string' && row.expDate ? row.expDate : undefined;
+    const discountRaw = row.discountPercent;
+    const discountPercent =
+      discountRaw === null || discountRaw === undefined
+        ? undefined
+        : toNumber(discountRaw as Prisma.Decimal | number | string | null);
+    const sellRaw = row.unitSellingPrice;
+    const unitSellingPrice =
+      sellRaw === null || sellRaw === undefined
+        ? undefined
+        : toNumber(sellRaw as Prisma.Decimal | number | string | null);
     return {
       itemId: toStringField(row.itemId),
       sku: toStringField(row.sku),
@@ -123,6 +135,8 @@ export function parseMovementLines(lines: unknown): Array<{
       ),
       ...(unitCost !== undefined ? { unitCost } : {}),
       ...(expDate ? { expDate } : {}),
+      ...(discountPercent !== undefined ? { discountPercent } : {}),
+      ...(unitSellingPrice !== undefined ? { unitSellingPrice } : {}),
     };
   });
 }

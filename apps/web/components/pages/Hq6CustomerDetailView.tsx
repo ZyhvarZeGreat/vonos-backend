@@ -39,7 +39,7 @@ export function Hq6CustomerDetailView({ recordId }: { recordId: string }) {
   const queryClient = useQueryClient();
   const tenantId = useTenantId();
   const { config } = useRouteTenant();
-  const { listPath, detailPath } = useRecordNavigation("customers");
+  const { listPath, detailPath, goToList } = useRecordNavigation("customers");
   const activeTab = parseHq6ContactTab(searchParams.get("view"));
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -219,7 +219,7 @@ export function Hq6CustomerDetailView({ recordId }: { recordId: string }) {
             .then(async () => {
               toast.success("Customer deleted");
               void queryClient.invalidateQueries({ queryKey: ["customers"] });
-              router.push(listPath);
+              goToList("Redirecting to customers…");
             })
             .catch((err) => {
               toast.error(err instanceof Error ? err.message : "Delete failed");

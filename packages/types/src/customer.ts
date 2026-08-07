@@ -136,9 +136,16 @@ export interface CustomerContact {
   email: string | null;
   phone: string | null;
   totalSellDue: number;
+  /** Credit / overpayment available to apply on the next sale. */
+  totalAdvance: number;
   visitCount: number;
   createdAt: string;
   status: "active" | "inactive";
+  /** Vehicle registration / Contact ID (automotive plate). */
+  contactId?: string | null;
+  businessName?: string | null;
+  /** Ultimate POS contact form extras (mileage, car model, location, …). */
+  details?: CustomerContactDetails | null;
 }
 
 export interface ContactLedgerEntry {

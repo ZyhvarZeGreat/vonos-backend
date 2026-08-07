@@ -3,7 +3,12 @@
 import { ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
 import { Spinner } from "@/components/atoms/Spinner";
 import { DropdownMenu } from "@/components/molecules/DropdownMenu";
-import { visiblePageNumbers } from "@/lib/utils/paginationWindow";
+import {
+  formatListEntriesLabel,
+  listEntryRange,
+  totalPagesFromEntries,
+  visiblePageNumbers,
+} from "@/lib/utils/paginationWindow";
 import { cn } from "@/lib/utils/cn";
 
 export interface CursorPaginationBarProps {
@@ -46,11 +51,15 @@ export function CursorPaginationBar({
   isBusy = false,
   className,
 }: CursorPaginationBarProps) {
-  const start = itemCount === 0 ? 0 : pageIndex * pageSize + 1;
-  const end = pageIndex * pageSize + itemCount;
+  const range = listEntryRange({
+    pageIndex,
+    pageSize,
+    itemCount,
+    totalCount: totalItems,
+  });
+  const { to: end } = range;
   const resolvedTotalPages =
-    totalPages ??
-    (totalItems != null ? Math.max(1, Math.ceil(totalItems / pageSize)) : undefined);
+    totalPages ?? totalPagesFromEntries(totalItems, pageSize);
 
   const showNumberedPages = Boolean(onPageSelect);
   const pageNumbers = showNumberedPages
@@ -62,13 +71,7 @@ export function CursorPaginationBar({
     : [];
 
   const rangeLabel =
-    itemCount === 0
-      ? isBusy
-        ? "Loading…"
-        : "No entries"
-      : totalItems != null
-        ? `Showing ${start} to ${end} of ${totalItems.toLocaleString()} entries`
-        : `Showing ${start}–${hasMore ? `${end}+` : String(end)}`;
+    itemCount === 0 && isBusy ? "Loading…" : formatListEntriesLabel(range);
 
   // Prefer totalItems for Next when present — avoids enabling Next on a full last page.
   const canGoNext =

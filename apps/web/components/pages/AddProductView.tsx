@@ -1,16 +1,25 @@
 "use client";
 
-import { useSearchParams } from "next/navigation";
+import { useEffect, useRef } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import type { Item } from "@vonos/types";
 import { AddProductForm } from "@/components/organisms/AddProductForm";
-import { getItem } from "@/lib/api/items";
+import { getProductForForm } from "@/lib/api/catalog";
 import { useIsVaHq6 } from "@/lib/hooks/useIsVaHq6";
 import { useRouteTenant, useTenantId } from "@/lib/hooks/useRouteTenant";
 import { hq6CopyForSlug } from "@/lib/registries/hq6PageCopy";
+import {
+  DETAIL_RECORD_STALE_MS,
+  productDuplicateQueryKey,
+  productEditQueryKey,
+} from "@/lib/query/prefetchListDetails";
+import { announceRedirect } from "@/lib/utils/announceRedirect";
 
 export function AddProductView() {
   const tenantId = useTenantId();
   const { config, tenantCode } = useRouteTenant();
+  const router = useRouter();
   const queryClient = useQueryClient();
   const isHq6 = useIsVaHq6();
   const copy = hq6CopyForSlug("add-product");
@@ -19,22 +28,104 @@ export function AddProductView() {
   const duplicateId = searchParams.get("d");
   const editId = searchParams.get("edit");
 
-  const { data: duplicateFrom } = useQuery({
-    queryKey: ["item", "duplicate-page", duplicateId],
-    queryFn: () => getItem(duplicateId!),
+  const catalogListPath = tenantCode
+    ? `/${tenantCode}/${config?.archetype === "stock" ? "inventory" : "catalog"}`
+    : null;
+
+  const cachedItem = (id: string | null): Item | undefined => {
+    if (!id || !tenantId) return undefined;
+    return (
+      queryClient.getQueryData<Item>(["item", tenantId, id, "catalog"]) ??
+      queryClient.getQueryData<Item>(["item", tenantId, id, "inventory"]) ??
+      queryClient.getQueryData<Item>(["item", "edit-page", id]) ??
+      queryClient.getQueryData<Item>(["item", "duplicate-page", id])
+    );
+  };
+
+  // Keep last good row so a failed background refetch does not blank the form
+  // (placeholderData alone is discarded on error in TanStack Query).
+  const lastEditRef = useRef<Item | null>(null);
+  const lastDuplicateRef = useRef<Item | null>(null);
+  useEffect(() => {
+    lastEditRef.current = null;
+  }, [editId]);
+  useEffect(() => {
+    lastDuplicateRef.current = null;
+  }, [duplicateId]);
+
+  const cachedDuplicate = cachedItem(duplicateId);
+  const cachedEdit = cachedItem(editId);
+
+  const {
+    data: duplicateFrom,
+    isError: duplicateError,
+    isPending: duplicatePending,
+  } = useQuery({
+    queryKey: productDuplicateQueryKey(duplicateId ?? ""),
+    // Catalog first (own tenant), then /items for local migration rows.
+    queryFn: () => getProductForForm(duplicateId!),
     enabled: Boolean(duplicateId) && !editId,
+    staleTime: DETAIL_RECORD_STALE_MS,
+    // initialData survives refetch errors; placeholderData does not.
+    initialData: cachedDuplicate,
+    initialDataUpdatedAt: cachedDuplicate ? 0 : undefined,
+    retry: 2,
   });
 
-  const { data: editFrom } = useQuery({
-    queryKey: ["item", "edit-page", editId],
-    queryFn: () => getItem(editId!),
+  const {
+    data: editFrom,
+    isError: editError,
+    isPending: editPending,
+  } = useQuery({
+    queryKey: productEditQueryKey(editId ?? ""),
+    queryFn: () => getProductForForm(editId!),
     enabled: Boolean(editId),
+    staleTime: DETAIL_RECORD_STALE_MS,
+    initialData: cachedEdit,
+    initialDataUpdatedAt: cachedEdit ? 0 : undefined,
+    retry: 2,
   });
+
+  if (editFrom) lastEditRef.current = editFrom;
+  if (duplicateFrom) lastDuplicateRef.current = duplicateFrom;
+
+  const resolvedEdit =
+    editFrom ?? lastEditRef.current ?? (editId ? cachedEdit : undefined) ?? null;
+  const resolvedDuplicate =
+    duplicateFrom ??
+    lastDuplicateRef.current ??
+    (duplicateId ? cachedDuplicate : undefined) ??
+    null;
 
   if (!tenantId) {
     return (
       <div className="rounded-lg border border-border bg-card p-6 text-sm text-muted">
         Select a business entity to add a product.
+      </div>
+    );
+  }
+
+  // Only hard-fail when we have nothing to paint (cold load + fetch failed).
+  if (
+    (editId && editError && !resolvedEdit) ||
+    (duplicateId && !editId && duplicateError && !resolvedDuplicate)
+  ) {
+    return (
+      <div className="rounded-lg border border-border bg-card p-6 text-sm text-muted">
+        Could not load that product. Refresh and try again.
+      </div>
+    );
+  }
+
+  // Show the form as soon as we have data (incl. list prefetch / initialData).
+  // Do not block on isPlaceholderData — that left VISP/VSP edits stuck on Loading.
+  if (
+    (editId && !resolvedEdit && editPending) ||
+    (duplicateId && !editId && !resolvedDuplicate && duplicatePending)
+  ) {
+    return (
+      <div className="rounded-lg border border-border bg-card p-6 text-sm text-muted">
+        Loading product…
       </div>
     );
   }
@@ -45,12 +136,36 @@ export function AddProductView() {
       tenantConfig={config}
       retailMode={retailMode}
       variant="page"
-      duplicateFrom={duplicateId && !editId ? duplicateFrom ?? null : null}
-      editFrom={editId ? editFrom ?? null : null}
-      onSuccess={async () => {
+      duplicateFrom={duplicateId && !editId ? resolvedDuplicate : null}
+      editFrom={editId ? resolvedEdit : null}
+      onSuccess={async (item, mode) => {
+        // Seed detail caches from the PATCH response — list rows are already
+        // patched optimistically in AddProductForm.
+        queryClient.setQueryData(productEditQueryKey(item.id), item);
+        queryClient.setQueryData(
+          ["item", tenantId, item.id, "catalog"],
+          item,
+        );
+        queryClient.setQueryData(
+          ["item", tenantId, item.id, "inventory"],
+          item,
+        );
         void queryClient.invalidateQueries({ queryKey: ["items"] });
         void queryClient.invalidateQueries({ queryKey: ["catalog"] });
         void queryClient.invalidateQueries({ queryKey: ["catalog-meta"] });
+        // Stay on the form only for "Save and add another".
+        if (mode === "saveAnother") return;
+        // Page Save already navigated in onOptimisticLeave (create + edit).
+        if (mode === "save") return;
+        if (catalogListPath) {
+          announceRedirect("Redirecting to products…");
+          router.push(catalogListPath);
+        }
+      }}
+      onOptimisticLeave={() => {
+        if (!catalogListPath) return;
+        announceRedirect("Saving & returning to products…");
+        router.push(catalogListPath);
       }}
     />
   );

@@ -15,6 +15,7 @@ import { Hq6InvoiceLayoutModal } from "@/components/hq6/Hq6InvoiceLayoutModal";
 import { useAppMutation } from "@/lib/hooks/useAppMutation";
 import { useIsVaHq6 } from "@/lib/hooks/useIsVaHq6";
 import { useTenantId } from "@/lib/hooks/useRouteTenant";
+import { matchSearchRows } from "@/lib/utils/listClientSearch";
 import {
   createInvoiceLayout,
   createInvoiceScheme,
@@ -258,11 +259,7 @@ function Hq6InvoiceSettingsView() {
     return <InvoiceSettingsSkeleton />;
   }
 
-  const schemes = settings.schemes.filter((s) =>
-    search.trim()
-      ? s.name.toLowerCase().includes(search.trim().toLowerCase())
-      : true,
-  );
+  const schemes = matchSearchRows(settings.schemes, search, ["name"]);
 
   return (
     <Hq6PageFrame title="Invoice Settings" subtitle="Manage your invoice settings">

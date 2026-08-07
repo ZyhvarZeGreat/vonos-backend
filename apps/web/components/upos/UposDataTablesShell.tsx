@@ -3,6 +3,12 @@
 import type { ReactNode } from "react";
 import { Hq6DtSearchFilter } from "@/components/hq6/Hq6DtSearchFilter";
 import { cn } from "@/lib/utils/cn";
+import {
+  formatListEntriesLabel,
+  listEntryRange,
+  slidingPageIndices,
+  totalPagesFromEntries,
+} from "@/lib/utils/paginationWindow";
 
 const PAGE_SIZE_OPTIONS = [25, 50, 100, 200, 500, 1000] as const;
 
@@ -42,38 +48,6 @@ export interface UposDataTablesShellProps {
   showPagination?: boolean;
 }
 
-function pageWindow(
-  pageIndex: number,
-  totalPages: number,
-): Array<number | "ellipsis"> {
-  if (totalPages <= 7) {
-    return Array.from({ length: totalPages }, (_, i) => i);
-  }
-  const pages = new Set<number>([0, totalPages - 1, pageIndex]);
-  for (let i = pageIndex - 1; i <= pageIndex + 1; i++) {
-    if (i > 0 && i < totalPages - 1) pages.add(i);
-  }
-  if (pageIndex < 3) {
-    pages.add(1);
-    pages.add(2);
-    pages.add(3);
-  }
-  if (pageIndex > totalPages - 4) {
-    pages.add(totalPages - 2);
-    pages.add(totalPages - 3);
-    pages.add(totalPages - 4);
-  }
-  const sorted = [...pages].sort((a, b) => a - b);
-  const out: Array<number | "ellipsis"> = [];
-  let prev = -2;
-  for (const p of sorted) {
-    if (p - prev > 1) out.push("ellipsis");
-    out.push(p);
-    prev = p;
-  }
-  return out;
-}
-
 /**
  * Ultimate POS DataTables chrome — converted from live HQ6 product_table wrapper.
  * Markup mirrors: length | dt-buttons | filter | table | info | paginate.
@@ -107,20 +81,29 @@ export function UposDataTablesShell({
   className,
   showPagination = true,
 }: UposDataTablesShellProps) {
-  const from = itemCount === 0 ? 0 : pageIndex * pageSize + 1;
-  const to = pageIndex * pageSize + itemCount;
-  const total = totalItems ?? (hasMore ? undefined : to);
+  const range = listEntryRange({
+    pageIndex,
+    pageSize,
+    itemCount,
+    totalCount: totalItems,
+  });
+  const { from, to, total } = range;
   const infoText =
-    total != null
-      ? `Showing ${from} to ${to} of ${total.toLocaleString()} entries`
-      : itemCount === 0
-        ? "Showing 0 to 0 of 0 entries"
-        : `Showing ${from} to ${to} entries`;
+    itemCount === 0 && isBusy
+      ? "Loading…"
+      : total != null
+        ? formatListEntriesLabel({ from, to, total })
+        : formatListEntriesLabel({ from, to, total: undefined });
 
   const totalPages =
-    total != null && pageSize > 0
-      ? Math.max(total === 0 ? 1 : 1, Math.ceil(total / pageSize))
-      : Math.max(1, pageIndex + 1 + (hasMore ? 1 : 0));
+    totalPagesFromEntries(totalItems ?? total, pageSize) ??
+    Math.max(1, pageIndex + 1 + (hasMore ? 1 : 0));
+
+  const pageIndices = slidingPageIndices(pageIndex, {
+    totalPages,
+    hasMore: totalItems == null ? Boolean(hasMore) : false,
+    maxButtons: 5,
+  });
 
   const exportButtons: Array<{
     key: string;
@@ -295,14 +278,7 @@ export function UposDataTablesShell({
                   Previous
                 </a>
               </li>
-              {pageWindow(pageIndex, totalPages).map((entry, idx) =>
-                entry === "ellipsis" ? (
-                  <li key={`e-${idx}`} className="paginate_button disabled">
-                    <a href="#" tabIndex={-1} onClick={(e) => e.preventDefault()}>
-                      …
-                    </a>
-                  </li>
-                ) : (
+              {pageIndices.map((entry) => (
                   <li
                     key={entry}
                     className={cn(
@@ -325,8 +301,7 @@ export function UposDataTablesShell({
                       {entry + 1}
                     </a>
                   </li>
-                ),
-              )}
+              ))}
               <li
                 className={cn(
                   "paginate_button next",

@@ -94,11 +94,12 @@ export function AddSaleModal() {
       onSuccess={async (sale, options) => {
         // Lists already invalidate via AddSaleForm invalidateKeys — don't block UX.
         handleClose();
+        if (!options?.print) return;
         const path =
           sale.invoicePath?.trim() ||
           (await getSaleInvoiceUrl(tenantId, sale.id).then((r) => r.path).catch(() => null));
         if (!path) return;
-        router.push(options?.print ? `${path}?print_on_load=true` : path);
+        router.push(`${path}?print_on_load=true`);
       }}
     />
   );

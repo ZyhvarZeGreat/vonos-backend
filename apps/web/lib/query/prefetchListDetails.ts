@@ -1,7 +1,8 @@
 import type { QueryClient } from "@tanstack/react-query";
 import type { Customer, CustomerProfile, Item, Job, User, Vehicle } from "@vonos/types";
 import { getCustomer, getCustomerSummary } from "@/lib/api/customers";
-import { getCatalogItem } from "@/lib/api/catalog";
+import { getProductForForm } from "@/lib/api/catalog";
+import { getAllCatalogMeta } from "@/lib/api/catalogMeta";
 import { getJobShell, type JobDetail } from "@/lib/api/jobs";
 import { getStockMovement } from "@/lib/api/stockMovements";
 import { getSupplier, getSupplierSummary, type SupplierListRow } from "@/lib/api/suppliers";
@@ -92,6 +93,52 @@ export function prefetchSupplierDetail(
   });
 }
 
+export const PRODUCT_FORM_META_STALE_MS = 10 * 60_000;
+
+export function productEditQueryKey(itemId: string) {
+  return ["item", "edit-page", itemId] as const;
+}
+
+export function productDuplicateQueryKey(itemId: string) {
+  return ["item", "duplicate-page", itemId] as const;
+}
+
+/** Warm categories / brands / units used by add + edit product. */
+export function prefetchProductFormMeta(queryClient: Qc, tenantId: string): void {
+  for (const kind of ["categories", "brands", "units"] as const) {
+    prefetchModalQuery(queryClient, {
+      queryKey: ["catalog-meta", tenantId, kind, "all"],
+      queryFn: () => getAllCatalogMeta(tenantId, kind),
+      staleTime: PRODUCT_FORM_META_STALE_MS,
+    });
+  }
+}
+
+/** Prefetch the exact query AddProductView reads for edit / duplicate. */
+export function prefetchProductForm(
+  queryClient: Qc,
+  tenantId: string,
+  itemId: string,
+  mode: "edit" | "duplicate" = "edit",
+  listRow?: Item,
+): void {
+  const queryKey =
+    mode === "edit"
+      ? productEditQueryKey(itemId)
+      : productDuplicateQueryKey(itemId);
+  // Seed real cache data (not placeholder) so a failed refetch keeps the form.
+  if (listRow) {
+    seedModalQuery(queryClient, queryKey, listRow);
+  }
+  prefetchModalQuery(queryClient, {
+    queryKey,
+    queryFn: () => getProductForForm(itemId),
+    staleTime: DETAIL_RECORD_STALE_MS,
+  });
+  prefetchCatalogDetail(queryClient, tenantId, itemId, listRow);
+  prefetchProductFormMeta(queryClient, tenantId);
+}
+
 /** Prefetch catalog / product detail. */
 export function prefetchCatalogDetail(
   queryClient: Qc,
@@ -111,7 +158,7 @@ export function prefetchCatalogDetail(
   }
   prefetchModalQuery(queryClient, {
     queryKey,
-    queryFn: () => getCatalogItem(itemId),
+    queryFn: () => getProductForForm(itemId),
     staleTime: DETAIL_RECORD_STALE_MS,
   });
 }
@@ -172,11 +219,11 @@ export function prefetchMovementDetail(
 /** Prefetch user detail. */
 export function prefetchUserDetail(
   queryClient: Qc,
-  tenantId: string,
+  tenantId: string | null,
   userId: string,
   listRow?: User,
 ): void {
-  const queryKey = ["user", tenantId, userId] as const;
+  const queryKey = ["user", tenantId ?? "vag", userId] as const;
   if (listRow) {
     seedModalQuery(queryClient, queryKey, listRow);
   }

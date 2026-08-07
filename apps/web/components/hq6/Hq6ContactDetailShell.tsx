@@ -505,7 +505,7 @@ function LedgerPanel({
             <option value="">All locations</option>
             {locationOptions.map((loc) => (
               <option key={loc.code} value={loc.code}>
-                {loc.code} — {loc.name}
+                {loc.name}
               </option>
             ))}
           </select>

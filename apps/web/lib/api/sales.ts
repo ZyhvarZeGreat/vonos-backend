@@ -15,6 +15,7 @@ async function fetchSalesRaw(
   filters: SaleFilters | undefined,
   cursor?: string,
   limit?: number,
+  signal?: AbortSignal,
 ): Promise<Sale[] | { items: Sale[]; totalCount: number }> {
   const params = new URLSearchParams();
   if (filters?.search) params.set("search", filters.search);
@@ -43,7 +44,7 @@ async function fetchSalesRaw(
   if (limit) params.set("limit", String(limit));
   const query = params.toString();
   const path = withTenantQuery(query ? `/sales?${query}` : "/sales", tenantId);
-  const response = await apiFetch(path);
+  const response = await apiFetch(path, signal ? { signal } : undefined);
   if (!response.ok) throw new Error("Failed to fetch sales");
   return response.json();
 }
@@ -53,6 +54,7 @@ export async function getSalesPage(
   filters: SaleFilters | undefined,
   cursor: string | undefined,
   limit = DEFAULT_TABLE_PAGE_SIZE,
+  init?: { signal?: AbortSignal },
 ): Promise<ListPage<Sale>> {
   return fetchListPage(
     (pageCursor, pageLimit) =>
@@ -61,6 +63,7 @@ export async function getSalesPage(
         { ...filters, includeSummary: filters?.includeSummary ?? false },
         pageCursor,
         pageLimit,
+        init?.signal,
       ),
     cursor,
     limit,
@@ -151,6 +154,23 @@ export async function createSale(
   });
   if (!response.ok) {
     return throwApiError(response, "Failed to create sale");
+  }
+  return response.json();
+}
+
+export async function updateSale(
+  tenantId: string,
+  saleId: string,
+  body: CreateSaleRequest,
+): Promise<SaleDetail> {
+  const path = withTenantQuery(`/sales/${saleId}`, tenantId);
+  const response = await apiFetch(path, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    return throwApiError(response, "Failed to update sale");
   }
   return response.json();
 }

@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import type { OverviewDashboard, ReportsChart, ReportsKpi } from "@vonos/types";
+import { ViewportDefer } from "@/components/molecules/ViewportDefer";
 import { ChartPanel } from "@/components/organisms/ChartPanel";
 import {
   CompactDataPanel,
@@ -122,21 +123,22 @@ function renderChart(
   formatTooltipValue?: (value: number) => string,
 ) {
   return (
-    <ChartPanel
-      key={chart.id}
-      title={chart.title}
-      subtitle={chart.subtitle}
-      type={chart.type}
-      horizontal={chart.horizontal}
-      data={chart.data}
-      series={chart.series.map((series, index) => ({
-        ...series,
-        color: series.color ?? accent ?? (index === 0 ? "#3b82f6" : "#93c5fd"),
-      }))}
-      periodLabel={periodLabel}
-      formatTooltipValue={formatTooltipValue}
-      formatLegendValue={formatTooltipValue}
-    />
+    <ViewportDefer key={chart.id} minHeight={240}>
+      <ChartPanel
+        title={chart.title}
+        subtitle={chart.subtitle}
+        type={chart.type}
+        horizontal={chart.horizontal}
+        data={chart.data}
+        series={chart.series.map((series, index) => ({
+          ...series,
+          color: series.color ?? accent ?? (index === 0 ? "#3b82f6" : "#93c5fd"),
+        }))}
+        periodLabel={periodLabel}
+        formatTooltipValue={formatTooltipValue}
+        formatLegendValue={formatTooltipValue}
+      />
+    </ViewportDefer>
   );
 }
 

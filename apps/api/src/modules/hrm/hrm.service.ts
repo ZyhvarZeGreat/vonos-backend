@@ -15,6 +15,7 @@ import type {
   CreatePayComponentRequest,
   CreateDesignationRequest,
   CreateEmployeeRequest,
+  SyncEmployeeByUserRequest,
   UpdatePayrollDeductionRequest,
   PayPayrollsRequest,
   PayPayrollsResult,
@@ -26,6 +27,7 @@ import { resolveListSort } from '../../common/utils/listSort';
 import { toIso, toNumber } from '../../common/utils/serializers';
 import { isServiceStaffDesignation } from '../../common/utils/serviceStaffDesignations';
 import { recordPaymentAccountTxn } from '../../common/utils/recordPaymentAccountTxn';
+import { applyDailyFinanceDelta } from '../../common/utils/dailyFinanceRollup';
 import { InvoiceHubService } from '../invoices/invoice-hub.service';
 import { CacheService } from '../../common/cache/cache.service';
 import { invalidateTenantDashboardCache } from '../../common/cache/cacheInvalidation';
@@ -33,6 +35,97 @@ import {
   listPageFilterKey,
   withListPageCache,
 } from '../../common/utils/listPageCache';
+
+function optionalTrim(
+  value: string | null | undefined,
+): string | null | undefined {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function parseOptionalDate(
+  value: string | null | undefined,
+): Date | null | undefined {
+  if (value === undefined) return undefined;
+  if (value === null || !value.trim()) return null;
+  const raw = value.trim().slice(0, 10);
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(raw);
+  if (!match) return null;
+  const date = new Date(
+    Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])),
+  );
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function optionalNumber(
+  value: number | null | undefined,
+): number | null | undefined {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  return Number.isFinite(value) ? value : null;
+}
+
+function employeeProfileCreateData(dto: CreateEmployeeRequest) {
+  return {
+    mobile: optionalTrim(dto.mobile) ?? null,
+    altContact: optionalTrim(dto.altContact) ?? null,
+    familyContact: optionalTrim(dto.familyContact) ?? null,
+    guardianName: optionalTrim(dto.guardianName) ?? null,
+    dateOfBirth: parseOptionalDate(dto.dateOfBirth) ?? null,
+    gender: optionalTrim(dto.gender) ?? null,
+    maritalStatus: optionalTrim(dto.maritalStatus) ?? null,
+    bloodGroup: optionalTrim(dto.bloodGroup) ?? null,
+    idProofName: optionalTrim(dto.idProofName) ?? null,
+    idProofNumber: optionalTrim(dto.idProofNumber) ?? null,
+    permanentAddress: optionalTrim(dto.permanentAddress) ?? null,
+    currentAddress: optionalTrim(dto.currentAddress) ?? null,
+    salesCommission: optionalNumber(dto.salesCommission) ?? 0,
+    maxSalesDiscountPercent: optionalNumber(dto.maxSalesDiscountPercent) ?? null,
+    department: optionalTrim(dto.department) ?? null,
+  };
+}
+
+function employeeProfilePatchData(args: SyncEmployeeByUserRequest) {
+  const patch: Record<string, unknown> = {};
+  const setTrim = (key: string, value: string | null | undefined) => {
+    if (value === undefined) return;
+    patch[key] = optionalTrim(value) ?? null;
+  };
+  setTrim('accountHolderName', args.accountHolderName);
+  setTrim('bankName', args.bankName);
+  setTrim('bankBranch', args.bankBranch);
+  setTrim('bankCode', args.bankCode);
+  setTrim('bankAccountNo', args.bankAccountNo);
+  setTrim('taxPayerId', args.taxPayerId);
+  setTrim('mobile', args.mobile);
+  setTrim('altContact', args.altContact);
+  setTrim('familyContact', args.familyContact);
+  setTrim('guardianName', args.guardianName);
+  setTrim('gender', args.gender);
+  setTrim('maritalStatus', args.maritalStatus);
+  setTrim('bloodGroup', args.bloodGroup);
+  setTrim('idProofName', args.idProofName);
+  setTrim('idProofNumber', args.idProofNumber);
+  setTrim('permanentAddress', args.permanentAddress);
+  setTrim('currentAddress', args.currentAddress);
+  setTrim('department', args.department);
+  if (args.dateOfBirth !== undefined) {
+    patch.dateOfBirth = parseOptionalDate(args.dateOfBirth) ?? null;
+  }
+  if (args.salesCommission !== undefined) {
+    patch.salesCommission = optionalNumber(args.salesCommission) ?? 0;
+  }
+  if (args.maxSalesDiscountPercent !== undefined) {
+    patch.maxSalesDiscountPercent =
+      optionalNumber(args.maxSalesDiscountPercent) ?? null;
+  }
+  if (args.designationId?.trim()) {
+    patch.designationId = args.designationId.trim();
+  }
+  return patch;
+}
 
 @Injectable()
 export class HrmService {
@@ -597,6 +690,20 @@ export class HrmService {
     return rows.map((row) => this.serializeEmployee(row));
   }
 
+  /** Single employee linked to a login user (user edit hydrate). */
+  async getEmployeeByUserId(userId: string): Promise<Employee | null> {
+    const tenantId = this.tenantDb.requireTenantId();
+    const row = await this.tenantDb.db.employee.findFirst({
+      where: { userId, tenantId, deletedAt: null },
+      orderBy: { updatedAt: 'desc' },
+      include: {
+        designation: { select: { name: true } },
+        payrollGroup: { select: { name: true } },
+      },
+    });
+    return row ? this.serializeEmployee(row) : null;
+  }
+
   async createEmployee(dto: CreateEmployeeRequest): Promise<Employee> {
     const tenantId = this.tenantDb.requireTenantId();
     const name = dto.name?.trim();
@@ -636,6 +743,13 @@ export class HrmService {
         designationId: dto.designationId,
         userId: dto.userId?.trim() || null,
         isServiceStaff,
+        accountHolderName: dto.accountHolderName?.trim() || null,
+        bankName: dto.bankName?.trim() || null,
+        bankBranch: dto.bankBranch?.trim() || null,
+        bankCode: dto.bankCode?.trim() || null,
+        bankAccountNo: dto.bankAccountNo?.trim() || null,
+        taxPayerId: dto.taxPayerId?.trim() || null,
+        ...employeeProfileCreateData(dto),
       },
       include: {
         designation: { select: { name: true } },
@@ -649,32 +763,57 @@ export class HrmService {
   /**
    * Sync work-location clearance for a login user (header location switcher).
    * Creates a minimal employee row if none exists yet.
+   * Also updates designation + bank/tax fields when provided (user edit form).
    */
-  async syncEmployeeLocationsByUserId(args: {
-    userId: string;
-    name?: string;
-    locationCodes?: string[];
-    locationCode?: string | null;
-  }): Promise<Employee | null> {
+  async syncEmployeeLocationsByUserId(
+    args: SyncEmployeeByUserRequest & { userId: string },
+  ): Promise<Employee | null> {
     const tenantId = this.tenantDb.requireTenantId();
     const locationCodes = normalizeLocationCodes(
       args.locationCodes,
       args.locationCode,
     );
-    if (locationCodes.length === 0) return null;
 
     const existing = await this.tenantDb.db.employee.findFirst({
       where: { userId: args.userId, tenantId, deletedAt: null },
       orderBy: { updatedAt: 'desc' },
     });
 
+    if (args.designationId?.trim()) {
+      const designation = await this.tenantDb.db.designation.findFirst({
+        where: {
+          id: args.designationId.trim(),
+          tenantId,
+          deletedAt: null,
+        },
+      });
+      if (!designation) {
+        throw new BadRequestException('Designation not found');
+      }
+    }
+
+    const profilePatch = employeeProfilePatchData(args);
+
     if (existing) {
+      const nextLocations =
+        locationCodes.length > 0
+          ? locationCodes
+          : existing.locationCodes?.length
+            ? existing.locationCodes
+            : existing.locationCode
+              ? [existing.locationCode]
+              : [];
       const row = await this.tenantDb.db.employee.update({
         where: { id: existing.id },
         data: {
-          locationCodes,
-          locationCode: locationCodes[0] ?? null,
+          ...(nextLocations.length > 0
+            ? {
+                locationCodes: nextLocations,
+                locationCode: nextLocations[0] ?? null,
+              }
+            : {}),
           ...(args.name?.trim() ? { name: args.name.trim() } : {}),
+          ...profilePatch,
         },
         include: {
           designation: { select: { name: true } },
@@ -684,11 +823,17 @@ export class HrmService {
       return this.serializeEmployee(row);
     }
 
-    const designation = await this.tenantDb.db.designation.findFirst({
-      where: { tenantId, deletedAt: null },
-      orderBy: { name: 'asc' },
-    });
-    if (!designation) {
+    if (locationCodes.length === 0) return null;
+
+    const designationId =
+      args.designationId?.trim() ||
+      (
+        await this.tenantDb.db.designation.findFirst({
+          where: { tenantId, deletedAt: null },
+          orderBy: { name: 'asc' },
+        })
+      )?.id;
+    if (!designationId) {
       throw new BadRequestException(
         'Create a designation before assigning work locations',
       );
@@ -697,10 +842,31 @@ export class HrmService {
     return this.createEmployee({
       name: args.name?.trim() || 'Staff',
       userId: args.userId,
-      designationId: designation.id,
+      designationId,
       locationCodes,
       locationCode: locationCodes[0],
       isServiceStaff: false,
+      accountHolderName: args.accountHolderName,
+      bankName: args.bankName,
+      bankBranch: args.bankBranch,
+      bankCode: args.bankCode,
+      bankAccountNo: args.bankAccountNo,
+      taxPayerId: args.taxPayerId,
+      mobile: args.mobile,
+      altContact: args.altContact,
+      familyContact: args.familyContact,
+      guardianName: args.guardianName,
+      dateOfBirth: args.dateOfBirth,
+      gender: args.gender,
+      maritalStatus: args.maritalStatus,
+      bloodGroup: args.bloodGroup,
+      idProofName: args.idProofName,
+      idProofNumber: args.idProofNumber,
+      permanentAddress: args.permanentAddress,
+      currentAddress: args.currentAddress,
+      salesCommission: args.salesCommission,
+      maxSalesDiscountPercent: args.maxSalesDiscountPercent,
+      department: args.department,
     });
   }
 
@@ -1079,6 +1245,23 @@ export class HrmService {
           invoiceId: invoice.id,
         });
 
+        // Accrue wage expense once on pay (till already debited above).
+        const monthLabel = toIso(row.payrollMonth).slice(0, 7);
+        await tx.ledgerEntry.create({
+          data: {
+            tenantId,
+            type: 'expense',
+            amount: netPay,
+            currency: 'NGN',
+            category: 'Payroll',
+            description: `Payroll — ${row.employeeName} (${monthLabel})`,
+            linkedRecordType: 'payroll',
+            linkedRecordId: row.id,
+            invoiceId: invoice.id,
+            date: paidOn,
+          },
+        });
+
         await tx.invoice.update({
           where: { id: invoice.id },
           data: { paymentStatus: 'paid' },
@@ -1116,6 +1299,16 @@ export class HrmService {
 
       return { paid, skipped, totalDebited, updated };
     });
+
+    if (result.totalDebited > 0) {
+      void applyDailyFinanceDelta(
+        this.tenantDb.db,
+        tenantId,
+        paidOn,
+        'expense',
+        result.totalDebited,
+      );
+    }
 
     void invalidateTenantDashboardCache(this.cache, tenantId);
 
@@ -1423,6 +1616,21 @@ export class HrmService {
     bankCode?: string | null;
     bankAccountNo?: string | null;
     taxPayerId?: string | null;
+    mobile?: string | null;
+    altContact?: string | null;
+    familyContact?: string | null;
+    guardianName?: string | null;
+    dateOfBirth?: Date | null;
+    gender?: string | null;
+    maritalStatus?: string | null;
+    bloodGroup?: string | null;
+    idProofName?: string | null;
+    idProofNumber?: string | null;
+    permanentAddress?: string | null;
+    currentAddress?: string | null;
+    salesCommission?: { toString(): string } | number | null;
+    maxSalesDiscountPercent?: { toString(): string } | number | null;
+    department?: string | null;
     createdAt: Date;
     designation: { name: string };
     payrollGroup: { name: string } | null;
@@ -1452,6 +1660,27 @@ export class HrmService {
       bankCode: row.bankCode ?? null,
       bankAccountNo: row.bankAccountNo ?? null,
       taxPayerId: row.taxPayerId ?? null,
+      mobile: row.mobile ?? null,
+      altContact: row.altContact ?? null,
+      familyContact: row.familyContact ?? null,
+      guardianName: row.guardianName ?? null,
+      dateOfBirth: row.dateOfBirth
+        ? toIso(row.dateOfBirth).slice(0, 10)
+        : null,
+      gender: row.gender ?? null,
+      maritalStatus: row.maritalStatus ?? null,
+      bloodGroup: row.bloodGroup ?? null,
+      idProofName: row.idProofName ?? null,
+      idProofNumber: row.idProofNumber ?? null,
+      permanentAddress: row.permanentAddress ?? null,
+      currentAddress: row.currentAddress ?? null,
+      salesCommission:
+        row.salesCommission == null ? null : toNumber(row.salesCommission),
+      maxSalesDiscountPercent:
+        row.maxSalesDiscountPercent == null
+          ? null
+          : toNumber(row.maxSalesDiscountPercent),
+      department: row.department ?? null,
       createdAt: toIso(row.createdAt),
     };
   }

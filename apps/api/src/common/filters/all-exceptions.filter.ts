@@ -88,6 +88,13 @@ function mapPrismaError(error: Prisma.PrismaClientKnownRequestError): {
         message: 'Database is temporarily unavailable — try again shortly',
         error: 'Service Unavailable',
       };
+    case 'P2021':
+      return {
+        status: HttpStatus.SERVICE_UNAVAILABLE,
+        message:
+          'Database schema is out of date — a required table is missing. Run pending migrations.',
+        error: 'Service Unavailable',
+      };
     default:
       return {
         status: HttpStatus.BAD_REQUEST,

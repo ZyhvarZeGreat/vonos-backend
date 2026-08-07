@@ -8,6 +8,8 @@ import { ListPageShell } from "@/components/organisms/ListPageShell";
 import { CatalogMetaCreateBar } from "@/components/molecules/CatalogMetaCreateBar";
 import { getCatalogMetaPage, type CatalogMetaKind } from "@/lib/api/catalogMeta";
 import { useServerListPage } from "@/lib/hooks/useServerListPage";
+import { nameListCursor } from "@/lib/utils/pagination";
+
 import { useTenantId } from "@/lib/hooks/useRouteTenant";
 import { useIsVaHq6 } from "@/lib/hooks/useIsVaHq6";
 import { Hq6CatalogMetaListView } from "@/components/pages/Hq6CatalogMetaListView";
@@ -101,6 +103,7 @@ function CatalogMetaListViewBody({ kind }: { kind: CatalogMetaKind }) {
       const page = await getCatalogMetaPage(tenantId!, kind, cursor, limit);
       return page;
     },
+    getCursor: (row) => nameListCursor(row),
   });
 
   const rows = useMemo(

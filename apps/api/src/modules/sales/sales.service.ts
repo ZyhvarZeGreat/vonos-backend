@@ -65,6 +65,10 @@ function normalizeCreateStatus(
   return status;
 }
 
+function isProvisionalSaleStatus(status: SaleStatus): boolean {
+  return status === 'draft' || status === 'quotation';
+}
+
 type SaleLineInput = {
   itemId?: string;
   sku: string;
@@ -157,126 +161,6 @@ export class SalesService {
     if (options.customerId) {
       void refreshCustomerFinancialRollups(this.tenantDb.db, options.customerId);
     }
-  }
-
-  /**
-   * Soft-archive a sale inside an edit/replace transaction so the unique
-   * (tenantId, reference) / (tenantId, jobId) keys are freed before insert.
-   * Does not touch stock — caller applies net inventory deltas.
-   */
-  private async archiveReplacedSaleInTx(
-    tx: Prisma.TransactionClient,
-    opts: { saleId: string; tenantId: string },
-  ): Promise<{
-    wasFinalized: boolean;
-    total: number;
-    date: Date;
-    currency: string;
-    customerId: string | null;
-    locationCode: string | null;
-    lines: Array<{
-      itemId: string | null;
-      sku: string;
-      quantity: { toString(): string };
-      sourceTenantCode: string | null;
-    }>;
-  }> {
-    const existing = await tx.sale.findFirst({
-      where: {
-        id: opts.saleId,
-        tenantId: opts.tenantId,
-        deletedAt: null,
-      },
-      select: {
-        id: true,
-        reference: true,
-        customerId: true,
-        status: true,
-        total: true,
-        currency: true,
-        date: true,
-        locationCode: true,
-        lines: {
-          select: {
-            itemId: true,
-            sku: true,
-            quantity: true,
-            sourceTenantCode: true,
-          },
-        },
-        payments: {
-          where: { deletedAt: null },
-          select: { id: true },
-        },
-      },
-    });
-    if (!existing) {
-      throw new NotFoundException('Sale to replace was not found');
-    }
-
-    for (const payment of existing.payments) {
-      await softDeletePaymentAccountTxns(tx, {
-        tenantId: opts.tenantId,
-        paymentId: payment.id,
-      });
-    }
-
-    await tx.payment.updateMany({
-      where: { tenantId: opts.tenantId, saleId: opts.saleId, deletedAt: null },
-      data: { deletedAt: new Date() },
-    });
-    await tx.accountTransaction.updateMany({
-      where: { tenantId: opts.tenantId, saleId: opts.saleId, deletedAt: null },
-      data: { deletedAt: new Date() },
-    });
-    await tx.ledgerEntry.updateMany({
-      where: {
-        tenantId: opts.tenantId,
-        linkedRecordType: 'sale',
-        linkedRecordId: opts.saleId,
-        deletedAt: null,
-      },
-      data: { deletedAt: new Date() },
-    });
-    // Invoice uniqueness is enforced on (tenantId, reference, kind) and
-    // (tenantId, jobId, kind). Because we only soft-delete invoices
-    // (deletedAt != null still keeps the row), we must rewrite fields that
-    // participate in those unique constraints to avoid collisions when the
-    // replacement sale is created with the same reference/job.
-    const archivedInvoiceReference = `${existing.reference}__del_${opts.saleId.slice(
-      -8,
-    )}`;
-    await tx.invoice.updateMany({
-      where: {
-        tenantId: opts.tenantId,
-        saleId: opts.saleId,
-        deletedAt: null,
-      },
-      data: {
-        deletedAt: new Date(),
-        reference: archivedInvoiceReference,
-        jobId: null,
-      },
-    });
-
-    await tx.sale.update({
-      where: { id: opts.saleId },
-      data: {
-        deletedAt: new Date(),
-        jobId: null,
-        reference: `${existing.reference}__del_${opts.saleId.slice(-8)}`,
-      },
-    });
-
-    return {
-      wasFinalized: existing.status === 'completed',
-      total: toNumber(existing.total),
-      date: existing.date,
-      currency: existing.currency ?? 'NGN',
-      customerId: existing.customerId,
-      locationCode: existing.locationCode,
-      lines: existing.lines,
-    };
   }
 
   /** Apply aggregated on-hand deltas (edit/replace nets zero unchanged lines). */
@@ -452,10 +336,16 @@ export class SalesService {
       }
 
       if (!includeSummary || totalCount == null || totalAmount == null) {
-        return { items: page };
+        return {
+          items: page,
+          hasMore: page.length >= limit,
+          pageSize: limit,
+        };
       }
       return {
         items: page,
+        hasMore: page.length >= limit,
+        pageSize: limit,
         totalCount,
         amountSummary: {
           totalAmount,
@@ -1087,8 +977,6 @@ export class SalesService {
     customerName?: string;
     customerId?: string;
     jobId?: string;
-    /** When editing via create-then-archive, exclude this sale from the one-sale-per-job check. */
-    replaceSaleId?: string;
     locationCode?: string;
     paymentMethod?: string;
     cleanerUserId?: string;
@@ -1144,8 +1032,6 @@ export class SalesService {
       }>;
     } | null = null;
 
-    const replaceSaleId = body.replaceSaleId?.trim() || null;
-
     if (jobId) {
       linkedJob = await this.tenantDb.db.job.findFirst({
         where: { id: jobId, tenantId, deletedAt: null },
@@ -1182,7 +1068,6 @@ export class SalesService {
           tenantId,
           jobId,
           deletedAt: null,
-          ...(replaceSaleId ? { id: { not: replaceSaleId } } : {}),
         },
         select: { id: true, reference: true },
       });
@@ -1275,7 +1160,14 @@ export class SalesService {
     const orderDiscount = body.discountAmount ?? 0;
     const taxAmount = body.taxAmount ?? 0;
     /** Job materials already moved stock — do not deduct again on the sale. */
-    const skipStock = Boolean(jobId);
+    const sellingTenantForStock = await this.tenantDb.db.tenant.findFirst({
+      where: { id: tenantId, deletedAt: null },
+      select: { code: true },
+    });
+    /** VA/VP: product catalog only — never deduct / validate stock. */
+    const skipStock =
+      Boolean(jobId) ||
+      isGroupStockConsumerTenant(sellingTenantForStock?.code);
 
     const paymentRows =
       !isProvisional && body.payments && body.payments.length > 0
@@ -1286,13 +1178,6 @@ export class SalesService {
 
     const explicitReference = body.reference?.trim() || null;
     let saleReference = explicitReference;
-    if (!saleReference && replaceSaleId) {
-      const prior = await this.tenantDb.db.sale.findFirst({
-        where: { id: replaceSaleId, tenantId, deletedAt: null },
-        select: { reference: true },
-      });
-      saleReference = prior?.reference ?? null;
-    }
     if (!saleReference) {
       saleReference = await allocateNextInvoiceNumber(
         this.tenantDb.db,
@@ -1300,10 +1185,10 @@ export class SalesService {
       );
     }
 
-    // Provisional create (no archive): single insert, no interactive tx / stock /
+    // Provisional create: single insert, no interactive tx / stock /
     // payments. Invoice hub runs after response. List-only cache bust so hq6/reports
     // stay warm.
-    if (isProvisional && !replaceSaleId) {
+    if (isProvisional) {
       const lineData = buildSaleLineRows(workingLines);
       const total = computeSaleTotal(lineData, orderDiscount, taxAmount);
       try {
@@ -1376,19 +1261,9 @@ export class SalesService {
     }
 
     let row;
-    const replacedFinalizedHolder: {
-      value: {
-        total: number;
-        date: Date;
-        currency: string;
-        customerId: string | null;
-      } | null;
-    } = { value: null };
     try {
       row = await this.prisma.$transaction(
       async (tx) => {
-      // Edit path: free (tenantId, reference) before insert — never create-then-delete
-      // across two HTTP calls (that caused P2002 + double stock work).
       const stockDeltas = new Map<
         string,
         {
@@ -1425,53 +1300,6 @@ export class SalesService {
           delta: entry.delta,
         });
       };
-
-      if (replaceSaleId) {
-        const replaced = await this.archiveReplacedSaleInTx(tx, {
-          saleId: replaceSaleId,
-          tenantId,
-        });
-        if (replaced.wasFinalized) {
-          replacedFinalizedHolder.value = {
-            total: replaced.total,
-            date: replaced.date,
-            currency: replaced.currency,
-            customerId: replaced.customerId,
-          };
-          if (!skipStock) {
-            for (const line of replaced.lines) {
-              if (!line.itemId) continue;
-              const qty = toNumber(line.quantity);
-              if (qty <= 0) continue;
-              let itemTenantId = tenantId;
-              if (line.sourceTenantCode) {
-                const sourceTenant = await tx.tenant.findFirst({
-                  where: {
-                    code: line.sourceTenantCode,
-                    deletedAt: null,
-                  },
-                  select: { id: true },
-                });
-                if (sourceTenant) itemTenantId = sourceTenant.id;
-              }
-              const item = await resolveActiveItem(tx, {
-                tenantId: itemTenantId,
-                itemId: line.itemId,
-                sku: line.sku,
-              });
-              if (!item) continue;
-              bumpStock(`${item.tenantId}:${item.id}`, {
-                itemTenantId: item.tenantId,
-                itemId: item.id,
-                sku: line.sku,
-                locationCode: item.locationCode ?? replaced.locationCode,
-                binLocation: item.binLocation,
-                delta: qty,
-              });
-            }
-          }
-        }
-      }
 
       if (!isProvisional && !skipStock) {
         const sellingTenant = await tx.tenant.findFirst({
@@ -1813,35 +1641,12 @@ export class SalesService {
 
     const saleTotal = toNumber(row.total);
     void this.auditService.log({
-      action: replaceSaleId ? 'updated' : 'created',
+      action: 'created',
       entityType: 'sale',
       entityId: row.id,
-      summary: replaceSaleId
-        ? `Updated sale ${row.reference}`
-        : `Recorded sale ${row.reference}`,
+      summary: `Recorded sale ${row.reference}`,
       metadata: { total: saleTotal, paymentStatus: row.paymentStatus },
     });
-
-    if (replacedFinalizedHolder.value && replacedFinalizedHolder.value.total > 0) {
-      const replacedFinalized = replacedFinalizedHolder.value;
-      void applyDailyFinanceDelta(
-        this.prisma,
-        tenantId,
-        replacedFinalized.date,
-        'revenue',
-        -Math.abs(replacedFinalized.total),
-        replacedFinalized.currency,
-      );
-      if (
-        replacedFinalized.customerId &&
-        replacedFinalized.customerId !== row.customerId
-      ) {
-        void refreshCustomerFinancialRollups(
-          this.tenantDb.db,
-          replacedFinalized.customerId,
-        );
-      }
-    }
 
     this.refreshSaleSideEffects({
       customerId: row.customerId,
@@ -1854,6 +1659,534 @@ export class SalesService {
           }
         : undefined,
     });
+
+    return this.toSaleDetail(row);
+  }
+
+  /** In-place sale edit — same id; sync invoice; net stock; keep existing payments. */
+  async update(
+    id: string,
+    body: {
+      reference?: string;
+      customerName?: string;
+      customerId?: string;
+      jobId?: string;
+      locationCode?: string;
+      paymentMethod?: string;
+      cleanerUserId?: string;
+      cleanerName?: string;
+      serviceStaffEmployeeId?: string;
+      lines: SaleLineInput[];
+      currency?: string;
+      date?: string;
+      status?: SaleStatus | 'final';
+      shippingStatus?: string;
+      shippingAddress?: string;
+      trackingNumber?: string;
+      discountAmount?: number;
+      taxAmount?: number;
+      notes?: string;
+      payments?: Array<{
+        amount: number;
+        method?: string;
+        note?: string;
+        accountId?: string;
+      }>;
+    },
+  ): Promise<SaleDetail> {
+    const tenantId = this.tenantDb.requireTenantId();
+    const existing = await this.tenantDb.db.sale.findFirst({
+      where: { id, tenantId, deletedAt: null },
+      include: {
+        customer: true,
+        lines: true,
+        payments: { where: { deletedAt: null }, select: { id: true, amount: true } },
+      },
+    });
+    if (!existing) throw new NotFoundException('Sale not found');
+
+    const createdBy = await this.auditService.createdByFields();
+    let locationCode = await this.tenantDb.resolveBusinessLocation(
+      body.locationCode ?? existing.locationCode ?? undefined,
+    );
+    const currency = body.currency ?? existing.currency ?? 'NGN';
+    const saleDate = body.date ? new Date(body.date) : existing.date;
+    const status = normalizeCreateStatus(body.status ?? existing.status);
+    const isProvisional = isProvisionalSaleStatus(status);
+    const wasFinalized = !isProvisionalSaleStatus(existing.status);
+    // Paid / final sales may be demoted back to quotation or draft (stock +
+    // ledger + payments are reversed below).
+    const becomingFinal = !isProvisional && !wasFinalized;
+    const stayingOrBecomingFinal = !isProvisional;
+
+    let jobId: string | null =
+      body.jobId !== undefined ? body.jobId.trim() || null : existing.jobId;
+    if (jobId) {
+      const job = await this.tenantDb.db.job.findFirst({
+        where: { id: jobId, tenantId, deletedAt: null },
+        select: { id: true, reference: true, locationCode: true },
+      });
+      if (!job) throw new BadRequestException('Job not found');
+      const existingForJob = await this.tenantDb.db.sale.findFirst({
+        where: {
+          tenantId,
+          jobId,
+          deletedAt: null,
+          id: { not: id },
+        },
+        select: { id: true, reference: true },
+      });
+      if (existingForJob) {
+        throw new BadRequestException(
+          `Job ${job.reference} already has sale ${existingForJob.reference}`,
+        );
+      }
+      if (!locationCode && job.locationCode) locationCode = job.locationCode;
+    }
+
+    let serviceStaffEmployeeId: string | null =
+      existing.serviceStaffEmployeeId;
+    let cleanerUserId =
+      body.cleanerUserId !== undefined
+        ? body.cleanerUserId?.trim() || null
+        : existing.cleanerUserId;
+    let cleanerName =
+      body.cleanerName !== undefined
+        ? body.cleanerName?.trim() || null
+        : existing.cleanerName;
+
+    if (body.serviceStaffEmployeeId?.trim()) {
+      const employeeId = body.serviceStaffEmployeeId.trim();
+      let employee = await this.tenantDb.db.employee.findFirst({
+        where: {
+          id: employeeId,
+          tenantId,
+          deletedAt: null,
+          isServiceStaff: true,
+        },
+        select: { id: true, name: true, userId: true },
+      });
+      if (!employee) {
+        employee = await this.tenantDb.db.employee.findFirst({
+          where: { id: employeeId, tenantId, deletedAt: null },
+          select: { id: true, name: true, userId: true },
+        });
+      }
+      if (!employee) {
+        throw new BadRequestException('Service staff employee not found');
+      }
+      serviceStaffEmployeeId = employee.id;
+      cleanerName = cleanerName || employee.name;
+      cleanerUserId = cleanerUserId || employee.userId;
+    }
+
+    let customerId: string | null = existing.customerId;
+    if (body.customerId?.trim()) {
+      const customer = await this.tenantDb.db.customer.findFirst({
+        where: { id: body.customerId.trim(), tenantId, deletedAt: null },
+      });
+      if (!customer) throw new BadRequestException('Customer not found');
+      customerId = customer.id;
+    } else if (body.customerName?.trim()) {
+      const name = body.customerName.trim();
+      const found = await this.tenantDb.db.customer.findFirst({
+        where: {
+          tenantId,
+          deletedAt: null,
+          name: { equals: name, mode: 'insensitive' },
+        },
+      });
+      if (found) customerId = found.id;
+      else {
+        const created = await this.tenantDb.db.customer.create({
+          data: { tenantId, name, ...createdBy },
+        });
+        customerId = created.id;
+      }
+    }
+
+    const workingLines: SaleLineInput[] = body.lines.map((line) => ({
+      ...line,
+    }));
+    if (workingLines.length === 0) {
+      throw new BadRequestException('Add at least one line item');
+    }
+
+    const orderDiscount = body.discountAmount ?? toNumber(existing.discountAmount ?? 0);
+    const taxAmount = body.taxAmount ?? toNumber(existing.taxAmount ?? 0);
+    const sellingTenantForStock = await this.tenantDb.db.tenant.findFirst({
+      where: { id: tenantId, deletedAt: null },
+      select: { code: true },
+    });
+    const skipStock =
+      Boolean(jobId) ||
+      isGroupStockConsumerTenant(sellingTenantForStock?.code);
+    const saleReference = body.reference?.trim() || existing.reference;
+
+    const priorPaid = existing.payments.reduce(
+      (sum, p) => sum + toNumber(p.amount),
+      0,
+    );
+
+    const row = await this.prisma.$transaction(
+      async (tx) => {
+        const stockDeltas = new Map<
+          string,
+          {
+            itemTenantId: string;
+            itemId: string;
+            sku: string;
+            locationCode: string | null | undefined;
+            binLocation: string | null | undefined;
+            delta: number;
+          }
+        >();
+        const bumpStock = (
+          key: string,
+          entry: {
+            itemTenantId: string;
+            itemId: string;
+            sku: string;
+            locationCode?: string | null;
+            binLocation?: string | null;
+            delta: number;
+          },
+        ) => {
+          const prev = stockDeltas.get(key);
+          if (prev) {
+            prev.delta += entry.delta;
+            return;
+          }
+          stockDeltas.set(key, {
+            itemTenantId: entry.itemTenantId,
+            itemId: entry.itemId,
+            sku: entry.sku,
+            locationCode: entry.locationCode,
+            binLocation: entry.binLocation,
+            delta: entry.delta,
+          });
+        };
+
+        const sellingTenant = await tx.tenant.findFirst({
+          where: { id: tenantId, deletedAt: null },
+          select: { code: true },
+        });
+        const sellingCode = sellingTenant?.code?.toUpperCase() ?? '';
+        const catalogOnlySeller = isGroupStockConsumerTenant(sellingCode);
+
+        const applyLineStock = async (
+          line: {
+            itemId: string | null;
+            sku: string;
+            quantity: { toString(): string } | number;
+            sourceTenantCode: string | null;
+          },
+          sign: 1 | -1,
+        ) => {
+          if (!line.itemId) return;
+          const qty = toNumber(line.quantity);
+          if (qty <= 0) return;
+          const sourceCode = line.sourceTenantCode?.trim().toUpperCase();
+          const isCrossSource =
+            Boolean(sourceCode) && sourceCode !== sellingCode;
+          if (catalogOnlySeller && !isCrossSource) return;
+          let itemTenantId = tenantId;
+          if (isCrossSource) {
+            const sourceTenant = await tx.tenant.findFirst({
+              where: { code: sourceCode!, deletedAt: null },
+              select: { id: true },
+            });
+            if (!sourceTenant) return;
+            itemTenantId = sourceTenant.id;
+          }
+          const item = await resolveActiveItem(tx, {
+            tenantId: itemTenantId,
+            itemId: line.itemId,
+            sku: line.sku,
+          });
+          if (!item) return;
+          bumpStock(`${item.tenantId}:${item.id}`, {
+            itemTenantId: item.tenantId,
+            itemId: item.id,
+            sku: line.sku,
+            locationCode: item.locationCode ?? locationCode,
+            binLocation: item.binLocation,
+            delta: sign * qty,
+          });
+        };
+
+        if (!skipStock) {
+          // Restore prior finalized deductions, then apply new if finalized.
+          if (wasFinalized) {
+            for (const line of existing.lines) {
+              await applyLineStock(line, 1);
+            }
+          }
+          if (stayingOrBecomingFinal) {
+            for (const line of workingLines) {
+              if (!line.itemId) continue;
+              await applyLineStock(
+                {
+                  itemId: line.itemId,
+                  sku: line.sku,
+                  quantity: line.quantity,
+                  sourceTenantCode: line.sourceTenantCode?.trim() || null,
+                },
+                -1,
+              );
+            }
+          }
+          await this.applyItemStockDeltas(tx, stockDeltas);
+        }
+
+        const lineData = buildSaleLineRows(workingLines);
+        const total = computeSaleTotal(lineData, orderDiscount, taxAmount);
+
+        let paidTotal = priorPaid;
+        let paymentStatus: PaymentStatus | null = existing.paymentStatus;
+        if (isProvisional) {
+          paidTotal = 0;
+          paymentStatus = 'due';
+        } else if (becomingFinal && body.payments && body.payments.length > 0) {
+          paidTotal = body.payments.reduce((sum, p) => sum + p.amount, 0);
+          paymentStatus = paymentStatusFromAmounts(total, paidTotal);
+        } else {
+          paymentStatus = paymentStatusFromAmounts(total, paidTotal, existing.paymentStatus);
+        }
+
+        await tx.saleLine.deleteMany({ where: { saleId: id } });
+
+        const updated = await tx.sale.update({
+          where: { id },
+          data: {
+            reference: saleReference,
+            customerId,
+            jobId,
+            total,
+            discountAmount: orderDiscount > 0 ? orderDiscount : null,
+            taxAmount: taxAmount > 0 ? taxAmount : null,
+            notes: body.notes !== undefined ? body.notes?.trim() || null : existing.notes,
+            currency,
+            status,
+            paymentStatus,
+            paymentMethod:
+              body.paymentMethod !== undefined
+                ? body.paymentMethod?.trim() || null
+                : existing.paymentMethod,
+            totalPaid: isProvisional ? 0 : paidTotal,
+            itemCount: lineData.length,
+            cleanerUserId,
+            cleanerName,
+            serviceStaffEmployeeId,
+            locationCode,
+            shippingStatus:
+              body.shippingStatus ??
+              existing.shippingStatus ??
+              (isProvisional ? null : 'pending'),
+            shippingAddress:
+              body.shippingAddress !== undefined
+                ? body.shippingAddress?.trim() || null
+                : existing.shippingAddress,
+            trackingNumber:
+              body.trackingNumber !== undefined
+                ? body.trackingNumber?.trim() || null
+                : existing.trackingNumber,
+            date: saleDate,
+            lines: { create: lineData },
+          },
+          include: {
+            customer: true,
+            job: { select: { reference: true } },
+            serviceStaffEmployee: { select: { name: true } },
+            lines: true,
+          },
+        });
+
+        const invoice = await this.invoiceHub.ensureSaleInvoice(
+          tx,
+          updated,
+          updated.lines,
+        );
+
+        if (jobId && !isProvisional) {
+          await tx.job.update({
+            where: { id: jobId },
+            data: {
+              invoiceAmount: total,
+              ...(customerId ? { customerId } : {}),
+            },
+          });
+        }
+
+        // Ledger: create when newly finalized; update amount when already final; soft-delete if demoted.
+        if (wasFinalized && isProvisional) {
+          await tx.ledgerEntry.updateMany({
+            where: {
+              tenantId,
+              linkedRecordType: 'sale',
+              linkedRecordId: id,
+              deletedAt: null,
+            },
+            data: { deletedAt: new Date() },
+          });
+          const priorPayments = await tx.payment.findMany({
+            where: { tenantId, saleId: id, deletedAt: null },
+            select: { id: true },
+          });
+          for (const payment of priorPayments) {
+            await softDeletePaymentAccountTxns(tx, {
+              tenantId,
+              paymentId: payment.id,
+            });
+          }
+          await tx.payment.updateMany({
+            where: { tenantId, saleId: id, deletedAt: null },
+            data: { deletedAt: new Date() },
+          });
+          await tx.accountTransaction.updateMany({
+            where: { tenantId, saleId: id, deletedAt: null },
+            data: { deletedAt: new Date() },
+          });
+        } else if (becomingFinal) {
+          await tx.ledgerEntry.create({
+            data: {
+              tenantId,
+              type: 'revenue',
+              amount: total,
+              currency,
+              category: 'Sales',
+              description: `Sale ${updated.reference}`,
+              linkedRecordType: 'sale',
+              linkedRecordId: id,
+              invoiceId: invoice.id,
+              date: saleDate,
+            },
+          });
+        } else if (wasFinalized && stayingOrBecomingFinal) {
+          await tx.ledgerEntry.updateMany({
+            where: {
+              tenantId,
+              linkedRecordType: 'sale',
+              linkedRecordId: id,
+              deletedAt: null,
+            },
+            data: {
+              amount: total,
+              date: saleDate,
+              description: `Sale ${updated.reference}`,
+              invoiceId: invoice.id,
+            },
+          });
+        }
+
+        if (becomingFinal && body.payments) {
+          for (const payment of body.payments) {
+            if (payment.amount <= 0) continue;
+            const createdPayment = await tx.payment.create({
+              data: {
+                tenantId,
+                amount: payment.amount,
+                currency,
+                method: payment.method ?? 'cash',
+                paymentRefNo: `SP${saleDate.getFullYear()}/${updated.reference}`,
+                paidOn: saleDate,
+                paymentFor: 'sale',
+                saleId: id,
+                invoiceId: invoice.id,
+                accountId: payment.accountId ?? null,
+                note: payment.note ?? null,
+                createdByName: createdBy.createdByName ?? null,
+              },
+            });
+            if (payment.accountId) {
+              await recordPaymentAccountTxn(tx, {
+                tenantId,
+                accountId: payment.accountId,
+                type: 'credit',
+                subType: 'sale_payment',
+                amount: payment.amount,
+                operationDate: saleDate,
+                refNo: createdPayment.paymentRefNo,
+                note: payment.note ?? `Sale payment — ${updated.reference}`,
+                paymentMethod: payment.method ?? 'cash',
+                saleId: id,
+                paymentId: createdPayment.id,
+                invoiceId: invoice.id,
+                createdByName: createdBy.createdByName ?? null,
+              });
+            }
+          }
+          const newPaid = body.payments.reduce((sum, p) => sum + p.amount, 0);
+          await tx.sale.update({
+            where: { id },
+            data: {
+              totalPaid: newPaid,
+              paymentStatus: paymentStatusFromAmounts(total, newPaid),
+            },
+          });
+        }
+
+        return tx.sale.findFirstOrThrow({
+          where: { id },
+          include: {
+            customer: true,
+            job: { select: { reference: true } },
+            serviceStaffEmployee: { select: { name: true } },
+            lines: true,
+          },
+        });
+      },
+      { maxWait: 15_000, timeout: 60_000 },
+    );
+
+    const saleTotal = toNumber(row.total);
+    void this.auditService.log({
+      action: 'updated',
+      entityType: 'sale',
+      entityId: row.id,
+      summary: `Updated sale ${row.reference}`,
+      metadata: { total: saleTotal, paymentStatus: row.paymentStatus },
+    });
+
+    if (wasFinalized && saleTotal !== toNumber(existing.total)) {
+      const delta = saleTotal - toNumber(existing.total);
+      if (delta !== 0) {
+        void applyDailyFinanceDelta(
+          this.prisma,
+          tenantId,
+          row.date,
+          'revenue',
+          delta,
+          currency,
+        );
+      }
+    } else if (becomingFinal && saleTotal > 0) {
+      void applyDailyFinanceDelta(
+        this.prisma,
+        tenantId,
+        row.date,
+        'revenue',
+        saleTotal,
+        currency,
+      );
+    } else if (wasFinalized && isProvisional) {
+      void applyDailyFinanceDelta(
+        this.prisma,
+        tenantId,
+        existing.date,
+        'revenue',
+        -Math.abs(toNumber(existing.total)),
+        existing.currency ?? 'NGN',
+      );
+    }
+
+    this.refreshSaleSideEffects({
+      customerId: row.customerId,
+      ledgerEntry: undefined,
+    });
+    if (existing.customerId && existing.customerId !== row.customerId) {
+      void refreshCustomerFinancialRollups(this.tenantDb.db, existing.customerId);
+    }
 
     return this.toSaleDetail(row);
   }
@@ -1899,7 +2232,8 @@ export class SalesService {
       const sellingCode = sellingTenant?.code?.toUpperCase() ?? '';
       const catalogOnlySeller = isGroupStockConsumerTenant(sellingCode);
 
-      if (!existing.jobId) {
+      // VA/VP: never touch stock on finalize — catalog billing only.
+      if (!existing.jobId && !catalogOnlySeller) {
         for (const line of existing.lines) {
           if (!line.itemId) continue;
           const qty = toNumber(line.quantity);
@@ -1908,11 +2242,6 @@ export class SalesService {
           const sourceCode = line.sourceTenantCode?.trim().toUpperCase();
           const isCrossSource =
             Boolean(sourceCode) && sourceCode !== sellingCode;
-
-          // VA/VP: skip local stock until a VW/VISP/VSP source is on the line.
-          if (catalogOnlySeller && !isCrossSource) {
-            continue;
-          }
 
           const itemTenantId = isCrossSource
             ? (
@@ -2660,20 +2989,6 @@ export class SalesService {
         saleId: sale.id,
         paymentId: payment.id,
         createdByName: createdBy.createdByName ?? null,
-      });
-
-      await tx.ledgerEntry.create({
-        data: {
-          tenantId,
-          type: 'revenue',
-          amount: apply,
-          currency: sale.currency || 'NGN',
-          category: 'Customer Payment',
-          description: `Payment on ${sale.reference}`,
-          linkedRecordType: 'payment',
-          linkedRecordId: payment.id,
-          date: paidOn,
-        },
       });
 
       return payment;

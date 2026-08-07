@@ -14,6 +14,7 @@ import {
 } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ChartPanel } from "@/components/organisms/ChartPanel";
+import { ViewportDefer } from "@/components/molecules/ViewportDefer";
 import {
   DateRangeDropdown,
   getDateRangeLabel,
@@ -508,7 +509,10 @@ export function Hq6OverviewView() {
     salesDueQuery.data,
     purchaseDueQuery.data,
     stockAlertQuery.data,
-  ].filter(Boolean) as OverviewPanel[];
+  ].filter(
+    (panel): panel is OverviewPanel =>
+      Boolean(panel && typeof panel === "object" && "id" in panel && panel.id),
+  );
 
   const locations = config?.businessLocations ?? [];
   // Blade: Session::get('user.first_name') — skip Mr/Mrs/Miss prefixes
@@ -605,8 +609,8 @@ export function Hq6OverviewView() {
         <div className="tw-grid tw-grid-cols-1 tw-gap-4 sm:tw-gap-5 lg:tw-grid-cols-2">
           {overviewLoading ? (
             <>
-              <Hq6HomeChartCard title={chartTitles[0]} loading />
-              <Hq6HomeChartCard title={chartTitles[1]} loading />
+              <Hq6HomeChartCard key="chart-loading-0" title={chartTitles[0]} loading />
+              <Hq6HomeChartCard key="chart-loading-1" title={chartTitles[1]} loading />
             </>
           ) : (
             chartTitles.map((title, index) => {
@@ -616,28 +620,30 @@ export function Hq6OverviewView() {
               }
               return (
                 <Hq6HomeChartCard key={title} title={title}>
-                  <ChartPanel
-                    title={title}
-                    subtitle={chart.subtitle}
-                    type={
-                      chart.type === "pie"
-                        ? "pie"
-                        : chart.type === "line"
-                          ? "line"
-                          : "bar"
-                    }
-                    series={chart.series.map((s) => ({
-                      ...s,
-                      color: "#16a34a",
-                    }))}
-                    data={chart.data}
-                    hidePeriodControl
-                    hideHeader
-                    className="hq6-home-chart-panel"
-                    formatTooltipValue={(value) =>
-                      formatCurrencyCompact(Number(value), "NGN")
-                    }
-                  />
+                  <ViewportDefer minHeight={220}>
+                    <ChartPanel
+                      title={title}
+                      subtitle={chart.subtitle}
+                      type={
+                        chart.type === "pie"
+                          ? "pie"
+                          : chart.type === "line"
+                            ? "line"
+                            : "bar"
+                      }
+                      series={chart.series.map((s) => ({
+                        ...s,
+                        color: "#16a34a",
+                      }))}
+                      data={chart.data}
+                      hidePeriodControl
+                      hideHeader
+                      className="hq6-home-chart-panel"
+                      formatTooltipValue={(value) =>
+                        formatCurrencyCompact(Number(value), "NGN")
+                      }
+                    />
+                  </ViewportDefer>
                 </Hq6HomeChartCard>
               );
             })

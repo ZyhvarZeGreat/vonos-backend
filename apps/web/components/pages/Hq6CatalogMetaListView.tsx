@@ -31,6 +31,8 @@ import {
   type CatalogMetaRow,
 } from "@/lib/api/catalogMeta";
 import { useServerListPage } from "@/lib/hooks/useServerListPage";
+import { nameListCursor } from "@/lib/utils/pagination";
+
 import { HQ6_TABLE_PAGE_SIZE } from "@/lib/api/fetchAllPages";
 import { useTenantId } from "@/lib/hooks/useRouteTenant";
 import { hq6CopyForSlug } from "@/lib/registries/hq6PageCopy";
@@ -148,6 +150,7 @@ export function Hq6CatalogMetaListView({ kind }: { kind: CatalogMetaKind }) {
     defaultPageSize: HQ6_TABLE_PAGE_SIZE,
     fetchPage: (cursor, limit, _sort, opts) =>
       getCatalogMetaPage(tenantId!, kind, cursor, limit, { includeSummary: opts?.includeSummary }),
+    getCursor: (row) => nameListCursor(row),
   });
 
   const rows = useMemo(() => toMetaRows(kind, data), [data, kind]);

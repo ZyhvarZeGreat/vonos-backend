@@ -76,6 +76,31 @@ export class InvoiceSettingsService {
           isDefault: true,
         },
       });
+    } else {
+      // Promote blank / tenant-code prefixes to year/number (e.g. 2026/0001).
+      const yearPrefix = defaultYearInvoicePrefix();
+      await db.invoiceScheme.updateMany({
+        where: {
+          tenantId,
+          deletedAt: null,
+          OR: [
+            { prefix: null },
+            { prefix: '' },
+            { prefix: { equals: 'VA', mode: 'insensitive' } },
+            { prefix: { equals: 'VP', mode: 'insensitive' } },
+            { prefix: { equals: 'VW', mode: 'insensitive' } },
+            { prefix: { equals: 'VM', mode: 'insensitive' } },
+            { prefix: { equals: 'VMS', mode: 'insensitive' } },
+            { prefix: { equals: 'VISP', mode: 'insensitive' } },
+            { prefix: { equals: 'VSP', mode: 'insensitive' } },
+            { prefix: { equals: 'VC', mode: 'insensitive' } },
+            { prefix: { equals: 'VS', mode: 'insensitive' } },
+            { prefix: { equals: 'VKW', mode: 'insensitive' } },
+            { prefix: { equals: 'VAG', mode: 'insensitive' } },
+          ],
+        },
+        data: { prefix: yearPrefix },
+      });
     }
   }
 

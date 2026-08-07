@@ -29,6 +29,8 @@ import { useListExport } from "@/lib/hooks/useListExport";
 import { useListPageFilters } from "@/lib/hooks/useListPageFilters";
 import { useListRecordModal } from "@/lib/hooks/useListRecordModal";
 import { useServerListPage } from "@/lib/hooks/useServerListPage";
+import { movementListCursor } from "@/lib/utils/pagination";
+
 import { useRouteTenant, useTenantId } from "@/lib/hooks/useRouteTenant";
 import { formatHq6Currency, formatHq6DateTime } from "@/lib/utils/hq6Format";
 import { businessLocationName } from "@/lib/utils/locationLabels";
@@ -157,6 +159,7 @@ export function Hq6PurchaseOrdersListView() {
         cursor,
         limit,
       ),
+    getCursor: (row) => movementListCursor(row),
   });
 
   const columns: ColumnConfig<StockMovementListRow>[] = useMemo(
@@ -461,6 +464,7 @@ export function Hq6PurchaseReturnsListView() {
         cursor,
         limit,
       ),
+    getCursor: (row) => movementListCursor(row),
   });
 
   const columns: ColumnConfig<StockMovementListRow>[] = useMemo(

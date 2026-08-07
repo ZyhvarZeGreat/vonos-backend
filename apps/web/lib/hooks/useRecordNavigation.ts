@@ -1,7 +1,7 @@
 "use client";
 
 import { useParams, usePathname, useRouter } from "next/navigation";
-import { startNavigationProgress } from "@/stores/navigationBusyStore";
+import { announceRedirect } from "@/lib/utils/announceRedirect";
 import { useRouteTenant } from "@/lib/hooks/useRouteTenant";
 
 export function useRecordNavigation(listSlug: string) {
@@ -34,14 +34,14 @@ export function useRecordNavigation(listSlug: string) {
     prefetchDetail: (recordId: string) => {
       router.prefetch(detailPath(recordId));
     },
-    goToDetail: (recordId: string) => {
-      startNavigationProgress();
+    goToDetail: (recordId: string, label = "Opening…") => {
+      announceRedirect(label);
       router.prefetch(detailPath(recordId));
       router.push(detailPath(recordId));
     },
     listPath,
-    goToList: () => {
-      startNavigationProgress();
+    goToList: (label = "Redirecting to list…") => {
+      announceRedirect(label);
       router.push(listPath);
     },
   };

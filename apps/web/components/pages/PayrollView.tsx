@@ -495,7 +495,7 @@ export function PayrollView({
   const locationOptions = useMemo(() => {
     const fromConfig = (config?.businessLocations ?? []).map((row) => ({
       value: row.code,
-      label: `${row.code} — ${row.name}`,
+      label: row.name,
     }));
     const workforceCodes = Array.from(
       new Set(
@@ -552,8 +552,8 @@ export function PayrollView({
     return employeesForPayrollModal.filter((e) => selected.has(e.id));
   }, [addPayrollEmployeeIds, employeesForPayrollModal]);
 
-  const createPayrollsMutation = useAppMutation<Payroll[]>({
-    mutationFn: async () => {
+  const createPayrollsMutation = useAppMutation({
+    mutationFn: async (): Promise<Payroll[]> => {
       if (!tenantId) throw new Error("No tenant selected");
       if (selectedEmployeesForPayroll.length === 0) {
         throw new Error("Select at least one employee");
@@ -644,23 +644,19 @@ export function PayrollView({
     : 0;
 
   const addDeductionMutation = useAppMutation({
-    mutationFn: () => {
-      if (!tenantId || !deductionTarget) {
+    mutationFn: (vars: {
+      payrollId: string;
+      addAmount: number;
+      note?: string;
+      reason?: string;
+    }) => {
+      if (!tenantId) {
         throw new Error("No payroll selected");
       }
-      const addAmount = Number(deductionForm.amount);
-      if (!Number.isFinite(addAmount) || addAmount <= 0) {
-        throw new Error("Enter a deduction amount greater than zero");
-      }
-      if (addAmount > maxDeduction + 1e-9) {
-        throw new Error(
-          `Deduction cannot exceed remaining take-home (${formatCurrency(maxDeduction, "NGN")})`,
-        );
-      }
-      return addPayrollDeduction(tenantId, deductionTarget.id, {
-        addAmount,
-        note: deductionForm.note.trim() || undefined,
-        reason: deductionForm.reason.trim() || undefined,
+      return addPayrollDeduction(tenantId, vars.payrollId, {
+        addAmount: vars.addAmount,
+        note: vars.note,
+        reason: vars.reason,
       });
     },
     invalidateKeys: [["payrolls", tenantId]],
@@ -718,19 +714,28 @@ export function PayrollView({
   }
 
   const payMutation = useAppMutation({
-    mutationFn: () => {
-      if (!tenantId || !payTargetIds?.length) {
+    mutationFn: (vars: {
+      payrollIds: string[];
+      accountId: string;
+      method: string;
+      paidOn: string;
+      note?: string;
+    }) => {
+      if (!tenantId) {
         throw new Error("No payroll selected");
       }
-      if (!payAccountId.trim()) {
+      if (!vars.payrollIds.length) {
+        throw new Error("No payroll selected");
+      }
+      if (!vars.accountId.trim()) {
         throw new Error("Select a payment account");
       }
       return payPayrolls(tenantId, {
-        payrollIds: payTargetIds,
-        accountId: payAccountId,
-        method: payMethod,
-        paidOn: paidOnToIso(payPaidOn),
-        note: payNote.trim() || undefined,
+        payrollIds: vars.payrollIds,
+        accountId: vars.accountId,
+        method: vars.method,
+        paidOn: vars.paidOn,
+        note: vars.note,
       });
     },
     progressLabel: "Paying payroll",
@@ -738,8 +743,8 @@ export function PayrollView({
       `Paid ${result.paid} payroll${result.paid === 1 ? "" : "s"} — ${formatHq6Currency(result.totalDebited)} from ${result.accountName}`,
     optimistic: {
       keys: [["payrolls", tenantId], ["payment-accounts", tenantId]],
-      update: (qc) => {
-        const ids = new Set(payTargetIds ?? []);
+      update: (qc, vars) => {
+        const ids = new Set(vars.payrollIds);
         if (ids.size === 0) return;
         mapQueriesByPrefix<{ id: string; paymentStatus?: string }>(
           qc,
@@ -1490,7 +1495,21 @@ export function PayrollView({
               Number(deductionForm.amount) > maxDeduction ||
               addDeductionMutation.isPending
             }
-            onClick={() => addDeductionMutation.mutate()}
+            onClick={() => {
+              if (!deductionTarget) return;
+              const amount = Number(deductionForm.amount);
+              if (!Number.isFinite(amount) || amount <= 0 || amount > maxDeduction) {
+                return;
+              }
+              const vars = {
+                payrollId: deductionTarget.id,
+                addAmount: amount,
+                note: deductionForm.note.trim() || undefined,
+                reason: deductionForm.reason.trim() || undefined,
+              };
+              closeDeductionModal();
+              addDeductionMutation.mutate(vars);
+            }}
           >
             Apply deduction
           </Button>
@@ -1702,10 +1721,23 @@ export function PayrollView({
                 toast.error("Select a payment account");
                 return;
               }
-              payMutation.mutate();
+              if (!payTargetIds?.length) {
+                toast.error("No payroll selected");
+                return;
+              }
+              // Capture before close — live payTargetIds must not empty the write.
+              const vars = {
+                payrollIds: [...payTargetIds],
+                accountId: payAccountId,
+                method: payMethod,
+                paidOn: paidOnToIso(payPaidOn),
+                note: payNote.trim() || undefined,
+              };
+              closePayModal();
+              payMutation.mutate(vars);
             }}
             onClose={closePayModal}
-            saving={payMutation.isPending}
+            saving={false}
             saveLabel={
               payTargets.length > 1
                 ? `Pay ${payTargets.length} · ${formatCurrency(payTotal, "NGN")}`

@@ -2,6 +2,7 @@
 
 import { Info } from "lucide-react";
 import type { TenantConfig } from "@vonos/types";
+import { Hq6BusyButton } from "@/components/hq6/Hq6BusyButton";
 import { cn } from "@/lib/utils/cn";
 import {
   DEFAULT_HQ6_TAX_OPTIONS,
@@ -54,7 +55,10 @@ export interface Hq6AddProductFormBodyProps {
   selectedLocationCodes: string[];
   toggleLocation: (code: string) => void;
   updateLocationDetail: (code: string, patch: Partial<LocationDetail>) => void;
-  applyMarginToSelling: (purchase: string, margin: string) => void;
+  setPurchaseExcTax: (next: string) => void;
+  /** Manual selling price edit — updates margin %, never rewritten by cost. */
+  setSellingPrice: (next: string) => void;
+  setMarginPercent: (next: string) => void;
   unitOptions: Opt[];
   brandOptions: Opt[];
   categoryOptions: Opt[];
@@ -64,8 +68,13 @@ export interface Hq6AddProductFormBodyProps {
   isPending: boolean;
   saveMode: ProductSaveMode;
   isEdit: boolean;
-  /** Job-centric tenants: hide stock qty / opening stock (price list only). */
+  /** Job-centric tenants (VA/VP): no stock; prices default to 0 on create. */
   priceCatalogOnly?: boolean;
+  /**
+   * Show Applicable Tax (VA/VP catalog). Hidden on VISP — tax lives on
+   * warehouse / mechanic-painting product forms, not institute catalog edit.
+   */
+  showApplicableTax?: boolean;
   onCancel?: () => void;
   onSubmit: (mode: ProductSaveMode) => void;
   imageName: string;
@@ -108,7 +117,9 @@ export function Hq6AddProductFormBody({
   selectedLocationCodes,
   toggleLocation,
   updateLocationDetail,
-  applyMarginToSelling,
+  setPurchaseExcTax,
+  setSellingPrice,
+  setMarginPercent,
   unitOptions,
   brandOptions,
   categoryOptions,
@@ -119,6 +130,7 @@ export function Hq6AddProductFormBody({
   saveMode,
   isEdit,
   priceCatalogOnly = false,
+  showApplicableTax = true,
   onCancel,
   onSubmit,
   imageName,
@@ -188,6 +200,64 @@ export function Hq6AddProductFormBody({
             </div>
 
             <div className="clearfix" />
+
+            {priceCatalogOnly ? (
+              <>
+                <div className="col-sm-4">
+                  <div className="form-group">
+                    <label htmlFor="cost_price">Cost price:</label>
+                    <input
+                      id="cost_price"
+                      type="text"
+                      inputMode="decimal"
+                      className="form-control"
+                      placeholder="0.00"
+                      value={form.purchaseExcTax}
+                      onChange={(e) => setPurchaseExcTax(e.target.value)}
+                    />
+                    <p className="help-block">
+                      <i>Optional — leave 0 and set later if you want.</i>
+                    </p>
+                  </div>
+                </div>
+                <div className="col-sm-4">
+                  <div className="form-group">
+                    <label htmlFor="sell_price">Selling price:</label>
+                    <input
+                      id="sell_price"
+                      type="text"
+                      inputMode="decimal"
+                      className="form-control"
+                      placeholder="0.00"
+                      value={form.sellingExcTax}
+                      onChange={(e) => setSellingPrice(e.target.value)}
+                    />
+                  </div>
+                </div>
+                {showApplicableTax ? (
+                  <div className="col-sm-4">
+                    <div className="form-group">
+                      <label htmlFor="tax_catalog">Applicable Tax:</label>
+                      <select
+                        id="tax_catalog"
+                        className="form-control"
+                        value={form.applicableTax}
+                        onChange={(e) =>
+                          setField("applicableTax", e.target.value)
+                        }
+                      >
+                        {(taxOptions ?? DEFAULT_HQ6_TAX_OPTIONS).map((opt) => (
+                          <option key={opt.value} value={opt.value}>
+                            {opt.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                ) : null}
+                <div className="clearfix" />
+              </>
+            ) : null}
 
             <div className="col-sm-4">
               <div className="form-group">
@@ -288,38 +358,40 @@ export function Hq6AddProductFormBody({
               </div>
             </div>
 
-            <div className="col-sm-4">
-              <div className="form-group">
-                <label htmlFor="product_locations">
-                  Business Locations:{" "}
-                  <Tip title="Locations where this product is available" />
-                </label>
-                <select
-                  id="product_locations"
-                  className="form-control"
-                  multiple
-                  value={selectedLocationCodes}
-                  onChange={(e) => {
-                    const selected = Array.from(
-                      e.target.selectedOptions,
-                      (o) => o.value,
-                    );
-                    for (const loc of locations) {
-                      const on = selected.includes(loc.code);
-                      const was = selectedLocationCodes.includes(loc.code);
-                      if (on !== was) toggleLocation(loc.code);
-                    }
-                  }}
-                  size={Math.min(4, Math.max(2, locations.length || 2))}
-                >
-                  {locations.map((loc) => (
-                    <option key={loc.code} value={loc.code}>
-                      {loc.name}
-                    </option>
-                  ))}
-                </select>
+            {!priceCatalogOnly ? (
+              <div className="col-sm-4">
+                <div className="form-group">
+                  <label htmlFor="product_locations">
+                    Business Locations:{" "}
+                    <Tip title="Locations where this product is available" />
+                  </label>
+                  <select
+                    id="product_locations"
+                    className="form-control"
+                    multiple
+                    value={selectedLocationCodes}
+                    onChange={(e) => {
+                      const selected = Array.from(
+                        e.target.selectedOptions,
+                        (o) => o.value,
+                      );
+                      for (const loc of locations) {
+                        const on = selected.includes(loc.code);
+                        const was = selectedLocationCodes.includes(loc.code);
+                        if (on !== was) toggleLocation(loc.code);
+                      }
+                    }}
+                    size={Math.min(4, Math.max(2, locations.length || 2))}
+                  >
+                    {locations.map((loc) => (
+                      <option key={loc.code} value={loc.code}>
+                        {loc.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
-            </div>
+            ) : null}
 
             <div className="clearfix" />
 
@@ -371,8 +443,8 @@ export function Hq6AddProductFormBody({
               <div className="col-sm-8">
                 <p className="help-block">
                   <i>
-                    Products are priced for jobs/sales — choose quantity when
-                    adding a sale line.
+                    Product catalog only — no stock. Prices are editable (default
+                    0). Quantity is chosen when adding a sale or job line.
                   </i>
                 </p>
               </div>
@@ -524,56 +596,62 @@ export function Hq6AddProductFormBody({
 
             <div className="clearfix" />
 
-            <div className="col-md-12">
-              <h4>
-                Rack/Row/Position Details:{" "}
-                <Tip title="Storage location details" />
-              </h4>
-            </div>
-
-            {locationDetails
-              .filter((row) => selectedLocationCodes.includes(row.locationCode))
-              .map((row) => (
-                <div key={row.locationCode} className="col-sm-3">
-                  <div className="form-group">
-                    <label>
-                      {row.locationName} ({row.locationCode}):
-                    </label>
-                    <input
-                      className="form-control"
-                      placeholder="Rack"
-                      value={row.rack}
-                      onChange={(e) =>
-                        updateLocationDetail(row.locationCode, {
-                          rack: e.target.value,
-                        })
-                      }
-                    />
-                    <input
-                      className="form-control"
-                      placeholder="Row"
-                      style={{ marginTop: 6 }}
-                      value={row.row}
-                      onChange={(e) =>
-                        updateLocationDetail(row.locationCode, {
-                          row: e.target.value,
-                        })
-                      }
-                    />
-                    <input
-                      className="form-control"
-                      placeholder="Position"
-                      style={{ marginTop: 6 }}
-                      value={row.position}
-                      onChange={(e) =>
-                        updateLocationDetail(row.locationCode, {
-                          position: e.target.value,
-                        })
-                      }
-                    />
-                  </div>
+            {!priceCatalogOnly ? (
+              <>
+                <div className="col-md-12">
+                  <h4>
+                    Rack/Row/Position Details:{" "}
+                    <Tip title="Storage location details" />
+                  </h4>
                 </div>
-              ))}
+
+                {locationDetails
+                  .filter((row) =>
+                    selectedLocationCodes.includes(row.locationCode),
+                  )
+                  .map((row) => (
+                    <div key={row.locationCode} className="col-sm-3">
+                      <div className="form-group">
+                        <label>
+                          {row.locationName} ({row.locationCode}):
+                        </label>
+                        <input
+                          className="form-control"
+                          placeholder="Rack"
+                          value={row.rack}
+                          onChange={(e) =>
+                            updateLocationDetail(row.locationCode, {
+                              rack: e.target.value,
+                            })
+                          }
+                        />
+                        <input
+                          className="form-control"
+                          placeholder="Row"
+                          style={{ marginTop: 6 }}
+                          value={row.row}
+                          onChange={(e) =>
+                            updateLocationDetail(row.locationCode, {
+                              row: e.target.value,
+                            })
+                          }
+                        />
+                        <input
+                          className="form-control"
+                          placeholder="Position"
+                          style={{ marginTop: 6 }}
+                          value={row.position}
+                          onChange={(e) =>
+                            updateLocationDetail(row.locationCode, {
+                              position: e.target.value,
+                            })
+                          }
+                        />
+                      </div>
+                    </div>
+                  ))}
+              </>
+            ) : null}
 
             <div className="col-sm-4">
               <div className="form-group">
@@ -624,23 +702,25 @@ export function Hq6AddProductFormBody({
       <div className="box-primary tw-mb-4 tw-transition-all tw-duration-200 tw-bg-white tw-shadow-sm tw-rounded-xl tw-ring-1 hover:tw-shadow-md tw-ring-gray-200">
         <div className="tw-p-2 sm:tw-p-3 md:p-6">
           <div className="row">
-            <div className="col-sm-4">
-              <div className="form-group">
-                <label htmlFor="tax">Applicable Tax:</label>
-                <select
-                  id="tax"
-                  className="form-control"
-                  value={form.applicableTax}
-                  onChange={(e) => setField("applicableTax", e.target.value)}
-                >
-                  {(taxOptions ?? DEFAULT_HQ6_TAX_OPTIONS).map((opt) => (
-                    <option key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </option>
-                  ))}
-                </select>
+            {showApplicableTax && !priceCatalogOnly ? (
+              <div className="col-sm-4">
+                <div className="form-group">
+                  <label htmlFor="tax">Applicable Tax:</label>
+                  <select
+                    id="tax"
+                    className="form-control"
+                    value={form.applicableTax}
+                    onChange={(e) => setField("applicableTax", e.target.value)}
+                  >
+                    {(taxOptions ?? DEFAULT_HQ6_TAX_OPTIONS).map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
-            </div>
+            ) : null}
             <div className="col-sm-4">
               <div className="form-group">
                 <label htmlFor="tax_type">
@@ -676,80 +756,72 @@ export function Hq6AddProductFormBody({
             </div>
           </div>
 
-          <div className="table-responsive">
-            <table className="table table-bordered">
-              <thead>
-                <tr className="bg-success">
-                  <th colSpan={2}>Default Purchase Price</th>
-                  <th>x Margin (%)</th>
-                  <th>Default Selling Price</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td>
-                    <label className="control-label">Exc. tax *</label>
-                    <input
-                      type="number"
-                      min={0}
-                      step="0.01"
-                      className="form-control"
-                      value={form.purchaseExcTax}
-                      onChange={(e) => {
-                        setField("purchaseExcTax", e.target.value);
-                        applyMarginToSelling(
-                          e.target.value,
-                          form.marginPercent,
-                        );
-                      }}
-                    />
-                  </td>
-                  <td>
-                    <label className="control-label">Inc. tax *</label>
-                    <input
-                      type="number"
-                      min={0}
-                      step="0.01"
-                      className="form-control"
-                      value={form.purchaseIncTax}
-                      onChange={(e) =>
-                        setField("purchaseIncTax", e.target.value)
-                      }
-                    />
-                  </td>
-                  <td style={{ verticalAlign: "bottom" }}>
-                    <input
-                      type="number"
-                      min={0}
-                      step="0.01"
-                      className="form-control"
-                      value={form.marginPercent}
-                      onChange={(e) => {
-                        setField("marginPercent", e.target.value);
-                        applyMarginToSelling(
-                          form.purchaseExcTax,
-                          e.target.value,
-                        );
-                      }}
-                    />
-                  </td>
-                  <td>
-                    <label className="control-label">Exc. Tax</label>
-                    <input
-                      type="number"
-                      min={0}
-                      step="0.01"
-                      className="form-control"
-                      value={form.sellingExcTax}
-                      onChange={(e) =>
-                        setField("sellingExcTax", e.target.value)
-                      }
-                    />
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
+          {!priceCatalogOnly ? (
+            <div className="table-responsive hq6-product-price-table-wrap">
+              <table className="table table-bordered add-product-price-table">
+                <thead>
+                  <tr className="bg-success">
+                    <th colSpan={2}>Default Purchase Price</th>
+                    <th>x Margin (%)</th>
+                    <th>Default Selling Price</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>
+                      <label className="control-label" htmlFor="cost_price">
+                        Exc. tax *
+                      </label>
+                      <input
+                        id="cost_price"
+                        type="text"
+                        inputMode="decimal"
+                        className="form-control"
+                        value={form.purchaseExcTax}
+                        onChange={(e) => setPurchaseExcTax(e.target.value)}
+                      />
+                    </td>
+                    <td>
+                      <label className="control-label">Inc. tax *</label>
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        className="form-control"
+                        value={form.purchaseIncTax}
+                        onChange={(e) => {
+                          const next = e.target.value;
+                          if (next !== "" && !/^\d*\.?\d*$/.test(next)) return;
+                          setField("purchaseIncTax", next);
+                        }}
+                      />
+                    </td>
+                    <td style={{ verticalAlign: "bottom" }}>
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        className="form-control"
+                        value={form.marginPercent}
+                        onChange={(e) => setMarginPercent(e.target.value)}
+                      />
+                    </td>
+                    <td>
+                      <label className="control-label" htmlFor="sell_price">
+                        Exc. Tax
+                      </label>
+                      <input
+                        id="sell_price"
+                        type="text"
+                        inputMode="decimal"
+                        className="form-control"
+                        value={form.sellingExcTax}
+                        onChange={(e) => setSellingPrice(e.target.value)}
+                      />
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          ) : null}
         </div>
       </div>
 
@@ -769,42 +841,44 @@ export function Hq6AddProductFormBody({
         {!isEdit ? (
           <>
             {!priceCatalogOnly ? (
-              <button
+              <Hq6BusyButton
                 type="button"
                 className={cn(
                   "tw-dw-btn tw-text-white",
                   "hq6-btn-opening-stock",
                 )}
                 style={{ marginRight: 8, background: "#7c3aed" }}
+                busy={isPending && saveMode === "saveOpeningStock"}
+                busyLabel="Saving…"
                 disabled={isPending}
                 onClick={() => onSubmit("saveOpeningStock")}
               >
-                {isPending && saveMode === "saveOpeningStock"
-                  ? "Saving…"
-                  : "Save & Add Opening Stock"}
-              </button>
+                Save & Add Opening Stock
+              </Hq6BusyButton>
             ) : null}
-            <button
+            <Hq6BusyButton
               type="button"
               className="tw-dw-btn tw-text-white"
               style={{ marginRight: 8, background: "#db2777" }}
+              busy={isPending && saveMode === "saveAnother"}
+              busyLabel="Saving…"
               disabled={isPending}
               onClick={() => onSubmit("saveAnother")}
             >
-              {isPending && saveMode === "saveAnother"
-                ? "Saving…"
-                : "Save And Add Another"}
-            </button>
+              Save And Add Another
+            </Hq6BusyButton>
           </>
         ) : null}
-        <button
+        <Hq6BusyButton
           type="button"
           className="tw-dw-btn tw-dw-btn-primary tw-text-white"
+          busy={isPending && saveMode === "save"}
+          busyLabel="Saving…"
           disabled={isPending}
           onClick={() => onSubmit("save")}
         >
-          {isPending && saveMode === "save" ? "Saving…" : "Save"}
-        </button>
+          Save
+        </Hq6BusyButton>
       </div>
     </div>
   );

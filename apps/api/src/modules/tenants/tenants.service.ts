@@ -5,8 +5,20 @@ import {
 } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
 import type { TenantConfig, UpdateTenantConfigRequest } from '@vonos/types';
-import { mergeHq6BusinessSettings, mergeHrmSettings } from '@vonos/types';
+import {
+  catalogPresetsForCode,
+  mergeHq6BusinessSettings,
+  mergeHrmSettings,
+} from '@vonos/types';
 import { PrismaService } from '../../common/prisma/prisma.service';
+
+function withLocationPresets(config: TenantConfig): TenantConfig {
+  const locs = config.businessLocations ?? [];
+  if (locs.length > 0) return config;
+  const presets = catalogPresetsForCode(config.code).businessLocations ?? [];
+  if (presets.length === 0) return config;
+  return { ...config, businessLocations: presets };
+}
 
 @Injectable()
 export class TenantsService {
@@ -26,7 +38,7 @@ export class TenantsService {
     });
     if (!tenant) throw new NotFoundException('Tenant not found');
 
-    return tenant.config as TenantConfig;
+    return withLocationPresets(tenant.config as TenantConfig);
   }
 
   async updateConfig(

@@ -2,14 +2,14 @@ import type { QueryClient, QueryKey } from "@tanstack/react-query";
 
 export type QuerySnapshot = Array<[QueryKey, unknown]>;
 
-/** Cancel in-flight fetches and snapshot matching caches for rollback. */
+/** Snapshot matching caches for rollback. Do not await cancel — it blocked Save UX. */
 export async function snapshotQueries(
   queryClient: QueryClient,
   keys: readonly QueryKey[],
 ): Promise<QuerySnapshot> {
   const previous: QuerySnapshot = [];
   for (const key of keys) {
-    await queryClient.cancelQueries({ queryKey: key });
+    void queryClient.cancelQueries({ queryKey: key });
     previous.push(
       ...queryClient.getQueriesData({ queryKey: key }).map(
         ([queryKey, data]) => [queryKey, data] as [QueryKey, unknown],
@@ -29,13 +29,14 @@ export function restoreQueries(
   }
 }
 
-export async function invalidateOptimisticKeys(
+/** Mark list caches stale and refetch in the background — never block UI. */
+export function invalidateOptimisticKeys(
   queryClient: QueryClient,
   keys: readonly QueryKey[],
-): Promise<void> {
-  await Promise.all(
-    keys.map((key) => queryClient.invalidateQueries({ queryKey: key })),
-  );
+): void {
+  for (const key of keys) {
+    void queryClient.invalidateQueries({ queryKey: key });
+  }
 }
 
 type ListLike<T> = {
@@ -55,6 +56,14 @@ function mapCollection<T extends { id: string }>(
     return mapItems(data as T[]);
   }
   if (!isRecord(data)) return data;
+
+  // useInfiniteQuery: { pages: ListPage[], pageParams }
+  if (Array.isArray(data.pages)) {
+    return {
+      ...data,
+      pages: data.pages.map((page) => mapCollection(page, mapItems)),
+    };
+  }
 
   const list = data as ListLike<T>;
   if (Array.isArray(list.items)) {
@@ -83,15 +92,14 @@ export function mapQueriesByPrefix<T extends { id: string }>(
   }
 }
 
-type PatchableEntity = { id: string } & Record<string, unknown>;
+type PatchableEntity = { id: string };
 
+/** Patch list-cache rows by id. `patch` is a plain object merge or updater. */
 export function patchEntityInQueries(
   queryClient: QueryClient,
   keyPrefix: QueryKey,
   id: string,
-  patch:
-    | Record<string, unknown>
-    | ((current: PatchableEntity) => PatchableEntity),
+  patch: object | ((current: PatchableEntity) => PatchableEntity),
 ): void {
   mapQueriesByPrefix<PatchableEntity>(queryClient, keyPrefix, (items) =>
     items.map((item) => {
@@ -237,10 +245,10 @@ export function createOptimisticHandlers<TData, TVariables>(
     onSuccess: (data: TData, variables: TVariables) => {
       config.commit?.(queryClient, data, variables);
     },
-    onSettled: async () => {
+    onSettled: () => {
       // Don't block the mutation (or Saving chip) on list refetches.
       if (invalidate) {
-        void invalidateOptimisticKeys(queryClient, config.keys);
+        invalidateOptimisticKeys(queryClient, config.keys);
       }
     },
   };

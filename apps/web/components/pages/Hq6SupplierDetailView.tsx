@@ -40,7 +40,7 @@ export function Hq6SupplierDetailView({ recordId }: { recordId: string }) {
   const queryClient = useQueryClient();
   const tenantId = useTenantId();
   const { config } = useRouteTenant();
-  const { listPath, detailPath } = useRecordNavigation("suppliers");
+  const { listPath, detailPath, goToList } = useRecordNavigation("suppliers");
   const activeTab = parseHq6ContactTab(searchParams.get("view"));
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -258,7 +258,7 @@ export function Hq6SupplierDetailView({ recordId }: { recordId: string }) {
             .then(async () => {
               toast.success(`Deleted ${displayName}`);
               void queryClient.invalidateQueries({ queryKey: ["suppliers"] });
-              router.push(listPath);
+              goToList("Redirecting to suppliers…");
             })
             .catch((err) => {
               toast.error(err instanceof Error ? err.message : "Delete failed");

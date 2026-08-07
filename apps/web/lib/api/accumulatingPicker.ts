@@ -130,7 +130,7 @@ export function createAccumulatingPicker<T extends { id: string }>(opts: {
     const localHits = matchSorter(localRoster.items, q, {
       keys: opts.searchKeys,
       threshold: rankings.CONTAINS,
-      keepDiacritics: true,
+      keepDiacritics: false,
     });
     if (localHits.length > 0) {
       return { items: localHits, appended: localHits, hasMore: false };

@@ -31,7 +31,7 @@ export function Hq6UpdatePriceView() {
       const rows = items.map((item) => [
         escapeCsv(item.name),
         escapeCsv(item.sku),
-        String(item.sellPrice ?? item.costPrice ?? 0),
+        String(item.sellPrice ?? 0),
       ]);
       const csv = [header.join(","), ...rows.map((r) => r.join(","))].join("\n");
       const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });

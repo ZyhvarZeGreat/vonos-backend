@@ -51,6 +51,7 @@ function resetOnClose() {
     category: "",
     quantity: "0",
     costPrice: "",
+    sellPrice: "",
     binLocation: "",
     locationCode: "",
     reference: "",
@@ -213,12 +214,15 @@ export function CreateRecordModal() {
         );
         if (!valid) throw new Error("SKU, name, and cost price are required");
         const cost = Number(valid.costPrice);
+        const sellRaw = form.sellPrice.trim();
+        const sellParsed = sellRaw === "" ? NaN : Number(sellRaw);
         return createItem(tenantId, {
           sku: valid.sku.trim(),
           name: valid.name.trim(),
           category: form.category.trim() || undefined,
           quantity: Number(form.quantity) || 0,
           costPrice: cost,
+          sellPrice: Number.isFinite(sellParsed) ? sellParsed : undefined,
           binLocation: form.binLocation.trim() || undefined,
           locationCode,
           availableForRetail:
@@ -467,9 +471,17 @@ export function CreateRecordModal() {
               />
               <Input
                 label="Cost price"
-                type="number"
+                type="text"
+                inputMode="decimal"
                 value={form.costPrice}
                 onChange={(e) => setField("costPrice", e.target.value)}
+              />
+              <Input
+                label="Selling price"
+                type="text"
+                inputMode="decimal"
+                value={form.sellPrice}
+                onChange={(e) => setField("sellPrice", e.target.value)}
               />
             </div>
             <Select
@@ -652,7 +664,12 @@ export function CreateRecordModal() {
                   setField("sku", picked.sku);
                   setField("name", picked.name);
                   setField("category", picked.category ?? form.category);
-                  setField("unitPrice", String(picked.costPrice));
+                  setField(
+                    "unitPrice",
+                    picked.sellPrice != null
+                      ? String(picked.sellPrice)
+                      : "",
+                  );
                 }
               }}
               options={saleItemOptions}
@@ -671,7 +688,8 @@ export function CreateRecordModal() {
               />
               <Input
                 label="Unit price"
-                type="number"
+                type="text"
+                inputMode="decimal"
                 value={form.unitPrice}
                 onChange={(e) => setField("unitPrice", e.target.value)}
               />

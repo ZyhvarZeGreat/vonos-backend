@@ -1,5 +1,35 @@
 import type { BusinessLocation, Item, TenantConfig } from "@vonos/types";
-import { PRODUCT_STOCK_BUSINESS_LOCATIONS } from "@vonos/types";
+import {
+  BUSINESS_LOCATION_PRESETS,
+  PRODUCT_STOCK_BUSINESS_LOCATIONS,
+  catalogPresetsForCode,
+  productHomeLocationsForTenant,
+} from "@vonos/types";
+
+/** Canonical entity / branch names when tenant config locations are empty. */
+function knownBusinessLocations(): BusinessLocation[] {
+  const byCode = new Map<string, BusinessLocation>();
+  for (const loc of PRODUCT_STOCK_BUSINESS_LOCATIONS) {
+    byCode.set(loc.code.toUpperCase(), loc);
+  }
+  for (const locs of Object.values(BUSINESS_LOCATION_PRESETS)) {
+    for (const loc of locs) {
+      const key = loc.code.toUpperCase();
+      if (!byCode.has(key)) byCode.set(key, loc);
+    }
+  }
+  return [...byCode.values()];
+}
+
+function findByCode(
+  code: string,
+  locations: BusinessLocation[] | undefined,
+): BusinessLocation | null {
+  const needle = code.trim().toLowerCase();
+  return (
+    (locations ?? []).find((row) => row.code.toLowerCase() === needle) ?? null
+  );
+}
 
 export function resolveBusinessLocation(
   code: string | null | undefined,
@@ -7,12 +37,11 @@ export function resolveBusinessLocation(
 ): BusinessLocation | null {
   if (!code?.trim()) return null;
   return (
-    (locations ?? []).find(
-      (row) => row.code.toLowerCase() === code.trim().toLowerCase(),
-    ) ?? null
+    findByCode(code, locations) ?? findByCode(code, knownBusinessLocations())
   );
 }
 
+/** Display label for a location code — prefers entity/branch name over raw code. */
 export function businessLocationName(
   code: string | null | undefined,
   locations: BusinessLocation[] | undefined,
@@ -63,8 +92,7 @@ export function itemMatchesLocationFilter(
 
 /**
  * Human-readable per-location stock breakdown for search results / detail views,
- * e.g. "BL001 · C1: 12 · BL002: 5". Falls back to the flat location line when no
- * per-location rows exist.
+ * e.g. "Vonos Warehouse · C1: 12 · Vonos Institute Spare Parts: 5".
  */
 export function formatLocationStockSummary(
   item: Pick<Item, "locationStock" | "locationCode" | "binLocation">,
@@ -76,7 +104,8 @@ export function formatLocationStockSummary(
   }
   return rows
     .map((row) => {
-      const branch = businessLocationName(row.locationCode, locations) ?? row.locationCode;
+      const branch =
+        businessLocationName(row.locationCode, locations) ?? row.locationCode;
       const counter = row.binLocation?.trim();
       const label = counter ? `${branch} · ${counter}` : branch;
       return `${label}: ${row.quantity}`;
@@ -84,11 +113,19 @@ export function formatLocationStockSummary(
     .join(" · ");
 }
 
+function branchesForConfig(
+  config: TenantConfig | null | undefined,
+): BusinessLocation[] {
+  const fromConfig = config?.businessLocations ?? [];
+  if (fromConfig.length > 0) return fromConfig;
+  return catalogPresetsForCode(config?.code).businessLocations ?? [];
+}
+
 /** Branch / counter options for list filters. ListPageShell prepends "All Location". */
 export function locationFilterOptions(
   config: TenantConfig | null | undefined,
 ): { value: string; label: string }[] {
-  const branches = config?.businessLocations ?? [];
+  const branches = branchesForConfig(config);
   const storage = config?.storageLocations ?? [];
   const options: { value: string; label: string }[] = [];
   for (const branch of branches) {
@@ -102,26 +139,41 @@ export function locationFilterOptions(
   return options;
 }
 
-/** Products page filter: always VW / VISP / VSP (stock homes, not VA/VP). */
-export function productStockLocationFilterOptions(): {
+/** Products page filter: this tenant's own product home (VA/VP/VW/VISP/VSP). */
+export function productStockLocationFilterOptions(
+  tenantCode?: string | null,
+): {
   value: string;
   label: string;
 }[] {
-  return PRODUCT_STOCK_BUSINESS_LOCATIONS.map((loc) => ({
+  const home = productHomeLocationsForTenant(tenantCode);
+  const locs = home.length > 0 ? home : PRODUCT_STOCK_BUSINESS_LOCATIONS;
+  return locs.map((loc) => ({
     value: loc.code,
-    label: `${loc.code} — ${loc.name}`,
+    label: loc.name,
   }));
 }
 
 /**
- * Business Location column for products: list stock-holding codes that have qty,
- * e.g. "VW · VISP". Falls back to primary location when no per-location rows.
+ * Business Location column for products: where stock sits, e.g.
+ * "Vonos Warehouse · Vonos Institute Spare Parts". Resolves any known entity
+ * code (including VA/VP catalog homes).
  */
 export function formatProductStockLocations(
-  item: Pick<Item, "locationStock" | "locationCode" | "binLocation" | "quantity">,
+  item: Pick<
+    Item,
+    "locationStock" | "locationCode" | "binLocation" | "quantity"
+  >,
   locations: BusinessLocation[] = PRODUCT_STOCK_BUSINESS_LOCATIONS,
+  fallbackLocationCode?: string | null,
 ): string {
-  const stockLocs = locations.length > 0 ? locations : PRODUCT_STOCK_BUSINESS_LOCATIONS;
+  const stockLocs =
+    locations.length > 0 ? locations : PRODUCT_STOCK_BUSINESS_LOCATIONS;
+  const resolveName = (code: string) =>
+    stockLocs.find((loc) => loc.code.toUpperCase() === code)?.name ??
+    businessLocationName(code, stockLocs) ??
+    null;
+
   const rows = item.locationStock ?? [];
   if (rows.length > 0) {
     const withQty = rows.filter((row) => row.quantity > 0);
@@ -129,20 +181,21 @@ export function formatProductStockLocations(
       .map((row) => {
         const code = row.locationCode?.trim().toUpperCase();
         if (!code) return null;
-        const known = stockLocs.find(
-          (loc) => loc.code.toUpperCase() === code,
-        );
-        return known?.code ?? null;
+        return resolveName(code);
       })
-      .filter((code): code is string => Boolean(code));
+      .filter((name): name is string => Boolean(name));
     const unique = [...new Set(matched)];
     if (unique.length > 0) return unique.join(" · ");
   }
 
   const primary = item.locationCode?.trim().toUpperCase();
   if (primary) {
-    const known = stockLocs.find((loc) => loc.code.toUpperCase() === primary);
-    if (known) return known.code;
+    return resolveName(primary) ?? "—";
+  }
+
+  const fallback = fallbackLocationCode?.trim().toUpperCase();
+  if (fallback) {
+    return resolveName(fallback) ?? "—";
   }
 
   return "—";

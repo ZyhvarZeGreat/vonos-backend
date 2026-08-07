@@ -54,3 +54,18 @@ export function hq6Cell(value: string | null | undefined): string {
   if (value == null) return "";
   return value.trim();
 }
+
+/**
+ * Second name column (contact person / business name) — blank when it would
+ * repeat the primary label.
+ */
+export function hq6DistinctName(
+  value: string | null | undefined,
+  primary: string | null | undefined,
+): string {
+  const next = value?.trim() ?? "";
+  if (!next) return "";
+  const base = primary?.trim() ?? "";
+  if (base && next.toLowerCase() === base.toLowerCase()) return "";
+  return next;
+}

@@ -1,5 +1,5 @@
 export { getItems, getItem, getItemMeta, getKpiSummary } from "@/lib/api/items";
-export { getCatalog, getCatalogItem } from "@/lib/api/catalog";
+export { getCatalog, getCatalogItem, getProductForForm } from "@/lib/api/catalog";
 export { getTenantConfig } from "@/lib/api/tenants";
 export { getNotifications, markNotificationRead } from "@/lib/api/notifications";
 export { getTransfers, getTransferZones } from "@/lib/api/transfers";

@@ -10,24 +10,31 @@ import type { Item } from "@vonos/types";
 export interface InlinePriceCellProps {
   item: Item;
   label?: string;
+  field?: "costPrice" | "sellPrice";
 }
 
-export function InlinePriceCell({ item, label = "Price" }: InlinePriceCellProps) {
+export function InlinePriceCell({
+  item,
+  label = "Price",
+  field = "costPrice",
+}: InlinePriceCellProps) {
+  const current = field === "sellPrice" ? (item.sellPrice ?? 0) : item.costPrice;
   const [editing, setEditing] = useState(false);
-  const [value, setValue] = useState(String(item.costPrice));
+  const [value, setValue] = useState(String(current));
 
   useEffect(() => {
-    setValue(String(item.costPrice));
-  }, [item.costPrice]);
+    setValue(String(current));
+  }, [current]);
 
   const mutation = useAppMutation({
     mutationFn: async (nextPrice: number) =>
-      updateItem(item.id, { costPrice: nextPrice }),
+      updateItem(item.id, { [field]: nextPrice }),
+    successMessage: "Price updated",
     optimistic: {
       keys: [["items"], ["catalog"]],
       update: (qc, nextPrice) => {
-        patchEntityInQueries(qc, ["items"], item.id, { costPrice: nextPrice });
-        patchEntityInQueries(qc, ["catalog"], item.id, { costPrice: nextPrice });
+        patchEntityInQueries(qc, ["items"], item.id, { [field]: nextPrice });
+        patchEntityInQueries(qc, ["catalog"], item.id, { [field]: nextPrice });
       },
     },
     onSuccess: () => {
@@ -38,11 +45,11 @@ export function InlinePriceCell({ item, label = "Price" }: InlinePriceCellProps)
   const commit = () => {
     const parsed = Number(value);
     if (!Number.isFinite(parsed) || parsed < 0) {
-      setValue(String(item.costPrice));
+      setValue(String(current));
       setEditing(false);
       return;
     }
-    if (parsed === item.costPrice) {
+    if (parsed === current) {
       setEditing(false);
       return;
     }
@@ -52,19 +59,22 @@ export function InlinePriceCell({ item, label = "Price" }: InlinePriceCellProps)
   if (editing) {
     return (
       <input
-        type="number"
-        min="0"
-        step="0.01"
+        type="text"
+        inputMode="decimal"
         aria-label={`${label} for ${item.name}`}
         value={value}
         autoFocus
         disabled={mutation.isPending}
-        onChange={(e) => setValue(e.target.value)}
+        onChange={(e) => {
+          const raw = e.target.value;
+          if (raw !== "" && !/^-?\d*\.?\d*$/.test(raw)) return;
+          setValue(raw);
+        }}
         onBlur={commit}
         onKeyDown={(e) => {
           if (e.key === "Enter") commit();
           if (e.key === "Escape") {
-            setValue(String(item.costPrice));
+            setValue(String(current));
             setEditing(false);
           }
         }}
@@ -84,7 +94,7 @@ export function InlinePriceCell({ item, label = "Price" }: InlinePriceCellProps)
         setEditing(true);
       }}
     >
-      {formatCurrency(item.costPrice, item.currency)}
+      {formatCurrency(current, item.currency)}
     </button>
   );
 }

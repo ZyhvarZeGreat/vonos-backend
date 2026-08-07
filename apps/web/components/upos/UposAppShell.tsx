@@ -15,6 +15,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { UposSidebar, type UposNavSection } from "@/components/upos/UposSidebar";
 import { UposHeader } from "@/components/upos/UposHeader";
 import { AdminViewingBanner } from "@/components/molecules/AdminViewingBanner";
+import { ApiHealthBanner } from "@/components/molecules/ApiHealthBanner";
 import { PageTransition } from "@/components/atoms/PageTransition";
 import { Hq6UposStyles } from "@/components/hq6/Hq6UposStyles";
 import { CreateRecordModal } from "@/components/organisms/CreateRecordModal";
@@ -182,6 +183,7 @@ export function UposAppShell({
         />
 
         <main className="tw-flex tw-flex-col tw-flex-1 tw-h-full tw-min-w-0 tw-bg-gray-100">
+          <ApiHealthBanner />
           {!isAdminShell && authRole === "super_admin" ? (
             <AdminViewingBanner
               tenantCode={tenantCode}

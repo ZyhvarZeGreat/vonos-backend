@@ -1,4 +1,4 @@
-/** Rows shown per table page — matches DataTable default. */
+/** Rows shown per table page — first paint stays small/fast (then warm more). */
 export const DEFAULT_TABLE_PAGE_SIZE = 10;
 
 /**

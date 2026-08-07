@@ -215,13 +215,15 @@ export async function getPaymentAccounts(
 export async function getPaymentAccountRoster(
   tenantId: string,
 ): Promise<PaymentAccount[]> {
-  const cacheKey = JSON.stringify(["payment-account-roster", tenantId]);
+  const cacheKey = JSON.stringify(["payment-account-roster-v2", tenantId]);
   return paymentAccountOptionCache.get(cacheKey, async () =>
     fetchAllPages(
       (cursor, limit) =>
         fetchPaymentAccountsRaw(tenantId, cursor, limit, {
           openOnly: true,
-          lite: true,
+          // Include live balances so searchable pickers can show them
+          // (same UX as VA pay modals — one roster load, then local match-sorter).
+          lite: false,
         }),
       Math.min(EXPORT_PAGE_SIZE, IN_MEMORY_FILTER_CATALOG_LIMIT),
       (row) => row.id,

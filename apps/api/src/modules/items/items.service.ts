@@ -44,6 +44,20 @@ import {
   reservedQtyBySku,
 } from '../../common/utils/availableStock';
 
+const ITEM_DETAIL_INCLUDE = {
+  locationStock: true,
+  brand: { select: { name: true } },
+} as const;
+
+/** Brand join for update — skip a separate brand lookup when the name is unchanged. */
+const ITEM_BRAND_INCLUDE = {
+  brand: { select: { id: true, name: true } },
+} as const;
+
+/** Process-local maps — Neon RTT is expensive; avoid re-resolving VW / tenant codes. */
+const tenantCodeById = new Map<string, string>();
+let vwTenantIdCache: string | null | undefined;
+
 interface CreateItemDto {
   sku: string;
   name: string;
@@ -62,7 +76,7 @@ interface CreateItemDto {
   locationCode?: string;
   reorderPoint?: number;
   costPrice: number;
-  sellPrice?: number;
+  sellPrice?: number | null;
   currency?: string;
   status?: StockStatus;
   availableForRetail?: boolean;
@@ -125,9 +139,81 @@ export class ItemsService {
     private readonly cache: CacheService,
   ) {}
 
-  private invalidateItemCaches(): void {
+  private invalidateItemCaches(extraTenantIds: string[] = []): void {
     const tenantId = this.tenantDb.requireTenantId();
     void invalidateTenantDashboardCache(this.cache, tenantId);
+    for (const id of extraTenantIds) {
+      if (id && id !== tenantId) {
+        void invalidateTenantDashboardCache(this.cache, id);
+      }
+    }
+  }
+
+  /**
+   * VISP/VSP product lists are VW retail SKUs (see CatalogService). Resolve the
+   * home row for read/update so edit forms do not 404 on /items/:id.
+   *
+   * One primary-key lookup (cross-tenant by id) + cached tenant-code checks —
+   * avoids 3–4 sequential Neon round-trips on every shared-catalog edit.
+   */
+  private async cachedTenantCode(tenantId: string): Promise<string | null> {
+    const hit = tenantCodeById.get(tenantId);
+    if (hit) return hit;
+    const row = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { code: true },
+    });
+    if (!row?.code) return null;
+    tenantCodeById.set(tenantId, row.code);
+    return row.code;
+  }
+
+  private async cachedVwTenantId(): Promise<string | null> {
+    if (vwTenantIdCache !== undefined) return vwTenantIdCache;
+    const warehouse = await this.prisma.tenant.findUnique({
+      where: { code: 'VW' },
+      select: { id: true },
+    });
+    vwTenantIdCache = warehouse?.id ?? null;
+    return vwTenantIdCache;
+  }
+
+  private async findItemForRequest(
+    id: string,
+    opts: { detail?: boolean; brand?: boolean } = {},
+  ) {
+    const requestTenantId = this.tenantDb.requireTenantId();
+    const include = opts.detail
+      ? ITEM_DETAIL_INCLUDE
+      : opts.brand
+        ? ITEM_BRAND_INCLUDE
+        : undefined;
+
+    // Primary-key lookup (one RTT). Tenant access is enforced below.
+    const row = await this.prisma.item.findFirst({
+      where: { id, deletedAt: null },
+      ...(include ? { include } : {}),
+    });
+    if (!row) {
+      throw new NotFoundException('Item not found');
+    }
+
+    if (row.tenantId === requestTenantId) {
+      return { row, homeTenantId: requestTenantId };
+    }
+
+    const requestCode = await this.cachedTenantCode(requestTenantId);
+    if (
+      (requestCode === 'VISP' || requestCode === 'VSP') &&
+      row.availableForRetail
+    ) {
+      const warehouseId = await this.cachedVwTenantId();
+      if (warehouseId && row.tenantId === warehouseId) {
+        return { row, homeTenantId: warehouseId };
+      }
+    }
+
+    throw new NotFoundException('Item not found');
   }
 
   async list(
@@ -216,40 +302,33 @@ export class ItemsService {
         ...(filters.availableForRetail !== undefined
           ? { availableForRetail: filters.availableForRetail }
           : {}),
-        ...(filters.search || filters.locationCode
-          ? {
-              AND: [
-                ...(filters.search
-                  ? [
-                      // SKU-like → btree equality/prefix; else trigram name/sku only.
-                      // Do not OR carModel here — it has no GIN trigram and slows every
-                      // fuzzy product search into a wider scan.
-                      itemTextSearchWhere(filters.search)!,
-                    ]
-                  : []),
-                ...(filters.locationCode
-                  ? [
-                      {
+        ...(() => {
+          const searchWhere = filters.search
+            ? itemTextSearchWhere(filters.search)
+            : undefined;
+          const locationWhere = filters.locationCode
+            ? {
+                OR: [
+                  { locationCode: filters.locationCode },
+                  { binLocation: filters.locationCode },
+                  {
+                    locationStock: {
+                      some: {
                         OR: [
                           { locationCode: filters.locationCode },
                           { binLocation: filters.locationCode },
-                          {
-                            locationStock: {
-                              some: {
-                                OR: [
-                                  { locationCode: filters.locationCode },
-                                  { binLocation: filters.locationCode },
-                                ],
-                              },
-                            },
-                          },
                         ],
                       },
-                    ]
-                  : []),
-              ],
-            }
-          : {}),
+                    },
+                  },
+                ],
+              }
+            : undefined;
+          const andClauses = [searchWhere, locationWhere].filter(
+            (clause): clause is NonNullable<typeof clause> => clause != null,
+          );
+          return andClauses.length > 0 ? { AND: andClauses } : {};
+        })(),
         ...(pagination.where ?? {}),
       },
       orderBy: [{ [sort.sortField]: sort.sortDir }, { id: sort.sortDir }],
@@ -307,25 +386,15 @@ export class ItemsService {
   }
 
   async getById(id: string): Promise<Item> {
-    const tenantId = this.tenantDb.requireTenantId();
-    const row = await this.tenantDb.db.item.findFirst({
-      where: { id, tenantId, deletedAt: null },
-      include: { locationStock: true },
-    });
-    if (!row) throw new NotFoundException('Item not found');
+    const { row } = await this.findItemForRequest(id, { detail: true });
     return serializeItem(row);
   }
 
   async getMeta(
     id: string,
   ): Promise<{ id: string; name: string; sku: string }> {
-    const tenantId = this.tenantDb.requireTenantId();
-    const row = await this.tenantDb.db.item.findFirst({
-      where: { id, tenantId, deletedAt: null },
-      select: { id: true, name: true, sku: true },
-    });
-    if (!row) throw new NotFoundException('Item not found');
-    return row;
+    const { row } = await this.findItemForRequest(id);
+    return { id: row.id, name: row.name, sku: row.sku };
   }
 
   /** HQ6 product stock history — movements that include this item. */
@@ -343,14 +412,11 @@ export class ItemsService {
       customerSupplierInfo: string | null;
     }>
   > {
-    const tenantId = this.tenantDb.requireTenantId();
-    const item = await this.tenantDb.db.item.findFirst({
-      where: { id, tenantId, deletedAt: null },
-      select: { id: true, sku: true, quantity: true },
-    });
-    if (!item) throw new NotFoundException('Item not found');
+    const { row: item, homeTenantId } = await this.findItemForRequest(id);
+    const tenantId = homeTenantId;
+    const db = this.prisma.forTenant(homeTenantId);
 
-    const movements = await this.tenantDb.db.stockMovement.findMany({
+    const movements = await db.stockMovement.findMany({
       where: { tenantId, deletedAt: null },
       orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
       take: 500,
@@ -495,16 +561,26 @@ export class ItemsService {
         : [];
 
     // Primary location/quantity: derived from per-location rows when present,
-    // otherwise from the flat fields for backward compatibility.
+    // otherwise from the flat fields. Location is optional on catalog create.
     const primaryLocation =
-      locationRows[0]?.locationCode ?? validate(dto.locationCode);
+      locationRows[0]?.locationCode ??
+      (dto.locationCode?.trim() ? validate(dto.locationCode) : null);
     const primaryBin =
       locationRows[0]?.binLocation || (dto.binLocation ?? null) || null;
     const quantity =
       locationRows.length > 0
         ? locationRows.reduce((sum, r) => sum + r.quantity, 0)
         : (dto.quantity ?? 0);
-    const status = deriveStatus(quantity, dto.reorderPoint, dto.status);
+
+    const tenantRow = await this.tenantDb.db.tenant.findFirst({
+      where: { id: tenantId, deletedAt: null },
+      select: { code: true },
+    });
+    const catalogOnly = isGroupStockConsumerTenant(tenantRow?.code);
+    // VA/VP price catalog: qty 0 must stay Active — not "out of stock".
+    const status = catalogOnly
+      ? (dto.status ?? 'in_stock')
+      : deriveStatus(quantity, dto.reorderPoint, dto.status);
 
     let brandId = dto.brandId?.trim() || null;
     if (!brandId && dto.brandName?.trim()) {
@@ -569,7 +645,7 @@ export class ItemsService {
             }
           : {}),
       },
-      include: { locationStock: true },
+      include: ITEM_DETAIL_INCLUDE,
     });
     await this.auditService.log({
       action: 'created',
@@ -582,13 +658,19 @@ export class ItemsService {
   }
 
   async update(id: string, dto: UpdateItemDto): Promise<Item> {
-    const tenantId = this.tenantDb.requireTenantId();
-    const existing = await this.tenantDb.db.item.findFirst({
-      where: { id, tenantId, deletedAt: null },
+    const requestTenantId = this.tenantDb.requireTenantId();
+    const { row: existing, homeTenantId } = await this.findItemForRequest(id, {
+      brand: true,
     });
-    if (!existing) throw new NotFoundException('Item not found');
+    const tenantId = homeTenantId;
+    const db = this.prisma.forTenant(homeTenantId);
 
-    const validate = await this.tenantDb.businessLocationValidator();
+    const needsLocationValidation =
+      dto.locationCode !== undefined || dto.locationStock !== undefined;
+
+    const validate = needsLocationValidation
+      ? await this.tenantDb.businessLocationValidator()
+      : (_code?: string | null) => null;
 
     const resolvedLocation =
       dto.locationCode !== undefined ? validate(dto.locationCode) : undefined;
@@ -608,7 +690,8 @@ export class ItemsService {
     let derivedPrimaryBin: string | null | undefined;
     if (locationRows !== undefined) {
       derivedQuantity = locationRows.reduce((sum, r) => sum + r.quantity, 0);
-      derivedPrimaryLocation = locationRows[0]?.locationCode ?? resolvedLocation ?? null;
+      derivedPrimaryLocation =
+        locationRows[0]?.locationCode ?? resolvedLocation ?? null;
       derivedPrimaryBin = locationRows[0]?.binLocation || null;
     }
 
@@ -619,72 +702,166 @@ export class ItemsService {
           ? dto.quantity
           : existing.quantity;
 
-    const nextStatus =
-      dto.status !== undefined
-        ? dto.status
-        : dto.quantity !== undefined ||
-            dto.reorderPoint !== undefined ||
-            locationRows !== undefined
-          ? deriveStatus(nextQuantity, nextReorderPoint)
-          : undefined;
+    const stockFieldsChanged =
+      dto.quantity !== undefined ||
+      dto.reorderPoint !== undefined ||
+      locationRows !== undefined;
 
-    const row = await this.tenantDb.db.$transaction(async (tx) => {
-      if (locationRows !== undefined) {
-        await tx.itemLocationStock.deleteMany({ where: { itemId: id, tenantId } });
-        if (locationRows.length > 0) {
-          await tx.itemLocationStock.createMany({
-            data: locationRows.map((r) => ({
+    let nextStatus: StockStatus | undefined;
+    if (dto.status !== undefined) {
+      nextStatus = dto.status;
+    } else if (stockFieldsChanged) {
+      const homeCode = await this.cachedTenantCode(tenantId);
+      const catalogOnly = isGroupStockConsumerTenant(homeCode);
+      nextStatus = catalogOnly
+        ? existing.status === 'out_of_stock'
+          ? 'in_stock'
+          : undefined
+        : deriveStatus(nextQuantity, nextReorderPoint);
+    } else {
+      // Typical product edit (name/price/tax) — no status recompute, no tenant hit.
+      nextStatus = undefined;
+    }
+
+    let nextBrandId: string | null | undefined;
+    if (dto.brandId !== undefined) {
+      nextBrandId = dto.brandId?.trim() || null;
+    } else if (dto.brandName !== undefined) {
+      const name = dto.brandName.trim();
+      if (!name) {
+        nextBrandId = null;
+      } else {
+        const currentBrand = (
+          existing as { brand?: { id: string; name: string } | null }
+        ).brand;
+        if (
+          currentBrand &&
+          currentBrand.name.localeCompare(name, undefined, {
+            sensitivity: 'accent',
+          }) === 0
+        ) {
+          // Unchanged brand — skip findFirst / create.
+          nextBrandId = currentBrand.id;
+        } else {
+          const existingBrand = await db.brand.findFirst({
+            where: {
               tenantId,
-              itemId: id,
-              locationCode: r.locationCode,
-              binLocation: r.binLocation,
-              quantity: r.quantity,
-            })),
+              deletedAt: null,
+              name: { equals: name, mode: 'insensitive' },
+            },
+            select: { id: true },
           });
+          if (existingBrand) {
+            nextBrandId = existingBrand.id;
+          } else {
+            const created = await db.brand.create({
+              data: { tenantId, name },
+              select: { id: true },
+            });
+            nextBrandId = created.id;
+          }
         }
       }
+    }
 
-      return tx.item.update({
-        where: { id },
-        data: {
-          ...(dto.sku !== undefined ? { sku: dto.sku } : {}),
-          ...(dto.name !== undefined ? { name: dto.name } : {}),
-          ...(dto.category !== undefined ? { category: dto.category } : {}),
-          ...(derivedQuantity !== undefined
-            ? { quantity: derivedQuantity }
-            : dto.quantity !== undefined
-              ? { quantity: dto.quantity }
-              : {}),
-          ...(derivedPrimaryBin !== undefined
-            ? { binLocation: derivedPrimaryBin }
-            : dto.binLocation !== undefined
-              ? { binLocation: dto.binLocation }
-              : {}),
-          ...(derivedPrimaryLocation !== undefined
-            ? { locationCode: derivedPrimaryLocation }
-            : resolvedLocation !== undefined
-              ? { locationCode: resolvedLocation }
-              : {}),
-          ...(dto.reorderPoint !== undefined
-            ? { reorderPoint: dto.reorderPoint }
-            : {}),
-          ...(dto.costPrice !== undefined ? { costPrice: dto.costPrice } : {}),
-          ...(dto.currency !== undefined ? { currency: dto.currency } : {}),
-          ...(nextStatus !== undefined ? { status: nextStatus } : {}),
-          ...(dto.availableForRetail !== undefined
-            ? { availableForRetail: dto.availableForRetail }
-            : {}),
-        },
-        include: { locationStock: true },
-      });
-    });
-    await this.auditService.log({
+    const itemData = {
+      ...(dto.sku !== undefined ? { sku: dto.sku } : {}),
+      ...(dto.name !== undefined ? { name: dto.name } : {}),
+      ...(dto.category !== undefined ? { category: dto.category } : {}),
+      ...(derivedQuantity !== undefined
+        ? { quantity: derivedQuantity }
+        : dto.quantity !== undefined
+          ? { quantity: dto.quantity }
+          : {}),
+      ...(derivedPrimaryBin !== undefined
+        ? { binLocation: derivedPrimaryBin }
+        : dto.binLocation !== undefined
+          ? { binLocation: dto.binLocation }
+          : {}),
+      ...(derivedPrimaryLocation !== undefined
+        ? { locationCode: derivedPrimaryLocation }
+        : resolvedLocation !== undefined
+          ? { locationCode: resolvedLocation }
+          : {}),
+      ...(dto.reorderPoint !== undefined
+        ? { reorderPoint: dto.reorderPoint }
+        : {}),
+      ...(dto.costPrice !== undefined ? { costPrice: dto.costPrice } : {}),
+      ...(dto.sellPrice !== undefined ? { sellPrice: dto.sellPrice } : {}),
+      ...(dto.subCategory !== undefined
+        ? { subCategory: dto.subCategory?.trim() || null }
+        : {}),
+      ...(dto.description !== undefined
+        ? { description: dto.description?.trim() || null }
+        : {}),
+      ...(dto.imageUrl !== undefined
+        ? { imageUrl: dto.imageUrl?.trim() || null }
+        : {}),
+      ...(dto.barcodeType !== undefined
+        ? { barcodeType: dto.barcodeType?.trim() || null }
+        : {}),
+      ...(dto.unit !== undefined ? { unit: dto.unit?.trim() || null } : {}),
+      ...(dto.weight !== undefined
+        ? { weight: dto.weight?.trim() || null }
+        : {}),
+      ...(dto.carModel !== undefined
+        ? { carModel: dto.carModel?.trim() || null }
+        : {}),
+      ...(dto.enableImei !== undefined ? { enableImei: dto.enableImei } : {}),
+      ...(dto.preparationMinutes !== undefined
+        ? {
+            preparationMinutes:
+              dto.preparationMinutes != null &&
+              Number.isFinite(dto.preparationMinutes)
+                ? Math.trunc(dto.preparationMinutes)
+                : null,
+          }
+        : {}),
+      ...(nextBrandId !== undefined ? { brandId: nextBrandId } : {}),
+      ...(dto.currency !== undefined ? { currency: dto.currency } : {}),
+      ...(nextStatus !== undefined ? { status: nextStatus } : {}),
+      ...(dto.availableForRetail !== undefined
+        ? { availableForRetail: dto.availableForRetail }
+        : {}),
+    };
+
+    const row =
+      locationRows !== undefined
+        ? await db.$transaction(async (tx) => {
+            await tx.itemLocationStock.deleteMany({
+              where: { itemId: id, tenantId },
+            });
+            if (locationRows.length > 0) {
+              await tx.itemLocationStock.createMany({
+                data: locationRows.map((r) => ({
+                  tenantId,
+                  itemId: id,
+                  locationCode: r.locationCode,
+                  binLocation: r.binLocation,
+                  quantity: r.quantity,
+                })),
+              });
+            }
+            return tx.item.update({
+              where: { id },
+              data: itemData,
+              include: ITEM_DETAIL_INCLUDE,
+            });
+          })
+        : await db.item.update({
+            where: { id },
+            data: itemData,
+            include: ITEM_DETAIL_INCLUDE,
+          });
+    void this.auditService.log({
       action: 'updated',
       entityType: 'item',
       entityId: id,
       summary: `Updated item ${row.sku}`,
     });
-    void this.invalidateItemCaches();
+    void this.invalidateItemCaches(
+      homeTenantId !== requestTenantId ? [homeTenantId] : [],
+    );
     return serializeItem(row);
   }
 
@@ -892,7 +1069,8 @@ export class ItemsService {
         status: item.status,
         availableForRetail: item.availableForRetail,
         costPrice: toNumber(item.costPrice),
-        sellPrice: toNumber(item.sellPrice ?? item.costPrice),
+        sellPrice:
+          item.sellPrice != null ? toNumber(item.sellPrice) : 0,
         currency: item.currency || 'NGN',
         locations: item.locationStock.map((loc) => ({
           locationCode: loc.locationCode,
@@ -1277,7 +1455,7 @@ export class ItemsService {
 
     let updated = 0;
     for (const item of items) {
-      const current = toNumber(item.sellPrice ?? item.costPrice);
+      const current = toNumber(item.sellPrice ?? 0);
       const next =
         body.adjustmentType === 'percentage'
           ? Math.max(0, current * (1 + body.adjustmentValue / 100))

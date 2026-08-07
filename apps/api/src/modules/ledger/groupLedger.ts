@@ -16,6 +16,10 @@ import {
   isInternalTransferEntry,
 } from '../../common/utils/internalTransfer';
 import { EXCLUDE_MIRRORED_JOB_SALE_REVENUE_SQL } from '../../common/utils/ledgerRevenueDedupe';
+import {
+  EXCLUDE_CASH_BOOK_LEDGER_SQL,
+  excludeCashBookLedgerWhere,
+} from '../../common/utils/ledgerCashBook';
 import { toIso, toNumber } from '../../common/utils/serializers';
 import { resolveDateWindow } from '../reports/aggregators/date-utils';
 import {
@@ -101,6 +105,7 @@ export async function buildGroupLedgerByEntity(
       AND date <= ${window.to}
       ${EXCLUDE_INTERNAL_TRANSFER_SQL}
       ${EXCLUDE_MIRRORED_JOB_SALE_REVENUE_SQL}
+      ${EXCLUDE_CASH_BOOK_LEDGER_SQL}
     GROUP BY "tenantId", type
   `;
 
@@ -194,6 +199,7 @@ export async function buildGroupLedgerSummary(
         AND date <= ${window.to}
         ${EXCLUDE_INTERNAL_TRANSFER_SQL}
         ${EXCLUDE_MIRRORED_JOB_SALE_REVENUE_SQL}
+        ${EXCLUDE_CASH_BOOK_LEDGER_SQL}
       GROUP BY type
     `,
     prisma.ledgerEntry.findFirst({
@@ -243,6 +249,7 @@ export async function buildGroupLedgerList(
     where: {
       tenantId: { in: tenantIds },
       deletedAt: null,
+      ...excludeCashBookLedgerWhere(),
       ...(filters.type ? { type: filters.type } : {}),
       ...(filters.category ? { category: filters.category } : {}),
       ...(filters.search
@@ -319,6 +326,7 @@ export async function buildGroupLedgerCategories(
     where: {
       tenantId: { in: tenantIds },
       deletedAt: null,
+      ...excludeCashBookLedgerWhere(),
       ...dateFilter,
     },
     orderBy: { category: 'asc' },

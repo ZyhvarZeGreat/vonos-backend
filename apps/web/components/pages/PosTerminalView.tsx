@@ -19,6 +19,7 @@ import {
 } from "@/lib/hooks/useBusinessLocationOptions";
 import { useRouteTenant } from "@/lib/hooks/useRouteTenant";
 import { useIsVaHq6 } from "@/lib/hooks/useIsVaHq6";
+import { announceRedirect } from "@/lib/utils/announceRedirect";
 import { Hq6PosOpenRegisterView } from "@/components/pages/Hq6PosTerminalView";
 import { formatCurrency } from "@/lib/utils/formatCurrency";
 import { isGroupStockConsumerTenant } from "@vonos/types";
@@ -93,7 +94,7 @@ function PosTerminalViewBody() {
           sku: pick.sku,
           name: pick.name,
           quantity: 1,
-          unitPrice: pick.sellPrice || pick.costPrice || 0,
+          unitPrice: pick.sellPrice || 0,
           sourceTenantCode: pick.sourceTenantCode,
           sourceLabel: pick.sourceLabel,
           availableQty: pick.availableQty,
@@ -146,6 +147,7 @@ function PosTerminalViewBody() {
     ],
     onSuccess: (sale) => {
       resetCart();
+      announceRedirect("Opening sale…");
       router.push(`/${tenantCode}/sales/${sale.id}`);
     },
     onError: (err: Error) => setError(err.message),

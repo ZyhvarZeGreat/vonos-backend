@@ -29,6 +29,8 @@ import { useAppMutation } from "@/lib/hooks/useAppMutation";
 import { useBusinessLocationOptions } from "@/lib/hooks/useBusinessLocationOptions";
 import { useRouteTenant, useTenantId } from "@/lib/hooks/useRouteTenant";
 import { useServerListPage } from "@/lib/hooks/useServerListPage";
+import { nameListCursor } from "@/lib/utils/pagination";
+
 import { HQ6_TABLE_PAGE_SIZE } from "@/lib/api/fetchAllPages";
 import { useListExport } from "@/lib/hooks/useListExport";
 import { useQuery } from "@tanstack/react-query";
@@ -149,6 +151,7 @@ export function Hq6DiscountsListView() {
     enabled: Boolean(tenantId),
     defaultPageSize: HQ6_TABLE_PAGE_SIZE,
     fetchPage: (cursor, limit, _sort, opts) => getDiscountsPage(tenantId!, cursor, limit, { includeSummary: opts?.includeSummary }),
+    getCursor: (row) => nameListCursor(row),
   });
 
   const openCreate = () => {

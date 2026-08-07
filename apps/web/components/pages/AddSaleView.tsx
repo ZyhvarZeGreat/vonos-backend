@@ -8,6 +8,7 @@ import { getSale, getSaleInvoiceUrl } from "@/lib/api/sales";
 import { useIsVaHq6 } from "@/lib/hooks/useIsVaHq6";
 import { useRouteTenant, useTenantId } from "@/lib/hooks/useRouteTenant";
 import { hq6CopyForSlug } from "@/lib/registries/hq6PageCopy";
+import { announceRedirect } from "@/lib/utils/announceRedirect";
 import type { SaleFormPresetStatus } from "@/stores/uiStore";
 
 function AddSalePage({
@@ -33,6 +34,8 @@ function AddSalePage({
     queryKey: ["sale", "edit-title", editSaleId],
     queryFn: () => getSale(editSaleId!, tenantId!),
     enabled: Boolean(editSaleId && tenantId),
+    staleTime: 0,
+    refetchOnMount: "always",
   });
 
   if (!tenantId) {
@@ -51,26 +54,41 @@ function AddSalePage({
 
   const form = (
     <AddSaleForm
+      key={editSaleId ?? `new-${presetStatus}`}
       tenantId={tenantId}
       tenantConfig={config}
       presetStatus={presetStatus}
       editSaleId={editSaleId}
       initialJobId={jobId}
       variant="page"
+      onOptimisticLeave={(status) => {
+        if (!tenantCode) return;
+        const listSlug =
+          status === "draft"
+            ? "drafts"
+            : status === "quotation"
+              ? "quotations"
+              : "sales";
+        const label =
+          status === "draft"
+            ? "Saving & returning to drafts…"
+            : status === "quotation"
+              ? "Saving & returning to quotations…"
+              : "Saving & returning to sales…";
+        announceRedirect(label);
+        router.push(`/${tenantCode}/${listSlug}`);
+      }}
       onSuccess={async (sale, options) => {
-        const path =
-          sale.invoicePath?.trim() ||
-          (await getSaleInvoiceUrl(tenantId, sale.id)
-            .then((r) => r.path)
-            .catch(() => null));
-        if (path) {
-          router.push(
-            options?.print ? `${path}?print_on_load=true` : path,
-          );
-          return;
-        }
-        if (tenantCode) {
-          router.push(`/${tenantCode}/sales`);
+        if (options?.print) {
+          const path =
+            sale.invoicePath?.trim() ||
+            (await getSaleInvoiceUrl(tenantId, sale.id)
+              .then((r) => r.path)
+              .catch(() => null));
+          if (path) {
+            announceRedirect("Opening invoice…");
+            router.push(`${path}?print_on_load=true`);
+          }
         }
       }}
     />

@@ -20,6 +20,8 @@ import { useListExport } from "@/lib/hooks/useListExport";
 import { useListPageFilters } from "@/lib/hooks/useListPageFilters";
 import { useRecordNavigation } from "@/lib/hooks/useRecordNavigation";
 import { useServerListPage } from "@/lib/hooks/useServerListPage";
+import { plateListCursor } from "@/lib/utils/pagination";
+
 import { useTenantId } from "@/lib/hooks/useRouteTenant";
 import { prefetchVehicleDetail } from "@/lib/query/prefetchListDetails";
 import type { Vehicle } from "@vonos/types";
@@ -141,6 +143,7 @@ export function Hq6VehiclesListView() {
       getVehiclesPage(tenantId!, cursor, limit, {
         includeSummary: opts?.includeSummary,
       }),
+    getCursor: (row) => plateListCursor(row),
   });
 
   const columns: ColumnConfig<Vehicle>[] = [

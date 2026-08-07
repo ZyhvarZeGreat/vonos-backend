@@ -76,7 +76,8 @@ export function businessLocationOptions(
     },
     ...rows.map((row) => ({
       value: row.code,
-      label: `${row.code} — ${row.name}`,
+      // Show entity / branch name only (not "VA — Vonos Mechanic").
+      label: row.name,
     })),
   ];
 }

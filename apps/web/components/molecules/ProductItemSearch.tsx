@@ -211,7 +211,8 @@ export function ProductItemSearch({
           item,
           businessLocations,
           "Own products",
-          tenantCode ?? undefined,
+          // Own catalog is same-tenant — never treat as a cross-entity stock source.
+          undefined,
         );
         const key = `local:${pick.itemId}`;
         seen.add(key);
@@ -237,7 +238,7 @@ export function ProductItemSearch({
             sku: group.sku,
             name: group.name,
             costPrice: entity.costPrice ?? 0,
-            sellPrice: entity.sellPrice || entity.costPrice || 0,
+            sellPrice: itemSellPrice(entity),
             availableQty: entity.available,
             status: entity.status,
             sourceLabel: entitySourceLabel(entity.tenantCode, entity.tenantName),
@@ -271,14 +272,14 @@ export function ProductItemSearch({
           name: pick.name,
           sources: [pick],
           totalAvailable: pick.availableQty,
-          bestSellPrice: pick.sellPrice || pick.costPrice,
+          bestSellPrice: pick.sellPrice || 0,
         });
       } else {
         existing.sources.push(pick);
         existing.totalAvailable += pick.availableQty;
         existing.bestSellPrice = Math.max(
           existing.bestSellPrice,
-          pick.sellPrice || pick.costPrice,
+          pick.sellPrice || 0,
         );
         if (!existing.name && pick.name) existing.name = pick.name;
       }
@@ -442,7 +443,7 @@ export function ProductItemSearch({
                         </span>
                       ) : (
                         <span className="hq6-product-search-option-meta shrink-0 text-xs font-semibold tabular-nums text-foreground">
-                          {formatCurrency(pick.sellPrice || pick.costPrice)}
+                          {formatCurrency(pick.sellPrice || 0)}
                         </span>
                       )}
                     </span>
@@ -546,7 +547,7 @@ export function ProductItemSearch({
                             </span>
                           ) : (
                             <span className="hq6-product-search-option-meta shrink-0 text-xs font-semibold tabular-nums text-foreground">
-                              {formatCurrency(pick.sellPrice || pick.costPrice)}
+                              {formatCurrency(pick.sellPrice || 0)}
                             </span>
                           )}
                         </span>

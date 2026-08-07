@@ -143,7 +143,9 @@ export class InvoiceHubService {
     lines?: Array<{ lineTotal: { toString(): string } | number }>,
   ) {
     const existing = await this.findBySaleId(db, sale.id);
-    if (existing) return existing;
+    if (existing) {
+      return this.syncSaleInvoice(db, sale, lines, existing.id);
+    }
 
     const subtotal =
       lines?.reduce((sum, line) => sum + toNumber(line.lineTotal), 0) ??
@@ -173,6 +175,62 @@ export class InvoiceHubService {
     );
   }
 
+  /** Update an existing sale invoice in place (edit path). */
+  async syncSaleInvoice(
+    db: DbClient,
+    sale: {
+      id: string;
+      tenantId: string;
+      reference: string;
+      customerId: string | null;
+      customer?: { name: string } | null;
+      jobId?: string | null;
+      total: { toString(): string } | number;
+      discountAmount?: { toString(): string } | number | null;
+      taxAmount?: { toString(): string } | number | null;
+      currency: string;
+      status: string;
+      paymentStatus: string | null;
+      date: Date;
+      notes: string | null;
+    },
+    lines?: Array<{ lineTotal: { toString(): string } | number }>,
+    invoiceId?: string,
+  ) {
+    const id =
+      invoiceId ??
+      (await this.findBySaleId(db, sale.id))?.id ??
+      null;
+    if (!id) {
+      throw new Error(`Sale invoice missing for sale ${sale.id}`);
+    }
+    const subtotal =
+      lines?.reduce((sum, line) => sum + toNumber(line.lineTotal), 0) ??
+      toNumber(sale.total);
+    return db.invoice.update({
+      where: { id },
+      data: {
+        reference: sale.reference,
+        status:
+          sale.status === 'quotation' || sale.status === 'draft'
+            ? sale.status
+            : 'final',
+        paymentStatus: sale.paymentStatus,
+        currency: sale.currency,
+        subtotal,
+        taxAmount: sale.taxAmount != null ? toNumber(sale.taxAmount) : null,
+        discountAmount:
+          sale.discountAmount != null ? toNumber(sale.discountAmount) : null,
+        total: toNumber(sale.total),
+        documentDate: sale.date,
+        notes: sale.notes,
+        customerId: sale.customerId,
+        contactName: sale.customer?.name ?? null,
+        jobId: sale.jobId ?? null,
+      },
+    });
+  }
+
   async ensurePurchaseInvoice(
     db: DbClient,
     movement: {
@@ -192,8 +250,6 @@ export class InvoiceHubService {
     if (movement.type !== 'inbound') return null;
 
     const existing = await this.findByStockMovementId(db, movement.id);
-    if (existing) return existing;
-
     const lines = Array.isArray(movement.lines)
       ? (movement.lines as Array<{ quantity?: number; unitCost?: number }>)
       : [];
@@ -201,6 +257,23 @@ export class InvoiceHubService {
       (sum, line) => sum + (line.quantity ?? 0) * (line.unitCost ?? 0),
       0,
     );
+
+    if (existing) {
+      return db.invoice.update({
+        where: { id: existing.id },
+        data: {
+          reference: movement.reference,
+          status: movement.status.toLowerCase(),
+          paymentStatus: movement.paymentStatus,
+          total,
+          subtotal: total,
+          documentDate: movement.date,
+          notes: movement.notes,
+          supplierId: movement.supplierId,
+          contactName: movement.supplier?.name ?? null,
+        },
+      });
+    }
 
     return this.createInvoice(
       db,
@@ -237,10 +310,28 @@ export class InvoiceHubService {
     },
   ) {
     const existing = await this.findByExpenseId(db, expense.id);
-    if (existing) return existing;
-
     const reference =
       expense.refNo?.trim() || `EXP-${expense.id.slice(-8).toUpperCase()}`;
+    const total = toNumber(expense.totalAmount);
+    const taxAmount = toNumber(expense.taxAmount);
+
+    if (existing) {
+      return db.invoice.update({
+        where: { id: existing.id },
+        data: {
+          reference,
+          status: 'final',
+          paymentStatus: expense.paymentStatus,
+          total,
+          taxAmount,
+          subtotal: total,
+          documentDate: expense.expenseDate,
+          notes: expense.note,
+          customerId: expense.expenseForCustomerId,
+          contactName: expense.contactName,
+        },
+      });
+    }
 
     return this.createInvoice(
       db,
@@ -249,9 +340,9 @@ export class InvoiceHubService {
         kind: 'expense',
         status: 'final',
         paymentStatus: expense.paymentStatus,
-        total: toNumber(expense.totalAmount),
-        taxAmount: toNumber(expense.taxAmount),
-        subtotal: toNumber(expense.totalAmount),
+        total,
+        taxAmount,
+        subtotal: total,
         documentDate: expense.expenseDate,
         notes: expense.note,
         customerId: expense.expenseForCustomerId,

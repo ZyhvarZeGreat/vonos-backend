@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useQuery} from "@tanstack/react-query";
-import type { Item, ItemLocationStockInput, ProductUnit, TenantConfig } from "@vonos/types";
+import { useQuery } from "@tanstack/react-query";
+import type { Item, ProductUnit, TenantConfig } from "@vonos/types";
 import {
   PRODUCT_STOCK_BUSINESS_LOCATIONS,
-  isProductStockTenant,
+  productHomeLocationsForTenant,
 } from "@vonos/types";
 import { Button } from "@/components/atoms/Button";
 import { Input } from "@/components/atoms/Input";
@@ -23,9 +23,25 @@ import { useIsVaHq6 } from "@/lib/hooks/useIsVaHq6";
 import { parseForm } from "@/lib/validation/parseForm";
 import { productFormSchema } from "@/lib/validation/schemas";
 import { hq6TaxSelectOptions } from "@/lib/utils/hq6TaxOptions";
+import {
+  buildProductSavePayload,
+  type ProductSaveMode,
+} from "@/lib/utils/productSavePayload";
+import {
+  emptyProductForm,
+  locationDetailsFromItem,
+  productFormFromItem,
+  productImageFileName,
+  selectedLocationCodesFromItem,
+} from "@/lib/utils/productFormFromItem";
+import {
+  patchFromMarginPercent,
+  patchFromPurchaseExcTax,
+  patchFromSellingPrice,
+} from "@/lib/utils/productPriceForm";
 import type { ProductCategory, Brand } from "@vonos/types";
 
-export type ProductSaveMode = "save" | "saveAnother" | "saveOpeningStock";
+export type { ProductSaveMode };
 
 type LocationDetail = {
   locationCode: string;
@@ -36,41 +52,8 @@ type LocationDetail = {
   quantity: string;
 };
 
-function emptyForm(manageStock = true) {
-  return {
-    name: "",
-    sku: "",
-    barcodeType: "C128",
-    unit: "Single",
-    relatedSubUnit: "",
-    brand: "",
-    category: "",
-    subCategory: "",
-    manageStock,
-    alertQuantity: "",
-    description: "",
-    enableImei: false,
-    notForSelling: false,
-    weight: "",
-    carModel: "",
-    preparationMinutes: "",
-    applicableTax: "none",
-    sellingPriceTaxType: "exclusive",
-    productType: "single",
-    purchaseExcTax: "",
-    purchaseIncTax: "",
-    marginPercent: "0",
-    sellingExcTax: "",
-  };
-}
-
-function encodeBin(rack: string, row: string, position: string): string | undefined {
-  const parts = [
-    rack.trim() ? `Rack ${rack.trim()}` : "",
-    row.trim() ? `Row ${row.trim()}` : "",
-    position.trim() ? `Pos ${position.trim()}` : "",
-  ].filter(Boolean);
-  return parts.length > 0 ? parts.join(" · ") : undefined;
+function emptyForm(manageStock = true, zeroPrices = false) {
+  return emptyProductForm(manageStock, { zeroPrices });
 }
 
 export interface AddProductFormProps {
@@ -83,6 +66,11 @@ export interface AddProductFormProps {
   /** Prefill + PATCH existing product (HQ6 Edit product route). */
   editFrom?: Item | null;
   onSuccess?: (item: Item, mode: ProductSaveMode) => void;
+  /**
+   * Fired as soon as Save is clicked on the full page form — navigate
+   * immediately while create/update is still in flight (Neon RTT is multi-second).
+   */
+  onOptimisticLeave?: (mode: ProductSaveMode) => void;
   onCancel?: () => void;
 }
 
@@ -94,16 +82,24 @@ export function AddProductForm({
   duplicateFrom = null,
   editFrom = null,
   onSuccess,
+  onOptimisticLeave,
   onCancel,
 }: AddProductFormProps) {
   const isHq6 = useIsVaHq6();
-  const locations = isProductStockTenant(tenantConfig?.code)
-    ? PRODUCT_STOCK_BUSINESS_LOCATIONS
-    : (tenantConfig?.businessLocations ?? []);
-  /** Job-centric (VA): products are a price list — quantity is chosen on the sale. */
+  const homeLocations = productHomeLocationsForTenant(tenantConfig?.code);
+  const locations =
+    homeLocations.length > 0
+      ? homeLocations
+      : (tenantConfig?.businessLocations ?? PRODUCT_STOCK_BUSINESS_LOCATIONS);
+  /** Job-centric (VA/VP): catalog only — no stock; prices default to 0 on create. */
   const priceCatalogOnly = tenantConfig?.archetype === "job";
+  const tenantCode = (tenantConfig?.code ?? "").trim().toUpperCase();
+  /** Applicable Tax on VA/VP (and other non-VISP); removed from VISP product edit. */
+  const showApplicableTax = tenantCode !== "VISP";
 
-  const [form, setForm] = useState(() => emptyForm(!priceCatalogOnly));
+  const [form, setForm] = useState(() =>
+    emptyForm(!priceCatalogOnly, priceCatalogOnly),
+  );
   const [locationDetails, setLocationDetails] = useState<LocationDetail[]>([]);
   const [selectedLocationCodes, setSelectedLocationCodes] = useState<string[]>(
     [],
@@ -112,6 +108,7 @@ export function AddProductForm({
   const [saveMode, setSaveMode] = useState<ProductSaveMode>("save");
   const [imageName, setImageName] = useState("");
   const [brochureName, setBrochureName] = useState("");
+  const sourceItem = editFrom ?? duplicateFrom;
 
   useEffect(() => {
     if (!editFrom && !duplicateFrom) {
@@ -126,47 +123,27 @@ export function AddProductForm({
   useEffect(() => {
     const source = editFrom ?? duplicateFrom;
     if (!source) return;
-    const isDuplicate = Boolean(duplicateFrom) && !editFrom;
-    setForm({
-      ...emptyForm(!priceCatalogOnly),
-      name: isDuplicate ? `Copy ${source.name}` : source.name,
-      sku: isDuplicate ? `${source.sku}-COPY` : source.sku,
-      brand: source.brandName ?? "",
-      category: source.category ?? "",
-      description: source.description ?? "",
-      unit: source.unit ?? "Single",
-      weight: source.weight ?? "",
-      carModel: source.carModel ?? "",
-      purchaseExcTax: String(source.costPrice ?? ""),
-      sellingExcTax: String(source.sellPrice ?? source.costPrice ?? ""),
-      manageStock: priceCatalogOnly ? false : true,
-      alertQuantity:
-        source.reorderPoint != null ? String(source.reorderPoint) : "",
-      enableImei: Boolean(source.enableImei),
-      preparationMinutes:
-        source.preparationMinutes != null
-          ? String(source.preparationMinutes)
-          : "",
-      notForSelling: source.availableForRetail === false,
-    });
+    setForm(
+      productFormFromItem(source, {
+        isDuplicate: Boolean(duplicateFrom) && !editFrom,
+        priceCatalogOnly,
+      }),
+    );
+    setImageName(productImageFileName(source.imageUrl));
   }, [duplicateFrom, editFrom, priceCatalogOnly]);
 
   useEffect(() => {
     if (locations.length === 0) return;
-    // Location stock is optional — start with none selected so staff can
-    // add a product without rack/qty, then enable locations if needed.
-    setSelectedLocationCodes([]);
-    setLocationDetails(
-      locations.map((loc) => ({
-        locationCode: loc.code,
-        locationName: loc.name,
-        rack: "",
-        row: "",
-        position: "",
-        quantity: "",
-      })),
-    );
-  }, [locations]);
+    const source = editFrom ?? duplicateFrom;
+    if (source) {
+      setSelectedLocationCodes(selectedLocationCodesFromItem(source, locations));
+      setLocationDetails(locationDetailsFromItem(source, locations));
+      return;
+    }
+    // New product: default to this tenant's own home so location shows on the list.
+    setSelectedLocationCodes(locations.map((loc) => loc.code));
+    setLocationDetails(locationDetailsFromItem(undefined, locations));
+  }, [locations, editFrom, duplicateFrom]);
 
   const metaStaleMs = 10 * 60_000;
 
@@ -197,25 +174,32 @@ export function AddProductForm({
   const categoryOptions = useMemo(() => {
     const fromMeta = categories.map((row) => row.name);
     const merged = [
-      ...new Set([...fromMeta, ...(tenantConfig?.itemCategories ?? [])]),
+      ...new Set([
+        ...fromMeta,
+        ...(tenantConfig?.itemCategories ?? []),
+        ...(sourceItem?.category?.trim() ? [sourceItem.category.trim()] : []),
+      ]),
     ].sort();
     return [
       { value: "", label: "Please Select" },
       ...merged.map((c) => ({ value: c, label: c })),
     ];
-  }, [categories, tenantConfig?.itemCategories]);
+  }, [categories, sourceItem?.category, tenantConfig?.itemCategories]);
 
-  const brandOptions = useMemo(
-    () => [
-      { value: "", label: "Please Select" },
-      // De-dupe by name — legacy data can carry duplicate brands, which would
-      // otherwise render duplicate <option> keys.
-      ...[...new Set(brands.map((row) => row.name?.trim()).filter(Boolean))].map(
-        (name) => ({ value: name as string, label: name as string }),
+  const brandOptions = useMemo(() => {
+    const names = [
+      ...new Set(
+        [
+          ...brands.map((row) => row.name?.trim()),
+          sourceItem?.brandName?.trim(),
+        ].filter(Boolean),
       ),
-    ],
-    [brands],
-  );
+    ] as string[];
+    return [
+      { value: "", label: "Please Select" },
+      ...names.map((name) => ({ value: name, label: name })),
+    ];
+  }, [brands, sourceItem?.brandName]);
 
   const taxOptions = useMemo(
     () => hq6TaxSelectOptions(tenantId),
@@ -227,14 +211,18 @@ export function AddProductForm({
       value: row.name,
       label: row.shortName ? `${row.name} (${row.shortName})` : row.name,
     }));
-    if (fromMeta.length === 0) {
-      return [
-        { value: "Single", label: "Single (sng)" },
-        { value: "Piece", label: "Piece (pc)" },
-      ];
+    const base =
+      fromMeta.length === 0
+        ? [
+            { value: "Single", label: "Single (sng)" },
+            { value: "Piece", label: "Piece (pc)" },
+          ]
+        : fromMeta;
+    if (form.unit && !base.some((row) => row.value === form.unit)) {
+      return [{ value: form.unit, label: form.unit }, ...base];
     }
-    return fromMeta;
-  }, [units]);
+    return base;
+  }, [units, form.unit]);
 
   const setField = (
     key: keyof ReturnType<typeof emptyForm>,
@@ -243,11 +231,20 @@ export function AddProductForm({
     setForm((prev) => ({ ...prev, [key]: value }));
   };
 
-  const applyMarginToSelling = (purchase: string, margin: string) => {
-    const base = Number(purchase);
-    const pct = Number(margin);
-    if (!Number.isFinite(base) || !Number.isFinite(pct)) return;
-    setField("sellingExcTax", (base * (1 + pct / 100)).toFixed(2));
+  /**
+   * UPOS price fields: cost / margin / sell stay independent at 0% margin
+   * so a manual selling price is never overwritten by unit cost.
+   */
+  const setPurchaseExcTax = (next: string) => {
+    setForm((prev) => patchFromPurchaseExcTax(prev, next) ?? prev);
+  };
+
+  const setSellingPrice = (next: string) => {
+    setForm((prev) => patchFromSellingPrice(prev, next) ?? prev);
+  };
+
+  const setMarginPercent = (next: string) => {
+    setForm((prev) => patchFromMarginPercent(prev, next) ?? prev);
   };
 
   const updateLocationDetail = (
@@ -268,7 +265,7 @@ export function AddProductForm({
   };
 
   const reset = () => {
-    setForm(emptyForm());
+    setForm(emptyForm(!priceCatalogOnly, priceCatalogOnly));
     setError(null);
     setSaveMode("save");
     if (locations.length > 0) {
@@ -291,70 +288,24 @@ export function AddProductForm({
       if (!form.name.trim()) throw new Error("Product name is required");
       if (!form.unit.trim()) throw new Error("Unit is required");
 
-      const costPrice = Number(form.purchaseExcTax || form.sellingExcTax || 0);
-      const sellPrice = Number(form.sellingExcTax || form.purchaseExcTax || 0);
+      const costPrice = Number(form.purchaseExcTax || 0);
       if (!Number.isFinite(costPrice) || costPrice < 0) {
-        throw new Error("Enter a valid purchase / selling price");
+        throw new Error("Enter a valid purchase price");
       }
 
-      const activeLocations = locationDetails.filter((row) =>
-        selectedLocationCodes.includes(row.locationCode),
-      );
-
-      let locationStock: ItemLocationStockInput[] | undefined;
-      if (activeLocations.length > 0) {
-        locationStock = activeLocations.map((row) => {
-          const qty =
-            mode === "saveOpeningStock" ? Number(row.quantity) || 0 : 0;
-          return {
-            locationCode: row.locationCode,
-            binLocation: encodeBin(row.rack, row.row, row.position),
-            quantity: Number.isFinite(qty) ? qty : 0,
-          };
-        });
-      }
-
-      const openingQty = (() => {
-        if (locationStock) return undefined;
-        if (mode === "saveOpeningStock") {
-          const fromAlert = Number(form.alertQuantity);
-          return Number.isFinite(fromAlert) ? fromAlert : 0;
-        }
-        return 0;
-      })();
-
-      const sku =
-        form.sku.trim() ||
-        `PRD-${Date.now().toString(36).toUpperCase()}`;
-
-      const payload = {
-        sku,
-        name: form.name.trim(),
-        category: form.category.trim() || undefined,
-        subCategory: form.subCategory.trim() || undefined,
-        description: form.description.trim() || undefined,
-        barcodeType: form.barcodeType || undefined,
-        unit: form.unit.trim() || undefined,
-        weight: form.weight.trim() || undefined,
-        carModel: form.carModel.trim() || undefined,
-        enableImei: form.enableImei,
-        preparationMinutes: form.preparationMinutes
-          ? Number(form.preparationMinutes)
-          : undefined,
-        quantity: locationStock ? undefined : openingQty,
-        costPrice,
-        sellPrice: Number.isFinite(sellPrice) ? sellPrice : costPrice,
-        reorderPoint: form.manageStock
-          ? Number(form.alertQuantity) || undefined
-          : undefined,
-        locationCode: activeLocations[0]?.locationCode,
-        locationStock,
-        brandName: form.brand.trim() || undefined,
-        availableForRetail: retailMode ? true : !form.notForSelling,
-      };
+      const payload = buildProductSavePayload({
+        form,
+        mode,
+        isEdit: Boolean(editFrom),
+        retailMode,
+        priceCatalogOnly,
+        homeLocationCode: locations[0]?.code,
+        selectedLocationCodes,
+        locationDetails,
+      });
 
       if (editFrom) {
-        return updateItem(editFrom.id, payload);
+        return updateItem(editFrom.id, payload, tenantId);
       }
 
       return createItem(tenantId, payload);
@@ -368,11 +319,19 @@ export function AddProductForm({
         const sku =
           form.sku.trim() ||
           `PRD-${Date.now().toString(36).toUpperCase()}`;
-        const costPrice = Number(form.purchaseExcTax || form.sellingExcTax || 0);
-        const sellPrice = Number(form.sellingExcTax || form.purchaseExcTax || 0);
+        const costPrice = Number(form.purchaseExcTax || 0);
+        const sellRaw = form.sellingExcTax.trim();
+        const sellParsed = sellRaw === "" ? NaN : Number(sellRaw);
+        const sellPrice = Number.isFinite(sellParsed)
+          ? sellParsed
+          : priceCatalogOnly && !editFrom
+            ? 0
+            : editFrom
+              ? editFrom.sellPrice
+              : null;
         const name = form.name.trim();
         if (editFrom) {
-          patchEntityInQueries(qc, ["items"], editFrom.id, {
+          const patch = {
             name,
             sku,
             category: form.category.trim() || null,
@@ -380,13 +339,16 @@ export function AddProductForm({
             description: form.description.trim() || null,
             unit: form.unit.trim() || null,
             costPrice: Number.isFinite(costPrice) ? costPrice : editFrom.costPrice,
-            sellPrice: Number.isFinite(sellPrice) ? sellPrice : editFrom.sellPrice,
+            sellPrice,
             brandName: form.brand.trim() || null,
             availableForRetail: retailMode ? true : !form.notForSelling,
             updatedAt: now,
-          });
+          };
+          // Products list is keyed under ["catalog", …] — patch both prefixes.
+          patchEntityInQueries(qc, ["items"], editFrom.id, patch);
+          patchEntityInQueries(qc, ["catalog"], editFrom.id, patch);
         } else {
-          prependEntityInQueries(qc, ["items"], {
+          const provisional = {
             id: optimisticTempId("item"),
             tenantId,
             sku,
@@ -407,7 +369,7 @@ export function AddProductForm({
             locationCode: null,
             reorderPoint: null,
             costPrice: Number.isFinite(costPrice) ? costPrice : 0,
-            sellPrice: Number.isFinite(sellPrice) ? sellPrice : null,
+            sellPrice,
             currency: "NGN",
             status: "in_stock",
             availableForRetail: retailMode ? true : !form.notForSelling,
@@ -416,15 +378,34 @@ export function AddProductForm({
             locationStock: [],
             createdAt: now,
             updatedAt: now,
-          } satisfies Item);
+          } satisfies Item;
+          // Products list is under ["catalog", …] for HQ6 — patch both so leave-early sees the row.
+          prependEntityInQueries(qc, ["items"], provisional);
+          prependEntityInQueries(qc, ["catalog"], provisional);
+        }
+        // Navigate after the list cache is patched so the row is already there.
+        if (variant === "page" && mode === "save") {
+          onOptimisticLeave?.(mode);
         }
         if (variant === "modal" && mode !== "saveAnother") {
           onCancel?.();
         }
       },
       commit: (qc, data) => {
-        if (!data || editFrom) return;
-        const entries = qc.getQueriesData({ queryKey: ["items"] });
+        if (!data) return;
+        if (editFrom) {
+          // Replace optimistic fields with the server row in list + detail caches.
+          patchEntityInQueries(qc, ["items"], data.id, data);
+          patchEntityInQueries(qc, ["catalog"], data.id, data);
+          qc.setQueryData(["item", "edit-page", data.id], data);
+          qc.setQueryData(["item", tenantId, data.id, "catalog"], data);
+          qc.setQueryData(["item", tenantId, data.id, "inventory"], data);
+          return;
+        }
+        const entries = [
+          ...qc.getQueriesData({ queryKey: ["items"] }),
+          ...qc.getQueriesData({ queryKey: ["catalog"] }),
+        ];
         for (const [queryKey, cached] of entries) {
           if (Array.isArray(cached)) {
             qc.setQueryData(
@@ -444,6 +425,7 @@ export function AddProductForm({
           }
         }
         prependEntityInQueries(qc, ["items"], data);
+        prependEntityInQueries(qc, ["catalog"], data);
       },
     },
     onSuccess: (item) => {
@@ -459,7 +441,7 @@ export function AddProductForm({
   const submit = (mode: ProductSaveMode) => {
     setSaveMode(mode);
     setError(null);
-    const costPrice = Number(form.purchaseExcTax || form.sellingExcTax || 0);
+    const costPrice = Number(form.purchaseExcTax || 0);
     const valid = parseForm(
       productFormSchema,
       {
@@ -486,7 +468,9 @@ export function AddProductForm({
         selectedLocationCodes={selectedLocationCodes}
         toggleLocation={toggleLocation}
         updateLocationDetail={updateLocationDetail}
-        applyMarginToSelling={applyMarginToSelling}
+        setPurchaseExcTax={setPurchaseExcTax}
+        setSellingPrice={setSellingPrice}
+        setMarginPercent={setMarginPercent}
         unitOptions={unitOptions}
         brandOptions={brandOptions}
         categoryOptions={categoryOptions}
@@ -497,6 +481,7 @@ export function AddProductForm({
         saveMode={saveMode}
         isEdit={Boolean(editFrom)}
         priceCatalogOnly={priceCatalogOnly}
+        showApplicableTax={showApplicableTax}
         onCancel={onCancel}
         onSubmit={submit}
         imageName={imageName}
@@ -531,6 +516,36 @@ export function AddProductForm({
             onChange={(e) => setField("sku", e.target.value)}
             placeholder="SKU"
           />
+          {priceCatalogOnly ? (
+            <>
+              <Input
+                id="cost_price"
+                label="Cost price"
+                type="text"
+                inputMode="decimal"
+                value={form.purchaseExcTax}
+                onChange={(e) => setPurchaseExcTax(e.target.value)}
+                placeholder="0.00"
+              />
+              <Input
+                id="sell_price"
+                label="Selling price"
+                type="text"
+                inputMode="decimal"
+                value={form.sellingExcTax}
+                onChange={(e) => setSellingPrice(e.target.value)}
+                placeholder="0.00"
+              />
+              {showApplicableTax ? (
+                <Select
+                  label="Applicable Tax"
+                  value={form.applicableTax}
+                  onChange={(e) => setField("applicableTax", e.target.value)}
+                  options={taxOptions}
+                />
+              ) : null}
+            </>
+          ) : null}
           <Select
             label="Barcode Type *"
             value={form.barcodeType}
@@ -574,7 +589,7 @@ export function AddProductForm({
             onChange={(e) => setField("subCategory", e.target.value)}
             placeholder="Please Select"
           />
-          {locations.length > 0 ? (
+          {locations.length > 0 && !priceCatalogOnly ? (
             <div className="md:col-span-2 lg:col-span-3">
               <p className="mb-1 text-xs font-medium text-muted">
                 Business Locations{" "}
@@ -591,7 +606,7 @@ export function AddProductForm({
                       checked={selectedLocationCodes.includes(loc.code)}
                       onChange={() => toggleLocation(loc.code)}
                     />
-                    {loc.name} ({loc.code})
+                    {loc.name}
                   </label>
                 ))}
               </div>
@@ -626,8 +641,8 @@ export function AddProductForm({
           </>
         ) : (
           <p className="text-xs text-muted">
-            Mechanics products are priced services/parts — set quantity when
-            creating a sale.
+            Product catalog only — no stock. Set prices here (default 0) or
+            click a price on the list to edit later.
           </p>
         )}
 
@@ -755,12 +770,14 @@ export function AddProductForm({
 
       <section className="space-y-3 rounded-lg border border-border bg-card p-4">
         <div className="grid gap-3 md:grid-cols-3">
-          <Select
-            label="Applicable Tax"
-            value={form.applicableTax}
-            onChange={(e) => setField("applicableTax", e.target.value)}
-            options={taxOptions}
-          />
+          {showApplicableTax && !priceCatalogOnly ? (
+            <Select
+              label="Applicable Tax"
+              value={form.applicableTax}
+              onChange={(e) => setField("applicableTax", e.target.value)}
+              options={taxOptions}
+            />
+          ) : null}
           <Select
             label="Selling Price Tax Type *"
             value={form.sellingPriceTaxType}
@@ -782,76 +799,78 @@ export function AddProductForm({
           />
         </div>
 
-        <div className="overflow-x-auto rounded-lg border border-border">
-          <table className="w-full min-w-[640px] text-sm">
-            <thead>
-              <tr className="bg-emerald-600 text-left text-white">
-                <th className="px-3 py-2 font-semibold" colSpan={2}>
-                  Default Purchase Price
-                </th>
-                <th className="px-3 py-2 font-semibold">x Margin (%)</th>
-                <th className="px-3 py-2 font-semibold">Default Selling Price</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr className="border-t border-border">
-                <td className="px-3 py-2">
-                  <label className="mb-1 block text-xs text-muted">
-                    Exc. tax *
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={form.purchaseExcTax}
-                    onChange={(e) => {
-                      setField("purchaseExcTax", e.target.value);
-                      applyMarginToSelling(e.target.value, form.marginPercent);
-                    }}
-                    className="w-full rounded border border-border px-2 py-1.5"
-                  />
-                </td>
-                <td className="px-3 py-2">
-                  <label className="mb-1 block text-xs text-muted">
-                    Inc. tax *
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={form.purchaseIncTax}
-                    onChange={(e) => setField("purchaseIncTax", e.target.value)}
-                    className="w-full rounded border border-border px-2 py-1.5"
-                  />
-                </td>
-                <td className="px-3 py-2 align-bottom">
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={form.marginPercent}
-                    onChange={(e) => {
-                      setField("marginPercent", e.target.value);
-                      applyMarginToSelling(form.purchaseExcTax, e.target.value);
-                    }}
-                    className="w-full rounded border border-border px-2 py-1.5"
-                  />
-                </td>
-                <td className="px-3 py-2">
-                  <label className="mb-1 block text-xs text-muted">Exc. Tax</label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={form.sellingExcTax}
-                    onChange={(e) => setField("sellingExcTax", e.target.value)}
-                    className="w-full rounded border border-border px-2 py-1.5"
-                  />
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
+        {!priceCatalogOnly ? (
+          <div className="overflow-x-auto rounded-lg border border-border">
+            <table className="w-full min-w-[640px] text-sm">
+              <thead>
+                <tr className="bg-emerald-600 text-left text-white">
+                  <th className="px-3 py-2 font-semibold" colSpan={2}>
+                    Default Purchase Price
+                  </th>
+                  <th className="px-3 py-2 font-semibold">x Margin (%)</th>
+                  <th className="px-3 py-2 font-semibold">
+                    Default Selling Price
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr className="border-t border-border">
+                  <td className="px-3 py-2">
+                    <label className="mb-1 block text-xs text-muted">
+                      Exc. tax *
+                    </label>
+                    <input
+                      id="cost_price"
+                      type="text"
+                      inputMode="decimal"
+                      value={form.purchaseExcTax}
+                      onChange={(e) => setPurchaseExcTax(e.target.value)}
+                      className="w-full rounded border border-border px-2 py-1.5"
+                    />
+                  </td>
+                  <td className="px-3 py-2">
+                    <label className="mb-1 block text-xs text-muted">
+                      Inc. tax *
+                    </label>
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      value={form.purchaseIncTax}
+                      onChange={(e) => {
+                        const next = e.target.value;
+                        if (next !== "" && !/^\d*\.?\d*$/.test(next)) return;
+                        setField("purchaseIncTax", next);
+                      }}
+                      className="w-full rounded border border-border px-2 py-1.5"
+                    />
+                  </td>
+                  <td className="px-3 py-2 align-bottom">
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      value={form.marginPercent}
+                      onChange={(e) => setMarginPercent(e.target.value)}
+                      className="w-full rounded border border-border px-2 py-1.5"
+                    />
+                  </td>
+                  <td className="px-3 py-2">
+                    <label className="mb-1 block text-xs text-muted">
+                      Exc. Tax
+                    </label>
+                    <input
+                      id="sell_price"
+                      type="text"
+                      inputMode="decimal"
+                      value={form.sellingExcTax}
+                      onChange={(e) => setSellingPrice(e.target.value)}
+                      className="w-full rounded border border-border px-2 py-1.5"
+                    />
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        ) : null}
       </section>
 
       {error ? <p className="text-sm text-error">{error}</p> : null}

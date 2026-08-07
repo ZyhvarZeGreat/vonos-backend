@@ -16,6 +16,8 @@ import { importCustomers } from "@/lib/api/customers";
 import { importItems } from "@/lib/api/items";
 import { importSales } from "@/lib/api/sales";
 import { useServerListPage } from "@/lib/hooks/useServerListPage";
+import { nameListCursor } from "@/lib/utils/pagination";
+
 import { useIsVaHq6 } from "@/lib/hooks/useIsVaHq6";
 import { useTenantId } from "@/lib/hooks/useRouteTenant";
 
@@ -72,6 +74,7 @@ function CustomerGroupsListViewBody() {
     queryKey: ["customer-groups", tenantId],
     enabled: Boolean(tenantId),
     fetchPage: (cursor, limit, _sort, opts) => getCustomerGroupsPage(tenantId!, cursor, limit, { includeSummary: opts?.includeSummary }),
+    getCursor: (row) => nameListCursor(row),
   });
 
   return (

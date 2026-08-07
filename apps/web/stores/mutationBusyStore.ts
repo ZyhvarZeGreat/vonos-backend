@@ -1,4 +1,7 @@
 import { create } from "zustand";
+import { toast } from "@/stores/toastStore";
+import { nextIndeterminatePercent } from "@/lib/utils/indeterminateProgress";
+import { withWriteRetries } from "@/lib/utils/withWriteRetries";
 
 interface MutationBusyState {
   pendingCount: number;
@@ -34,10 +37,7 @@ function startTick() {
   tickTimer = setInterval(() => {
     useMutationBusyStore.setState((state) => {
       if (state.pendingCount <= 0 || state.finishing) return state;
-      // Ease toward 90% while the network request is open.
-      const gap = 90 - state.percent;
-      const step = Math.max(0.8, gap * 0.12);
-      return { percent: Math.min(90, state.percent + step) };
+      return { percent: nextIndeterminatePercent(state.percent) };
     });
   }, 80);
 }
@@ -50,13 +50,18 @@ export const useMutationBusyStore = create<MutationBusyState>((set, get) => ({
   begin: (label) => {
     clearFinish();
     const wasIdle = get().pendingCount === 0;
+    const nextLabel = label?.trim() || get().label || "Saving";
     set((state) => ({
       pendingCount: state.pendingCount + 1,
       finishing: false,
-      label: label?.trim() || state.label || "Saving",
-      percent: wasIdle ? 0 : state.percent,
+      label: nextLabel,
+      // Start already moving so the bar doesn't sit at 0.
+      percent: wasIdle ? 8 : state.percent,
     }));
-    if (wasIdle) startTick();
+    if (wasIdle) {
+      startTick();
+    }
+    toast.progress(`${nextLabel}…`, { source: "mutation" });
   },
   end: () => {
     const next = Math.max(0, get().pendingCount - 1);
@@ -68,13 +73,14 @@ export const useMutationBusyStore = create<MutationBusyState>((set, get) => ({
     set({ pendingCount: 0, percent: 100, finishing: true });
     clearFinish();
     finishTimer = setTimeout(() => {
+      toast.dismissProgress("mutation");
       set({ percent: 0, finishing: false, label: "Saving" });
-      finishTimer = null;
-    }, 180);
+    }, 220);
   },
   reset: () => {
     clearTick();
     clearFinish();
+    toast.dismissProgress("mutation");
     set({ pendingCount: 0, percent: 0, finishing: false, label: "Saving" });
   },
 }));
@@ -86,7 +92,7 @@ export function isMutationBusy(): boolean {
 
 /**
  * Wrap non–React Query writes (manual fetch / setSaving) so they share the
- * global 0–100% progress indicator.
+ * global 0–100% progress indicator and retry a couple times in the background.
  */
 export async function withWriteProgress<T>(
   fn: () => Promise<T>,
@@ -94,7 +100,7 @@ export async function withWriteProgress<T>(
 ): Promise<T> {
   useMutationBusyStore.getState().begin(label);
   try {
-    return await fn();
+    return await withWriteRetries(fn);
   } finally {
     useMutationBusyStore.getState().end();
   }

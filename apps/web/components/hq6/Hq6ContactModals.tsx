@@ -35,7 +35,9 @@ import { formatHq6Currency, formatHq6DateTime } from "@/lib/utils/hq6Format";
 import { HQ6_PAYMENT_METHOD_OPTIONS } from "@/lib/utils/hq6PaymentMethods";
 import {
   firstValidationError,
+  sanitizeContactLastNameInput,
   sanitizePersonNameInput,
+  validateContactLastName,
   validateEmail,
   validatePersonName,
   validatePhone,
@@ -90,7 +92,7 @@ export function Hq6ContactEditModal({
   customer: Customer | null;
   tenantId: string | null;
   onClose: () => void;
-  onSaved: () => void;
+  onSaved: (updated: Customer) => void;
 }) {
   const { tenantCode } = useRouteTenant();
   const [contactKind, setContactKind] = useState<"individual" | "business">(
@@ -111,7 +113,7 @@ export function Hq6ContactEditModal({
   const [openingBalance, setOpeningBalance] = useState("");
   const [payTermNumber, setPayTermNumber] = useState("");
   const [payTermType, setPayTermType] = useState<"" | "days" | "months">("");
-  const [creditLimit, setCreditLimit] = useState("10000");
+  const [creditLimit, setCreditLimit] = useState("");
   const [moreOpen, setMoreOpen] = useState(true);
   const [address1, setAddress1] = useState("");
   const [address2, setAddress2] = useState("");
@@ -169,7 +171,7 @@ export function Hq6ContactEditModal({
     );
     setPayTermType(details.payTermType ?? "");
     setCreditLimit(
-      details.creditLimit != null ? String(details.creditLimit) : "10000",
+      details.creditLimit != null ? String(details.creditLimit) : "",
     );
     setMoreOpen(true);
     setAddress1(details.addressLine1 ?? "");
@@ -223,7 +225,7 @@ export function Hq6ContactEditModal({
         : null,
       validatePersonName(prefix, "Prefix", { required: false }),
       validatePersonName(middleName, "Middle name", { required: false }),
-      validatePersonName(lastName, "Last name", { required: false }),
+      validateContactLastName(lastName, { required: false }),
       !name
         ? contactKind === "business"
           ? "Business Name is required"
@@ -299,25 +301,45 @@ export function Hq6ContactEditModal({
     };
 
     setSaving(true);
-    try {
-      await updateCustomer(tenantId, customer.id, {
-        name,
-        email: email.trim() || null,
-        phone: mobile.trim() || null,
-        customerGroupId:
-          contactKind === "individual" ? customerGroupId || null : null,
-        openingBalance: balance,
-        taxNumber: taxNumber.trim() || null,
-        details,
-      });
-      toast.success("Contact updated");
-      onSaved();
-      onClose();
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Update failed");
-    } finally {
-      setSaving(false);
-    }
+    const optimistic: Customer = {
+      ...customer,
+      name,
+      email: email.trim() || null,
+      phone: mobile.trim() || null,
+      customerGroupId:
+        contactKind === "individual" ? customerGroupId || null : null,
+      openingBalance: balance,
+      taxNumber: taxNumber.trim() || null,
+      contactId: contactId.trim() || customer.contactId,
+      businessName:
+        contactKind === "business"
+          ? businessName.trim() || null
+          : customer.businessName,
+      details,
+    };
+    void dismissFirstWrite({
+      dismiss: () => {
+        onSaved(optimistic);
+        onClose();
+        setSaving(false);
+      },
+      write: () =>
+        updateCustomer(tenantId, customer.id, {
+          name,
+          email: email.trim() || null,
+          phone: mobile.trim() || null,
+          customerGroupId:
+            contactKind === "individual" ? customerGroupId || null : null,
+          openingBalance: balance,
+          taxNumber: taxNumber.trim() || null,
+          details,
+        }),
+      label: "Updating contact",
+      successMessage: "Contact updated",
+      onSuccess: (updated) => {
+        onSaved(updated);
+      },
+    });
   };
 
   return (
@@ -452,12 +474,70 @@ export function Hq6ContactEditModal({
             <input
               className="hq6-modal-input"
               value={lastName}
+              placeholder="Name or plate / reg. no."
               onChange={(e) =>
-                setLastName(sanitizePersonNameInput(e.target.value))
+                setLastName(sanitizeContactLastNameInput(e.target.value))
               }
             />
           </Hq6Field>
         </div>
+
+        {isAutomotive ? (
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <Hq6Field label="Car Model & Year">
+              <input
+                className="hq6-modal-input"
+                placeholder="e.g. COROLLA 2009"
+                value={customFields.customField3}
+                onChange={(e) =>
+                  setCustomFields((prev) => ({
+                    ...prev,
+                    customField3: e.target.value,
+                  }))
+                }
+              />
+            </Hq6Field>
+            <Hq6Field label="Milage">
+              <input
+                className="hq6-modal-input"
+                placeholder="Milage"
+                value={customFields.customField1}
+                onChange={(e) =>
+                  setCustomFields((prev) => ({
+                    ...prev,
+                    customField1: e.target.value,
+                  }))
+                }
+              />
+            </Hq6Field>
+            <Hq6Field label="VIN Number">
+              <input
+                className="hq6-modal-input"
+                placeholder="VIN Number"
+                value={customFields.customField2}
+                onChange={(e) =>
+                  setCustomFields((prev) => ({
+                    ...prev,
+                    customField2: e.target.value,
+                  }))
+                }
+              />
+            </Hq6Field>
+            <Hq6Field label="Customer Location">
+              <input
+                className="hq6-modal-input"
+                placeholder="Customer Location"
+                value={customFields.customField4}
+                onChange={(e) =>
+                  setCustomFields((prev) => ({
+                    ...prev,
+                    customField4: e.target.value,
+                  }))
+                }
+              />
+            </Hq6Field>
+          </div>
+        ) : null}
 
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <Hq6Field label="Mobile" required>
@@ -636,21 +716,34 @@ export function Hq6ContactEditModal({
             </div>
 
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {CONTACT_CUSTOM_FIELD_KEYS.map((key, index) => (
-                <Hq6Field key={key} label={CONTACT_CUSTOM_FIELD_LABELS[index]!}>
-                  <input
-                    className="hq6-modal-input"
-                    placeholder={CONTACT_CUSTOM_FIELD_LABELS[index]}
-                    value={customFields[key]}
-                    onChange={(e) =>
-                      setCustomFields((prev) => ({
-                        ...prev,
-                        [key]: e.target.value,
-                      }))
-                    }
-                  />
-                </Hq6Field>
-              ))}
+              {CONTACT_CUSTOM_FIELD_KEYS.filter(
+                (key) =>
+                  !isAutomotive ||
+                  (key !== "customField1" &&
+                    key !== "customField2" &&
+                    key !== "customField3" &&
+                    key !== "customField4"),
+              ).map((key) => {
+                const index = CONTACT_CUSTOM_FIELD_KEYS.indexOf(key);
+                return (
+                  <Hq6Field
+                    key={key}
+                    label={CONTACT_CUSTOM_FIELD_LABELS[index]!}
+                  >
+                    <input
+                      className="hq6-modal-input"
+                      placeholder={CONTACT_CUSTOM_FIELD_LABELS[index]}
+                      value={customFields[key]}
+                      onChange={(e) =>
+                        setCustomFields((prev) => ({
+                          ...prev,
+                          [key]: e.target.value,
+                        }))
+                      }
+                    />
+                  </Hq6Field>
+                );
+              })}
             </div>
 
             <Hq6Field label="Shipping Address">

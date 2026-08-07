@@ -9,6 +9,7 @@ import { useDebouncedValue } from "@/lib/hooks/useDebouncedValue";
 import { useUrlCursorPage } from "@/lib/hooks/useUrlCursorPage";
 import { filterRowsBySearch } from "@/lib/utils/listClientSearch";
 import { stableListFilterKey } from "@/lib/utils/stableListFilterKey";
+import { slidingJumpMaxIndex, totalPagesFromEntries } from "@/lib/utils/paginationWindow";
 
 /** Stable React Query key for one cursor page (primitives only — no object identity). */
 function listPageQueryKey(
@@ -38,6 +39,10 @@ export interface ListPageSummary {
 export interface ListPageFetchOpts {
   /** When false, API skips count/amountSummary for faster first paint. */
   includeSummary?: boolean;
+  /** Abort in-flight page loads when the query key changes / unmounts. */
+  signal?: AbortSignal;
+  /** Debounced typedown search (server mode only). */
+  search?: string;
 }
 
 export interface UseServerListPageOptions<T extends { id: string }> {
@@ -51,8 +56,9 @@ export interface UseServerListPageOptions<T extends { id: string }> {
   /**
    * Optional deferred count/amountSummary fetch. When omitted and
    * `deferSummary` is true, a second request runs with includeSummary=true.
+   * Receives the same debounced `search` as page fetches in server mode.
    */
-  fetchSummary?: () => Promise<ListPageSummary>;
+  fetchSummary?: (opts?: { search?: string }) => Promise<ListPageSummary>;
   /**
    * Rows-first by default: page fetch uses includeSummary=false, then summary
    * loads in parallel. Set false for live/polling views that need one shot.
@@ -162,6 +168,21 @@ export function useServerListPage<T extends { id: string }>({
   getCursorRef.current = getCursor;
   const queryKeyRef = useRef(queryKey);
   queryKeyRef.current = queryKey;
+  const searchModeRef = useRef(searchMode);
+  searchModeRef.current = searchMode;
+  const debouncedSearchRef = useRef(debouncedSearch);
+  debouncedSearchRef.current = debouncedSearch;
+
+  const pageFetchOpts = useCallback(
+    (extra?: ListPageFetchOpts): ListPageFetchOpts => ({
+      ...extra,
+      search:
+        searchMode === "server" && debouncedSearch
+          ? debouncedSearch
+          : undefined,
+    }),
+    [debouncedSearch, searchMode],
+  );
 
   const didMountRef = useRef(false);
 
@@ -191,6 +212,10 @@ export function useServerListPage<T extends { id: string }>({
         queryFn: () =>
           fetchPageRef.current(fetchCursor, pageSize, sort, {
             includeSummary: false,
+            search:
+              searchModeRef.current === "server" && debouncedSearchRef.current
+                ? debouncedSearchRef.current
+                : undefined,
           }),
         staleTime,
         // Keep visited pages around so navigating back is instant.
@@ -215,9 +240,9 @@ export function useServerListPage<T extends { id: string }>({
       sort,
     ),
     queryFn: () =>
-      fetchPage(cursor, pageSize, sort, {
+      fetchPage(cursor, pageSize, sort, pageFetchOpts({
         includeSummary: deferSummary ? false : true,
-      }),
+      })),
     enabled,
     refetchInterval,
     staleTime,
@@ -230,13 +255,24 @@ export function useServerListPage<T extends { id: string }>({
   });
 
   const resolveSummary = useCallback(async (): Promise<ListPageSummary> => {
-    if (fetchSummary) return fetchSummary();
-    const page = await fetchPage(undefined, 1, sort, { includeSummary: true });
+    const searchArg =
+      searchMode === "server" && debouncedSearch ? debouncedSearch : undefined;
+    if (fetchSummary) return fetchSummary({ search: searchArg });
+    const page = await fetchPage(undefined, 1, sort, pageFetchOpts({
+      includeSummary: true,
+    }));
     return {
       totalCount: page.totalCount,
       amountSummary: page.amountSummary,
     };
-  }, [fetchPage, fetchSummary, sort]);
+  }, [
+    debouncedSearch,
+    fetchPage,
+    fetchSummary,
+    pageFetchOpts,
+    searchMode,
+    sort,
+  ]);
 
   const summaryQuery = useQuery({
     queryKey: [...queryKey, "summary", filterKey],
@@ -506,6 +542,11 @@ export function useServerListPage<T extends { id: string }>({
             queryFn: () =>
               fetchPageRef.current(walkCursorValue, pageSize, settledSort, {
                 includeSummary: false,
+                search:
+                  searchModeRef.current === "server" &&
+                  debouncedSearchRef.current
+                    ? debouncedSearchRef.current
+                    : undefined,
               }),
             staleTime,
             gcTime: Math.max(staleTime * 6, 30 * 60_000),
@@ -576,25 +617,19 @@ export function useServerListPage<T extends { id: string }>({
     goPrev();
   };
 
-  const totalPages =
-    totalCount != null
-      ? Math.max(totalCount === 0 ? 0 : 1, Math.ceil(totalCount / pageSize))
-      : undefined;
-
-  /** How far ahead numbered jumps may walk without a totalCount (matches bar window). */
-  const maxJumpAhead = Math.max(1, prefetchPagesAhead);
+  const totalPages = totalPagesFromEntries(totalCount, pageSize);
 
   const canSelectPage = useCallback(
     (index: number) => {
       if (index < 0) return false;
-      if (totalPages != null) {
-        if (totalPages === 0) return index === 0;
-        return index < totalPages;
-      }
-      // Without a total, allow the visible page window ahead of the cursor stack.
-      return index <= maxReachablePageIndex + (hasMore ? maxJumpAhead : 0);
+      const maxJump = slidingJumpMaxIndex(maxReachablePageIndex, {
+        hasMore,
+        prefetchPagesAhead,
+        totalPages,
+      });
+      return index <= maxJump;
     },
-    [hasMore, maxJumpAhead, maxReachablePageIndex, totalPages],
+    [hasMore, maxReachablePageIndex, prefetchPagesAhead, totalPages],
   );
 
   const jumpToPage = useCallback(
@@ -606,12 +641,12 @@ export function useServerListPage<T extends { id: string }>({
         return;
       }
       if (totalPages != null && targetIndex >= totalPages) return;
-      if (
-        totalPages == null &&
-        targetIndex > maxReachablePageIndex + maxJumpAhead
-      ) {
-        return;
-      }
+      const maxJump = slidingJumpMaxIndex(maxReachablePageIndex, {
+        hasMore,
+        prefetchPagesAhead,
+        totalPages,
+      });
+      if (targetIndex > maxJump) return;
 
       // Pin the URL target so the stack→URL mirror does not wipe ?page= mid-walk.
       setUrlPageIndex(targetIndex);
@@ -626,8 +661,9 @@ export function useServerListPage<T extends { id: string }>({
     [
       extendCursorsTo,
       goToPage,
-      maxJumpAhead,
+      hasMore,
       maxReachablePageIndex,
+      prefetchPagesAhead,
       setUrlPageIndex,
       totalPages,
       walkCursor,
@@ -732,13 +768,9 @@ export function useServerListPage<T extends { id: string }>({
     setPageSize,
     sort,
     setSort: handleSortChange,
-    isLoading:
-      (pagePending && rawItems.length === 0) ||
-      (isSearchWarming && items.length === 0),
-    // Table overlay: awaiting page OR searching while catalog still warming.
-    isFetching:
-      (isAwaitingPage && rawItems.length === 0) ||
-      (isSearchWarming && items.length === 0),
+    isLoading: pagePending && rawItems.length === 0,
+    // Never treat background search-roster warm as a table overlay.
+    isFetching: isAwaitingPage && rawItems.length === 0,
     isPaging: isAwaitingPage,
     isSearchWarming,
     searchRosterSize: searchPool.length,

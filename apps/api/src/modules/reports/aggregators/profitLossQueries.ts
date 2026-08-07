@@ -9,6 +9,7 @@ import { Prisma } from '@prisma/client';
 import type { TenantScopedPrisma } from '../../../common/prisma/prisma.service';
 import { ledgerDateFilter } from '../../../common/utils/ledgerAggregates';
 import { computeSalesRevenueTotal } from '../../../common/utils/salesRevenue';
+import { excludeCashBookLedgerWhere } from '../../../common/utils/ledgerCashBook';
 import { toNumber } from '../../../common/utils/serializers';
 import { resolveDateWindow } from './date-utils';
 import {
@@ -960,7 +961,11 @@ export async function loadProfitLossContext(
     stockValuation(db, tenantId),
     db.ledgerEntry.groupBy({
       by: ['type', 'category'],
-      where: { deletedAt: null, ...dateFilter },
+      where: {
+        deletedAt: null,
+        ...excludeCashBookLedgerWhere(),
+        ...dateFilter,
+      },
       _sum: { amount: true },
     }),
     computeSalesRevenueTotal(db, from, to),

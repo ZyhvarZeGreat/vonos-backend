@@ -103,24 +103,60 @@ export function itemTextSearchWhere(
 }
 
 /**
+ * Compact a plate / Contact ID for JSON matching: upper-case, strip spaces.
+ * Stored Contact IDs are normalized to upper-case (often with hyphens).
+ */
+export function compactPlateToken(raw: string): string {
+  return raw.trim().toUpperCase().replace(/\s+/g, '');
+}
+
+/**
+ * True when the query looks like a vehicle plate / Contact ID
+ * (letters + digits with optional spaces or hyphens), e.g. `ABC-123XY`,
+ * `ABC 123 XY`, `GWA425SF`.
+ */
+export function isPlateLikeLookup(raw: string | undefined | null): boolean {
+  if (!raw?.trim()) return false;
+  const compact = compactPlateToken(raw);
+  if (compact.length < 3 || compact.length > 16) return false;
+  // Must mix letters and digits (pure words/numbers are not plates).
+  if (!/[A-Z]/.test(compact) || !/\d/.test(compact)) return false;
+  return /^[A-Z0-9-]+$/.test(compact);
+}
+
+/**
  * OR branches matching the manually-entered Contact ID stored in
  * `Customer.details.contactId` (a vehicle registration number for automotive).
  * Stored values are normalized to upper-case, so the token is upper-cased too
  * (Prisma JSON path filters are case-sensitive).
  */
 function contactIdJsonOr(token: string): object[] {
-  const upper = token.toUpperCase();
-  return [
+  const upper = compactPlateToken(token);
+  if (!upper) return [];
+  const withHyphen = upper.includes('-')
+    ? upper
+    : upper.replace(/^([A-Z]{1,4})(\d)/, '$1-$2');
+  const branches = [
+    { details: { path: ['contactId'], equals: upper } },
     { details: { path: ['contactId'], string_starts_with: upper } },
     { details: { path: ['contactId'], string_contains: upper } },
   ];
+  if (withHyphen !== upper) {
+    branches.push(
+      { details: { path: ['contactId'], equals: withHyphen } },
+      { details: { path: ['contactId'], string_starts_with: withHyphen } },
+      { details: { path: ['contactId'], string_contains: withHyphen } },
+    );
+  }
+  return branches;
 }
 
 /**
  * Customer / contact search:
  * - phone-like → phone equality + prefix (fast)
+ * - plate-like → Contact ID (plate) match + name contains
  * - single dense token → name equality + prefix + Contact ID (plate) match
- * - else → trigram contains on name / email / phone + Contact ID match
+ * - else → trigram contains on name / email / phone (+ plate when token looks like one)
  */
 export function contactTextSearchWhere(
   search: string | undefined | null,
@@ -137,6 +173,22 @@ export function contactTextSearchWhere(
             { phone: equalsInsensitive(raw) },
             { phone: startsWithInsensitive(raw) },
             { phone: containsInsensitive(digits) },
+          ],
+        },
+      ],
+    };
+  }
+
+  // Spaced plates ("ABC 123 XY") fail isSkuLikeLookup — handle explicitly.
+  if (isPlateLikeLookup(raw)) {
+    const compact = compactPlateToken(raw);
+    return {
+      AND: [
+        {
+          OR: [
+            { name: containsInsensitive(compact) },
+            { name: containsInsensitive(raw) },
+            ...contactIdJsonOr(compact),
           ],
         },
       ],
@@ -164,14 +216,23 @@ export function contactTextSearchWhere(
     };
   }
 
-  // Multi-word queries are names (trigram-indexed). Plates / Contact IDs are
-  // single dense tokens handled by the sku-like branch above, so we skip the
-  // unindexed JSON `details.contactId` scan here to keep name search fast.
-  return tokenizedSearchWhere(raw, (token, contains) => [
+  // Multi-word name queries: trigram on name/email/phone. Also OR a plate
+  // match when the full query (spaces stripped) looks like a Contact ID.
+  const tokenized = tokenizedSearchWhere(raw, (token, contains) => [
     { name: contains },
     { email: contains },
     { phone: contains },
+    ...(isPlateLikeLookup(token) ? contactIdJsonOr(token) : []),
   ]);
+  const joined = raw.replace(/\s+/g, '');
+  if (isPlateLikeLookup(joined) || isPlateLikeLookup(raw)) {
+    const plateOr = {
+      OR: contactIdJsonOr(compactPlateToken(raw)),
+    };
+    if (!tokenized) return { AND: [plateOr] };
+    return { AND: [{ OR: [tokenized, plateOr] }] };
+  }
+  return tokenized;
 }
 
 /**
@@ -180,7 +241,10 @@ export function contactTextSearchWhere(
  */
 export function supplierTextSearchWhere(
   search: string | undefined | null,
-): { AND: Array<{ OR: object[] }> } | undefined {
+):
+  | { AND: Array<{ OR: object[] }> }
+  | { OR: object[] }
+  | undefined {
   const raw = search?.trim();
   if (!raw) return undefined;
 
@@ -218,7 +282,7 @@ export function supplierTextSearchWhere(
     };
   }
 
-  return tokenizedSearchWhere(raw, (_token, contains) => [
+  const tokenized = tokenizedSearchWhere(raw, (_token, contains) => [
     { name: contains },
     { contactName: contains },
     { email: contains },
@@ -228,6 +292,18 @@ export function supplierTextSearchWhere(
     { notes: contains },
     { locationCode: contains },
   ]);
+
+  // Full-phrase OR + tokenized AND — typing "Sunny Day 7" must still hit
+  // "Sunny Day number seven" even when short tokens are dropped.
+  return {
+    OR: [
+      { name: containsInsensitive(raw) },
+      { contactName: containsInsensitive(raw) },
+      { email: containsInsensitive(raw) },
+      { phone: containsInsensitive(raw) },
+      ...(tokenized ? [tokenized] : []),
+    ],
+  };
 }
 
 /**
@@ -276,8 +352,13 @@ export function saleTextSearchWhere(
     };
   }
 
-  if (isSkuLikeLookup(raw)) {
-    const token = tokenizeListSearch(raw)[0]!;
+  if (isPlateLikeLookup(raw) || isSkuLikeLookup(raw)) {
+    const token = isPlateLikeLookup(raw)
+      ? compactPlateToken(raw)
+      : tokenizeListSearch(raw)[0]!;
+    const plateOr = contactIdJsonOr(token).map((branch) => ({
+      customer: branch,
+    }));
     return {
       AND: [
         {
@@ -290,6 +371,8 @@ export function saleTextSearchWhere(
             { customer: { name: containsInsensitive(token) } },
             { customer: { phone: startsWithInsensitive(token) } },
             { job: { reference: startsWithInsensitive(token) } },
+            ...plateOr,
+            { notes: containsInsensitive(token) },
           ],
         },
       ],

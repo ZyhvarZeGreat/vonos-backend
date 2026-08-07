@@ -2,7 +2,7 @@
 
 import { Hq6DateTimeInput } from "@/components/hq6/Hq6DateTimeInput";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -17,18 +17,30 @@ import { Hq6BusyButton } from "@/components/hq6/Hq6BusyButton";
 import { Hq6FormShell } from "@/components/hq6/Hq6Chrome";
 import {
   createStockMovement,
-  deleteStockMovement,
   getStockMovement,
   payStockMovement,
+  updateStockMovement,
 } from "@/lib/api/stockMovements";
+import { getItem, updateItem } from "@/lib/api/items";
+import { itemSellPrice } from "@/lib/utils/itemPricing";
+import { isTransientWriteError } from "@/lib/utils/withWriteRetries";
+import {
+  newIdempotencyKey,
+  withIdempotencyKey,
+} from "@/lib/utils/idempotency";
 import { getPaymentAccountsForPicker } from "@/lib/api/paymentAccounts";
 import { getSuppliersForPicker, loadMoreSuppliersForPicker, suppliersPickerHasMore } from "@/lib/api/suppliers";
 import { useIsVaHq6 } from "@/lib/hooks/useIsVaHq6";
 import { useRouteTenant, useTenantId } from "@/lib/hooks/useRouteTenant";
+import { announceRedirect } from "@/lib/utils/announceRedirect";
+import { paymentAccountPickerLabel } from "@/lib/utils/pickerLabels";
+import { toast } from "@/stores/toastStore";
 import {
   defaultEntityLocationCode,
   entitySaleLocations,
 } from "@/lib/hooks/useBusinessLocationOptions";
+import { parsePurchaseNotes } from "@/lib/utils/purchaseNotes";
+import { canAddPaymentForStatus } from "@/lib/utils/hq6PaymentBadge";
 import { hq6CopyForSlug } from "@/lib/registries/hq6PageCopy";
 import {
   MODAL_REF_STALE_MS,
@@ -239,15 +251,23 @@ export function AddPurchaseView() {
     return undefined;
   }, [form.supplierId, suppliers]);
 
+  const supplierAdvanceBalance = useMemo(() => {
+    const match = suppliers.find((s) => s.id === form.supplierId);
+    return Math.max(0, match?.totalAdvance ?? 0);
+  }, [form.supplierId, suppliers]);
+
   const patchForm = (patch: Partial<PurchaseFormState>) =>
     setForm((prev) => ({ ...prev, ...patch }));
 
   useEffect(() => {
     if (!existing || prefillDone) return;
+    let cancelled = false;
     const status: PurchaseStatusOption =
       existing.status === "Ordered" || existing.status === "Pending"
         ? existing.status
         : "Received";
+    const parsedNotes = parsePurchaseNotes(existing.notes);
+    const remaining = Math.max(0, existing.paymentDue ?? 0);
     setForm({
       ...emptyForm(),
       reference: existing.reference,
@@ -255,21 +275,52 @@ export function AddPurchaseView() {
       locationCode: existing.locationCode ?? "",
       date: existing.date.slice(0, 16),
       status,
-      additionalNotes: existing.notes ?? "",
-      paymentMethod: existing.paymentMethod ?? "cash",
+      additionalNotes: parsedNotes.additionalNotes,
+      payTermValue: parsedNotes.payTermValue,
+      payTermUnit: parsedNotes.payTermUnit || "days",
+      purchaseOrder: parsedNotes.purchaseOrder,
+      discountType: parsedNotes.discountType,
+      discountAmount: parsedNotes.discountAmount,
+      purchaseTax: parsedNotes.purchaseTax,
+      shippingDetails: parsedNotes.shippingDetails,
+      shippingCharges: parsedNotes.shippingCharges || "0",
+      extraExpenses: parsedNotes.extraExpenses,
+      paymentAmount: remaining > 0 ? String(remaining) : "0",
+      paidOn: new Date().toISOString().slice(0, 16),
+      paymentMethod: existing.paymentMethod || "cash",
+      paymentAccountId: "",
+      paymentNote: "",
     });
-    setLines(
-      existing.lines.map((line) => ({
-        itemId: line.itemId,
-        sku: line.sku,
-        name: line.name,
-        quantity: line.quantity,
-        unitCost: line.unitCost ?? 0,
-        discountPercent: 0,
-        unitSellingPrice: line.unitCost ?? 0,
-      })),
-    );
-    setPrefillDone(true);
+    void (async () => {
+      const catalog = await Promise.all(
+        existing.lines.map(async (line) => {
+          try {
+            return [line.itemId, await getItem(line.itemId)] as const;
+          } catch {
+            return [line.itemId, null] as const;
+          }
+        }),
+      );
+      if (cancelled) return;
+      const byId = new Map(catalog);
+      setLines(
+        existing.lines.map((line) => ({
+          itemId: line.itemId,
+          sku: line.sku,
+          name: line.name,
+          quantity: line.quantity,
+          unitCost: line.unitCost ?? 0,
+          discountPercent: line.discountPercent ?? 0,
+          unitSellingPrice:
+            line.unitSellingPrice ??
+            itemSellPrice(byId.get(line.itemId) ?? {}),
+        })),
+      );
+      setPrefillDone(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [existing, prefillDone]);
 
   useEffect(() => {
@@ -305,18 +356,33 @@ export function AddPurchaseView() {
   );
   const paymentAmount = Number(form.paymentAmount) || 0;
   const paymentDue = Math.max(0, purchaseTotal - paymentAmount);
+  const existingRemainingDue = Math.max(0, existing?.paymentDue ?? 0);
+  const showAddPaymentOnEdit =
+    Boolean(editId) &&
+    canAddPaymentForStatus(existing?.paymentStatus, existingRemainingDue);
+
+  const purchaseIdempotencyKeyRef = useRef<string | null>(null);
 
   const mutation = useMutation({
+    // Leave-first: keep trying in the background after we hit the list.
+    retry: (failureCount, error) =>
+      failureCount < 2 && isTransientWriteError(error),
     mutationFn: async () => {
+      const key =
+        purchaseIdempotencyKeyRef.current ?? newIdempotencyKey();
+      purchaseIdempotencyKeyRef.current = key;
+      return withIdempotencyKey(key, async () => {
       if (!tenantId) throw new Error("No tenant");
-      if (paymentAmount > 0 && !form.paymentAccountId.trim()) {
+      const collectingPayment =
+        paymentAmount > 0 && (!editId || showAddPaymentOnEdit);
+      if (collectingPayment && !form.paymentAccountId.trim()) {
         throw new Error(
           "Select a Payment Account so this purchase payment posts to the account book",
         );
       }
       const status: MovementStatus = form.status;
-      const created = await createStockMovement(tenantId, {
-        type: "inbound",
+      const payload = {
+        type: "inbound" as const,
         reference: form.reference || `PO-${Date.now()}`,
         status,
         supplierId: form.supplierId || undefined,
@@ -324,22 +390,37 @@ export function AddPurchaseView() {
         date: form.date,
         notes: buildNotes(form),
         paymentMethod: form.paymentMethod || undefined,
-        paymentStatus:
-          paymentAmount <= 0
-            ? "due"
-            : paymentDue <= 0
-              ? "paid"
-              : "partial",
+        ...(editId
+          ? {}
+          : {
+              paymentStatus:
+                paymentAmount <= 0
+                  ? ("due" as const)
+                  : paymentDue <= 0
+                    ? ("paid" as const)
+                    : ("partial" as const),
+            }),
         lines: lines.map((line) => ({
           itemId: line.itemId,
           sku: line.sku,
           name: line.name,
           quantity: line.quantity,
-          unitCost: lineUnitCostBeforeTax(line),
+          unitCost: line.unitCost,
+          discountPercent: line.discountPercent || 0,
+          unitSellingPrice: line.unitSellingPrice,
         })),
-      });
-      if (paymentAmount > 0) {
-        await payStockMovement(tenantId, created.id, {
+      };
+      const saved = editId
+        ? await updateStockMovement(tenantId, editId, payload)
+        : await createStockMovement(tenantId, payload);
+      // Don't block Save on sell-price sync — fire in background.
+      void Promise.allSettled(
+        lines.map((line) =>
+          updateItem(line.itemId, { sellPrice: line.unitSellingPrice }),
+        ),
+      );
+      if (collectingPayment) {
+        await payStockMovement(tenantId, saved.id, {
           amount: paymentAmount,
           method: form.paymentMethod || "cash",
           accountId: form.paymentAccountId || undefined,
@@ -349,18 +430,46 @@ export function AddPurchaseView() {
             : undefined,
         });
       }
-      if (editId) {
-        await deleteStockMovement(tenantId, editId);
-      }
-      return created;
+      return saved;
+      });
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["stock-movements", tenantId] });
-      qc.invalidateQueries({ queryKey: ["payment-accounts", tenantId] });
-      router.push(`/${tenantCode}/purchases`);
+      toast.success(editId ? "Purchase updated" : "Purchase saved");
+      void qc.invalidateQueries({ queryKey: ["stock-movements", tenantId] });
+      void qc.invalidateQueries({ queryKey: ["payment-accounts", tenantId] });
+      void qc.invalidateQueries({ queryKey: ["items", tenantId] });
+      void qc.invalidateQueries({ queryKey: ["catalog"] });
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || "Failed to save purchase");
+    },
+    onSettled: () => {
+      purchaseIdempotencyKeyRef.current = null;
     },
   });
 
+  const canSave =
+    lines.length > 0 && Boolean(form.supplierId) && Boolean(form.date);
+
+  const handleSave = () => {
+    if (!canSave || mutation.isPending) return;
+    if (
+      paymentAmount > 0 &&
+      (!editId || showAddPaymentOnEdit) &&
+      !form.paymentAccountId.trim()
+    ) {
+      toast.error(
+        "Select a Payment Account so this purchase payment posts to the account book",
+      );
+      return;
+    }
+    // Leave immediately — purchase create/update is multi-RTT on Neon.
+    if (tenantCode) {
+      announceRedirect("Saving & returning to purchases…");
+      router.push(`/${tenantCode}/purchases`);
+    }
+    mutation.mutate();
+  };
   const addItem = (pick: CatalogPartPick) => {
     if (!pick.itemId) return;
     const itemId = pick.itemId;
@@ -380,7 +489,7 @@ export function AddPurchaseView() {
           quantity: 1,
           unitCost: pick.costPrice,
           discountPercent: 0,
-          unitSellingPrice: pick.sellPrice || pick.costPrice,
+          unitSellingPrice: pick.sellPrice || 0,
         },
       ];
     });
@@ -397,7 +506,6 @@ export function AddPurchaseView() {
   };
 
   const selectedSupplier = suppliers.find((s) => s.id === form.supplierId);
-  const canSave = lines.length > 0 && Boolean(form.supplierId) && Boolean(form.date);
 
   if (isHq6) {
     return (
@@ -409,7 +517,7 @@ export function AddPurchaseView() {
         {editId && existing ? (
           <div className="hq6-form-card text-sm text-[#555]">
             Editing purchase <strong>{existing.reference}</strong> ({existing.status}).
-            Saving replaces this record with your updates.
+            Changes update this record in place.
           </div>
         ) : null}
         {editId && loadingExisting ? (
@@ -619,13 +727,13 @@ export function AddPurchaseView() {
                         <div className="text-xs text-[#6b7280]">{line.sku}</div>
                       </td>
                       <td>
-                        <input
-                          type="number"
+                        <ClearableNumberInput
                           min={1}
+                          showZero
                           value={line.quantity}
-                          onChange={(e) =>
+                          onChange={(n) =>
                             updateLine(line.itemId, {
-                              quantity: Number(e.target.value) || 1,
+                              quantity: Math.max(1, n || 1),
                             })
                           }
                         />
@@ -633,6 +741,7 @@ export function AddPurchaseView() {
                       <td>
                         <ClearableNumberInput
                           min={0}
+                          showZero
                           value={line.unitCost}
                           onChange={(n) =>
                             updateLine(line.itemId, { unitCost: n })
@@ -655,6 +764,7 @@ export function AddPurchaseView() {
                       <td>
                         <ClearableNumberInput
                           min={0}
+                          showZero
                           value={line.unitSellingPrice}
                           onChange={(n) =>
                             updateLine(line.itemId, { unitSellingPrice: n })
@@ -853,95 +963,131 @@ export function AddPurchaseView() {
         {/* 5. Payment */}
         <section className="hq6-form-card">
           <h2 className="hq6-form-card-title">Add payment</h2>
-          <p className="mb-3 text-sm text-[#6b7280]">
-            Advance Balance: {formatHq6Currency(0)}
-          </p>
-          <div className="hq6-form-grid hq6-form-grid-3">
-            <label className="hq6-form-label">
-              <span>
-                Amount <span className="req">*</span>
-              </span>
-              <input
-                type="number"
-                min={0}
-                step="0.01"
-                className="hq6-form-input"
-                value={form.paymentAmount}
-                onChange={(e) => patchForm({ paymentAmount: e.target.value })}
-              />
-            </label>
-            <label className="hq6-form-label">
-              <span>
-                Paid on <span className="req">*</span>
-              </span>
-              <div className="hq6-form-input-wrap">
-                <Hq6DateTimeInput
-                  className="hq6-form-input"
-                  value={form.paidOn}
-                  onChange={(v) => patchForm({ paidOn: v })}
-                />
+          {editId && !showAddPaymentOnEdit ? (
+            <p className="mb-3 text-sm text-[#6b7280]">
+              This purchase is fully paid. Use{" "}
+              <strong>View Payments</strong> on the purchases list to review or
+              edit existing payments.
+            </p>
+          ) : editId ? (
+            <p className="mb-3 text-sm text-[#6b7280]">
+              Remaining due: {formatHq6Currency(existingRemainingDue)}. Existing
+              payments stay as they are — enter an amount below to add another
+              payment on Update.
+            </p>
+          ) : (
+            <p className="mb-3 text-sm text-[#6b7280]">
+              Advance Balance: {formatHq6Currency(supplierAdvanceBalance)}
+            </p>
+          )}
+          {!editId || showAddPaymentOnEdit ? (
+            <>
+              <div className="hq6-form-grid hq6-form-grid-3">
+                <label className="hq6-form-label">
+                  <span>
+                    Amount <span className="req">*</span>
+                  </span>
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    className="hq6-form-input"
+                    value={form.paymentAmount}
+                    onChange={(e) =>
+                      patchForm({ paymentAmount: e.target.value })
+                    }
+                  />
+                </label>
+                <label className="hq6-form-label">
+                  <span>
+                    Paid on <span className="req">*</span>
+                  </span>
+                  <div className="hq6-form-input-wrap">
+                    <Hq6DateTimeInput
+                      className="hq6-form-input"
+                      value={form.paidOn}
+                      onChange={(v) => patchForm({ paidOn: v })}
+                    />
+                  </div>
+                </label>
+                <label className="hq6-form-label">
+                  <span>
+                    Payment Method <span className="req">*</span>
+                  </span>
+                  <select
+                    className="hq6-form-input"
+                    value={form.paymentMethod}
+                    onChange={(e) =>
+                      patchForm({ paymentMethod: e.target.value })
+                    }
+                  >
+                    {PAYMENT_METHODS.map((m) => (
+                      <option key={m.value} value={m.value}>
+                        {m.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="hq6-form-label">
+                  <span>
+                    Payment Account
+                    {paymentAmount > 0 ? (
+                      <span className="req"> *</span>
+                    ) : null}
+                  </span>
+                  <select
+                    className="hq6-form-input"
+                    value={form.paymentAccountId}
+                    onChange={(e) =>
+                      patchForm({ paymentAccountId: e.target.value })
+                    }
+                  >
+                    <option value="">None</option>
+                    {paymentAccounts.map((acc) => (
+                      <option key={acc.id} value={acc.id}>
+                        {paymentAccountPickerLabel(acc)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label
+                  className="hq6-form-label"
+                  style={{ gridColumn: "1 / -1" }}
+                >
+                  <span>Payment note</span>
+                  <textarea
+                    className="hq6-form-input"
+                    rows={2}
+                    value={form.paymentNote}
+                    onChange={(e) =>
+                      patchForm({ paymentNote: e.target.value })
+                    }
+                  />
+                </label>
               </div>
-            </label>
-            <label className="hq6-form-label">
-              <span>
-                Payment Method <span className="req">*</span>
-              </span>
-              <select
-                className="hq6-form-input"
-                value={form.paymentMethod}
-                onChange={(e) => patchForm({ paymentMethod: e.target.value })}
-              >
-                {PAYMENT_METHODS.map((m) => (
-                  <option key={m.value} value={m.value}>
-                    {m.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="hq6-form-label">
-              <span>
-                Payment Account
-                {paymentAmount > 0 ? <span className="req"> *</span> : null}
-              </span>
-              <select
-                className="hq6-form-input"
-                value={form.paymentAccountId}
-                onChange={(e) =>
-                  patchForm({ paymentAccountId: e.target.value })
-                }
-              >
-                <option value="">None</option>
-                {paymentAccounts.map((acc) => (
-                  <option key={acc.id} value={acc.id}>
-                    {acc.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="hq6-form-label" style={{ gridColumn: "1 / -1" }}>
-              <span>Payment note</span>
-              <textarea
-                className="hq6-form-input"
-                rows={2}
-                value={form.paymentNote}
-                onChange={(e) => patchForm({ paymentNote: e.target.value })}
-              />
-            </label>
-          </div>
-          <div className="hq6-form-table-footer">
-            <span>
-              Payment due: <strong>{formatHq6Currency(paymentDue)}</strong>
-            </span>
-          </div>
+              <div className="hq6-form-table-footer">
+                <span>
+                  Payment due:{" "}
+                  <strong>
+                    {formatHq6Currency(
+                      editId
+                        ? Math.max(0, existingRemainingDue - paymentAmount)
+                        : paymentDue,
+                    )}
+                  </strong>
+                </span>
+              </div>
+            </>
+          ) : null}
           <div className="hq6-form-save-row">
             <Hq6BusyButton
               className="hq6-btn-purple"
               busy={mutation.isPending}
-              busyLabel="Saving…"
+              busyLabel={editId ? "Updating…" : "Saving…"}
               disabled={!canSave}
-              onClick={() => mutation.mutate()}
+              onClick={handleSave}
             >
-              Save
+              {editId ? "Update" : "Save"}
             </Hq6BusyButton>
           </div>
           {mutation.isError ? (
@@ -967,15 +1113,15 @@ export function AddPurchaseView() {
         </h2>
         <p className="mt-1 text-sm text-muted">
           {editId
-            ? "Update this purchase and save to replace the previous draft."
+            ? "Update this purchase and save."
             : "Record a new purchase from a supplier."}
         </p>
       </div>
 
       {editId && existing ? (
         <div className="rounded border border-[var(--hq6-border,#ddd)] bg-[#f9f9f9] px-3 py-2 text-sm text-[#555]">
-          Editing purchase <strong>{existing.reference}</strong> ({existing.status}). Saving
-          replaces this record with your updates.
+          Editing purchase <strong>{existing.reference}</strong> ({existing.status}). Changes
+          update this record in place.
         </div>
       ) : null}
       {editId && loadingExisting ? (
@@ -1045,28 +1191,26 @@ export function AddPurchaseView() {
                   <tr key={line.itemId} className="border-b border-border">
                     <td className="py-2">{line.name}</td>
                     <td className="py-2">
-                      <input
-                        type="number"
+                      <ClearableNumberInput
                         min={1}
+                        showZero
                         className="w-20 rounded border border-border px-2 py-1"
                         value={line.quantity}
-                        onChange={(e) =>
+                        onChange={(n) =>
                           updateLine(line.itemId, {
-                            quantity: Number(e.target.value) || 1,
+                            quantity: Math.max(1, n || 1),
                           })
                         }
                       />
                     </td>
                     <td className="py-2">
-                      <input
-                        type="number"
+                      <ClearableNumberInput
                         min={0}
+                        showZero
                         className="w-28 rounded border border-border px-2 py-1"
                         value={line.unitCost}
-                        onChange={(e) =>
-                          updateLine(line.itemId, {
-                            unitCost: Number(e.target.value) || 0,
-                          })
+                        onChange={(n) =>
+                          updateLine(line.itemId, { unitCost: n })
                         }
                       />
                     </td>
@@ -1089,8 +1233,8 @@ export function AddPurchaseView() {
           </Button>
           <Button
             isLoading={mutation.isPending}
-            loadingText="Saving…"
-            onClick={() => mutation.mutate()}
+            loadingText={editId ? "Updating…" : "Saving…"}
+            onClick={handleSave}
             disabled={!canSave}
           >
             {editId ? "Update Purchase" : "Save Purchase"}

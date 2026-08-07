@@ -26,6 +26,8 @@ export interface Expense {
   note: string | null;
   accountId: string | null;
   accountName: string | null;
+  /** From linked account debit when present. */
+  paymentMethod?: string | null;
   isRecurring: boolean;
   recurInterval: number | null;
   recurIntervalType: string | null;
@@ -66,6 +68,8 @@ export interface CreateExpenseRequest {
   totalAmount: number;
   taxAmount?: number;
   paymentStatus?: string;
+  /** Remaining amount due; 0 when paid. */
+  paymentDue?: number;
   note?: string;
   /** Stored on the account debit / payment side when paying now. */
   paymentNote?: string;

@@ -90,7 +90,13 @@ export function movementLineRollups(lines: unknown): {
     if (Number.isNaN(quantity)) continue;
     itemCount += 1;
     const unitCost = Number(record.unitCost ?? 0);
-    grandTotal += quantity * (Number.isNaN(unitCost) ? 0 : unitCost);
+    const discountPercent = Number(record.discountPercent ?? 0);
+    const disc = Number.isFinite(discountPercent)
+      ? Math.min(100, Math.max(0, discountPercent))
+      : 0;
+    const effectiveUnit =
+      (Number.isNaN(unitCost) ? 0 : unitCost) * (1 - disc / 100);
+    grandTotal += quantity * effectiveUnit;
   }
   return { itemCount, grandTotal };
 }

@@ -1336,6 +1336,31 @@ html.upos-hq6 .hq6-products-page .table.table-bordered > tfoot > tr > td {
 }
 .hq6-add-product-page .table > thead > tr > th,
 .hq6-add-product-page .table > tbody > tr > td { padding: 8px; vertical-align: top; }
+.hq6-add-product-page .hq6-product-price-table-wrap,
+.hq6-add-product-page .table-responsive {
+  display: block;
+  width: 100%;
+  overflow-x: auto;
+  margin-top: 12px;
+  clear: both;
+}
+.hq6-add-product-page .add-product-price-table,
+.hq6-add-product-page table.table {
+  width: 100%;
+  max-width: 100%;
+  background: #fff;
+  border-collapse: collapse;
+}
+.hq6-add-product-page .add-product-price-table td,
+.hq6-add-product-page .add-product-price-table th {
+  border: 1px solid #d2d6de;
+  background: #fff;
+}
+.hq6-add-product-page .add-product-price-table .form-control {
+  min-height: 34px;
+  background: #fff;
+  border: 1px solid #d2d6de;
+}
 .hq6-add-product-page .tw-dw-btn-primary,
 .hq6-update-price-page .tw-dw-btn-primary,
 .hq6-print-labels-page .tw-dw-btn-primary {

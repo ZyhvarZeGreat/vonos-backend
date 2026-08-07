@@ -15,11 +15,13 @@
     "lint": "eslint \"{src,test}/**/*.ts\"",
     "typecheck": "tsc --noEmit",
     "test": "jest",
+    "test:e2e": "jest --config ./test/jest-e2e.json",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:push": "prisma db push",
     "prisma:seed": "prisma db seed",
     "prisma:merge-va": "ts-node --compiler-options '{\"module\":\"CommonJS\"}' prisma/scripts/merge-vm-vms-into-va.ts",
+    "prisma:dedupe-suppliers": "tsx prisma/scripts/dedupe-suppliers.ts",
     "prisma:backfill-location-stock": "ts-node --compiler-options '{\"module\":\"CommonJS\"}' prisma/scripts/backfill-item-location-stock.ts",
     "prisma:backfill-job-customer-id": "ts-node --compiler-options '{\"module\":\"CommonJS\"}' prisma/scripts/backfill-job-customer-id.ts",
     "prisma:backfill-job-vehicles": "ts-node --compiler-options '{\"module\":\"CommonJS\"}' prisma/scripts/backfill-job-vehicles.ts",
@@ -93,6 +95,8 @@
     "moduleFileExtensions": ["js", "json", "ts"],
     "rootDir": "src",
     "testRegex": ".*\\.spec\\.ts$",
+    "testPathIgnorePatterns": ["/node_modules/", "/\\.publish/"],
+    "modulePathIgnorePatterns": ["<rootDir>/../../.publish/"],
     "transform": {
       "^.+\\.(t|j)s$": "ts-jest"
     },

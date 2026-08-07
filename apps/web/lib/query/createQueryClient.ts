@@ -1,5 +1,6 @@
 import { MutationCache, QueryCache, QueryClient } from "@tanstack/react-query";
 import { formatApiError } from "@/lib/utils/formatApiError";
+import { isTransientWriteError } from "@/lib/utils/withWriteRetries";
 import { toast } from "@/stores/toastStore";
 import { useMutationBusyStore } from "@/stores/mutationBusyStore";
 
@@ -53,12 +54,16 @@ export function createQueryClient() {
         // Lists set their own policy; default = don't refetch on every remount.
         refetchOnMount: false,
         refetchOnReconnect: false,
-        retry: 1,
+        // Neon / pooler blips — retry a couple times on reads too.
+        retry: 2,
         meta: {
           suppressErrorToast: true,
         },
       },
       mutations: {
+        // Leave-first saves keep retrying transient failures in the background.
+        retry: (failureCount, error) =>
+          failureCount < 2 && isTransientWriteError(error),
         // Raw useMutation gets a toast via MutationCache; useAppMutation opts out.
         meta: {
           suppressErrorToast: false,

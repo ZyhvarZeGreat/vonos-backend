@@ -9,6 +9,8 @@ import { ServerPaginatedTable } from "@/components/organisms/ServerPaginatedTabl
 import { ListPageShell } from "@/components/organisms/ListPageShell";
 import { getTransferZones, getTransfersPage, type TransferRow } from "@/lib/api/transfers";
 import { useServerListPage } from "@/lib/hooks/useServerListPage";
+import { movementListCursor } from "@/lib/utils/pagination";
+
 import { useListPageFilters } from "@/lib/hooks/useListPageFilters";
 import { formatNumberCompact } from "@/lib/utils/formatCurrency";
 import { ZoneCardsSkeleton } from "@/components/organisms/skeletons";
@@ -138,6 +140,7 @@ export function WarehouseTransfersView() {
         status: statusFilter || (activeTab !== "all" ? activeTab : undefined),
         includeSummary: opts?.includeSummary,
       }),
+    getCursor: (row) => movementListCursor(row),
   });
 
   const filtered = transfers;

@@ -13,6 +13,8 @@ import { RowActionsMenu } from "@/components/molecules/RowActionsMenu";
 import { getInvoice, getInvoicesPage } from "@/lib/api/invoices";
 import { getInvoiceSettings } from "@/lib/api/invoiceSettings";
 import { serverPaginationBarProps, useServerListPage } from "@/lib/hooks/useServerListPage";
+import { invoiceListCursor } from "@/lib/utils/pagination";
+
 import { useListPageFilters } from "@/lib/hooks/useListPageFilters";
 import { useTenantId } from "@/lib/hooks/useRouteTenant";
 import { VONOS_INVOICE_BUSINESS_NAME } from "@/lib/branding";
@@ -67,6 +69,7 @@ export function InvoicesListView() {
     enabled: Boolean(tenantId),
     fetchPage: (cursor, limit, _sort, opts) =>
       getInvoicesPage(tenantId!, { ...listFilters, includeSummary: opts?.includeSummary }, cursor, limit),
+    getCursor: (row) => invoiceListCursor(row),
   });
 
   const { items, isLoading, error } = listPage;

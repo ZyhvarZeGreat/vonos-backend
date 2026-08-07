@@ -48,6 +48,7 @@ export async function fetchJsonListPage<T extends { id: string }>(
   cursor: string | undefined,
   limit = DEFAULT_TABLE_PAGE_SIZE,
   extraParams: Omit<ListQueryParams, "cursor" | "limit"> = {},
+  init?: { signal?: AbortSignal },
 ): Promise<ListPage<T>> {
   return fetchListPage(async (pageCursor, pageLimit) => {
     const url = appendListQuery(path, {
@@ -56,7 +57,10 @@ export async function fetchJsonListPage<T extends { id: string }>(
       cursor: pageCursor,
       limit: pageLimit,
     });
-    const response = await apiFetch(url);
+    const response = await apiFetch(
+      url,
+      init?.signal ? { signal: init.signal } : undefined,
+    );
     if (!response.ok) {
       return throwApiError(
         response,
@@ -73,7 +77,8 @@ export async function fetchTenantListPage<T extends { id: string }>(
   cursor: string | undefined,
   limit = DEFAULT_TABLE_PAGE_SIZE,
   extraParams: Omit<ListQueryParams, "cursor" | "limit"> = {},
+  init?: { signal?: AbortSignal },
 ): Promise<ListPage<T>> {
   const tenantPath = withTenantQuery(path, tenantId);
-  return fetchJsonListPage<T>(tenantPath, cursor, limit, extraParams);
+  return fetchJsonListPage<T>(tenantPath, cursor, limit, extraParams, init);
 }

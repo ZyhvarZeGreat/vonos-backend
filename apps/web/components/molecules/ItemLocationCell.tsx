@@ -1,7 +1,10 @@
 "use client";
 
 import type { BusinessLocation, Item } from "@vonos/types";
-import { PRODUCT_STOCK_BUSINESS_LOCATIONS } from "@vonos/types";
+import {
+  PRODUCT_STOCK_BUSINESS_LOCATIONS,
+  productHomeLocationsForTenant,
+} from "@vonos/types";
 import {
   formatItemLocationLine,
   formatProductStockLocations,
@@ -10,8 +13,10 @@ import {
 export function ItemLocationCell({
   item,
   locations,
-  /** Products list: show VW / VISP / VSP stock homes only. */
+  /** Products list: show stock / catalog home location names. */
   productStockMode = false,
+  /** When the row has no location yet (legacy catalog), show this tenant home. */
+  fallbackLocationCode,
 }: {
   item: Pick<
     Item,
@@ -19,11 +24,18 @@ export function ItemLocationCell({
   >;
   locations?: BusinessLocation[];
   productStockMode?: boolean;
+  fallbackLocationCode?: string | null;
 }) {
   if (productStockMode) {
+    const home = productHomeLocationsForTenant(fallbackLocationCode);
     const line = formatProductStockLocations(
       item,
-      locations?.length ? locations : PRODUCT_STOCK_BUSINESS_LOCATIONS,
+      locations?.length
+        ? locations
+        : home.length > 0
+          ? home
+          : PRODUCT_STOCK_BUSINESS_LOCATIONS,
+      fallbackLocationCode,
     );
     if (line === "—") {
       return <span className="text-muted">—</span>;

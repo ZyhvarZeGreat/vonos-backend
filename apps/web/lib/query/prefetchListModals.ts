@@ -1,6 +1,6 @@
 import type { QueryClient } from "@tanstack/react-query";
 import { getCustomerView } from "@/lib/api/customers";
-import { getItem } from "@/lib/api/items";
+import { getCatalogItem } from "@/lib/api/catalog";
 import { getJobShell } from "@/lib/api/jobs";
 import { getExpense } from "@/lib/api/expenses";
 import { getRequisition } from "@/lib/api/requisitions";
@@ -155,7 +155,7 @@ export function prefetchItemListModals(
 ): void {
   prefetchModalQuery(queryClient, {
     queryKey: modalKeys.item(tenantId, itemId),
-    queryFn: () => getItem(itemId),
+    queryFn: () => getCatalogItem(itemId),
     staleTime: MODAL_RECORD_STALE_MS,
   });
 }

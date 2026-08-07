@@ -1,7 +1,10 @@
-/** Selling price for POS — uses sellPrice when set, otherwise costPrice. */
+/** Catalog selling price only — never falls back to cost. */
 export function itemSellPrice(item: {
-  costPrice: number;
+  costPrice?: number;
   sellPrice?: number | null;
 }): number {
-  return item.sellPrice ?? item.costPrice;
+  if (item.sellPrice != null && Number.isFinite(item.sellPrice)) {
+    return item.sellPrice;
+  }
+  return 0;
 }

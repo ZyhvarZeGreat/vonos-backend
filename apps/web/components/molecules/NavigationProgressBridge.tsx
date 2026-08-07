@@ -7,6 +7,9 @@ import {
   startNavigationProgress,
 } from "@/stores/navigationBusyStore";
 
+/** Only show the top bar if navigation is still pending after this delay. */
+const NAV_PROGRESS_DELAY_MS = 180;
+
 function isInternalNavAnchor(anchor: HTMLAnchorElement): boolean {
   if (anchor.hasAttribute("download")) return false;
   if (anchor.target && anchor.target !== "_self") return false;
@@ -29,14 +32,13 @@ function isInternalNavAnchor(anchor: HTMLAnchorElement): boolean {
   const samePath =
     url.pathname === window.location.pathname &&
     url.search === window.location.search;
-  // Allow hash-only skips; same path+search with different hash is not a route nav.
   if (samePath) return false;
   return true;
 }
 
 /**
- * Starts top progress on internal link clicks (before the route settles) and
- * completes when pathname/search changes. Covers Next `<Link>` and plain `<a>`.
+ * Starts top progress on slow internal navigations only (delayed), and
+ * completes when pathname/search changes.
  */
 export function NavigationProgressBridge() {
   const pathname = usePathname();
@@ -45,8 +47,16 @@ export function NavigationProgressBridge() {
   const routeKey = `${pathname}?${search}`;
   const prevRoute = useRef(routeKey);
   const booted = useRef(false);
+  const delayTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
+    const clearDelay = () => {
+      if (delayTimer.current) {
+        clearTimeout(delayTimer.current);
+        delayTimer.current = null;
+      }
+    };
+
     const onClick = (event: MouseEvent) => {
       if (event.defaultPrevented) return;
       if (event.button !== 0) return;
@@ -58,11 +68,19 @@ export function NavigationProgressBridge() {
       const anchor = target.closest("a[href]");
       if (!(anchor instanceof HTMLAnchorElement)) return;
       if (!isInternalNavAnchor(anchor)) return;
-      startNavigationProgress();
+      clearDelay();
+      // Soft routes settle instantly — don't flash a bar.
+      delayTimer.current = setTimeout(() => {
+        delayTimer.current = null;
+        startNavigationProgress();
+      }, NAV_PROGRESS_DELAY_MS);
     };
 
     document.addEventListener("click", onClick, true);
-    return () => document.removeEventListener("click", onClick, true);
+    return () => {
+      clearDelay();
+      document.removeEventListener("click", onClick, true);
+    };
   }, []);
 
   useEffect(() => {
@@ -73,7 +91,10 @@ export function NavigationProgressBridge() {
     }
     if (prevRoute.current === routeKey) return;
     prevRoute.current = routeKey;
-    // Path settled — finish the bar (React Query fetching may keep TopProgressBar alive).
+    if (delayTimer.current) {
+      clearTimeout(delayTimer.current);
+      delayTimer.current = null;
+    }
     completeNavigationProgress();
   }, [routeKey]);
 

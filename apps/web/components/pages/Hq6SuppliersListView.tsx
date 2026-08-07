@@ -21,6 +21,8 @@ import {
 import { getUsersForPicker, loadMoreUsersForPicker, usersPickerHasMore } from "@/lib/api/users";
 import { HQ6_TABLE_PAGE_SIZE } from "@/lib/api/fetchAllPages";
 import { useServerListPage } from "@/lib/hooks/useServerListPage";
+import { slidingPageIndices, listEntryRange, formatListEntriesLabel, totalPagesFromEntries } from "@/lib/utils/paginationWindow";
+
 import { useListExport } from "@/lib/hooks/useListExport";
 import { useListPageFilters } from "@/lib/hooks/useListPageFilters";
 import { withOptimistic } from "@/lib/hooks/useAppMutation";
@@ -37,7 +39,12 @@ import {
 } from "@/lib/registries/hq6TableRows";
 import { useUiStore } from "@/stores/uiStore";
 import { toast } from "@/stores/toastStore";
-import { formatHq6Currency, formatHq6Date, hq6Cell } from "@/lib/utils/hq6Format";
+import {
+  formatHq6Currency,
+  formatHq6Date,
+  hq6Cell,
+  hq6DistinctName,
+} from "@/lib/utils/hq6Format";
 import { nameListCursor } from "@/lib/utils/pagination";
 
 const PAGE_SIZES = [25, 50, 100, 200, 500, 1000, -1] as const;
@@ -155,7 +162,6 @@ export function Hq6SuppliersListView() {
     goPrev,
     setPageSize,
     isLoading,
-    isFetching,
     isPaging,
     error,
     goToPage,
@@ -170,7 +176,7 @@ export function Hq6SuppliersListView() {
       getSuppliersPage(tenantId!, cursor, limit, {
         ...apiFilters,
         includeSummary: opts?.includeSummary,
-      }),
+      }, { signal: opts?.signal }),
     getCursor: (row) => nameListCursor(row),
   });
 
@@ -192,14 +198,14 @@ export function Hq6SuppliersListView() {
 
   const totalItems = totalCount ?? suppliers.length;
   const effectiveSize = pageSize <= 0 ? Math.max(totalItems, 1) : pageSize;
-  const knownPages =
-    totalCount != null
-      ? Math.max(1, Math.ceil(Math.max(totalCount, 1) / effectiveSize))
-      : Math.max(pageIndex + 1 + (hasMore ? 1 : 0), 1);
-  const from =
-    suppliers.length === 0 ? 0 : pageIndex * effectiveSize + 1;
-  const to = pageIndex * effectiveSize + suppliers.length;
-  const busy = isPaging || isLoading || isFetching;
+  const knownPages = totalPagesFromEntries(totalCount, effectiveSize);
+  const { from, to } = listEntryRange({
+    pageIndex,
+    pageSize: effectiveSize,
+    itemCount: suppliers.length,
+    totalCount: totalCount ?? totalItems,
+  });
+  const busy = isPaging || (isLoading && suppliers.length === 0);
 
   const dueTotal =
     amountSummary?.totalDue ??
@@ -238,10 +244,15 @@ export function Hq6SuppliersListView() {
     );
   }, [apiFilters, exportList, tenantId]);
 
-  const pageNumbers = useMemo(() => {
-    const max = Math.min(knownPages, 7);
-    return Array.from({ length: max }, (_, i) => i);
-  }, [knownPages]);
+  const pageNumbers = useMemo(
+    () =>
+      slidingPageIndices(pageIndex, {
+        totalPages: knownPages,
+        hasMore: knownPages == null ? hasMore : false,
+        maxButtons: 5,
+      }),
+    [hasMore, pageIndex, knownPages],
+  );
 
   const showCol = (key: string) => visibleKeys.has(key);
   const crumbs = useHq6Breadcrumbs({ leafLabel: "Suppliers" });
@@ -655,13 +666,13 @@ export function Hq6SuppliersListView() {
                                                 row.id,
                                                 next,
                                               )
-                    .then(async () => {
+                    .then(() => {
                       toast.success(
                         next === "inactive"
                           ? "Supplier deactivated"
                           : "Supplier activated",
                       );
-                      await invalidate();
+                      void invalidate();
                     })
                     .catch((err) =>
                       toast.error(
@@ -713,11 +724,18 @@ export function Hq6SuppliersListView() {
                                     <td>{hq6Cell(row.contactId)}</td>
                                   ) : null}
                                   {showCol("businessName") ? (
-                                    <td>{hq6Cell(row.businessName)}</td>
+                                    <td>
+                                      {hq6Cell(row.businessName ?? row.name)}
+                                    </td>
                                   ) : null}
                                   {showCol("contactName") ? (
                                     <td>
-                                      {hq6Cell(row.contactName ?? row.name)}
+                                      {hq6Cell(
+                                        hq6DistinctName(
+                                          row.contactName,
+                                          row.businessName ?? row.name,
+                                        ),
+                                      )}
                                     </td>
                                   ) : null}
                                   {showCol("email") ? (
@@ -841,7 +859,11 @@ export function Hq6SuppliersListView() {
                         role="status"
                         aria-live="polite"
                       >
-                        {`Showing ${from} to ${to} of ${(totalCount ?? to).toLocaleString()} entries`}
+                        {formatListEntriesLabel({
+                          from,
+                          to,
+                          total: totalCount ?? to,
+                        })}
             </div>
                       <div
                         className="dataTables_paginate paging_simple_numbers"
@@ -871,7 +893,9 @@ export function Hq6SuppliersListView() {
                                 href="#"
                                 onClick={(e) => {
                                   e.preventDefault();
-                                  if (canSelectPage?.(i) !== false) goToPage(i);
+                                  if (busy) return;
+                                  if (canSelectPage?.(i) === false) return;
+                                  void goToPage(i);
                                 }}
                               >
                                 {i + 1}

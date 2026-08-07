@@ -12,6 +12,7 @@ import {
   listPageFilterKey,
   withListPageCache,
 } from '../../common/utils/listPageCache';
+import type { PaginatedList } from '../../common/utils/paginatedList';
 import { syncSalePaymentAccountCredit } from '../../common/utils/recordPaymentAccountTxn';
 import { toIso, toNumber } from '../../common/utils/serializers';
 import {
@@ -37,7 +38,8 @@ export class PaymentsService {
     from?: string;
     to?: string;
     search?: string;
-  }): Promise<PaymentRecord[]> {
+    includeSummary?: boolean;
+  }): Promise<PaginatedList<PaymentRecord>> {
     const tenantId = this.tenantDb.requireTenantId();
     const filterKey = listPageFilterKey({
       accountId: filters.accountId,
@@ -47,72 +49,74 @@ export class PaymentsService {
       search: filters.search,
       cursor: filters.cursor,
       limit: filters.limit ?? 10,
+      sum: filters.includeSummary === false ? 0 : 1,
     });
     return withListPageCache(
       this.cache,
       tenantId,
-      'payments',
+      'payments:v2',
       filterKey,
       () => this.listPaymentsUncached(filters, tenantId),
     );
   }
 
-  private async listPaymentsUncached(
+  private paymentListWhere(
+    tenantId: string,
     filters: {
       accountId?: string;
       unlinkedOnly?: boolean;
-      cursor?: string;
-      limit?: number;
       from?: string;
       to?: string;
       search?: string;
     },
-    tenantId: string,
-  ): Promise<PaymentRecord[]> {
-    const pagination = buildCompositeCursorQuery({
-      sortField: 'createdAt',
-      sortDir: 'desc',
-      cursor: filters.cursor,
-      limit: filters.limit ?? 10,
-      sortValueType: 'date',
-    });
-    const rows = await this.tenantDb.db.payment.findMany({
-      where: {
-        tenantId,
-        deletedAt: null,
-        ...(filters.unlinkedOnly
-          ? { accountId: null, saleId: { not: null }, isReturn: false }
-          : filters.accountId
-            ? { accountId: filters.accountId }
-            : {}),
-        ...(filters.from || filters.to
-          ? {
-              createdAt: {
-                ...(filters.from ? { gte: new Date(filters.from) } : {}),
-                ...(filters.to ? { lte: new Date(filters.to) } : {}),
-              },
-            }
+  ) {
+    return {
+      tenantId,
+      deletedAt: null as null,
+      ...(filters.unlinkedOnly
+        ? { accountId: null, saleId: { not: null }, isReturn: false }
+        : filters.accountId
+          ? { accountId: filters.accountId }
           : {}),
-        ...(tokenizedSearchWhere(filters.search, (_token, contains) => [
-          { paymentRefNo: contains },
-          { note: contains },
-          { method: contains },
-          { paymentFor: contains },
-          { createdByName: contains },
-          relationStringOr('account', 'name', contains),
-          relationStringOr('sale', 'reference', contains),
-        ]) ?? {}),
-        ...(pagination.where ?? {}),
-      },
-      include: {
-        account: { select: { name: true } },
-        sale: { select: { reference: true } },
-      },
-      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-      take: pagination.take,
-    });
+      ...(filters.from || filters.to
+        ? {
+            createdAt: {
+              ...(filters.from ? { gte: new Date(filters.from) } : {}),
+              ...(filters.to ? { lte: new Date(filters.to) } : {}),
+            },
+          }
+        : {}),
+      ...(tokenizedSearchWhere(filters.search, (_token, contains) => [
+        { paymentRefNo: contains },
+        { note: contains },
+        { method: contains },
+        { paymentFor: contains },
+        { createdByName: contains },
+        relationStringOr('account', 'name', contains),
+        relationStringOr('sale', 'reference', contains),
+      ]) ?? {}),
+    };
+  }
 
-    return rows.map((row) => ({
+  private serializePayment(row: {
+    id: string;
+    tenantId: string;
+    amount: { toString(): string } | number | string | null;
+    currency: string;
+    method: string | null;
+    paymentRefNo: string | null;
+    paidOn: Date | null;
+    paymentFor: string | null;
+    accountId: string | null;
+    saleId: string | null;
+    isReturn: boolean;
+    note: string | null;
+    createdByName: string | null;
+    createdAt: Date;
+    account?: { name: string } | null;
+    sale?: { reference: string } | null;
+  }): PaymentRecord {
+    return {
       id: row.id,
       tenantId: row.tenantId,
       amount: toNumber(row.amount),
@@ -129,7 +133,73 @@ export class PaymentsService {
       note: row.note,
       createdByName: row.createdByName,
       createdAt: toIso(row.createdAt),
-    }));
+    };
+  }
+
+  private async listPaymentsUncached(
+    filters: {
+      accountId?: string;
+      unlinkedOnly?: boolean;
+      cursor?: string;
+      limit?: number;
+      from?: string;
+      to?: string;
+      search?: string;
+      includeSummary?: boolean;
+    },
+    tenantId: string,
+  ): Promise<PaginatedList<PaymentRecord>> {
+    const limit = filters.limit ?? 10;
+    const includeSummary = filters.includeSummary !== false;
+    const pagination = buildCompositeCursorQuery({
+      sortField: 'createdAt',
+      sortDir: 'desc',
+      cursor: filters.cursor,
+      limit,
+      sortValueType: 'date',
+    });
+    const baseWhere = this.paymentListWhere(tenantId, filters);
+
+    // Summary-only (limit=1 from deferred count).
+    if (includeSummary && limit <= 1 && !filters.cursor) {
+      const totalCount = await this.tenantDb.db.payment.count({
+        where: baseWhere,
+      });
+      return { items: [], totalCount, hasMore: false, pageSize: limit };
+    }
+
+    const [rows, totalCount] = await Promise.all([
+      this.tenantDb.db.payment.findMany({
+        where: {
+          ...baseWhere,
+          ...(pagination.where ?? {}),
+        },
+        include: {
+          account: { select: { name: true } },
+          sale: { select: { reference: true } },
+        },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        take: pagination.take,
+      }),
+      includeSummary
+        ? this.tenantDb.db.payment.count({ where: baseWhere })
+        : Promise.resolve(undefined as number | undefined),
+    ]);
+
+    const items = rows.map((row) => this.serializePayment(row));
+    if (!includeSummary || totalCount == null) {
+      return {
+        items,
+        hasMore: items.length >= limit,
+        pageSize: limit,
+      };
+    }
+    return {
+      items,
+      totalCount,
+      hasMore: items.length >= limit,
+      pageSize: limit,
+    };
   }
 
   /**

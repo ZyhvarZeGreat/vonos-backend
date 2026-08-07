@@ -66,7 +66,7 @@ import {
 } from "@/lib/utils/listFilters";
 import { ItemLocationCell } from "@/components/molecules/ItemLocationCell";
 import { locationFilterOptions } from "@/lib/utils/locationLabels";
-import { customerListCursor, saleListCursor } from "@/lib/utils/pagination";
+import { customerListCursor, createdAtListCursor, itemListCursor, nameListCursor, plateListCursor, saleListCursor } from "@/lib/utils/pagination";
 import { useUiStore } from "@/stores/uiStore";
 import { useTenantStore } from "@/stores/tenantStore";
 
@@ -162,7 +162,7 @@ function SalesListViewBody({
     enabled: Boolean(tenantId),
     filters: apiFilters,
     search,
-    fetchPage: (cursor, limit, _sort, opts) => getSalesPage(tenantId!, { ...apiFilters, includeSummary: opts?.includeSummary }, cursor, limit),
+    fetchPage: (cursor, limit, _sort, opts) => getSalesPage(tenantId!, { ...apiFilters, includeSummary: opts?.includeSummary }, cursor, limit, { signal: opts?.signal }),
     getCursor: (row) => saleListCursor(row),
   });
 
@@ -514,6 +514,7 @@ function CustomersListViewBody() {
         },
         cursor,
         limit,
+        { signal: opts?.signal },
       ),
     getCursor: (row, listSort) => {
       const sortBy = listSort?.sortBy ?? "createdAt";
@@ -559,7 +560,17 @@ function CustomersListViewBody() {
       ),
     },
     { key: "contactId", header: "Contact ID", render: (r) => r.contactId ?? "—" },
-    { key: "businessName", header: "Business Name", render: (r) => <span className="font-medium">{r.businessName ?? r.name}</span> },
+    {
+      key: "businessName",
+      header: "Business Name",
+      render: (r) => {
+        const business = (r.businessName ?? "").trim();
+        if (!business || business.toLowerCase() === r.name.trim().toLowerCase()) {
+          return "—";
+        }
+        return <span className="font-medium">{business}</span>;
+      },
+    },
     { key: "name", header: "Name" },
     { key: "email", header: "Email", render: (r) => r.email ?? "—" },
     { key: "phone", header: "Mobile", render: (r) => r.phone ?? "—" },
@@ -688,6 +699,7 @@ function ReturnsListViewBody() {
     filters: apiFilters,
     search,
     fetchPage: (cursor, limit, _sort, opts) => getReturnsPage(tenantId!, { ...apiFilters, includeSummary: opts?.includeSummary }, cursor, limit),
+    getCursor: (row) => saleListCursor(row),
   });
 
   const filtered = returns;
@@ -842,6 +854,7 @@ function VehiclesListViewBody() {
       getVehiclesPage(tenantId!, cursor, limit, {
         includeSummary: opts?.includeSummary,
       }),
+    getCursor: (row) => plateListCursor(row),
   });
 
   const filtered = vehicles;
@@ -1025,6 +1038,7 @@ function RequisitionsListViewBody() {
       getRequisitionsPage(tenantId!, cursor, limit, {
         includeSummary: opts?.includeSummary,
       }),
+    getCursor: (row) => createdAtListCursor(row),
   });
 
   const filtered = requisitions;
@@ -1146,6 +1160,7 @@ export function IncomingRequisitionsListView() {
       getIncomingRequisitionsPage(tenantId!, cursor, limit, {
         includeSummary: opts?.includeSummary,
       }),
+    getCursor: (row) => createdAtListCursor(row),
   });
 
   const filtered = requisitions;
@@ -1265,7 +1280,7 @@ export function MenuItemsListView() {
     filters: apiFilters,
     search,
     fetchPage: async (cursor, limit, _sort, opts) => {
-      const page = await getItemsPage(tenantId!, { ...apiFilters, includeSummary: opts?.includeSummary }, cursor, limit);
+      const page = await getItemsPage(tenantId!, { ...apiFilters, includeSummary: opts?.includeSummary }, cursor, limit, { signal: opts?.signal });
       return {
         ...page,
         items: page.items.map((item) => ({
@@ -1280,6 +1295,7 @@ export function MenuItemsListView() {
         })),
       };
     },
+    getCursor: (row) => itemListCursor(row),
   });
 
   const filtered = items;
@@ -1374,6 +1390,7 @@ export function ServicesListView() {
       getSalonServicesPage(tenantId!, cursor, limit, {
         includeSummary: opts?.includeSummary,
       }),
+    getCursor: (row) => nameListCursor(row),
   });
 
   const filtered = services;
@@ -1502,6 +1519,7 @@ export function CatalogListView() {
     filters: apiFilters,
     search,
     fetchPage: (cursor, limit, _sort, opts) => getCatalogPage(tenantId!, { ...apiFilters, includeSummary: opts?.includeSummary }, cursor, limit),
+    getCursor: (row) => itemListCursor(row),
   });
 
   const filtered = items;
@@ -1550,10 +1568,12 @@ export function CatalogListView() {
         render: (row) => formatNumber(row.quantity),
       },
       {
-        key: "costPrice",
+        key: "sellPrice",
         header: "Retail price",
-        sortValue: (row) => row.costPrice,
-        render: (row) => <InlinePriceCell item={row} label="Retail price" />,
+        sortValue: (row) => row.sellPrice ?? 0,
+        render: (row) => (
+          <InlinePriceCell item={row} label="Retail price" field="sellPrice" />
+        ),
       },
       {
         key: "status",

@@ -5,7 +5,7 @@ import { ImageIcon, Printer } from "lucide-react";
 import type { Item, ItemLocationStock } from "@vonos/types";
 import {
   PRODUCT_STOCK_BUSINESS_LOCATIONS,
-  isProductStockTenant,
+  productHomeLocationsForTenant,
 } from "@vonos/types";
 import { Hq6Modal, Hq6Field, Hq6ModalSaveClose } from "@/components/hq6/Hq6Modal";
 import { ProductThumbnail } from "@/components/atoms/ProductThumbnail";
@@ -16,7 +16,8 @@ import { openingStockSchema } from "@/lib/validation/schemas";
 import { toast } from "@/stores/toastStore";
 
 function productLocationsForTenant(code: string | undefined) {
-  if (isProductStockTenant(code)) return PRODUCT_STOCK_BUSINESS_LOCATIONS;
+  const home = productHomeLocationsForTenant(code);
+  if (home.length > 0) return home;
   return null;
 }
 
@@ -118,7 +119,8 @@ export function Hq6ViewProductModal({
               quantity: item.quantity,
             } satisfies ItemLocationStock,
           ];
-    const unitPrice = item.sellPrice ?? item.costPrice;
+    const unitPrice = item.sellPrice ?? 0;
+    const cost = item.costPrice ?? 0;
     return stocks.map((row) => {
       const qty = row.quantity;
       const locLabel =
@@ -131,7 +133,7 @@ export function Hq6ViewProductModal({
         location: locLabel || "--",
         unitPrice,
         qty,
-        value: qty * unitPrice,
+        value: qty * cost,
         sold: 0,
         transferred: 0,
         adjusted: 0,
@@ -149,7 +151,7 @@ export function Hq6ViewProductModal({
 
   const currency = item.currency || "NGN";
   const purchase = item.costPrice;
-  const selling = item.sellPrice ?? item.costPrice;
+  const selling = item.sellPrice ?? 0;
   const margin =
     purchase > 0 ? (((selling - purchase) / purchase) * 100).toFixed(2) : "0.00";
   const availableLocations =
@@ -375,7 +377,7 @@ export function Hq6OpeningStockModal({
   open: boolean;
   onClose: () => void;
   item: Item | null;
-  onSave?: (qty: number, locationCode: string) => Promise<void>;
+  onSave?: (qty: number, locationCode: string, unitCost: number) => Promise<void>;
 }) {
   const { config } = useRouteTenant();
   const stockLocations = useMemo(
@@ -423,9 +425,14 @@ export function Hq6OpeningStockModal({
               const valid = parseForm(openingStockSchema, { quantity: qty });
               if (!valid) return;
               const n = Number(valid.quantity);
+              const cost = Number(unitCost);
+              if (!Number.isFinite(cost) || cost < 0) {
+                toast.error("Enter a valid unit cost");
+                return;
+              }
               setSaving(true);
               try {
-                await onSave?.(n, location);
+                await onSave?.(n, location, cost);
                 toast.success("Opening stock updated");
                 onClose();
               } catch (err) {
@@ -461,7 +468,7 @@ export function Hq6OpeningStockModal({
               >
                 {stockLocations.map((loc) => (
                   <option key={loc.code} value={loc.code}>
-                    {loc.name} ({loc.code})
+                    {loc.name}
                   </option>
                 ))}
               </select>
@@ -552,6 +559,11 @@ export function Hq6AddLocationModal({
   onClose: () => void;
   productCount?: number;
 }) {
+  const { config } = useRouteTenant();
+  const locationChoices = useMemo(() => {
+    const home = productHomeLocationsForTenant(config?.code);
+    return home.length > 0 ? home : PRODUCT_STOCK_BUSINESS_LOCATIONS;
+  }, [config?.code]);
   const [location, setLocation] = useState("");
   const [mode, setMode] = useState<"add" | "remove">("add");
 
@@ -604,9 +616,9 @@ export function Hq6AddLocationModal({
             onChange={(e) => setLocation(e.target.value)}
           >
             <option value="">Select location…</option>
-            {PRODUCT_STOCK_BUSINESS_LOCATIONS.map((loc) => (
+            {locationChoices.map((loc) => (
               <option key={loc.code} value={loc.code}>
-                {loc.code} — {loc.name}
+                {loc.name}
               </option>
             ))}
           </select>

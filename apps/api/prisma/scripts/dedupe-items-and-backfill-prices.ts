@@ -3,6 +3,8 @@
  * 1) Soft-delete duplicate SKUs from double import (keep highest qty, then newest).
  * 2) Backfill Item.costPrice / sellPrice from most recent inbound unitCost.
  *
+ * Prefer multi-tenant SKU dedupe: prisma/scripts/dedupe-items-by-sku.ts
+ *
  * Usage: npx tsx prisma/scripts/dedupe-items-and-backfill-prices.ts
  */
 import { PrismaClient } from "@prisma/client";

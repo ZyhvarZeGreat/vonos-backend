@@ -28,6 +28,7 @@ import { useRouteTenant, useTenantId } from "@/lib/hooks/useRouteTenant";
 import { useUiStore } from "@/stores/uiStore";
 import { ItemLocationCell } from "@/components/molecules/ItemLocationCell";
 import { useServerListPage } from "@/lib/hooks/useServerListPage";
+import { itemListCursor } from "@/lib/utils/pagination";
 import { itemMatchesLocationFilter, locationFilterOptions } from "@/lib/utils/locationLabels";
 
 const STOCK_FILTER_TABS = [
@@ -98,7 +99,8 @@ export function WarehouseInventoryView() {
     enabled: Boolean(tenantId) && section === "products",
     filters: apiFilters,
     search,
-    fetchPage: (cursor, limit, _sort, opts) => getItemsPage(tenantId!, { ...apiFilters, includeSummary: opts?.includeSummary }, cursor, limit),
+    fetchPage: (cursor, limit, _sort, opts) => getItemsPage(tenantId!, { ...apiFilters, includeSummary: opts?.includeSummary }, cursor, limit, { signal: opts?.signal }),
+    getCursor: (row) => itemListCursor(row),
   });
 
   const filtered = useMemo(() => {

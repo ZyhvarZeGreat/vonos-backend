@@ -178,7 +178,7 @@ export function Hq6MoveProductModal({
             >
               {locations.map((loc) => (
                 <option key={loc.code} value={loc.code}>
-                  {loc.name} ({loc.code}) —{" "}
+                  {loc.name} —{" "}
                   {stockByLocation.get(loc.code) ?? 0} on hand
                 </option>
               ))}
@@ -192,7 +192,7 @@ export function Hq6MoveProductModal({
             >
               {locations.map((loc) => (
                 <option key={loc.code} value={loc.code}>
-                  {loc.name} ({loc.code})
+                  {loc.name}
                 </option>
               ))}
             </select>

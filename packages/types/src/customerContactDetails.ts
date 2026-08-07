@@ -130,8 +130,12 @@ export function parseCustomerContactDetails(
     return emptyCustomerContactDetails();
   }
   const o = raw as Record<string, unknown>;
-  const str = (v: unknown): string | null =>
-    typeof v === "string" && v.trim() ? v.trim() : null;
+  /** Coerce string or finite number (legacy UPOS year fields) to trimmed text. */
+  const str = (v: unknown): string | null => {
+    if (typeof v === "string" && v.trim()) return v.trim();
+    if (typeof v === "number" && Number.isFinite(v)) return String(v);
+    return null;
+  };
   const num = (v: unknown): number | null => {
     if (v == null || v === "") return null;
     const n = typeof v === "number" ? v : Number(v);

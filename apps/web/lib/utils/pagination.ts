@@ -120,3 +120,60 @@ export function payrollListCursor(row: {
     : new Date(row.payrollMonth).toISOString();
   return encodeCompositeCursor({ sortValue, id: row.id });
 }
+
+export function createdAtListCursor(row: {
+  id: string;
+  createdAt: string;
+}): string {
+  const sortValue = row.createdAt.includes("T")
+    ? row.createdAt
+    : new Date(row.createdAt).toISOString();
+  return encodeCompositeCursor({ sortValue, id: row.id });
+}
+
+export function plateListCursor(row: {
+  id: string;
+  plateNumber: string;
+}): string {
+  return encodeCompositeCursor({ sortValue: row.plateNumber, id: row.id });
+}
+
+export function expenseListCursor(row: {
+  id: string;
+  expenseDate: string;
+}): string {
+  const sortValue = row.expenseDate.includes("T")
+    ? row.expenseDate
+    : new Date(row.expenseDate).toISOString();
+  return encodeCompositeCursor({ sortValue, id: row.id });
+}
+
+export function invoiceListCursor(row: {
+  id: string;
+  documentDate: string;
+}): string {
+  const sortValue = row.documentDate.includes("T")
+    ? row.documentDate
+    : new Date(row.documentDate).toISOString();
+  return encodeCompositeCursor({ sortValue, id: row.id });
+}
+
+export function appointmentListCursor(row: {
+  id: string;
+  startTime: string;
+}): string {
+  const sortValue = row.startTime.includes("T")
+    ? row.startTime
+    : new Date(row.startTime).toISOString();
+  return encodeCompositeCursor({ sortValue, id: row.id });
+}
+
+export function operationDateListCursor(row: {
+  id: string;
+  operationDate: string;
+}): string {
+  const sortValue = row.operationDate.includes("T")
+    ? row.operationDate
+    : new Date(row.operationDate).toISOString();
+  return encodeCompositeCursor({ sortValue, id: row.id });
+}

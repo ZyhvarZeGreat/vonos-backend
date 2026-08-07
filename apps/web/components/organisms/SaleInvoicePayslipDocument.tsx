@@ -5,7 +5,7 @@ import type { SaleDetail, SalePaymentViewRow } from "@vonos/types";
 import { formatHq6Currency, formatHq6DateTime } from "@/lib/utils/hq6Format";
 import { amountToWords } from "@/lib/utils/amountToWords";
 import { saleVehicleFields } from "@/lib/utils/saleVehicleFields";
-import { parseSaleInvoiceNotes } from "@/lib/utils/saleInvoiceNotes";
+import { parseSaleInvoiceNotes, sellNoteOnly } from "@/lib/utils/saleInvoiceNotes";
 import { publicAssetPath } from "@/lib/utils/basePath";
 import { cn } from "@/lib/utils/cn";
 
@@ -168,18 +168,6 @@ function invoiceWords(amount: number): string {
     .trim()
     .toLowerCase();
   return raw || "zero";
-}
-
-/** Drop structured invoice meta lines from the free-text note footer. */
-function sellNoteOnly(notes: string | null | undefined): string | null {
-  if (!notes?.trim()) return null;
-  const structured =
-      /^(Sales person|Service staff|Mileage|Vehicle time in|Vehicle release|Customer location|Pay term|Invoice scheme|Shipping details|Delivered to|Delivery person|Shipping charges|Additional expense|Redeemed points):/i;
-  const kept = notes
-    .split("\n")
-    .map((line) => line.trim())
-    .filter((line) => line && !structured.test(line));
-  return kept.length > 0 ? kept.join("\n") : null;
 }
 
 function BrandMark({ size = 72 }: { size?: number }) {
@@ -444,6 +432,8 @@ export function SaleInvoicePayslipDocument({
   const { customerDisplay, plateNumber, carModelYear } = saleVehicleFields({
     customerName: sale.customerName,
     vehicleLabel: sale.vehicleLabel,
+    plateNumber: noteFields.plateNumber,
+    carModelYear: noteFields.carModelYear,
   });
   // Sales person ≠ service staff. Prefer explicit note, then creator — never service staff.
   const salesPerson =

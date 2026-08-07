@@ -18,7 +18,9 @@ import {
 import { patchEntityInQueries } from "@/lib/query/optimistic";
 import {
   firstValidationError,
+  sanitizeContactLastNameInput,
   sanitizePersonNameInput,
+  validateContactLastName,
   validateEmail,
   validatePersonName,
   validatePhone,
@@ -124,7 +126,7 @@ export function Hq6EditSupplierModal({
           : null
         : validatePersonName(form.firstName, "First name"),
       validatePersonName(form.prefix, "Prefix", { required: false }),
-      validatePersonName(form.lastName, "Last name", { required: false }),
+      validateContactLastName(form.lastName, { required: false }),
       !name
         ? form.contactKind === "business"
           ? "Business Name is required"
@@ -320,7 +322,10 @@ export function Hq6EditSupplierModal({
                 placeholder="Last Name"
                 value={form.lastName}
                 onChange={(e) =>
-                  setField("lastName", sanitizePersonNameInput(e.target.value))
+                setField(
+                  "lastName",
+                  sanitizeContactLastNameInput(e.target.value),
+                )
                 }
               />
             </Hq6Field>

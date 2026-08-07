@@ -71,7 +71,9 @@ export function UposHeader({
   const showTenantTools = !isAdminHeader;
   const setNotifications = useUiStore((s) => s.setNotifications);
   const notifications = useUiStore((s) => s.notifications);
-  const unreadCount = notifications.filter((n) => !n.read).length;
+  const unreadCount = (Array.isArray(notifications) ? notifications : []).filter(
+    (n) => !n.read,
+  ).length;
 
   const [userOpen, setUserOpen] = useState(false);
   const [toolsOpen, setToolsOpen] = useState(false);

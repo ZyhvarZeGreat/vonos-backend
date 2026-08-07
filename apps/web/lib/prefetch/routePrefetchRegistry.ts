@@ -10,6 +10,7 @@ import { getCustomersPage, getCustomersListSummary } from "@/lib/api/customers";
 import { getCatalogPage, getCatalogListSummary } from "@/lib/api/catalog";
 import { getExpensesPage } from "@/lib/api/expenses";
 import { getItemsPage, getStockAvailability } from "@/lib/api/items";
+import { prefetchProductFormMeta } from "@/lib/query/prefetchListDetails";
 import { getJobsPage } from "@/lib/api/jobs";
 import { getOverviewDashboard, getVaHq6Home } from "@/lib/api/overview";
 import { getRequisitionsPage } from "@/lib/api/requisitions";
@@ -236,7 +237,9 @@ function prefetchTenantListSection(
       });
       break;
     }
-    case "products": {
+    case "products":
+    case "catalog":
+    case "menu-items": {
       const sort: ListSortState = { sortBy: "name", sortDir: "asc" };
       const filters = {};
       prefetchQuery(queryClient, {
@@ -253,6 +256,10 @@ function prefetchTenantListSection(
         queryKey: hq6SummaryQueryKey(["catalog", tenantId, "hq6-upos"], filters, sort),
         queryFn: () => getCatalogListSummary(tenantId, filters),
       });
+      break;
+    }
+    case "add-product": {
+      prefetchProductFormMeta(queryClient, tenantId);
       break;
     }
     case "purchases":

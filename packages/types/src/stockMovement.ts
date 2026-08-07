@@ -32,6 +32,10 @@ export interface StockMovementLine {
   unitCost?: number;
   /** HQ6 purchase-line expiry — stored on inbound movement JSON lines. */
   expDate?: string;
+  /** Line discount % before tax — stored on inbound movement JSON lines. */
+  discountPercent?: number;
+  /** Catalog sell price at purchase time — stored on inbound movement JSON lines. */
+  unitSellingPrice?: number;
 }
 
 export interface StockMovementListRow {
@@ -71,6 +75,10 @@ export interface StockMovement {
   source: MovementSource | null;
   paymentStatus: PurchasePaymentStatus | null;
   paymentMethod: string | null;
+  /** Cached sum of purchase payments. */
+  totalPaid?: number;
+  /** Remaining balance: grand total − totalPaid (≥ 0). */
+  paymentDue?: number;
   date: string;
   createdByUserId?: string | null;
   createdByName?: string | null;

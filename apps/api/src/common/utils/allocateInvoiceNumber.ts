@@ -41,9 +41,21 @@ export function isYearInvoicePrefix(prefix: string | null | undefined): boolean 
   return /^\d{4}[/\\-]?$/.test(p);
 }
 
+/** Tenant-code style prefixes (VA, VP, VISP…) — migrate to year/number. */
+export function isTenantCodeInvoicePrefix(
+  prefix: string | null | undefined,
+): boolean {
+  const p = (prefix ?? '').trim();
+  return /^[A-Za-z]{1,6}$/.test(p);
+}
+
+/**
+ * Resolve the printable prefix. Year / blank / tenant-code prefixes become
+ * `{currentYear}/` (e.g. 2026/). Other custom prefixes are kept as stored.
+ */
 export function resolveInvoicePrefix(stored: string | null | undefined): string {
   const p = (stored ?? '').trim();
-  if (isYearInvoicePrefix(p)) {
+  if (!p || isYearInvoicePrefix(p) || isTenantCodeInvoicePrefix(p)) {
     return `${new Date().getFullYear()}/`;
   }
   return p;

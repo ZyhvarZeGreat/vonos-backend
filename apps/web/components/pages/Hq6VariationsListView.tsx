@@ -24,6 +24,10 @@ import {
   updateVariation,
 } from "@/lib/api/variations";
 import { useServerListPage } from "@/lib/hooks/useServerListPage";
+import { slidingPageIndices, listEntryRange, formatListEntriesLabel, totalPagesFromEntries } from "@/lib/utils/paginationWindow";
+
+import { nameListCursor } from "@/lib/utils/pagination";
+
 import { HQ6_TABLE_PAGE_SIZE } from "@/lib/api/fetchAllPages";
 import { useListExport } from "@/lib/hooks/useListExport";
 import { useTenantId } from "@/lib/hooks/useRouteTenant";
@@ -79,7 +83,6 @@ export function Hq6VariationsListView() {
     goPrev,
     setPageSize,
     isLoading,
-    isFetching,
     isPaging,
     error,
     goToPage,
@@ -93,6 +96,7 @@ export function Hq6VariationsListView() {
       getVariationsPage(tenantId!, cursor, limit, {
         includeSummary: opts?.includeSummary,
       }),
+    getCursor: (row) => nameListCursor(row),
   });
 
   const filteredItems = useMemo(() => {
@@ -215,18 +219,24 @@ export function Hq6VariationsListView() {
   const displayItems = filteredItems;
   const totalItems = totalCount ?? displayItems.length;
   const effectiveSize = pageSize <= 0 ? Math.max(totalItems, 1) : pageSize;
-  const knownPages =
-    totalCount != null
-      ? Math.max(1, Math.ceil(Math.max(totalCount, 1) / effectiveSize))
-      : Math.max(pageIndex + 1 + (hasMore ? 1 : 0), 1);
-  const from = displayItems.length === 0 ? 0 : pageIndex * effectiveSize + 1;
-  const to = pageIndex * effectiveSize + displayItems.length;
-  const busy = isPaging || isLoading || isFetching;
+  const knownPages = totalPagesFromEntries(totalCount, effectiveSize);
+  const { from, to } = listEntryRange({
+    pageIndex,
+    pageSize: effectiveSize,
+    itemCount: displayItems.length,
+    totalCount: totalCount ?? totalItems,
+  });
+  const busy = isPaging || (isLoading && displayItems.length === 0);
 
-  const pageNumbers = useMemo(() => {
-    const max = Math.min(knownPages, 7);
-    return Array.from({ length: max }, (_, i) => i);
-  }, [knownPages]);
+  const pageNumbers = useMemo(
+    () =>
+      slidingPageIndices(pageIndex, {
+        totalPages: knownPages,
+        hasMore: knownPages == null ? hasMore : false,
+        maxButtons: 5,
+      }),
+    [hasMore, pageIndex, knownPages],
+  );
 
   const columnOptions = [
     { key: "name", label: "Variations" },
@@ -447,7 +457,11 @@ export function Hq6VariationsListView() {
                         role="status"
                         aria-live="polite"
                       >
-                        {`Showing ${from} to ${to} of ${(totalCount ?? to).toLocaleString()} entries`}
+                        {formatListEntriesLabel({
+                          from,
+                          to,
+                          total: totalCount ?? to,
+                        })}
                       </div>
                       <div
                         className="dataTables_paginate paging_simple_numbers"
@@ -476,7 +490,9 @@ export function Hq6VariationsListView() {
                                 href="#"
                                 onClick={(e) => {
                                   e.preventDefault();
-                                  if (canSelectPage?.(i) !== false) goToPage(i);
+                                  if (busy) return;
+                                  if (canSelectPage?.(i) === false) return;
+                                  void goToPage(i);
                                 }}
                               >
                                 {i + 1}

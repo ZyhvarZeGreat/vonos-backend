@@ -1,6 +1,9 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
-import { withTransientDbRetry } from './transientDbRetry';
+import {
+  withTransientDbRetry,
+  withTransientTransactionRetry,
+} from './transientDbRetry';
 
 const CONNECT_MAX_ATTEMPTS = 5;
 const CONNECT_RETRY_DELAY_MS = 2_000;
@@ -99,6 +102,7 @@ const modelsWithoutSoftDelete = new Set([
   'AuditLog',
   'MigrationLegacyId',
   'AuthToken',
+  'IdempotencyRecord',
   'ItemLocationStock',
   'SaleLine',
   'JobMaterial',
@@ -149,6 +153,8 @@ export class PrismaService
         this.logger.debug(`query ${event.duration}ms ${sql}`);
       });
     }
+
+    wrapTransactionRetry(this);
   }
 
   async onModuleInit() {
@@ -309,9 +315,26 @@ export class PrismaService
       },
     }) as unknown as PrismaClient;
 
+    wrapTransactionRetry(client);
     this.tenantClients.set(cacheKey, client);
     return client;
   }
+}
+
+function wrapTransactionRetry(client: PrismaClient): void {
+  const original = client.$transaction.bind(client);
+  client.$transaction = ((
+    arg: unknown,
+    options?: unknown,
+  ) =>
+    withTransientTransactionRetry(
+      () =>
+        (original as (first: unknown, second?: unknown) => Promise<unknown>)(
+          arg,
+          options,
+        ),
+      { label: '$transaction' },
+    )) as PrismaClient['$transaction'];
 }
 
 export type TenantScopedPrisma = ReturnType<PrismaService['forTenant']>;

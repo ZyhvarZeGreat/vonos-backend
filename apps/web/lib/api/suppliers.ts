@@ -94,6 +94,7 @@ export async function getSuppliersPage(
   cursor: string | undefined,
   limit = DEFAULT_TABLE_PAGE_SIZE,
   filters?: SupplierFilters,
+  init?: { signal?: AbortSignal },
 ): Promise<ListPage<SupplierListRow>> {
   return fetchTenantListPage(
     LIST_PATH,
@@ -104,6 +105,7 @@ export async function getSuppliersPage(
       ...filters,
       includeSummary: filters?.includeSummary ?? false,
     }),
+    init,
   );
 }
 

@@ -15,6 +15,7 @@ import {
 } from "@/lib/api/invoiceSettings";
 import { useAppMutation } from "@/lib/hooks/useAppMutation";
 import { useRouteTenant, useTenantId } from "@/lib/hooks/useRouteTenant";
+import { announceRedirect } from "@/lib/utils/announceRedirect";
 import { tenantListPath } from "@/lib/utils/tenantRoutes";
 
 export function Hq6ReceiptPrinterCreateView() {
@@ -60,9 +61,18 @@ export function Hq6ReceiptPrinterCreateView() {
       void queryClient.invalidateQueries({
         queryKey: ["invoice-settings", tenantId],
       });
-      if (listHref !== "#") router.push(listHref);
+      // Navigation already happened on Save click (leave-first).
     },
   });
+
+  const handleSave = () => {
+    if (!name.trim() || createMutation.isPending) return;
+    if (listHref !== "#") {
+      announceRedirect("Saving & returning to printers…");
+      router.push(listHref);
+    }
+    createMutation.mutate();
+  };
 
   return (
     <Hq6FormShell title="Add Printer" subtitle="Manage your Printers">
@@ -156,7 +166,7 @@ export function Hq6ReceiptPrinterCreateView() {
           busy={createMutation.isPending}
           busyLabel="Saving…"
           disabled={!name.trim()}
-          onClick={() => createMutation.mutate()}
+          onClick={handleSave}
         >
           Save
         </Hq6BusyButton>

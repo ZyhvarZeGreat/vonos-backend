@@ -109,7 +109,6 @@ export class SalesController {
       notes?: string;
       customerId?: string;
       jobId?: string;
-      replaceSaleId?: string;
       payments?: Array<{
         amount: number;
         method?: string;
@@ -119,6 +118,52 @@ export class SalesController {
     },
   ) {
     return this.salesService.create(body);
+  }
+
+  @Patch(':id')
+  @Roles('staff', 'manager', 'admin', 'super_admin')
+  update(
+    @Param('id') id: string,
+    @Body()
+    body: {
+      reference?: string;
+      customerName?: string;
+      customerId?: string;
+      jobId?: string;
+      locationCode?: string;
+      paymentMethod?: string;
+      cleanerUserId?: string;
+      cleanerName?: string;
+      serviceStaffEmployeeId?: string;
+      lines: Array<{
+        itemId?: string;
+        sku: string;
+        name: string;
+        quantity: number;
+        unitPrice: number;
+        discountAmount?: number;
+        createPurchase?: boolean;
+        sourceTenantCode?: string;
+        supplierId?: string;
+      }>;
+      currency?: string;
+      date?: string;
+      status?: SaleFilters['saleStatus'] | 'final';
+      shippingStatus?: string;
+      shippingAddress?: string;
+      trackingNumber?: string;
+      discountAmount?: number;
+      taxAmount?: number;
+      notes?: string;
+      payments?: Array<{
+        amount: number;
+        method?: string;
+        note?: string;
+        accountId?: string;
+      }>;
+    },
+  ) {
+    return this.salesService.update(id, body);
   }
 
   @Get(':id/meta')

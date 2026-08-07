@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { AsyncMenuSelect } from "@/components/molecules/AsyncMenuSelect";
 import { getPaymentAccountsForPicker } from "@/lib/api/paymentAccounts";
 import { useTenantId } from "@/lib/hooks/useRouteTenant";
+import { paymentAccountPickerLabel } from "@/lib/utils/pickerLabels";
 
 type Option = { value: string; label: string };
 
@@ -38,7 +39,7 @@ export function PaymentAccountSelect({
     void getPaymentAccountsForPicker(tenantId).then((accounts) => {
       if (cancelled) return;
       const match = accounts.find((a) => a.id === value);
-      setSelectedLabel(match?.name);
+      setSelectedLabel(match ? paymentAccountPickerLabel(match) : undefined);
     });
     return () => {
       cancelled = true;
@@ -55,7 +56,7 @@ export function PaymentAccountSelect({
         { value: "", label: emptyLabel },
         ...accounts.map((a) => ({
           value: a.id,
-          label: a.accountNumber ? `${a.name} (${a.accountNumber})` : a.name,
+          label: paymentAccountPickerLabel(a),
         })),
       ];
     },

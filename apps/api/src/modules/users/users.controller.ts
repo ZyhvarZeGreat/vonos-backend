@@ -53,11 +53,11 @@ export class UsersController {
   }
 
   @Get(':id')
-  getById(@Param('id') id: string) {
+  getById(@Req() request: AuthedRequest, @Param('id') id: string) {
     if (id === 'invite') {
       throw new NotFoundException();
     }
-    return this.usersService.getById(id);
+    return this.usersService.getById(id, request.user);
   }
 
   @Post('invite')

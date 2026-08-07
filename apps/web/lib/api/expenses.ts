@@ -209,25 +209,24 @@ export async function deleteExpenseCategory(
 }
 
 /**
- * Expense-category picker options.
- * Empty query → first 100. Search filters that window (categories stay small).
+ * Expense-category picker options — full roster (HQ catalogs exceed 100).
+ * Search filters client-side over the cached full list.
  */
 export async function getExpenseCategories(
   tenantId: string,
   search?: string,
 ): Promise<ExpenseCategory[]> {
-  const limit = FILTER_DROPDOWN_INITIAL_LIMIT;
   const q = search?.trim() ?? "";
-  const cacheKey = JSON.stringify(["expense-cat-picker", tenantId, limit]);
-  const recent = await expenseCategoryRosterCache.get(cacheKey, () =>
-    fetchFirstPage(
+  const cacheKey = JSON.stringify(["expense-cat-picker", tenantId, "all"]);
+  const roster = await expenseCategoryRosterCache.get(cacheKey, () =>
+    fetchAllPages(
       (cursor, pageLimit) =>
         fetchExpenseCategoriesRaw(tenantId, cursor, pageLimit),
-      limit,
+      FILTER_DROPDOWN_INITIAL_LIMIT,
     ),
   );
-  if (!q) return recent;
-  return matchSorter(recent, q, {
+  if (!q) return roster;
+  return matchSorter(roster, q, {
     keys: ["name", "code"],
     threshold: rankings.CONTAINS,
     keepDiacritics: true,

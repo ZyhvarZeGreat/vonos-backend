@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { Modal, ModalHeader } from "@/components/atoms/Modal";
 import { AddProductForm } from "@/components/organisms/AddProductForm";
-import { getItem } from "@/lib/api/items";
+import { getProductForForm } from "@/lib/api/catalog";
 import { useIsVaHq6 } from "@/lib/hooks/useIsVaHq6";
 import { useRouteTenant, useTenantId } from "@/lib/hooks/useRouteTenant";
 import { useUiStore } from "@/stores/uiStore";
@@ -32,7 +32,7 @@ export function AddProductModal() {
 
   const { data: duplicateFrom } = useQuery({
     queryKey: ["item", "duplicate", duplicateFromId],
-    queryFn: () => getItem(duplicateFromId!),
+    queryFn: () => getProductForForm(duplicateFromId!),
     enabled: Boolean(open && duplicateFromId && !isHq6),
   });
 

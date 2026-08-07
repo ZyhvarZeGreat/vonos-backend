@@ -10,15 +10,8 @@ import { PrismaService } from '../../common/prisma/prisma.service';
 import { TenantDbService } from '../../common/prisma/tenant-db.service';
 import { AuditService } from '../audit/audit.service';
 import { buildCompositeCursorQuery } from '../../common/utils/pagination';
-import { resolveDateWindow } from '../reports/aggregators/date-utils';
-import { sumDailyFinanceRollup, applyDailyFinanceDelta } from '../../common/utils/dailyFinanceRollup';
-import { invalidateTenantDashboardCache } from '../../common/cache/cacheInvalidation';
-import {
-  buildLedgerSummaryFromGroups,
-  ledgerDateFilter,
-} from '../../common/utils/ledgerAggregates';
-import { computeOutstandingReceivables } from '../../common/utils/outstandingReceivables';
-import { computeSalesRevenueTotal } from '../../common/utils/salesRevenue';
+import { computeFinanceSummary } from '../../common/utils/financeSummary';
+import { ledgerDateFilter } from '../../common/utils/ledgerAggregates';
 import { toIso, toNumber } from '../../common/utils/serializers';
 import {
   buildGroupLedgerByEntity,
@@ -36,6 +29,8 @@ import {
   listPageFilterKey,
   withListPageCache,
 } from '../../common/utils/listPageCache';
+import { excludeCashBookLedgerWhere } from '../../common/utils/ledgerCashBook';
+import { ExpensesService } from '../expenses/expenses.service';
 
 const LEDGER_CACHE_TTL_S = 900;
 
@@ -48,6 +43,7 @@ export class LedgerService {
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
     private readonly cache: CacheService,
+    private readonly expensesService: ExpensesService,
   ) {}
 
   private logLedgerTiming(
@@ -110,6 +106,7 @@ export class LedgerService {
       where: {
         tenantId,
         deletedAt: null,
+        ...excludeCashBookLedgerWhere(),
         ...(filters.type ? { type: filters.type } : {}),
         ...(filters.category ? { category: filters.category } : {}),
         ...(tokenizedSearchWhere(filters.search, (_token, contains) => [
@@ -153,68 +150,12 @@ export class LedgerService {
       return cached;
     }
 
-    const window = resolveDateWindow(from, to);
-    const dateFilter = ledgerDateFilter(from, to);
-
-    // Rollup first (1 RTT). Skip live groupBy when rollup covers the window —
-    // avoids a 4-way Promise.all stampede on Neon wake.
-    const rollup = await sumDailyFinanceRollup(
+    const summary = await computeFinanceSummary(
       this.tenantDb.db,
       tenantId,
-      window.from,
-      window.to,
+      from,
+      to,
     );
-    const useRollup =
-      rollup.revenue > 0 || rollup.costs > 0 || rollup.expenses > 0;
-
-    const [currencyRow, outstanding, groups] = await Promise.all([
-      this.tenantDb.db.ledgerEntry.findFirst({
-        where: { tenantId, deletedAt: null, ...dateFilter },
-        select: { currency: true },
-        orderBy: { date: 'desc' },
-      }),
-      computeOutstandingReceivables(this.tenantDb.db, from, to),
-      useRollup
-        ? Promise.resolve(null)
-        : this.tenantDb.db.ledgerEntry.groupBy({
-            by: ['type'],
-            where: { tenantId, deletedAt: null, ...dateFilter },
-            _sum: { amount: true },
-          }),
-    ]);
-
-    const summary = useRollup
-      ? {
-          revenue: rollup.revenue,
-          costs: rollup.costs + rollup.expenses,
-          net: rollup.net,
-          currency: currencyRow?.currency ?? 'NGN',
-          outstanding: 0,
-        }
-      : buildLedgerSummaryFromGroups(
-          (groups ?? []).map((group) => ({
-            type: group.type,
-            _sum: { amount: group._sum.amount },
-          })),
-          currencyRow?.currency ?? 'NGN',
-        );
-
-    summary.outstanding = outstanding;
-
-    if (summary.revenue === 0) {
-      const salesRevenue = await computeSalesRevenueTotal(
-        this.tenantDb.db,
-        from,
-        to,
-      );
-      if (salesRevenue.revenue > 0) {
-        summary.revenue = salesRevenue.revenue;
-        summary.currency = salesRevenue.currency;
-        summary.net = salesRevenue.revenue - summary.costs;
-      }
-    } else {
-      summary.net = summary.revenue - summary.costs;
-    }
 
     await this.cache.set(cacheKey, summary, LEDGER_CACHE_TTL_S);
     this.logLedgerTiming('summary', startedAt, { from, to, cache: 'miss' });
@@ -250,7 +191,12 @@ export class LedgerService {
     const dateFilter = ledgerDateFilter(from, to);
     const rows = await this.tenantDb.db.ledgerEntry.groupBy({
       by: ['category'],
-      where: { tenantId, deletedAt: null, ...dateFilter },
+      where: {
+        tenantId,
+        deletedAt: null,
+        ...excludeCashBookLedgerWhere(),
+        ...dateFilter,
+      },
       orderBy: { category: 'asc' },
     });
     return rows.map((row) => row.category);
@@ -265,36 +211,52 @@ export class LedgerService {
     currency?: string;
   }): Promise<LedgerEntry> {
     const tenantId = this.tenantDb.requireTenantId();
-    const row = await this.tenantDb.db.ledgerEntry.create({
-      data: {
+    const categoryName = body.category.trim() || 'Expense';
+    let categoryId: string | undefined;
+    const existingCategory = await this.tenantDb.db.expenseCategory.findFirst({
+      where: {
         tenantId,
-        type: 'expense',
-        amount: body.amount,
-        currency: body.currency ?? 'NGN',
-        category: body.category,
-        description: body.description,
-        date: body.date ? new Date(body.date) : new Date(),
+        deletedAt: null,
+        name: { equals: categoryName, mode: 'insensitive' },
       },
+      select: { id: true },
+    });
+    if (existingCategory) {
+      categoryId = existingCategory.id;
+    } else {
+      const createdCategory = await this.tenantDb.db.expenseCategory.create({
+        data: { tenantId, name: categoryName },
+      });
+      categoryId = createdCategory.id;
+    }
+
+    const expense = await this.expensesService.createExpense({
+      categoryId,
+      totalAmount: body.amount,
+      note: body.description.trim(),
+      expenseDate: body.date,
+      paymentStatus: 'due',
     });
 
-    await applyDailyFinanceDelta(
-      this.tenantDb.db,
-      tenantId,
-      row.date,
-      'expense',
-      toNumber(row.amount),
-      row.currency,
-    );
+    const row = await this.tenantDb.db.ledgerEntry.findFirst({
+      where: {
+        tenantId,
+        linkedRecordType: 'expense',
+        linkedRecordId: expense.id,
+        deletedAt: null,
+      },
+    });
+    if (!row) {
+      throw new Error('Expense ledger row missing after create');
+    }
 
     await this.auditService.log({
       action: 'created',
       entityType: 'ledgerEntry',
       entityId: row.id,
       summary: `Manual expense: ${body.description}`,
-      metadata: { category: body.category, amount: body.amount },
+      metadata: { category: body.category, amount: body.amount, expenseId: expense.id },
     });
-
-    void invalidateTenantDashboardCache(this.cache, tenantId);
 
     return {
       id: row.id,

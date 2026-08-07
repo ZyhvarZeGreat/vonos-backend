@@ -18,6 +18,7 @@ import {
   formatHq6PaymentMethod,
   formatHq6PaymentStatus,
 } from "@/lib/utils/hq6Format";
+import { formatSaleNotesForDisplay } from "@/lib/utils/saleInvoiceNotes";
 import { businessLocationName } from "@/lib/utils/locationLabels";
 import { hq6PaymentBadgeClass } from "@/lib/utils/hq6PaymentBadge";
 import { cn } from "@/lib/utils/cn";
@@ -455,7 +456,7 @@ export function Hq6SaleViewModal({
             <div>
               <strong>Sell note:</strong>
               <p className="hq6-purchase-note-well whitespace-pre-wrap">
-                {sale.notes?.trim() || "—"}
+                {formatSaleNotesForDisplay(sale.notes) || "—"}
               </p>
             </div>
             <div>

@@ -3,6 +3,7 @@ import type { TenantConfig } from '@vonos/types';
 import {
   catalogPresetsForCode,
   isProductStockTenant,
+  productHomeLocationsForTenant,
   PRODUCT_STOCK_BUSINESS_LOCATIONS,
 } from '@vonos/types';
 
@@ -26,19 +27,18 @@ export function businessLocationsFromConfig(config: unknown) {
   if (fromConfig.length > 0) return fromConfig;
   const code = typed?.code?.trim();
   if (!code) return [];
-  if (isProductStockTenant(code)) {
-    return [...PRODUCT_STOCK_BUSINESS_LOCATIONS];
-  }
   return catalogPresetsForCode(code).businessLocations ?? [];
 }
 
 /**
- * Locations allowed on product stock (VW/VISP/VSP for stock tenants).
- * Sales/expenses still use entityOwnBusinessLocations.
+ * Locations allowed on product stock for this tenant (own home only).
+ * Cross-entity moves still use PRODUCT_STOCK_BUSINESS_LOCATIONS in the UI.
  */
 export function productStockBusinessLocations(config: unknown) {
   const typed = config as TenantConfig | null | undefined;
   const code = typed?.code?.trim();
+  const home = productHomeLocationsForTenant(code);
+  if (home.length > 0) return home;
   if (isProductStockTenant(code)) {
     return [...PRODUCT_STOCK_BUSINESS_LOCATIONS];
   }
@@ -118,7 +118,7 @@ export function assertProductStockLocation(
 
   const code = locationCode?.trim();
   if (!code) {
-    throw new BadRequestException('Business location is required');
+    return null;
   }
   if (!locations.some((row) => row.code === code)) {
     throw new BadRequestException('Unknown business location');

@@ -9,7 +9,11 @@
     "dev": "turbo dev",
     "build": "turbo build",
     "lint": "turbo lint",
-    "typecheck": "turbo typecheck"
+    "typecheck": "turbo typecheck",
+    "test": "turbo test",
+    "test:e2e": "npm run test:e2e -w web",
+    "test:e2e:audit": "npm run test:e2e:audit -w web",
+    "test:e2e:interactions": "npm run test:e2e:interactions -w web"
   },
   "devDependencies": {
     "@vercel/node": "^5.3.0",

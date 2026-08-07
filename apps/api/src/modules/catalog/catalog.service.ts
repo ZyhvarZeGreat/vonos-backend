@@ -34,29 +34,14 @@ export class CatalogService {
   ) {}
 
   /**
-   * VISP/VSP share Warehouse (VW) retail stock — one catalog, not local copies.
-   * Local VISP/VSP Item rows are migration duplicates of the same SKUs; the old
-   * "local ∪ VW" OR made every product appear twice (~8.9k vs ~4.3k).
+   * Each operating tenant (VA / VP / VW / VISP / VSP) lists products in its
+   * own catalog scope — not a shared VW retail view.
    */
-  private async catalogScope(requestTenantId: string): Promise<{
+  private catalogScope(requestTenantId: string): {
     tenantIds: string[];
     sharedRetailOnly: boolean;
-  }> {
-    const tenant = await this.prisma.tenant.findUnique({
-      where: { id: requestTenantId },
-      select: { code: true },
-    });
-    if (tenant?.code !== 'VISP' && tenant?.code !== 'VSP') {
-      return { tenantIds: [requestTenantId], sharedRetailOnly: false };
-    }
-    const warehouse = await this.prisma.tenant.findUnique({
-      where: { code: 'VW' },
-      select: { id: true },
-    });
-    if (!warehouse) {
-      return { tenantIds: [requestTenantId], sharedRetailOnly: false };
-    }
-    return { tenantIds: [warehouse.id], sharedRetailOnly: true };
+  } {
+    return { tenantIds: [requestTenantId], sharedRetailOnly: false };
   }
 
   private async withAvailableQuantity(rows: Item[]): Promise<Item[]> {
@@ -90,6 +75,37 @@ export class CatalogService {
     filters: ItemFilters,
     sharedRetailOnly: boolean,
   ) {
+    const searchWhere = filters.search
+      ? itemTextSearchWhere(filters.search, {
+          extraFuzzyFields: (_token, contains) => [
+            { carModel: contains },
+            { category: contains },
+            relationStringOr('brand', 'name', contains),
+          ],
+        })
+      : undefined;
+    const locationWhere = filters.locationCode
+      ? {
+          OR: [
+            { locationCode: filters.locationCode },
+            { binLocation: filters.locationCode },
+            {
+              locationStock: {
+                some: {
+                  OR: [
+                    { locationCode: filters.locationCode },
+                    { binLocation: filters.locationCode },
+                  ],
+                },
+              },
+            },
+          ],
+        }
+      : undefined;
+    const andClauses = [locationWhere, searchWhere].filter(
+      (clause): clause is NonNullable<typeof clause> => clause != null,
+    );
+
     return {
       tenantId: { in: tenantIds },
       deletedAt: null,
@@ -112,44 +128,7 @@ export class CatalogService {
       ...(filters.availableForRetail !== undefined && !sharedRetailOnly
         ? { availableForRetail: filters.availableForRetail }
         : {}),
-      ...(filters.locationCode || filters.search
-        ? {
-            AND: [
-              ...(filters.locationCode
-                ? [
-                    {
-                      OR: [
-                        { locationCode: filters.locationCode },
-                        { binLocation: filters.locationCode },
-                        {
-                          locationStock: {
-                            some: {
-                              OR: [
-                                { locationCode: filters.locationCode },
-                                { binLocation: filters.locationCode },
-                              ],
-                            },
-                          },
-                        },
-                      ],
-                    },
-                  ]
-                : []),
-              ...(filters.search
-                ? [
-                    // Prefer indexed name/sku (btree + trigram); brand/carModel only on fuzzy path.
-                    itemTextSearchWhere(filters.search, {
-                      extraFuzzyFields: (_token, contains) => [
-                        { carModel: contains },
-                        { category: contains },
-                        relationStringOr('brand', 'name', contains),
-                      ],
-                    })!,
-                  ]
-                : []),
-            ],
-          }
-        : {}),
+      ...(andClauses.length > 0 ? { AND: andClauses } : {}),
     };
   }
 
@@ -178,7 +157,7 @@ export class CatalogService {
     return withListPageCache(
       this.cache,
       requestTenantId,
-      'catalog:v2',
+      'catalog:v5',
       filterKey,
       () => this.listUncached(filters, requestTenantId),
     );
@@ -189,7 +168,7 @@ export class CatalogService {
     requestTenantId: string,
   ): Promise<PaginatedList<Item>> {
     const { tenantIds, sharedRetailOnly } =
-      await this.catalogScope(requestTenantId);
+      this.catalogScope(requestTenantId);
     const limit = filters.limit ?? 10;
     const includeSummary = filters.includeSummary !== false;
 
@@ -270,7 +249,7 @@ export class CatalogService {
   async getById(id: string): Promise<Item> {
     const requestTenantId = this.tenantDb.requireTenantId();
     const { tenantIds, sharedRetailOnly } =
-      await this.catalogScope(requestTenantId);
+      this.catalogScope(requestTenantId);
 
     const row = await this.prisma.item.findFirst({
       where: {
@@ -280,11 +259,14 @@ export class CatalogService {
         ...(sharedRetailOnly ? { availableForRetail: true } : {}),
       },
     });
-    if (!row) throw new NotFoundException('Catalog item not found');
-    const [withAvailable] = await this.withAvailableQuantity([
-      serializeItem(row),
-    ]);
-    return withAvailable!;
+    if (row) {
+      const [withAvailable] = await this.withAvailableQuantity([
+        serializeItem(row),
+      ]);
+      return withAvailable!;
+    }
+
+    throw new NotFoundException('Catalog item not found');
   }
 }
 
@@ -315,29 +297,12 @@ export async function warmDefaultCatalogListPages(
         await withListPageCache(
           cache,
           tenantId,
-          'catalog:v2',
+          'catalog:v5',
           filterKey,
           async () => {
-            const tenant = await prisma.tenant.findUnique({
-              where: { id: tenantId },
-              select: { code: true },
-            });
-            let scopeTenantId = tenantId;
-            let sharedRetailOnly = false;
-            if (tenant?.code === 'VISP' || tenant?.code === 'VSP') {
-              const warehouse = await prisma.tenant.findUnique({
-                where: { code: 'VW' },
-                select: { id: true },
-              });
-              if (warehouse) {
-                scopeTenantId = warehouse.id;
-                sharedRetailOnly = true;
-              }
-            }
             const baseWhere = {
-              tenantId: scopeTenantId,
+              tenantId,
               deletedAt: null as null,
-              ...(sharedRetailOnly ? { availableForRetail: true } : {}),
             };
             const [rows, totalCount] = await Promise.all([
               prisma.item.findMany({

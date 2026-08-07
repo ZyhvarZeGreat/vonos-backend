@@ -14,8 +14,7 @@ import {
 } from "@/components/hq6/Hq6AddPaymentForm";
 import { getPaymentAccountsForPicker } from "@/lib/api/paymentAccounts";
 import { addSalePayment } from "@/lib/api/sales";
-import type { PaymentStatus, Sale } from "@vonos/types";
-import { useAppMutation } from "@/lib/hooks/useAppMutation";
+import type { Sale } from "@vonos/types";
 import {
   MODAL_REF_STALE_MS,
   modalKeys,
@@ -24,7 +23,9 @@ import {
   optimisticTempId,
   patchEntityInQueries,
 } from "@/lib/query/optimistic";
+import { dismissFirstWrite } from "@/lib/utils/dismissFirstWrite";
 import { formatHq6Currency } from "@/lib/utils/hq6Format";
+import { captureSalePaymentWrite, paymentStatusFromPaid } from "@/lib/utils/salePaymentWrite";
 import { toast } from "@/stores/toastStore";
 
 function nowPaidOnLocal(): string {
@@ -39,12 +40,6 @@ function paidOnToIso(value: string): string {
   return Number.isNaN(d.getTime()) ? new Date().toISOString() : d.toISOString();
 }
 
-function paymentStatusFromPaid(total: number, paid: number): PaymentStatus {
-  if (paid <= 0) return "due";
-  if (paid + 0.0001 >= total) return "paid";
-  return "partial";
-}
-
 /** HQ6 sales row “Add payment” modal (UPOS layout). */
 export function Hq6PaySaleModal({
   open,
@@ -57,7 +52,7 @@ export function Hq6PaySaleModal({
   sale: Sale | null;
   tenantId: string | null;
   onClose: () => void;
-  onPaid?: () => void;
+  onPaid?: (saleId: string) => void;
 }) {
   const queryClient = useQueryClient();
   const due =
@@ -87,91 +82,7 @@ export function Hq6PaySaleModal({
     setPaidOn(nowPaidOnLocal());
   }, [due, open, sale]);
 
-  const payMutation = useAppMutation({
-    mutationFn: async () => {
-      if (!tenantId || !sale) throw new Error("Missing sale");
-      const valid = parseForm(paymentAmountSchema, { amount }, { toast: false });
-      if (!valid) throw new Error("Enter a valid amount");
-      if (!accountId.trim()) {
-        throw new Error(
-          "Select a Payment Account so this payment posts to the account book",
-        );
-      }
-      const value = Number(valid.amount);
-      return addSalePayment(tenantId, sale.id, {
-        amount: value,
-        method,
-        accountId,
-        note: note.trim() || undefined,
-        paidOn: paidOnToIso(paidOn),
-      });
-    },
-    progressLabel: "Recording payment",
-    successMessage: (result) =>
-      `Applied ${formatHq6Currency(result.amountApplied, result.currency)} — remaining due ${formatHq6Currency(result.remainingDue, result.currency)}`,
-    optimistic: {
-      keys: [
-        ["sales"],
-        modalKeys.salePayments(tenantId, sale?.id ?? null),
-        modalKeys.saleView(tenantId, sale?.id ?? null),
-        ["payment-accounts", tenantId],
-      ],
-      update: (qc) => {
-        if (!sale) return;
-        const value = Number(amount);
-        if (!Number.isFinite(value) || value <= 0) return;
-        const apply = Math.min(value, due > 0 ? due : value);
-        const nextPaid = (sale.totalPaid ?? 0) + apply;
-        const remaining = Math.max(0, sale.total - nextPaid);
-        patchEntityInQueries(qc, ["sales"], sale.id, {
-          totalPaid: nextPaid,
-          sellDue: remaining,
-          paymentStatus: paymentStatusFromPaid(sale.total, nextPaid),
-          paymentMethod: method,
-        });
-        const payKey = modalKeys.salePayments(tenantId, sale.id);
-        const prev = qc.getQueryData<Array<{ id: string; amount: number }>>(payKey);
-        if (prev) {
-          qc.setQueryData(payKey, [
-            {
-              id: optimisticTempId("pay"),
-              amount: apply,
-              currency: sale.currency,
-              method,
-              paymentRefNo: null,
-              paidOn: paidOnToIso(paidOn),
-              note: note.trim() || null,
-              accountId,
-              accountName:
-                accounts.find((a) => a.id === accountId)?.name ?? null,
-              createdByName: null,
-            },
-            ...prev,
-          ]);
-        }
-        // Do NOT invalidate / onPaid here — that refetches before the write
-        // lands and stomps Due/Partial back over the optimistic Paid badge.
-      },
-      commit: (qc, result) => {
-        if (!sale) return;
-        const nextPaid = Math.max(
-          0,
-          sale.total - Number(result.remainingDue ?? 0),
-        );
-        patchEntityInQueries(qc, ["sales"], sale.id, {
-          totalPaid: nextPaid,
-          sellDue: Math.max(0, Number(result.remainingDue ?? 0)),
-          paymentStatus:
-            result.paymentStatus ??
-            paymentStatusFromPaid(sale.total, nextPaid),
-          paymentMethod: method,
-        });
-        onPaid?.();
-      },
-    },
-  });
-
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!tenantId || !sale) return;
     const valid = parseForm(paymentAmountSchema, { amount });
     if (!valid) return;
@@ -181,9 +92,87 @@ export function Hq6PaySaleModal({
       );
       return;
     }
-    // Instant dismiss — optimistic patch + background API (slow Neon RTT).
-    onClose();
-    payMutation.mutate();
+
+    let captured;
+    try {
+      captured = captureSalePaymentWrite({
+        tenantId,
+        sale,
+        amount: Number(valid.amount),
+        method,
+        accountId,
+        note,
+        paidOnIso: paidOnToIso(paidOn),
+      });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Payment failed");
+      return;
+    }
+
+    // Snapshot IDs/amounts before dismiss — closing clears `sale` on the parent.
+    const {
+      saleId,
+      apply,
+      nextPaid,
+      remaining,
+      paymentStatus,
+      body,
+      currency,
+    } = captured;
+    const saleTotal = sale.total;
+    const accountName =
+      accounts.find((a) => a.id === body.accountId)?.name ?? null;
+
+    patchEntityInQueries(queryClient, ["sales"], saleId, {
+      totalPaid: nextPaid,
+      sellDue: remaining,
+      paymentStatus,
+      paymentMethod: body.method,
+    });
+    const payKey = modalKeys.salePayments(tenantId, saleId);
+    const prev = queryClient.getQueryData<Array<{ id: string; amount: number }>>(
+      payKey,
+    );
+    if (prev) {
+      queryClient.setQueryData(payKey, [
+        {
+          id: optimisticTempId("pay"),
+          amount: apply,
+          currency,
+          method: body.method,
+          paymentRefNo: null,
+          paidOn: body.paidOn,
+          note: body.note ?? null,
+          accountId: body.accountId,
+          accountName,
+          createdByName: null,
+        },
+        ...prev,
+      ]);
+    }
+
+    await dismissFirstWrite({
+      dismiss: onClose,
+      label: "Recording payment",
+      write: () => addSalePayment(captured.tenantId, saleId, body),
+      successMessage: (result) =>
+        `Applied ${formatHq6Currency(result.amountApplied, result.currency)} — remaining due ${formatHq6Currency(result.remainingDue, result.currency)}`,
+      onSuccess: (result) => {
+        const paidAfter = Math.max(
+          0,
+          saleTotal - Number(result.remainingDue ?? remaining),
+        );
+        patchEntityInQueries(queryClient, ["sales"], saleId, {
+          totalPaid: paidAfter,
+          sellDue: Math.max(0, Number(result.remainingDue ?? 0)),
+          paymentStatus:
+            result.paymentStatus ??
+            paymentStatusFromPaid(saleTotal, paidAfter),
+          paymentMethod: body.method,
+        });
+        onPaid?.(saleId);
+      },
+    });
   };
 
   return (
@@ -195,7 +184,7 @@ export function Hq6PaySaleModal({
       bodyClassName="hq6-add-payment-body"
       footer={
         <Hq6ModalSaveClose
-          onSave={handleSave}
+          onSave={() => void handleSave()}
           onClose={onClose}
           saving={false}
           saveLabel="Save"

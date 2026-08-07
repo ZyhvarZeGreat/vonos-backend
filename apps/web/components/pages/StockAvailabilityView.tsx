@@ -77,7 +77,7 @@ export function StockAvailabilityView() {
       { value: "", label: "All entities" },
       ...AUTOS_GROUP_ENTITIES.map((e) => ({
         value: e.code,
-        label: `${e.code} — ${e.name}`,
+        label: e.name,
       })),
     ],
     [],

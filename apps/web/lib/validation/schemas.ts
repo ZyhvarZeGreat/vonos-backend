@@ -8,6 +8,8 @@ const EMAIL_RE =
   /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)+$/;
 
 const PERSON_NAME_RE = /^[\p{L}\s.'’-]+$/u;
+/** Contact last name may include plate / registration numbers. */
+const CONTACT_LAST_NAME_RE = /^[\p{L}\p{N}\s.'’\-]+$/u;
 const USERNAME_RE = /^[a-zA-Z][a-zA-Z0-9._-]{1,63}$/;
 const PHONE_RE = /^[+]?[\d\s().-]{7,20}$/;
 
@@ -87,6 +89,23 @@ export const personNameSchema = (label: string, required = true) => {
       `${label} can only include letters, spaces, hyphens, and apostrophes.`,
     )
     .refine((v) => v.length >= 2, `${label} must be at least 2 characters.`);
+};
+
+/** Contact last name — alphanumeric so plate / registration nos. fit. */
+export const contactLastNameSchema = (label = "Last name", required = false) => {
+  const base = z.string().trim();
+  if (!required) {
+    return base.refine(
+      (v) => !v || CONTACT_LAST_NAME_RE.test(v),
+      `${label} can include letters, numbers, spaces, hyphens, and apostrophes.`,
+    );
+  }
+  return base
+    .min(1, `${label} is required.`)
+    .refine(
+      (v) => CONTACT_LAST_NAME_RE.test(v),
+      `${label} can include letters, numbers, spaces, hyphens, and apostrophes.`,
+    );
 };
 
 export const emailSchema = (required = true) => {
@@ -242,7 +261,7 @@ export const contactFormSchema = z.object({
   prefix: personNameSchema("Prefix", false),
   firstName: personNameSchema("First name", true),
   middleName: personNameSchema("Middle name", false).optional(),
-  lastName: personNameSchema("Last name", false),
+  lastName: contactLastNameSchema("Last name", false),
   mobile: phoneSchema("Mobile", true),
   alternateNumber: phoneSchema("Alternate number", false).optional(),
   landline: phoneSchema("Landline", false).optional(),
@@ -298,7 +317,9 @@ export const moneyAmountSchema = (
 export const productFormSchema = z.object({
   name: requiredTextSchema("Product name"),
   unit: requiredTextSchema("Unit"),
-  costPrice: moneyAmountSchema("Purchase / selling price", {
+  /** Optional — VA/VP catalog creates default to 0; staff set prices later. */
+  costPrice: moneyAmountSchema("Cost price", {
+    required: false,
     allowZero: true,
     min: 0,
   }),

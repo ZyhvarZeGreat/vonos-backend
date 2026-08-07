@@ -50,6 +50,10 @@ function extractModelYear(text: string): string | null {
 export function saleVehicleFields(input: {
   customerName?: string | null;
   vehicleLabel?: string | null;
+  /** Explicit plate from sale notes / contact ID — wins over name parsing. */
+  plateNumber?: string | null;
+  /** Explicit car model & year from sale notes / contact custom field. */
+  carModelYear?: string | null;
 }): {
   customerDisplay: string;
   plateNumber: string | null;
@@ -59,11 +63,13 @@ export function saleVehicleFields(input: {
   const customer = (input.customerName ?? "").trim();
   const haystack = `${vehicle} ${customer}`.trim();
 
-  const plateNumber = extractPlate(haystack);
+  const explicitPlate = input.plateNumber?.trim() || null;
+  const plateNumber = explicitPlate || extractPlate(haystack);
 
-  // Prefer model from dedicated vehicle label, then from customer string —
-  // but always via extractModelYear (never the raw person+model blob).
+  // Prefer structured note/contact fields, then vehicle label / customer name.
+  const explicitCar = input.carModelYear?.trim() || null;
   const carModelYear =
+    explicitCar ||
     extractModelYear(stripPlate(vehicle, plateNumber)) ||
     extractModelYear(stripPlate(customer, plateNumber)) ||
     null;

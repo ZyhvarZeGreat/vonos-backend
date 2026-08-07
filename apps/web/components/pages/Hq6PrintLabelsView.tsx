@@ -509,7 +509,7 @@ export function Hq6PrintLabelsView() {
               {opts.price ? (
                 <p style={{ fontSize: `${opts.priceSize}px`, margin: 0 }}>
                   {formatCurrency(
-                    row.item.sellPrice ?? row.item.costPrice,
+                    row.item.sellPrice ?? 0,
                     row.item.currency,
                   )}
                 </p>

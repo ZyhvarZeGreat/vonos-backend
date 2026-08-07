@@ -6,6 +6,7 @@ import {
   nextCompositeCursor,
 } from '../../../common/utils/pagination';
 import { runPool } from '../../../common/utils/mapPool';
+import { EXCLUDE_CASH_BOOK_LEDGER_SQL } from '../../../common/utils/ledgerCashBook';
 import { toNumber } from '../../../common/utils/serializers';
 import { bucketLabel, type DateWindow } from './date-utils';
 import type { AggregatedProductSale } from './productSales';
@@ -419,6 +420,7 @@ export async function ledgerCostByBucket(
           AND type::text = 'cost'
           AND date >= ${window.from}
           AND date <= ${window.to}
+          ${EXCLUDE_CASH_BOOK_LEDGER_SQL}
         GROUP BY 1 ORDER BY 1 ASC
       `
     : await db.$queryRaw<
@@ -431,6 +433,7 @@ export async function ledgerCostByBucket(
           AND type::text = 'cost'
           AND date >= ${window.from}
           AND date <= ${window.to}
+          ${EXCLUDE_CASH_BOOK_LEDGER_SQL}
         GROUP BY 1 ORDER BY 1 ASC
       `;
 

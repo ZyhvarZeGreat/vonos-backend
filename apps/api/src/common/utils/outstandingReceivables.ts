@@ -23,7 +23,7 @@ export async function computeOutstandingReceivables(
       GROUP BY "saleId"
     ) p ON p."saleId" = s.id
     WHERE s."deletedAt" IS NULL
-      AND s.status <> 'draft'
+      AND s.status NOT IN ('draft', 'quotation')
       AND s."paymentStatus" IN ('due', 'partial')
       AND s.date >= ${window.from}
       AND s.date <= ${window.to}
@@ -48,7 +48,7 @@ export async function computeAllTimeOutstandingReceivables(
       GROUP BY "saleId"
     ) p ON p."saleId" = s.id
     WHERE s."deletedAt" IS NULL
-      AND s.status <> 'draft'
+      AND s.status NOT IN ('draft', 'quotation')
       AND s."paymentStatus" IN ('due', 'partial')
   `;
 

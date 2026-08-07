@@ -73,7 +73,16 @@ function supplierColumns(
     },
     { key: "contactId", header: "Contact ID", render: (r) => r.contactId ?? "—" },
     { key: "businessName", header: "Business Name", render: (r) => <span className="font-medium">{r.businessName ?? r.name}</span> },
-    { key: "contactName", header: "Name", render: (r) => r.contactName ?? "—" },
+    {
+      key: "contactName",
+      header: "Name",
+      render: (r) => {
+        const person = r.contactName?.trim() ?? "";
+        const business = (r.businessName ?? r.name).trim();
+        if (!person || person.toLowerCase() === business.toLowerCase()) return "—";
+        return person;
+      },
+    },
     { key: "email", header: "Email", render: (r) => r.email ?? "—" },
     { key: "phone", header: "Mobile", render: (r) => r.phone ?? "—" },
     { key: "payTerm", header: "Pay term", render: (r) => r.payTerm ?? "—" },
@@ -195,7 +204,7 @@ function WarehouseSuppliersViewBody() {
               status: activeTab === "active" ? "active" : undefined,
             }),
         includeSummary: opts?.includeSummary,
-      }),
+      }, { signal: opts?.signal }),
     getCursor: (row) => nameListCursor(row),
   });
 

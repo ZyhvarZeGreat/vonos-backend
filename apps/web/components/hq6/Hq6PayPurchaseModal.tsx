@@ -95,8 +95,10 @@ export function Hq6PayPurchaseModal({
     const value = Number(valid.amount);
     const purchaseId = purchase.id;
     const apply = Math.min(value, due > 0 ? due : value);
-    const total = purchase.grandTotal ?? due + (purchase.totalPaid ?? 0);
-    const nextPaid = (purchase.totalPaid ?? 0) + apply;
+    // Derive from grandTotal/due so we don't require totalPaid on the list row type.
+    const total = purchase.grandTotal ?? due;
+    const priorPaid = Math.max(0, total - due);
+    const nextPaid = priorPaid + apply;
     const remaining = Math.max(0, total - nextPaid);
     // Instant list badge update (due → partial/paid) before the API returns.
     patchEntityInQueries(queryClient, ["stock-movements"], purchaseId, {

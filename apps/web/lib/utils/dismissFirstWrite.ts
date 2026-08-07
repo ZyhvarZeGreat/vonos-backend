@@ -4,8 +4,8 @@ import { formatApiError } from "@/lib/utils/formatApiError";
 
 /**
  * Perceived-speed write: close the UI immediately, finish the API in the
- * background. Toast on settle. Use for pay/confirm/simple modal saves where
- * waiting on Neon RTT feels broken.
+ * background (with a couple retries via withWriteProgress). Toast on settle.
+ * Use for pay/confirm/simple modal saves where waiting on Neon RTT feels broken.
  */
 export async function dismissFirstWrite<T>(options: {
   dismiss: () => void;

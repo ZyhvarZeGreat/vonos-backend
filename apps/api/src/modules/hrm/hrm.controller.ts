@@ -26,6 +26,7 @@ import type {
   CreatePayComponentRequest,
   CreateDesignationRequest,
   CreateEmployeeRequest,
+  SyncEmployeeByUserRequest,
   UpdatePayrollDeductionRequest,
   UpdateDesignationRequest,
   UpdatePayrollGroupRequest,
@@ -129,22 +130,20 @@ export class HrmController {
     return this.service.createEmployee(dto);
   }
 
+  @Get('employees/by-user/:userId')
+  getEmployeeByUser(@Param('userId') userId: string) {
+    return this.service.getEmployeeByUserId(userId);
+  }
+
   @Patch('employees/by-user/:userId/locations')
   @Roles('admin', 'manager', 'super_admin')
   syncEmployeeLocations(
     @Param('userId') userId: string,
-    @Body()
-    body: {
-      locationCodes?: string[];
-      locationCode?: string | null;
-      name?: string;
-    },
+    @Body() body: SyncEmployeeByUserRequest,
   ) {
     return this.service.syncEmployeeLocationsByUserId({
       userId,
-      name: body.name,
-      locationCodes: body.locationCodes,
-      locationCode: body.locationCode,
+      ...body,
     });
   }
 

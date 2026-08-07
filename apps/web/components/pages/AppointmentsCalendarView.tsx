@@ -9,6 +9,8 @@ import { ListPageShell } from "@/components/organisms/ListPageShell";
 import { CalendarGridSkeleton } from "@/components/organisms/skeletons";
 import { getAppointmentsPage } from "@/lib/api/appointments";
 import { useServerListPage } from "@/lib/hooks/useServerListPage";
+import { appointmentListCursor } from "@/lib/utils/pagination";
+
 import { useRecordNavigation } from "@/lib/hooks/useRecordNavigation";
 import { useListPageFilters } from "@/lib/hooks/useListPageFilters";
 import { uniqueFieldOptions } from "@/lib/utils/listFilters";
@@ -53,6 +55,7 @@ export function AppointmentsCalendarView() {
         status: statusFilter || undefined,
         includeSummary: opts?.includeSummary,
       }),
+    getCursor: (row) => appointmentListCursor(row),
   });
 
   const stylists = useMemo(

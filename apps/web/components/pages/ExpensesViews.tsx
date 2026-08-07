@@ -26,11 +26,15 @@ import { buildExpenseNoteBlob, parseExpenseNotes } from "@/lib/utils/expenseNote
 import { useTenantId, useRouteTenant } from "@/lib/hooks/useRouteTenant";
 import { entitySaleLocations, defaultEntityLocationCode } from "@/lib/hooks/useBusinessLocationOptions";
 import { useServerListPage } from "@/lib/hooks/useServerListPage";
+import { expenseListCursor, nameListCursor } from "@/lib/utils/pagination";
+
 import { useListPageFilters } from "@/lib/hooks/useListPageFilters";
 import { useExpensePageTabs } from "@/lib/hooks/useExpensePageTabs";
 import { useListExport } from "@/lib/hooks/useListExport";
 import { useAppMutation } from "@/lib/hooks/useAppMutation";
 import { expensePageRoute } from "@/lib/registries/expenseNav";
+import { announceRedirect } from "@/lib/utils/announceRedirect";
+import { toast } from "@/stores/toastStore";
 import {
   createExpense,
   createExpenseCategory,
@@ -141,6 +145,7 @@ function ExpensesListViewBody() {
         ...listFilters,
         includeSummary: opts?.includeSummary,
       }),
+    getCursor: (row) => expenseListCursor(row),
   });
 
   const deleteMutation = useAppMutation({
@@ -372,6 +377,8 @@ type ExpenseFormState = {
   paymentMethod: string;
   paymentAccountId: string;
   paymentNote: string;
+  applicableTax: string;
+  recurRepetitions: string;
 };
 
 const emptyForm = (): ExpenseFormState => ({
@@ -393,7 +400,21 @@ const emptyForm = (): ExpenseFormState => ({
   paymentMethod: "cash",
   paymentAccountId: "",
   paymentNote: "",
+  applicableTax: "none",
+  recurRepetitions: "",
 });
+
+function taxRatePercent(
+  value: string,
+  options: Array<{ value: string; label: string }>,
+): number {
+  if (!value || value === "none") return 0;
+  if (value === "vat") return 7.5;
+  if (value === "wht-vat") return 15.5;
+  const opt = options.find((o) => o.value === value);
+  const match = opt?.label.match(/\(([\d.]+)%\)/);
+  return match ? Number(match[1]) : 0;
+}
 
 function expenseToForm(expense: Expense): ExpenseFormState {
   const parsed = parseExpenseNotes(expense.note);
@@ -413,9 +434,11 @@ function expenseToForm(expense: Expense): ExpenseFormState {
     isRefund: false,
     recurInterval: expense.recurInterval != null ? String(expense.recurInterval) : "",
     recurIntervalType: expense.recurIntervalType ?? "days",
-    paymentMethod: "cash",
+    paymentMethod: expense.paymentMethod?.trim() || "cash",
     paymentAccountId: expense.accountId ?? "",
     paymentNote: parsed.paymentNote,
+    applicableTax: parsed.applicableTax || "none",
+    recurRepetitions: parsed.repetitions,
   };
 }
 
@@ -430,6 +453,8 @@ export function AddExpenseView() {
   const { tabs, activeTab, onTabChange } = useExpensePageTabs("add-expense");
 
   const [form, setForm] = useState<ExpenseFormState>(emptyForm);
+  const patchForm = (patch: Partial<ExpenseFormState>) =>
+    setForm((prev) => ({ ...prev, ...patch }));
 
   const { data: categories = [] } = useQuery({
     queryKey: ["expense-categories", tenantId],
@@ -473,28 +498,37 @@ export function AddExpenseView() {
       if (!Number.isFinite(amount) || amount <= 0) {
         throw new Error("Enter a valid expense amount");
       }
-      if (
-        form.paymentStatus !== "due" &&
-        amount > 0 &&
-        !form.paymentAccountId.trim()
-      ) {
+      // Selecting a payment account means the expense is settled (HQ6 amount
+      // field is locked to the full total). Clear account → remains due.
+      const hasPaymentAccount = Boolean(form.paymentAccountId.trim());
+      const paymentStatus = hasPaymentAccount
+        ? "paid"
+        : form.paymentStatus === "paid"
+          ? "due"
+          : form.paymentStatus || "due";
+      if (paymentStatus !== "due" && amount > 0 && !hasPaymentAccount) {
         throw new Error(
           "Select a Payment Account so this expense is posted to the account book",
         );
       }
+      const paymentDue = paymentStatus === "paid" ? 0 : amount;
       const payload = {
         categoryId: form.categoryId || undefined,
         refNo: form.refNo || undefined,
         subCategory: form.subCategory || undefined,
         totalAmount: amount,
         taxAmount: form.taxAmount ? Number(form.taxAmount) : undefined,
-        note: buildExpenseNoteBlob(form.note, form.paymentNote),
+        note: buildExpenseNoteBlob(form.note, form.paymentNote, {
+          applicableTax: form.applicableTax,
+          repetitions: form.recurRepetitions,
+        }),
         paymentNote: form.paymentNote.trim() || undefined,
         expenseDate: form.expenseDate || undefined,
         locationCode: form.locationCode || undefined,
         expenseFor: form.expenseFor || undefined,
         contactName: form.contactName || undefined,
-        paymentStatus: form.paymentStatus || undefined,
+        paymentStatus,
+        paymentDue,
         accountId: form.paymentAccountId || undefined,
         paymentMethod: form.paymentMethod || undefined,
         isRecurring: form.isRecurring,
@@ -518,23 +552,51 @@ export function AddExpenseView() {
       ...(editId ? [["expense", tenantId, editId] as const] : []),
     ],
     onSuccess: () => {
-      if (tenantCode) {
-        router.push(expensePageRoute(tenantCode, "expenses"));
-      }
+      // Navigation already happened in handleSave.
     },
   });
 
   const handleCancel = () => {
     if (tenantCode) {
+      announceRedirect("Redirecting to expenses…");
       router.push(expensePageRoute(tenantCode, "expenses"));
     }
   };
 
+  const handleSave = () => {
+    if (saveMutation.isPending) return;
+    const amount = Number(form.totalAmount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      toast.error("Enter a valid expense amount");
+      return;
+    }
+    const hasPaymentAccount = Boolean(form.paymentAccountId.trim());
+    const paymentStatus = hasPaymentAccount
+      ? "paid"
+      : form.paymentStatus === "paid"
+        ? "due"
+        : form.paymentStatus || "due";
+    if (paymentStatus !== "due" && amount > 0 && !hasPaymentAccount) {
+      toast.error(
+        "Select a Payment Account so this expense is posted to the account book",
+      );
+      return;
+    }
+    if (tenantCode) {
+      announceRedirect("Saving & returning to expenses…");
+      router.push(expensePageRoute(tenantCode, "expenses"));
+    }
+    saveMutation.mutate();
+  };
+
   const locations = entitySaleLocations(config);
-  const paymentDue = Math.max(
-    0,
-    (Number(form.totalAmount) || 0) - (Number(form.taxAmount) || 0),
-  );
+  const amountTotal = Number(form.totalAmount) || 0;
+  const hasPaymentAccount = Boolean(form.paymentAccountId.trim());
+  const effectivePaymentStatus = hasPaymentAccount
+    ? "paid"
+    : form.paymentStatus || "due";
+  const paymentDue =
+    effectivePaymentStatus === "paid" ? 0 : Math.max(0, amountTotal);
 
   const hq6FormBody =
     isEdit && loadingExpense ? (
@@ -551,7 +613,7 @@ export function AddExpenseView() {
                 className="hq6-form-input"
                 value={form.locationCode}
                 onChange={(e) =>
-                  setForm({ ...form, locationCode: e.target.value })
+                  patchForm({ locationCode: e.target.value })
                 }
               >
                 <option value="">Please Select</option>
@@ -568,7 +630,7 @@ export function AddExpenseView() {
                 className="hq6-form-input"
                 value={form.categoryId}
                 onChange={(e) =>
-                  setForm({ ...form, categoryId: e.target.value })
+                  patchForm({ categoryId: e.target.value })
                 }
               >
                 <option value="">Please Select</option>
@@ -581,25 +643,21 @@ export function AddExpenseView() {
             </label>
             <label className="hq6-form-label">
               <span>Sub category:</span>
-              <select
+              <input
                 className="hq6-form-input"
                 value={form.subCategory}
                 onChange={(e) =>
-                  setForm({ ...form, subCategory: e.target.value })
+                  patchForm({ subCategory: e.target.value })
                 }
-              >
-                <option value="">Please Select</option>
-                {form.subCategory ? (
-                  <option value={form.subCategory}>{form.subCategory}</option>
-                ) : null}
-              </select>
+                placeholder="Optional"
+              />
             </label>
             <label className="hq6-form-label">
               <span>Reference No:</span>
               <input
                 className="hq6-form-input"
                 value={form.refNo}
-                onChange={(e) => setForm({ ...form, refNo: e.target.value })}
+                onChange={(e) => patchForm({ refNo: e.target.value })}
               />
               <p className="hq6-form-hint">Leave empty to autogenerate</p>
             </label>
@@ -612,7 +670,7 @@ export function AddExpenseView() {
                 className="hq6-form-input"
                 value={form.expenseFor}
                 onChange={(e) =>
-                  setForm({ ...form, expenseFor: e.target.value })
+                  patchForm({ expenseFor: e.target.value })
                 }
                 placeholder="None"
               />
@@ -623,7 +681,7 @@ export function AddExpenseView() {
                 className="hq6-form-input"
                 value={form.contactName}
                 onChange={(e) =>
-                  setForm({ ...form, contactName: e.target.value })
+                  patchForm({ contactName: e.target.value })
                 }
               />
             </label>
@@ -638,7 +696,7 @@ export function AddExpenseView() {
                 <Hq6DateTimeInput
                   className="hq6-form-input"
                   value={form.expenseDate}
-                  onChange={(v) => setForm({ ...form, expenseDate: v })}
+                  onChange={(v) => patchForm({ expenseDate: v })}
                 />
               </div>
             </label>
@@ -647,7 +705,24 @@ export function AddExpenseView() {
                 Applicable Tax:{" "}
                 <i className="fa fa-info-circle text-info" aria-hidden />
               </span>
-              <select className="hq6-form-input" defaultValue="none">
+              <select
+                className="hq6-form-input"
+                value={form.applicableTax}
+                onChange={(e) => {
+                  const applicableTax = e.target.value;
+                  const rate = taxRatePercent(applicableTax, taxOptions);
+                  const total = Number(form.totalAmount) || 0;
+                  patchForm({
+                    applicableTax,
+                    taxAmount:
+                      total > 0 && rate > 0
+                        ? ((total * rate) / 100).toFixed(2)
+                        : form.taxAmount && applicableTax === "none"
+                          ? "0"
+                          : form.taxAmount,
+                  });
+                }}
+              >
                 {taxOptions.map((opt) => (
                   <option key={opt.value} value={opt.value}>
                     {opt.label}
@@ -664,9 +739,22 @@ export function AddExpenseView() {
                 className="hq6-form-input"
                 placeholder="Total amount"
                 value={form.totalAmount}
-                onChange={(e) =>
-                  setForm({ ...form, totalAmount: e.target.value })
-                }
+                onChange={(e) => {
+                  const totalAmount = e.target.value;
+                  const rate = taxRatePercent(form.applicableTax, taxOptions);
+                  const total = Number(totalAmount) || 0;
+                  patchForm({
+                    totalAmount,
+                    ...(rate > 0
+                      ? {
+                          taxAmount:
+                            total > 0
+                              ? ((total * rate) / 100).toFixed(2)
+                              : "0",
+                        }
+                      : {}),
+                  });
+                }}
               />
             </label>
             <label className="hq6-form-label">
@@ -701,7 +789,7 @@ export function AddExpenseView() {
                 type="checkbox"
                 checked={form.isRefund}
                 onChange={(e) =>
-                  setForm({ ...form, isRefund: e.target.checked })
+                  patchForm({ isRefund: e.target.checked })
                 }
               />
               <span>
@@ -718,7 +806,7 @@ export function AddExpenseView() {
                 className="hq6-form-input"
                 rows={3}
                 value={form.note}
-                onChange={(e) => setForm({ ...form, note: e.target.value })}
+                onChange={(e) => patchForm({ note: e.target.value })}
               />
             </label>
           </div>
@@ -730,7 +818,7 @@ export function AddExpenseView() {
               type="checkbox"
               checked={form.isRecurring}
               onChange={(e) =>
-                setForm({ ...form, isRecurring: e.target.checked })
+                patchForm({ isRecurring: e.target.checked })
               }
             />
             Is Recurring?{" "}
@@ -748,15 +836,14 @@ export function AddExpenseView() {
                     className="hq6-form-input"
                     value={form.recurInterval}
                     onChange={(e) =>
-                      setForm({ ...form, recurInterval: e.target.value })
+                      patchForm({ recurInterval: e.target.value })
                     }
                   />
                   <select
                     className="hq6-form-input"
                     value={form.recurIntervalType}
                     onChange={(e) =>
-                      setForm({
-                        ...form,
+                      patchForm({
                         recurIntervalType: e.target.value as
                           | "days"
                           | "months"
@@ -772,7 +859,16 @@ export function AddExpenseView() {
               </label>
               <label className="hq6-form-label">
                 <span>No. of Repetitions:</span>
-                <input className="hq6-form-input" placeholder="" />
+                <input
+                  type="number"
+                  min={1}
+                  className="hq6-form-input"
+                  value={form.recurRepetitions}
+                  onChange={(e) =>
+                    patchForm({ recurRepetitions: e.target.value })
+                  }
+                  placeholder=""
+                />
                 <p className="hq6-form-hint">
                   If blank expense will be generated infinite times
                 </p>
@@ -807,7 +903,7 @@ export function AddExpenseView() {
                 <Hq6DateTimeInput
                   className="hq6-form-input"
                 value={form.expenseDate}
-                onChange={(v) => setForm({ ...form, expenseDate: v })}
+                onChange={(v) => patchForm({ expenseDate: v })}
               />
             </label>
             <label className="hq6-form-label">
@@ -818,7 +914,7 @@ export function AddExpenseView() {
                 className="hq6-form-input"
                 value={form.paymentMethod}
                 onChange={(e) =>
-                  setForm({ ...form, paymentMethod: e.target.value })
+                  patchForm({ paymentMethod: e.target.value })
                 }
               >
                 <option value="cash">Cash</option>
@@ -829,16 +925,38 @@ export function AddExpenseView() {
               </select>
             </label>
             <label className="hq6-form-label">
+              <span>Payment Status:</span>
+              <select
+                className="hq6-form-input"
+                value={effectivePaymentStatus}
+                onChange={(e) => {
+                  const paymentStatus = e.target.value;
+                  patchForm({
+                    paymentStatus,
+                    ...(paymentStatus === "due"
+                      ? { paymentAccountId: "" }
+                      : {}),
+                  });
+                }}
+              >
+                <option value="due">Due</option>
+                <option value="paid">Paid</option>
+              </select>
+            </label>
+            <label className="hq6-form-label">
               <span>
                 Payment Account:
-                {form.paymentStatus !== "due" ? (
+                {effectivePaymentStatus !== "due" ? (
                   <span className="req"> *</span>
                 ) : null}
               </span>
               <PaymentAccountSelect
                 value={form.paymentAccountId}
                 onChange={(id) =>
-                  setForm({ ...form, paymentAccountId: id })
+                  patchForm({
+                    paymentAccountId: id,
+                    paymentStatus: id.trim() ? "paid" : "due",
+                  })
                 }
                 emptyLabel="None"
               />
@@ -853,7 +971,7 @@ export function AddExpenseView() {
                 rows={2}
                 value={form.paymentNote}
                 onChange={(e) =>
-                  setForm({ ...form, paymentNote: e.target.value })
+                  patchForm({ paymentNote: e.target.value })
                 }
               />
             </label>
@@ -867,11 +985,11 @@ export function AddExpenseView() {
           <Hq6BusyButton
             className="tw-dw-btn tw-dw-btn-primary tw-dw-btn-lg tw-text-white"
             busy={saveMutation.isPending}
-            busyLabel="Saving…"
+            busyLabel={isEdit ? "Updating…" : "Saving…"}
             disabled={!form.totalAmount}
-            onClick={() => saveMutation.mutate()}
+            onClick={handleSave}
           >
-            Save
+            {isEdit ? "Update" : "Save"}
           </Hq6BusyButton>
           <button
             type="button"
@@ -891,6 +1009,13 @@ export function AddExpenseView() {
         multiCard
         title={isEdit ? "Edit Expense" : "Add Expense"}
       >
+        {isEdit && existing ? (
+          <div className="hq6-form-card text-sm text-[#555]">
+            Editing expense{" "}
+            <strong>{existing.refNo?.trim() || existing.id.slice(-8)}</strong>.
+            Changes update this record in place.
+          </div>
+        ) : null}
         {hq6FormBody}
       </Hq6FormShell>
     );
@@ -930,7 +1055,7 @@ export function AddExpenseView() {
                     className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm"
                     value={form.categoryId}
                     onChange={(e) =>
-                      setForm({ ...form, categoryId: e.target.value })
+                      patchForm({ categoryId: e.target.value })
                     }
                   >
                     <option value="">Select category…</option>
@@ -950,7 +1075,7 @@ export function AddExpenseView() {
                     className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm"
                     placeholder="Reference number"
                     value={form.refNo}
-                    onChange={(e) => setForm({ ...form, refNo: e.target.value })}
+                    onChange={(e) => patchForm({ refNo: e.target.value })}
                   />
                 </div>
               </div>
@@ -965,7 +1090,7 @@ export function AddExpenseView() {
                     className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm"
                     value={form.expenseDate}
                     onChange={(e) =>
-                      setForm({ ...form, expenseDate: e.target.value })
+                      patchForm({ expenseDate: e.target.value })
                     }
                   />
                 </div>
@@ -979,7 +1104,7 @@ export function AddExpenseView() {
                     placeholder="Location code"
                     value={form.locationCode}
                     onChange={(e) =>
-                      setForm({ ...form, locationCode: e.target.value })
+                      patchForm({ locationCode: e.target.value })
                     }
                   />
                 </div>
@@ -996,7 +1121,7 @@ export function AddExpenseView() {
                     placeholder="0.00"
                     value={form.totalAmount}
                     onChange={(e) =>
-                      setForm({ ...form, totalAmount: e.target.value })
+                      patchForm({ totalAmount: e.target.value })
                     }
                   />
                 </div>
@@ -1010,7 +1135,7 @@ export function AddExpenseView() {
                     placeholder="0.00"
                     value={form.taxAmount}
                     onChange={(e) =>
-                      setForm({ ...form, taxAmount: e.target.value })
+                      patchForm({ taxAmount: e.target.value })
                     }
                   />
                 </div>
@@ -1024,7 +1149,7 @@ export function AddExpenseView() {
                   className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm"
                   rows={3}
                   value={form.note}
-                  onChange={(e) => setForm({ ...form, note: e.target.value })}
+                  onChange={(e) => patchForm({ note: e.target.value })}
                 />
               </div>
 
@@ -1033,14 +1158,12 @@ export function AddExpenseView() {
                   Cancel
                 </Button>
                 <Button
-                  onClick={() => saveMutation.mutate()}
-                  disabled={saveMutation.isPending || !form.totalAmount}
+                  onClick={handleSave}
+                  isLoading={saveMutation.isPending}
+                  loadingText={isEdit ? "Updating…" : "Saving…"}
+                  disabled={!form.totalAmount}
                 >
-                  {saveMutation.isPending
-                    ? "Saving…"
-                    : isEdit
-                      ? "Update Expense"
-                      : "Save Expense"}
+                  {isEdit ? "Update Expense" : "Save Expense"}
                 </Button>
               </div>
 
@@ -1091,6 +1214,7 @@ function ExpenseCategoriesListViewBody() {
     queryKey: ["expense-categories", tenantId],
     enabled: Boolean(tenantId),
     fetchPage: (cursor, limit, _sort, opts) => getExpenseCategoriesPage(tenantId!, cursor, limit, { includeSummary: opts?.includeSummary }),
+    getCursor: (row) => nameListCursor(row),
   });
 
   const createMutation = useAppMutation({

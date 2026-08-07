@@ -4,7 +4,7 @@
  * Discount / Moniepoint / Providus / Fidelity / etc.) stay selectable.
  */
 const JUNK_PAYMENT_ACCOUNT_NAME_RE =
-  /^(assets?|liabilit(y|ies)|equity|income|expense|address\s+to\s+new\s+bill|accounts?\s+payable|accounts?\s+receivable)\b/i;
+  /^(assets?|liabilit(y|ies)|equity|income|expense|address\s+to\s+new\s+bill|accounts?\s+payable|accounts?\s+receivable|cash\s+express\s+payment|cash\s+payment\s+received)\b/i;
 
 export function isJunkPaymentAccountName(name: string): boolean {
   return JUNK_PAYMENT_ACCOUNT_NAME_RE.test(name.trim());

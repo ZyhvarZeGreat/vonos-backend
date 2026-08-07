@@ -70,6 +70,22 @@ export interface Employee {
   bankCode: string | null;
   bankAccountNo: string | null;
   taxPayerId: string | null;
+  mobile: string | null;
+  altContact: string | null;
+  familyContact: string | null;
+  guardianName: string | null;
+  /** ISO date (YYYY-MM-DD) when set. */
+  dateOfBirth: string | null;
+  gender: string | null;
+  maritalStatus: string | null;
+  bloodGroup: string | null;
+  idProofName: string | null;
+  idProofNumber: string | null;
+  permanentAddress: string | null;
+  currentAddress: string | null;
+  salesCommission: number | null;
+  maxSalesDiscountPercent: number | null;
+  department: string | null;
   createdAt: string;
 }
 
@@ -162,6 +178,56 @@ export interface CreateEmployeeRequest {
   designationId: string;
   userId?: string;
   isServiceStaff?: boolean;
+  accountHolderName?: string | null;
+  bankName?: string | null;
+  bankBranch?: string | null;
+  bankCode?: string | null;
+  bankAccountNo?: string | null;
+  taxPayerId?: string | null;
+  mobile?: string | null;
+  altContact?: string | null;
+  familyContact?: string | null;
+  guardianName?: string | null;
+  dateOfBirth?: string | null;
+  gender?: string | null;
+  maritalStatus?: string | null;
+  bloodGroup?: string | null;
+  idProofName?: string | null;
+  idProofNumber?: string | null;
+  permanentAddress?: string | null;
+  currentAddress?: string | null;
+  salesCommission?: number | null;
+  maxSalesDiscountPercent?: number | null;
+  department?: string | null;
+}
+
+/** Patch employee linked to a login user (locations + HR/bank fields). */
+export interface SyncEmployeeByUserRequest {
+  locationCodes?: string[];
+  locationCode?: string | null;
+  name?: string;
+  designationId?: string;
+  accountHolderName?: string | null;
+  bankName?: string | null;
+  bankBranch?: string | null;
+  bankCode?: string | null;
+  bankAccountNo?: string | null;
+  taxPayerId?: string | null;
+  mobile?: string | null;
+  altContact?: string | null;
+  familyContact?: string | null;
+  guardianName?: string | null;
+  dateOfBirth?: string | null;
+  gender?: string | null;
+  maritalStatus?: string | null;
+  bloodGroup?: string | null;
+  idProofName?: string | null;
+  idProofNumber?: string | null;
+  permanentAddress?: string | null;
+  currentAddress?: string | null;
+  salesCommission?: number | null;
+  maxSalesDiscountPercent?: number | null;
+  department?: string | null;
 }
 
 export interface CreatePayComponentRequest {

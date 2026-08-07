@@ -10,7 +10,9 @@ import { EntityContextBanner } from "@/components/molecules/EntityContextBanner"
 import { EntityColorBadge } from "@/components/atoms/EntityColorBadge";
 import { StatusPill } from "@/components/atoms/StatusPill";
 import { FinanceActionBar } from "@/components/molecules/FinanceActionBar";
+import { ViewportDefer } from "@/components/molecules/ViewportDefer";
 import { ChartPanel } from "@/components/organisms/ChartPanel";
+import { useInViewport } from "@/lib/hooks/useInViewport";
 import { DataTable, type ColumnConfig } from "@/components/organisms/DataTable";
 import { PaginatedLedgerTable } from "@/components/organisms/PaginatedLedgerTable";
 import { KpiRow } from "@/components/organisms/KpiRow";
@@ -225,10 +227,17 @@ export function FinanceView({ groupMode = false }: FinanceViewProps) {
     placeholderData: (prev) => prev,
   });
 
+  const overviewChartsViewport = useInViewport({ rootMargin: "320px 0px" });
+  const analysisChartsViewport = useInViewport({ rootMargin: "320px 0px" });
+  const chartsNearViewport =
+    (activeTab === "overview" && overviewChartsViewport.inView) ||
+    (activeTab === "analysis" && analysisChartsViewport.inView);
+
   const chartsEnabled =
     !viewingEntity &&
     (groupMode || Boolean(tenantId)) &&
-    (activeTab === "overview" || activeTab === "analysis");
+    (activeTab === "overview" || activeTab === "analysis") &&
+    chartsNearViewport;
 
   const chartsQuery = useQuery({
     queryKey: ["ledgerCharts", groupMode ? "group" : tenantId, bounds?.from, bounds?.to],
@@ -549,6 +558,10 @@ export function FinanceView({ groupMode = false }: FinanceViewProps) {
             customValue={customDateRange}
             onCustomChange={setCustomDateRange}
           />
+          <p className="text-xs text-muted-foreground">
+            P&amp;L basis: Accrual (document totals). Cash lives in Accounts /
+            tills — payment collections are not double-counted as revenue.
+          </p>
           <KpiRow
             cards={financeKpiCards}
             isLoading={summaryQuery.isLoading && !summary}
@@ -576,21 +589,25 @@ export function FinanceView({ groupMode = false }: FinanceViewProps) {
                   : "—",
             }}
           />
-          <ChartPanel
-            title="Revenue vs Costs"
-            subtitle={chartSubtitle}
-            type="line"
-            data={plTrend}
-            hidePeriodControl
-            isLoading={chartsLoading}
-            error={chartsError}
-            formatTooltipValue={(value) => formatChartValue(Number(value))}
-            formatLegendValue={formatChartValue}
-            series={[
-              { name: "Revenue", dataKey: "revenue", color: "#059669" },
-              { name: "Costs", dataKey: "costs", color: "#e11d48" },
-            ]}
-          />
+          <div ref={overviewChartsViewport.ref}>
+            <ViewportDefer minHeight={280} fallback={null}>
+              <ChartPanel
+                title="Revenue vs Costs"
+                subtitle={chartSubtitle}
+                type="line"
+                data={plTrend}
+                hidePeriodControl
+                isLoading={chartsLoading}
+                error={chartsError}
+                formatTooltipValue={(value) => formatChartValue(Number(value))}
+                formatLegendValue={formatChartValue}
+                series={[
+                  { name: "Revenue", dataKey: "revenue", color: "#059669" },
+                  { name: "Costs", dataKey: "costs", color: "#e11d48" },
+                ]}
+              />
+            </ViewportDefer>
+          </div>
           {groupMode ? (
             <div className="space-y-3">
               <div>
@@ -671,38 +688,45 @@ export function FinanceView({ groupMode = false }: FinanceViewProps) {
             customValue={customDateRange}
             onCustomChange={setCustomDateRange}
           />
-          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-            <ChartPanel
-              title="Revenue vs Cost Over Time"
-              subtitle={chartSubtitle}
-              type="bar"
-              data={plTrend}
-              hidePeriodControl
-              isLoading={chartsLoading}
-              error={chartsError}
-              formatTooltipValue={(value) => formatChartValue(Number(value))}
-              formatLegendValue={formatChartValue}
-              series={[
-                { name: "Revenue", dataKey: "revenue", color: "#059669" },
-                { name: "Costs", dataKey: "costs", color: "#93c5fd" },
-              ]}
-            />
-            <ChartPanel
-              title="Category Breakdown"
-              subtitle={
-                groupMode
-                  ? "Revenue by category (all entities)"
-                  : "Revenue by category (this entity)"
-              }
-              type="pie"
-              data={categoryBreakdown}
-              hidePeriodControl
-              isLoading={chartsLoading}
-              error={chartsError}
-              formatTooltipValue={(value) => formatChartValue(Number(value))}
-              formatLegendValue={formatChartValue}
-              series={[{ name: "Revenue", dataKey: "value", color: "#9333ea" }]}
-            />
+          <div
+            ref={analysisChartsViewport.ref}
+            className="grid grid-cols-1 gap-6 lg:grid-cols-2"
+          >
+            <ViewportDefer minHeight={280}>
+              <ChartPanel
+                title="Revenue vs Cost Over Time"
+                subtitle={chartSubtitle}
+                type="bar"
+                data={plTrend}
+                hidePeriodControl
+                isLoading={chartsLoading}
+                error={chartsError}
+                formatTooltipValue={(value) => formatChartValue(Number(value))}
+                formatLegendValue={formatChartValue}
+                series={[
+                  { name: "Revenue", dataKey: "revenue", color: "#059669" },
+                  { name: "Costs", dataKey: "costs", color: "#93c5fd" },
+                ]}
+              />
+            </ViewportDefer>
+            <ViewportDefer minHeight={280}>
+              <ChartPanel
+                title="Category Breakdown"
+                subtitle={
+                  groupMode
+                    ? "Revenue by category (all entities)"
+                    : "Revenue by category (this entity)"
+                }
+                type="pie"
+                data={categoryBreakdown}
+                hidePeriodControl
+                isLoading={chartsLoading}
+                error={chartsError}
+                formatTooltipValue={(value) => formatChartValue(Number(value))}
+                formatLegendValue={formatChartValue}
+                series={[{ name: "Revenue", dataKey: "value", color: "#9333ea" }]}
+              />
+            </ViewportDefer>
           </div>
         </div>
       )}

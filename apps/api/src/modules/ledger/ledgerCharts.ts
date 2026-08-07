@@ -1,6 +1,7 @@
 import { Prisma, type PrismaClient } from '@prisma/client';
 import type { TenantScopedPrisma } from '../../common/prisma/prisma.service';
 import { EXCLUDE_INTERNAL_TRANSFER_SQL } from '../../common/utils/internalTransfer';
+import { EXCLUDE_CASH_BOOK_LEDGER_SQL } from '../../common/utils/ledgerCashBook';
 import { runPool } from '../../common/utils/mapPool';
 import { toNumber } from '../../common/utils/serializers';
 import {
@@ -116,6 +117,7 @@ export async function buildGroupLedgerCharts(
       AND date >= ${window.from}
       AND date <= ${window.to}
       ${EXCLUDE_INTERNAL_TRANSFER_SQL}
+      ${EXCLUDE_CASH_BOOK_LEDGER_SQL}
     GROUP BY bucket, type
     ORDER BY bucket ASC
   `;
@@ -145,6 +147,7 @@ export async function buildGroupLedgerCharts(
       AND date >= ${window.from}
       AND date <= ${window.to}
       ${EXCLUDE_INTERNAL_TRANSFER_SQL}
+      ${EXCLUDE_CASH_BOOK_LEDGER_SQL}
     GROUP BY category
     ORDER BY total DESC
     LIMIT 12

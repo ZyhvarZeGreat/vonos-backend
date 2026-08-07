@@ -6,6 +6,7 @@ import {
   hasDailyFinanceRollupForTenants,
 } from '../../../common/utils/dailyFinanceRollup';
 import { EXCLUDE_INTERNAL_TRANSFER_SQL } from '../../../common/utils/internalTransfer';
+import { EXCLUDE_CASH_BOOK_LEDGER_SQL } from '../../../common/utils/ledgerCashBook';
 import { EXCLUDE_MIRRORED_JOB_SALE_REVENUE_SQL } from '../../../common/utils/ledgerRevenueDedupe';
 import { toNumber } from '../../../common/utils/serializers';
 
@@ -57,6 +58,7 @@ export async function groupRevenueByTenant(
       AND "tenantId" IN (${Prisma.join(tenantIds)})
       ${EXCLUDE_INTERNAL_TRANSFER_SQL}
       ${EXCLUDE_MIRRORED_JOB_SALE_REVENUE_SQL}
+      ${EXCLUDE_CASH_BOOK_LEDGER_SQL}
     GROUP BY "tenantId"
   `;
 
@@ -131,6 +133,7 @@ export async function groupRevenueTrendByMonth(
       AND "tenantId" IN (${Prisma.join(tenantIds)})
       ${EXCLUDE_INTERNAL_TRANSFER_SQL}
       ${EXCLUDE_MIRRORED_JOB_SALE_REVENUE_SQL}
+      ${EXCLUDE_CASH_BOOK_LEDGER_SQL}
     GROUP BY "monthKey", label, "tenantId"
     ORDER BY "monthKey" ASC
   `;

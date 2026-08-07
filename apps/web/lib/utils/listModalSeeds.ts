@@ -96,6 +96,7 @@ export function customerContactSeedFromList(row: Customer): CustomerContact {
     email: row.email,
     phone: row.phone,
     totalSellDue: row.totalSellDue ?? 0,
+    totalAdvance: row.totalAdvance ?? 0,
     visitCount: row.visitCount,
     createdAt: row.createdAt,
     status: row.status ?? "active",

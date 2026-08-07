@@ -26,6 +26,8 @@ import { patchEntityInQueries } from "@/lib/query/optimistic";
 import { getDesignations, getEmployees, loadMoreEmployeesForPicker } from "@/lib/api/hrm";
 import { AsyncMenuSelect } from "@/components/molecules/AsyncMenuSelect";
 import { useServerListPage, withListSort } from "@/lib/hooks/useServerListPage";
+import { slidingPageIndices, listEntryRange, formatListEntriesLabel, totalPagesFromEntries } from "@/lib/utils/paginationWindow";
+
 import { HQ6_TABLE_PAGE_SIZE } from "@/lib/api/fetchAllPages";
 import { useListExport } from "@/lib/hooks/useListExport";
 import { useListPageFilters } from "@/lib/hooks/useListPageFilters";
@@ -40,22 +42,27 @@ import {
 } from "@/lib/registries/hq6TableRows";
 import { useUiStore } from "@/stores/uiStore";
 import { toast } from "@/stores/toastStore";
-import { formatHq6Currency, formatHq6Date, hq6Cell } from "@/lib/utils/hq6Format";
+import {
+  formatHq6Currency,
+  formatHq6Date,
+  hq6Cell,
+  hq6DistinctName,
+} from "@/lib/utils/hq6Format";
 
 const PAGE_SIZES = [25, 50, 100, 200, 500, 1000, -1] as const;
 
-/** HQ6 contact custom columns (ui-audit/05 thead). */
-const CUSTOM_HEADERS = [
-  "Milage",
-  "VIN Number",
-  "Car Model & Year",
-  "Customer Location",
-  "Referral source",
-  "Custom Field 6",
-  "Custom Field 7",
-  "Custom Field 8",
-  "Custom Field 9",
-  "Custom Field 10",
+/** HQ6 contact custom columns (ui-audit/05 thead) → Customer.details keys. */
+const CUSTOM_FIELD_COLUMNS = [
+  { key: "customField1", header: "Milage" },
+  { key: "customField2", header: "VIN Number" },
+  { key: "customField3", header: "Car Model & Year" },
+  { key: "customField4", header: "Customer Location" },
+  { key: "customField5", header: "Referral source" },
+  { key: "customField6", header: "Custom Field 6" },
+  { key: "customField7", header: "Custom Field 7" },
+  { key: "customField8", header: "Custom Field 8" },
+  { key: "customField9", header: "Custom Field 9" },
+  { key: "customField10", header: "Custom Field 10" },
 ] as const;
 
 const PlusIcon = (
@@ -207,7 +214,6 @@ export function Hq6CustomersListView() {
     goPrev,
     setPageSize,
     isLoading,
-    isFetching,
     isPaging,
     error,
     goToPage,
@@ -292,13 +298,14 @@ export function Hq6CustomersListView() {
 
   const totalItems = totalCount ?? customers.length;
   const effectiveSize = pageSize <= 0 ? Math.max(totalItems, 1) : pageSize;
-  const knownPages =
-    totalCount != null
-      ? Math.max(1, Math.ceil(Math.max(totalCount, 1) / effectiveSize))
-      : Math.max(pageIndex + 1 + (hasMore ? 1 : 0), 1);
-  const from = customers.length === 0 ? 0 : pageIndex * effectiveSize + 1;
-  const to = pageIndex * effectiveSize + customers.length;
-  const busy = isPaging || isLoading || isFetching;
+  const knownPages = totalPagesFromEntries(totalCount, effectiveSize);
+  const { from, to } = listEntryRange({
+    pageIndex,
+    pageSize: effectiveSize,
+    itemCount: customers.length,
+    totalCount: totalCount ?? totalItems,
+  });
+  const busy = isPaging || (isLoading && customers.length === 0);
 
   const dueTotal =
     amountSummary?.totalDue ??
@@ -337,13 +344,37 @@ export function Hq6CustomersListView() {
     );
   }, [apiFilters, exportList, tenantId]);
 
-  const pageNumbers = useMemo(() => {
-    const max = Math.min(knownPages, 7);
-    return Array.from({ length: max }, (_, i) => i);
-  }, [knownPages]);
+  const pageNumbers = useMemo(
+    () =>
+      slidingPageIndices(pageIndex, {
+        totalPages: knownPages,
+        hasMore: knownPages == null ? hasMore : false,
+        maxButtons: 5,
+      }),
+    [hasMore, pageIndex, knownPages],
+  );
 
   const showCol = (key: string) => visibleKeys.has(key);
-  const colSpan = 15 + CUSTOM_HEADERS.length;
+  const colSpan = 15 + CUSTOM_FIELD_COLUMNS.length;
+
+  const handleCustomerSaved = useCallback(
+    (updated: Customer) => {
+      patchEntityInQueries(queryClient, ["customers"], updated.id, {
+        name: updated.name,
+        email: updated.email,
+        phone: updated.phone,
+        contactId: updated.contactId,
+        businessName: updated.businessName,
+        taxNumber: updated.taxNumber,
+        openingBalance: updated.openingBalance,
+        customerGroupId: updated.customerGroupId,
+        customerGroupName: updated.customerGroupName,
+        details: updated.details,
+      });
+      void invalidate();
+    },
+    [invalidate, queryClient],
+  );
   const crumbs = useHq6Breadcrumbs({ leafLabel: "Customers" });
 
   return (
@@ -703,8 +734,8 @@ export function Hq6CustomersListView() {
                                   Total Sell Return Due
                                 </th>
                               ) : null}
-                              {CUSTOM_HEADERS.map((h) => (
-                                <th key={h}>{h}</th>
+                              {CUSTOM_FIELD_COLUMNS.map((col) => (
+                                <th key={col.key}>{col.header}</th>
                               ))}
                             </tr>
                           </thead>
@@ -838,7 +869,11 @@ export function Hq6CustomersListView() {
                                     <td>{hq6Cell(row.contactId)}</td>
                                   ) : null}
                                   {showCol("businessName") ? (
-                                    <td>{hq6Cell(row.businessName)}</td>
+                                    <td>
+                                      {hq6Cell(
+                                        hq6DistinctName(row.businessName, row.name),
+                                      )}
+                                    </td>
                                   ) : null}
                                   {showCol("name") ? <td>{row.name}</td> : null}
                                   {showCol("email") ? (
@@ -943,8 +978,10 @@ export function Hq6CustomersListView() {
                                       </span>
                                     </td>
                                   ) : null}
-                                  {CUSTOM_HEADERS.map((h) => (
-                                    <td key={h} />
+                                  {CUSTOM_FIELD_COLUMNS.map((col) => (
+                                    <td key={col.key}>
+                                      {hq6Cell(row.details?.[col.key])}
+                                    </td>
                                   ))}
                                 </tr>
                               ))
@@ -985,8 +1022,8 @@ export function Hq6CustomersListView() {
                                     {formatHq6Currency(returnDueTotal)}
                                   </td>
                                 ) : null}
-                                {CUSTOM_HEADERS.map((h) => (
-                                  <td key={h} />
+                                {CUSTOM_FIELD_COLUMNS.map((col) => (
+                                  <td key={col.key} />
                                 ))}
                               </tr>
                             </tfoot>
@@ -1000,7 +1037,11 @@ export function Hq6CustomersListView() {
                         role="status"
                         aria-live="polite"
                       >
-                        {`Showing ${from} to ${to} of ${(totalCount ?? to).toLocaleString()} entries`}
+                        {formatListEntriesLabel({
+                          from,
+                          to,
+                          total: totalCount ?? to,
+                        })}
                       </div>
                       <div
                         className="dataTables_paginate paging_simple_numbers"
@@ -1030,7 +1071,9 @@ export function Hq6CustomersListView() {
                                 href="#"
                                 onClick={(e) => {
                                   e.preventDefault();
-                                  if (canSelectPage?.(i) !== false) goToPage(i);
+                                  if (busy) return;
+                                  if (canSelectPage?.(i) === false) return;
+                                  void goToPage(i);
                                 }}
                               >
                                 {i + 1}
@@ -1067,7 +1110,7 @@ export function Hq6CustomersListView() {
         customer={editTarget}
         tenantId={tenantId}
         onClose={() => setEditTarget(null)}
-        onSaved={invalidate}
+        onSaved={handleCustomerSaved}
       />
       <Hq6PayContactModal
         open={Boolean(payTarget)}

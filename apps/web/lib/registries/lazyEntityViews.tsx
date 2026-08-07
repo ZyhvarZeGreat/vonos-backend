@@ -2,20 +2,14 @@
 
 import dynamic from "next/dynamic";
 import type { ComponentType } from "react";
-import { Spinner } from "@/components/atoms/Spinner";
+import { Hq6ListRouteSkeleton } from "@/components/organisms/skeletons";
 
-/** Route chunk loading — chrome stays up; show an in-page loader + TopProgressBar. */
+/**
+ * While a route chunk downloads: keep shell + table chrome (shimmer rows).
+ * No centered spinner — navigation still feels immediate.
+ */
 function PageChunkFallback() {
-  return (
-    <div
-      className="flex min-h-[40vh] flex-col items-center justify-center gap-3 p-8"
-      aria-busy
-      aria-label="Loading page"
-    >
-      <Spinner size="lg" />
-      <p className="text-sm text-muted">Loading…</p>
-    </div>
-  );
+  return <Hq6ListRouteSkeleton title=" " />;
 }
 
 type AnyComponent = ComponentType<Record<string, unknown>>;
@@ -227,7 +221,7 @@ export const AddProductView = lazyNamed(
   "AddProductView",
 );
 export const PaymentsListView = lazyNamed(
-  () => import("@/components/pages/PosNavViews"),
+  () => import("@/components/pages/Hq6PaymentsListView"),
   "PaymentsListView",
 );
 export const AccountBookView = lazyNamed(

@@ -31,6 +31,8 @@ import {
 import { useAppMutation } from "@/lib/hooks/useAppMutation";
 import { useRouteTenant, useTenantId } from "@/lib/hooks/useRouteTenant";
 import { useServerListPage } from "@/lib/hooks/useServerListPage";
+import { nameListCursor } from "@/lib/utils/pagination";
+
 import { removeEntityFromQueries } from "@/lib/query/optimistic";
 import { formatCurrency } from "@/lib/utils/formatCurrency";
 
@@ -132,7 +134,8 @@ function UpdatePriceViewBody() {
           />
         </div>
         <p className="text-xs text-muted">
-          Percentage applies to current unit price (use negative values to decrease).
+          Percentage applies to current selling price (use negative values to
+          decrease). Products with no selling price start from 0.
         </p>
         {result ? <p className="text-sm text-success">{result}</p> : null}
         {error ? <p className="text-sm text-error">{error}</p> : null}
@@ -181,6 +184,7 @@ function DiscountsListViewBody() {
     queryKey: ["discounts", tenantId],
     enabled: Boolean(tenantId),
     fetchPage: (cursor, limit, _sort, opts) => getDiscountsPage(tenantId!, cursor, limit, { includeSummary: opts?.includeSummary }),
+    getCursor: (row) => nameListCursor(row),
   });
 
   const createMutation = useAppMutation({
@@ -355,6 +359,7 @@ function VariationsListViewBody() {
     queryKey: ["variations", tenantId],
     enabled: Boolean(tenantId),
     fetchPage: (cursor, limit, _sort, opts) => getVariationsPage(tenantId!, cursor, limit, { includeSummary: opts?.includeSummary }),
+    getCursor: (row) => nameListCursor(row),
   });
 
   const createMutation = useAppMutation({

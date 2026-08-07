@@ -8,6 +8,8 @@ import { ListPageShell } from "@/components/organisms/ListPageShell";
 import { KanbanSkeleton } from "@/components/organisms/skeletons";
 import { getOrdersPage } from "@/lib/api/orders";
 import { useServerListPage } from "@/lib/hooks/useServerListPage";
+import { saleListCursor } from "@/lib/utils/pagination";
+
 import { formatCurrency } from "@/lib/utils/formatCurrency";
 import { useListPageFilters } from "@/lib/hooks/useListPageFilters";
 import { uniqueFieldOptions } from "@/lib/utils/listFilters";
@@ -72,6 +74,7 @@ export function KitchenDisplayView() {
         cursor,
         limit,
       ),
+    getCursor: (row) => saleListCursor({ id: row.id, date: row.saleDate ?? row.createdAt }),
   });
 
   const filtered = useMemo(() => {

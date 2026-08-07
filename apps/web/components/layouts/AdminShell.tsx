@@ -24,7 +24,6 @@ import { scheduleIdle } from "@/lib/prefetch/scheduleIdle";
 import { prefetchVagAdminShell } from "@/lib/prefetch/routePrefetchRegistry";
 import { UposAppShell } from "@/components/upos/UposAppShell";
 import { TopProgressBar } from "@/components/atoms/TopProgressBar";
-import { Spinner } from "@/components/atoms/Spinner";
 import { useAppPermissions } from "@/lib/hooks/useHq6Permissions";
 
 /**
@@ -137,12 +136,7 @@ export function AdminShell({
         }
       >
         {!skipAuth && !hydrated ? (
-          <div className="hq6-page space-y-4 p-4">
-            <p className="text-sm text-muted">Loading…</p>
-            <div className="flex min-h-[20vh] items-center justify-center">
-              <Spinner size="lg" />
-            </div>
-          </div>
+          <div className="min-h-[40vh]" aria-hidden />
         ) : (
           children
         )}

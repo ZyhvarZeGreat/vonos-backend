@@ -208,8 +208,6 @@ export interface CreateSaleRequest {
   customerId?: string;
   /** Optional link to a job (Automotive). Not required to create or update a sale. */
   jobId?: string;
-  /** When updating (create + archive old), ignore this sale id for one-sale-per-job. */
-  replaceSaleId?: string;
   locationCode?: string;
   paymentMethod?: string;
   cleanerUserId?: string;
@@ -229,6 +227,9 @@ export interface CreateSaleRequest {
   taxAmount?: number;
   notes?: string;
 }
+
+/** In-place sale edit — same id. Payments kept unless converting draft/quotation → final. */
+export type UpdateSaleRequest = CreateSaleRequest;
 
 export interface UpdateSaleShippingRequest {
   shippingStatus?: ShippingStatus | null;

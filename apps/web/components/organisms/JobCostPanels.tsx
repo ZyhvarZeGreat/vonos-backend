@@ -156,7 +156,7 @@ export function JobMaterialsPanel({ job, tenantId, onJobChange }: JobCostPanelPr
       itemId: pick.itemId,
       name: pick.name,
       quantity: 1,
-      unitCost: pick.costPrice || pick.sellPrice || 0,
+      unitCost: pick.costPrice || 0,
       ...sourcingFields(),
     });
   };

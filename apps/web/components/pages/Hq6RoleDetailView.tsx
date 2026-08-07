@@ -2,7 +2,7 @@
 
 import { roleFormSchema } from "@/lib/validation/schemas";
 import { parseForm } from "@/lib/validation/parseForm";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import type { TenantRole } from "@vonos/types";
@@ -23,6 +23,11 @@ import {
 import { toast } from "@/stores/toastStore";
 import { notifyInsufficientPrivilege } from "@/lib/utils/privilegeToast";
 import { cn } from "@/lib/utils/cn";
+import { isTransientWriteError } from "@/lib/utils/withWriteRetries";
+import {
+  newIdempotencyKey,
+  withIdempotencyKey,
+} from "@/lib/utils/idempotency";
 
 /**
  * Roles Edit/Add — permission matrix for TenantRoles (shared across all entities).
@@ -40,7 +45,7 @@ export function Hq6RoleDetailView({
   const queryClient = useQueryClient();
   const tenantId = useTenantId();
   const { tenantCode } = useRouteTenant();
-  const { listPath } = useRecordNavigation("roles");
+  const { listPath, goToList } = useRecordNavigation("roles");
   const { isVag, requireCan } = useAppPermissions();
   const isCreate = recordId === "new" || recordId === "create";
 
@@ -124,29 +129,37 @@ export function Hq6RoleDetailView({
     [moduleKeys],
   );
 
+  const roleIdempotencyKeyRef = useRef<string | null>(null);
+
   const saveMutation = useMutation({
+    retry: (failureCount, error) =>
+      failureCount < 2 && isTransientWriteError(error),
     mutationFn: async (): Promise<TenantRole> => {
-      if (!isVag) {
-        throw new Error("Only VAG can create or edit roles.");
-      }
-      if (!tenantId) throw new Error("No tenant selected");
-      const valid = parseForm(roleFormSchema, { name: roleName });
-      if (!valid) throw new Error("Role Name is required.");
-      const name = valid.name;
-      const permissions = Array.from(selected);
-      const isServiceStaff = selected.has("is_service_staff");
-      if (isCreate) {
-        return createTenantRole(tenantId, {
+      const key = roleIdempotencyKeyRef.current ?? newIdempotencyKey();
+      roleIdempotencyKeyRef.current = key;
+      return withIdempotencyKey(key, async () => {
+        if (!isVag) {
+          throw new Error("Only VAG can create or edit roles.");
+        }
+        if (!tenantId) throw new Error("No tenant selected");
+        const valid = parseForm(roleFormSchema, { name: roleName });
+        if (!valid) throw new Error("Role Name is required.");
+        const name = valid.name;
+        const permissions = Array.from(selected);
+        const isServiceStaff = selected.has("is_service_staff");
+        if (isCreate) {
+          return createTenantRole(tenantId, {
+            name,
+            permissions,
+            isServiceStaff,
+            locked: name.toLowerCase() === "admin",
+          });
+        }
+        return updateTenantRole(tenantId, recordId, {
           name,
           permissions,
           isServiceStaff,
-          locked: name.toLowerCase() === "admin",
         });
-      }
-      return updateTenantRole(tenantId, recordId, {
-        name,
-        permissions,
-        isServiceStaff,
       });
     },
     onSuccess: async (role) => {
@@ -157,10 +170,13 @@ export function Hq6RoleDetailView({
       void queryClient.invalidateQueries({
         queryKey: ["tenant-role", tenantId, role.id],
       });
-      router.push(listPath);
+      // Navigation already happened on submit (leave-first).
     },
     onError: (err: Error) => {
       toast.error(err.message || "Failed to save role");
+    },
+    onSettled: () => {
+      roleIdempotencyKeyRef.current = null;
     },
   });
 
@@ -217,7 +233,14 @@ export function Hq6RoleDetailView({
             ) {
               return;
             }
-            if (!readOnly) saveMutation.mutate();
+            if (!readOnly) {
+              goToList(
+                isCreate
+                  ? "Creating role…"
+                  : "Saving & returning to roles…",
+              );
+              saveMutation.mutate();
+            }
           }}
         >
           <div className="hq6-role-name-row">

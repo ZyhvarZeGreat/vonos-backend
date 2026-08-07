@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { toast } from "@/stores/toastStore";
 
 interface NavigationBusyState {
   pending: boolean;
@@ -53,7 +54,8 @@ export const useNavigationBusyStore = create<NavigationBusyState>((set, get) => 
     clearFinish();
     clearSafety();
     if (!get().pending) {
-      set({ pending: true, percent: 0 });
+      // Start already moving so the chip does not sit at 0%.
+      set({ pending: true, percent: 8 });
       startTick();
     }
     // Hard stop if navigation is cancelled / never lands.
@@ -62,20 +64,26 @@ export const useNavigationBusyStore = create<NavigationBusyState>((set, get) => 
     }, 12_000);
   },
   complete: () => {
-    if (!get().pending && get().percent === 0) return;
+    if (!get().pending && get().percent === 0) {
+      // Still clear a leftover redirect chip (announceRedirect) if present.
+      toast.dismissProgress("navigation");
+      return;
+    }
     clearTick();
     clearSafety();
     set({ pending: false, percent: 100 });
     clearFinish();
     finishTimer = setTimeout(() => {
+      toast.dismissProgress("navigation");
       set({ percent: 0 });
       finishTimer = null;
-    }, 320);
+    }, 220);
   },
   reset: () => {
     clearTick();
     clearFinish();
     clearSafety();
+    toast.dismissProgress("navigation");
     set({ pending: false, percent: 0 });
   },
 }));
