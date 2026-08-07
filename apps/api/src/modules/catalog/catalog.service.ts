@@ -157,7 +157,7 @@ export class CatalogService {
     return withListPageCache(
       this.cache,
       requestTenantId,
-      'catalog:v5',
+      'catalog:v7',
       filterKey,
       () => this.listUncached(filters, requestTenantId),
     );
@@ -297,7 +297,7 @@ export async function warmDefaultCatalogListPages(
         await withListPageCache(
           cache,
           tenantId,
-          'catalog:v5',
+          'catalog:v7',
           filterKey,
           async () => {
             const baseWhere = {

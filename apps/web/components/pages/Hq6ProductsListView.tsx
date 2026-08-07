@@ -1086,6 +1086,25 @@ export function Hq6ProductsListView({
                                   >
                                     {row.name}
                                   </a>
+                                  {row.sku?.trim() &&
+                                  row.sku.trim().toLowerCase() !==
+                                    row.name.trim().toLowerCase() ? (
+                                    <div
+                                      title={row.sku}
+                                      style={{
+                                        marginTop: 2,
+                                        maxWidth: 260,
+                                        overflow: "hidden",
+                                        textOverflow: "ellipsis",
+                                        whiteSpace: "nowrap",
+                                        color: "#6b7280",
+                                        fontSize: 12,
+                                        lineHeight: 1.3,
+                                      }}
+                                    >
+                                      {row.sku}
+                                    </div>
+                                  ) : null}
                                 </td>
                               ) : null}
                               {isColVisible("binLocation") ? (
