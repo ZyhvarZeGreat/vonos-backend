@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams, useParams } from "next/navigation";
 import { Plus } from "lucide-react";
 import { Button } from "@/components/atoms/Button";
 import { RowActionsMenu } from "@/components/molecules/RowActionsMenu";
@@ -316,6 +316,59 @@ export function QuotationsListView() {
   );
 }
 
+/**
+ * Single route view for Sales / Drafts / Quotations / Shipments.
+ * Same component identity across those slugs so Next does not remount a
+ * new `dynamic()` boundary (skeleton flash) when switching in the sidebar.
+ */
+export function SellListsRouteView() {
+  const params = useParams<{ tenant?: string; listSlug?: string }>();
+  const router = useRouter();
+  const slug = params.listSlug ?? "sales";
+  const tenant = params.tenant;
+
+  // Warm sibling sell routes so Sales ↔ Quotations feels instant.
+  useEffect(() => {
+    if (!tenant) return;
+    for (const sibling of ["sales", "quotations", "drafts", "shipments"] as const) {
+      if (sibling === slug) continue;
+      router.prefetch(`/${tenant}/${sibling}`);
+    }
+  }, [router, slug, tenant]);
+
+  // No per-slug `key` — reuse the same SalesListView instance so chrome survives
+  // and keepPreviousData can show the prior table while the new status loads.
+  switch (slug) {
+    case "quotations":
+      return (
+        <SalesListView
+          saleStatus="quotation"
+          tabLabel="All quotations"
+          slug="quotations"
+        />
+      );
+    case "drafts":
+      return (
+        <SalesListView
+          saleStatus="draft"
+          tabLabel="All Drafts"
+          slug="drafts"
+        />
+      );
+    case "shipments":
+      return (
+        <SalesListView
+          shipmentsOnly
+          tabLabel="All shipments"
+          hidePrimaryAction
+          slug="shipments"
+        />
+      );
+    default:
+      return <SalesListView slug="sales" />;
+  }
+}
+
 export function OrdersListView() {
   const tenantId = useTenantId();
   const queryClient = useQueryClient();
@@ -501,7 +554,7 @@ function CustomersListViewBody() {
     enabled: Boolean(tenantId),
     filters: apiFilters,
     search,
-    defaultSort: { sortBy: "createdAt", sortDir: "desc" },
+    defaultSort: { sortBy: "updatedAt", sortDir: "desc" },
     fetchPage: (cursor, limit, listSort, opts) =>
       getCustomersPage(
         tenantId!,
@@ -510,14 +563,14 @@ function CustomersListViewBody() {
           includeSummary: opts?.includeSummary,
           ...(listSort?.sortBy
             ? { sortBy: listSort.sortBy, sortDir: listSort.sortDir }
-            : { sortBy: "createdAt", sortDir: "desc" }),
+            : { sortBy: "updatedAt", sortDir: "desc" }),
         },
         cursor,
         limit,
         { signal: opts?.signal },
       ),
     getCursor: (row, listSort) => {
-      const sortBy = listSort?.sortBy ?? "createdAt";
+      const sortBy = listSort?.sortBy ?? "updatedAt";
       return customerListCursor(row, sortBy);
     },
   });

@@ -215,6 +215,7 @@ export function Hq6CustomersListView() {
     setPageSize,
     isLoading,
     isPaging,
+    isSearching,
     error,
     goToPage,
     canSelectPage,
@@ -224,7 +225,7 @@ export function Hq6CustomersListView() {
     filters: apiFilters,
     search,
     defaultPageSize: HQ6_TABLE_PAGE_SIZE,
-    defaultSort: { sortBy: "createdAt", sortDir: "desc" },
+    defaultSort: { sortBy: "updatedAt", sortDir: "desc" },
     fetchPage: (cursor, limit, listSort, opts) =>
       getCustomersPage(
         tenantId!,
@@ -236,9 +237,9 @@ export function Hq6CustomersListView() {
         limit,
       ),
     getCursor: (row, listSort) => {
-      const sortBy = listSort?.sortBy ?? "createdAt";
+      const sortBy = listSort?.sortBy ?? "updatedAt";
       const type =
-        sortBy === "createdAt"
+        sortBy === "createdAt" || sortBy === "updatedAt"
           ? "date"
           : sortBy === "totalSellDue" ||
               sortBy === "totalSell" ||
@@ -305,7 +306,7 @@ export function Hq6CustomersListView() {
     itemCount: customers.length,
     totalCount: totalCount ?? totalItems,
   });
-  const busy = isPaging || (isLoading && customers.length === 0);
+  const busy = isPaging || isSearching || (isLoading && customers.length === 0);
 
   const dueTotal =
     amountSummary?.totalDue ??
@@ -668,15 +669,15 @@ export function Hq6CustomersListView() {
                             value={search}
                             onChange={setSearch}
                             
+                          
+                            isSearching={isSearching}
                           />
                         </div>
                         {busy ? (
                           <div
                             id="contact_table_processing"
                             className="dataTables_processing panel panel-default"
-                          >
-                            Processing...
-                          </div>
+                          >{isSearching ? "Searching…" : "Processing…"}</div>
                         ) : null}
                       </div>
 

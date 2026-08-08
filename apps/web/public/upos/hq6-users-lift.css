@@ -961,7 +961,42 @@ html.upos-hq6 .hq6-agents-page .table.table-bordered > tbody > tr > td,
   text-align: center;
   padding: 1em 0;
   z-index: 10;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+  pointer-events: none;
 }
+
+.hq6-dt-scroll--busy > table {
+  opacity: 0.45;
+  transition: opacity 0.15s ease;
+}
+
+.hq6-dt-search-filter__field {
+  position: relative;
+  display: inline-block;
+  max-width: 100%;
+}
+
+.hq6-dt-search-filter__field .form-control {
+  padding-right: 28px;
+}
+
+.hq6-dt-search-filter__spinner {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #6b7280;
+  font-size: 12px;
+  pointer-events: none;
+  line-height: 1;
+}
+
+.hq6-dt-search-filter.is-searching .form-control {
+  border-color: #93c5fd;
+}
+
 html.upos-hq6 .hq6-suppliers-page .dataTables_length select.form-control,
 html.upos-hq6 .hq6-customers-page .dataTables_length select.form-control,
 html.upos-hq6 .hq6-customer-groups-page .dataTables_length select.form-control,

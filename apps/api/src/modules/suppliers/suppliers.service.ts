@@ -158,8 +158,8 @@ export class SuppliersService {
       advanceBalance: filters.advanceBalance ? 1 : 0,
       cursor: filters.cursor,
       limit: filters.limit ?? 10,
-      sortBy: filters.sortBy ?? 'name',
-      sortDir: filters.sortDir ?? 'asc',
+      sortBy: filters.sortBy ?? 'updatedAt',
+      sortDir: filters.sortDir ?? 'desc',
       sum: filters.includeSummary === false ? 0 : 1,
     });
 
@@ -176,20 +176,25 @@ export class SuppliersService {
     filters: SupplierFilters,
     tenantId: string,
   ): Promise<PaginatedList<SupplierListRow>> {
+    const allowedSort: Record<string, 'string' | 'date'> = {
+      name: 'string',
+      createdAt: 'date',
+      updatedAt: 'date',
+    };
     const sortField =
-      filters.sortBy === 'createdAt' ? 'createdAt' : 'name';
+      filters.sortBy && filters.sortBy in allowedSort
+        ? filters.sortBy
+        : 'updatedAt';
     const sortDir =
       filters.sortDir === 'desc' || filters.sortDir === 'asc'
         ? filters.sortDir
-        : sortField === 'createdAt'
-          ? 'desc'
-          : 'asc';
+        : 'desc';
     const pagination = buildCompositeCursorQuery({
       sortField,
       sortDir,
       cursor: filters.cursor,
       limit: filters.limit ?? 10,
-      sortValueType: sortField === 'createdAt' ? 'date' : 'string',
+      sortValueType: allowedSort[sortField] ?? 'date',
     });
 
     const baseWhere = {

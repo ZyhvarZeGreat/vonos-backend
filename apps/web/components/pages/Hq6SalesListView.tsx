@@ -38,6 +38,7 @@ import { useListExport } from "@/lib/hooks/useListExport";
 import { useListRecordModal } from "@/lib/hooks/useListRecordModal";
 import { useListPageFilters } from "@/lib/hooks/useListPageFilters";
 import { useRouteTenant, useTenantId } from "@/lib/hooks/useRouteTenant";
+import { stableListFilterKey } from "@/lib/utils/stableListFilterKey";
 import { useHq6Permissions } from "@/lib/hooks/useHq6Permissions";
 import { prefetchSaleListModals, prefetchSalePaymentsModal, prefetchPaymentAccountsRef } from "@/lib/query/prefetchListModals";
 import { modalKeys } from "@/lib/query/modalQueryKeys";
@@ -246,6 +247,7 @@ export function Hq6SalesListView({
     isLoading,
     isFetching,
     isPaging,
+    isSearching,
     error,
     goToPage,
     canSelectPage,
@@ -258,7 +260,7 @@ export function Hq6SalesListView({
     filters: apiFilters,
     search: search,
     defaultPageSize: HQ6_TABLE_PAGE_SIZE,
-    defaultSort: { sortBy: "date", sortDir: "desc" },
+    defaultSort: { sortBy: "updatedAt", sortDir: "desc" },
     staleTime: 10 * 60_000,
     fetchPage: (cursor, limit, listSort, opts) =>
       getSalesPage(
@@ -272,14 +274,67 @@ export function Hq6SalesListView({
         { signal: opts?.signal },
       ),
     getCursor: (row, listSort) => {
-      const sortBy = listSort?.sortBy ?? "date";
+      const sortBy = listSort?.sortBy ?? "updatedAt";
       const type =
-        sortBy === "total" ? "number" : sortBy === "date" || sortBy === "createdAt" ? "date" : "string";
+        sortBy === "total" ? "number" : sortBy === "date" || sortBy === "createdAt" || sortBy === "updatedAt" ? "date" : "string";
       return compositeListCursorFrom(row, sortBy, type);
     },
   });
 
-    // Load filter dropdowns after rows — don't compete with first paint.
+  // Warm sibling sell tabs (Sales / Quotations / Drafts) so sidebar switches hit cache.
+  useEffect(() => {
+    if (!tenantId || shipmentsOnly) return;
+    const siblings: Array<SaleStatus | undefined> = [
+      undefined,
+      "quotation",
+      "draft",
+    ];
+    const listSort = sort ?? { sortBy: "updatedAt", sortDir: "desc" as const };
+    for (const siblingStatus of siblings) {
+      if (siblingStatus === saleStatus) continue;
+      const siblingFilters = {
+        ...apiFilters,
+        saleStatus: siblingStatus,
+        shipmentsOnly: undefined,
+      };
+      const filterKey = stableListFilterKey(siblingFilters, listSort);
+      void queryClient.prefetchQuery({
+        queryKey: [
+          "sales",
+          tenantId,
+          siblingStatus ?? "all",
+          "hq6",
+          filterKey,
+          0,
+          null,
+          pageSize,
+          listSort.sortBy,
+          listSort.sortDir,
+        ],
+        queryFn: () =>
+          getSalesPage(
+            tenantId,
+            withListSort(
+              { ...siblingFilters, includeSummary: false },
+              listSort,
+            ),
+            undefined,
+            pageSize,
+          ),
+        staleTime: 10 * 60_000,
+      });
+    }
+  }, [
+    apiFilters,
+    pageSize,
+    queryClient,
+    saleStatus,
+    shipmentsOnly,
+    sort,
+    tenantId,
+  ]);
+
+  // Load filter dropdowns after rows — don't compete with first paint.
   const customerLabelById = useRef(new Map<string, string>());
   const staffLabelById = useRef(new Map<string, string>());
   const [customerLabel, setCustomerLabel] = useState("");
@@ -590,9 +645,10 @@ export function Hq6SalesListView({
     const loc = (row: Sale) =>
       businessLocationName(row.locationCode, config?.businessLocations) ?? "—";
 
-    // UPOS sells/draft · quotations — Action last
+    // Match All sales: Action first so Sales ↔ Quotations does not jump layout.
     if (saleStatus === "draft" || saleStatus === "quotation") {
       return [
+        actionColumn,
         {
           key: "date",
           header: "Date",
@@ -637,7 +693,6 @@ export function Hq6SalesListView({
           sortable: false,
           render: (row) => row.createdByName ?? "—",
         },
-        actionColumn,
       ];
     }
 
@@ -912,7 +967,7 @@ export function Hq6SalesListView({
     const keys = chrome.visibleColumnKeys;
     if (!keys) return;
     const missing: string[] = [];
-    for (const key of ["serviceStaff", "customerPhone"] as const) {
+    for (const key of ["serviceStaff", "customerPhone", "paymentMethod"] as const) {
       if (keys.includes(key)) continue;
       if (!columnOptions.some((c) => c.key === key)) continue;
       missing.push(key);
@@ -1177,6 +1232,7 @@ export function Hq6SalesListView({
           canSelectPage,
           totalItems: totalCount,
           isBusy: isPaging,
+        isSearching,
           // Keep bar visible while changing pages (loading clears rows briefly).
           show:
             sales.length > 0 ||

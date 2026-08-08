@@ -94,7 +94,7 @@ export class JobsService {
     tenantId: string,
   ): Promise<Job[]> {
     const pagination = buildCompositeCursorQuery({
-      sortField: 'createdAt',
+      sortField: 'updatedAt',
       sortDir: 'desc',
       cursor: filters.cursor,
       limit: filters.limit ?? 10,
@@ -127,7 +127,7 @@ export class JobsService {
         ]) ?? {}),
         ...(pagination.where ?? {}),
       },
-      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
       take: pagination.take,
       select: {
         id: true,

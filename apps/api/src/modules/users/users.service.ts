@@ -93,11 +93,11 @@ export class UsersService {
     const legacyUserIds = legacyLinks.map((link) => link.newId);
 
     const pagination = buildCompositeCursorQuery({
-      sortField: 'name',
-      sortDir: 'asc',
+      sortField: 'createdAt',
+      sortDir: 'desc',
       cursor: filters.cursor,
       limit: filters.limit ?? 10,
-      sortValueType: 'string',
+      sortValueType: 'date',
     });
     const rows = await this.prisma.user.findMany({
       where: {
@@ -124,7 +124,7 @@ export class UsersService {
         ],
         ...(pagination.where ?? {}),
       },
-      orderBy: [{ name: 'asc' }, { id: 'asc' }],
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       take: pagination.take,
       include: {
         tenantRole: { select: { id: true, name: true } },
@@ -215,11 +215,11 @@ export class UsersService {
     status?: string;
   }): Promise<UserListRow[]> {
     const pagination = buildCompositeCursorQuery({
-      sortField: 'name',
-      sortDir: 'asc',
+      sortField: 'createdAt',
+      sortDir: 'desc',
       cursor: filters.cursor,
       limit: filters.limit ?? 10,
-      sortValueType: 'string',
+      sortValueType: 'date',
     });
     const rows = await this.prisma.user.findMany({
       where: {
@@ -240,7 +240,7 @@ export class UsersService {
         tenant: { select: { code: true, name: true } },
         tenantRole: { select: { id: true, name: true } },
       },
-      orderBy: [{ name: 'asc' }, { id: 'asc' }],
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       take: pagination.take,
     });
 

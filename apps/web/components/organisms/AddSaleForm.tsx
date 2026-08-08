@@ -194,8 +194,6 @@ export interface AddSaleFormProps {
   editSaleId?: string | null;
   /** `page` = full Add Sale screen; `modal` = compact dialog body */
   variant?: "page" | "modal";
-  /** Leave the form immediately (list redirect) — write continues in background. */
-  onOptimisticLeave?: (status: SaleFormPresetStatus) => void;
   onSuccess?: (sale: SaleDetail, options?: { print?: boolean }) => void;
   onCancel?: () => void;
 }
@@ -207,7 +205,6 @@ export function AddSaleForm({
   initialJobId = null,
   editSaleId = null,
   variant = "page",
-  onOptimisticLeave,
   onSuccess,
   onCancel,
 }: AddSaleFormProps) {
@@ -910,6 +907,9 @@ export function AddSaleForm({
           : isProvisional
             ? []
             : undefined,
+        paymentMethod: isProvisional
+          ? undefined
+          : form.paymentMethod || undefined,
       };
       if (editSaleId) {
         const updated = await updateSale(tenantId, editSaleId, payload);
@@ -1033,10 +1033,6 @@ export function AddSaleForm({
     }
     printAfterSaveRef.current = intent === "print";
     setSaveIntent(intent);
-    // Page saves: hit the list immediately; write + retries finish in background.
-    if (variant === "page") {
-      onOptimisticLeave?.(statusToSave);
-    }
     mutation.mutate();
   };
 

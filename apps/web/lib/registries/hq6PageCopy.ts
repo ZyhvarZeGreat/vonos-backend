@@ -140,6 +140,11 @@ const HQ6_PAGE_COPY: Record<
     subtitle: "Manage your account",
     searchPlaceholder: "Search ...",
   },
+  "account-book": {
+    title: "Account Book",
+    subtitle: "",
+    searchPlaceholder: "Search ...",
+  },
   payments: {
     title: "Payments",
     subtitle: "Manage your payments",
@@ -270,6 +275,11 @@ const HQ6_LIST_ACTION_RULES: Record<string, Hq6ListActionRule> = {
     addVariant: "blue",
     showDownloadExcel: false,
     titleOnly: false,
+  },
+  "account-book": {
+    addVariant: "none",
+    showDownloadExcel: true,
+    titleOnly: true,
   },
   payments: {
     addVariant: "none",

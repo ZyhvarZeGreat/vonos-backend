@@ -32,7 +32,7 @@ import { getPaymentAccountsForPicker } from "@/lib/api/paymentAccounts";
 import { getSuppliersForPicker, loadMoreSuppliersForPicker, suppliersPickerHasMore } from "@/lib/api/suppliers";
 import { useIsVaHq6 } from "@/lib/hooks/useIsVaHq6";
 import { useRouteTenant, useTenantId } from "@/lib/hooks/useRouteTenant";
-import { announceRedirect } from "@/lib/utils/announceRedirect";
+import { goToList } from "@/lib/utils/goToList";
 import { paymentAccountPickerLabel } from "@/lib/utils/pickerLabels";
 import { toast } from "@/stores/toastStore";
 import {
@@ -439,6 +439,7 @@ export function AddPurchaseView() {
       void qc.invalidateQueries({ queryKey: ["payment-accounts", tenantId] });
       void qc.invalidateQueries({ queryKey: ["items", tenantId] });
       void qc.invalidateQueries({ queryKey: ["catalog"] });
+      if (tenantCode) goToList(`/${tenantCode}/purchases`);
     },
     onError: (err: Error) => {
       toast.error(err.message || "Failed to save purchase");
@@ -462,11 +463,6 @@ export function AddPurchaseView() {
         "Select a Payment Account so this purchase payment posts to the account book",
       );
       return;
-    }
-    // Leave immediately — purchase create/update is multi-RTT on Neon.
-    if (tenantCode) {
-      announceRedirect("Saving & returning to purchases…");
-      router.push(`/${tenantCode}/purchases`);
     }
     mutation.mutate();
   };

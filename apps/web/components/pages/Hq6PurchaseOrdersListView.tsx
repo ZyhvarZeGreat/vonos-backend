@@ -28,8 +28,8 @@ import { HQ6_TABLE_PAGE_SIZE } from "@/lib/api/fetchAllPages";
 import { useListExport } from "@/lib/hooks/useListExport";
 import { useListPageFilters } from "@/lib/hooks/useListPageFilters";
 import { useListRecordModal } from "@/lib/hooks/useListRecordModal";
-import { useServerListPage } from "@/lib/hooks/useServerListPage";
-import { movementListCursor } from "@/lib/utils/pagination";
+import { useServerListPage, withListSort } from "@/lib/hooks/useServerListPage";
+import { chronoListCursor } from "@/lib/utils/pagination";
 
 import { useRouteTenant, useTenantId } from "@/lib/hooks/useRouteTenant";
 import { formatHq6Currency, formatHq6DateTime } from "@/lib/utils/hq6Format";
@@ -140,6 +140,7 @@ export function Hq6PurchaseOrdersListView() {
     isLoading,
     isFetching,
     isPaging,
+    isSearching,
     error,
     goToPage,
     canSelectPage,
@@ -149,17 +150,20 @@ export function Hq6PurchaseOrdersListView() {
     filters: apiFilters,
     search,
     defaultPageSize: HQ6_TABLE_PAGE_SIZE,
-    fetchPage: (cursor, limit, _sort, opts) =>
+    fetchPage: (cursor, limit, listSort, opts) =>
       getStockMovementsPage(
         tenantId!,
-        {
-          ...apiFilters,
-          includeSummary: opts?.includeSummary,
-        },
+        withListSort(
+          {
+            ...apiFilters,
+            includeSummary: opts?.includeSummary,
+          },
+          listSort,
+        ),
         cursor,
         limit,
       ),
-    getCursor: (row) => movementListCursor(row),
+    getCursor: (row) => chronoListCursor(row),
   });
 
   const columns: ColumnConfig<StockMovementListRow>[] = useMemo(
@@ -355,6 +359,7 @@ export function Hq6PurchaseOrdersListView() {
         canSelectPage,
         totalItems: totalCount,
         isBusy: isPaging,
+        isSearching,
       }}
       modals={
         <Hq6ConfirmModal
@@ -445,6 +450,7 @@ export function Hq6PurchaseReturnsListView() {
     isLoading,
     isFetching,
     isPaging,
+    isSearching,
     error,
     goToPage,
     canSelectPage,
@@ -454,17 +460,20 @@ export function Hq6PurchaseReturnsListView() {
     filters: apiFilters,
     search,
     defaultPageSize: HQ6_TABLE_PAGE_SIZE,
-    fetchPage: (cursor, limit, _sort, opts) =>
+    fetchPage: (cursor, limit, listSort, opts) =>
       getStockMovementsPage(
         tenantId!,
-        {
-          ...apiFilters,
-          includeSummary: opts?.includeSummary,
-        },
+        withListSort(
+          {
+            ...apiFilters,
+            includeSummary: opts?.includeSummary,
+          },
+          listSort,
+        ),
         cursor,
         limit,
       ),
-    getCursor: (row) => movementListCursor(row),
+    getCursor: (row) => chronoListCursor(row),
   });
 
   const columns: ColumnConfig<StockMovementListRow>[] = useMemo(
@@ -618,6 +627,7 @@ export function Hq6PurchaseReturnsListView() {
         canSelectPage,
         totalItems: totalCount,
         isBusy: isPaging,
+        isSearching,
       }}
     >
       <DataTable

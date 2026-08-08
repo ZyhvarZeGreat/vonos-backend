@@ -50,13 +50,16 @@ export function saleListCursor(row: { id: string; date: string }): string {
 }
 
 export function customerListCursor(
-  row: { id: string; name: string; createdAt?: string },
-  sortBy: string = "createdAt",
+  row: { id: string; name: string; createdAt?: string; updatedAt?: string },
+  sortBy: string = "updatedAt",
 ): string {
   if (sortBy === "name") {
     return encodeCompositeCursor({ sortValue: row.name, id: row.id });
   }
-  const raw = row.createdAt ?? "";
+  const raw =
+    sortBy === "updatedAt"
+      ? (row.updatedAt ?? row.createdAt ?? "")
+      : (row.createdAt ?? "");
   const sortValue =
     raw && !raw.includes("T") ? new Date(raw).toISOString() : raw;
   return encodeCompositeCursor({ sortValue, id: row.id });
@@ -140,11 +143,25 @@ export function plateListCursor(row: {
 
 export function expenseListCursor(row: {
   id: string;
+  updatedAt?: string;
   expenseDate: string;
 }): string {
-  const sortValue = row.expenseDate.includes("T")
-    ? row.expenseDate
-    : new Date(row.expenseDate).toISOString();
+  const raw = row.updatedAt || row.expenseDate;
+  const sortValue = raw.includes("T")
+    ? raw
+    : new Date(raw).toISOString();
+  return encodeCompositeCursor({ sortValue, id: row.id });
+}
+
+/** Newest activity first — prefer updatedAt, else createdAt. */
+export function chronoListCursor(row: {
+  id: string;
+  updatedAt?: string;
+  createdAt?: string;
+}): string {
+  const raw = row.updatedAt || row.createdAt || "";
+  const sortValue =
+    raw && !raw.includes("T") ? new Date(raw).toISOString() : raw;
   return encodeCompositeCursor({ sortValue, id: row.id });
 }
 

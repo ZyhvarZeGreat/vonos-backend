@@ -88,18 +88,15 @@ export const JobsListView = lazyNamed(
   () => import("@/components/pages/JobsListView"),
   "JobsListView",
 );
-export const SalesListView = lazyNamed(
+export const SellListsRouteView = lazyNamed(
   () => import("@/components/pages/EntityListViews"),
-  "SalesListView",
+  "SellListsRouteView",
 );
-export const DraftsListView = lazyNamed(
-  () => import("@/components/pages/EntityListViews"),
-  "DraftsListView",
-);
-export const QuotationsListView = lazyNamed(
-  () => import("@/components/pages/EntityListViews"),
-  "QuotationsListView",
-);
+/** Same dynamic instance — switching Sales ↔ Quotes ↔ Drafts must not flash a chunk skeleton. */
+export const SalesListView = SellListsRouteView;
+export const DraftsListView = SellListsRouteView;
+export const QuotationsListView = SellListsRouteView;
+export const ShipmentsListView = SellListsRouteView;
 export const OrdersListView = lazyNamed(
   () => import("@/components/pages/EntityListViews"),
   "OrdersListView",
@@ -204,10 +201,6 @@ export const PrintLabelsView = lazyNamed(
   () => import("@/components/pages/PosExtrasViews"),
   "PrintLabelsView",
 );
-export const ShipmentsListView = lazyNamed(
-  () => import("@/components/pages/PosExtrasViews"),
-  "ShipmentsListView",
-);
 export const UpdatePriceView = lazyNamed(
   () => import("@/components/pages/PosExtrasViews"),
   "UpdatePriceView",
@@ -225,7 +218,7 @@ export const PaymentsListView = lazyNamed(
   "PaymentsListView",
 );
 export const AccountBookView = lazyNamed(
-  () => import("@/components/pages/PosNavViews"),
+  () => import("@/components/pages/Hq6AccountBookView"),
   "AccountBookView",
 );
 export const PosTerminalView = lazyNamed(

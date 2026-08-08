@@ -264,12 +264,13 @@ export class ItemsService {
       // Alias used by some list UIs / older clients
       sellingPrice: { field: 'sellPrice', type: 'number' },
       createdAt: { field: 'createdAt', type: 'date' },
+      updatedAt: { field: 'updatedAt', type: 'date' },
       category: { field: 'category', type: 'string' },
       status: { field: 'status', type: 'string' },
     }, {
-      sortField: 'name',
-      sortDir: 'asc',
-      sortValueType: 'string',
+      sortField: 'updatedAt',
+      sortDir: 'desc',
+      sortValueType: 'date',
     });
 
     const pagination = buildCompositeCursorQuery({

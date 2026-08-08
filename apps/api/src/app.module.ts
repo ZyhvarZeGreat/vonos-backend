@@ -38,7 +38,7 @@ import { DiscountsModule } from './modules/discounts/discounts.module';
 import { VariationsModule } from './modules/variations/variations.module';
 import { InvoicesModule } from './modules/invoices/invoices.module';
 import { TenantRolesModule } from './modules/tenant-roles/tenant-roles.module';
-import { MediaController } from './modules/media/media.controller';
+import { MediaModule } from './modules/media/media.module';
 
 @Module({
   imports: [
@@ -82,8 +82,9 @@ import { MediaController } from './modules/media/media.controller';
     VariationsModule,
     InvoicesModule,
     TenantRolesModule,
+    MediaModule,
   ],
-  controllers: [AppController, HealthController, MediaController],
+  controllers: [AppController, HealthController],
   providers: [
     AppService,
     {

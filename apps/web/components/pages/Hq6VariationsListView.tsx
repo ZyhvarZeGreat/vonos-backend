@@ -26,7 +26,7 @@ import {
 import { useServerListPage } from "@/lib/hooks/useServerListPage";
 import { slidingPageIndices, listEntryRange, formatListEntriesLabel, totalPagesFromEntries } from "@/lib/utils/paginationWindow";
 
-import { nameListCursor } from "@/lib/utils/pagination";
+import { chronoListCursor } from "@/lib/utils/pagination";
 
 import { HQ6_TABLE_PAGE_SIZE } from "@/lib/api/fetchAllPages";
 import { useListExport } from "@/lib/hooks/useListExport";
@@ -84,6 +84,7 @@ export function Hq6VariationsListView() {
     setPageSize,
     isLoading,
     isPaging,
+    isSearching,
     error,
     goToPage,
     canSelectPage,
@@ -96,7 +97,7 @@ export function Hq6VariationsListView() {
       getVariationsPage(tenantId!, cursor, limit, {
         includeSummary: opts?.includeSummary,
       }),
-    getCursor: (row) => nameListCursor(row),
+    getCursor: (row) => chronoListCursor(row),
   });
 
   const filteredItems = useMemo(() => {
@@ -226,7 +227,7 @@ export function Hq6VariationsListView() {
     itemCount: displayItems.length,
     totalCount: totalCount ?? totalItems,
   });
-  const busy = isPaging || (isLoading && displayItems.length === 0);
+  const busy = isPaging || isSearching || (isLoading && displayItems.length === 0);
 
   const pageNumbers = useMemo(
     () =>
@@ -366,12 +367,12 @@ export function Hq6VariationsListView() {
                             id="variation_table_filter"
                             value={search}
                             onChange={setSearch}
+                          
+                            isSearching={isSearching}
                           />
                         </div>
                         {busy ? (
-                          <div className="dataTables_processing panel panel-default">
-                            Processing...
-                          </div>
+                          <div className="dataTables_processing panel panel-default">{isSearching ? "Searching…" : "Processing…"}</div>
                         ) : null}
                       </div>
 

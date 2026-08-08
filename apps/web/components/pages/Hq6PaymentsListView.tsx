@@ -24,6 +24,7 @@ import {
   getPaymentsPage,
 } from "@/lib/api/payments";
 import { updateSalePayment } from "@/lib/api/sales";
+import { updateStockMovementPayment } from "@/lib/api/stockMovements";
 import { useAppMutation } from "@/lib/hooks/useAppMutation";
 import { useServerListPage } from "@/lib/hooks/useServerListPage";
 import { HQ6_TABLE_PAGE_SIZE } from "@/lib/api/fetchAllPages";
@@ -126,6 +127,7 @@ export function Hq6PaymentsListView() {
   });
 
   const {
+
     items: data,
     isLoading,
     isFetching,
@@ -141,6 +143,7 @@ export function Hq6PaymentsListView() {
     canSelectPage,
     totalCount,
     isPaging,
+    isSearching,
   } = listPage;
 
   const rows: PaymentRow[] = useMemo(
@@ -183,7 +186,8 @@ export function Hq6PaymentsListView() {
 
   const saveMutation = useAppMutation({
     mutationFn: async (vars: {
-      saleId: string;
+      saleId: string | null;
+      stockMovementId: string | null;
       paymentId: string;
       amount: number;
       method: string;
@@ -192,18 +196,37 @@ export function Hq6PaymentsListView() {
       accountId: string;
     }) => {
       if (!tenantId) {
-        throw new Error("Only sale-linked payments can be edited here");
+        throw new Error("No tenant");
       }
-      return updateSalePayment(tenantId, vars.saleId, vars.paymentId, {
-        amount: vars.amount,
-        method: vars.method,
-        note: vars.note,
-        paidOn: vars.paidOn,
-        accountId: vars.accountId,
-      });
+      if (vars.saleId) {
+        return updateSalePayment(tenantId, vars.saleId, vars.paymentId, {
+          amount: vars.amount,
+          method: vars.method,
+          note: vars.note,
+          paidOn: vars.paidOn,
+          accountId: vars.accountId,
+        });
+      }
+      if (vars.stockMovementId) {
+        return updateStockMovementPayment(
+          tenantId,
+          vars.stockMovementId,
+          vars.paymentId,
+          {
+            amount: vars.amount,
+            method: vars.method,
+            note: vars.note,
+            paidOn: vars.paidOn,
+            accountId: vars.accountId,
+          },
+        );
+      }
+      throw new Error(
+        "Only sale or purchase payments can be edited here. Edit expenses from the Expenses list.",
+      );
     },
     progressLabel: "Updating payment",
-    successMessage: "Payment linked to account",
+    successMessage: "Payment updated",
     onSuccess: () => {
       void invalidatePaymentQueries();
     },
@@ -222,13 +245,15 @@ export function Hq6PaymentsListView() {
       );
       return;
     }
-    if (!editing.saleId) {
-      toast.error("Only sale-linked payments can be edited here");
+    if (!editing.saleId && !editing.stockMovementId) {
+      toast.error(
+        "Expense payments: use Edit on the Expenses list (View Payments → Edit payment).",
+      );
       return;
     }
-    // Capture IDs before dismiss — clearing `editing` must not empty mutationFn.
     const vars = {
       saleId: editing.saleId,
+      stockMovementId: editing.stockMovementId ?? null,
       paymentId: editing.id,
       amount,
       method: editMethod,
@@ -302,8 +327,10 @@ export function Hq6PaymentsListView() {
   };
 
   const openEdit = useCallback((record: PaymentRecord) => {
-    if (!record.saleId) {
-      toast.error("Expense / non-sale payments edit from Expenses.");
+    if (!record.saleId && !record.stockMovementId) {
+      toast.error(
+        "Expense payments: open Expenses → Edit (or View Payments → Edit payment).",
+      );
       return;
     }
     setEditing(record);
@@ -384,7 +411,7 @@ export function Hq6PaymentsListView() {
         sortable: false,
         render: (row) => {
           const record = data.find((p) => p.id === row.id);
-          const canEdit = Boolean(record?.saleId);
+          const canEdit = Boolean(record?.saleId || record?.stockMovementId);
           return (
             <button
               type="button"
@@ -537,6 +564,7 @@ export function Hq6PaymentsListView() {
         canSelectPage,
         totalItems: totalCount,
         isBusy: isPaging,
+        isSearching,
       }}
       modals={
         <>

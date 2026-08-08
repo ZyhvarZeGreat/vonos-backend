@@ -53,11 +53,11 @@ export class CustomerGroupsService {
     tenantId: string,
   ): Promise<CustomerGroup[]> {
     const pagination = buildCompositeCursorQuery({
-      sortField: 'name',
-      sortDir: 'asc',
+      sortField: 'updatedAt',
+      sortDir: 'desc',
       cursor: filters.cursor,
       limit: filters.limit ?? 10,
-      sortValueType: 'string',
+      sortValueType: 'date',
     });
     const rows = await this.tenantDb.db.customerGroup.findMany({
       where: {
@@ -73,7 +73,7 @@ export class CustomerGroupsService {
             : {}),
         ...(pagination.where ?? {}),
       },
-      orderBy: [{ name: 'asc' }, { id: 'asc' }],
+      orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
       take: pagination.take,
     });
     return rows.map((row) => ({

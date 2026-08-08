@@ -81,6 +81,7 @@ export interface Hq6DataListPageProps {
     canSelectPage?: (index: number) => boolean;
     totalItems?: number;
     isBusy?: boolean;
+    isSearching?: boolean;
     show?: boolean;
   };
   modals?: ReactNode;
@@ -189,6 +190,7 @@ export function Hq6DataListPage({
         onPageSelect={pagination?.onPageSelect}
         canSelectPage={pagination?.canSelectPage}
         isBusy={pagination?.isBusy}
+        isSearching={pagination?.isSearching}
         showPagination={pagination?.show !== false}
         bulkActions={bulkActions}
       >

@@ -223,6 +223,7 @@ export function Hq6ProductsListView({
     isFetching,
     isPaging,
     isSearchWarming,
+    isSearching,
     error,
     goToPage,
     canSelectPage,
@@ -237,7 +238,7 @@ export function Hq6ProductsListView({
     search,
     searchMode: "server",
     defaultPageSize: HQ6_TABLE_PAGE_SIZE,
-    defaultSort: { sortBy: "name", sortDir: "asc" },
+    defaultSort: { sortBy: "updatedAt", sortDir: "desc" },
     fetchPage: (cursor, limit, listSort, opts) =>
       getCatalogPage(
         tenantId!,
@@ -258,12 +259,12 @@ export function Hq6ProductsListView({
         search: opts?.search,
       }),
     getCursor: (row, listSort) => {
-      const sortBy = listSort?.sortBy ?? "name";
+      const sortBy = listSort?.sortBy ?? "updatedAt";
       const type =
         sortBy === "quantity" || sortBy === "costPrice" || sortBy === "sellPrice"
           ? "number"
-          : sortBy === "createdAt"
-            ? "date"
+          : sortBy === "createdAt" || sortBy === "updatedAt"
+          ? "date"
             : "string";
       return compositeListCursorFrom(row, sortBy, type);
     },
@@ -434,11 +435,12 @@ export function Hq6ProductsListView({
     totalCount,
     isFetching,
     isPaging,
+    isSearching,
     isLoading,
   });
 
   const showTableLoading =
-    (isLoading || isSearchWarming) && visibleItems.length === 0;
+    (isLoading || isSearchWarming || isSearching) && visibleItems.length === 0;
 
   return (
     <div className="hq6-page hq6-products-page">
@@ -714,6 +716,7 @@ export function Hq6ProductsListView({
                     onPageSelect={pagination.onPageSelect}
                     canSelectPage={pagination.canSelectPage}
                     isBusy={pagination.isBusy}
+                    isSearching={isSearching}
                     bulkActions={
                       <div style={{ display: "flex", width: "100%", gap: 8, flexWrap: "wrap", padding: "8px 0" }}>
                         <button

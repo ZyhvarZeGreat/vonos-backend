@@ -17,7 +17,7 @@ import { useListExport } from "@/lib/hooks/useListExport";
 import { useListPageFilters } from "@/lib/hooks/useListPageFilters";
 import { useListRecordModal } from "@/lib/hooks/useListRecordModal";
 import { useServerListPage } from "@/lib/hooks/useServerListPage";
-import { createdAtListCursor } from "@/lib/utils/pagination";
+import { chronoListCursor } from "@/lib/utils/pagination";
 
 import { useTenantId } from "@/lib/hooks/useRouteTenant";
 import { prefetchRequisitionListModals } from "@/lib/query/prefetchListModals";
@@ -52,6 +52,7 @@ export function Hq6RequisitionsListView() {
     isLoading,
     isFetching,
     isPaging,
+    isSearching,
     error,
     goToPage,
     canSelectPage,
@@ -63,7 +64,7 @@ export function Hq6RequisitionsListView() {
       getRequisitionsPage(tenantId!, cursor, limit, {
         includeSummary: opts?.includeSummary,
       }),
-    getCursor: (row) => createdAtListCursor(row),
+    getCursor: (row) => chronoListCursor(row),
   });
 
   const columns: ColumnConfig<Requisition>[] = [
@@ -146,6 +147,7 @@ export function Hq6RequisitionsListView() {
         canSelectPage,
         totalItems: totalCount,
         isBusy: isPaging,
+        isSearching,
       }}
       modals={
         <RequisitionRecordModal

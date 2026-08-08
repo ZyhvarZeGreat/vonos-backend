@@ -20,7 +20,7 @@ import { useListExport } from "@/lib/hooks/useListExport";
 import { useListPageFilters } from "@/lib/hooks/useListPageFilters";
 import { useRecordNavigation } from "@/lib/hooks/useRecordNavigation";
 import { useServerListPage } from "@/lib/hooks/useServerListPage";
-import { plateListCursor } from "@/lib/utils/pagination";
+import { chronoListCursor } from "@/lib/utils/pagination";
 
 import { useTenantId } from "@/lib/hooks/useRouteTenant";
 import { prefetchVehicleDetail } from "@/lib/query/prefetchListDetails";
@@ -132,6 +132,7 @@ export function Hq6VehiclesListView() {
     isLoading,
     isFetching,
     isPaging,
+    isSearching,
     error,
     goToPage,
     canSelectPage,
@@ -143,7 +144,7 @@ export function Hq6VehiclesListView() {
       getVehiclesPage(tenantId!, cursor, limit, {
         includeSummary: opts?.includeSummary,
       }),
-    getCursor: (row) => plateListCursor(row),
+    getCursor: (row) => chronoListCursor(row),
   });
 
   const columns: ColumnConfig<Vehicle>[] = [
@@ -216,6 +217,7 @@ export function Hq6VehiclesListView() {
         canSelectPage,
         totalItems: totalCount,
         isBusy: isPaging,
+        isSearching,
       }}
       modals={
         createOpen ? (

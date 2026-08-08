@@ -88,6 +88,7 @@ export interface Hq6StandardListShellProps {
     canSelectPage?: (index: number) => boolean;
     totalItems?: number;
     isBusy?: boolean;
+    isSearching?: boolean;
     show?: boolean;
   };
   modals?: ReactNode;

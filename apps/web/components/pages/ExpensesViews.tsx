@@ -33,7 +33,7 @@ import { useExpensePageTabs } from "@/lib/hooks/useExpensePageTabs";
 import { useListExport } from "@/lib/hooks/useListExport";
 import { useAppMutation } from "@/lib/hooks/useAppMutation";
 import { expensePageRoute } from "@/lib/registries/expenseNav";
-import { announceRedirect } from "@/lib/utils/announceRedirect";
+import { goToList } from "@/lib/utils/goToList";
 import { toast } from "@/stores/toastStore";
 import {
   createExpense,
@@ -552,15 +552,12 @@ export function AddExpenseView() {
       ...(editId ? [["expense", tenantId, editId] as const] : []),
     ],
     onSuccess: () => {
-      // Navigation already happened in handleSave.
+      if (tenantCode) goToList(expensePageRoute(tenantCode, "expenses"));
     },
   });
 
   const handleCancel = () => {
-    if (tenantCode) {
-      announceRedirect("Redirecting to expenses…");
-      router.push(expensePageRoute(tenantCode, "expenses"));
-    }
+    if (tenantCode) goToList(expensePageRoute(tenantCode, "expenses"));
   };
 
   const handleSave = () => {
@@ -581,10 +578,6 @@ export function AddExpenseView() {
         "Select a Payment Account so this expense is posted to the account book",
       );
       return;
-    }
-    if (tenantCode) {
-      announceRedirect("Saving & returning to expenses…");
-      router.push(expensePageRoute(tenantCode, "expenses"));
     }
     saveMutation.mutate();
   };

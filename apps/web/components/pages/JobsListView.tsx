@@ -14,7 +14,7 @@ import { getJobsPage } from "@/lib/api/jobs";
 import { useRecordNavigation } from "@/lib/hooks/useRecordNavigation";
 import { useListPageFilters } from "@/lib/hooks/useListPageFilters";
 import { useServerListPage } from "@/lib/hooks/useServerListPage";
-import { createdAtListCursor } from "@/lib/utils/pagination";
+import { chronoListCursor } from "@/lib/utils/pagination";
 import { useIsVaHq6 } from "@/lib/hooks/useIsVaHq6";
 import { prefetchJobDetail } from "@/lib/query/prefetchListDetails";
 import { formatCurrency } from "@/lib/utils/formatCurrency";
@@ -107,7 +107,7 @@ export function JobsListView() {
         cursor,
         limit,
       ),
-    getCursor: (row) => createdAtListCursor(row),
+    getCursor: (row) => chronoListCursor(row),
   });
 
   const warmJob = (row: Job) => {

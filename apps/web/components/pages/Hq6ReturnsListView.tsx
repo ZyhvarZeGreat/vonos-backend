@@ -20,8 +20,8 @@ import {
 import { Hq6StandardListShell, useHq6ListChrome } from "@/components/hq6/Hq6StandardListShell";
 import { getCustomersForPicker, loadMoreCustomersForPicker, customersPickerHasMore } from "@/lib/api/customers";
 import { getReturnsPage } from "@/lib/api/returns";
-import { useServerListPage } from "@/lib/hooks/useServerListPage";
-import { saleListCursor } from "@/lib/utils/pagination";
+import { useServerListPage, withListSort } from "@/lib/hooks/useServerListPage";
+import { chronoListCursor } from "@/lib/utils/pagination";
 
 import { HQ6_TABLE_PAGE_SIZE } from "@/lib/api/fetchAllPages";
 import { useListPageFilters } from "@/lib/hooks/useListPageFilters";
@@ -131,6 +131,7 @@ export function Hq6ReturnsListView() {
     isLoading,
     isFetching,
     isPaging,
+    isSearching,
     error,
     goToPage,
     canSelectPage,
@@ -141,8 +142,17 @@ export function Hq6ReturnsListView() {
     filters: apiFilters,
     search: search,
     defaultPageSize: HQ6_TABLE_PAGE_SIZE,
-    fetchPage: (cursor, limit, _sort, opts) => getReturnsPage(tenantId!, { ...apiFilters, includeSummary: opts?.includeSummary }, cursor, limit),
-    getCursor: (row) => saleListCursor(row),
+    fetchPage: (cursor, limit, listSort, opts) =>
+      getReturnsPage(
+        tenantId!,
+        withListSort(
+          { ...apiFilters, includeSummary: opts?.includeSummary },
+          listSort,
+        ),
+        cursor,
+        limit,
+      ),
+    getCursor: (row) => chronoListCursor(row),
   });
 
   const exportList = useListExport();
@@ -329,6 +339,7 @@ export function Hq6ReturnsListView() {
         canSelectPage,
         totalItems: totalCount,
         isBusy: isPaging,
+        isSearching,
       }}
       modals={
         <>

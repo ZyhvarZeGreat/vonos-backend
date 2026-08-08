@@ -235,7 +235,7 @@ export class CustomersService {
       to: filters.to,
       cursor: filters.cursor,
       limit: filters.limit ?? 10,
-      sortBy: filters.sortBy ?? 'createdAt',
+      sortBy: filters.sortBy ?? 'updatedAt',
       sortDir: filters.sortDir ?? 'desc',
       sum: filters.includeSummary === false ? 0 : 1,
       lite: filters.lite ? 1 : 0,
@@ -263,6 +263,7 @@ export class CustomersService {
       filters.sortDir,
       {
         createdAt: { field: 'createdAt', type: 'date' },
+        updatedAt: { field: 'updatedAt', type: 'date' },
         name: { field: 'name', type: 'string' },
         email: { field: 'email', type: 'string' },
         phone: { field: 'phone', type: 'string' },
@@ -272,7 +273,7 @@ export class CustomersService {
         status: { field: 'status', type: 'string' },
       },
       {
-        sortField: 'createdAt',
+        sortField: 'updatedAt',
         sortDir: 'desc',
         sortValueType: 'date',
       },
@@ -1046,7 +1047,7 @@ export async function warmDefaultCustomerListPages(
         to: undefined,
         cursor: undefined,
         limit,
-        sortBy: 'createdAt',
+        sortBy: 'updatedAt',
         sortDir: 'desc',
         sum: includeSummary ? 1 : 0,
         lite: 0,
@@ -1065,7 +1066,7 @@ export async function warmDefaultCustomerListPages(
                 customerGroup: { select: { name: true } },
                 assignedToUser: { select: { name: true } },
               },
-              orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+              orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
               take: limit,
             }),
             includeSummary

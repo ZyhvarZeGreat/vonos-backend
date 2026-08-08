@@ -55,6 +55,7 @@ import { compositeListCursorFrom } from "@/lib/utils/pagination";
 import {
   formatHq6Currency,
   formatHq6DateTime,
+  formatHq6PaymentMethod,
   formatHq6PaymentStatus,
 } from "@/lib/utils/hq6Format";
 import { businessLocationName } from "@/lib/utils/locationLabels";
@@ -184,6 +185,7 @@ export function Hq6PurchasesListView() {
     isLoading,
     isFetching,
     isPaging,
+    isSearching,
     error,
     goToPage,
     canSelectPage,
@@ -195,7 +197,7 @@ export function Hq6PurchasesListView() {
     filters: apiFilters,
     search: search,
     defaultPageSize: HQ6_TABLE_PAGE_SIZE,
-    defaultSort: { sortBy: "date", sortDir: "desc" },
+    defaultSort: { sortBy: "updatedAt", sortDir: "desc" },
     fetchPage: (cursor, limit, listSort, opts) =>
       getStockMovementsPage(
         tenantId!,
@@ -208,7 +210,7 @@ export function Hq6PurchasesListView() {
       ),
     fetchSummary: () => getStockMovementsListSummary(tenantId!, apiFilters),
     getCursor: (row, listSort) => {
-      const requested = listSort?.sortBy ?? "date";
+      const requested = listSort?.sortBy ?? "updatedAt";
       const sortBy =
         requested === "paymentDue"
           ? "grandTotal"
@@ -218,7 +220,7 @@ export function Hq6PurchasesListView() {
       const type =
         sortBy === "grandTotal"
           ? "number"
-          : sortBy === "date"
+          : sortBy === "date" || sortBy === "createdAt" || sortBy === "updatedAt"
             ? "date"
             : "string";
       return compositeListCursorFrom(row, sortBy, type);
@@ -425,6 +427,12 @@ export function Hq6PurchasesListView() {
         },
       },
       {
+        key: "paymentMethod",
+        header: "Payment Method",
+        sortable: false,
+        render: (row) => formatHq6PaymentMethod(row.paymentMethod),
+      },
+      {
         key: "grandTotal",
         header: "Grand Total",
         numeric: true,
@@ -466,6 +474,19 @@ export function Hq6PurchasesListView() {
         .map((c) => ({ key: c.key, label: String(c.header || c.key) })),
     [columns],
   );
+
+  // Saved column prefs from before Payment Method existed omit it — force on.
+  useEffect(() => {
+    const keys = chrome.visibleColumnKeys;
+    if (!keys) return;
+    if (keys.includes("paymentMethod")) return;
+    if (!columnOptions.some((c) => c.key === "paymentMethod")) return;
+    chrome.setVisibleColumnKeys([...keys, "paymentMethod"]);
+  }, [
+    chrome.visibleColumnKeys,
+    chrome.setVisibleColumnKeys,
+    columnOptions,
+  ]);
 
   const effectiveColumns = useMemo(() => {
     if (!chrome.visibleColumnKeys) return columns;
@@ -570,6 +591,7 @@ export function Hq6PurchasesListView() {
         canSelectPage,
         totalItems: totalCount,
         isBusy: isPaging,
+        isSearching,
       }}
       modals={
         <>

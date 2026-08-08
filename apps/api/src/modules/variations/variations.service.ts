@@ -68,11 +68,11 @@ export class VariationsService {
     tenantId: string,
   ): Promise<VariationTemplate[]> {
     const pagination = buildCompositeCursorQuery({
-      sortField: 'name',
-      sortDir: 'asc',
+      sortField: 'updatedAt',
+      sortDir: 'desc',
       cursor: filters.cursor,
       limit: filters.limit ?? 10,
-      sortValueType: 'string',
+      sortValueType: 'date',
     });
     const rows = await this.tenantDb.db.variationTemplate.findMany({
       where: {
@@ -83,7 +83,7 @@ export class VariationsService {
           : {}),
         ...(pagination.where ?? {}),
       },
-      orderBy: [{ name: 'asc' }, { id: 'asc' }],
+      orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
       take: pagination.take,
     });
     return rows.map((row) => this.mapRow(row));

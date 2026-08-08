@@ -1,9 +1,8 @@
 "use client";
 
 /**
- * HQ6 list search — live typing over the warm catalog (background pages +
- * full roster when available), not just the visible page.
- * via `useServerListPage` (`searchMode: "local"` + match-sorter). No Search button.
+ * HQ6 list search — live typing. Optional `isSearching` shows a spinner while
+ * debounce/server fetch catches up so results don't feel stuck.
  */
 export function Hq6DtSearchFilter({
   value,
@@ -13,6 +12,7 @@ export function Hq6DtSearchFilter({
   id,
   disabled,
   ariaControls,
+  isSearching = false,
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -22,27 +22,43 @@ export function Hq6DtSearchFilter({
   id?: string;
   disabled?: boolean;
   ariaControls?: string;
+  isSearching?: boolean;
 }) {
   return (
-    <div id={id} className="dataTables_filter hq6-dt-search-filter">
+    <div
+      id={id}
+      className={`dataTables_filter hq6-dt-search-filter${isSearching ? " is-searching" : ""}`}
+    >
       <label>
         <span className="sr-only">Search</span>
-        <input
-          type="search"
-          className="form-control input-sm"
-          placeholder={placeholder}
-          title={placeholder}
-          aria-controls={ariaControls}
-          value={value}
-          disabled={disabled}
-          onChange={(e) => onChange(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              e.preventDefault();
-              onCommit?.();
-            }
-          }}
-        />
+        <span className="hq6-dt-search-filter__field">
+          <input
+            type="search"
+            className="form-control input-sm"
+            placeholder={placeholder}
+            title={placeholder}
+            aria-controls={ariaControls}
+            aria-busy={isSearching || undefined}
+            value={value}
+            disabled={disabled}
+            onChange={(e) => onChange(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                onCommit?.();
+              }
+            }}
+          />
+          {isSearching ? (
+            <span
+              className="hq6-dt-search-filter__spinner"
+              aria-hidden
+              title="Searching"
+            >
+              <i className="fa fa-spinner fa-spin" />
+            </span>
+          ) : null}
+        </span>
       </label>
     </div>
   );

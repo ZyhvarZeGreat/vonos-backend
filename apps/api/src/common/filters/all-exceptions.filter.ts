@@ -145,13 +145,35 @@ export class AllExceptionsFilter implements ExceptionFilter {
       errorName = 'Service Unavailable';
       this.logger.error(`Prisma init: ${exception.message}`);
     } else if (exception instanceof Error) {
-      const raw = exception.message?.trim();
-      // Prefer the real message over Nest's opaque "Internal server error"
+      const raw = exception.message?.trim() ?? '';
+      const lower = raw.toLowerCase();
+      const multerCode =
+        isRecord(exception) && typeof exception.code === 'string'
+          ? exception.code
+          : '';
+
       if (
-        raw &&
-        raw.toLowerCase() !== 'internal server error' &&
-        !raw.toLowerCase().includes('internal server error')
+        multerCode === 'LIMIT_FILE_SIZE' ||
+        lower.includes('file too large')
       ) {
+        status = HttpStatus.PAYLOAD_TOO_LARGE;
+        message = 'Image must be 12MB or smaller';
+        errorName = 'Payload Too Large';
+      } else if (
+        exception.name === 'PayloadTooLargeError' ||
+        lower.includes('request entity too large') ||
+        lower.includes('payload too large')
+      ) {
+        status = HttpStatus.PAYLOAD_TOO_LARGE;
+        message =
+          'Upload is too large — try a smaller image (max 12MB after compression)';
+        errorName = 'Payload Too Large';
+      } else if (
+        raw &&
+        lower !== 'internal server error' &&
+        !lower.includes('internal server error')
+      ) {
+        // Prefer the real message over Nest's opaque "Internal server error"
         message = raw;
       }
       this.logger.error(

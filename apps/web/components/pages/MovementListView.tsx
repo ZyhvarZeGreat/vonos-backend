@@ -121,7 +121,7 @@ function MovementListViewBody({
     enabled: Boolean(tenantId),
     filters: apiFilters,
     search,
-    defaultSort: { sortBy: "date", sortDir: "desc" },
+    defaultSort: { sortBy: "updatedAt", sortDir: "desc" },
     fetchPage: (cursor, limit, listSort, opts) =>
       getStockMovementsPage(
         tenantId!,
@@ -134,7 +134,7 @@ function MovementListViewBody({
       ),
     fetchSummary: () => getStockMovementsListSummary(tenantId!, apiFilters),
     getCursor: (row, listSort) => {
-      const requested = listSort?.sortBy ?? "date";
+      const requested = listSort?.sortBy ?? "updatedAt";
       const sortBy =
         requested === "paymentDue"
           ? "grandTotal"
@@ -144,7 +144,7 @@ function MovementListViewBody({
       const type =
         sortBy === "grandTotal"
           ? "number"
-          : sortBy === "date"
+          : sortBy === "date" || sortBy === "createdAt" || sortBy === "updatedAt"
             ? "date"
             : "string";
       return compositeListCursorFrom(row, sortBy, type);

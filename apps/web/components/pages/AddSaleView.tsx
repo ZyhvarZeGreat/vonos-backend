@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { AddSaleForm } from "@/components/organisms/AddSaleForm";
 import { Hq6FormShell } from "@/components/hq6/Hq6Chrome";
@@ -8,8 +8,15 @@ import { getSale, getSaleInvoiceUrl } from "@/lib/api/sales";
 import { useIsVaHq6 } from "@/lib/hooks/useIsVaHq6";
 import { useRouteTenant, useTenantId } from "@/lib/hooks/useRouteTenant";
 import { hq6CopyForSlug } from "@/lib/registries/hq6PageCopy";
-import { announceRedirect } from "@/lib/utils/announceRedirect";
+import { goToList } from "@/lib/utils/goToList";
+import { withBasePath } from "@/lib/utils/basePath";
 import type { SaleFormPresetStatus } from "@/stores/uiStore";
+
+function listSlugForSaleStatus(status: string | null | undefined): string {
+  if (status === "draft") return "drafts";
+  if (status === "quotation") return "quotations";
+  return "sales";
+}
 
 function AddSalePage({
   presetStatus,
@@ -22,7 +29,6 @@ function AddSalePage({
 }) {
   const tenantId = useTenantId();
   const { config, tenantCode } = useRouteTenant();
-  const router = useRouter();
   const isHq6 = useIsVaHq6();
   const copy = hq6CopyForSlug(slug);
   const searchParams = useSearchParams();
@@ -61,23 +67,6 @@ function AddSalePage({
       editSaleId={editSaleId}
       initialJobId={jobId}
       variant="page"
-      onOptimisticLeave={(status) => {
-        if (!tenantCode) return;
-        const listSlug =
-          status === "draft"
-            ? "drafts"
-            : status === "quotation"
-              ? "quotations"
-              : "sales";
-        const label =
-          status === "draft"
-            ? "Saving & returning to drafts…"
-            : status === "quotation"
-              ? "Saving & returning to quotations…"
-              : "Saving & returning to sales…";
-        announceRedirect(label);
-        router.push(`/${tenantCode}/${listSlug}`);
-      }}
       onSuccess={async (sale, options) => {
         if (options?.print) {
           const path =
@@ -86,10 +75,14 @@ function AddSalePage({
               .then((r) => r.path)
               .catch(() => null));
           if (path) {
-            announceRedirect("Opening invoice…");
-            router.push(`${path}?print_on_load=true`);
+            window.location.assign(
+              withBasePath(`${path}?print_on_load=true`),
+            );
+            return;
           }
         }
+        if (!tenantCode) return;
+        goToList(`/${tenantCode}/${listSlugForSaleStatus(sale.status)}`);
       }}
     />
   );

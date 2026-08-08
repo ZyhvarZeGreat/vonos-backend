@@ -276,10 +276,14 @@ export function Hq6RolesListView() {
     })();
   }, [tenantId, tenantCode, migratedLocal, queryClient, isVag]);
 
-  const filtered = useMemo(
-    () => filterRowsBySearch(roles, search),
-    [roles, search],
-  );
+  const filtered = useMemo(() => {
+    const rows = filterRowsBySearch(roles, search);
+    return [...rows].sort((a, b) => {
+      const ta = new Date(a.updatedAt).getTime();
+      const tb = new Date(b.updatedAt).getTime();
+      return tb - ta;
+    });
+  }, [roles, search]);
   const total = filtered.length;
   const effectiveSize = pageSize <= 0 ? Math.max(total, 1) : pageSize;
   const pageCount = Math.max(1, Math.ceil(Math.max(total, 1) / effectiveSize));

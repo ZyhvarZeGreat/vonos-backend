@@ -50,6 +50,7 @@ export type ProductSavePayload = {
   locationStock?: ItemLocationStockInput[];
   brandName?: string;
   availableForRetail: boolean;
+  imageUrl?: string;
   /** Catalog-only tenants (VA/VP): keep Active even at qty 0. */
   status?: "in_stock" | "low_stock" | "out_of_stock";
 };
@@ -80,6 +81,7 @@ export function buildProductSavePayload(input: {
   selectedLocationCodes: string[];
   locationDetails: ProductLocationDetailSlice[];
   skuFallback?: string;
+  imageUrl?: string | null;
 }): ProductSavePayload {
   const {
     form,
@@ -91,6 +93,7 @@ export function buildProductSavePayload(input: {
     selectedLocationCodes,
     locationDetails,
     skuFallback,
+    imageUrl,
   } = input;
 
   const costPrice = Number(form.purchaseExcTax || 0);
@@ -172,5 +175,8 @@ export function buildProductSavePayload(input: {
     ...(locationStock ? { locationStock } : {}),
     brandName: form.brand.trim() || undefined,
     availableForRetail: retailMode ? true : !form.notForSelling,
+    ...(imageUrl !== undefined
+      ? { imageUrl: imageUrl?.trim() || undefined }
+      : {}),
   };
 }

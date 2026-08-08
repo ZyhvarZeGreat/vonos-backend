@@ -43,6 +43,8 @@ export interface UposDataTablesShellProps {
   onPageSelect?: (index: number) => void;
   canSelectPage?: (index: number) => boolean;
   isBusy?: boolean;
+  /** Search debounce/fetch in progress — spinner in filter + Processing overlay. */
+  isSearching?: boolean;
   className?: string;
   /** Hide info + paginate footer (toolbar-only chrome). */
   showPagination?: boolean;
@@ -78,6 +80,7 @@ export function UposDataTablesShell({
   onPageSelect,
   canSelectPage,
   isBusy,
+  isSearching,
   className,
   showPagination = true,
 }: UposDataTablesShellProps) {
@@ -88,12 +91,15 @@ export function UposDataTablesShell({
     totalCount: totalItems,
   });
   const { from, to, total } = range;
+  const tableBusy = Boolean(isBusy || isSearching);
   const infoText =
-    itemCount === 0 && isBusy
-      ? "Loading…"
-      : total != null
-        ? formatListEntriesLabel({ from, to, total })
-        : formatListEntriesLabel({ from, to, total: undefined });
+    isSearching
+      ? "Searching…"
+      : itemCount === 0 && isBusy
+        ? "Loading…"
+        : total != null
+          ? formatListEntriesLabel({ from, to, total })
+          : formatListEntriesLabel({ from, to, total: undefined });
 
   const totalPages =
     totalPagesFromEntries(totalItems ?? total, pageSize) ??
@@ -231,11 +237,28 @@ export function UposDataTablesShell({
               else onSearchChange(searchValue.trim());
             }}
             placeholder={searchPlaceholder}
+            isSearching={isSearching}
           />
         </div>
       </div>
 
-      <div className="dataTables_scrollBody hq6-dt-scroll" style={{ width: "100%" }}>
+      <div
+        className={cn(
+          "dataTables_scrollBody hq6-dt-scroll",
+          tableBusy && "hq6-dt-scroll--busy",
+        )}
+        style={{ width: "100%", position: "relative" }}
+      >
+        {tableBusy ? (
+          <div
+            id={`${tableId}_processing`}
+            className="dataTables_processing panel panel-default"
+            role="status"
+            aria-live="polite"
+          >
+            {isSearching ? "Searching…" : "Processing…"}
+          </div>
+        ) : null}
         {children}
       </div>
 
@@ -262,7 +285,7 @@ export function UposDataTablesShell({
               <li
                 className={cn(
                   "paginate_button previous",
-                  (!canGoPrev || isBusy) && "disabled",
+                  (!canGoPrev || tableBusy) && "disabled",
                 )}
                 id={`${tableId}_previous`}
               >
@@ -272,7 +295,7 @@ export function UposDataTablesShell({
                   tabIndex={0}
                   onClick={(e) => {
                     e.preventDefault();
-                    if (canGoPrev && !isBusy) onPrev?.();
+                    if (canGoPrev && !tableBusy) onPrev?.();
                   }}
                 >
                   Previous
@@ -284,7 +307,7 @@ export function UposDataTablesShell({
                     className={cn(
                       "paginate_button",
                       entry === pageIndex && "active",
-                      isBusy && "disabled",
+                      tableBusy && "disabled",
                     )}
                   >
                     <a
@@ -293,7 +316,7 @@ export function UposDataTablesShell({
                       tabIndex={0}
                       onClick={(e) => {
                         e.preventDefault();
-                        if (isBusy || entry === pageIndex) return;
+                        if (tableBusy || entry === pageIndex) return;
                         if (canSelectPage && !canSelectPage(entry)) return;
                         onPageSelect?.(entry);
                       }}
@@ -305,7 +328,7 @@ export function UposDataTablesShell({
               <li
                 className={cn(
                   "paginate_button next",
-                  (!(hasMore ?? pageIndex + 1 < totalPages) || isBusy) &&
+                  (!(hasMore ?? pageIndex + 1 < totalPages) || tableBusy) &&
                     "disabled",
                 )}
                 id={`${tableId}_next`}
@@ -316,7 +339,7 @@ export function UposDataTablesShell({
                   tabIndex={0}
                   onClick={(e) => {
                     e.preventDefault();
-                    if ((hasMore ?? pageIndex + 1 < totalPages) && !isBusy) {
+                    if ((hasMore ?? pageIndex + 1 < totalPages) && !tableBusy) {
                       onNext?.();
                     }
                   }}

@@ -23,6 +23,8 @@ export interface SaleReturnRow {
   amount: number;
   status: string;
   date: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface MenuItemRow {

@@ -29,7 +29,7 @@ import { useAppMutation } from "@/lib/hooks/useAppMutation";
 import { useBusinessLocationOptions } from "@/lib/hooks/useBusinessLocationOptions";
 import { useRouteTenant, useTenantId } from "@/lib/hooks/useRouteTenant";
 import { useServerListPage } from "@/lib/hooks/useServerListPage";
-import { nameListCursor } from "@/lib/utils/pagination";
+import { chronoListCursor } from "@/lib/utils/pagination";
 
 import { HQ6_TABLE_PAGE_SIZE } from "@/lib/api/fetchAllPages";
 import { useListExport } from "@/lib/hooks/useListExport";
@@ -142,6 +142,7 @@ export function Hq6DiscountsListView() {
     isLoading,
     isFetching,
     isPaging,
+    isSearching,
     error,
     goToPage,
     canSelectPage,
@@ -151,7 +152,7 @@ export function Hq6DiscountsListView() {
     enabled: Boolean(tenantId),
     defaultPageSize: HQ6_TABLE_PAGE_SIZE,
     fetchPage: (cursor, limit, _sort, opts) => getDiscountsPage(tenantId!, cursor, limit, { includeSummary: opts?.includeSummary }),
-    getCursor: (row) => nameListCursor(row),
+    getCursor: (row) => chronoListCursor(row),
   });
 
   const openCreate = () => {
@@ -418,6 +419,7 @@ export function Hq6DiscountsListView() {
         canSelectPage,
         totalItems: totalCount,
         isBusy: isPaging,
+        isSearching,
       }}
       modals={
         <>

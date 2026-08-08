@@ -125,7 +125,7 @@ export class TenantRolesService {
             }
           : {}),
       },
-      orderBy: [{ name: 'asc' }, { id: 'asc' }],
+      orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
     });
     return rows.map((row) => this.toRole(row));
   }

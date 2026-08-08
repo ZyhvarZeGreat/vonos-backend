@@ -113,7 +113,10 @@ export async function apiFetch(
   for (const [key, value] of Object.entries(buildAuthHeaders())) {
     headers.set(key, value);
   }
-  if (init?.body && !headers.has("Content-Type")) {
+  // Let the browser set multipart boundary for FormData; do not force JSON.
+  const isFormData =
+    typeof FormData !== "undefined" && init?.body instanceof FormData;
+  if (init?.body && !headers.has("Content-Type") && !isFormData) {
     headers.set("Content-Type", "application/json");
   }
   applyIdempotencyHeaders(headers);
@@ -139,7 +142,7 @@ export async function apiFetch(
   for (const [key, value] of Object.entries(buildAuthHeaders())) {
     retryHeaders.set(key, value);
   }
-  if (init?.body && !retryHeaders.has("Content-Type")) {
+  if (init?.body && !retryHeaders.has("Content-Type") && !isFormData) {
     retryHeaders.set("Content-Type", "application/json");
   }
   applyIdempotencyHeaders(retryHeaders);

@@ -9,47 +9,39 @@ function read(rel: string): string {
 }
 
 /**
- * Guards the "leave before Neon finishes" Save UX so we don't regress to
- * awaiting invalidate/PATCH before router.push.
+ * Guards Save → list redirect so forms don't stay stuck after create/update.
+ * Prefer hard goToList() after the write succeeds (soft App Router leaves were flaky).
  */
-describe("optimistic leave on Save (source contracts)", () => {
-  it("product save leaves before create/update settles", () => {
-    const form = read("components/organisms/AddProductForm.tsx");
+describe("list redirect on Save (source contracts)", () => {
+  it("product save navigates to list on success", () => {
     const view = read("components/pages/AddProductView.tsx");
-    expect(form).toContain("onOptimisticLeave");
-    expect(form).toMatch(
-      /if \(variant === "page" && mode === "save"\)[\s\S]*onOptimisticLeave/,
-    );
-    expect(view).toContain("Saving & returning to products");
-    expect(view).toContain("onOptimisticLeave=");
-    // Must not re-await list invalidation before leave on save.
-    expect(view).not.toMatch(
-      /await Promise\.all\(\[\s*queryClient\.invalidateQueries/,
-    );
+    expect(view).toContain("goToList");
+    expect(view).toContain("onSuccess=");
+    expect(view).toMatch(/if \(mode === "saveAnother"\) return;/);
+    expect(view).toMatch(/goToList\(catalogListPath\)/);
+    expect(view).not.toContain("onOptimisticLeave");
+    expect(view).not.toContain("announceRedirect");
   });
 
-  it("purchase save navigates before mutation.mutate()", () => {
+  it("purchase save navigates to purchases on success", () => {
     const src = read("components/pages/AddPurchaseView.tsx");
     expect(src).toContain("handleSave");
-    expect(src).toContain("Saving & returning to purchases");
-    const leave = src.indexOf("Saving & returning to purchases");
-    const mutate = src.indexOf("mutation.mutate()", leave);
-    expect(leave).toBeGreaterThan(-1);
-    expect(mutate).toBeGreaterThan(leave);
+    expect(src).toContain("goToList");
+    expect(src).toMatch(/onSuccess: \(\) => \{[\s\S]*goToList\(`\/\$\{tenantCode\}\/purchases`\)/);
     expect(src).toContain("onClick={handleSave}");
-    // Sell-price sync must not block the create/update response path.
     expect(src).toMatch(/void Promise\.allSettled\(/);
+    expect(src).not.toContain("announceRedirect");
   });
 
-  it("expense save navigates before saveMutation.mutate()", () => {
+  it("expense save navigates to expenses on success", () => {
     const src = read("components/pages/ExpensesViews.tsx");
     expect(src).toContain("handleSave");
-    expect(src).toContain("Saving & returning to expenses");
-    const leave = src.indexOf("Saving & returning to expenses");
-    const mutate = src.indexOf("saveMutation.mutate()", leave);
-    expect(leave).toBeGreaterThan(-1);
-    expect(mutate).toBeGreaterThan(leave);
+    expect(src).toContain("goToList");
+    expect(src).toMatch(
+      /onSuccess: \(\) => \{[\s\S]*goToList\(expensePageRoute\(tenantCode, "expenses"\)\)/,
+    );
     expect(src).toContain("onClick={handleSave}");
+    expect(src).not.toContain("announceRedirect");
   });
 
   it("payments list editor captures ids then closes before mutate(vars)", () => {
@@ -113,19 +105,17 @@ describe("optimistic leave on Save (source contracts)", () => {
     );
     expect(src).toContain("pendingSaveStatusRef");
     expect(src).toMatch(/status: statusToSave as "final" \| "draft" \| "quotation"/);
-    // Validate before optimistic leave so failed quotations don't vanish from the form.
-    expect(src).toMatch(
-      /assertBusinessLocationSelected[\s\S]*?onOptimisticLeave\?\.\(statusToSave\)/,
-    );
+    expect(src).toContain("assertBusinessLocationSelected");
   });
 
-  it("sale save navigates before mutation settles", () => {
+  it("sale save navigates to list on success", () => {
     const form = read("components/organisms/AddSaleForm.tsx");
     const view = read("components/pages/AddSaleView.tsx");
-    expect(form).toContain("onOptimisticLeave");
     expect(form).toContain("kickSave");
-    expect(view).toContain("onOptimisticLeave=");
-    expect(view).toContain("Saving & returning to sales");
+    expect(view).toContain("goToList");
+    expect(view).toMatch(/goToList\(`\/\$\{tenantCode\}\/\$\{listSlugForSaleStatus/);
+    expect(view).not.toContain("onOptimisticLeave");
+    expect(view).not.toContain("announceRedirect");
   });
 
   it("user save leaves before write settles", () => {

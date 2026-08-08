@@ -194,7 +194,7 @@ export class ExpensesService {
           }
         : {};
     const pagination = buildCompositeCursorQuery({
-      sortField: 'expenseDate',
+      sortField: 'updatedAt',
       sortDir: 'desc',
       cursor: filters.cursor,
       limit: filters.limit ?? 10,
@@ -251,7 +251,7 @@ export class ExpensesService {
         ...(pagination.where ?? {}),
       },
       include: expenseInclude,
-      orderBy: [{ expenseDate: 'desc' }, { id: 'desc' }],
+      orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
       take: pagination.take,
     });
 
@@ -688,11 +688,11 @@ export class ExpensesService {
     search?: string;
   } = {}): Promise<ExpenseCategory[]> {
     const pagination = buildCompositeCursorQuery({
-      sortField: 'name',
-      sortDir: 'asc',
+      sortField: 'updatedAt',
+      sortDir: 'desc',
       cursor: filters.cursor,
       limit: filters.limit ?? 10,
-      sortValueType: 'string',
+      sortValueType: 'date',
     });
     const rows = await this.tenantDb.db.expenseCategory.findMany({
       where: {
@@ -703,7 +703,7 @@ export class ExpensesService {
           : {}),
         ...(pagination.where ?? {}),
       },
-      orderBy: [{ name: 'asc' }, { id: 'asc' }],
+      orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
       take: pagination.take,
     });
     return rows.map((row) => ({
@@ -850,7 +850,7 @@ export async function warmDefaultExpenseListPages(
           const rows = await prisma.expense.findMany({
             where: baseWhere,
             include: expenseInclude,
-            orderBy: [{ expenseDate: 'desc' }, { id: 'desc' }],
+            orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
             take: limit,
           });
           const items = rows.map((row) => ({

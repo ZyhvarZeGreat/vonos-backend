@@ -153,7 +153,7 @@ export class StockMovementsService {
     return withListPageCache(
       this.cache,
       tenantId,
-      'stock-movements',
+      'stock-movements:v2',
       filterKey,
       async () => {
         const dateFilter =
@@ -173,6 +173,7 @@ export class StockMovementsService {
             reference: { field: 'reference', type: 'string' },
             status: { field: 'status', type: 'string' },
             createdAt: { field: 'createdAt', type: 'date' },
+            updatedAt: { field: 'updatedAt', type: 'date' },
             locationCode: { field: 'locationCode', type: 'string' },
             paymentStatus: { field: 'paymentStatus', type: 'string' },
             paymentMethod: { field: 'paymentMethod', type: 'string' },
@@ -180,7 +181,7 @@ export class StockMovementsService {
             supplierId: { field: 'supplierId', type: 'string' },
           },
           {
-            sortField: 'date',
+            sortField: 'updatedAt',
             sortDir: 'desc',
             sortValueType: 'date',
           },
@@ -774,7 +775,11 @@ export class StockMovementsService {
       const paymentStatus = newPaid >= total - 0.001 ? 'paid' : 'partial';
       await tx.stockMovement.update({
         where: { id },
-        data: { paymentStatus, paymentMethod: method },
+        data: {
+          paymentStatus,
+          paymentMethod: method,
+          totalPaid: newPaid,
+        },
       });
     });
 
@@ -1340,7 +1345,7 @@ export async function warmDefaultStockMovementListPages(
   tenantId: string,
 ): Promise<void> {
   for (const limit of HQ6_LIST_WARM_LIMITS) {
-    for (const sort of hq6WarmSorts({ sortBy: 'date', sortDir: 'desc' })) {
+    for (const sort of hq6WarmSorts({ sortBy: 'updatedAt', sortDir: 'desc' })) {
       for (const includeSummary of [false, true] as const) {
         const filterKey = listPageFilterKey({
           type: 'inbound',
@@ -1362,7 +1367,7 @@ export async function warmDefaultStockMovementListPages(
         await withListPageCache(
           cache,
           tenantId,
-          'stock-movements',
+          'stock-movements:v2',
           filterKey,
           async () => {
             const baseWhere = {
@@ -1396,7 +1401,7 @@ export async function warmDefaultStockMovementListPages(
                   deletedAt: true,
                   supplier: { select: { name: true } },
                 },
-                orderBy: [{ date: 'desc' }, { id: 'desc' }],
+                orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
                 take: limit,
               }),
               includeSummary

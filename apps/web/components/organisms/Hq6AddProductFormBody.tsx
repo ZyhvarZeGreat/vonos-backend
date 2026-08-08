@@ -3,6 +3,7 @@
 import { Info } from "lucide-react";
 import type { TenantConfig } from "@vonos/types";
 import { Hq6BusyButton } from "@/components/hq6/Hq6BusyButton";
+import { ProductImageDropzone } from "@/components/molecules/ProductImageDropzone";
 import { cn } from "@/lib/utils/cn";
 import {
   DEFAULT_HQ6_TAX_OPTIONS,
@@ -79,7 +80,12 @@ export interface Hq6AddProductFormBodyProps {
   onSubmit: (mode: ProductSaveMode) => void;
   imageName: string;
   brochureName: string;
-  onImageChange: (name: string) => void;
+  /** Public or object URL for thumbnail preview after pick/upload. */
+  imagePreviewUrl?: string | null;
+  imageUploading?: boolean;
+  /** 0–100 while uploading; null while preparing/compressing. */
+  imageUploadProgress?: number | null;
+  onImageChange: (file: File | null) => void;
   onBrochureChange: (name: string) => void;
 }
 
@@ -135,17 +141,27 @@ export function Hq6AddProductFormBody({
   onSubmit,
   imageName,
   brochureName,
+  imagePreviewUrl,
+  imageUploading = false,
+  imageUploadProgress = null,
   onImageChange,
   onBrochureChange,
 }: Hq6AddProductFormBodyProps) {
   return (
     <div
       className="hq6-add-product-form product_form"
-      aria-busy={isPending || undefined}
+      aria-busy={isPending || imageUploading || undefined}
     >
       {isPending ? (
         <p className="help-block" style={{ marginBottom: 12 }}>
           Saving product…
+        </p>
+      ) : null}
+      {imageUploading ? (
+        <p className="help-block" style={{ marginBottom: 12 }}>
+          {imageUploadProgress == null
+            ? "Preparing product image…"
+            : `Uploading product image… ${Math.round(imageUploadProgress)}%`}
         </p>
       ) : null}
 
@@ -493,39 +509,15 @@ export function Hq6AddProductFormBody({
             </div>
 
             <div className="col-sm-4">
-              <div className="form-group">
-                <label htmlFor="upload_image">Product image:</label>
-                <div className="input-group">
-                  <input
-                    type="text"
-                    className="form-control"
-                    readOnly
-                    value={imageName || ""}
-                    placeholder=""
-                  />
-                  <span className="input-group-btn">
-                    <label className="btn btn-primary btn-flat hq6-browse-btn">
-                      Browse…
-                      <input
-                        id="upload_image"
-                        type="file"
-                        accept="image/*"
-                        className="sr-only"
-                        onChange={(e) =>
-                          onImageChange(e.target.files?.[0]?.name ?? "")
-                        }
-                      />
-                    </label>
-                  </span>
-                </div>
-                <small>
-                  <p className="help-block">
-                    Max File size: 5MB
-                    <br />
-                    Aspect ratio should be 1:1
-                  </p>
-                </small>
-              </div>
+              <ProductImageDropzone
+                variant="hq6"
+                previewUrl={imagePreviewUrl}
+                fileName={imageName}
+                uploading={imageUploading}
+                progress={imageUploadProgress}
+                disabled={isPending}
+                onFileSelect={onImageChange}
+              />
             </div>
 
             <div className="col-sm-4">

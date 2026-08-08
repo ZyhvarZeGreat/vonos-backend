@@ -35,11 +35,11 @@ function isPaginated(filters: MetaListFilters): boolean {
 function metaPagination(filters: MetaListFilters) {
   if (!isPaginated(filters)) return { where: undefined, take: undefined };
   return buildCompositeCursorQuery({
-    sortField: 'name',
-    sortDir: 'asc',
+      sortField: 'updatedAt',
+      sortDir: 'desc',
     cursor: filters.cursor,
     limit: filters.limit ?? 10,
-    sortValueType: 'string',
+    sortValueType: 'date',
   });
 }
 
@@ -97,7 +97,7 @@ export class CatalogMetaService {
           : {}),
         ...(metaPagination(filters).where ?? {}),
       },
-      orderBy: [{ name: 'asc' }, { id: 'asc' }],
+      orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
       take: metaPagination(filters).take,
     });
     return rows.map((row) => ({
@@ -167,7 +167,7 @@ export class CatalogMetaService {
           : {}),
         ...(metaPagination(filters).where ?? {}),
       },
-      orderBy: [{ name: 'asc' }, { id: 'asc' }],
+      orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
       take: metaPagination(filters).take,
     });
     return rows.map((row) => ({
@@ -225,7 +225,7 @@ export class CatalogMetaService {
           : {}),
         ...(metaPagination(filters).where ?? {}),
       },
-      orderBy: [{ name: 'asc' }, { id: 'asc' }],
+      orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
       take: metaPagination(filters).take,
     });
     return rows.map((row) => ({
@@ -287,7 +287,7 @@ export class CatalogMetaService {
           : {}),
         ...(metaPagination(filters).where ?? {}),
       },
-      orderBy: [{ name: 'asc' }, { id: 'asc' }],
+      orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
       take: metaPagination(filters).take,
     });
     return rows.map((row) => ({
@@ -360,7 +360,7 @@ export class CatalogMetaService {
           : {}),
         ...(metaPagination(filters).where ?? {}),
       },
-      orderBy: [{ name: 'asc' }, { id: 'asc' }],
+      orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
       take: metaPagination(filters).take,
     });
     return rows.map((row) => ({

@@ -19,6 +19,8 @@ function saleToReturnRow(sale: Sale): SaleReturnRow {
     amount: sale.total,
     status: sale.status,
     date: sale.date,
+    createdAt: sale.createdAt,
+    updatedAt: sale.updatedAt,
   };
 }
 

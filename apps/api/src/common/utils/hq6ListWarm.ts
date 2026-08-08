@@ -11,7 +11,7 @@ export type Hq6WarmSort = {
 
 /** Primary UI sorts + undefined (clients that omit sortBy). */
 export function hq6WarmSorts(
-  primary: Hq6WarmSort = { sortBy: 'date', sortDir: 'desc' },
+  primary: Hq6WarmSort = { sortBy: 'updatedAt', sortDir: 'desc' },
 ): Hq6WarmSort[] {
   return [primary, { sortBy: undefined, sortDir: undefined }];
 }

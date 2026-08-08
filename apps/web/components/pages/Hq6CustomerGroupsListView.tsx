@@ -26,7 +26,7 @@ import {
 import { useServerListPage } from "@/lib/hooks/useServerListPage";
 import { slidingPageIndices, listEntryRange, formatListEntriesLabel, totalPagesFromEntries } from "@/lib/utils/paginationWindow";
 
-import { nameListCursor } from "@/lib/utils/pagination";
+import { chronoListCursor } from "@/lib/utils/pagination";
 
 import { HQ6_TABLE_PAGE_SIZE } from "@/lib/api/fetchAllPages";
 import { useListExport } from "@/lib/hooks/useListExport";
@@ -106,6 +106,7 @@ export function Hq6CustomerGroupsListView() {
     setPageSize,
     isLoading,
     isPaging,
+    isSearching,
     error,
     goToPage,
     canSelectPage,
@@ -118,7 +119,7 @@ export function Hq6CustomerGroupsListView() {
       getCustomerGroupsPage(tenantId!, cursor, limit, {
         includeSummary: opts?.includeSummary,
       }),
-    getCursor: (row) => nameListCursor(row),
+    getCursor: (row) => chronoListCursor(row),
   });
 
   const openCreate = useCallback(() => {
@@ -245,7 +246,7 @@ export function Hq6CustomerGroupsListView() {
     itemCount: items.length,
     totalCount: totalCount ?? totalItems,
   });
-  const busy = isPaging || (isLoading && items.length === 0);
+  const busy = isPaging || isSearching || (isLoading && items.length === 0);
 
   const pageNumbers = useMemo(
     () =>
@@ -385,12 +386,12 @@ export function Hq6CustomerGroupsListView() {
                             id="customer_groups_table_filter"
                             value={search}
                             onChange={setSearch}
+                          
+                            isSearching={isSearching}
                           />
                         </div>
                         {busy ? (
-                          <div className="dataTables_processing panel panel-default">
-                            Processing...
-                          </div>
+                          <div className="dataTables_processing panel panel-default">{isSearching ? "Searching…" : "Processing…"}</div>
                         ) : null}
                       </div>
 

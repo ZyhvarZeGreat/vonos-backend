@@ -51,6 +51,8 @@ export interface PaymentRecord {
   accountName?: string | null;
   saleId: string | null;
   saleReference?: string | null;
+  /** Present when payment is linked to a purchase invoice. */
+  stockMovementId?: string | null;
   isReturn: boolean;
   note: string | null;
   createdByName: string | null;

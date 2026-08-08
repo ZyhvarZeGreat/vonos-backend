@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Item } from "@vonos/types";
 import { AddProductForm } from "@/components/organisms/AddProductForm";
@@ -14,12 +14,20 @@ import {
   productDuplicateQueryKey,
   productEditQueryKey,
 } from "@/lib/query/prefetchListDetails";
-import { announceRedirect } from "@/lib/utils/announceRedirect";
+import { goToList } from "@/lib/utils/goToList";
+
+function productsListSlug(
+  isHq6: boolean,
+  archetype: string | null | undefined,
+): "catalog" | "inventory" {
+  // Match sidebar List Products (posNavSections): HQ6 always uses /catalog.
+  if (isHq6) return "catalog";
+  return archetype === "stock" ? "inventory" : "catalog";
+}
 
 export function AddProductView() {
   const tenantId = useTenantId();
   const { config, tenantCode } = useRouteTenant();
-  const router = useRouter();
   const queryClient = useQueryClient();
   const isHq6 = useIsVaHq6();
   const copy = hq6CopyForSlug("add-product");
@@ -29,7 +37,7 @@ export function AddProductView() {
   const editId = searchParams.get("edit");
 
   const catalogListPath = tenantCode
-    ? `/${tenantCode}/${config?.archetype === "stock" ? "inventory" : "catalog"}`
+    ? `/${tenantCode}/${productsListSlug(isHq6, config?.archetype)}`
     : null;
 
   const cachedItem = (id: string | null): Item | undefined => {
@@ -138,9 +146,7 @@ export function AddProductView() {
       variant="page"
       duplicateFrom={duplicateId && !editId ? resolvedDuplicate : null}
       editFrom={editId ? resolvedEdit : null}
-      onSuccess={async (item, mode) => {
-        // Seed detail caches from the PATCH response — list rows are already
-        // patched optimistically in AddProductForm.
+      onSuccess={(item, mode) => {
         queryClient.setQueryData(productEditQueryKey(item.id), item);
         queryClient.setQueryData(
           ["item", tenantId, item.id, "catalog"],
@@ -153,19 +159,8 @@ export function AddProductView() {
         void queryClient.invalidateQueries({ queryKey: ["items"] });
         void queryClient.invalidateQueries({ queryKey: ["catalog"] });
         void queryClient.invalidateQueries({ queryKey: ["catalog-meta"] });
-        // Stay on the form only for "Save and add another".
         if (mode === "saveAnother") return;
-        // Page Save already navigated in onOptimisticLeave (create + edit).
-        if (mode === "save") return;
-        if (catalogListPath) {
-          announceRedirect("Redirecting to products…");
-          router.push(catalogListPath);
-        }
-      }}
-      onOptimisticLeave={() => {
-        if (!catalogListPath) return;
-        announceRedirect("Saving & returning to products…");
-        router.push(catalogListPath);
+        if (catalogListPath) goToList(catalogListPath);
       }}
     />
   );

@@ -3,10 +3,23 @@ import {
   Controller,
   Get,
   Header,
+  Post,
   Query,
   Res,
+  UploadedFile,
+  UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import type { Response } from 'express';
+import { memoryStorage } from 'multer';
+import { Roles } from '../../common/decorators/roles.decorator';
+import {
+  JwtAuthGuard,
+  RolesGuard,
+  TenantGuard,
+} from '../../common/guards/auth.guards';
+import { MediaService } from './media.service';
 
 const ALLOWED_HOST_SUFFIXES = [
   '.vonosautos.com',
@@ -36,9 +49,36 @@ function isAllowedLegacyMediaUrl(raw: string): URL | null {
 /**
  * Proxy legacy Ultimate POS product images. Those hosts hotlink-block our
  * app origin (browser <img> → 403); server fetch with their own Referer works.
+ * Also accepts authenticated product image uploads to R2.
  */
 @Controller('media')
 export class MediaController {
+  constructor(private readonly media: MediaService) {}
+
+  @Post('upload')
+  @UseGuards(JwtAuthGuard, TenantGuard, RolesGuard)
+  @Roles('staff', 'manager', 'admin', 'super_admin')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: memoryStorage(),
+      limits: { fileSize: 12 * 1024 * 1024 },
+    }),
+  )
+  async upload(
+    @UploadedFile()
+    file?: {
+      buffer: Buffer;
+      mimetype: string;
+      size: number;
+      originalname: string;
+    },
+  ) {
+    if (!file) {
+      throw new BadRequestException('file is required');
+    }
+    return this.media.uploadProductImage(file);
+  }
+
   @Get('legacy')
   @Header('Cache-Control', 'public, max-age=86400, stale-while-revalidate=604800')
   async legacy(

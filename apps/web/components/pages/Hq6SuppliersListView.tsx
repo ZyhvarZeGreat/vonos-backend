@@ -45,7 +45,7 @@ import {
   hq6Cell,
   hq6DistinctName,
 } from "@/lib/utils/hq6Format";
-import { nameListCursor } from "@/lib/utils/pagination";
+import { chronoListCursor } from "@/lib/utils/pagination";
 
 const PAGE_SIZES = [25, 50, 100, 200, 500, 1000, -1] as const;
 
@@ -163,6 +163,7 @@ export function Hq6SuppliersListView() {
     setPageSize,
     isLoading,
     isPaging,
+    isSearching,
     error,
     goToPage,
     canSelectPage,
@@ -172,12 +173,15 @@ export function Hq6SuppliersListView() {
     filters: apiFilters,
     search,
     defaultPageSize: HQ6_TABLE_PAGE_SIZE,
-    fetchPage: (cursor, limit, _sort, opts) =>
+    fetchPage: (cursor, limit, listSort, opts) =>
       getSuppliersPage(tenantId!, cursor, limit, {
         ...apiFilters,
         includeSummary: opts?.includeSummary,
+        ...(listSort?.sortBy
+          ? { sortBy: listSort.sortBy, sortDir: listSort.sortDir }
+          : { sortBy: "updatedAt", sortDir: "desc" }),
       }, { signal: opts?.signal }),
-    getCursor: (row) => nameListCursor(row),
+    getCursor: (row) => chronoListCursor(row),
   });
 
   const invalidate = useCallback(async () => {
@@ -205,7 +209,7 @@ export function Hq6SuppliersListView() {
     itemCount: suppliers.length,
     totalCount: totalCount ?? totalItems,
   });
-  const busy = isPaging || (isLoading && suppliers.length === 0);
+  const busy = isPaging || isSearching || (isLoading && suppliers.length === 0);
 
   const dueTotal =
     amountSummary?.totalDue ??
@@ -499,15 +503,15 @@ export function Hq6SuppliersListView() {
                             value={search}
                             onChange={setSearch}
                             
+                          
+                            isSearching={isSearching}
                           />
                         </div>
                         {busy ? (
                           <div
                             id="contact_table_processing"
                             className="dataTables_processing panel panel-default"
-                          >
-                            Processing...
-                          </div>
+                          >{isSearching ? "Searching…" : "Processing…"}</div>
                         ) : null}
                       </div>
 

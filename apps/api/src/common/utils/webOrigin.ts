@@ -1,5 +1,6 @@
 const DEFAULT_ORIGINS = [
   'http://localhost:3000',
+  'http://127.0.0.1:3000',
   'https://vonos-web-7w14.vercel.app',
   'https://app.vonosautos.com',
   'https://app.vonosautosmarket.com',

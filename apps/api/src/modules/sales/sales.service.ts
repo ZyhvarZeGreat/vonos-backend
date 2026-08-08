@@ -144,7 +144,7 @@ export class SalesService {
   }): void {
     const tenantId = this.tenantDb.requireTenantId();
     if (options.listsOnly) {
-      void invalidateTenantListCache(this.cache, tenantId, ['sales']);
+      void invalidateTenantListCache(this.cache, tenantId, ['sales:v2', 'sales']);
     } else {
       void invalidateTenantDashboardCache(this.cache, tenantId);
     }
@@ -284,7 +284,7 @@ export class SalesService {
     return withListPageCache(
       this.cache,
       tenantId,
-      'sales',
+      'sales:v2',
       filterKey,
       () => this.listUncached(filters, tenantId),
       600,
@@ -303,8 +303,9 @@ export class SalesService {
       paymentStatus: { field: 'paymentStatus', type: 'string' },
       status: { field: 'status', type: 'string' },
       createdAt: { field: 'createdAt', type: 'date' },
+      updatedAt: { field: 'updatedAt', type: 'date' },
     }, {
-      sortField: 'date',
+      sortField: 'updatedAt',
       sortDir: 'desc',
       sortValueType: 'date',
     });
@@ -317,7 +318,8 @@ export class SalesService {
     const canFastPath =
       !search &&
       (!filters.cursor ||
-        (sort.sortField === 'date' && sort.sortValueType === 'date'));
+        ((sort.sortField === 'date' || sort.sortField === 'updatedAt' || sort.sortField === 'createdAt') &&
+          sort.sortValueType === 'date'));
     if (canFastPath) {
       const page = await this.listSalesPageRaw(tenantId, filters, sort, limit);
       let totalCount: number | undefined;
@@ -508,7 +510,9 @@ export class SalesService {
               ? 's.status'
               : sort.sortField === 'createdAt'
                 ? 's."createdAt"'
-                : 's.date';
+                : sort.sortField === 'updatedAt'
+                  ? 's."updatedAt"'
+                  : 's.date';
     const sortDirSql = sort.sortDir === 'asc' ? 'ASC' : 'DESC';
 
     const cursor = decodeCompositeCursor(filters.cursor);
@@ -600,15 +604,15 @@ export class SalesService {
           OR (
             ${sortDesc} = true
             AND (
-              s.date < ${cursorDate}
-              OR (s.date = ${cursorDate} AND s.id < ${cursorId})
+              ${Prisma.raw(sortCol)} < ${cursorDate}
+              OR (${Prisma.raw(sortCol)} = ${cursorDate} AND s.id < ${cursorId})
             )
           )
           OR (
             ${sortDesc} = false
             AND (
-              s.date > ${cursorDate}
-              OR (s.date = ${cursorDate} AND s.id > ${cursorId})
+              ${Prisma.raw(sortCol)} > ${cursorDate}
+              OR (${Prisma.raw(sortCol)} = ${cursorDate} AND s.id > ${cursorId})
             )
           )
         )
@@ -1527,7 +1531,10 @@ export class SalesService {
           currency,
           status,
           paymentStatus,
-          paymentMethod: body.paymentMethod?.trim() || null,
+          paymentMethod:
+            body.paymentMethod?.trim() ||
+            resolvedPayments.find((p) => p.method?.trim())?.method?.trim() ||
+            (resolvedPayments.length > 0 ? 'cash' : null),
           totalPaid: isProvisional ? 0 : paidTotal,
           itemCount: lineData.length,
           cleanerUserId,
@@ -1972,7 +1979,8 @@ export class SalesService {
             paymentMethod:
               body.paymentMethod !== undefined
                 ? body.paymentMethod?.trim() || null
-                : existing.paymentMethod,
+                : body.payments?.find((p) => p.method?.trim())?.method?.trim() ||
+                  existing.paymentMethod,
             totalPaid: isProvisional ? 0 : paidTotal,
             itemCount: lineData.length,
             cleanerUserId,
@@ -2305,6 +2313,10 @@ export class SalesService {
         data: {
           status: 'completed',
           paymentStatus,
+          paymentMethod:
+            paymentRows.find((p) => p.method?.trim())?.method?.trim() ||
+            existing.paymentMethod ||
+            'cash',
           shippingStatus: existing.shippingStatus ?? 'pending',
         },
         include: {
@@ -2884,10 +2896,16 @@ export class SalesService {
       paidTotal,
       sale.paymentStatus,
     );
+    const paymentMethod =
+      payments.find((row) => row.method?.trim())?.method?.trim() || null;
 
     await this.tenantDb.db.sale.update({
       where: { id: saleId },
-      data: { paymentStatus, totalPaid: paidTotal },
+      data: {
+        paymentStatus,
+        totalPaid: paidTotal,
+        ...(paymentMethod ? { paymentMethod } : {}),
+      },
     });
 
     if (sale.customerId) {
@@ -3479,7 +3497,7 @@ export async function warmDefaultSalesListPages(
 ): Promise<void> {
 
   for (const limit of HQ6_LIST_WARM_LIMITS) {
-    for (const sort of hq6WarmSorts({ sortBy: 'date', sortDir: 'desc' })) {
+    for (const sort of hq6WarmSorts({ sortBy: 'updatedAt', sortDir: 'desc' })) {
       for (const includeSummary of [false, true] as const) {
         const filterKey = listPageFilterKey({
           search: undefined,
@@ -3506,7 +3524,7 @@ export async function warmDefaultSalesListPages(
         await withListPageCache(
           cache,
           tenantId,
-          'sales',
+          'sales:v2',
           filterKey,
           async () => {
             const baseWhere = { tenantId, deletedAt: null };
@@ -3545,7 +3563,7 @@ export async function warmDefaultSalesListPages(
                   createdAt: true,
                   updatedAt: true,
                 },
-                orderBy: [{ date: 'desc' }, { id: 'desc' }],
+                orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
                 take: limit,
               }),
               includeSummary

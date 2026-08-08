@@ -54,7 +54,7 @@ export class PaymentsService {
     return withListPageCache(
       this.cache,
       tenantId,
-      'payments:v2',
+      'payments:v3',
       filterKey,
       () => this.listPaymentsUncached(filters, tenantId),
     );
@@ -115,6 +115,7 @@ export class PaymentsService {
     createdAt: Date;
     account?: { name: string } | null;
     sale?: { reference: string } | null;
+    invoice?: { stockMovementId: string | null } | null;
   }): PaymentRecord {
     return {
       id: row.id,
@@ -129,6 +130,7 @@ export class PaymentsService {
       accountName: row.account?.name ?? null,
       saleId: row.saleId,
       saleReference: row.sale?.reference ?? null,
+      stockMovementId: row.invoice?.stockMovementId ?? null,
       isReturn: row.isReturn,
       note: row.note,
       createdByName: row.createdByName,
@@ -177,6 +179,7 @@ export class PaymentsService {
         include: {
           account: { select: { name: true } },
           sale: { select: { reference: true } },
+          invoice: { select: { stockMovementId: true } },
         },
         orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
         take: pagination.take,

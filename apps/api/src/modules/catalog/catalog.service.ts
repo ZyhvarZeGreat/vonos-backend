@@ -157,7 +157,7 @@ export class CatalogService {
     return withListPageCache(
       this.cache,
       requestTenantId,
-      'catalog:v7',
+      'catalog:v8',
       filterKey,
       () => this.listUncached(filters, requestTenantId),
     );
@@ -183,13 +183,14 @@ export class CatalogService {
         sellPrice: { field: 'sellPrice', type: 'number' },
         sellingPrice: { field: 'sellPrice', type: 'number' },
         createdAt: { field: 'createdAt', type: 'date' },
+        updatedAt: { field: 'updatedAt', type: 'date' },
         category: { field: 'category', type: 'string' },
         status: { field: 'status', type: 'string' },
       },
       {
-        sortField: 'name',
-        sortDir: 'asc',
-        sortValueType: 'string',
+        sortField: 'updatedAt',
+        sortDir: 'desc',
+        sortValueType: 'date',
       },
     );
 
@@ -278,7 +279,7 @@ export async function warmDefaultCatalogListPages(
 ): Promise<void> {
 
   for (const limit of HQ6_LIST_WARM_LIMITS) {
-    for (const sort of hq6WarmSorts({ sortBy: 'name', sortDir: 'asc' })) {
+    for (const sort of hq6WarmSorts({ sortBy: 'updatedAt', sortDir: 'desc' })) {
       for (const includeSummary of [false, true] as const) {
         const filterKey = listPageFilterKey({
           search: undefined,
@@ -297,7 +298,7 @@ export async function warmDefaultCatalogListPages(
         await withListPageCache(
           cache,
           tenantId,
-          'catalog:v7',
+          'catalog:v8',
           filterKey,
           async () => {
             const baseWhere = {
@@ -308,7 +309,7 @@ export async function warmDefaultCatalogListPages(
               prisma.item.findMany({
                 where: baseWhere,
                 include: { brand: { select: { name: true } } },
-                orderBy: [{ name: 'asc' }, { id: 'asc' }],
+                orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
                 take: limit,
               }),
               includeSummary

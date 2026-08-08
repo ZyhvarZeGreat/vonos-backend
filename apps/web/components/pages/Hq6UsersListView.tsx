@@ -147,6 +147,7 @@ export function Hq6UsersListView() {
     setPageSize,
     isLoading,
     isFetching,
+    isSearching,
     error,
     goToPage,
   } = useServerListPage<UserListRow>({
@@ -202,7 +203,7 @@ export function Hq6UsersListView() {
   const to = pageIndex * pageSize + users.length;
   const totalPages =
     pageSize > 0 ? Math.max(1, Math.ceil(Math.max(total, 1) / pageSize)) : 1;
-  const busy = isFetching || isLoading;
+  const busy = isFetching || isLoading || isSearching;
 
   const pageNumbers = useMemo(() => {
     const pages: number[] = [];
@@ -377,6 +378,8 @@ export function Hq6UsersListView() {
                             onChange={setSearch}
                             
                             disabled={busy}
+                          
+                            isSearching={isSearching}
                           />
                         </div>
                         <div
@@ -385,9 +388,7 @@ export function Hq6UsersListView() {
                           style={{
                             display: busy && users.length === 0 ? "block" : "none",
                           }}
-                        >
-                          Processing...
-                        </div>
+                        >{isSearching ? "Searching…" : "Processing…"}</div>
                       </div>
 
                       {columnsOpen ? (

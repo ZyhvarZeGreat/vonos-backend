@@ -10,9 +10,12 @@ import {
 import { Button } from "@/components/atoms/Button";
 import { Input } from "@/components/atoms/Input";
 import { Select } from "@/components/atoms/Select";
+import { ProductImageDropzone } from "@/components/molecules/ProductImageDropzone";
 import { Hq6AddProductFormBody } from "@/components/organisms/Hq6AddProductFormBody";
 import { createItem, updateItem } from "@/lib/api/items";
+import { uploadProductImage } from "@/lib/api/media";
 import { getAllCatalogMeta } from "@/lib/api/catalogMeta";
+import { toast } from "@/stores/toastStore";
 import { useAppMutation } from "@/lib/hooks/useAppMutation";
 import {
   optimisticTempId,
@@ -66,11 +69,6 @@ export interface AddProductFormProps {
   /** Prefill + PATCH existing product (HQ6 Edit product route). */
   editFrom?: Item | null;
   onSuccess?: (item: Item, mode: ProductSaveMode) => void;
-  /**
-   * Fired as soon as Save is clicked on the full page form — navigate
-   * immediately while create/update is still in flight (Neon RTT is multi-second).
-   */
-  onOptimisticLeave?: (mode: ProductSaveMode) => void;
   onCancel?: () => void;
 }
 
@@ -82,7 +80,6 @@ export function AddProductForm({
   duplicateFrom = null,
   editFrom = null,
   onSuccess,
-  onOptimisticLeave,
   onCancel,
 }: AddProductFormProps) {
   const isHq6 = useIsVaHq6();
@@ -107,6 +104,12 @@ export function AddProductForm({
   const [error, setError] = useState<string | null>(null);
   const [saveMode, setSaveMode] = useState<ProductSaveMode>("save");
   const [imageName, setImageName] = useState("");
+  const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
+  const [imageUploading, setImageUploading] = useState(false);
+  const [imageUploadProgress, setImageUploadProgress] = useState<number | null>(
+    null,
+  );
   const [brochureName, setBrochureName] = useState("");
   const sourceItem = editFrom ?? duplicateFrom;
 
@@ -130,7 +133,44 @@ export function AddProductForm({
       }),
     );
     setImageName(productImageFileName(source.imageUrl));
+    setImageUrl(source.imageUrl?.trim() || null);
+    setImagePreviewUrl(source.imageUrl?.trim() || null);
   }, [duplicateFrom, editFrom, priceCatalogOnly]);
+
+  const handleImageChange = async (file: File | null) => {
+    if (!file) return;
+    // Hard cap before compress (phone originals can be 20MB+); upload path
+    // compresses further and enforces 12MB.
+    if (file.size > 40 * 1024 * 1024) {
+      toast.error("Image is too large — pick a file under 40MB");
+      return;
+    }
+    const localPreview = URL.createObjectURL(file);
+    setImagePreviewUrl(localPreview);
+    setImageName(file.name);
+    setImageUploading(true);
+    setImageUploadProgress(null);
+    try {
+      const uploaded = await uploadProductImage(file, tenantId, {
+        onProgress: (pct) => setImageUploadProgress(pct),
+      });
+      setImageUrl(uploaded.url);
+      setImagePreviewUrl(uploaded.url);
+      setImageName(file.name);
+      setImageUploadProgress(100);
+      toast.success("Image uploaded");
+    } catch (err) {
+      setImagePreviewUrl(imageUrl);
+      setImageName(productImageFileName(imageUrl));
+      toast.error(
+        err instanceof Error ? err.message : "Image upload failed",
+      );
+    } finally {
+      setImageUploading(false);
+      setImageUploadProgress(null);
+      URL.revokeObjectURL(localPreview);
+    }
+  };
 
   useEffect(() => {
     if (locations.length === 0) return;
@@ -302,6 +342,7 @@ export function AddProductForm({
         homeLocationCode: locations[0]?.code,
         selectedLocationCodes,
         locationDetails,
+        ...(imageUrl ? { imageUrl } : {}),
       });
 
       if (editFrom) {
@@ -342,6 +383,7 @@ export function AddProductForm({
             sellPrice,
             brandName: form.brand.trim() || null,
             availableForRetail: retailMode ? true : !form.notForSelling,
+            ...(imageUrl ? { imageUrl } : {}),
             updatedAt: now,
           };
           // Products list is keyed under ["catalog", …] — patch both prefixes.
@@ -375,6 +417,7 @@ export function AddProductForm({
             availableForRetail: retailMode ? true : !form.notForSelling,
             brandId: null,
             brandName: form.brand.trim() || null,
+            imageUrl: imageUrl ?? null,
             locationStock: [],
             createdAt: now,
             updatedAt: now,
@@ -382,10 +425,6 @@ export function AddProductForm({
           // Products list is under ["catalog", …] for HQ6 — patch both so leave-early sees the row.
           prependEntityInQueries(qc, ["items"], provisional);
           prependEntityInQueries(qc, ["catalog"], provisional);
-        }
-        // Navigate after the list cache is patched so the row is already there.
-        if (variant === "page" && mode === "save") {
-          onOptimisticLeave?.(mode);
         }
         if (variant === "modal" && mode !== "saveAnother") {
           onCancel?.();
@@ -428,8 +467,7 @@ export function AddProductForm({
         prependEntityInQueries(qc, ["catalog"], data);
       },
     },
-    onSuccess: (item) => {
-      const mode = saveMode;
+    onSuccess: (item, mode) => {
       if (mode === "saveAnother" && !editFrom) {
         reset();
       }
@@ -439,6 +477,10 @@ export function AddProductForm({
   });
 
   const submit = (mode: ProductSaveMode) => {
+    if (imageUploading) {
+      toast.error("Wait for the image upload to finish");
+      return;
+    }
     setSaveMode(mode);
     setError(null);
     const costPrice = Number(form.purchaseExcTax || 0);
@@ -486,7 +528,12 @@ export function AddProductForm({
         onSubmit={submit}
         imageName={imageName}
         brochureName={brochureName}
-        onImageChange={setImageName}
+        imagePreviewUrl={imagePreviewUrl}
+        imageUploading={imageUploading}
+        imageUploadProgress={imageUploadProgress}
+        onImageChange={(file) => {
+          void handleImageChange(file);
+        }}
         onBrochureChange={setBrochureName}
       />
     );
@@ -657,12 +704,17 @@ export function AddProductForm({
         </label>
 
         <div className="grid gap-3 md:grid-cols-2">
-          <div className="rounded-lg border border-dashed border-border p-3 text-sm">
-            <p className="font-medium text-foreground">Product image</p>
-            <p className="mt-1 text-xs text-muted">
-              Browse… — Max 5MB, aspect ratio 1:1 (upload not wired yet)
-            </p>
-          </div>
+          <ProductImageDropzone
+            variant="tile"
+            previewUrl={imagePreviewUrl}
+            fileName={imageName}
+            uploading={imageUploading}
+            progress={imageUploadProgress}
+            disabled={mutation.isPending}
+            onFileSelect={(file) => {
+              void handleImageChange(file);
+            }}
+          />
           <div className="rounded-lg border border-dashed border-border p-3 text-sm">
             <p className="font-medium text-foreground">Product brochure</p>
             <p className="mt-1 text-xs text-muted">

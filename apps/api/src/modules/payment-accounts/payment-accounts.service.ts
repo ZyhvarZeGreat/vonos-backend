@@ -168,7 +168,7 @@ export class PaymentAccountsService {
               }
             : {}),
         },
-        orderBy: [{ name: 'asc' }, { id: 'asc' }],
+        orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
         // Over-fetch slightly so in-memory name filter still fills the page.
         take: take * 3,
       });
@@ -188,11 +188,11 @@ export class PaymentAccountsService {
     }
 
     const pagination = buildCompositeCursorQuery({
-      sortField: 'name',
-      sortDir: 'asc',
+      sortField: 'updatedAt',
+      sortDir: 'desc',
       cursor: filters.cursor,
       limit: filters.limit ?? 10,
-      sortValueType: 'string',
+      sortValueType: 'date',
     });
     const rows = await this.tenantDb.db.paymentAccount.findMany({
       where: {
@@ -213,7 +213,7 @@ export class PaymentAccountsService {
           : {}),
         ...(pagination.where ?? {}),
       },
-      orderBy: [{ name: 'asc' }, { id: 'asc' }],
+      orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
       take: pagination.take,
     });
 

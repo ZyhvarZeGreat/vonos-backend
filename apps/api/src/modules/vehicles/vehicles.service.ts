@@ -80,11 +80,11 @@ export class VehiclesService {
     tenantId: string,
   ): Promise<Vehicle[]> {
     const pagination = buildCompositeCursorQuery({
-      sortField: 'plateNumber',
-      sortDir: 'asc',
+      sortField: 'updatedAt',
+      sortDir: 'desc',
       cursor: filters.cursor,
       limit: filters.limit ?? 10,
-      sortValueType: 'string',
+      sortValueType: 'date',
     });
     const rows = await this.tenantDb.db.vehicle.findMany({
       where: {
@@ -101,7 +101,7 @@ export class VehiclesService {
         ...(filters.make ? { make: filters.make } : {}),
         ...(pagination.where ?? {}),
       },
-      orderBy: [{ plateNumber: 'asc' }, { id: 'asc' }],
+      orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
       take: pagination.take,
     });
     return rows.map(serialize);

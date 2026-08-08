@@ -128,7 +128,7 @@ export function useServerListPage<T extends { id: string }>({
   prefetchPagesAhead = 2,
   retainPagesBehind = 3,
   getCursor,
-  defaultSort = null,
+  defaultSort = { sortBy: "updatedAt", sortDir: "desc" },
 }: UseServerListPageOptions<T>) {
   const queryClient = useQueryClient();
   const debouncedSearch = useDebouncedValue(search.trim(), debounceSearchMs);
@@ -752,6 +752,16 @@ export function useServerListPage<T extends { id: string }>({
       Boolean(pageQuery.isPlaceholderData) &&
       paintItems == null);
 
+  /** Typedown search in flight (debounce and/or server fetch with stale rows). */
+  const isSearching = Boolean(
+    isSearchWarming ||
+      (searchMode === "server" &&
+        (search.trim() !== debouncedSearch ||
+          (pageQuery.isFetching &&
+            Boolean(pageQuery.isPlaceholderData) &&
+            (search.trim().length > 0 || debouncedSearch.length > 0)))),
+  );
+
   return {
     items,
     hasMore,
@@ -773,6 +783,7 @@ export function useServerListPage<T extends { id: string }>({
     isFetching: isAwaitingPage && rawItems.length === 0,
     isPaging: isAwaitingPage,
     isSearchWarming,
+    isSearching,
     searchRosterSize: searchPool.length,
     error: pageQuery.error,
     reset,
@@ -834,6 +845,7 @@ type ServerListPageSlice = Pick<
   | "goToPage"
   | "canSelectPage"
   | "isFetching"
+  | "isSearching"
   | "totalCount"
 > & {
   isPaging?: boolean;
@@ -881,6 +893,7 @@ export function hq6ListPaginationProps(page: ServerListPageSlice) {
     maxPageButtons: 5,
     // Only lock pagination while jumping pages — never the toolbar/search/exports.
     isBusy: Boolean(page.isPaging),
+    isSearching: Boolean(page.isSearching),
   };
 }
 

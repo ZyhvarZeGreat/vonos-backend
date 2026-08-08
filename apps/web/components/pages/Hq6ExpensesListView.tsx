@@ -21,22 +21,31 @@ import {
 } from "@/components/hq6/Hq6StandardListShell";
 import { UposGradientActionButton } from "@/components/upos/UposNavTabs";
 import {
+  getCustomersForPicker,
+  loadMoreCustomersForPicker,
+  customersPickerHasMore,
+} from "@/lib/api/customers";
+import {
   deleteExpense,
   getAllExpenses,
   getExpense,
   getExpenseCategories,
   getExpensesPage,
+  updateExpense,
 } from "@/lib/api/expenses";
-import { getCustomersForPicker, loadMoreCustomersForPicker, customersPickerHasMore } from "@/lib/api/customers";
-import { getUsersForPicker, loadMoreUsersForPicker, usersPickerHasMore } from "@/lib/api/users";
-import { useAppMutation } from "@/lib/hooks/useAppMutation";
-import { useServerListPage } from "@/lib/hooks/useServerListPage";
-import { expenseListCursor } from "@/lib/utils/pagination";
-
+import {
+  getUsersForPicker,
+  loadMoreUsersForPicker,
+  usersPickerHasMore,
+} from "@/lib/api/users";
 import { HQ6_TABLE_PAGE_SIZE } from "@/lib/api/fetchAllPages";
+import { PaymentAccountSelect } from "@/components/hq6/PaymentAccountSelect";
+import { Hq6Field } from "@/components/hq6/Hq6Modal";
+import { useAppMutation } from "@/lib/hooks/useAppMutation";
 import { useListExport } from "@/lib/hooks/useListExport";
 import { useListPageFilters } from "@/lib/hooks/useListPageFilters";
 import { useRouteTenant, useTenantId } from "@/lib/hooks/useRouteTenant";
+import { useServerListPage } from "@/lib/hooks/useServerListPage";
 import { removeEntityFromQueries } from "@/lib/query/optimistic";
 import { prefetchPaymentAccountsRef } from "@/lib/query/prefetchListModals";
 import {
@@ -51,12 +60,17 @@ import {
   formatHq6PaymentMethod,
   formatHq6PaymentStatus,
 } from "@/lib/utils/hq6Format";
-import { parseExpenseNotes } from "@/lib/utils/expenseNotes";
+import {
+  buildExpenseNoteBlob,
+  parseExpenseNotes,
+} from "@/lib/utils/expenseNotes";
 import { businessLocationName } from "@/lib/utils/locationLabels";
 import { entitySaleLocations } from "@/lib/hooks/useBusinessLocationOptions";
+import { expenseListCursor } from "@/lib/utils/pagination";
 import { cn } from "@/lib/utils/cn";
 import { toast } from "@/stores/toastStore";
 import { hq6PaymentBadgeClass } from "@/lib/utils/hq6PaymentBadge";
+import { HQ6_PAYMENT_METHOD_OPTIONS } from "@/lib/utils/hq6PaymentMethods";
 
 /** HQ6 Expenses list — ui-audit/36_expenses */
 export function Hq6ExpensesListView() {
@@ -229,6 +243,7 @@ export function Hq6ExpensesListView() {
     isLoading,
     isFetching,
     isPaging,
+    isSearching,
     error,
     goToPage,
     canSelectPage,
@@ -398,6 +413,12 @@ export function Hq6ExpensesListView() {
         ),
       },
       {
+        key: "paymentMethod",
+        header: "Payment Method",
+        sortable: false,
+        render: (row) => formatHq6PaymentMethod(row.paymentMethod),
+      },
+      {
         key: "taxAmount",
         header: "Tax",
         numeric: true,
@@ -456,6 +477,19 @@ export function Hq6ExpensesListView() {
         .map((c) => ({ key: c.key, label: String(c.header || c.key) })),
     [columns],
   );
+
+  // Saved column prefs from before Payment Method existed omit it — force on.
+  useEffect(() => {
+    const keys = chrome.visibleColumnKeys;
+    if (!keys) return;
+    if (keys.includes("paymentMethod")) return;
+    if (!columnOptions.some((c) => c.key === "paymentMethod")) return;
+    chrome.setVisibleColumnKeys([...keys, "paymentMethod"]);
+  }, [
+    chrome.visibleColumnKeys,
+    chrome.setVisibleColumnKeys,
+    columnOptions,
+  ]);
 
   const visibleColumns = useMemo(() => {
     if (!chrome.visibleColumnKeys) return columns;
@@ -633,6 +667,7 @@ export function Hq6ExpensesListView() {
         canSelectPage,
         totalItems: totalCount,
         isBusy: isPaging,
+        isSearching,
       }}
       modals={
         <>
@@ -689,7 +724,21 @@ export function Hq6ExpensesListView() {
             }
           >
             {paymentsView ? (
-              <ExpensePaymentsViewBody expense={paymentsView} />
+              <ExpensePaymentsViewBody
+                expense={paymentsView}
+                onUpdated={(next) => {
+                  setPaymentsExpense(next);
+                  void queryClient.invalidateQueries({
+                    queryKey: ["expenses", tenantId],
+                  });
+                  void queryClient.invalidateQueries({
+                    queryKey: modalKeys.expense(tenantId, next.id),
+                  });
+                  void queryClient.invalidateQueries({
+                    queryKey: ["payments", tenantId],
+                  });
+                }}
+              />
             ) : null}
           </Hq6Modal>
         </>
@@ -715,7 +764,14 @@ export function Hq6ExpensesListView() {
 }
 
 /** HQ6 View Payments — status, amount paid, method, note, payment account. */
-function ExpensePaymentsViewBody({ expense }: { expense: Expense }) {
+function ExpensePaymentsViewBody({
+  expense,
+  onUpdated,
+}: {
+  expense: Expense;
+  onUpdated?: (next: Expense) => void;
+}) {
+  const tenantId = useTenantId();
   const { config, tenantName } = useRouteTenant();
   const notes = parseExpenseNotes(expense.note);
   const due = expense.paymentDue ?? 0;
@@ -726,6 +782,65 @@ function ExpensePaymentsViewBody({ expense }: { expense: Expense }) {
     expense.locationCode ?? null,
     config?.businessLocations,
   );
+  const hasPaymentRow = isPaid || paid > 0;
+
+  const [editing, setEditing] = useState(false);
+  const [editMethod, setEditMethod] = useState(expense.paymentMethod ?? "cash");
+  const [editAccountId, setEditAccountId] = useState(expense.accountId ?? "");
+  const [editNote, setEditNote] = useState(notes.paymentNote);
+  const [editAmount, setEditAmount] = useState(
+    String(isPaid ? expense.totalAmount : paid || expense.totalAmount),
+  );
+
+  useEffect(() => {
+    if (editing) return;
+    const nextNotes = parseExpenseNotes(expense.note);
+    setEditMethod(expense.paymentMethod ?? "cash");
+    setEditAccountId(expense.accountId ?? "");
+    setEditNote(nextNotes.paymentNote);
+    const nextDue = expense.paymentDue ?? 0;
+    const nextPaid = Math.max(0, (expense.totalAmount ?? 0) - nextDue);
+    const nextIsPaid =
+      expense.paymentStatus === "paid" || Boolean(expense.accountId);
+    setEditAmount(
+      String(nextIsPaid ? expense.totalAmount : nextPaid || expense.totalAmount),
+    );
+  }, [expense, editing]);
+
+  const saveMutation = useAppMutation({
+    mutationFn: async () => {
+      if (!tenantId) throw new Error("Missing tenant");
+      const amount = Number(editAmount);
+      if (!Number.isFinite(amount) || amount < 0) {
+        throw new Error("Enter a valid amount");
+      }
+      const accountId = editAccountId.trim() || null;
+      const nextNotes = parseExpenseNotes(expense.note);
+      const noteBlob = buildExpenseNoteBlob(
+        nextNotes.expenseNote,
+        editNote,
+        {
+          repetitions: nextNotes.repetitions,
+          applicableTax: nextNotes.applicableTax,
+        },
+      );
+      // Account set ⇒ paid (API). Clear account ⇒ due for the full amount.
+      return updateExpense(tenantId, expense.id, {
+        totalAmount: amount,
+        accountId,
+        paymentMethod: editMethod || null,
+        paymentStatus: accountId ? "paid" : "due",
+        paymentDue: accountId ? 0 : amount,
+        note: noteBlob ?? null,
+        paymentNote: editNote.trim() || null,
+      });
+    },
+    successMessage: "Payment updated",
+    onSuccess: (next) => {
+      setEditing(false);
+      onUpdated?.(next);
+    },
+  });
 
   return (
     <div className="hq6-purchase-view hq6-expense-view space-y-4 text-sm text-[#374151]">
@@ -763,9 +878,9 @@ function ExpensePaymentsViewBody({ expense }: { expense: Expense }) {
         </div>
       </div>
 
-      {isPaid || paid > 0 ? (
+      {hasPaymentRow ? (
         <div className="hq6-product-view-table-wrap overflow-x-auto">
-          <table className="hq6-product-view-table w-full min-w-[640px]">
+          <table className="hq6-product-view-table w-full min-w-[720px]">
             <thead>
               <tr>
                 <th>Reference No</th>
@@ -773,6 +888,7 @@ function ExpensePaymentsViewBody({ expense }: { expense: Expense }) {
                 <th>Payment Method</th>
                 <th>Payment Note</th>
                 <th>Payment Account</th>
+                <th className="w-[88px]">Action</th>
               </tr>
             </thead>
             <tbody>
@@ -786,12 +902,32 @@ function ExpensePaymentsViewBody({ expense }: { expense: Expense }) {
                 </td>
                 <td>{notes.paymentNote || notes.expenseNote || "—"}</td>
                 <td>{expense.accountName || "—"}</td>
+                <td>
+                  <button
+                    type="button"
+                    className="hq6-payment-action-btn"
+                    title="Edit payment"
+                    aria-label="Edit payment"
+                    onClick={() => setEditing(true)}
+                  >
+                    Edit
+                  </button>
+                </td>
               </tr>
             </tbody>
           </table>
         </div>
       ) : (
-        <p className="text-[#6b7280]">No payments recorded for this expense.</p>
+        <div className="space-y-2">
+          <p className="text-[#6b7280]">No payments recorded for this expense.</p>
+          <button
+            type="button"
+            className="tw-dw-btn tw-dw-btn-primary tw-dw-btn-sm"
+            onClick={() => setEditing(true)}
+          >
+            Record / edit payment
+          </button>
+        </div>
       )}
 
       <div className="flex flex-wrap gap-6 border-t border-[#e5e7eb] pt-3">
@@ -808,6 +944,77 @@ function ExpensePaymentsViewBody({ expense }: { expense: Expense }) {
           {formatHq6Currency(isPaid ? 0 : due, "NGN")}
         </div>
       </div>
+
+      <Hq6Modal
+        open={editing}
+        onClose={() => setEditing(false)}
+        title="Edit payment"
+        size="md"
+        footer={
+          <>
+            <button
+              type="button"
+              className="tw-dw-btn"
+              disabled={saveMutation.isPending}
+              onClick={() => setEditing(false)}
+            >
+              Close
+            </button>
+            <button
+              type="button"
+              className="tw-dw-btn tw-dw-btn-primary"
+              disabled={saveMutation.isPending}
+              onClick={() => saveMutation.mutate()}
+            >
+              {saveMutation.isPending ? "Saving…" : "Update"}
+            </button>
+          </>
+        }
+      >
+        <div className="space-y-3">
+          <Hq6Field label="Amount *">
+            <input
+              type="number"
+              step="0.01"
+              className="form-control"
+              value={editAmount}
+              onChange={(e) => setEditAmount(e.target.value)}
+            />
+          </Hq6Field>
+          <Hq6Field label="Payment Method *">
+            <select
+              className="form-control"
+              value={editMethod}
+              onChange={(e) => setEditMethod(e.target.value)}
+            >
+              {HQ6_PAYMENT_METHOD_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </Hq6Field>
+          <Hq6Field label="Payment Account">
+            <PaymentAccountSelect
+              value={editAccountId}
+              onChange={setEditAccountId}
+              emptyLabel="None (mark due)"
+            />
+            <p className="mt-1 text-xs text-[#6b7280]">
+              Keep or change the account for paid corrections. Clear it to mark
+              the expense due again.
+            </p>
+          </Hq6Field>
+          <Hq6Field label="Payment note">
+            <textarea
+              className="form-control"
+              rows={3}
+              value={editNote}
+              onChange={(e) => setEditNote(e.target.value)}
+            />
+          </Hq6Field>
+        </div>
+      </Hq6Modal>
     </div>
   );
 }
