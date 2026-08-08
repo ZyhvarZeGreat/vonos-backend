@@ -21,8 +21,13 @@ describe('listSearch', () => {
 
   it('detects SKU-like lookups', () => {
     expect(isSkuLikeLookup('BP-4412')).toBe(true);
+    expect(isSkuLikeLookup('SKU99')).toBe(true);
     expect(isSkuLikeLookup('oil filter')).toBe(false);
     expect(isSkuLikeLookup('a')).toBe(false);
+    // Short / letter-only tokens are product-name fragments, not SKU scans.
+    expect(isSkuLikeLookup('OT')).toBe(false);
+    expect(isSkuLikeLookup('Camry')).toBe(false);
+    expect(isSkuLikeLookup('SWITCH')).toBe(false);
   });
 
   it('detects plate-like lookups including spaced plates', () => {
@@ -68,6 +73,31 @@ describe('listSearch', () => {
       expect.arrayContaining([
         { sku: { equals: 'BP-4412', mode: 'insensitive' } },
         { sku: { startsWith: 'BP-4412', mode: 'insensitive' } },
+        { sku: { contains: 'BP-4412', mode: 'insensitive' } },
+        { name: { contains: 'BP-4412', mode: 'insensitive' } },
+        { carModel: { contains: 'BP-4412', mode: 'insensitive' } },
+      ]),
+    );
+  });
+
+  it('matches name suffixes like OT via contains (not SKU prefix path)', () => {
+    const where = itemTextSearchWhere('OT');
+    expect(where?.AND).toHaveLength(1);
+    expect(where?.AND[0]?.OR).toEqual(
+      expect.arrayContaining([
+        { name: { contains: 'OT', mode: 'insensitive' } },
+        { sku: { contains: 'OT', mode: 'insensitive' } },
+        { carModel: { contains: 'OT', mode: 'insensitive' } },
+      ]),
+    );
+  });
+
+  it('matches model names with contains on letter-only tokens', () => {
+    const where = itemTextSearchWhere('Camry');
+    expect(where?.AND[0]?.OR).toEqual(
+      expect.arrayContaining([
+        { name: { contains: 'Camry', mode: 'insensitive' } },
+        { carModel: { contains: 'Camry', mode: 'insensitive' } },
       ]),
     );
   });
@@ -79,6 +109,7 @@ describe('listSearch', () => {
       expect.arrayContaining([
         { name: { contains: 'brake', mode: 'insensitive' } },
         { sku: { contains: 'brake', mode: 'insensitive' } },
+        { carModel: { contains: 'brake', mode: 'insensitive' } },
       ]),
     );
   });

@@ -37,6 +37,10 @@ type StringFilter = { contains: string; mode: 'insensitive' };
  * True when the query looks like a SKU / barcode scan (single dense token).
  * Those should hit btree equality / prefix indexes (≈ O(log n)), not a wide
  * trigram OR across many columns.
+ *
+ * Short letter-only tokens (e.g. "OT", "LED") are NOT sku-like — they are
+ * often suffixes inside product names ("TAPPING SWITCH OT") and must use
+ * trigram `contains`, not name/sku prefix-only matching.
  */
 export function isSkuLikeLookup(raw: string | undefined | null): boolean {
   const tokens = tokenizeListSearch(raw);
@@ -44,7 +48,9 @@ export function isSkuLikeLookup(raw: string | undefined | null): boolean {
   const token = tokens[0]!;
   if (token.length < 2) return false;
   // Letters, digits, and common SKU separators — no spaces (already tokenized).
-  return /^[A-Za-z0-9][A-Za-z0-9._\-/]*$/.test(token);
+  if (!/^[A-Za-z0-9][A-Za-z0-9._\-/]*$/.test(token)) return false;
+  // Require a digit or SKU separator so plain words use contains search.
+  return /[\d._\-/]/.test(token);
 }
 
 /** Phone / mobile lookup — prefer prefix/equality over multi-field fuzzy OR. */
@@ -58,8 +64,11 @@ export function isPhoneLikeLookup(raw: string | undefined | null): boolean {
 
 /**
  * Fast product / stock text filter:
- * - SKU-like → equality + prefix on `sku` / `name` (btree-friendly)
- * - Otherwise → tokenized trigram `contains` on name + sku (+ optional extras)
+ * - SKU-like → equality + prefix on `sku` / `name` / `carModel` (btree-friendly)
+ * - Otherwise → tokenized trigram `contains` on name + sku + carModel (+ optional extras)
+ *
+ * There is no separate part-number column — part numbers live in `sku` (and often `name`).
+ * Model / fitment text lives in `carModel`.
  *
  * Prefer this over OR-ing contains across description/unit/location fields —
  * those defeat GIN trigram indexes and turn search into O(n).
@@ -67,7 +76,7 @@ export function isPhoneLikeLookup(raw: string | undefined | null): boolean {
 export function itemTextSearchWhere(
   search: string | undefined | null,
   options?: {
-    /** Extra OR branches per token for fuzzy path only (e.g. carModel, brand). */
+    /** Extra OR branches per token for fuzzy path only (e.g. brand, category). */
     extraFuzzyFields?: (token: string, contains: StringFilter) => object[];
   },
 ): { AND: Array<{ OR: object[] }> } | undefined {
@@ -82,8 +91,14 @@ export function itemTextSearchWhere(
           OR: [
             { sku: equalsInsensitive(token) },
             { sku: startsWithInsensitive(token) },
+            // Mid-string SKU / name hits (e.g. code embedded in a longer label).
+            { sku: containsInsensitive(token) },
             { name: equalsInsensitive(token) },
             { name: startsWithInsensitive(token) },
+            { name: containsInsensitive(token) },
+            { carModel: equalsInsensitive(token) },
+            { carModel: startsWithInsensitive(token) },
+            { carModel: containsInsensitive(token) },
           ],
         },
       ],
@@ -93,7 +108,11 @@ export function itemTextSearchWhere(
   return {
     AND: tokens.map((token) => {
       const contains = containsInsensitive(token);
-      const branches: object[] = [{ name: contains }, { sku: contains }];
+      const branches: object[] = [
+        { name: contains },
+        { sku: contains },
+        { carModel: contains },
+      ];
       if (options?.extraFuzzyFields) {
         branches.push(...options.extraFuzzyFields(token, contains));
       }

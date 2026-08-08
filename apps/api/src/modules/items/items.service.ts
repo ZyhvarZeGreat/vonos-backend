@@ -36,6 +36,7 @@ import { toNumber } from '../../common/utils/serializers';
 import { applyLastPurchasePrices } from '../../common/utils/lastPurchasePrices';
 import {
   itemTextSearchWhere,
+  relationStringOr,
 } from '../../common/utils/listSearch';
 import { serializeItem } from './items.mapper';
 import {
@@ -305,7 +306,13 @@ export class ItemsService {
           : {}),
         ...(() => {
           const searchWhere = filters.search
-            ? itemTextSearchWhere(filters.search)
+            ? itemTextSearchWhere(filters.search, {
+                extraFuzzyFields: (_token, contains) => [
+                  { category: contains },
+                  { description: contains },
+                  relationStringOr('brand', 'name', contains),
+                ],
+              })
             : undefined;
           const locationWhere = filters.locationCode
             ? {

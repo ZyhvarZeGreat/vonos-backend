@@ -78,8 +78,8 @@ export class CatalogService {
     const searchWhere = filters.search
       ? itemTextSearchWhere(filters.search, {
           extraFuzzyFields: (_token, contains) => [
-            { carModel: contains },
             { category: contains },
+            { description: contains },
             relationStringOr('brand', 'name', contains),
           ],
         })
