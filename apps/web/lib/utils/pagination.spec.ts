@@ -49,8 +49,16 @@ describe("composite cursors", () => {
         id: string;
       };
 
-    expect(decode(itemListCursor({ id: "i1", name: "Oil" }))).toEqual({
-      sortValue: "Oil",
+    expect(
+      decode(
+        itemListCursor({
+          id: "i1",
+          name: "Oil",
+          updatedAt: "2026-08-01T12:00:00.000Z",
+        }),
+      ),
+    ).toEqual({
+      sortValue: "2026-08-01T12:00:00.000Z",
       id: "i1",
     });
     expect(

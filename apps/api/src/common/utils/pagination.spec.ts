@@ -28,4 +28,20 @@ describe('buildCompositeCursorQuery', () => {
       id: 'plain-id',
     });
   });
+
+  it('ignores date cursors whose sortValue is not a real date (e.g. product name)', () => {
+    const encoded = encodeCompositeCursor({
+      sortValue: 'Brake Pad',
+      id: 'mig_item_1',
+    });
+    const query = buildCompositeCursorQuery({
+      sortField: 'updatedAt',
+      sortDir: 'desc',
+      cursor: encoded,
+      limit: 25,
+      sortValueType: 'date',
+    });
+    expect(query.where).toBeUndefined();
+    expect(query.take).toBe(25);
+  });
 });

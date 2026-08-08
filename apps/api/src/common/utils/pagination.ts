@@ -37,6 +37,24 @@ function compareOp(dir: SortDirection): 'lt' | 'gt' {
   return dir === 'desc' ? 'lt' : 'gt';
 }
 
+function parseCompositeSortValue(
+  sortValue: string,
+  sortValueType: 'string' | 'date' | 'number',
+): string | number | Date | null {
+  if (sortValueType === 'date') {
+    if (!sortValue.trim()) return new Date(0);
+    const parsed = new Date(sortValue);
+    // Name/id cursors sent against a date sort produce Invalid Date and crash Prisma.
+    if (Number.isNaN(parsed.getTime())) return null;
+    return parsed;
+  }
+  if (sortValueType === 'number') {
+    const n = Number(sortValue);
+    return Number.isFinite(n) ? n : null;
+  }
+  return sortValue;
+}
+
 /** Composite cursor filter aligned with `orderBy: [{ [sortField], id }]`. */
 export function buildCompositeCursorWhere(
   sortField: string,
@@ -47,14 +65,12 @@ export function buildCompositeCursorWhere(
   if (!cursor?.id) return undefined;
 
   const op = compareOp(sortDir);
-  const parsedSort =
-    sortValueType === 'date'
-      ? cursor.sortValue
-        ? new Date(cursor.sortValue)
-        : new Date(0)
-      : sortValueType === 'number'
-        ? Number(cursor.sortValue)
-        : cursor.sortValue;
+  const parsedSort = parseCompositeSortValue(
+    cursor.sortValue ?? '',
+    sortValueType,
+  );
+  // Unusable cursor (e.g. product name encoded while API sorts by updatedAt).
+  if (parsedSort == null) return undefined;
 
   return {
     OR: [
@@ -107,8 +123,11 @@ export function nextCompositeCursor<T extends { id: string }>(
   } else if (raw != null) {
     sortValue = String(raw);
   }
-  if (sortValueType === 'date' && sortValue && !sortValue.includes('T')) {
-    sortValue = new Date(sortValue).toISOString();
+  if (sortValueType === 'date') {
+    const parsed = sortValue ? new Date(sortValue) : new Date(0);
+    sortValue = Number.isNaN(parsed.getTime())
+      ? new Date(0).toISOString()
+      : parsed.toISOString();
   }
   return encodeCompositeCursor({ sortValue, id: row.id });
 }

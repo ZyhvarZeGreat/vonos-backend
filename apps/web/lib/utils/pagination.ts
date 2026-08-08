@@ -11,6 +11,14 @@ export function encodeCompositeCursor(cursor: CompositeCursor): string {
   return Buffer.from(json).toString("base64url");
 }
 
+function toSafeCursorDate(raw: string): string {
+  if (!raw.trim()) return new Date(0).toISOString();
+  const parsed = new Date(raw);
+  return Number.isNaN(parsed.getTime())
+    ? new Date(0).toISOString()
+    : parsed.toISOString();
+}
+
 export function compositeListCursor(
   row: { id: string } & Record<string, unknown>,
   sortBy: string,
@@ -19,14 +27,16 @@ export function compositeListCursor(
   const raw = row[sortBy];
   let sortValue = "";
   if (raw instanceof Date) {
-    sortValue = raw.toISOString();
+    sortValue = Number.isNaN(raw.getTime())
+      ? new Date(0).toISOString()
+      : raw.toISOString();
   } else if (typeof raw === "number") {
     sortValue = String(raw);
   } else if (raw != null) {
     sortValue = String(raw);
   }
-  if (sortValueType === "date" && sortValue && !sortValue.includes("T")) {
-    sortValue = new Date(sortValue).toISOString();
+  if (sortValueType === "date") {
+    sortValue = toSafeCursorDate(sortValue);
   }
   return encodeCompositeCursor({ sortValue, id: row.id });
 }
@@ -60,13 +70,24 @@ export function customerListCursor(
     sortBy === "updatedAt"
       ? (row.updatedAt ?? row.createdAt ?? "")
       : (row.createdAt ?? "");
-  const sortValue =
-    raw && !raw.includes("T") ? new Date(raw).toISOString() : raw;
+  const sortValue = toSafeCursorDate(raw);
   return encodeCompositeCursor({ sortValue, id: row.id });
 }
 
-export function itemListCursor(row: { id: string; name: string }): string {
-  return encodeCompositeCursor({ sortValue: row.name, id: row.id });
+/**
+ * Matches items/catalog API default sort (`updatedAt` desc, then id).
+ * Do not encode `name` here — the API treats the cursor sortValue as a Date.
+ */
+export function itemListCursor(row: {
+  id: string;
+  name?: string;
+  updatedAt?: string;
+  createdAt?: string;
+}): string {
+  return encodeCompositeCursor({
+    sortValue: toSafeCursorDate(row.updatedAt || row.createdAt || ""),
+    id: row.id,
+  });
 }
 
 export function ledgerListCursor(row: { id: string; date: string }): string {
@@ -159,10 +180,10 @@ export function chronoListCursor(row: {
   updatedAt?: string;
   createdAt?: string;
 }): string {
-  const raw = row.updatedAt || row.createdAt || "";
-  const sortValue =
-    raw && !raw.includes("T") ? new Date(raw).toISOString() : raw;
-  return encodeCompositeCursor({ sortValue, id: row.id });
+  return encodeCompositeCursor({
+    sortValue: toSafeCursorDate(row.updatedAt || row.createdAt || ""),
+    id: row.id,
+  });
 }
 
 export function invoiceListCursor(row: {
