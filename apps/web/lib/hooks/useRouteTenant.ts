@@ -2,11 +2,13 @@
 
 import { useParams, usePathname } from "next/navigation";
 import type { TenantConfig } from "@vonos/types";
+import { isGroupStockConsumerTenant } from "@vonos/types";
 import {
   getTenantByCode,
   isTenantCode,
   type TenantCode,
 } from "@/lib/registries/tenants";
+import { getTenantConfigByCode } from "@/lib/registries/tenantConfigs";
 import { getVagViewUnit, isVagViewUnitId } from "@/lib/registries/vagViewUnits";
 import {
   ADMIN_DEFAULT_ENTITY,
@@ -30,8 +32,16 @@ export function useRouteTenant(options?: { adminFallback?: TenantCode | null }) 
 
   if (isTenantCode(tenantCodeParam)) {
     const registry = getTenantByCode(tenantCodeParam);
-    const config: TenantConfig | null =
+    const registryConfig = getTenantConfigByCode(tenantCodeParam);
+    // Prefer live store config when it matches the URL; otherwise fall back to
+    // the static registry so VA/VP archetype (job / price-catalog) is never lost.
+    const stored =
       storedConfig?.code === tenantCodeParam ? storedConfig : null;
+    const merged = stored ?? registryConfig;
+    const config: TenantConfig | null =
+      merged && isGroupStockConsumerTenant(tenantCodeParam)
+        ? { ...merged, archetype: "job" }
+        : merged;
     return {
       tenantCode: tenantCodeParam as TenantCode,
       tenantId: registry?.tenantId ?? null,
@@ -63,7 +73,7 @@ export function useRouteTenant(options?: { adminFallback?: TenantCode | null }) 
         tenantCode: code,
         tenantId: registry?.tenantId ?? null,
         registry,
-        config: null as TenantConfig | null,
+        config: getTenantConfigByCode(code),
         tenantName: unitName ?? registry?.name ?? code,
       };
     }

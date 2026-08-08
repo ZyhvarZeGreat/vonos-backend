@@ -1168,7 +1168,8 @@ export class SalesService {
       where: { id: tenantId, deletedAt: null },
       select: { code: true },
     });
-    /** VA/VP: product catalog only — never deduct / validate stock. */
+    /** VA/VP: price catalog only — never deduct/validate stock (local or VW/VISP/VSP).
+     * Staff can still source parts outside; zero stock must not block quotes/sales. */
     const skipStock =
       Boolean(jobId) ||
       isGroupStockConsumerTenant(sellingTenantForStock?.code);
@@ -1311,7 +1312,7 @@ export class SalesService {
           select: { code: true },
         });
         const sellingCode = sellingTenant?.code?.toUpperCase() ?? '';
-        /** VA/VP: price catalog only — do not deduct local (often 0) stock. */
+        /** VA/VP: never gate on VW/VISP/VSP (or local) qty — outside sourcing is allowed. */
         const catalogOnlySeller = isGroupStockConsumerTenant(sellingCode);
 
         for (let index = 0; index < workingLines.length; index++) {
@@ -1440,6 +1441,9 @@ export class SalesService {
           const isCrossSource =
             Boolean(sourceCode) && sourceCode !== sellingCode;
 
+          // VA/VP: price catalog only — never deduct stock (local or sister).
+          if (catalogOnlySeller) continue;
+
           if (isCrossSource) {
             const sourceTenant = await tx.tenant.findFirst({
               where: { code: sourceCode!, deletedAt: null },
@@ -1471,10 +1475,6 @@ export class SalesService {
             continue;
           }
 
-          // VA/VP quotations → invoices: catalog price only until a stock
-          // source (VW/VISP/VSP) is chosen on the line.
-          if (catalogOnlySeller) continue;
-
           if (!line.itemId) continue;
           let item =
             localItemsById.get(line.itemId) ??
@@ -1500,7 +1500,9 @@ export class SalesService {
         }
       }
 
-      await this.applyItemStockDeltas(tx, stockDeltas);
+      if (!skipStock) {
+        await this.applyItemStockDeltas(tx, stockDeltas);
+      }
 
       const lineData = buildSaleLineRows(workingLines);
       const total = computeSaleTotal(lineData, orderDiscount, taxAmount);
@@ -1825,6 +1827,7 @@ export class SalesService {
       where: { id: tenantId, deletedAt: null },
       select: { code: true },
     });
+    // VA/VP: never deduct/validate stock (local or VW/VISP/VSP); outside sourcing OK.
     const skipStock =
       Boolean(jobId) ||
       isGroupStockConsumerTenant(sellingTenantForStock?.code);
@@ -1896,7 +1899,8 @@ export class SalesService {
           const sourceCode = line.sourceTenantCode?.trim().toUpperCase();
           const isCrossSource =
             Boolean(sourceCode) && sourceCode !== sellingCode;
-          if (catalogOnlySeller && !isCrossSource) return;
+          // VA/VP: never deduct local or cross-entity stock on catalog billing.
+          if (catalogOnlySeller) return;
           let itemTenantId = tenantId;
           if (isCrossSource) {
             const sourceTenant = await tx.tenant.findFirst({
@@ -2240,7 +2244,7 @@ export class SalesService {
       const sellingCode = sellingTenant?.code?.toUpperCase() ?? '';
       const catalogOnlySeller = isGroupStockConsumerTenant(sellingCode);
 
-      // VA/VP: never touch stock on finalize — catalog billing only.
+      // VA/VP: never touch stock on finalize — catalog billing; outside sourcing OK.
       if (!existing.jobId && !catalogOnlySeller) {
         for (const line of existing.lines) {
           if (!line.itemId) continue;

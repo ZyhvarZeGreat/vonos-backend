@@ -1041,12 +1041,13 @@ export class StockMovementsService {
       body.locationCode,
     );
     const rollups = movementLineRollups(body.lines);
+    const initialStatus = body.status ?? 'Ordered';
     const row = await this.tenantDb.db.stockMovement.create({
       data: {
         tenantId,
         type: body.type,
         reference: body.reference,
-        status: body.status ?? 'Ordered',
+        status: initialStatus,
         paymentStatus: body.paymentStatus ?? null,
         paymentMethod: body.paymentMethod?.trim() || null,
         lines: body.lines as unknown as import('@prisma/client').Prisma.InputJsonValue,
@@ -1061,6 +1062,46 @@ export class StockMovementsService {
       },
       include: { supplier: { select: { name: true } } },
     });
+
+    // Default purchase UI saves as Received — apply stock once on create.
+    // (updateStatus only runs on later status changes.)
+    if (
+      body.type === 'inbound' &&
+      shouldApplyInboundQty('Ordered', initialStatus)
+    ) {
+      const db = this.prisma.forTenant(tenantId);
+      await db.$transaction(async (tx) => {
+        for (const line of body.lines) {
+          const item = await resolveActiveItem(tx, {
+            tenantId,
+            itemId: line.itemId,
+            sku: line.sku,
+          });
+          if (!item) {
+            throw new BadRequestException(
+              `Item not found: ${line.sku || line.itemId}`,
+            );
+          }
+          const qty = Math.max(0, Math.round(Number(line.quantity) || 0));
+          if (qty <= 0) continue;
+          const nextQuantity = item.quantity + qty;
+          await tx.item.update({
+            where: { id: item.id },
+            data: {
+              quantity: nextQuantity,
+              status: computeStockStatus(nextQuantity, item.reorderPoint),
+            },
+          });
+          await adjustItemLocationStock(tx, {
+            tenantId,
+            itemId: item.id,
+            locationCode: locationCode ?? item.locationCode,
+            binLocation: item.binLocation,
+            delta: qty,
+          });
+        }
+      });
+    }
 
     if (body.type === 'inbound') {
       await this.invoiceHub.ensurePurchaseInvoice(this.tenantDb.db, row);

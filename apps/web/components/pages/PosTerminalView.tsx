@@ -71,7 +71,9 @@ function PosTerminalViewBody() {
     [lines],
   );
 
-  const allowCrossEntitySource = isGroupStockConsumerTenant(config?.code);
+  const catalogOnlySeller = isGroupStockConsumerTenant(
+    tenantCode ?? config?.code,
+  );
 
   const addLineFromItem = (pick: CatalogPartPick) => {
     if (!pick.itemId) return;
@@ -164,15 +166,16 @@ function PosTerminalViewBody() {
           <div className="rounded-lg border border-border bg-card p-3">
             <ProductItemSearch
               tenantId={tenantId}
-              tenantCode={config?.code}
-              retailOnly={!allowCrossEntitySource}
-              includeWarehouse={false}
+              tenantCode={tenantCode ?? config?.code}
+              retailOnly={false}
+              includeWarehouse={catalogOnlySeller}
               ownCatalog
-              showStockQty={!allowCrossEntitySource}
+              pickSourceAfterSelect={catalogOnlySeller}
+              showStockQty={!catalogOnlySeller}
               onSelect={addLineFromItem}
               placeholder={
-                allowCrossEntitySource
-                  ? "Search product catalog by name or SKU"
+                catalogOnlySeller
+                  ? "Search catalog (own / VW / VISP / VSP) — stock not required"
                   : undefined
               }
             />
@@ -205,7 +208,7 @@ function PosTerminalViewBody() {
                         {line.sourceTenantCode || line.sourceLabel ? (
                           <div className="text-xs text-muted">
                             {line.sourceTenantCode ?? line.sourceLabel}
-                            {!allowCrossEntitySource &&
+                            {!catalogOnlySeller &&
                             line.availableQty != null
                               ? ` · ${line.availableQty} left`
                               : ""}

@@ -217,11 +217,14 @@ export function AddSaleForm({
     defaultCode: defaultLocationCode,
   } = useEntitySaleLocationOptions(tenantConfig);
   const showLocationField = saleLocations.length > 0;
-  const isJobTenant = tenantConfig?.archetype === "job";
-  /** VA / VP: bill from synced product catalog — no stock qty / no custom lines. */
+  const isJobTenant =
+    tenantConfig?.archetype === "job" ||
+    isGroupStockConsumerTenant(tenantConfig?.code);
+  /** VA / VP: price catalog — may pick VW/VISP/VSP lines for pricing; never gate on stock. */
   const groupStockConsumer = isGroupStockConsumerTenant(tenantConfig?.code);
-  const allowCrossEntitySource = false;
-  const includeWarehouseSearch = !groupStockConsumer && !isJobTenant;
+  const allowCrossEntitySource = groupStockConsumer;
+  const includeWarehouseSearch =
+    groupStockConsumer || (!groupStockConsumer && !isJobTenant);
   const ownCatalogSearch = true;
   /** Job link is optional — only used for stock skip / prefill when chosen. */
   const showJobField = isJobTenant;
@@ -1709,7 +1712,7 @@ export function AddSaleForm({
                 onSelect={addLineFromPick}
                 placeholder={
                   groupStockConsumer
-                    ? "Search product catalog by name or SKU"
+                    ? "Search catalog (own / VW / VISP / VSP) — stock not required"
                     : "Enter Product name / SKU / Scan bar code"
                 }
                 className="hq6-product-search-embedded"
@@ -2604,7 +2607,7 @@ export function AddSaleForm({
             onSelect={addLineFromPick}
             placeholder={
               groupStockConsumer
-                ? "Search product catalog by name or SKU"
+                ? "Search catalog (own / VW / VISP / VSP) — stock not required"
                 : isJobTenant
                   ? "Search products by name or SKU…"
                   : "Search products by name or SKU…"

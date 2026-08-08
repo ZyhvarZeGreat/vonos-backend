@@ -17,10 +17,17 @@ describe('product vs sale location validation', () => {
     expect(assertProductStockLocation(vispConfig, '   ')).toBeNull();
   });
 
-  it('accepts VW / VISP / VSP stock homes on product writes', () => {
+  it('accepts this tenant product home on product writes', () => {
     expect(assertProductStockLocation(vispConfig, 'VISP')).toBe('VISP');
-    expect(assertProductStockLocation(vispConfig, 'VW')).toBe('VW');
-    expect(assertProductStockLocation(vispConfig, 'VSP')).toBe('VSP');
+  });
+
+  it('rejects sister-entity homes on product writes (own catalog)', () => {
+    expect(() => assertProductStockLocation(vispConfig, 'VW')).toThrow(
+      /Unknown business location/,
+    );
+    expect(() => assertProductStockLocation(vispConfig, 'VSP')).toThrow(
+      /Unknown business location/,
+    );
   });
 
   it('rejects unknown product stock locations', () => {

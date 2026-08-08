@@ -472,9 +472,12 @@ export function AddPurchaseView() {
     setLines((prev) => {
       const existingLine = prev.find((l) => l.itemId === itemId);
       if (existingLine) {
-        return prev.map((l) =>
-          l.itemId === itemId ? { ...l, quantity: l.quantity + 1 } : l,
+        // Do not auto +1 — workers often set qty (e.g. 2) then re-pick the
+        // same SKU from search, which used to turn 2 into 3.
+        toast.info(
+          `${existingLine.name} is already on this purchase — change Purchase Quantity on the line`,
         );
+        return prev;
       }
       return [
         ...prev,

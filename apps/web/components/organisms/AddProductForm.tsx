@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import type { Item, ProductUnit, TenantConfig } from "@vonos/types";
 import {
   PRODUCT_STOCK_BUSINESS_LOCATIONS,
+  isPriceCatalogOnlyTenant,
   productHomeLocationsForTenant,
 } from "@vonos/types";
 import { Button } from "@/components/atoms/Button";
@@ -89,7 +90,10 @@ export function AddProductForm({
       ? homeLocations
       : (tenantConfig?.businessLocations ?? PRODUCT_STOCK_BUSINESS_LOCATIONS);
   /** Job-centric (VA/VP): catalog only — no stock; prices default to 0 on create. */
-  const priceCatalogOnly = tenantConfig?.archetype === "job";
+  const priceCatalogOnly = isPriceCatalogOnlyTenant(
+    tenantConfig?.code,
+    tenantConfig?.archetype,
+  );
   const tenantCode = (tenantConfig?.code ?? "").trim().toUpperCase();
   /** Applicable Tax on VA/VP (and other non-VISP); removed from VISP product edit. */
   const showApplicableTax = tenantCode !== "VISP";

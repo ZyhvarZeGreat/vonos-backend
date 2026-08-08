@@ -13,6 +13,7 @@ import type { Brand, Item, ProductCategory, ProductUnit, StockStatus } from "@vo
 import {
   BUSINESS_LOCATION_PRESETS,
   PRODUCT_STOCK_BUSINESS_LOCATIONS,
+  isPriceCatalogOnlyTenant,
   productHomeLocationsForTenant,
 } from "@vonos/types";
 import { useRecordNavigation } from "@/lib/hooks/useRecordNavigation";
@@ -124,7 +125,10 @@ export function Hq6ProductsListView({
   const { goToDetail, prefetchDetail } = useRecordNavigation(listSlug);
   const tenantId = useTenantId();
   const { config, tenantCode } = useRouteTenant();
-  const priceCatalogOnly = config?.archetype === "job";
+  const priceCatalogOnly = isPriceCatalogOnlyTenant(
+    tenantCode,
+    config?.archetype,
+  );
   const router = useRouter();
   const queryClient = useQueryClient();
   const exportList = useListExport();

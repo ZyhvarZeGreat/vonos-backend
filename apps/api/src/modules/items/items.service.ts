@@ -25,6 +25,7 @@ import { parseCsv, pickCsvField } from '../../common/utils/csvImport';
 import {
   businessLocationsFromConfig,
   resolveBusinessLocationCode,
+  productStockBusinessLocations,
 } from '../../common/utils/businessLocation';
 import {
   isHq6ProductCsv,
@@ -55,9 +56,8 @@ const ITEM_BRAND_INCLUDE = {
   brand: { select: { id: true, name: true } },
 } as const;
 
-/** Process-local maps — Neon RTT is expensive; avoid re-resolving VW / tenant codes. */
+/** Process-local map — avoid re-resolving tenant codes on hot list paths. */
 const tenantCodeById = new Map<string, string>();
-let vwTenantIdCache: string | null | undefined;
 
 interface CreateItemDto {
   sku: string;
@@ -151,11 +151,8 @@ export class ItemsService {
   }
 
   /**
-   * VISP/VSP product lists are VW retail SKUs (see CatalogService). Resolve the
-   * home row for read/update so edit forms do not 404 on /items/:id.
-   *
-   * One primary-key lookup (cross-tenant by id) + cached tenant-code checks —
-   * avoids 3–4 sequential Neon round-trips on every shared-catalog edit.
+   * Each operating tenant owns its catalog. Read/update only the caller's
+   * items — never write VISP/VSP marketplace prices onto VW warehouse rows.
    */
   private async cachedTenantCode(tenantId: string): Promise<string | null> {
     const hit = tenantCodeById.get(tenantId);
@@ -169,16 +166,6 @@ export class ItemsService {
     return row.code;
   }
 
-  private async cachedVwTenantId(): Promise<string | null> {
-    if (vwTenantIdCache !== undefined) return vwTenantIdCache;
-    const warehouse = await this.prisma.tenant.findUnique({
-      where: { code: 'VW' },
-      select: { id: true },
-    });
-    vwTenantIdCache = warehouse?.id ?? null;
-    return vwTenantIdCache;
-  }
-
   private async findItemForRequest(
     id: string,
     opts: { detail?: boolean; brand?: boolean } = {},
@@ -190,31 +177,15 @@ export class ItemsService {
         ? ITEM_BRAND_INCLUDE
         : undefined;
 
-    // Primary-key lookup (one RTT). Tenant access is enforced below.
     const row = await this.prisma.item.findFirst({
-      where: { id, deletedAt: null },
+      where: { id, tenantId: requestTenantId, deletedAt: null },
       ...(include ? { include } : {}),
     });
     if (!row) {
       throw new NotFoundException('Item not found');
     }
 
-    if (row.tenantId === requestTenantId) {
-      return { row, homeTenantId: requestTenantId };
-    }
-
-    const requestCode = await this.cachedTenantCode(requestTenantId);
-    if (
-      (requestCode === 'VISP' || requestCode === 'VSP') &&
-      row.availableForRetail
-    ) {
-      const warehouseId = await this.cachedVwTenantId();
-      if (warehouseId && row.tenantId === warehouseId) {
-        return { row, homeTenantId: warehouseId };
-      }
-    }
-
-    throw new NotFoundException('Item not found');
+    return { row, homeTenantId: requestTenantId };
   }
 
   async list(
@@ -569,10 +540,23 @@ export class ItemsService {
         : [];
 
     // Primary location/quantity: derived from per-location rows when present,
-    // otherwise from the flat fields. Location is optional on catalog create.
+    // otherwise from the flat fields. Own-scope catalogs default to this
+    // tenant's product home (VSP→VSP) so marketplace rows are not labeled VW.
+    const tenantRow = await this.tenantDb.db.tenant.findFirst({
+      where: { id: tenantId, deletedAt: null },
+      select: { code: true, config: true },
+    });
+    const homeLocations = productStockBusinessLocations({
+      ...((tenantRow?.config as object | null) ?? {}),
+      code: tenantRow?.code,
+    });
+    const defaultHomeCode = homeLocations[0]?.code ?? null;
+
     const primaryLocation =
       locationRows[0]?.locationCode ??
-      (dto.locationCode?.trim() ? validate(dto.locationCode) : null);
+      (dto.locationCode?.trim()
+        ? validate(dto.locationCode)
+        : defaultHomeCode);
     const primaryBin =
       locationRows[0]?.binLocation || (dto.binLocation ?? null) || null;
     const quantity =
@@ -580,10 +564,6 @@ export class ItemsService {
         ? locationRows.reduce((sum, r) => sum + r.quantity, 0)
         : (dto.quantity ?? 0);
 
-    const tenantRow = await this.tenantDb.db.tenant.findFirst({
-      where: { id: tenantId, deletedAt: null },
-      select: { code: true },
-    });
     const catalogOnly = isGroupStockConsumerTenant(tenantRow?.code);
     // VA/VP price catalog: qty 0 must stay Active — not "out of stock".
     const status = catalogOnly

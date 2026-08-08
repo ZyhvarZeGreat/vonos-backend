@@ -3,6 +3,7 @@ import {
   BUSINESS_LOCATION_PRESETS,
   PRODUCT_STOCK_BUSINESS_LOCATIONS,
   catalogPresetsForCode,
+  isProductOwnScopeTenant,
   productHomeLocationsForTenant,
 } from "@vonos/types";
 
@@ -155,9 +156,10 @@ export function productStockLocationFilterOptions(
 }
 
 /**
- * Business Location column for products: where stock sits, e.g.
- * "Vonos Warehouse · Vonos Institute Spare Parts". Resolves any known entity
- * code (including VA/VP catalog homes).
+ * Business Location column for products: where stock sits for *this* tenant.
+ * Own-scope catalogs (VSP / VISP / VW / …) should never show a sister entity
+ * as the product home — legacy imports often left `locationCode = VW` on VSP
+ * rows, which made marketplace pricing feel like a warehouse-only edit.
  */
 export function formatProductStockLocations(
   item: Pick<
@@ -169,6 +171,22 @@ export function formatProductStockLocations(
 ): string {
   const stockLocs =
     locations.length > 0 ? locations : PRODUCT_STOCK_BUSINESS_LOCATIONS;
+  const home = fallbackLocationCode?.trim().toUpperCase() || null;
+
+  /** Map mislabeled sister-entity codes onto this tenant's product home. */
+  const coerceCode = (raw: string): string => {
+    const code = raw.trim().toUpperCase();
+    if (
+      home &&
+      isProductOwnScopeTenant(home) &&
+      isProductOwnScopeTenant(code) &&
+      code !== home
+    ) {
+      return home;
+    }
+    return code;
+  };
+
   const resolveName = (code: string) =>
     stockLocs.find((loc) => loc.code.toUpperCase() === code)?.name ??
     businessLocationName(code, stockLocs) ??
@@ -179,23 +197,22 @@ export function formatProductStockLocations(
     const withQty = rows.filter((row) => row.quantity > 0);
     const matched = (withQty.length > 0 ? withQty : rows)
       .map((row) => {
-        const code = row.locationCode?.trim().toUpperCase();
+        const code = row.locationCode?.trim();
         if (!code) return null;
-        return resolveName(code);
+        return resolveName(coerceCode(code));
       })
       .filter((name): name is string => Boolean(name));
     const unique = [...new Set(matched)];
     if (unique.length > 0) return unique.join(" · ");
   }
 
-  const primary = item.locationCode?.trim().toUpperCase();
+  const primary = item.locationCode?.trim();
   if (primary) {
-    return resolveName(primary) ?? "—";
+    return resolveName(coerceCode(primary)) ?? "—";
   }
 
-  const fallback = fallbackLocationCode?.trim().toUpperCase();
-  if (fallback) {
-    return resolveName(fallback) ?? "—";
+  if (home) {
+    return resolveName(home) ?? "—";
   }
 
   return "—";

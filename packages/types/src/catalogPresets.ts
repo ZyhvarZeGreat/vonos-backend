@@ -84,6 +84,18 @@ export function isGroupStockConsumerTenant(
   return (GROUP_STOCK_CONSUMER_CODES as readonly string[]).includes(upper);
 }
 
+/**
+ * Price-list tenants (VA / VP): hide qty / stock value and never validate
+ * or deduct local catalog quantity on sales.
+ */
+export function isPriceCatalogOnlyTenant(
+  code: string | null | undefined,
+  archetype?: string | null,
+): boolean {
+  if (isGroupStockConsumerTenant(code)) return true;
+  return archetype === "job";
+}
+
 /** Legacy WordPress `business_locations` — branch / POS sites per entity. */
 export const BUSINESS_LOCATION_PRESETS: Record<string, BusinessLocation[]> = {
   /** Own-scope product + sale locations (not shared VW∪VISP∪VSP). */

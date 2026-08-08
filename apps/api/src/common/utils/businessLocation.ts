@@ -106,7 +106,7 @@ export function assertBusinessLocation(
   return code;
 }
 
-/** Product stock location: VW / VISP / VSP on stock tenants. */
+/** Product stock location: this tenant's own product home only. */
 export function assertProductStockLocation(
   config: unknown,
   locationCode?: string | null,

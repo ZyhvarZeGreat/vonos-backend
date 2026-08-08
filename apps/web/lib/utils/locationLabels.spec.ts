@@ -57,6 +57,23 @@ describe("product stock location labels", () => {
     ).toBe("Vonos Warehouse · Vonos Institute Spare Parts");
   });
 
+  it("shows VSP marketplace home when legacy rows still say VW", () => {
+    expect(
+      formatProductStockLocations(
+        {
+          locationCode: "VW",
+          binLocation: null,
+          quantity: 1,
+          locationStock: [
+            { locationCode: "VW", binLocation: null, quantity: 1 },
+          ],
+        },
+        [{ code: "VSP", name: "Vonos SP Marketplace" }],
+        "VSP",
+      ),
+    ).toBe("Vonos SP Marketplace");
+  });
+
   it("shows VA/VP catalog home and fallback when row has no location", () => {
     expect(
       formatProductStockLocations(

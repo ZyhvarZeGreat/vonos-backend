@@ -9,6 +9,7 @@ import {
 } from "@vonos/types";
 import { Hq6Modal, Hq6Field, Hq6ModalSaveClose } from "@/components/hq6/Hq6Modal";
 import { ProductThumbnail } from "@/components/atoms/ProductThumbnail";
+import { isPriceCatalogOnlyTenant } from "@vonos/types";
 import { useRouteTenant } from "@/lib/hooks/useRouteTenant";
 import { formatHq6Currency } from "@/lib/utils/hq6Format";
 import { parseForm } from "@/lib/validation/parseForm";
@@ -61,8 +62,11 @@ export function Hq6ViewProductModal({
   onClose: () => void;
   item: Item | null;
 }) {
-  const { config } = useRouteTenant();
-  const priceCatalogOnly = config?.archetype === "job";
+  const { config, tenantCode } = useRouteTenant();
+  const priceCatalogOnly = isPriceCatalogOnlyTenant(
+    tenantCode ?? config?.code,
+    config?.archetype,
+  );
 
   const locations =
     productLocationsForTenant(config?.code) ??
