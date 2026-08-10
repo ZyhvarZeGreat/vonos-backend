@@ -62,7 +62,7 @@ export function HrmActionBar({
       return `Add users or roles for ${activeTenant.name} using the same forms as that app.`;
     }
     if (groupMode) {
-      return "Pick an entity, then Add user / Add roles — same HQ6 forms and uniform roles as in each app.";
+      return "Add roles opens the shared group catalog (no entity pick). Pick an entity to add users into a specific business.";
     }
     return null;
   }, [activeTenant, fixedTenantCode, groupMode]);
@@ -101,9 +101,14 @@ export function HrmActionBar({
 
   const goAddRole = () => {
     if (!requireCan("roles.create")) return;
+    setMenuOpen(false);
+    // Shared role catalog — VAG group HRM does not need an entity first.
+    if (groupMode && !fixedTenantCode) {
+      router.push("/admin/hrm/roles/new/edit");
+      return;
+    }
     const code = requireEntity();
     if (!code) return;
-    setMenuOpen(false);
     router.push(`/${code}/roles/new/edit`);
   };
 
@@ -221,9 +226,13 @@ export function HrmActionBar({
           <button
             type="button"
             className={actionBtnClass}
-            disabled={manageBlocked}
+            disabled={groupMode && !fixedTenantCode ? false : manageBlocked}
             onClick={() => {
               if (!requireCan("roles.view", "view")) return;
+              if (groupMode && !fixedTenantCode) {
+                router.push("/admin/hrm/roles");
+                return;
+              }
               if (!workspaceCode) return;
               router.push(`/${workspaceCode}/roles`);
             }}

@@ -231,11 +231,11 @@ export function Hq6RolesListView() {
   const [pageSize, setPageSize] = useState(50);
   const [pageIndex, setPageIndex] = useState(0);
   const [migratedLocal, setMigratedLocal] = useState(false);
-  const { isVag } = useHq6Permissions();
+  const { isVag, can } = useHq6Permissions();
   // Role definitions are VAG-only (API + UI). Tenant users may view/assign roles.
-  const canCreateRole = isVag;
-  const canUpdateRole = isVag;
-  const canDeleteRole = isVag;
+  const canCreateRole = can("roles.create");
+  const canUpdateRole = can("roles.update");
+  const canDeleteRole = can("roles.delete");
 
   const {
     data: roles = [],

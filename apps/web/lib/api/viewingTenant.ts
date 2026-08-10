@@ -36,9 +36,13 @@ export function resolveViewingTenantId(): string | null {
     }
 
     if (segment === "admin") {
-      // Manage users is group-wide — do not inherit the entity switcher scope
-      // (otherwise GET/PATCH user + HR sync hit the wrong tenant).
-      if (parts[1] === "hrm" && parts[2] === "users") {
+      // Manage users / roles are group-wide — do not inherit the entity
+      // switcher scope (otherwise GET/PATCH hit the wrong tenant, or the
+      // shared roles catalog is overridden by X-Viewing-Tenant).
+      if (
+        parts[1] === "hrm" &&
+        (parts[2] === "users" || parts[2] === "roles")
+      ) {
         return null;
       }
       const viewingCode = useAdminEntityStore.getState().viewingCode;

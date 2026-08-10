@@ -12,15 +12,14 @@ export const VAG_TENANT_ID = "tenant_vag_001";
 
 /**
  * Tenant id for shared role-definition API calls.
- * On `/admin/hrm/roles*` with Group Overview (no entity entered), VAG uses
- * {@link VAG_TENANT_ID} so the list/create/edit flows work without Enter entity.
+ * On `/admin/hrm/roles*` VAG always uses {@link VAG_TENANT_ID} (ignore entity
+ * switcher) so list/create/edit hit the shared group catalog.
+ * Entity workspaces (`/VA/roles`, …) still use the route tenant.
  */
 export function useRolesCatalogTenantId(): string | null {
   const tenantId = useTenantId();
   const pathname = usePathname();
   const { isVag } = useAppPermissions();
-
-  if (tenantId) return tenantId;
 
   if (
     isVag &&
@@ -28,6 +27,8 @@ export function useRolesCatalogTenantId(): string | null {
   ) {
     return VAG_TENANT_ID;
   }
+
+  if (tenantId) return tenantId;
 
   return null;
 }

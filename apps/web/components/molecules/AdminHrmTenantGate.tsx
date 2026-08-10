@@ -8,14 +8,16 @@ import { AdminEntitySwitcher } from "@/components/molecules/AdminEntitySwitcher"
 
 /**
  * VAG Users: no entity gate — add/edit assigns entities on the form itself.
- * Roles still need a concrete “Show info for” business (roles are per-tenant).
+ * VAG Roles: no entity gate — definitions are shared group-wide via the VAG
+ * catalog tenant (`useRolesCatalogTenantId` → `tenant_vag_001`).
  */
 export function AdminHrmTenantGate({ children }: { children: ReactNode }) {
   const tenantId = useTenantId();
   const pathname = usePathname() ?? "";
   const isUsersHrm = pathname.startsWith("/admin/hrm/users");
+  const isRolesHrm = pathname.startsWith("/admin/hrm/roles");
 
-  if (isUsersHrm) {
+  if (isUsersHrm || isRolesHrm) {
     return <>{children}</>;
   }
 
@@ -26,7 +28,7 @@ export function AdminHrmTenantGate({ children }: { children: ReactNode }) {
           Select a business
         </h2>
         <p className="tw-mb-0 tw-text-sm tw-text-[#6b7280]">
-          Roles are per entity. Pick which business to manage roles for.
+          Pick which business to manage in HRM.
         </p>
         <div className="tw-max-w-md">
           <label className="tw-mb-1 tw-block tw-text-xs tw-font-semibold tw-uppercase tw-tracking-wide tw-text-[#6b7280]">

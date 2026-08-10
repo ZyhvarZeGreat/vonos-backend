@@ -48,9 +48,8 @@ export default function AdminHrmPage() {
           >
             Add roles
           </Link>
-          . Same forms and roles as each business app. For roles, pick a business in{" "}
-          <span className="font-semibold text-[#111827]">Show info for</span>{" "}
-          first. For users, assign entities on the add/edit form.
+          . Role definitions are shared across all businesses — no entity pick
+          needed. For users, assign entities on the add/edit form.
         </div>
         <HrmPageView defaultTab="dashboard" summaryOnly />
       </div>

@@ -23,6 +23,7 @@ import {
   HQ6_ROLE_PERMISSION_MODULES,
   type Hq6RolePermissionModule,
 } from "@/lib/registries/hq6RolePermissions";
+import { useAuthStore } from "@/stores/authStore";
 import { toast } from "@/stores/toastStore";
 import { notifyInsufficientPrivilege } from "@/lib/utils/privilegeToast";
 import { cn } from "@/lib/utils/cn";
@@ -49,18 +50,22 @@ export function Hq6RoleDetailView({
   const tenantId = useRolesCatalogTenantId();
   const isVagCatalog = useIsVagRolesCatalogRoute();
   const { listPath, goToList } = useRecordNavigation("roles");
-  const { isVag, requireCan } = useAppPermissions();
+  const { isVag, can, requireCan } = useAppPermissions();
+  const authHydrated = useAuthStore((s) => s.hydrated);
   const isCreate = recordId === "new" || recordId === "create";
+  const canEditMatrix = isCreate
+    ? can("roles.create")
+    : can("roles.update");
 
   const [roleName, setRoleName] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [hydrated, setHydrated] = useState(isCreate);
 
   useEffect(() => {
-    if (!isCreate || isVag) return;
+    if (!isCreate || canEditMatrix) return;
     notifyInsufficientPrivilege("action");
     router.replace(listPath);
-  }, [isCreate, isVag, listPath, router]);
+  }, [isCreate, canEditMatrix, listPath, router]);
 
   const {
     data: existing,
@@ -141,7 +146,7 @@ export function Hq6RoleDetailView({
       const key = roleIdempotencyKeyRef.current ?? newIdempotencyKey();
       roleIdempotencyKeyRef.current = key;
       return withIdempotencyKey(key, async () => {
-        if (!isVag) {
+        if (!canEditMatrix) {
           throw new Error("Only VAG can create or edit roles.");
         }
         if (!tenantId) throw new Error("No tenant selected");
@@ -183,6 +188,14 @@ export function Hq6RoleDetailView({
     },
   });
 
+  if (!authHydrated) {
+    return (
+      <Hq6PageFrame title={isCreate ? "Add Role" : "Edit Role"}>
+        <p className="tw-p-4 tw-text-sm tw-text-gray-500">Loading…</p>
+      </Hq6PageFrame>
+    );
+  }
+
   if (!tenantId) {
     return (
       <EmptyState
@@ -192,7 +205,7 @@ export function Hq6RoleDetailView({
     );
   }
 
-  if (isCreate && !isVag) {
+  if (isCreate && !canEditMatrix) {
     return (
       <EmptyState
         title="VAG only"
@@ -222,7 +235,9 @@ export function Hq6RoleDetailView({
     );
   }
 
-  const readOnly = !isVag || mode === "view" || Boolean(existing?.locked);
+  // VAG may edit any non-locked role; Admin stays locked by design.
+  const readOnly =
+    !canEditMatrix || mode === "view" || Boolean(existing?.locked);
 
   return (
     <Hq6PageFrame title={isCreate ? "Add Role" : "Edit Role"}>
@@ -370,7 +385,7 @@ export function Hq6RoleDetailView({
             <p className="hq6-role-locked-note">
               The Admin role is locked and cannot be edited.
             </p>
-          ) : !isVag ? (
+          ) : !canEditMatrix ? (
             <p className="hq6-role-locked-note">
               Only Vonos Autos Group (VAG) can edit role permissions. You can
               view this matrix and assign roles to users.
