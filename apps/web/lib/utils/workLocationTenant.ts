@@ -26,6 +26,19 @@ export function normalizeWorkLocationToTenantCode(
   return LOCATION_TO_TENANT[raw] ?? null;
 }
 
+/** Work-location tags that grant clearance for a tenant URL code. */
+export function locationCodesForTenantCode(
+  tenantCode: string | null | undefined,
+): string[] {
+  const target = normalizeWorkLocationToTenantCode(tenantCode);
+  if (!target) return [];
+  const aliases = Object.entries(LOCATION_TO_TENANT)
+    .filter(([, mapped]) => mapped === target)
+    .map(([loc]) => loc);
+  if (!aliases.includes(target)) aliases.push(target);
+  return aliases;
+}
+
 /** Resolve registry tenantId for a work-location / entity tag. */
 export function tenantIdFromWorkLocationCode(
   code: string | null | undefined,

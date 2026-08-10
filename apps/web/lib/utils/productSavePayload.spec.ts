@@ -150,4 +150,30 @@ describe("buildProductSavePayload smoke — create / edit writes", () => {
     expect(payload.locationCode).toBe("VA");
     expect(payload.reorderPoint).toBeUndefined();
   });
+
+  it("edit with cleared image sends null imageUrl", () => {
+    const payload = buildProductSavePayload({
+      form: baseForm,
+      mode: "save",
+      isEdit: true,
+      selectedLocationCodes: [],
+      locationDetails: [],
+      imageUrl: null,
+    });
+
+    expect(payload.imageUrl).toBeNull();
+  });
+
+  it("create omits imageUrl when none uploaded", () => {
+    const payload = buildProductSavePayload({
+      form: baseForm,
+      mode: "save",
+      isEdit: false,
+      selectedLocationCodes: [],
+      locationDetails: [],
+      imageUrl: null,
+    });
+
+    expect(payload.imageUrl).toBeNull();
+  });
 });

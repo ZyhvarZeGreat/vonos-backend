@@ -22,6 +22,7 @@
     "prisma:seed": "prisma db seed",
     "prisma:merge-va": "ts-node --compiler-options '{\"module\":\"CommonJS\"}' prisma/scripts/merge-vm-vms-into-va.ts",
     "prisma:dedupe-suppliers": "tsx prisma/scripts/dedupe-suppliers.ts",
+    "prisma:soft-delete-bad-prices": "tsx prisma/scripts/soft-delete-bad-profit-percent-prices.ts",
     "prisma:backfill-location-stock": "ts-node --compiler-options '{\"module\":\"CommonJS\"}' prisma/scripts/backfill-item-location-stock.ts",
     "prisma:backfill-job-customer-id": "ts-node --compiler-options '{\"module\":\"CommonJS\"}' prisma/scripts/backfill-job-customer-id.ts",
     "prisma:backfill-job-vehicles": "ts-node --compiler-options '{\"module\":\"CommonJS\"}' prisma/scripts/backfill-job-vehicles.ts",

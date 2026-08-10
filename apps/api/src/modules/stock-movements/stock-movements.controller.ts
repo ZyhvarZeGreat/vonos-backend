@@ -71,6 +71,13 @@ export class StockMovementsController {
     });
   }
 
+  /** Recompute purchase totalPaid/paymentStatus from linked Payment rows. */
+  @Post('resync-purchase-payments')
+  @Roles('admin', 'super_admin')
+  resyncPurchasePayments() {
+    return this.movementsService.resyncPurchasePaymentCaches();
+  }
+
   @Get(':id/payments')
   listPayments(@Param('id') id: string) {
     return this.movementsService.listPayments(id);

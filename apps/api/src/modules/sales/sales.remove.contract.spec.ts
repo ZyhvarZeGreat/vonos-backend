@@ -1,5 +1,6 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
+import { describe, expect, it } from 'vitest';
 
 describe('SalesService.remove (audit: delete must not crash / hard-delete)', () => {
   const src = readFileSync(join(__dirname, 'sales.service.ts'), 'utf8');
@@ -19,6 +20,10 @@ describe('SalesService.remove (audit: delete must not crash / hard-delete)', () 
     expect(remove).toContain('wasFinalized');
     expect(remove).toContain('adjustItemLocationStock');
     expect(remove).toContain('delta: qty');
+  });
+
+  it('soft-deletes linked sale outbound stock movements', () => {
+    expect(remove).toContain('softDeleteSaleOutboundMovements');
   });
 
   it('does not call prisma sale.delete (hard delete)', () => {

@@ -304,19 +304,38 @@ export class StockMovementsService {
   /**
    * Purchase payments are stored as:
    * - App: paymentFor='purchase' + paymentRefNo=PO reference
-   * - Migrated (after backfill): same, and/or invoiceId → purchase invoice
+   * - Migrated: same, and/or invoiceId → purchase invoice
+   * - Legacy: paymentRefNo set with null/blank paymentFor, or note containing ref
    */
   private purchasePaymentWhere(
     tenantId: string,
     reference: string,
     invoiceId: string | null,
   ): Prisma.PaymentWhereInput {
+    const ref = reference.trim();
+    const refEquals = { equals: ref, mode: 'insensitive' as const };
     return {
       tenantId,
       deletedAt: null,
       OR: [
-        { paymentFor: 'purchase', paymentRefNo: reference },
-        ...(invoiceId ? [{ invoiceId }] : []),
+        {
+          paymentFor: { equals: 'purchase', mode: 'insensitive' },
+          paymentRefNo: refEquals,
+        },
+        {
+          paymentRefNo: refEquals,
+          paymentFor: null,
+        },
+        ...(invoiceId
+          ? [{ invoiceId }]
+          : []),
+        {
+          note: { contains: ref, mode: 'insensitive' },
+          OR: [
+            { paymentFor: { equals: 'purchase', mode: 'insensitive' } },
+            { paymentFor: null },
+          ],
+        },
       ],
     };
   }
@@ -880,6 +899,62 @@ export class StockMovementsService {
       await refreshSupplierPurchaseRollups(this.tenantDb.db, supplierId);
     }
     void invalidateTenantDashboardCache(this.cache, tenantId);
+  }
+
+  /**
+   * Recompute totalPaid + paymentStatus for all inbound purchases in scope.
+   * Fixes list "Due" when Payment rows exist but the cache was never updated.
+   */
+  async resyncPurchasePaymentCaches(): Promise<{
+    scanned: number;
+    updated: number;
+  }> {
+    const tenantId = this.tenantDb.requireTenantId();
+    const moves = await this.tenantDb.db.stockMovement.findMany({
+      where: { tenantId, deletedAt: null, type: 'inbound' },
+      select: {
+        id: true,
+        reference: true,
+        paymentStatus: true,
+        totalPaid: true,
+        grandTotal: true,
+        supplierId: true,
+        lines: true,
+      },
+    });
+
+    let updated = 0;
+    for (const m of moves) {
+      const invoiceId = await this.purchaseInvoiceId(m.id, tenantId);
+      const paidAgg = await this.tenantDb.db.payment.aggregate({
+        where: this.purchasePaymentWhere(tenantId, m.reference, invoiceId),
+        _sum: { amount: true },
+      });
+      const paid = toNumber(paidAgg._sum.amount ?? 0);
+      const total =
+        m.grandTotal != null
+          ? toNumber(m.grandTotal)
+          : movementLineRollups(m.lines).grandTotal;
+      const nextStatus = paymentStatusFromAmounts(
+        total,
+        paid,
+        m.paymentStatus,
+      ) as PurchasePaymentStatus;
+      const stored = toNumber(m.totalPaid);
+      if (Math.abs(paid - stored) <= 0.01 && m.paymentStatus === nextStatus) {
+        continue;
+      }
+      await this.tenantDb.db.stockMovement.update({
+        where: { id: m.id },
+        data: { totalPaid: paid, paymentStatus: nextStatus },
+      });
+      if (m.supplierId) {
+        await refreshSupplierPurchaseRollups(this.tenantDb.db, m.supplierId);
+      }
+      updated += 1;
+    }
+    void invalidateTenantDashboardCache(this.cache, tenantId);
+    return { scanned: moves.length, updated };
   }
 
   async updatePayment(

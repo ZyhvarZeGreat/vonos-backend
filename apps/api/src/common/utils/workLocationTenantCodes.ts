@@ -25,6 +25,22 @@ export function normalizeWorkLocationToTenantCode(
   return LOCATION_TO_TENANT[raw] ?? null;
 }
 
+/**
+ * All work-location tags that grant clearance for a tenant URL code
+ * (e.g. VA ← VA, VM, VMS).
+ */
+export function locationCodesForTenantCode(
+  tenantCode: string | null | undefined,
+): string[] {
+  const target = normalizeWorkLocationToTenantCode(tenantCode);
+  if (!target) return [];
+  const aliases = Object.entries(LOCATION_TO_TENANT)
+    .filter(([, mapped]) => mapped === target)
+    .map(([loc]) => loc);
+  if (!aliases.includes(target)) aliases.push(target);
+  return aliases;
+}
+
 export function uniqueTenantCodesFromWorkLocations(
   codes: string[] | null | undefined,
   homeTenantCode?: string | null,

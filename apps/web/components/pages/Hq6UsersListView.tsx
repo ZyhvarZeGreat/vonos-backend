@@ -476,7 +476,14 @@ export function Hq6UsersListView() {
                                 <td className="sorting_1">
                                   <UsernameCell row={row} />
                                 </td>
-                                <td>{row.name}</td>
+                                <td>
+                                  {row.name}
+                                  {row.tenantCode ? (
+                                    <span className="tw-ml-1 tw-text-xs tw-text-gray-500">
+                                      ({row.tenantCode})
+                                    </span>
+                                  ) : null}
+                                </td>
                                 <td>{roleLabelFor(row)}</td>
                                 <td>{row.email}</td>
                                 <td>

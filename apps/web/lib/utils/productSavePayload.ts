@@ -50,7 +50,7 @@ export type ProductSavePayload = {
   locationStock?: ItemLocationStockInput[];
   brandName?: string;
   availableForRetail: boolean;
-  imageUrl?: string;
+  imageUrl?: string | null;
   /** Catalog-only tenants (VA/VP): keep Active even at qty 0. */
   status?: "in_stock" | "low_stock" | "out_of_stock";
 };
@@ -176,7 +176,7 @@ export function buildProductSavePayload(input: {
     brandName: form.brand.trim() || undefined,
     availableForRetail: retailMode ? true : !form.notForSelling,
     ...(imageUrl !== undefined
-      ? { imageUrl: imageUrl?.trim() || undefined }
+      ? { imageUrl: imageUrl?.trim() ? imageUrl.trim() : null }
       : {}),
   };
 }

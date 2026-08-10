@@ -27,6 +27,7 @@ import {
   relationStringOr,
   tokenizedSearchWhere,
 } from '../../common/utils/listSearch';
+import { locationCodesForTenantCode } from '../../common/utils/workLocationTenantCodes';
 
 /** Synthetic scope for unscoped VAG all-tenants user list cache. */
 const VAG_USERS_CACHE_SCOPE = '__vag__';
@@ -52,13 +53,69 @@ export class UsersService {
     }
   }
 
+  /** User ids with Employee work-location clearance for this tenant. */
+  private async userIdsWithClearanceForTenant(
+    tenantId: string,
+  ): Promise<string[]> {
+    const tenant = await this.prisma.tenant.findFirst({
+      where: { id: tenantId, deletedAt: null },
+      select: { code: true },
+    });
+    const aliases = locationCodesForTenantCode(tenant?.code);
+    if (aliases.length === 0) return [];
+
+    const employees = await this.prisma.employee.findMany({
+      where: {
+        deletedAt: null,
+        userId: { not: null },
+        OR: [
+          { locationCodes: { hasSome: aliases } },
+          { locationCode: { in: aliases } },
+        ],
+      },
+      select: { userId: true },
+    });
+    return [
+      ...new Set(
+        employees
+          .map((row) => row.userId)
+          .filter((id): id is string => Boolean(id)),
+      ),
+    ];
+  }
+
+  private async userHasClearanceForTenant(
+    userId: string,
+    tenantId: string,
+  ): Promise<boolean> {
+    const tenant = await this.prisma.tenant.findFirst({
+      where: { id: tenantId, deletedAt: null },
+      select: { code: true },
+    });
+    const aliases = locationCodesForTenantCode(tenant?.code);
+    if (aliases.length === 0) return false;
+
+    const employee = await this.prisma.employee.findFirst({
+      where: {
+        userId,
+        deletedAt: null,
+        OR: [
+          { locationCodes: { hasSome: aliases } },
+          { locationCode: { in: aliases } },
+        ],
+      },
+      select: { id: true },
+    });
+    return Boolean(employee);
+  }
+
   async listForTenant(filters: {
     cursor?: string;
     limit?: number;
     search?: string;
     role?: string;
     status?: string;
-  } = {}): Promise<User[]> {
+  } = {}): Promise<UserListRow[]> {
     const tenantId = this.tenantDb.requireTenantId();
     const filterKey = listPageFilterKey({
       search: filters.search,
@@ -70,7 +127,7 @@ export class UsersService {
     return withListPageCache(
       this.cache,
       tenantId,
-      'users',
+      'users:v2',
       filterKey,
       () => this.listForTenantUncached(filters, tenantId),
     );
@@ -85,11 +142,18 @@ export class UsersService {
       status?: string;
     },
     tenantId: string,
-  ): Promise<User[]> {
-    const legacyLinks = await this.prisma.migrationLegacyId.findMany({
-      where: { tenantId, entityType: 'user' },
-      select: { newId: true },
-    });
+  ): Promise<UserListRow[]> {
+    const [legacyLinks, clearanceUserIds, tenant] = await Promise.all([
+      this.prisma.migrationLegacyId.findMany({
+        where: { tenantId, entityType: 'user' },
+        select: { newId: true },
+      }),
+      this.userIdsWithClearanceForTenant(tenantId),
+      this.prisma.tenant.findFirst({
+        where: { id: tenantId, deletedAt: null },
+        select: { code: true, name: true },
+      }),
+    ]);
     const legacyUserIds = legacyLinks.map((link) => link.newId);
 
     const pagination = buildCompositeCursorQuery({
@@ -108,6 +172,9 @@ export class UsersService {
           {
             OR: [
               { tenantId },
+              ...(clearanceUserIds.length > 0
+                ? [{ id: { in: clearanceUserIds } }]
+                : []),
               ...(legacyUserIds.length > 0
                 ? [{ id: { in: legacyUserIds } }]
                 : []),
@@ -128,14 +195,33 @@ export class UsersService {
       take: pagination.take,
       include: {
         tenantRole: { select: { id: true, name: true } },
+        tenant: { select: { code: true, name: true } },
       },
     });
 
-    return rows.map((row) => this.toUser(row));
+    return rows.map((row) => {
+      const base = this.toUser(row);
+      const homeCode = row.tenant?.code ?? null;
+      const homeName = row.tenant?.name ?? null;
+      // Surface home entity when this row is a clearance guest on another entity.
+      if (homeCode && homeCode !== tenant?.code) {
+        return {
+          ...base,
+          tenantCode: homeCode,
+          tenantName: homeName,
+        };
+      }
+      return {
+        ...base,
+        tenantCode: homeCode ?? tenant?.code ?? null,
+        tenantName: homeName ?? tenant?.name ?? null,
+      };
+    });
   }
 
   /**
-   * Single user for detail pages — tenant-scoped, including legacy-linked users.
+   * Single user for detail pages — tenant-scoped, including legacy-linked users
+   * and multi-entity staff with work-location clearance for this tenant.
    * Super-admin may always load by id (VAG users list is cross-entity; an active
    * "viewing" tenant must not 404 users from other entities).
    */
@@ -152,10 +238,13 @@ export class UsersService {
     }
 
     const tenantId = this.tenantDb.requireTenantId();
-    const legacyLink = await this.prisma.migrationLegacyId.findFirst({
-      where: { tenantId, entityType: 'user', newId: id },
-      select: { newId: true },
-    });
+    const [legacyLink, hasClearance] = await Promise.all([
+      this.prisma.migrationLegacyId.findFirst({
+        where: { tenantId, entityType: 'user', newId: id },
+        select: { newId: true },
+      }),
+      this.userHasClearanceForTenant(id, tenantId),
+    ]);
 
     const row = await this.prisma.user.findFirst({
       where: {
@@ -163,7 +252,7 @@ export class UsersService {
         deletedAt: null,
         OR: [
           { tenantId },
-          ...(legacyLink ? [{ id }] : []),
+          ...(hasClearance || legacyLink ? [{ id }] : []),
         ],
       },
       include: {
@@ -171,7 +260,7 @@ export class UsersService {
       },
     });
     if (!row) throw new NotFoundException('User not found');
-    if (row.tenantId !== tenantId && !legacyLink) {
+    if (row.tenantId !== tenantId && !legacyLink && !hasClearance) {
       throw new NotFoundException('User not found');
     }
     return this.toUser(row);
@@ -551,7 +640,12 @@ export class UsersService {
     if (actor.role === 'admin') {
       const tenantId = this.tenantDb.requireTenantId();
       if (row.tenantId !== tenantId) {
-        throw new ForbiddenException('Cannot manage users outside your entity');
+        const hasClearance = await this.userHasClearanceForTenant(id, tenantId);
+        if (!hasClearance) {
+          throw new ForbiddenException(
+            'Cannot manage users outside your entity',
+          );
+        }
       }
     }
     return row;

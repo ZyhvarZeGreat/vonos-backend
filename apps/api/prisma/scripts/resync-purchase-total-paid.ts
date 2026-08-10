@@ -75,8 +75,22 @@ async function main() {
           tenantId: tenant.id,
           deletedAt: null,
           OR: [
-            { paymentFor: 'purchase', paymentRefNo: m.reference },
+            {
+              paymentFor: { equals: 'purchase', mode: 'insensitive' },
+              paymentRefNo: { equals: m.reference, mode: 'insensitive' },
+            },
+            {
+              paymentRefNo: { equals: m.reference, mode: 'insensitive' },
+              paymentFor: null,
+            },
             ...(inv ? [{ invoiceId: inv.id }] : []),
+            {
+              note: { contains: m.reference, mode: 'insensitive' },
+              OR: [
+                { paymentFor: { equals: 'purchase', mode: 'insensitive' } },
+                { paymentFor: null },
+              ],
+            },
           ],
         },
         _sum: { amount: true },

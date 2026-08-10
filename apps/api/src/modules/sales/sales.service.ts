@@ -256,6 +256,154 @@ export class SalesService {
     }
   }
 
+  private saleOutboundNotesMarker(saleId: string): string {
+    return `saleId:${saleId}`;
+  }
+
+  private async softDeleteSaleOutboundMovements(
+    tx: Prisma.TransactionClient,
+    tenantId: string,
+    saleId: string,
+  ): Promise<void> {
+    await tx.stockMovement.updateMany({
+      where: {
+        tenantId,
+        type: 'outbound',
+        deletedAt: null,
+        notes: { startsWith: this.saleOutboundNotesMarker(saleId) },
+      },
+      data: { deletedAt: new Date() },
+    });
+  }
+
+  /**
+   * Audit trail for sold stock: outbound movement linked via notes saleId:…
+   * Only call when qty was actually deducted (not skipStock / provisional).
+   */
+  private async writeSaleOutboundMovement(
+    tx: Prisma.TransactionClient,
+    args: {
+      tenantId: string;
+      saleId: string;
+      saleReference: string;
+      locationCode?: string | null;
+      date: Date;
+      lines: Array<{
+        itemId: string;
+        sku: string;
+        name: string;
+        quantity: number;
+        unitCost: number;
+      }>;
+      createdBy: {
+        createdByUserId?: string | null;
+        createdByName?: string | null;
+      };
+    },
+  ): Promise<void> {
+    if (args.lines.length === 0) return;
+
+    const lines = args.lines.map((line) => ({
+      itemId: line.itemId,
+      sku: line.sku,
+      name: line.name,
+      quantity: line.quantity,
+      unitCost: line.unitCost,
+      total: line.quantity * line.unitCost,
+    }));
+    const rollups = movementLineRollups(lines);
+    const marker = this.saleOutboundNotesMarker(args.saleId);
+
+    await tx.stockMovement.create({
+      data: {
+        tenantId: args.tenantId,
+        type: 'outbound',
+        reference: `SO-${args.saleReference}`,
+        status: 'Delivered',
+        lines: lines as unknown as Prisma.InputJsonValue,
+        itemCount: rollups.itemCount,
+        grandTotal: rollups.grandTotal,
+        notes: `${marker}|Sale ${args.saleReference}`,
+        locationCode: args.locationCode ?? null,
+        source: 'standard',
+        date: args.date,
+        createdByUserId: args.createdBy.createdByUserId ?? null,
+        createdByName: args.createdBy.createdByName ?? null,
+      },
+    });
+  }
+
+  private outboundLinesFromStockDeltas(
+    stockDeltas: Map<
+      string,
+      {
+        itemId: string;
+        sku: string;
+        delta: number;
+      }
+    >,
+    lineMeta: Array<{
+      itemId?: string;
+      sku: string;
+      name: string;
+      unitPrice: number;
+    }>,
+  ): Array<{
+    itemId: string;
+    sku: string;
+    name: string;
+    quantity: number;
+    unitCost: number;
+  }> {
+    const byItem = new Map(
+      lineMeta
+        .filter((line) => line.itemId)
+        .map((line) => [line.itemId!, line] as const),
+    );
+    const bySku = new Map(lineMeta.map((line) => [line.sku, line] as const));
+    return [...stockDeltas.values()]
+      .filter((entry) => entry.delta < 0)
+      .map((entry) => {
+        const meta = byItem.get(entry.itemId) ?? bySku.get(entry.sku);
+        return {
+          itemId: entry.itemId,
+          sku: entry.sku,
+          name: meta?.name ?? entry.sku,
+          quantity: Math.abs(entry.delta),
+          unitCost: meta?.unitPrice ?? 0,
+        };
+      });
+  }
+
+  private outboundLinesFromSaleLines(
+    lines: Array<{
+      itemId?: string;
+      sku: string;
+      name: string;
+      quantity: number;
+      unitPrice: number;
+    }>,
+  ): Array<{
+    itemId: string;
+    sku: string;
+    name: string;
+    quantity: number;
+    unitCost: number;
+  }> {
+    return lines
+      .filter((line) => Boolean(line.itemId))
+      .map((line) => {
+        const quantity = Math.max(1, Math.round(line.quantity));
+        return {
+          itemId: line.itemId!,
+          sku: line.sku,
+          name: line.name,
+          quantity,
+          unitCost: line.unitPrice,
+        };
+      });
+  }
+
   async list(filters: SaleFilters): Promise<PaginatedList<Sale>> {
     const tenantId = this.tenantDb.requireTenantId();
     const filterKey = listPageFilterKey({
@@ -1558,6 +1706,18 @@ export class SalesService {
         },
       });
 
+      if (!skipStock) {
+        await this.writeSaleOutboundMovement(tx, {
+          tenantId,
+          saleId: sale.id,
+          saleReference: sale.reference,
+          locationCode,
+          date: saleDate,
+          lines: this.outboundLinesFromStockDeltas(stockDeltas, workingLines),
+          createdBy,
+        });
+      }
+
       const invoice = await this.invoiceHub.ensureSaleInvoice(
         tx,
         sale,
@@ -1948,6 +2108,18 @@ export class SalesService {
             }
           }
           await this.applyItemStockDeltas(tx, stockDeltas);
+          await this.softDeleteSaleOutboundMovements(tx, tenantId, id);
+          if (stayingOrBecomingFinal) {
+            await this.writeSaleOutboundMovement(tx, {
+              tenantId,
+              saleId: id,
+              saleReference,
+              locationCode,
+              date: saleDate,
+              lines: this.outboundLinesFromSaleLines(workingLines),
+              createdBy,
+            });
+          }
         }
 
         const lineData = buildSaleLineRows(workingLines);
@@ -2743,6 +2915,8 @@ export class SalesService {
           });
         }
       }
+
+      await this.softDeleteSaleOutboundMovements(tx, tenantId, id);
 
       for (const payment of existing.payments) {
         await softDeletePaymentAccountTxns(tx, {

@@ -22,6 +22,19 @@ describe("idempotency helpers", () => {
     expect(getActiveIdempotencyKey()).toBeNull();
   });
 
+  it("attaches the key only to the first request in a scope", async () => {
+    await withIdempotencyKey("once", async () => {
+      const first = new Headers();
+      applyIdempotencyHeaders(first);
+      expect(first.get("X-Idempotency-Key")).toBe("once");
+      expect(getActiveIdempotencyKey()).toBeNull();
+
+      const second = new Headers();
+      applyIdempotencyHeaders(second);
+      expect(second.has("X-Idempotency-Key")).toBe(false);
+    });
+  });
+
   it("restores the previous key after nested scopes", async () => {
     await withIdempotencyKey("outer", async () => {
       await withIdempotencyKey("inner", async () => {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { Item, ProductUnit, TenantConfig } from "@vonos/types";
 import {
@@ -114,6 +114,7 @@ export function AddProductForm({
   const [imageUploadProgress, setImageUploadProgress] = useState<number | null>(
     null,
   );
+  const imageUploadGen = useRef(0);
   const [brochureName, setBrochureName] = useState("");
   const sourceItem = editFrom ?? duplicateFrom;
 
@@ -142,13 +143,23 @@ export function AddProductForm({
   }, [duplicateFrom, editFrom, priceCatalogOnly]);
 
   const handleImageChange = async (file: File | null) => {
-    if (!file) return;
+    if (!file) {
+      imageUploadGen.current += 1;
+      setImageUploading(false);
+      setImageUploadProgress(null);
+      setImageUrl(null);
+      setImagePreviewUrl(null);
+      setImageName("");
+      return;
+    }
     // Hard cap before compress (phone originals can be 20MB+); upload path
     // compresses further and enforces 12MB.
     if (file.size > 40 * 1024 * 1024) {
       toast.error("Image is too large — pick a file under 40MB");
       return;
     }
+    const uploadGen = ++imageUploadGen.current;
+    const previousUrl = imageUrl;
     const localPreview = URL.createObjectURL(file);
     setImagePreviewUrl(localPreview);
     setImageName(file.name);
@@ -156,22 +167,30 @@ export function AddProductForm({
     setImageUploadProgress(null);
     try {
       const uploaded = await uploadProductImage(file, tenantId, {
-        onProgress: (pct) => setImageUploadProgress(pct),
+        onProgress: (pct) => {
+          if (imageUploadGen.current === uploadGen) {
+            setImageUploadProgress(pct);
+          }
+        },
       });
+      if (imageUploadGen.current !== uploadGen) return;
       setImageUrl(uploaded.url);
       setImagePreviewUrl(uploaded.url);
       setImageName(file.name);
       setImageUploadProgress(100);
       toast.success("Image uploaded");
     } catch (err) {
-      setImagePreviewUrl(imageUrl);
-      setImageName(productImageFileName(imageUrl));
+      if (imageUploadGen.current !== uploadGen) return;
+      setImagePreviewUrl(previousUrl);
+      setImageName(productImageFileName(previousUrl));
       toast.error(
         err instanceof Error ? err.message : "Image upload failed",
       );
     } finally {
-      setImageUploading(false);
-      setImageUploadProgress(null);
+      if (imageUploadGen.current === uploadGen) {
+        setImageUploading(false);
+        setImageUploadProgress(null);
+      }
       URL.revokeObjectURL(localPreview);
     }
   };
@@ -346,7 +365,11 @@ export function AddProductForm({
         homeLocationCode: locations[0]?.code,
         selectedLocationCodes,
         locationDetails,
-        ...(imageUrl ? { imageUrl } : {}),
+        ...(editFrom
+          ? { imageUrl }
+          : imageUrl
+            ? { imageUrl }
+            : {}),
       });
 
       if (editFrom) {
@@ -387,7 +410,11 @@ export function AddProductForm({
             sellPrice,
             brandName: form.brand.trim() || null,
             availableForRetail: retailMode ? true : !form.notForSelling,
-            ...(imageUrl ? { imageUrl } : {}),
+            ...(editFrom
+              ? { imageUrl: imageUrl ?? null }
+              : imageUrl
+                ? { imageUrl }
+                : {}),
             updatedAt: now,
           };
           // Products list is keyed under ["catalog", …] — patch both prefixes.

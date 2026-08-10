@@ -717,6 +717,10 @@ export function Hq6UserDetailView({
       return;
     }
     const jwtRole = mapTenantRoleToJwtRole(selectedHq6);
+    const multiEntityNote =
+      form.locationCodes.length > 1
+        ? ` Visible on ${form.locationCodes.join(", ")}; use the header switcher to change active entity.`
+        : "";
 
     // Validate password before leaving so we don't dump the user on the list
     // with a failed create.
@@ -764,7 +768,7 @@ export function Hq6UserDetailView({
               void queryClient.invalidateQueries({ queryKey: ["employees"] });
               void queryClient.invalidateQueries({ queryKey: ["payrolls"] });
               void queryClient.invalidateQueries({ queryKey: ["hrm"] });
-              toast.success(`Created ${name} (linked to payroll)`);
+              toast.success(`Created ${name} (linked to payroll)${multiEntityNote}`);
             } catch (payrollErr) {
               console.error("[user→payroll]", payrollErr);
               const detail =
@@ -776,7 +780,7 @@ export function Hq6UserDetailView({
               );
             }
           } else {
-            toast.success(`Created ${name}`);
+            toast.success(`Created ${name}${multiEntityNote}`);
           }
         } else {
           const invited = await inviteUser(
@@ -805,7 +809,7 @@ export function Hq6UserDetailView({
               void queryClient.invalidateQueries({ queryKey: ["employees"] });
               void queryClient.invalidateQueries({ queryKey: ["payrolls"] });
               void queryClient.invalidateQueries({ queryKey: ["hrm"] });
-              toast.success(`Invited ${name} (linked to payroll)`);
+              toast.success(`Invited ${name} (linked to payroll)${multiEntityNote}`);
             } catch (payrollErr) {
               console.error("[invite→payroll]", payrollErr);
               const detail =
@@ -817,7 +821,7 @@ export function Hq6UserDetailView({
               );
             }
           } else {
-            toast.success(`Invited ${name}`);
+            toast.success(`Invited ${name}${multiEntityNote}`);
           }
 
           if (invited.devInviteUrl && typeof window !== "undefined") {
@@ -840,7 +844,7 @@ export function Hq6UserDetailView({
           },
           { tenantId },
         );
-        toast.success(`Updated ${name}`);
+        toast.success(`Updated ${name}${multiEntityNote}`);
         const userPatch = {
           name,
           email: form.email.trim(),
@@ -1629,10 +1633,11 @@ export function Hq6UserDetailView({
                             }
                           />
                           <p className="help-block">
-                            Assign one or more businesses here (no entity
-                            switcher needed). First selection is the home
-                            entity for role &amp; payroll. Multiple enables the
-                            header location switcher (VW, VM→VA, VP, VISP, VSP).
+                            Assign one or more businesses here. First selection
+                            is the home entity for role &amp; payroll. Multiple
+                            enables the header location switcher and shows this
+                            user on each assigned entity&apos;s Users list (VW,
+                            VM→VA, VP, VISP, VSP).
                           </p>
                         </div>
                       </div>

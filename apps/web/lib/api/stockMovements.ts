@@ -255,6 +255,23 @@ export async function payStockMovement(
   return response.json();
 }
 
+/** Admin: recompute purchase totalPaid / paymentStatus from Payment rows. */
+export async function resyncPurchasePaymentCaches(
+  tenantId?: string,
+): Promise<{ scanned: number; updated: number }> {
+  const response = await apiFetch(
+    withTenantQuery("/stock-movements/resync-purchase-payments", tenantId),
+    { method: "POST" },
+  );
+  if (!response.ok) {
+    const body = (await response.json().catch(() => null)) as {
+      message?: string;
+    } | null;
+    throw new Error(body?.message ?? "Failed to resync purchase payments");
+  }
+  return response.json();
+}
+
 export async function getStockMovementPayments(
   tenantId: string,
   id: string,

@@ -7,6 +7,7 @@ import {
   useState,
   type ChangeEvent,
   type DragEvent,
+  type MouseEvent,
 } from "react";
 import { CircularUploadProgress } from "@/components/atoms/CircularUploadProgress";
 import { cn } from "@/lib/utils/cn";
@@ -52,11 +53,11 @@ export function ProductImageDropzone({
 
   const takeFile = useCallback(
     (file: File | null | undefined) => {
-      if (busy) return;
-      if (!file) {
+      if (file == null) {
         onFileSelect(null);
         return;
       }
+      if (busy) return;
       if (!file.type.startsWith("image/")) return;
       onFileSelect(file);
     },
@@ -66,6 +67,14 @@ export function ProductImageDropzone({
   const onInputChange = (e: ChangeEvent<HTMLInputElement>) => {
     takeFile(e.target.files?.[0] ?? null);
     e.target.value = "";
+  };
+
+  const showRemove = Boolean(resolved || fileName) && !disabled;
+  const removeImage = (e: MouseEvent<HTMLButtonElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (disabled) return;
+    takeFile(null);
   };
 
   const preview = (
@@ -95,6 +104,20 @@ export function ProductImageDropzone({
           </span>
         </div>
       )}
+
+      {showRemove ? (
+        <button
+          type="button"
+          className={cn(
+            "absolute right-1 top-1 z-10 flex h-6 w-6 items-center justify-center rounded-full border border-white/70 bg-black/55 text-sm font-semibold leading-none text-white shadow-sm transition-colors hover:bg-black/75",
+            variant === "hq6" ? "h-5 w-5 text-xs" : "",
+          )}
+          aria-label={uploading ? "Cancel image upload" : "Remove product image"}
+          onClick={removeImage}
+        >
+          <span aria-hidden>×</span>
+        </button>
+      ) : null}
 
       {/* Drop hover overlay */}
       {dragOver && !uploading ? (
