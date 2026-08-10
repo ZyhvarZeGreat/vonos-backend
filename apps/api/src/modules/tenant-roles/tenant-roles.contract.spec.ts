@@ -51,7 +51,7 @@ describe('TenantRolesService shared catalog contract', () => {
     );
   });
 
-  it('backfills finance keys onto Accountant / Manager / Stock Keeper roles', () => {
+  it('backfills finance keys onto Accountant roles', () => {
     expect(src).toContain('backfillFinanceAuthorizedRolePermissions');
     expect(src).toContain('isFinanceAuthorizedRoleName');
     expect(src).toContain('FINANCE_ROLE_DEFAULT_PERMISSIONS');

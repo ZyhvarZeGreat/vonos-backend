@@ -840,7 +840,7 @@ export function FinanceView({ groupMode = false }: FinanceViewProps) {
     return (
       <EmptyState
         title="Finance restricted"
-        message="Only accountants, managers, stock keepers, and admins can view financials. Ask VAG to grant finance permissions on your role."
+        message="Only accountants (and roles with Financial dashboard access) can view financials. Ask VAG to tick that checkbox on your role if you need it."
         ctaLabel={tenantCode ? "Back to home" : undefined}
         onCta={
           tenantCode ? () => router.push(`/${tenantCode}/overview`) : undefined

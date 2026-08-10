@@ -540,8 +540,9 @@ export class AuthService {
         permissions = ['*'];
       } else {
         permissions = [...tenantRole.permissions];
-        // Session-time merge so Accountant / Manager / Stock Keeper see Finance
-        // even before a Roles catalog backfill has rewritten the DB row.
+        // Session-time merge so Accountant sees Finance even before a Roles
+        // catalog backfill has rewritten the DB row. Other roles need the
+        // Financial dashboard checkbox on their TenantRole matrix.
         if (isFinanceAuthorizedRoleName(tenantRole.name)) {
           permissions = [
             ...new Set([

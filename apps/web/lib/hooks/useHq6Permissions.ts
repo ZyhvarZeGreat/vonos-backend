@@ -17,7 +17,7 @@ import {
  * Tenant JWT `admin` and locked Admin roles always get full access
  * (except VAG-only role-matrix edits).
  * Finance keys are never implied from JWT staff/manager/viewer — only from
- * an assigned TenantRole matrix (Accountant / Manager / Stock Keeper, etc.).
+ * an assigned TenantRole matrix (Accountant by default, or explicit checkbox).
  */
 function jwtImpliesPermission(role: Role | null, key: string): boolean {
   if (!role) return false;
@@ -123,7 +123,7 @@ export function useAppPermissions(): AppPermissionsApi {
       );
     // VAG portal access (super_admin) is separate from full permission grant.
     // A VAG user assigned a concrete TenantRole (e.g. HR) is limited to that
-    // role's checkboxes — so Finance can be hidden while HRM/Users stay open.
+    // role's checkboxes — Finance stays off unless Financial dashboard is ticked.
     const isFullAccess =
       isFullAccessRole || (isVag && !hasRolePermissions);
 

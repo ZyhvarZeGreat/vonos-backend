@@ -36,16 +36,14 @@ export interface ImportTenantRolesRequest {
 
 /**
  * Default permission set for HR roles on VAG / entity portals.
- * Includes users + HRM/payroll; deliberately excludes finance / P&L / accounts.
+ * Onboard + manage staff (users / payroll / leave); no financial dashboard.
+ * VAG can tick `app.finance.view` on the role if that HR user must see finance.
  */
 export const HR_ROLE_DEFAULT_PERMISSIONS: readonly string[] = [
   "user.view",
   "user.create",
   "user.update",
   "roles.view",
-  "roles.create",
-  "roles.update",
-  "roles.delete",
   "essentials.crud_leave_type",
   "essentials.crud_all_leave",
   "essentials.approve_leave",
@@ -118,41 +116,16 @@ export function isFinancePermissionKey(key: string): boolean {
 }
 
 /**
- * Roles that should see financials by default (VAG can still refine the matrix).
- * Matches Accountant, Manager, Stock/Store Keeper, Parts Management (stock ops).
+ * Roles that receive financial dashboard access by default.
+ * Only Accountant — managers / stock / HR must get it via the role checkbox
+ * (`app.finance.view` / account / P&L keys) when VAG grants it.
  */
 export function isFinanceAuthorizedRoleName(name: string): boolean {
   const n = name.trim().toLowerCase();
   if (!n || n === "admin") return false;
-  // HR must not inherit finance via the "manager" substring in "HR & OPERATIONS MANAGER".
+  // Never auto-grant via "manager" inside "HR & OPERATIONS MANAGER".
   if (isHrRoleName(name)) return false;
-  if (n === "accountant" || n.includes("accountant")) return true;
-  if (n === "manager" || n === "manager1" || n === "assistant manager") {
-    return true;
-  }
-  // "X Manager" but not social media / etc. — still allow ops managers.
-  if (
-    n.endsWith(" manager") &&
-    !n.includes("social media") &&
-    !n.includes("community")
-  ) {
-    return true;
-  }
-  if (
-    n.includes("stock keeper") ||
-    n.includes("store keeper") ||
-    n.includes("stockkeeper") ||
-    n.includes("storekeeper")
-  ) {
-    return true;
-  }
-  if (n === "parts management" || n.includes("parts management")) {
-    return true;
-  }
-  if (n === "parts auditor" || n.includes("parts auditor")) {
-    return true;
-  }
-  return false;
+  return n === "accountant" || n.includes("accountant");
 }
 
 /** Default demo role names seeded when a tenant has no roles yet. */

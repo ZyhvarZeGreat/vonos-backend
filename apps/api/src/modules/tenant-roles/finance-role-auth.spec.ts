@@ -7,18 +7,20 @@ import {
 } from '@vonos/types';
 
 describe('finance role authorization helpers', () => {
-  it('recognizes accountant, manager, and stock keeper style names', () => {
+  it('auto-grants finance only to accountant role names', () => {
     expect(isFinanceAuthorizedRoleName('ACCOUNTANT')).toBe(true);
-    expect(isFinanceAuthorizedRoleName('MANAGER')).toBe(true);
-    expect(isFinanceAuthorizedRoleName('Assistant Manager')).toBe(true);
-    expect(isFinanceAuthorizedRoleName('Stock Keeper')).toBe(true);
-    expect(isFinanceAuthorizedRoleName('PARTS MANAGEMENT')).toBe(true);
-    expect(isFinanceAuthorizedRoleName('PARTS AUDITOR')).toBe(true);
+    expect(isFinanceAuthorizedRoleName('Senior Accountant')).toBe(true);
+    expect(isFinanceAuthorizedRoleName('MANAGER')).toBe(false);
+    expect(isFinanceAuthorizedRoleName('Assistant Manager')).toBe(false);
+    expect(isFinanceAuthorizedRoleName('Stock Keeper')).toBe(false);
+    expect(isFinanceAuthorizedRoleName('PARTS MANAGEMENT')).toBe(false);
+    expect(isFinanceAuthorizedRoleName('PARTS AUDITOR')).toBe(false);
   });
 
   it('does not grant finance via HR or frontline role names', () => {
     expect(isHrRoleName('HR & OPERATIONS MANAGER')).toBe(true);
     expect(isFinanceAuthorizedRoleName('HR & OPERATIONS MANAGER')).toBe(false);
+    expect(isFinanceAuthorizedRoleName('HR')).toBe(false);
     expect(isFinanceAuthorizedRoleName('FRONT DESK')).toBe(false);
     expect(isFinanceAuthorizedRoleName('Service Staff')).toBe(false);
     expect(isFinanceAuthorizedRoleName('SOCIAL MEDIA MANAGER')).toBe(false);

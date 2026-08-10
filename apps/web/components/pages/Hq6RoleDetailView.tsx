@@ -6,6 +6,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import type { TenantRole } from "@vonos/types";
+import {
+  FINANCE_ROLE_DEFAULT_PERMISSIONS,
+  HR_ROLE_DEFAULT_PERMISSIONS,
+  isFinanceAuthorizedRoleName,
+  isHrRoleName,
+} from "@vonos/types";
 import { EmptyState } from "@/components/atoms/EmptyState";
 import { Hq6PageFrame } from "@/components/hq6/Hq6Chrome";
 import {
@@ -60,6 +66,8 @@ export function Hq6RoleDetailView({
   const [roleName, setRoleName] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [hydrated, setHydrated] = useState(isCreate);
+  /** Avoid re-applying name presets after the user edits checkboxes. */
+  const appliedNamePresetRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!isCreate || canEditMatrix) return;
@@ -82,6 +90,7 @@ export function Hq6RoleDetailView({
       setRoleName("");
       setSelected(new Set());
       setHydrated(true);
+      appliedNamePresetRef.current = null;
       return;
     }
     if (!existing) return;
@@ -97,6 +106,28 @@ export function Hq6RoleDetailView({
     }
     setHydrated(true);
   }, [existing, isCreate]);
+
+  /** On create: HR → staff onboard matrix; Accountant → finance defaults. */
+  useEffect(() => {
+    if (!isCreate || !canEditMatrix) return;
+    const name = roleName.trim();
+    if (!name) return;
+    if (appliedNamePresetRef.current === name.toLowerCase()) return;
+
+    if (isHrRoleName(name)) {
+      appliedNamePresetRef.current = name.toLowerCase();
+      setSelected(new Set(HR_ROLE_DEFAULT_PERMISSIONS));
+      return;
+    }
+    if (isFinanceAuthorizedRoleName(name)) {
+      appliedNamePresetRef.current = name.toLowerCase();
+      setSelected((prev) => {
+        const next = new Set(prev);
+        for (const key of FINANCE_ROLE_DEFAULT_PERMISSIONS) next.add(key);
+        return next;
+      });
+    }
+  }, [isCreate, canEditMatrix, roleName]);
 
   const toggleCheckbox = useCallback((key: string) => {
     setSelected((prev) => {
@@ -244,7 +275,9 @@ export function Hq6RoleDetailView({
       {isVagCatalog || isVag ? (
         <p className="tw-mb-3 tw-text-sm tw-text-gray-600">
           Role definitions are shared across all operating entities. Saving
-          updates every entity’s copy of this role by name.
+          updates every entity’s copy of this role by name. HR roles onboard
+          staff by default; only Accountant gets Financial dashboard access
+          unless you tick that checkbox for another role (including HR).
         </p>
       ) : (
         <p className="tw-mb-3 tw-text-sm tw-text-gray-600">

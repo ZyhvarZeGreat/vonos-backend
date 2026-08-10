@@ -265,7 +265,6 @@ export const HQ6_ROLE_PERMISSION_MODULES: Hq6RolePermissionModule[] = [
       { key: "tax_report.view", label: "View Tax report", type: "checkbox" },
       { key: "contacts_report.view", label: "View Supplier & Customer report", type: "checkbox" },
       { key: "expense_report.view", label: "View expense report", type: "checkbox" },
-      { key: "profit_loss_report.view", label: "View profit/loss report", type: "checkbox" },
       { key: "stock_report.view", label: "View stock report, stock adjustment report & stock expiry report", type: "checkbox" },
       { key: "trending_product_report.view", label: "View trending product report", type: "checkbox" },
       { key: "register_report.view", label: "View register report", type: "checkbox" },
@@ -296,10 +295,27 @@ export const HQ6_ROLE_PERMISSION_MODULES: Hq6RolePermissionModule[] = [
     ],
   },
   {
-    id: "account",
-    label: "Account",
+    id: "financial_dashboard",
+    label: "Financial dashboard",
     permissions: [
+      {
+        key: "app.finance.view",
+        label:
+          "Financial dashboard access — Finance page (default: Accountant only; tick for HR or others who need it)",
+        type: "checkbox",
+      },
       { key: "account.access", label: "Access Accounts", type: "checkbox" },
+      {
+        key: "profit_loss_report.view",
+        label: "View profit & loss report",
+        type: "checkbox",
+      },
+    ],
+  },
+  {
+    id: "account",
+    label: "Account (transactions)",
+    permissions: [
       { key: "edit_account_transaction", label: "Edit account transaction", type: "checkbox" },
       { key: "delete_account_transaction", label: "Delete account transaction", type: "checkbox" },
       { key: "access_default_selling_price", label: "Default Selling Price", type: "checkbox" },
@@ -319,7 +335,6 @@ export const HQ6_ROLE_PERMISSION_MODULES: Hq6RolePermissionModule[] = [
       { key: "app.requisitions.approve", label: "Approve requisitions", type: "checkbox" },
       { key: "app.tables.view", label: "View tables", type: "checkbox" },
       { key: "app.kitchen.view", label: "View kitchen display", type: "checkbox" },
-      { key: "app.finance.view", label: "View finance", type: "checkbox" },
       { key: "app.reports.view", label: "View reports", type: "checkbox" },
     ],
   },

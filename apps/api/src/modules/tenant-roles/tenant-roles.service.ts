@@ -71,8 +71,8 @@ function roleCatalogEntries(): Array<{
     if (permissions.length === 0 && isHrRoleName(name)) {
       permissions = [...HR_ROLE_DEFAULT_PERMISSIONS];
     }
-    // Accountant / Manager / Stock Keeper–style roles always get finance keys
-    // so they can open Finance even when legacy dumps omitted app.finance.view.
+    // Accountant always gets finance keys when legacy dumps omitted them.
+    // Managers / HR / others only get finance when VAG ticks the checkbox.
     if (isFinanceAuthorizedRoleName(name)) {
       const merged = new Set([
         ...permissions,
@@ -713,9 +713,10 @@ export class TenantRolesService {
   }
 
   /**
-   * Ensure Accountant / Manager / Stock Keeper–style roles include finance
-   * access keys even when legacy matrices only had partial cost/report rights.
-   * Does not strip existing permissions; only adds missing finance defaults.
+   * Ensure Accountant roles include finance access keys even when legacy
+   * matrices only had partial cost/report rights.
+   * Does not strip existing permissions; only adds missing finance defaults
+   * onto accountant-named roles. Other roles keep whatever VAG checked.
    * Propagates to peers so all entities stay aligned.
    */
   private async backfillFinanceAuthorizedRolePermissions(
