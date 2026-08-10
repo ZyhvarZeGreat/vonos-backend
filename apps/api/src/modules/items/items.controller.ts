@@ -40,9 +40,11 @@ export class ItemsController {
     @Query('entityCode') entityCode?: string,
     @Query('availability') availability?: string,
   ) {
+    // Cap high enough for VAG stock sliding-window “warm more” (UI grows 50→100→…).
+    // First paint still requests 50; do not restore the old 10k dump.
     const limit = Math.min(
       Math.max(Number.parseInt(limitRaw ?? '10', 10) || 10, 1),
-      50,
+      500,
     );
     return this.itemsService.stockAvailability(search, {
       limit,
