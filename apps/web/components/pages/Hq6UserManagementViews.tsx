@@ -247,6 +247,7 @@ export function Hq6RolesListView() {
     queryFn: () => getTenantRoles(tenantId!),
     enabled: Boolean(tenantId),
     staleTime: 5 * 60_000,
+    placeholderData: (previous) => previous,
   });
 
   // One-time: push browser-local roles into DB (VAG only — import is super_admin).

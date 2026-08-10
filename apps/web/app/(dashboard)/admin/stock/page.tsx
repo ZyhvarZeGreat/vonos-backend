@@ -1,7 +1,7 @@
 "use client";
 
 import { Hq6PageFrame } from "@/components/hq6/Hq6Chrome";
-import { StockAvailabilityView } from "@/components/pages/StockAvailabilityView";
+import { StockAvailabilityView } from "@/lib/registries/lazyEntityViews";
 
 export default function AdminStockPage() {
   return (

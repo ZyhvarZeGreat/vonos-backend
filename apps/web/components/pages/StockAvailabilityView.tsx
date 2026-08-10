@@ -5,19 +5,26 @@ import { useQuery } from "@tanstack/react-query";
 import { Search } from "lucide-react";
 import { EntityColorBadge } from "@/components/atoms/EntityColorBadge";
 import { Spinner } from "@/components/atoms/Spinner";
+import { CursorPaginationBar } from "@/components/molecules/CursorPaginationBar";
+import { DataTableSkeleton } from "@/components/organisms/skeletons";
 import { getStockAvailability } from "@/lib/api/items";
-import { IN_MEMORY_FILTER_CATALOG_LIMIT } from "@/lib/api/fetchAllPages";
+import { HQ6_TABLE_PAGE_SIZE } from "@/lib/api/fetchAllPages";
+import { ADMIN_ENTITY_STALE_MS } from "@/lib/admin/prefetchAdminEntity";
+import { SEARCH_DEBOUNCE_MS } from "@/lib/constants/search";
+import { useDebouncedValue } from "@/lib/hooks/useDebouncedValue";
+import { useIsVaHq6 } from "@/lib/hooks/useIsVaHq6";
 import { AUTOS_GROUP_ENTITIES } from "@/lib/registries/tenants";
 import {
   getVagViewUnit,
   isVagViewUnitId,
 } from "@/lib/registries/vagViewUnits";
-import { ADMIN_ENTITY_STALE_MS } from "@/lib/admin/prefetchAdminEntity";
 import { useAdminEntityStore } from "@/stores/adminEntityStore";
-import { useIsVaHq6 } from "@/lib/hooks/useIsVaHq6";
-import { matchSorter, rankings } from "match-sorter";
 
 type AvailabilityFilter = "all" | "available" | "unavailable";
+
+/** First paint + each “warm more” step — not a 10k roster dump. */
+const STOCK_FETCH_PAGE = 50;
+const STOCK_UI_PAGE_SIZE = HQ6_TABLE_PAGE_SIZE;
 
 /** Map VAG module unit (SP) → API tenant code (VSP). */
 function entityCodeFromViewing(code: string | null): string {
@@ -26,9 +33,24 @@ function entityCodeFromViewing(code: string | null): string {
   return code;
 }
 
+export function stockAvailabilityQueryKey(options: {
+  entityCode: string;
+  availability: AvailabilityFilter;
+  search: string;
+  fetchLimit: number;
+}) {
+  return [
+    "stock-availability-roster",
+    options.entityCode || "all",
+    options.availability,
+    options.search.trim() || "",
+    options.fetchLimit,
+  ] as const;
+}
+
 /**
  * Cross-entity stock lookup for the Autos Group.
- * Roster loads once; search is local match-sorter (no per-keystroke API).
+ * Page-sized API fetches + sliding window (same feel as entity list tables).
  */
 export function StockAvailabilityView() {
   const isHq6 = useIsVaHq6();
@@ -39,39 +61,67 @@ export function StockAvailabilityView() {
   );
   const [availability, setAvailability] =
     useState<AvailabilityFilter>("all");
+  const [fetchLimit, setFetchLimit] = useState(STOCK_FETCH_PAGE);
+  const [pageIndex, setPageIndex] = useState(0);
+
+  const debouncedSearch = useDebouncedValue(query, SEARCH_DEBOUNCE_MS);
 
   useEffect(() => {
     setEntityFilter(entityCodeFromViewing(viewingCode));
   }, [viewingCode]);
 
+  useEffect(() => {
+    setFetchLimit(STOCK_FETCH_PAGE);
+    setPageIndex(0);
+  }, [entityFilter, availability, debouncedSearch]);
+
   const { data, isFetching, isLoading, isFetched } = useQuery({
-    queryKey: [
-      "stock-availability-roster",
-      entityFilter || "all",
+    queryKey: stockAvailabilityQueryKey({
+      entityCode: entityFilter,
       availability,
-    ],
+      search: debouncedSearch,
+      fetchLimit,
+    }),
     queryFn: () =>
       getStockAvailability({
-        limit: IN_MEMORY_FILTER_CATALOG_LIMIT,
+        limit: fetchLimit,
         entityCode: entityFilter || undefined,
         availability,
+        search: debouncedSearch.trim() || undefined,
       }),
     staleTime: ADMIN_ENTITY_STALE_MS,
     placeholderData: (prev) => prev,
   });
 
-  const groups = useMemo(() => {
-    const roster = data?.groups ?? [];
-    const q = query.trim();
-    if (!q) return roster;
-    return matchSorter(roster, q, {
-      keys: ["sku", "name", "category"],
-      threshold: rankings.CONTAINS,
-      keepDiacritics: true,
-    });
-  }, [data?.groups, query]);
+  const roster = data?.groups ?? [];
+  const hasMoreOnServer = roster.length >= fetchLimit;
+  const pageCount = Math.max(
+    1,
+    Math.ceil(Math.max(roster.length, 1) / STOCK_UI_PAGE_SIZE),
+  );
+  const safePage = Math.min(pageIndex, pageCount - 1);
+
+  const visible = useMemo(() => {
+    const start = safePage * STOCK_UI_PAGE_SIZE;
+    return roster.slice(start, start + STOCK_UI_PAGE_SIZE);
+  }, [roster, safePage]);
 
   const showResultsLoading = isLoading || (isFetching && isFetched);
+
+  const goNext = () => {
+    const next = safePage + 1;
+    if (next < pageCount) {
+      setPageIndex(next);
+      return;
+    }
+    if (hasMoreOnServer) {
+      setFetchLimit((n) => n + STOCK_FETCH_PAGE);
+      setPageIndex(next);
+    }
+  };
+
+  const goPrev = () => setPageIndex((p) => Math.max(0, p - 1));
+
   const entityOptions = useMemo(
     () => [
       { value: "", label: "All entities" },
@@ -103,15 +153,15 @@ export function StockAvailabilityView() {
             Stock Availability
           </h2>
           <p className="mt-1 text-sm text-muted">
-            Roster loads once; typing filters with match-sorter. Available = on
-            hand minus Approved requisition holds.
+            Loads a sliding window of products (not the full catalog). Search
+            hits the server. Available = on hand minus Approved requisition
+            holds.
           </p>
         </div>
       ) : (
         <p className={`text-sm ${muted}`}>
-          Roster loads once; typing filters locally. Available = on hand minus
-          Approved requisition holds. “Show info for” above scopes the filter
-          when set.
+          Sliding window list — same pacing as entity tables. Search is
+          server-side. “Show info for” scopes the entity filter when set.
         </p>
       )}
 
@@ -141,10 +191,8 @@ export function StockAvailabilityView() {
             type="search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Type to filter by name or SKU…"
-            className={
-              isHq6 ? fieldClass : `${fieldClass} pl-9`
-            }
+            placeholder="Search by name or SKU…"
+            className={isHq6 ? fieldClass : `${fieldClass} pl-9`}
             autoComplete="off"
           />
         </div>
@@ -198,36 +246,37 @@ export function StockAvailabilityView() {
         </div>
       </div>
 
-      {showResultsLoading ? (
-        <div
-          className={`${cardClass} flex items-center gap-2 text-sm ${muted}`}
-          role="status"
-          aria-live="polite"
-        >
-          <Spinner size="sm" className={muted} />
-          Loading stock…
-        </div>
+      {isLoading && roster.length === 0 ? (
+        <DataTableSkeleton rows={8} columns={4} withPagination embedded />
       ) : null}
 
       <div
         className={
-          showResultsLoading && groups.length > 0
+          showResultsLoading && roster.length > 0
             ? "pointer-events-none opacity-60 transition-opacity"
             : undefined
         }
         aria-busy={showResultsLoading}
       >
-        {isLoading && groups.length === 0 ? (
-          <p className={`text-sm ${muted}`}>Loading stock…</p>
-        ) : groups.length === 0 && !showResultsLoading ? (
+        {roster.length === 0 && !isLoading ? (
           <p className={`text-sm ${muted}`}>
-            {query.trim()
+            {debouncedSearch.trim()
               ? "No matching products for these filters."
-              : "No products in the roster for these filters."}
+              : "No products in this window for these filters."}
           </p>
-        ) : groups.length === 0 ? null : (
+        ) : roster.length === 0 ? null : (
           <div className="space-y-4">
-            {groups.map((group) => (
+            {showResultsLoading ? (
+              <div
+                className={`${cardClass} flex items-center gap-2 text-sm ${muted}`}
+                role="status"
+                aria-live="polite"
+              >
+                <Spinner size="sm" className={muted} />
+                Updating stock…
+              </div>
+            ) : null}
+            {visible.map((group) => (
               <div key={group.sku} className={cardClass}>
                 <div className="flex flex-wrap items-baseline justify-between gap-3">
                   <div>
@@ -302,15 +351,25 @@ export function StockAvailabilityView() {
                 </div>
               </div>
             ))}
+
+            <CursorPaginationBar
+              pageIndex={safePage}
+              pageSize={STOCK_UI_PAGE_SIZE}
+              itemCount={visible.length}
+              hasMore={safePage + 1 < pageCount || hasMoreOnServer}
+              canGoPrev={safePage > 0}
+              onPrev={goPrev}
+              onNext={goNext}
+              onPageSizeChange={() => undefined}
+              totalPages={hasMoreOnServer ? undefined : pageCount}
+              totalItems={hasMoreOnServer ? undefined : roster.length}
+              onPageSelect={(idx) => setPageIndex(idx)}
+              canSelectPage={(idx) => idx < pageCount}
+              isBusy={isFetching}
+            />
           </div>
         )}
       </div>
-
-      <p className={`text-xs ${muted}`}>
-        Showing up to {IN_MEMORY_FILTER_CATALOG_LIMIT.toLocaleString()} products
-        {query.trim() ? ` matching “${query.trim()}”` : ""}
-        .
-      </p>
     </div>
   );
 }

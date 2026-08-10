@@ -314,4 +314,30 @@ export const TaxRatesListView = lazyNamed(
   "TaxRatesListView",
 );
 
+/** VAG admin screens — same chunk skeleton as entity lists. */
+export const VagGroupOverview = lazyNamed(
+  () => import("@/components/pages/VagAdminViews"),
+  "VagGroupOverview",
+);
+export const StockAvailabilityView = lazyNamed(
+  () => import("@/components/pages/StockAvailabilityView"),
+  "StockAvailabilityView",
+);
+export const Hq6UsersListView = lazyNamed(
+  () => import("@/components/pages/Hq6UsersListView"),
+  "Hq6UsersListView",
+);
+export const Hq6RolesListView = lazyNamed(
+  () => import("@/components/pages/Hq6UserManagementViews"),
+  "Hq6RolesListView",
+);
+export const VagGroupReportsView = lazyNamed(
+  () => import("@/components/pages/ReportsView"),
+  "VagGroupReportsView",
+);
+export const AdminEntityReportsHub = lazyNamed(
+  () => import("@/components/pages/AdminEntityReportsHub"),
+  "AdminEntityReportsHub",
+);
+
 export { PageChunkFallback };

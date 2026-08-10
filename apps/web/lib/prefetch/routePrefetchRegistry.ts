@@ -1,10 +1,11 @@
 import type { QueryClient } from "@tanstack/react-query";
 import {
   getGroupLedgerByEntity,
-  getGroupLedgerCharts,
+  getGroupLedgerEntriesPage,
   getGroupLedgerSummary,
   getLedgerCharts,
   getLedgerSummary,
+  LEDGER_TABLE_PAGE_SIZE,
 } from "@/lib/api/ledger";
 import { getCustomersPage, getCustomersListSummary } from "@/lib/api/customers";
 import { getCatalogPage, getCatalogListSummary } from "@/lib/api/catalog";
@@ -19,9 +20,9 @@ import { getSalesPage, getSalesListSummary } from "@/lib/api/sales";
 import { getStockMovementsPage, getStockMovementsListSummary } from "@/lib/api/stockMovements";
 import { getSuppliersPage, getSuppliersListSummary } from "@/lib/api/suppliers";
 import { getVehiclesPage } from "@/lib/api/vehicles";
+import { getAllTenantUsersPage } from "@/lib/api/users";
 import { DEFAULT_TABLE_PAGE_SIZE, HQ6_TABLE_PAGE_SIZE } from "@/lib/api/fetchAllPages";
 import { ADMIN_ENTITY_STALE_MS } from "@/lib/admin/prefetchAdminEntity";
-import { ADMIN_DEFAULT_ENTITY } from "@/stores/adminEntityStore";
 import { getTenantByCode, isTenantCode, type TenantCode } from "@/lib/registries/tenants";
 import { allNavRoutesForConfig, getTenantConfigByCode } from "@/lib/registries/tenantConfigs";
 import { dateRangePresetToApiBounds } from "@/lib/utils/dateRange";
@@ -70,12 +71,34 @@ function prefetchGroupFinance(
     queryFn: () => getGroupLedgerSummary(from, to),
   });
   prefetchQuery(queryClient, {
-    queryKey: ["ledgerCharts", "group", from, to],
-    queryFn: () => getGroupLedgerCharts(from, to),
-  });
-  prefetchQuery(queryClient, {
     queryKey: ["ledgerByEntity", from, to],
     queryFn: () => getGroupLedgerByEntity(from, to),
+  });
+  // First ledger table page — matches PaginatedLedgerTable / useServerListPage.
+  const ledgerFilters = {
+    type: null,
+    category: null,
+    from,
+    to,
+  };
+  const ledgerFilterKey = stableListFilterKey(ledgerFilters, null);
+  prefetchQuery(queryClient, {
+    queryKey: [
+      "ledgerTablePage",
+      "group",
+      ledgerFilterKey,
+      0,
+      null,
+      LEDGER_TABLE_PAGE_SIZE,
+      null,
+      null,
+    ],
+    queryFn: () =>
+      getGroupLedgerEntriesPage(
+        { from, to, limit: LEDGER_TABLE_PAGE_SIZE },
+        undefined,
+        LEDGER_TABLE_PAGE_SIZE,
+      ),
   });
 }
 
@@ -97,19 +120,42 @@ function prefetchGroupReports(
 
 function prefetchAdminStock(queryClient: QueryClient): void {
   prefetchQuery(queryClient, {
-    queryKey: ["stock-availability", "", "all", "all"],
+    queryKey: [
+      "stock-availability-roster",
+      "all",
+      "all",
+      "",
+      50,
+    ],
     queryFn: () =>
       getStockAvailability({
-        limit: 10,
+        limit: 50,
         availability: "all",
       }),
   });
 }
 
 function prefetchAdminUsers(queryClient: QueryClient): void {
-  const tenant = getTenantByCode(ADMIN_DEFAULT_ENTITY);
-  if (!tenant) return;
-  prefetchEntityHrm(queryClient, tenant.tenantId);
+  // VAG HRM users list is group-wide (getAllTenantUsersPage).
+  const usersPageSize = 50;
+  const filterKey = stableListFilterKey({}, null);
+  prefetchQuery(queryClient, {
+    queryKey: [
+      "users",
+      "all",
+      "hq6",
+      filterKey,
+      0,
+      null,
+      usersPageSize,
+      null,
+      null,
+    ],
+    queryFn: () =>
+      getAllTenantUsersPage(undefined, usersPageSize, {
+        includeSummary: false,
+      }),
+  });
 }
 
 function prefetchTenantOverview(

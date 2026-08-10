@@ -1,6 +1,6 @@
 "use client";
 
-import { FinanceView } from "@/components/pages/FinanceView";
+import { FinanceView } from "@/lib/registries/lazyEntityViews";
 
 export default function AdminFinancePage() {
   return <FinanceView groupMode />;

@@ -1,8 +1,10 @@
 "use client";
 
 import { Hq6PageFrame } from "@/components/hq6/Hq6Chrome";
-import { AdminEntityReportsHub } from "@/components/pages/AdminEntityReportsHub";
-import { VagGroupReportsView } from "@/components/pages/ReportsView";
+import {
+  AdminEntityReportsHub,
+  VagGroupReportsView,
+} from "@/lib/registries/lazyEntityViews";
 import {
   getVagViewUnit,
   isVagViewUnitId,
