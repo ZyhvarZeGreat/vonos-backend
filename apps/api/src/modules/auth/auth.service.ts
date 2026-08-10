@@ -577,11 +577,10 @@ export class AuthService {
   ): Promise<string[]> {
     if (user.role === 'super_admin') return [];
 
-    const [employee, homeTenant] = await Promise.all([
-      this.prisma.employee.findFirst({
+    const [employees, homeTenant] = await Promise.all([
+      this.prisma.employee.findMany({
         where: { userId: user.id, deletedAt: null },
         select: { locationCodes: true, locationCode: true },
-        orderBy: { updatedAt: 'desc' },
       }),
       user.tenantId
         ? this.prisma.tenant.findFirst({
@@ -591,10 +590,12 @@ export class AuthService {
         : Promise.resolve(null),
     ]);
 
-    const workLocations = [
-      ...(employee?.locationCodes ?? []),
-      ...(employee?.locationCode ? [employee.locationCode] : []),
-    ];
+    // Union every employee row — a stale copy on one entity must not hide
+    // clearances saved on the home-tenant payroll link.
+    const workLocations = employees.flatMap((employee) => [
+      ...(employee.locationCodes ?? []),
+      ...(employee.locationCode ? [employee.locationCode] : []),
+    ]);
 
     return uniqueTenantCodesFromWorkLocations(
       workLocations,

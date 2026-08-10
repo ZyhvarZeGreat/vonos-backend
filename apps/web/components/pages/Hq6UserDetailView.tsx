@@ -408,7 +408,7 @@ export function Hq6UserDetailView({
   });
 
   const { data: linkedHr } = useQuery({
-    queryKey: ["user-hr-profile", tenantId, recordId],
+    queryKey: ["user-hr-profile", user?.tenantId ?? tenantId, recordId],
     queryFn: async () => {
       const empty = {
         locationCodes: [] as string[],
@@ -436,7 +436,10 @@ export function Hq6UserDetailView({
         currentAddress: "",
         department: "",
       };
-      const employee = await getEmployeeByUserId(tenantId!, recordId);
+      // Prefer the user's home tenant; API still unions locationCodes across
+      // every entity employee copy for this login.
+      const hrTenant = user?.tenantId ?? tenantId!;
+      const employee = await getEmployeeByUserId(hrTenant, recordId);
       if (!employee) return empty;
       const payroll = await getLatestPayrollForEmployee(tenantId!, employee.id);
       return {
@@ -477,7 +480,7 @@ export function Hq6UserDetailView({
         department: employee.department ?? "",
       };
     },
-    enabled: Boolean(tenantId && recordId && !isCreate),
+    enabled: Boolean((user?.tenantId ?? tenantId) && recordId && !isCreate),
     staleTime: DETAIL_RECORD_STALE_MS,
   });
 
@@ -885,7 +888,7 @@ export function Hq6UserDetailView({
           })
             .then(() => {
               void queryClient.invalidateQueries({
-                queryKey: ["user-hr-profile", tenantId, recordId],
+                queryKey: ["user-hr-profile"],
               });
               void queryClient.invalidateQueries({ queryKey: ["employees"] });
               void queryClient.invalidateQueries({ queryKey: ["payrolls"] });

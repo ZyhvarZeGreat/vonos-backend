@@ -22,6 +22,7 @@ import type {
   PayrollFilters,
 } from '@vonos/types';
 import { TenantDbService } from '../../common/prisma/tenant-db.service';
+import { PrismaService } from '../../common/prisma/prisma.service';
 import { buildCompositeCursorQuery } from '../../common/utils/pagination';
 import { resolveListSort } from '../../common/utils/listSort';
 import { toIso, toNumber } from '../../common/utils/serializers';
@@ -131,6 +132,7 @@ function employeeProfilePatchData(args: SyncEmployeeByUserRequest) {
 export class HrmService {
   constructor(
     private readonly tenantDb: TenantDbService,
+    private readonly prisma: PrismaService,
     private readonly invoiceHub: InvoiceHubService,
     private readonly cache: CacheService,
   ) {}
@@ -690,18 +692,47 @@ export class HrmService {
     return rows.map((row) => this.serializeEmployee(row));
   }
 
-  /** Single employee linked to a login user (user edit hydrate). */
+  /**
+   * Employee linked to a login user (user edit hydrate).
+   * Prefers the request-scoped tenant row, but always returns the union of
+   * work-location clearances across every entity copy for that user.
+   */
   async getEmployeeByUserId(userId: string): Promise<Employee | null> {
-    const tenantId = this.tenantDb.requireTenantId();
-    const row = await this.tenantDb.db.employee.findFirst({
-      where: { userId, tenantId, deletedAt: null },
+    const scopedTenantId = this.tenantDb.resolveTenantId();
+    const rows = await this.prisma.employee.findMany({
+      where: { userId, deletedAt: null },
       orderBy: { updatedAt: 'desc' },
       include: {
         designation: { select: { name: true } },
         payrollGroup: { select: { name: true } },
       },
     });
-    return row ? this.serializeEmployee(row) : null;
+    if (rows.length === 0) return null;
+
+    const preferred =
+      (scopedTenantId
+        ? rows.find((row) => row.tenantId === scopedTenantId)
+        : undefined) ?? rows[0]!;
+
+    const locationCodes = [
+      ...new Set(
+        rows.flatMap((row) => {
+          const codes =
+            row.locationCodes?.length > 0
+              ? row.locationCodes
+              : row.locationCode
+                ? [row.locationCode]
+                : [];
+          return codes.map((c) => c.trim()).filter(Boolean);
+        }),
+      ),
+    ];
+
+    return this.serializeEmployee({
+      ...preferred,
+      locationCode: locationCodes[0] ?? preferred.locationCode,
+      locationCodes,
+    });
   }
 
   async createEmployee(dto: CreateEmployeeRequest): Promise<Employee> {
@@ -757,7 +788,15 @@ export class HrmService {
       },
     });
     void invalidateTenantDashboardCache(this.cache, tenantId);
-    return this.serializeEmployee(row);
+    const created = this.serializeEmployee(row);
+    if (dto.userId?.trim() && locationCodes.length > 0) {
+      await this.mirrorWorkLocationsToPeerEmployees(
+        dto.userId.trim(),
+        row.id,
+        locationCodes,
+      );
+    }
+    return created;
   }
 
   /**
@@ -820,6 +859,13 @@ export class HrmService {
           payrollGroup: { select: { name: true } },
         },
       });
+      if (nextLocations.length > 0) {
+        await this.mirrorWorkLocationsToPeerEmployees(
+          args.userId,
+          row.id,
+          nextLocations,
+        );
+      }
       return this.serializeEmployee(row);
     }
 
@@ -839,7 +885,7 @@ export class HrmService {
       );
     }
 
-    return this.createEmployee({
+    const created = await this.createEmployee({
       name: args.name?.trim() || 'Staff',
       userId: args.userId,
       designationId,
@@ -867,6 +913,35 @@ export class HrmService {
       salesCommission: args.salesCommission,
       maxSalesDiscountPercent: args.maxSalesDiscountPercent,
       department: args.department,
+    });
+    await this.mirrorWorkLocationsToPeerEmployees(
+      args.userId,
+      created.id,
+      locationCodes,
+    );
+    return created;
+  }
+
+  /**
+   * Keep every entity's employee copy of this login user on the same
+   * work-location clearance set (header switcher + multi-entity lists).
+   */
+  private async mirrorWorkLocationsToPeerEmployees(
+    userId: string,
+    sourceEmployeeId: string,
+    locationCodes: string[],
+  ): Promise<void> {
+    if (locationCodes.length === 0) return;
+    await this.prisma.employee.updateMany({
+      where: {
+        userId,
+        deletedAt: null,
+        NOT: { id: sourceEmployeeId },
+      },
+      data: {
+        locationCodes,
+        locationCode: locationCodes[0] ?? null,
+      },
     });
   }
 

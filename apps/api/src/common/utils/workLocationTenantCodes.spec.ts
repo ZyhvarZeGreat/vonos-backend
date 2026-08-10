@@ -27,4 +27,13 @@ describe('workLocationTenantCodes', () => {
       uniqueTenantCodesFromWorkLocations(['VM', 'VW', 'vw'], 'VISP'),
     ).toEqual(['VA', 'VISP', 'VW']);
   });
+
+  it('maps full autos group entity tags onto tenant codes', () => {
+    expect(
+      uniqueTenantCodesFromWorkLocations(
+        ['VM', 'VP', 'VISP', 'VSP', 'VW'],
+        'VA',
+      ),
+    ).toEqual(['VA', 'VISP', 'VP', 'VSP', 'VW']);
+  });
 });
