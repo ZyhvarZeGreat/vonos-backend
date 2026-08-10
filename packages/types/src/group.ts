@@ -1,13 +1,19 @@
 /**
- * Vonos Autos Group (VAG) membership.
+ * Vonos Group (VAG) membership.
  *
- * Only auto-related entities roll up into the group admin surfaces
+ * All operating entities roll up into the group admin surfaces
  * (group overview, entity switcher, invites, group finance/reports).
- * Non-auto entities (Cafe, Saloon, Kids Wear) stay in the system and
- * remain fully usable when logged in directly — they are simply hidden
- * from the group.
  */
-export const AUTOS_GROUP_CODES = ["VW", "VA", "VP", "VISP", "VSP"] as const;
+export const AUTOS_GROUP_CODES = [
+  "VW",
+  "VA",
+  "VP",
+  "VISP",
+  "VSP",
+  "VC",
+  "VS",
+  "VKW",
+] as const;
 
 export type AutosGroupCode = (typeof AUTOS_GROUP_CODES)[number];
 

@@ -1,13 +1,21 @@
 /**
  * VAG admin viewing units — what the entity switcher / overview cards show.
- * VISP (institute) and VSP (marketplace) are separate tenants/workspaces.
+ * Includes all operating businesses so Group Overview can Enter any app.
  */
 import {
   getTenantByCode,
   type TenantCode,
 } from "@/lib/registries/tenants";
 
-export type VagViewUnitId = "VA" | "VP" | "VW" | "VISP" | "VSP";
+export type VagViewUnitId =
+  | "VA"
+  | "VP"
+  | "VW"
+  | "VISP"
+  | "VSP"
+  | "VC"
+  | "VS"
+  | "VKW";
 
 /** @deprecated Combined SP was split into VISP + VSP — kept for persisted-store migration. */
 export const VAG_COMBINED_SP_ID = "SP" as const;
@@ -62,6 +70,27 @@ export const VAG_VIEW_UNITS: readonly VagViewUnit[] = [
     tenantCodes: ["VSP"],
     enterCode: "VSP",
   },
+  {
+    id: "VC",
+    badge: "VC",
+    name: "Vonos Cafe",
+    tenantCodes: ["VC"],
+    enterCode: "VC",
+  },
+  {
+    id: "VS",
+    badge: "VS",
+    name: "Vonos Saloon",
+    tenantCodes: ["VS"],
+    enterCode: "VS",
+  },
+  {
+    id: "VKW",
+    badge: "VKW",
+    name: "Vonos Kids Wear",
+    tenantCodes: ["VKW"],
+    enterCode: "VKW",
+  },
 ] as const;
 
 export function isVagViewUnitId(value: string | null | undefined): value is VagViewUnitId {
@@ -70,7 +99,10 @@ export function isVagViewUnitId(value: string | null | undefined): value is VagV
     value === "VP" ||
     value === "VW" ||
     value === "VISP" ||
-    value === "VSP"
+    value === "VSP" ||
+    value === "VC" ||
+    value === "VS" ||
+    value === "VKW"
   );
 }
 
@@ -82,9 +114,18 @@ export function getVagViewUnit(id: VagViewUnitId): VagViewUnit {
 
 /** Map a raw tenant code (e.g. from a ledger row) → VAG view unit id. */
 export function vagViewUnitIdForTenantCode(code: string): VagViewUnitId | null {
-  if (code === "VA" || code === "VP" || code === "VW") return code;
-  if (code === "VISP") return "VISP";
-  if (code === "VSP") return "VSP";
+  if (
+    code === "VA" ||
+    code === "VP" ||
+    code === "VW" ||
+    code === "VISP" ||
+    code === "VSP" ||
+    code === "VC" ||
+    code === "VS" ||
+    code === "VKW"
+  ) {
+    return code;
+  }
   // Legacy combined scope → marketplace (primary) when migrating old prefs
   if (code === "SP") return "VSP";
   return null;

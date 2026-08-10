@@ -1,7 +1,6 @@
 /**
  * URL tenant code → backend tenant id. All 8 operating entities are active in the shell.
- * `group: "autos"` entities roll up into the Vonos Autos Group (VAG) admin surfaces;
- * `group: "other"` entities stay in the system but are hidden from the group.
+ * All operating entities appear on VAG group surfaces (overview, switcher, invites).
  */
 export const TENANT_REGISTRY = {
   VW: {
@@ -18,7 +17,7 @@ export const TENANT_REGISTRY = {
     name: "Vonos Kids Wear",
     archetype: "stock" as const,
     status: "active" as const,
-    group: "other" as const,
+    group: "autos" as const,
   },
   VISP: {
     tenantId: "tenant_visp_001",
@@ -58,7 +57,7 @@ export const TENANT_REGISTRY = {
     name: "Vonos Cafe",
     archetype: "transaction" as const,
     status: "active" as const,
-    group: "other" as const,
+    group: "autos" as const,
   },
   VS: {
     tenantId: "tenant_vs_001",
@@ -66,7 +65,7 @@ export const TENANT_REGISTRY = {
     name: "Vonos Saloon",
     archetype: "appointment" as const,
     status: "active" as const,
-    group: "other" as const,
+    group: "autos" as const,
   },
 } as const;
 
@@ -90,11 +89,19 @@ export function getTenantCodeFromId(tenantId: string | null): TenantCode | null 
 export const ENTITY_LIST = Object.values(TENANT_REGISTRY);
 
 /**
- * Display order for Vonos Autos Group surfaces (admin overview, switcher, etc.).
+ * Display order for Vonos Group surfaces (admin overview, switcher, etc.).
  * VA leads so Automotive is the first card on Group Overview.
  */
-// Include VP (cloned from VA) under the Autos Group overview/switcher ordering.
-export const AUTOS_GROUP_ORDER = ["VA", "VP", "VW", "VISP", "VSP"] as const satisfies ReadonlyArray<
+export const AUTOS_GROUP_ORDER = [
+  "VA",
+  "VP",
+  "VW",
+  "VISP",
+  "VSP",
+  "VC",
+  "VS",
+  "VKW",
+] as const satisfies ReadonlyArray<
   Extract<(typeof TENANT_REGISTRY)[TenantCode]["code"], TenantCode>
 >;
 

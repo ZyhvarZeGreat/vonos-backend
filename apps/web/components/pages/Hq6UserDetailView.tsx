@@ -48,13 +48,16 @@ import {
 import { primaryTenantIdFromWorkLocations } from "@/lib/utils/workLocationTenant";
 import { welcomeFirstName } from "@/lib/utils/welcomeFirstName";
 
-/** Autos entities — assigned on the form (VAG does not switch entity to add users). */
+/** Autos + lifestyle entities — assigned on the form (VAG does not switch entity to add users). */
 const WORK_LOCATION_OPTIONS = [
   { value: "VW", label: "Vonos Warehouse" },
   { value: "VM", label: "Vonos Mechanic" },
   { value: "VP", label: "Vonos Painting" },
   { value: "VISP", label: "Vonos Institute Spare Parts" },
   { value: "VSP", label: "Vonos Spare Parts" },
+  { value: "VC", label: "Vonos Cafe" },
+  { value: "VS", label: "Vonos Saloon" },
+  { value: "VKW", label: "Vonos Kids Wear" },
 ] as const;
 
 function formatJwtRole(role: User["role"]): string {
@@ -1640,7 +1643,7 @@ export function Hq6UserDetailView({
                             is the home entity for role &amp; payroll. Multiple
                             enables the header location switcher and shows this
                             user on each assigned entity&apos;s Users list (VW,
-                            VM→VA, VP, VISP, VSP).
+                            VM→VA, VP, VISP, VSP, VC, VS, VKW).
                           </p>
                         </div>
                       </div>

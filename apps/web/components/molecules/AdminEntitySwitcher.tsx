@@ -59,7 +59,10 @@ function parseScopeId(raw: string): AdminViewingCode {
     raw === "VP" ||
     raw === "VW" ||
     raw === "VISP" ||
-    raw === "VSP"
+    raw === "VSP" ||
+    raw === "VC" ||
+    raw === "VS" ||
+    raw === "VKW"
     ? raw
     : null;
 }
