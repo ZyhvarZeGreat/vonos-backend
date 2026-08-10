@@ -23,7 +23,11 @@ import {
   importTenantRoles,
 } from "@/lib/api/tenantRoles";
 import { useRecordNavigation } from "@/lib/hooks/useRecordNavigation";
-import { useRouteTenant, useTenantId } from "@/lib/hooks/useRouteTenant";
+import {
+  useIsVagRolesCatalogRoute,
+  useRolesCatalogTenantId,
+} from "@/lib/hooks/useRolesCatalogTenantId";
+import { useRouteTenant } from "@/lib/hooks/useRouteTenant";
 import {
   loadStoredRoles,
   hq6RoleStorageKey,
@@ -218,7 +222,8 @@ export function Hq6PosListView() {
 export function Hq6RolesListView() {
   const router = useRouter();
   const queryClient = useQueryClient();
-  const tenantId = useTenantId();
+  const tenantId = useRolesCatalogTenantId();
+  const isVagCatalog = useIsVagRolesCatalogRoute();
   const { tenantCode } = useRouteTenant();
   const { detailPath, listPath } = useRecordNavigation("roles");
   const [search, setSearch] = useState("");
@@ -267,6 +272,7 @@ export function Hq6RolesListView() {
           window.localStorage.removeItem(hq6RoleStorageKey(tenantCode));
         }
         void queryClient.invalidateQueries({ queryKey: ["tenant-roles"] });
+        void queryClient.invalidateQueries({ queryKey: ["tenant-role"] });
         toast.info("Imported role permissions from this browser into the database.");
       } catch {
         // Keep localStorage; user can retry by refreshing.
@@ -307,9 +313,10 @@ export function Hq6RolesListView() {
       return deleteTenantRole(tenantId, role.id);
     },
     onSuccess: async (_data, role) => {
-      toast.success(`Role “${role.name}” deleted.`);
+      toast.success(`Role “${role.name}” deleted across all entities.`);
       setDeleteRole(null);
       void queryClient.invalidateQueries({ queryKey: ["tenant-roles"] });
+      void queryClient.invalidateQueries({ queryKey: ["tenant-role"] });
     },
     onError: (err: Error) => {
       toast.error(err.message || "Failed to delete role");
@@ -362,9 +369,23 @@ export function Hq6RolesListView() {
         <h1 className="tw-text-xl md:tw-text-3xl tw-font-bold tw-text-black">
           Roles{" "}
           <small className="tw-text-sm md:tw-text-base tw-text-gray-700 tw-font-semibold">
-            Manage roles
+            {isVagCatalog || isVag
+              ? "Shared across all entities"
+              : "Managed by VAG"}
           </small>
         </h1>
+        {isVagCatalog || isVag ? (
+          <p className="tw-mt-1 tw-text-sm tw-text-gray-600">
+            Role definitions (permission matrices) are shared group-wide.
+            Creating, editing, or deleting a role updates every operating
+            entity.
+          </p>
+        ) : (
+          <p className="tw-mt-1 tw-text-sm tw-text-gray-600">
+            Role definitions are managed by Vonos Autos Group (VAG). Assign
+            roles to users on the Users page.
+          </p>
+        )}
       </section>
 
       <section className="content">

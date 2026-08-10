@@ -15,7 +15,10 @@ import {
 } from "@/lib/api/tenantRoles";
 import { useRecordNavigation } from "@/lib/hooks/useRecordNavigation";
 import { useAppPermissions } from "@/lib/hooks/useHq6Permissions";
-import { useRouteTenant, useTenantId } from "@/lib/hooks/useRouteTenant";
+import {
+  useIsVagRolesCatalogRoute,
+  useRolesCatalogTenantId,
+} from "@/lib/hooks/useRolesCatalogTenantId";
 import {
   HQ6_ROLE_PERMISSION_MODULES,
   type Hq6RolePermissionModule,
@@ -43,8 +46,8 @@ export function Hq6RoleDetailView({
 }) {
   const router = useRouter();
   const queryClient = useQueryClient();
-  const tenantId = useTenantId();
-  const { tenantCode } = useRouteTenant();
+  const tenantId = useRolesCatalogTenantId();
+  const isVagCatalog = useIsVagRolesCatalogRoute();
   const { listPath, goToList } = useRecordNavigation("roles");
   const { isVag, requireCan } = useAppPermissions();
   const isCreate = recordId === "new" || recordId === "create";
@@ -164,12 +167,12 @@ export function Hq6RoleDetailView({
     },
     onSuccess: async (role) => {
       toast.success(
-        isCreate ? `Role “${role.name}” added.` : `Role “${role.name}” updated.`,
+        isCreate
+          ? `Role “${role.name}” added across all entities.`
+          : `Role “${role.name}” updated across all entities.`,
       );
       void queryClient.invalidateQueries({ queryKey: ["tenant-roles"] });
-      void queryClient.invalidateQueries({
-        queryKey: ["tenant-role", tenantId, role.id],
-      });
+      void queryClient.invalidateQueries({ queryKey: ["tenant-role"] });
       // Navigation already happened on submit (leave-first).
     },
     onError: (err: Error) => {
@@ -180,11 +183,11 @@ export function Hq6RoleDetailView({
     },
   });
 
-  if (!tenantCode || !tenantId) {
+  if (!tenantId) {
     return (
       <EmptyState
         title="Select a business"
-        message="Open a tenant to manage roles."
+        message="Open a tenant to manage roles, or sign in as VAG to edit the shared catalog."
       />
     );
   }
@@ -223,6 +226,17 @@ export function Hq6RoleDetailView({
 
   return (
     <Hq6PageFrame title={isCreate ? "Add Role" : "Edit Role"}>
+      {isVagCatalog || isVag ? (
+        <p className="tw-mb-3 tw-text-sm tw-text-gray-600">
+          Role definitions are shared across all operating entities. Saving
+          updates every entity’s copy of this role by name.
+        </p>
+      ) : (
+        <p className="tw-mb-3 tw-text-sm tw-text-gray-600">
+          Role definitions are managed by Vonos Autos Group (VAG). You can
+          view permissions here; assign roles on the Users page.
+        </p>
+      )}
       <div className="hq6-role-edit-box">
         <form
           className="hq6-role-edit-form"
