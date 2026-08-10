@@ -378,7 +378,10 @@ export function Hq6RolesListView() {
           <p className="tw-mt-1 tw-text-sm tw-text-gray-600">
             Role definitions (permission matrices) are shared group-wide.
             Creating, editing, or deleting a role updates every operating
-            entity.
+            entity. Finance access is granted via finance permission keys —
+            Accountant, Manager, and Stock Keeper roles include them by
+            default; other staff do not see Finance unless you check those
+            boxes.
           </p>
         ) : (
           <p className="tw-mt-1 tw-text-sm tw-text-gray-600">

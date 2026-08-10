@@ -311,7 +311,7 @@ export interface CreateItemRequest {
   category?: string;
   subCategory?: string;
   description?: string;
-  imageUrl?: string;
+  imageUrl?: string | null;
   barcodeType?: string;
   unit?: string;
   weight?: string;

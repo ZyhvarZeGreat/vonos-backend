@@ -2,7 +2,10 @@
 
 import { useMemo } from "react";
 import type { Role } from "@vonos/types";
-import { isFullAccessTenantRole } from "@vonos/types";
+import {
+  isFinancePermissionKey,
+  isFullAccessTenantRole,
+} from "@vonos/types";
 import { useAuthStore } from "@/stores/authStore";
 import {
   notifyInsufficientPrivilege,
@@ -13,6 +16,8 @@ import {
  * Fallback only when the user has no TenantRole permission keys yet.
  * Tenant JWT `admin` and locked Admin roles always get full access
  * (except VAG-only role-matrix edits).
+ * Finance keys are never implied from JWT staff/manager/viewer — only from
+ * an assigned TenantRole matrix (Accountant / Manager / Stock Keeper, etc.).
  */
 function jwtImpliesPermission(role: Role | null, key: string): boolean {
   if (!role) return false;
@@ -22,6 +27,10 @@ function jwtImpliesPermission(role: Role | null, key: string): boolean {
     key === "roles.update" ||
     key === "roles.delete"
   ) {
+    return false;
+  }
+  // Financial surfaces require explicit role checkboxes (or Admin / VAG).
+  if (isFinancePermissionKey(key)) {
     return false;
   }
   if (role === "super_admin") return true;

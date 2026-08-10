@@ -8,7 +8,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Info, Minus, Plus, Trash2, X } from "lucide-react";
 import type { Customer, SaleDetail, TenantConfig } from "@vonos/types";
-import { isGroupStockConsumerTenant } from "@vonos/types";
+import { isGroupStockConsumerTenant, isOutsideOrServiceCatalogItem } from "@vonos/types";
 import { Button } from "@/components/atoms/Button";
 import { ClearableNumberInput } from "@/components/atoms/ClearableNumberInput";
 import { Input } from "@/components/atoms/Input";
@@ -65,6 +65,7 @@ export interface SaleLineDraft {
   availableQty?: number;
   sourceLabel?: string;
   sourceTenantCode?: string;
+  isOutsideOrService?: boolean;
   createPurchase?: boolean;
   /** Optional supplier for custom / purchase lines. */
   supplierId?: string;
@@ -404,14 +405,7 @@ export function AddSaleForm({
       discountAmount: storedDiscount > 0 ? String(storedDiscount) : "",
       orderTax: String(editSale.taxAmount ?? 0),
       redeemedPoints: noteFields.redeemedPoints ?? "",
-      paymentAmount: (() => {
-        const due = Math.max(
-          0,
-          editSale.sellDue ??
-            Number(editSale.total ?? 0) - Number(editSale.totalPaid ?? 0),
-        );
-        return due > 0 ? String(due) : "";
-      })(),
+      paymentAmount: "",
       paidOn: new Date().toISOString().slice(0, 16),
       paymentMethod: "cash",
       paymentAccountId: "",
@@ -463,6 +457,10 @@ export function AddSaleForm({
         discount: line.discountAmount ?? 0,
         sourceTenantCode: line.sourceTenantCode ?? undefined,
         supplierId: line.supplierId ?? undefined,
+        isOutsideOrService: isOutsideOrServiceCatalogItem({
+          name: line.name,
+          sku: line.sku,
+        }),
       })),
     );
   }, [editSale]);
@@ -534,8 +532,14 @@ export function AddSaleForm({
   );
   const paidAmount =
     Number(form.paymentAmount) ||
-    (form.paymentAmount.trim() === "0" ? 0 : totalPayable);
-  const balance = Math.max(0, totalPayable - paidAmount);
+    (form.paymentAmount.trim() === "0"
+      ? 0
+      : // Editing an existing final invoice: empty amount means "no new payment",
+        // not "pay the full total again" (that was blocking Update without a
+        // payment account).
+        editSaleId && loadedAsFinal
+        ? 0
+        : totalPayable);
   const changeReturn = Math.max(0, paidAmount - totalPayable);
 
   const loadCustomerOptions = useCallback(
@@ -753,6 +757,7 @@ export function AddSaleForm({
           availableQty: pick.availableQty,
           sourceLabel: pick.sourceLabel,
           sourceTenantCode: pick.sourceTenantCode,
+          isOutsideOrService: pick.isOutsideOrService,
           createPurchase: pick.isCustom || !pick.itemId,
         },
       ];
@@ -1009,11 +1014,24 @@ export function AddSaleForm({
       }
       const isProvisional =
         statusToSave === "draft" || statusToSave === "quotation";
+      const convertingToFinal =
+        Boolean(editSaleId) &&
+        (editSale?.recordStatus === "draft" ||
+          editSale?.recordStatus === "quotation") &&
+        statusToSave === "final";
+      const needsNewPayment =
+        !isProvisional && (!editSaleId || convertingToFinal);
+      const addingPaymentOnEdit =
+        !isProvisional &&
+        loadedAsFinal &&
+        statusToSave === "final" &&
+        paidAmount > 0 &&
+        canAddPaymentForStatus(editSale?.paymentStatus, remainingDue);
       const amountToCharge = isProvisional
         ? Number(form.paymentAmount) || 0
         : paidAmount;
       if (
-        !isProvisional &&
+        (needsNewPayment || addingPaymentOnEdit) &&
         amountToCharge > 0 &&
         !form.paymentAccountId.trim()
       ) {
@@ -1564,6 +1582,7 @@ export function AddSaleForm({
                           </div>
                           {line.availableQty != null &&
                           !line.createPurchase &&
+                          !line.isOutsideOrService &&
                           !groupStockConsumer ? (
                             <div
                               className={
@@ -1573,6 +1592,10 @@ export function AddSaleForm({
                               }
                             >
                               {line.availableQty} left
+                            </div>
+                          ) : line.isOutsideOrService ? (
+                            <div className="text-xs text-[#6b7280]">
+                              Service / outside
                             </div>
                           ) : null}
                           {line.sourceLabel &&
@@ -2517,6 +2540,7 @@ export function AddSaleForm({
                       </div>
                       {line.availableQty != null &&
                       !line.createPurchase &&
+                      !line.isOutsideOrService &&
                       !groupStockConsumer ? (
                         <div
                           className={
@@ -2527,6 +2551,8 @@ export function AddSaleForm({
                         >
                           {line.availableQty} left
                         </div>
+                      ) : line.isOutsideOrService ? (
+                        <div className="text-muted">Service / outside</div>
                       ) : null}
                     </td>
                     <td className="px-3 py-2">

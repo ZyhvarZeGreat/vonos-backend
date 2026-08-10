@@ -1,5 +1,6 @@
 import type { Brand as PrismaBrand, StockStatus } from '@prisma/client';
 import type { Item, KpiSummary } from '@vonos/types';
+import { isOutsideOrServiceCatalogItem } from '@vonos/types';
 import { toIso, toNumber } from '../../common/utils/serializers';
 
 /** List/detail row shape — supports Prisma `select` projections (not full models). */
@@ -71,6 +72,11 @@ export function serializeItem(row: ItemWithStock): Item {
     currency: row.currency,
     status: row.status,
     availableForRetail: row.availableForRetail,
+    isOutsideOrService: isOutsideOrServiceCatalogItem({
+      name: row.name,
+      sku: row.sku,
+      category: row.category,
+    }),
     brandId: row.brandId ?? null,
     brandName: row.brand?.name ?? null,
     locationStock,

@@ -4,7 +4,7 @@ import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Search } from "lucide-react";
 import type { BusinessLocation, Item, StockStatus } from "@vonos/types";
-import { isProductStockLocationCode } from "@vonos/types";
+import { isOutsideOrServiceCatalogItem, isProductStockLocationCode } from "@vonos/types";
 import {
   formatItemLocationLine,
   formatLocationStockSummary,
@@ -28,8 +28,8 @@ export interface CatalogPartPick {
   name: string;
   costPrice: number;
   sellPrice: number;
-  /** Remaining sellable qty at the source (hidden for VA/VP). */
-  availableQty: number;
+  /** Remaining sellable qty at the source (hidden for VA/VP and OT/services). */
+  availableQty?: number;
   status?: StockStatus;
   /** Where the part was found — shown in the UI. */
   sourceLabel: string;
@@ -37,6 +37,8 @@ export interface CatalogPartPick {
   /** @deprecated Custom / ad-hoc lines are no longer offered in the picker. */
   isCustom?: boolean;
   locationStockSummary?: string;
+  /** Outside purchase / labour / service — no stock balance. */
+  isOutsideOrService?: boolean;
 }
 
 export interface ProductItemSearchProps {
@@ -92,6 +94,7 @@ function itemToPick(
   sourceLabel = "Own stock",
   sourceTenantCode?: string,
 ): CatalogPartPick {
+  const outside = isOutsideOrServiceCatalogItem(item);
   const available = item.availableQuantity ?? item.quantity;
   return {
     itemId: item.id,
@@ -99,14 +102,17 @@ function itemToPick(
     name: item.name,
     costPrice: item.costPrice,
     sellPrice: itemSellPrice(item),
-    availableQty: available,
-    status: item.status,
-    sourceLabel,
+    availableQty: outside ? undefined : available,
+    status: outside ? undefined : item.status,
+    sourceLabel: outside ? "Outside / service" : sourceLabel,
     sourceTenantCode,
+    isOutsideOrService: outside || item.isOutsideOrService,
     locationStockSummary:
-      (item.locationStock?.length ?? 0) > 0
-        ? formatLocationStockSummary(item, businessLocations)
-        : formatItemLocationLine(item, businessLocations),
+      outside
+        ? undefined
+        : (item.locationStock?.length ?? 0) > 0
+          ? formatLocationStockSummary(item, businessLocations)
+          : formatItemLocationLine(item, businessLocations),
   };
 }
 
@@ -116,7 +122,20 @@ type SkuGroup = {
   sources: CatalogPartPick[];
   totalAvailable: number;
   bestSellPrice: number;
+  isOutsideOrService: boolean;
 };
+
+function pickShowsStock(
+  showStockQty: boolean,
+  pick: {
+    isOutsideOrService?: boolean;
+    availableQty?: number;
+  },
+): boolean {
+  return Boolean(
+    showStockQty && !pick.isOutsideOrService && pick.availableQty != null,
+  );
+}
 
 export function ProductItemSearch({
   tenantId,
@@ -233,19 +252,28 @@ export function ProductItemSearch({
           const key = `entity:${entity.itemId}`;
           if (seen.has(key)) continue;
           seen.add(key);
+          const outside = isOutsideOrServiceCatalogItem({
+            name: group.name,
+            sku: group.sku,
+          });
           rows.push({
             itemId: entity.itemId,
             sku: group.sku,
             name: group.name,
             costPrice: entity.costPrice ?? 0,
             sellPrice: itemSellPrice(entity),
-            availableQty: entity.available,
-            status: entity.status,
-            sourceLabel: entitySourceLabel(entity.tenantCode, entity.tenantName),
+            availableQty: outside ? undefined : entity.available,
+            status: outside ? undefined : entity.status,
+            sourceLabel: outside
+              ? "Outside / service"
+              : entitySourceLabel(entity.tenantCode, entity.tenantName),
             sourceTenantCode: entity.tenantCode,
-            locationStockSummary: entity.locations
-              .map((loc) => `${loc.locationCode}: ${loc.quantity}`)
-              .join(" · "),
+            isOutsideOrService: outside,
+            locationStockSummary: outside
+              ? undefined
+              : entity.locations
+                  .map((loc) => `${loc.locationCode}: ${loc.quantity}`)
+                  .join(" · "),
           });
         }
       }
@@ -271,16 +299,19 @@ export function ProductItemSearch({
           sku: pick.sku,
           name: pick.name,
           sources: [pick],
-          totalAvailable: pick.availableQty,
+          totalAvailable: pick.availableQty ?? 0,
           bestSellPrice: pick.sellPrice || 0,
+          isOutsideOrService: Boolean(pick.isOutsideOrService),
         });
       } else {
         existing.sources.push(pick);
-        existing.totalAvailable += pick.availableQty;
+        existing.totalAvailable += pick.availableQty ?? 0;
         existing.bestSellPrice = Math.max(
           existing.bestSellPrice,
           pick.sellPrice || 0,
         );
+        existing.isOutsideOrService =
+          existing.isOutsideOrService || Boolean(pick.isOutsideOrService);
         if (!existing.name && pick.name) existing.name = pick.name;
       }
     }
@@ -326,7 +357,9 @@ export function ProductItemSearch({
       return;
     }
     const sorted = showStockQty
-      ? [...group.sources].sort((a, b) => b.availableQty - a.availableQty)
+      ? [...group.sources].sort(
+          (a, b) => (b.availableQty ?? 0) - (a.availableQty ?? 0),
+        )
       : [...group.sources].sort((a, b) =>
           a.sourceLabel.localeCompare(b.sourceLabel),
         );
@@ -432,28 +465,33 @@ export function ProductItemSearch({
                       <span className="hq6-product-search-option-name font-medium text-foreground">
                         {pick.sourceLabel}
                       </span>
-                      {showStockQty ? (
+                      {pickShowsStock(showStockQty, pick) ? (
                         <span
                           className={cn(
                             "hq6-product-search-option-meta shrink-0 text-xs font-semibold tabular-nums",
-                            stockTone(pick.status, pick.availableQty),
+                            stockTone(pick.status, pick.availableQty ?? 0),
                           )}
                         >
                           {pick.availableQty} left
                         </span>
                       ) : (
                         <span className="hq6-product-search-option-meta shrink-0 text-xs font-semibold tabular-nums text-foreground">
-                          {formatCurrency(pick.sellPrice || 0)}
+                          {pick.isOutsideOrService
+                            ? "Service / outside"
+                            : formatCurrency(pick.sellPrice || 0)}
                         </span>
                       )}
                     </span>
-                    {showStockQty && pick.locationStockSummary ? (
+                    {pickShowsStock(showStockQty, pick) &&
+                    pick.locationStockSummary ? (
                       <span className="hq6-product-search-option-source text-xs text-muted">
                         {pick.locationStockSummary}
                       </span>
-                    ) : !showStockQty ? (
+                    ) : !pickShowsStock(showStockQty, pick) ? (
                       <span className="hq6-product-search-option-source text-xs text-muted">
-                        Catalog source — no stock balance required
+                        {pick.isOutsideOrService
+                          ? "No stock balance — pick freely"
+                          : "Catalog source — no stock balance required"}
                       </span>
                     ) : null}
                   </button>
@@ -498,7 +536,12 @@ export function ProductItemSearch({
                           <span className="hq6-product-search-option-name font-medium text-foreground">
                             {group.sku} — {group.name}
                           </span>
-                          {showStockQty ? (
+                          {pickShowsStock(showStockQty, {
+                            isOutsideOrService: group.isOutsideOrService,
+                            availableQty: group.isOutsideOrService
+                              ? undefined
+                              : group.totalAvailable,
+                          }) ? (
                             <span
                               className={cn(
                                 "hq6-product-search-option-meta shrink-0 text-xs font-semibold tabular-nums",
@@ -509,7 +552,9 @@ export function ProductItemSearch({
                             </span>
                           ) : (
                             <span className="hq6-product-search-option-meta shrink-0 text-xs font-semibold tabular-nums text-foreground">
-                              {formatCurrency(group.bestSellPrice)}
+                              {group.isOutsideOrService
+                                ? "Service / outside"
+                                : formatCurrency(group.bestSellPrice)}
                             </span>
                           )}
                         </span>
@@ -536,24 +581,27 @@ export function ProductItemSearch({
                           <span className="hq6-product-search-option-name font-medium text-foreground">
                             {pick.sku} — {pick.name}
                           </span>
-                          {showStockQty ? (
+                          {pickShowsStock(showStockQty, pick) ? (
                             <span
                               className={cn(
                                 "hq6-product-search-option-meta shrink-0 text-xs font-semibold tabular-nums",
-                                stockTone(pick.status, pick.availableQty),
+                                stockTone(pick.status, pick.availableQty ?? 0),
                               )}
                             >
                               {pick.availableQty} left
                             </span>
                           ) : (
                             <span className="hq6-product-search-option-meta shrink-0 text-xs font-semibold tabular-nums text-foreground">
-                              {formatCurrency(pick.sellPrice || 0)}
+                              {pick.isOutsideOrService
+                                ? "Service / outside"
+                                : formatCurrency(pick.sellPrice || 0)}
                             </span>
                           )}
                         </span>
                         <span className="hq6-product-search-option-source text-xs text-muted">
                           {pick.sourceLabel}
-                          {showStockQty && pick.locationStockSummary
+                          {pickShowsStock(showStockQty, pick) &&
+                          pick.locationStockSummary
                             ? ` · ${pick.locationStockSummary}`
                             : ""}
                         </span>

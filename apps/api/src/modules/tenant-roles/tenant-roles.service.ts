@@ -13,6 +13,10 @@ import type {
   UpdateTenantRoleRequest,
 } from '@vonos/types';
 import { TENANT_ROLE_DEMO_NAMES, HR_ROLE_DEFAULT_PERMISSIONS, isHrRoleName } from '@vonos/types';
+import {
+  FINANCE_ROLE_DEFAULT_PERMISSIONS,
+  isFinanceAuthorizedRoleName,
+} from '@vonos/types';
 import { TenantDbService } from '../../common/prisma/tenant-db.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { CacheService } from '../../common/cache/cache.service';
@@ -67,6 +71,15 @@ function roleCatalogEntries(): Array<{
     if (permissions.length === 0 && isHrRoleName(name)) {
       permissions = [...HR_ROLE_DEFAULT_PERMISSIONS];
     }
+    // Accountant / Manager / Stock Keeper–style roles always get finance keys
+    // so they can open Finance even when legacy dumps omitted app.finance.view.
+    if (isFinanceAuthorizedRoleName(name)) {
+      const merged = new Set([
+        ...permissions,
+        ...FINANCE_ROLE_DEFAULT_PERMISSIONS,
+      ]);
+      permissions = [...merged];
+    }
     return {
       name,
       permissions,
@@ -111,6 +124,7 @@ export class TenantRolesService {
     // Keep every entity's role catalog identical (definitions, not user assignments).
     await this.syncSharedRoleCatalog();
     await this.backfillEmptyLegacyPermissions(tenantId);
+    await this.backfillFinanceAuthorizedRolePermissions(tenantId);
 
     const rows = await this.prisma.tenantRole.findMany({
       where: {
@@ -596,13 +610,20 @@ export class TenantRolesService {
 
   /**
    * Insert any missing catalog roles for a tenant (does not overwrite existing).
+   * Also merges finance default keys onto Accountant / Manager / Stock Keeper
+   * style roles so login sees finance access without a prior Roles page visit.
    */
   async ensureDefaults(tenantId: string): Promise<void> {
     await ensureOperatingTenant(this.prisma, tenantId);
 
     const existing = await this.prisma.tenantRole.findMany({
       where: { tenantId, deletedAt: null },
-      select: { name: true },
+      select: {
+        id: true,
+        name: true,
+        permissions: true,
+        locked: true,
+      },
     });
     const existingNames = new Set(
       existing.map((row) => row.name.trim().toLowerCase()),
@@ -611,18 +632,36 @@ export class TenantRolesService {
     const missing = roleCatalogEntries().filter(
       (role) => !existingNames.has(role.name.trim().toLowerCase()),
     );
-    if (missing.length === 0) return;
+    if (missing.length > 0) {
+      await this.prisma.tenantRole.createMany({
+        data: missing.map((role) => ({
+          tenantId,
+          name: role.name,
+          permissions: role.permissions,
+          isServiceStaff: role.isServiceStaff,
+          locked: role.locked,
+        })),
+        skipDuplicates: true,
+      });
+    }
 
-    await this.prisma.tenantRole.createMany({
-      data: missing.map((role) => ({
-        tenantId,
-        name: role.name,
-        permissions: role.permissions,
-        isServiceStaff: role.isServiceStaff,
-        locked: role.locked,
-      })),
-      skipDuplicates: true,
-    });
+    for (const row of existing) {
+      if (row.locked || row.name.trim().toLowerCase() === 'admin') continue;
+      if (!isFinanceAuthorizedRoleName(row.name)) continue;
+      const next = new Set(row.permissions);
+      let added = false;
+      for (const key of FINANCE_ROLE_DEFAULT_PERMISSIONS) {
+        if (!next.has(key)) {
+          next.add(key);
+          added = true;
+        }
+      }
+      if (!added) continue;
+      await this.prisma.tenantRole.update({
+        where: { id: row.id },
+        data: { permissions: [...next] },
+      });
+    }
   }
 
   /**
@@ -651,6 +690,11 @@ export class TenantRolesService {
       if (permissions.length === 0 && isHrRoleName(row.name)) {
         permissions = [...HR_ROLE_DEFAULT_PERMISSIONS];
       }
+      if (isFinanceAuthorizedRoleName(row.name)) {
+        permissions = [
+          ...new Set([...permissions, ...FINANCE_ROLE_DEFAULT_PERMISSIONS]),
+        ];
+      }
       if (permissions.length === 0) continue;
       await this.prisma.tenantRole.update({
         where: { id: row.id },
@@ -665,6 +709,55 @@ export class TenantRolesService {
     }
     if (changed) {
       void invalidateTenantDashboardCache(this.cache, tenantId);
+    }
+  }
+
+  /**
+   * Ensure Accountant / Manager / Stock Keeper–style roles include finance
+   * access keys even when legacy matrices only had partial cost/report rights.
+   * Does not strip existing permissions; only adds missing finance defaults.
+   * Propagates to peers so all entities stay aligned.
+   */
+  private async backfillFinanceAuthorizedRolePermissions(
+    tenantId: string,
+  ): Promise<void> {
+    const rows = await this.prisma.tenantRole.findMany({
+      where: { tenantId, deletedAt: null },
+      select: {
+        id: true,
+        name: true,
+        permissions: true,
+        isServiceStaff: true,
+        locked: true,
+      },
+    });
+
+    for (const row of rows) {
+      if (row.locked || row.name.trim().toLowerCase() === 'admin') continue;
+      if (!isFinanceAuthorizedRoleName(row.name)) continue;
+
+      const next = new Set(row.permissions);
+      let added = false;
+      for (const key of FINANCE_ROLE_DEFAULT_PERMISSIONS) {
+        if (!next.has(key)) {
+          next.add(key);
+          added = true;
+        }
+      }
+      if (!added) continue;
+
+      const permissions = [...next];
+      await this.prisma.tenantRole.update({
+        where: { id: row.id },
+        data: { permissions },
+      });
+      await this.propagateRoleToOtherTenants({
+        name: row.name,
+        permissions,
+        isServiceStaff: row.isServiceStaff,
+        locked: row.locked,
+        sourceTenantId: tenantId,
+      });
     }
   }
 

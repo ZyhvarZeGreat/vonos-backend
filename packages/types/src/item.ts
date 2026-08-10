@@ -51,6 +51,11 @@ export interface Item {
   currency: string;
   status: StockStatus;
   availableForRetail: boolean;
+  /**
+   * Outside / labour / service catalog line (OT) — not warehouse stock.
+   * When true, UI hides qty-left and sales/purchases skip stock adjustments.
+   */
+  isOutsideOrService?: boolean;
   brandId?: string | null;
   brandName?: string | null;
   /** Per-location breakdown; `quantity` above is the sum across these. */

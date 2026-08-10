@@ -16,6 +16,10 @@ import type {
   TwoFactorSetupResponse,
 } from '@vonos/types';
 import { isFullAccessTenantRole } from '@vonos/types';
+import {
+  FINANCE_ROLE_DEFAULT_PERMISSIONS,
+  isFinanceAuthorizedRoleName,
+} from '@vonos/types';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { CacheService } from '../../common/cache/cache.service';
 import { invalidateTenantDashboardCache } from '../../common/cache/cacheInvalidation';
@@ -530,6 +534,25 @@ export class AuthService {
       options.allowedTenantCodes ??
       (await this.resolveAllowedTenantCodes(user));
 
+    let permissions: string[] = [];
+    if (tenantRole) {
+      if (isFullAccessTenantRole(tenantRole)) {
+        permissions = ['*'];
+      } else {
+        permissions = [...tenantRole.permissions];
+        // Session-time merge so Accountant / Manager / Stock Keeper see Finance
+        // even before a Roles catalog backfill has rewritten the DB row.
+        if (isFinanceAuthorizedRoleName(tenantRole.name)) {
+          permissions = [
+            ...new Set([
+              ...permissions,
+              ...FINANCE_ROLE_DEFAULT_PERMISSIONS,
+            ]),
+          ];
+        }
+      }
+    }
+
     return {
       id: user.id,
       email: user.email,
@@ -541,11 +564,7 @@ export class AuthService {
           : user.tenantId,
       tenantRoleId: tenantRole?.id ?? user.tenantRoleId ?? null,
       tenantRoleName: tenantRole?.name ?? null,
-      tenantRolePermissions: tenantRole
-        ? isFullAccessTenantRole(tenantRole)
-          ? ['*']
-          : tenantRole.permissions
-        : [],
+      tenantRolePermissions: permissions,
       tenantRoleLocked: tenantRole?.locked ?? false,
       allowedTenantCodes:
         user.role === 'super_admin' ? [] : allowedTenantCodes,

@@ -12,6 +12,7 @@ import type {
   PurchasePaymentStatus,
   PurchaseViewBundle,
 } from '@vonos/types';
+import { isOutsideOrServiceCatalogItem } from '@vonos/types';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { TenantDbService } from '../../common/prisma/tenant-db.service';
 import { CacheService } from '../../common/cache/cache.service';
@@ -470,6 +471,15 @@ export class StockMovementsService {
             throw new BadRequestException(
               `Item not found: ${line.sku || line.itemId}`,
             );
+          }
+          if (
+            isOutsideOrServiceCatalogItem({
+              name: line.name || item.name,
+              sku: item.sku || line.sku,
+              category: item.category,
+            })
+          ) {
+            continue;
           }
 
           const delta = applyInbound ? line.quantity : -line.quantity;
@@ -1157,6 +1167,15 @@ export class StockMovementsService {
               `Item not found: ${line.sku || line.itemId}`,
             );
           }
+          if (
+            isOutsideOrServiceCatalogItem({
+              name: line.name || item.name,
+              sku: item.sku || line.sku,
+              category: item.category,
+            })
+          ) {
+            continue;
+          }
           const qty = Math.max(0, Math.round(Number(line.quantity) || 0));
           if (qty <= 0) continue;
           const nextQuantity = item.quantity + qty;
@@ -1274,6 +1293,15 @@ export class StockMovementsService {
           });
           if (!item) {
             throw new BadRequestException(`Item not found: ${itemId}`);
+          }
+          if (
+            isOutsideOrServiceCatalogItem({
+              name: item.name,
+              sku: item.sku,
+              category: item.category,
+            })
+          ) {
+            continue;
           }
           const nextQuantity = item.quantity + delta;
           if (nextQuantity < 0) {

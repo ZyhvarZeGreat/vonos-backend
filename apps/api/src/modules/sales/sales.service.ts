@@ -15,7 +15,7 @@ import type {
   SaleStatus,
   SaleViewBundle,
 } from '@vonos/types';
-import { isGroupStockConsumerTenant } from '@vonos/types';
+import { isGroupStockConsumerTenant, isOutsideOrServiceCatalogItem } from '@vonos/types';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { TenantDbService } from '../../common/prisma/tenant-db.service';
 import { CacheService } from '../../common/cache/cache.service';
@@ -1490,14 +1490,33 @@ export class SalesService {
                 tenantId,
                 sku,
                 name: line.name.trim(),
-                quantity: qty,
+                quantity: isOutsideOrServiceCatalogItem({
+                  name: line.name,
+                  sku,
+                })
+                  ? 0
+                  : qty,
                 costPrice: line.unitPrice,
                 sellPrice: line.unitPrice,
-                status: computeStockStatus(qty, null),
+                status: computeStockStatus(
+                  isOutsideOrServiceCatalogItem({
+                    name: line.name,
+                    sku,
+                  })
+                    ? 0
+                    : qty,
+                  null,
+                ),
                 locationCode: locationCode ?? undefined,
               },
             });
-          } else {
+          } else if (
+            !isOutsideOrServiceCatalogItem({
+              name: line.name || item.name,
+              sku: item.sku ?? sku,
+              category: item.category,
+            })
+          ) {
             const nextQty = toNumber(item.quantity) + qty;
             item = await tx.item.update({
               where: { id: item.id },
@@ -1612,6 +1631,15 @@ export class SalesService {
                 `Item ${line.sku} not found at ${sourceCode}`,
               );
             }
+            if (
+              isOutsideOrServiceCatalogItem({
+                name: line.name || item.name,
+                sku: item.sku ?? line.sku,
+                category: item.category,
+              })
+            ) {
+              continue;
+            }
             bumpStock(`${item.tenantId}:${item.id}`, {
               itemTenantId: item.tenantId,
               itemId: item.id,
@@ -1633,6 +1661,15 @@ export class SalesService {
             }));
           if (!item) {
             throw new BadRequestException(`Item not found: ${line.sku}`);
+          }
+          if (
+            isOutsideOrServiceCatalogItem({
+              name: line.name || item.name,
+              sku: item.sku ?? line.sku,
+              category: item.category,
+            })
+          ) {
+            continue;
           }
           if (item.id !== line.itemId) {
             line.itemId = item.id;
@@ -2076,6 +2113,15 @@ export class SalesService {
             sku: line.sku,
           });
           if (!item) return;
+          if (
+            isOutsideOrServiceCatalogItem({
+              name: item.name,
+              sku: item.sku ?? line.sku,
+              category: item.category,
+            })
+          ) {
+            return;
+          }
           bumpStock(`${item.tenantId}:${item.id}`, {
             itemTenantId: item.tenantId,
             itemId: item.id,
@@ -2452,6 +2498,15 @@ export class SalesService {
             this.logger.warn(
               `Finalize ${existing.reference}: skip stock for missing item ${line.sku} (${line.itemId})`,
             );
+            continue;
+          }
+          if (
+            isOutsideOrServiceCatalogItem({
+              name: line.name || item.name,
+              sku: item.sku ?? line.sku,
+              category: item.category,
+            })
+          ) {
             continue;
           }
           if (!isCrossSource && item.id !== line.itemId) {

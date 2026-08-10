@@ -30,7 +30,10 @@ import {
 } from "@/lib/api/ledger";
 import { useRouteTenant } from "@/lib/hooks/useRouteTenant";
 import { useIsVaHq6 } from "@/lib/hooks/useIsVaHq6";
+import { useAppPermissions } from "@/lib/hooks/useHq6Permissions";
 import { useReportRecordModals } from "@/lib/hooks/useReportRecordModals";
+import { EmptyState } from "@/components/atoms/EmptyState";
+import { FINANCE_ACCESS_PERMISSION_KEYS } from "@vonos/types";
 import {
   getVagViewUnit,
   isVagViewUnitId,
@@ -184,6 +187,9 @@ export function FinanceView({ groupMode = false }: FinanceViewProps) {
   const router = useRouter();
   const isHq6 = useIsVaHq6();
   const financeCopy = hq6CopyForSlug("finance");
+  const { canAny, isFullAccess } = useAppPermissions();
+  const canViewFinance =
+    isFullAccess || canAny(...FINANCE_ACCESS_PERMISSION_KEYS);
   const openExportModal = useUiStore((state) => state.openExportModal);
   const openAddExpenseModal = useUiStore((state) => state.openAddExpenseModal);
   const {
@@ -829,6 +835,19 @@ export function FinanceView({ groupMode = false }: FinanceViewProps) {
       )}
     </div>
   );
+
+  if (!canViewFinance) {
+    return (
+      <EmptyState
+        title="Finance restricted"
+        message="Only accountants, managers, stock keepers, and admins can view financials. Ask VAG to grant finance permissions on your role."
+        ctaLabel={tenantCode ? "Back to home" : undefined}
+        onCta={
+          tenantCode ? () => router.push(`/${tenantCode}/overview`) : undefined
+        }
+      />
+    );
+  }
 
   if (isHq6) {
     return (

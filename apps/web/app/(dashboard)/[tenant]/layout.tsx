@@ -7,8 +7,10 @@ import { TopBar } from "@/components/organisms/TopBar";
 import { isNavRouteActive, parseTenantPath } from "@/lib/utils/tenantRoutes";
 import { getEntityPageMeta } from "@/lib/registries/entityPageMeta";
 import { navSectionsForTenant } from "@/lib/utils/navRoutes";
+import { filterNavSectionsByPermissions } from "@/lib/registries/hq6NavPermissions";
 import { useRouteTenant } from "@/lib/hooks/useRouteTenant";
 import { useRecordTitle } from "@/lib/hooks/useRecordTitle";
+import { useAppPermissions } from "@/lib/hooks/useHq6Permissions";
 import { TenantShell } from "@/components/layouts/TenantShell";
 import { AdminViewingBanner } from "@/components/molecules/AdminViewingBanner";
 import { PageTransition } from "@/components/atoms/PageTransition";
@@ -39,10 +41,12 @@ function TenantLayoutInner({ children }: { children: React.ReactNode }) {
   const authName = useAuthStore((state) => state.name);
   const authEmail = useAuthStore((state) => state.email);
   const authRole = useAuthStore((state) => state.role);
-  const navSections = useMemo(
-    () => navSectionsForTenant(params.tenant, config),
-    [params.tenant, config],
-  );
+  const { canAny, isFullAccess } = useAppPermissions();
+  const navSections = useMemo(() => {
+    const sections = navSectionsForTenant(params.tenant, config);
+    if (isFullAccess) return sections;
+    return filterNavSectionsByPermissions(sections, canAny);
+  }, [params.tenant, config, canAny, isFullAccess]);
   const useUposShell = isUposShellTenant(params.tenant);
 
   const { section, recordId } = parseTenantPath(pathname);

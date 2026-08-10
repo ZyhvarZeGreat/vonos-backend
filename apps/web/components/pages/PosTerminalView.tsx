@@ -34,6 +34,7 @@ interface SaleLineDraft {
   sourceTenantCode?: string;
   sourceLabel?: string;
   availableQty?: number;
+  isOutsideOrService?: boolean;
 }
 
 function lineSubtotal(line: SaleLineDraft): number {
@@ -100,6 +101,7 @@ function PosTerminalViewBody() {
           sourceTenantCode: pick.sourceTenantCode,
           sourceLabel: pick.sourceLabel,
           availableQty: pick.availableQty,
+          isOutsideOrService: pick.isOutsideOrService,
         },
       ];
     });
@@ -209,9 +211,12 @@ function PosTerminalViewBody() {
                           <div className="text-xs text-muted">
                             {line.sourceTenantCode ?? line.sourceLabel}
                             {!catalogOnlySeller &&
+                            !line.isOutsideOrService &&
                             line.availableQty != null
                               ? ` · ${line.availableQty} left`
-                              : ""}
+                              : line.isOutsideOrService
+                                ? " · Service / outside"
+                                : ""}
                           </div>
                         ) : null}
                       </td>

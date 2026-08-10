@@ -18,6 +18,7 @@ import { Hq6FormShell } from "@/components/hq6/Hq6Chrome";
 import {
   createStockMovement,
   getStockMovement,
+  getStockMovementPayments,
   payStockMovement,
   updateStockMovement,
 } from "@/lib/api/stockMovements";
@@ -241,6 +242,12 @@ export function AddPurchaseView() {
     enabled: Boolean(editId),
   });
 
+  const { data: existingPayments = [], isFetched: paymentsFetched } = useQuery({
+    queryKey: ["stock-movement-payments", tenantId, editId],
+    queryFn: () => getStockMovementPayments(tenantId!, editId!),
+    enabled: Boolean(tenantId && editId),
+  });
+
   const [form, setForm] = useState<PurchaseFormState>(emptyForm);
   const [lines, setLines] = useState<PurchaseLine[]>([]);
   const [prefillDone, setPrefillDone] = useState(false);
@@ -261,13 +268,21 @@ export function AddPurchaseView() {
 
   useEffect(() => {
     if (!existing || prefillDone) return;
+    // Wait for payments so we can show the account that was used before.
+    if (editId && !paymentsFetched) return;
     let cancelled = false;
     const status: PurchaseStatusOption =
       existing.status === "Ordered" || existing.status === "Pending"
         ? existing.status
         : "Received";
     const parsedNotes = parsePurchaseNotes(existing.notes);
-    const remaining = Math.max(0, existing.paymentDue ?? 0);
+    const alreadyPaid = Math.max(0, Number(existing.totalPaid ?? 0));
+    const latestPayment =
+      existingPayments.find((p) => p.accountId?.trim()) ??
+      existingPayments[0];
+    const paidOnIso = latestPayment?.paidOn
+      ? new Date(latestPayment.paidOn).toISOString().slice(0, 16)
+      : new Date().toISOString().slice(0, 16);
     setForm({
       ...emptyForm(),
       reference: existing.reference,
@@ -285,11 +300,16 @@ export function AddPurchaseView() {
       shippingDetails: parsedNotes.shippingDetails,
       shippingCharges: parsedNotes.shippingCharges || "0",
       extraExpenses: parsedNotes.extraExpenses,
-      paymentAmount: remaining > 0 ? String(remaining) : "0",
-      paidOn: new Date().toISOString().slice(0, 16),
-      paymentMethod: existing.paymentMethod || "cash",
-      paymentAccountId: "",
-      paymentNote: "",
+      // Show what was already paid + the account used — Update only posts a
+      // new payment when the amount is increased above totalPaid.
+      paymentAmount: alreadyPaid > 0 ? String(alreadyPaid) : "0",
+      paidOn: paidOnIso,
+      paymentMethod:
+        latestPayment?.method?.trim() ||
+        existing.paymentMethod ||
+        "cash",
+      paymentAccountId: latestPayment?.accountId?.trim() || "",
+      paymentNote: latestPayment?.note?.trim() || "",
     });
     void (async () => {
       const catalog = await Promise.all(
@@ -321,7 +341,7 @@ export function AddPurchaseView() {
     return () => {
       cancelled = true;
     };
-  }, [existing, prefillDone]);
+  }, [editId, existing, existingPayments, paymentsFetched, prefillDone]);
 
   useEffect(() => {
     if (prefillDone || form.locationCode) return;
@@ -355,11 +375,21 @@ export function AddPurchaseView() {
     netTotal - orderDiscount + purchaseTax + shippingCharges + extraExpensesTotal,
   );
   const paymentAmount = Number(form.paymentAmount) || 0;
-  const paymentDue = Math.max(0, purchaseTotal - paymentAmount);
+  const alreadyPaid = Math.max(0, Number(existing?.totalPaid ?? 0));
+  /** On edit, Amount shows total already paid — only the increase is a new payment. */
+  const additionalPaymentAmount = editId
+    ? Math.max(0, paymentAmount - alreadyPaid)
+    : paymentAmount;
+  const paymentDue = Math.max(
+    0,
+    purchaseTotal - (editId ? Math.max(alreadyPaid, paymentAmount) : paymentAmount),
+  );
   const existingRemainingDue = Math.max(0, existing?.paymentDue ?? 0);
   const showAddPaymentOnEdit =
     Boolean(editId) &&
     canAddPaymentForStatus(existing?.paymentStatus, existingRemainingDue);
+  const collectingPayment =
+    additionalPaymentAmount > 0.009 && (!editId || showAddPaymentOnEdit);
 
   const purchaseIdempotencyKeyRef = useRef<string | null>(null);
 
@@ -373,8 +403,6 @@ export function AddPurchaseView() {
       purchaseIdempotencyKeyRef.current = key;
       return withIdempotencyKey(key, async () => {
       if (!tenantId) throw new Error("No tenant");
-      const collectingPayment =
-        paymentAmount > 0 && (!editId || showAddPaymentOnEdit);
       if (collectingPayment && !form.paymentAccountId.trim()) {
         throw new Error(
           "Select a Payment Account so this purchase payment posts to the account book",
@@ -421,7 +449,7 @@ export function AddPurchaseView() {
       );
       if (collectingPayment) {
         await payStockMovement(tenantId, saved.id, {
-          amount: paymentAmount,
+          amount: additionalPaymentAmount,
           method: form.paymentMethod || "cash",
           accountId: form.paymentAccountId || undefined,
           note: form.paymentNote.trim() || undefined,
@@ -454,11 +482,7 @@ export function AddPurchaseView() {
 
   const handleSave = () => {
     if (!canSave || mutation.isPending) return;
-    if (
-      paymentAmount > 0 &&
-      (!editId || showAddPaymentOnEdit) &&
-      !form.paymentAccountId.trim()
-    ) {
+    if (collectingPayment && !form.paymentAccountId.trim()) {
       toast.error(
         "Select a Payment Account so this purchase payment posts to the account book",
       );
@@ -516,7 +540,9 @@ export function AddPurchaseView() {
         {editId && existing ? (
           <div className="hq6-form-card text-sm text-[#555]">
             Editing purchase <strong>{existing.reference}</strong> ({existing.status}).
-            Changes update this record in place.
+            Changes update this record in place. Payment fields show what was
+            already paid and which account was used — raise the amount only if
+            you are collecting more now.
           </div>
         ) : null}
         {editId && loadingExisting ? (
@@ -961,26 +987,29 @@ export function AddPurchaseView() {
 
         {/* 5. Payment */}
         <section className="hq6-form-card">
-          <h2 className="hq6-form-card-title">Add payment</h2>
-          {editId && !showAddPaymentOnEdit ? (
+          <h2 className="hq6-form-card-title">
+            {editId ? "Payment" : "Add payment"}
+          </h2>
+          {editId ? (
             <p className="mb-3 text-sm text-[#6b7280]">
-              This purchase is fully paid. Use{" "}
-              <strong>View Payments</strong> on the purchases list to review or
-              edit existing payments.
-            </p>
-          ) : editId ? (
-            <p className="mb-3 text-sm text-[#6b7280]">
-              Remaining due: {formatHq6Currency(existingRemainingDue)}. Existing
-              payments stay as they are — enter an amount below to add another
-              payment on Update.
+              Paid so far: {formatHq6Currency(alreadyPaid)}
+              {existingPayments[0]?.accountName
+                ? ` · ${existingPayments[0].accountName}`
+                : ""}
+              {existingRemainingDue > 0
+                ? ` · Remaining due: ${formatHq6Currency(existingRemainingDue)}`
+                : " · Fully paid"}
+              {additionalPaymentAmount > 0.009
+                ? ` · New payment on Update: ${formatHq6Currency(additionalPaymentAmount)}`
+                : ""}
+              . Existing payments stay as they are unless you increase Amount.
             </p>
           ) : (
             <p className="mb-3 text-sm text-[#6b7280]">
               Advance Balance: {formatHq6Currency(supplierAdvanceBalance)}
             </p>
           )}
-          {!editId || showAddPaymentOnEdit ? (
-            <>
+          <>
               <div className="hq6-form-grid hq6-form-grid-3">
                 <label className="hq6-form-label">
                   <span>
@@ -1030,7 +1059,7 @@ export function AddPurchaseView() {
                 <label className="hq6-form-label">
                   <span>
                     Payment Account
-                    {paymentAmount > 0 ? (
+                    {collectingPayment ? (
                       <span className="req"> *</span>
                     ) : null}
                   </span>
@@ -1067,17 +1096,10 @@ export function AddPurchaseView() {
               <div className="hq6-form-table-footer">
                 <span>
                   Payment due:{" "}
-                  <strong>
-                    {formatHq6Currency(
-                      editId
-                        ? Math.max(0, existingRemainingDue - paymentAmount)
-                        : paymentDue,
-                    )}
-                  </strong>
+                  <strong>{formatHq6Currency(paymentDue)}</strong>
                 </span>
               </div>
             </>
-          ) : null}
           <div className="hq6-form-save-row">
             <Hq6BusyButton
               className="hq6-btn-purple"

@@ -69,6 +69,89 @@ export function isHrRoleName(name: string): boolean {
   );
 }
 
+/**
+ * Permission keys that unlock Finance nav / P&L / payment accounts / costs.
+ * Any one grants finance surface access (see HQ6_NAV_VIEW_PERMISSIONS.finance).
+ */
+export const FINANCE_ACCESS_PERMISSION_KEYS = [
+  "app.finance.view",
+  "account.access",
+  "profit_loss_report.view",
+] as const;
+
+/** Keys seeded onto Accountant / Manager / Stock Keeper style roles. */
+export const FINANCE_ROLE_DEFAULT_PERMISSIONS: readonly string[] = [
+  "app.finance.view",
+  "account.access",
+  "profit_loss_report.view",
+  "view_purchase_price",
+  "view_product_stock_value",
+  "expense_report.view",
+  "purchase_n_sell_report.view",
+  "all_expense.access",
+];
+
+/** True when `key` is a finance / accounts / cost visibility permission. */
+export function isFinancePermissionKey(key: string): boolean {
+  if (
+    (FINANCE_ACCESS_PERMISSION_KEYS as readonly string[]).includes(key)
+  ) {
+    return true;
+  }
+  if (key === "view_purchase_price" || key === "view_product_stock_value") {
+    return true;
+  }
+  if (key === "edit_account_transaction" || key === "delete_account_transaction") {
+    return true;
+  }
+  if (
+    key === "expense_report.view" ||
+    key === "purchase_n_sell_report.view" ||
+    key === "tax_report.view"
+  ) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Roles that should see financials by default (VAG can still refine the matrix).
+ * Matches Accountant, Manager, Stock/Store Keeper, Parts Management (stock ops).
+ */
+export function isFinanceAuthorizedRoleName(name: string): boolean {
+  const n = name.trim().toLowerCase();
+  if (!n || n === "admin") return false;
+  // HR must not inherit finance via the "manager" substring in "HR & OPERATIONS MANAGER".
+  if (isHrRoleName(name)) return false;
+  if (n === "accountant" || n.includes("accountant")) return true;
+  if (n === "manager" || n === "manager1" || n === "assistant manager") {
+    return true;
+  }
+  // "X Manager" but not social media / etc. — still allow ops managers.
+  if (
+    n.endsWith(" manager") &&
+    !n.includes("social media") &&
+    !n.includes("community")
+  ) {
+    return true;
+  }
+  if (
+    n.includes("stock keeper") ||
+    n.includes("store keeper") ||
+    n.includes("stockkeeper") ||
+    n.includes("storekeeper")
+  ) {
+    return true;
+  }
+  if (n === "parts management" || n.includes("parts management")) {
+    return true;
+  }
+  if (n === "parts auditor" || n.includes("parts auditor")) {
+    return true;
+  }
+  return false;
+}
+
 /** Default demo role names seeded when a tenant has no roles yet. */
 export const TENANT_ROLE_DEMO_NAMES = [
   "AC TECHNICIAN",
@@ -98,6 +181,7 @@ export const TENANT_ROLE_DEMO_NAMES = [
   "SECURITY/CLEANING",
   "Service Staff",
   "SOCIAL MEDIA MANAGER",
+  "Stock Keeper",
   "TECHNICAL SUPERVISOR",
   "WEB DEVELOPER",
 ] as const;
