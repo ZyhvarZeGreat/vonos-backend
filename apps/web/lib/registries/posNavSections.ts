@@ -4,8 +4,10 @@ import type { NavSection } from "@/components/organisms/Sidebar";
 import { isHq6Tenant } from "@/lib/utils/isHq6Tenant";
 import { REPORT_SLUG_TO_HQ6_PATH } from "@/lib/registries/hq6ReportRoutes";
 
+import { tenantPath } from "@/lib/utils/tenantMount";
+
 function r(code: string, slug: string): string {
-  return `/${code}/${slug}`;
+  return tenantPath(code, slug);
 }
 
 function has(config: TenantConfig, moduleId: string): boolean {

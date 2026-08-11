@@ -1,5 +1,6 @@
 import { getTenantByCode, isTenantCode } from "@/lib/registries/tenants";
 import { stripBasePath } from "@/lib/utils/basePath";
+import { parseTenantPath } from "@/lib/utils/tenantRoutes";
 import {
   adminViewingTenantId,
   useAdminEntityStore,
@@ -12,7 +13,7 @@ import { useUiStore } from "@/stores/uiStore";
  * Tenant id the API should scope to for the current screen.
  * Super admins on /admin/* use the admin viewing entity (never a leaked
  * activeTenantId from a previous entity visit).
- * Super admins on /{code}/* use the URL segment.
+ * Super admins on /{code}/* (or /operations/{VS|VKW}/*) use the URL segment.
  * Everyone else: JWT tenant only.
  */
 export function resolveViewingTenantId(): string | null {
@@ -23,9 +24,8 @@ export function resolveViewingTenantId(): string | null {
   }
 
   if (typeof window !== "undefined") {
-    const parts = stripBasePath(window.location.pathname)
-      .split("/")
-      .filter(Boolean);
+    const pathname = stripBasePath(window.location.pathname);
+    const parts = pathname.split("/").filter(Boolean);
     const segment = parts[0];
 
     // During entity switch, API calls may run before the URL updates — scope to target.
@@ -50,8 +50,9 @@ export function resolveViewingTenantId(): string | null {
       return adminViewingTenantId(viewingCode);
     }
 
-    if (segment && isTenantCode(segment)) {
-      const fromUrl = getTenantByCode(segment)?.tenantId ?? null;
+    const { tenantCode: urlTenant } = parseTenantPath(pathname);
+    if (urlTenant && isTenantCode(urlTenant)) {
+      const fromUrl = getTenantByCode(urlTenant)?.tenantId ?? null;
       const active = useTenantStore.getState().activeTenantId;
       if (fromUrl) return fromUrl;
       if (active) return active;

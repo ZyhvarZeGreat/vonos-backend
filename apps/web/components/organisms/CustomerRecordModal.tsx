@@ -21,6 +21,7 @@ import { formatDate } from "@/lib/utils/formatDate";
 import { customerContactSeedFromList } from "@/lib/utils/listModalSeeds";
 import { invoiceDocumentLayoutProps } from "@/lib/utils/resolveInvoiceLayout";
 import type { Customer } from "@vonos/types";
+import { tenantBasePath } from "@/lib/utils/tenantMount";
 
 export interface CustomerRecordModalProps {
   customerId: string | null;
@@ -130,7 +131,7 @@ export function CustomerRecordModal({
         showBack={showBack}
         fullPageHref={
           showFullPageLink && customerId && tenantCode
-            ? `/${tenantCode}/customers/${customerId}`
+            ? `${tenantBasePath(tenantCode)}/customers/${customerId}`
             : undefined
         }
         isLoading={isLoading && !contact}
@@ -147,7 +148,7 @@ export function CustomerRecordModal({
                 size="sm"
                 onClick={() => {
                   onClose();
-                  router.push(`/${tenantCode}/payments?customerId=${customerId}`);
+                  router.push(`${tenantBasePath(tenantCode)}/payments?customerId=${customerId}`);
                 }}
               >
                 Record payment

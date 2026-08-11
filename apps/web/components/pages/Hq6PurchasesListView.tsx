@@ -64,6 +64,7 @@ import { cn } from "@/lib/utils/cn";
 import { toast } from "@/stores/toastStore";
 import { hq6PaymentBadgeClass, canAddPaymentForStatus } from "@/lib/utils/hq6PaymentBadge";
 import type { MovementStatus, PurchasePaymentStatus } from "@vonos/types";
+import { tenantBasePath } from "@/lib/utils/tenantMount";
 
 function purchaseBadgeClass(status: string | null | undefined): string {
   return hq6PaymentBadgeClass(status);
@@ -291,7 +292,7 @@ export function Hq6PurchasesListView() {
                 label: "Edit",
                 icon: <Pencil className="h-3.5 w-3.5" />,
                 onClick: () =>
-                  router.push(`/${tenantCode}/add-purchase?edit=${row.id}`),
+                  router.push(`${tenantBasePath(tenantCode)}/add-purchase?edit=${row.id}`),
               },
               ...(canAddPaymentForStatus(row.paymentStatus, row.paymentDue)
                 ? [
@@ -336,7 +337,7 @@ export function Hq6PurchasesListView() {
                 label: "Labels",
                 icon: <Barcode className="h-3.5 w-3.5" />,
                 onClick: () =>
-                  router.push(`/${tenantCode}/print-labels?purchaseId=${row.id}`),
+                  router.push(`${tenantBasePath(tenantCode)}/print-labels?purchaseId=${row.id}`),
               },
               {
                 id: "purchase_return",
@@ -344,7 +345,7 @@ export function Hq6PurchasesListView() {
                 icon: <RotateCcw className="h-3.5 w-3.5" />,
                 onClick: () =>
                   router.push(
-                    `/${tenantCode}/purchase-return?purchaseId=${row.id}`,
+                    `${tenantBasePath(tenantCode)}/purchase-return?purchaseId=${row.id}`,
                   ),
               },
               {
@@ -509,7 +510,7 @@ export function Hq6PurchasesListView() {
       slug="purchases"
       title="Purchases"
       tabLabel="All Purchases"
-      addHref={tenantCode ? `/${tenantCode}/add-purchase` : undefined}
+      addHref={tenantCode ? `${tenantBasePath(tenantCode)}/add-purchase` : undefined}
       onExport={() => void handleExport()}
       columnOptions={columnOptions}
       defaultVisibleColumnKeys={columnOptions.map((c) => c.key)}

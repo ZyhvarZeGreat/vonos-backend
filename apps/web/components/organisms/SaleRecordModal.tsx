@@ -33,6 +33,7 @@ import {
 import { formatCurrency } from "@/lib/utils/formatCurrency";
 import { formatDate } from "@/lib/utils/formatDate";
 import { invoiceDocumentLayoutProps } from "@/lib/utils/resolveInvoiceLayout";
+import { tenantBasePath } from "@/lib/utils/tenantMount";
 
 export interface SaleRecordModalProps {
   saleId: string | null;
@@ -225,7 +226,7 @@ export function SaleRecordModal({
         showBack={showBack}
         fullPageHref={
           showFullPageLink && saleId && tenantCode
-            ? `/${tenantCode}/${listSlug}/${saleId}`
+            ? `${tenantBasePath(tenantCode)}/${listSlug}/${saleId}`
             : undefined
         }
         isLoading={isLoading}
@@ -309,7 +310,7 @@ export function SaleRecordModal({
               </Button>
               {showFullPageLink && saleId && tenantCode ? (
                 <a
-                  href={`/${tenantCode}/${listSlug}/${saleId}`}
+                  href={`${tenantBasePath(tenantCode)}/${listSlug}/${saleId}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-flex h-8 items-center rounded-lg border border-border px-3 text-sm font-medium hover:bg-[var(--color-surface-muted)]"

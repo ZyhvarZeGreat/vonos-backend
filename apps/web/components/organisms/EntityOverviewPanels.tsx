@@ -5,6 +5,7 @@ import type { OverviewPanel } from "@vonos/types";
 import { CompactDataPanel } from "@/components/organisms/CompactDataPanel";
 import { formatCurrency } from "@/lib/utils/formatCurrency";
 import type { TenantCode } from "@/lib/registries/tenants";
+import { tenantBasePath } from "@/lib/utils/tenantMount";
 
 interface EntityOverviewPanelsProps {
   panels: OverviewPanel[];
@@ -39,7 +40,7 @@ export function EntityOverviewPanels({ panels, tenantCode }: EntityOverviewPanel
           />
           {panel.viewAllRoute ? (
             <Link
-              href={`/${tenantCode}/${panel.viewAllRoute}`}
+              href={`${tenantBasePath(tenantCode)}/${panel.viewAllRoute}`}
               className="text-sm font-medium text-primary hover:underline"
             >
               View all →

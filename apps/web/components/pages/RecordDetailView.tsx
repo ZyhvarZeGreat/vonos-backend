@@ -48,6 +48,7 @@ import { Hq6UserDetailView } from "@/components/pages/Hq6UserDetailView";
 import { Hq6PageFrame } from "@/components/hq6/Hq6Chrome";
 import { Hq6SupplierDetailView } from "@/components/pages/Hq6SupplierDetailView";
 import { useIsVaHq6 } from "@/lib/hooks/useIsVaHq6";
+import { tenantBasePath } from "@/lib/utils/tenantMount";
 
 function DetailLoading() {
   return <DetailPageSkeleton />;
@@ -741,10 +742,10 @@ function Hq6SaleDetailRedirect({ recordId }: { recordId: string }) {
       const status = searchParams.get("status");
       const createPath =
         status === "draft"
-          ? `/${tenantCode}/add-draft`
+          ? `${tenantBasePath(tenantCode)}/add-draft`
           : status === "quotation"
-            ? `/${tenantCode}/add-quotation`
-            : `/${tenantCode}/add-sale`;
+            ? `${tenantBasePath(tenantCode)}/add-quotation`
+            : `${tenantBasePath(tenantCode)}/add-sale`;
       router.replace(createPath);
       return;
     }
@@ -1200,11 +1201,11 @@ export function RecordDetailView({
   useLayoutEffect(() => {
     if (recordId !== "new" && recordId !== "create") return;
     if (listSlug === "purchases" || listSlug === "inbound") {
-      router.replace(`/${tenantCode}/add-purchase`);
+      router.replace(`${tenantBasePath(tenantCode)}/add-purchase`);
       return;
     }
     if (listSlug === "expenses") {
-      router.replace(`/${tenantCode}/add-expense`);
+      router.replace(`${tenantBasePath(tenantCode)}/add-expense`);
     }
   }, [listSlug, recordId, router, tenantCode]);
 

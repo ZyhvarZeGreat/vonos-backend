@@ -9,6 +9,12 @@ describe("getPostLoginPath", () => {
   it("sends tenant users to their overview", () => {
     expect(getPostLoginPath("admin", "tenant_va_001")).toBe("/VA/overview");
     expect(getPostLoginPath("staff", "tenant_vw_001")).toBe("/VW/overview");
+    expect(getPostLoginPath("admin", "tenant_vs_001")).toBe(
+      "/operations/VS/overview",
+    );
+    expect(getPostLoginPath("manager", "tenant_vkw_001")).toBe(
+      "/operations/VKW/overview",
+    );
   });
 });
 

@@ -44,6 +44,7 @@ import { formatHq6Currency } from "@/lib/utils/hq6Format";
 import { UposGradientActionButton } from "@/components/upos/UposNavTabs";
 import { useAuthStore } from "@/stores/authStore";
 import { toast } from "@/stores/toastStore";
+import { tenantBasePath } from "@/lib/utils/tenantMount";
 
 const EXPORT_COLUMNS = [
   { key: "name", header: "Name" },
@@ -289,7 +290,7 @@ export function Hq6PaymentAccountsListView() {
               className="tw-dw-btn tw-dw-btn-outline tw-dw-btn-xs tw-dw-btn-warning btn-xs"
               onClick={() => {
                 if (!tenantCode) return;
-                router.push(`/${tenantCode}/account-book/${row.id}`);
+                router.push(`${tenantBasePath(tenantCode)}/account-book/${row.id}`);
               }}
             >
               <i className="fa fa-book" aria-hidden /> Account Book
@@ -574,7 +575,7 @@ export function Hq6PaymentAccountsListView() {
                       type="button"
                       className="tw-underline tw-font-semibold"
                       onClick={() =>
-                        router.push(`/${tenantCode}/payments?unlinked=1`)
+                        router.push(`${tenantBasePath(tenantCode)}/payments?unlinked=1`)
                       }
                     >
                       View which ones

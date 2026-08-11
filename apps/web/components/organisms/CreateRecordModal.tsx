@@ -43,6 +43,7 @@ import {
   requiredTextSchema,
 } from "@/lib/validation/schemas";
 import { z } from "zod";
+import { tenantBasePath } from "@/lib/utils/tenantMount";
 
 function resetOnClose() {
   return {
@@ -106,12 +107,12 @@ export function CreateRecordModal() {
     if (!open || !isHq6 || !tenantCode || !createFlow) return;
     if (isItemFlow(createFlow)) {
       closeModal();
-      router.push(`/${tenantCode}/add-product`);
+      router.push(`${tenantBasePath(tenantCode)}/add-product`);
       return;
     }
     if (createFlow === "sale") {
       closeModal();
-      router.push(`/${tenantCode}/add-sale`);
+      router.push(`${tenantBasePath(tenantCode)}/add-sale`);
     }
   }, [closeModal, createFlow, isHq6, open, router, tenantCode]);
 

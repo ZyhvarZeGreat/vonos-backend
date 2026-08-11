@@ -60,6 +60,7 @@ import { cn } from "@/lib/utils/cn";
 import { removeEntityFromQueries } from "@/lib/query/optimistic";
 import { dismissFirstWrite } from "@/lib/utils/dismissFirstWrite";
 import { announceRedirect } from "@/lib/utils/announceRedirect";
+import { tenantBasePath } from "@/lib/utils/tenantMount";
 
 function SaleCustomerCell({ row }: { row: Sale }) {
   const notes = parseSaleInvoiceNotes(row.notes);
@@ -450,13 +451,13 @@ export function Hq6SalesListView({
         const isDraft = row.recordStatus === "draft";
         const isProvisional = isQuotation || isDraft;
         const editPath = isQuotation
-          ? `/${tenantCode}/add-quotation?edit=${row.id}`
+          ? `${tenantBasePath(tenantCode)}/add-quotation?edit=${row.id}`
           : isDraft
-            ? `/${tenantCode}/add-draft?edit=${row.id}`
-            : `/${tenantCode}/add-sale?edit=${row.id}`;
+            ? `${tenantBasePath(tenantCode)}/add-draft?edit=${row.id}`
+            : `${tenantBasePath(tenantCode)}/add-sale?edit=${row.id}`;
         const copyPath = isQuotation
-          ? `/${tenantCode}/add-quotation?edit=${row.id}&copy=1`
-          : `/${tenantCode}/add-draft?edit=${row.id}&copy=1`;
+          ? `${tenantBasePath(tenantCode)}/add-quotation?edit=${row.id}&copy=1`
+          : `${tenantBasePath(tenantCode)}/add-draft?edit=${row.id}&copy=1`;
         const notifyKind = isQuotation
           ? "quotation"
           : isDraft
@@ -560,7 +561,7 @@ export function Hq6SalesListView({
             id: "sell_return",
             label: "Sell Return",
             onClick: () =>
-              router.push(`/${tenantCode}/returns?saleId=${row.id}`),
+              router.push(`${tenantBasePath(tenantCode)}/returns?saleId=${row.id}`),
           },
           {
             id: "invoice_url",
@@ -1053,7 +1054,7 @@ export function Hq6SalesListView({
           if (!requireCreateSale()) return;
           if (!tenantCode) return;
           if (slug === "pos") {
-            router.push(`/${tenantCode}/pos-terminal`);
+            router.push(`${tenantBasePath(tenantCode)}/pos-terminal`);
             return;
           }
           // HQ6 Add Sale / Draft / Quotation are full create pages, not modals.
@@ -1063,7 +1064,7 @@ export function Hq6SalesListView({
               : slug === "quotations"
                 ? "add-quotation"
                 : "add-sale";
-          router.push(`/${tenantCode}/${createSlug}`);
+          router.push(`${tenantBasePath(tenantCode)}/${createSlug}`);
         }}
         onExport={handleExport}
         pageSize={pageSize}
@@ -1298,7 +1299,7 @@ export function Hq6SalesListView({
                     removeEntityFromQueries(queryClient, ["sales"], target.id);
                     if (leaveToSales && tenantCode) {
                       announceRedirect("Converting & opening sales…");
-                      router.push(`/${tenantCode}/sales`);
+                      router.push(`${tenantBasePath(tenantCode)}/sales`);
                     }
                   },
                   write: () =>

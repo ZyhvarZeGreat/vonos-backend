@@ -1,4 +1,5 @@
 import { isHq6Tenant } from "@/lib/utils/isHq6Tenant";
+import { tenantPath } from "@/lib/utils/tenantMount";
 
 const LIST_SLUG_BY_RECORD_TYPE: Record<string, string> = {
   item: "inventory",
@@ -20,7 +21,7 @@ export function recordDetailPath(
   if (!tenantCode || !recordType || !recordId) return null;
   const slug = LIST_SLUG_BY_RECORD_TYPE[recordType];
   if (!slug) return null;
-  return `/${tenantCode}/${slug}/${recordId}`;
+  return tenantPath(tenantCode, slug, recordId);
 }
 
 /**
@@ -59,9 +60,9 @@ export function reportRowRecordId(row: {
  */
 export function saleRecordPath(tenantCode: string, saleId: string): string {
   if (isHq6Tenant(tenantCode)) {
-    return `/${tenantCode}/sales?record=${encodeURIComponent(saleId)}`;
+    return `${tenantPath(tenantCode, "sales")}?record=${encodeURIComponent(saleId)}`;
   }
-  return `/${tenantCode}/sales/${saleId}`;
+  return tenantPath(tenantCode, "sales", saleId);
 }
 
 /** Build a detail (or HQ6 modal) path for a report row. */

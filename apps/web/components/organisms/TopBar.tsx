@@ -42,6 +42,7 @@ import { toast } from "@/stores/toastStore";
 import { topbarAccentStyle } from "@/lib/registries/tenantAccents";
 import { cn } from "@/lib/utils/cn";
 import { isHq6Tenant } from "@/lib/utils/isHq6Tenant";
+import { tenantBasePath } from "@/lib/utils/tenantMount";
 
 export interface TopBarProps {
   title?: string;
@@ -203,7 +204,7 @@ export function TopBar({
                 className="hq6-topbar-icon hq6-topbar-icon-pos"
                 title="POS"
                 aria-label="POS"
-                onClick={() => router.push(`/${tenantCode}/pos-terminal`)}
+                onClick={() => router.push(`${tenantBasePath(tenantCode)}/pos-terminal`)}
               >
                 <Monitor className="h-4 w-4" />
               </button>
@@ -212,7 +213,7 @@ export function TopBar({
                 className="hq6-topbar-icon hq6-topbar-icon-add"
                 title="Add Product"
                 aria-label="Add Product"
-                onClick={() => router.push(`/${tenantCode}/add-product`)}
+                onClick={() => router.push(`${tenantBasePath(tenantCode)}/add-product`)}
               >
                 <Plus className="h-4 w-4" />
               </button>
@@ -257,7 +258,7 @@ export function TopBar({
                 className="hq6-topbar-icon"
                 title="Modules"
                 aria-label="Modules"
-                onClick={() => router.push(`/${tenantCode}/overview`)}
+                onClick={() => router.push(`${tenantBasePath(tenantCode)}/overview`)}
               >
                 <Grid2X2 className="h-4 w-4" />
               </button>

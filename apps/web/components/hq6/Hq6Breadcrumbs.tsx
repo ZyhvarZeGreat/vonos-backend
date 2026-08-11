@@ -7,6 +7,7 @@ import { UPOS_AUDIT_PAGES } from "@/lib/registries/uposPageAudit";
 import { hq6CopyForSlug } from "@/lib/registries/hq6PageCopy";
 import { useRouteTenant } from "@/lib/hooks/useRouteTenant";
 import { cn } from "@/lib/utils/cn";
+import { tenantBasePath } from "@/lib/utils/tenantMount";
 
 export type Hq6BreadcrumbItem = {
   label: string;
@@ -74,14 +75,14 @@ export function useHq6Breadcrumbs(options?: {
     if (!code) {
       return [{ label: "Home", href: "/admin" }];
     }
-    const homeHref = `/${code}/overview`;
+    const homeHref = `${tenantBasePath(code)}/overview`;
     const crumbs: Hq6BreadcrumbItem[] = [
       { label: "Home", href: homeHref },
     ];
 
     const path = pathname.replace(/\/+$/, "") || "/";
     const match = UPOS_AUDIT_PAGES.find((page) => {
-      const route = page.route.replace(/^\/VA/i, `/${code}`);
+      const route = page.route.replace(/^\/VA/i, tenantBasePath(code));
       return (
         path === route ||
         path.startsWith(`${route}/`) ||

@@ -21,6 +21,7 @@ import { formatCurrencyCompact, formatNumberCompact } from "@/lib/utils/formatCu
 import { uniqueFieldOptions } from "@/lib/utils/listFilters";
 import { formatDate } from "@/lib/utils/formatDate";
 import { nameListCursor } from "@/lib/utils/pagination";
+import { tenantBasePath } from "@/lib/utils/tenantMount";
 
 const SUPPLIER_TABS = [
   { id: "all", label: "All Suppliers" },
@@ -55,7 +56,7 @@ function supplierColumns(
             {
               id: "pay",
               label: "Pay",
-              onClick: () => router.push(`/${tenantCode}/payments?supplierId=${row.id}`),
+              onClick: () => router.push(`${tenantBasePath(tenantCode)}/payments?supplierId=${row.id}`),
             },
             {
               id: "ledger",
@@ -234,7 +235,7 @@ function WarehouseSuppliersViewBody() {
             router.push(`${detailPath(id)}?view=purchases`);
             return;
           }
-          router.push(`/${tenantCode}/inbound`);
+          router.push(`${tenantBasePath(tenantCode)}/inbound`);
         },
         router,
       ),

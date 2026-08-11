@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import type { ProductSectionId } from "@/components/organisms/ProductMetaPanel";
 import { useRouteTenant } from "@/lib/hooks/useRouteTenant";
+import { tenantBasePath } from "@/lib/utils/tenantMount";
 
 function listSlugForArchetype(
   code: string,
@@ -34,7 +35,7 @@ export function ProductSectionRedirect({ section }: { section: ProductSectionId 
     const listSlug = listSlugForArchetype(tenantCode, config?.archetype ?? undefined);
     const params = new URLSearchParams(searchParams.toString());
     params.set("section", section);
-    router.replace(`/${tenantCode}/${listSlug}?${params.toString()}`);
+    router.replace(`${tenantBasePath(tenantCode)}/${listSlug}?${params.toString()}`);
   }, [tenantCode, config?.archetype, router, searchParams, section]);
 
   return null;

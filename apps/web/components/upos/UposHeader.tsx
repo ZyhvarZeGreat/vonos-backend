@@ -23,6 +23,7 @@ import {
 import { formatApiError } from "@/lib/utils/formatApiError";
 import { toast } from "@/stores/toastStore";
 import { cn } from "@/lib/utils/cn";
+import { tenantBasePath } from "@/lib/utils/tenantMount";
 
 export interface UposHeaderProps {
   tenantCode: string;
@@ -253,7 +254,7 @@ export function UposHeader({
                           Calendar / To Do
                         </button>
                         <Link
-                          href={`/${tenantCode}/essentials-todo`}
+                          href={`${tenantBasePath(tenantCode)}/essentials-todo`}
                           className="tw-flex tw-items-center tw-gap-2 tw-px-3 tw-py-2 tw-text-sm tw-font-medium tw-text-gray-600 tw-rounded-lg hover:tw-bg-gray-100"
                           role="menuitem"
                           onClick={() => setToolsOpen(false)}
@@ -329,7 +330,7 @@ export function UposHeader({
                 <>
                   {/* POS */}
                   <Link
-                    href={`/${tenantCode}/pos-terminal`}
+                    href={`${tenantBasePath(tenantCode)}/pos-terminal`}
                     className="tw-inline-flex tw-transition-all tw-duration-200 tw-gap-2 theme-btn-bg tw-py-1.5 tw-px-3 tw-rounded-lg tw-items-center tw-justify-center tw-text-sm tw-font-medium tw-ring-1 tw-ring-white/10 hover:tw-text-white tw-text-white"
                   >
                     <svg
@@ -509,7 +510,7 @@ export function UposHeader({
                   </div>
                   <li>
                     <Link
-                      href={isAdminHeader ? "/admin/security" : `/${tenantCode}/users`}
+                      href={isAdminHeader ? "/admin/security" : `${tenantBasePath(tenantCode)}/users`}
                       className="tw-flex tw-items-center tw-gap-2 tw-px-3 tw-py-2 tw-text-sm tw-font-medium tw-text-gray-600 tw-rounded-lg hover:tw-bg-gray-100"
                       role="menuitem"
                       onClick={() => setUserOpen(false)}

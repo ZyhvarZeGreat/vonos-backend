@@ -39,6 +39,7 @@ import {
   formatHq6PaymentMethod,
 } from "@/lib/utils/hq6Format";
 import { toast } from "@/stores/toastStore";
+import { tenantBasePath } from "@/lib/utils/tenantMount";
 
 interface PaymentRow {
   id: string;
@@ -351,7 +352,7 @@ export function Hq6PaymentsListView() {
     setBulkOpen(true);
   };
 
-  const paymentsBase = tenantCode ? `/${tenantCode}/payments` : "/payments";
+  const paymentsBase = tenantCode ? `${tenantBasePath(tenantCode)}/payments` : "/payments";
 
   const columns: ColumnConfig<PaymentRow>[] = useMemo(
     () => [

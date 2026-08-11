@@ -15,6 +15,7 @@ import {
 import { cn } from "@/lib/utils/cn";
 import { toast } from "@/stores/toastStore";
 import { useAdminEntityStore } from "@/stores/adminEntityStore";
+import { tenantBasePath } from "@/lib/utils/tenantMount";
 
 export interface HrmActionBarProps {
   /** VAG group HRM — pick entity for manage / add deep links. */
@@ -96,7 +97,7 @@ export function HrmActionBar({
     const code = requireEntity();
     if (!code) return;
     setMenuOpen(false);
-    router.push(`/${code}/users/new/edit`);
+    router.push(`${tenantBasePath(code)}/users/new/edit`);
   };
 
   const goAddRole = () => {
@@ -109,7 +110,7 @@ export function HrmActionBar({
     }
     const code = requireEntity();
     if (!code) return;
-    router.push(`/${code}/roles/new/edit`);
+    router.push(`${tenantBasePath(code)}/roles/new/edit`);
   };
 
   const actionBtnClass = isHq6

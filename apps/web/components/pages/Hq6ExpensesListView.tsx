@@ -71,6 +71,7 @@ import { cn } from "@/lib/utils/cn";
 import { toast } from "@/stores/toastStore";
 import { hq6PaymentBadgeClass } from "@/lib/utils/hq6PaymentBadge";
 import { HQ6_PAYMENT_METHOD_OPTIONS } from "@/lib/utils/hq6PaymentMethods";
+import { tenantBasePath } from "@/lib/utils/tenantMount";
 
 /** HQ6 Expenses list — ui-audit/36_expenses */
 export function Hq6ExpensesListView() {
@@ -527,7 +528,7 @@ export function Hq6ExpensesListView() {
           <div className="flex flex-wrap items-center gap-2">
             <UposGradientActionButton
               label="Import expense"
-              href={`/${tenantCode}/import-expense`}
+              href={`${tenantBasePath(tenantCode)}/import-expense`}
             />
             <UposGradientActionButton
               label="Add"

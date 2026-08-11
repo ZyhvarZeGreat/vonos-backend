@@ -69,6 +69,7 @@ import { locationFilterOptions } from "@/lib/utils/locationLabels";
 import { customerListCursor, createdAtListCursor, itemListCursor, nameListCursor, plateListCursor, saleListCursor } from "@/lib/utils/pagination";
 import { useUiStore } from "@/stores/uiStore";
 import { useTenantStore } from "@/stores/tenantStore";
+import { tenantBasePath } from "@/lib/utils/tenantMount";
 
 interface SalesListViewProps {
   saleStatus?: SaleStatus;
@@ -332,7 +333,7 @@ export function SellListsRouteView() {
     if (!tenant) return;
     for (const sibling of ["sales", "quotations", "drafts", "shipments"] as const) {
       if (sibling === slug) continue;
-      router.prefetch(`/${tenant}/${sibling}`);
+      router.prefetch(`${tenantBasePath(tenant)}/${sibling}`);
     }
   }, [router, slug, tenant]);
 
@@ -598,7 +599,7 @@ function CustomersListViewBody() {
         <RowActionsMenu
           actions={[
             { id: "view", label: "View", onClick: () => openRecord(row.id, row) },
-            { id: "pay", label: "Pay", onClick: () => router.push(`/${tenantCode}/payments?customerId=${row.id}`) },
+            { id: "pay", label: "Pay", onClick: () => router.push(`${tenantBasePath(tenantCode)}/payments?customerId=${row.id}`) },
             {
               id: "ledger",
               label: "Ledger",
@@ -607,7 +608,7 @@ function CustomersListViewBody() {
                 setLedgerCustomerName(row.businessName ?? row.name);
               },
             },
-            { id: "sales", label: "Sales", onClick: () => router.push(`/${tenantCode}/sales`) },
+            { id: "sales", label: "Sales", onClick: () => router.push(`${tenantBasePath(tenantCode)}/sales`) },
           ]}
         />
       ),

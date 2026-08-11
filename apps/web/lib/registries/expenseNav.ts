@@ -1,4 +1,5 @@
 import type { TenantCode } from "@/lib/registries/tenants";
+import { tenantPath } from "@/lib/utils/tenantMount";
 
 export const EXPENSE_PAGE_TABS = [
   { id: "expenses", label: "List Expenses", slug: "expenses" },
@@ -20,5 +21,5 @@ export function expensePageTabs(activeSlug: ExpensePageSlug) {
 }
 
 export function expensePageRoute(code: TenantCode, slug: ExpensePageSlug): string {
-  return `/${code}/${slug}`;
+  return tenantPath(code, slug);
 }

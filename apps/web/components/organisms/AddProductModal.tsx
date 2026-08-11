@@ -9,6 +9,7 @@ import { getProductForForm } from "@/lib/api/catalog";
 import { useIsVaHq6 } from "@/lib/hooks/useIsVaHq6";
 import { useRouteTenant, useTenantId } from "@/lib/hooks/useRouteTenant";
 import { useUiStore } from "@/stores/uiStore";
+import { tenantBasePath } from "@/lib/utils/tenantMount";
 
 export function AddProductModal() {
   const router = useRouter();
@@ -27,7 +28,7 @@ export function AddProductModal() {
     if (!open || !isHq6 || !tenantCode) return;
     const qs = duplicateFromId ? `?d=${duplicateFromId}` : "";
     closeModal();
-    router.push(`/${tenantCode}/add-product${qs}`);
+    router.push(`${tenantBasePath(tenantCode)}/add-product${qs}`);
   }, [closeModal, duplicateFromId, isHq6, open, router, tenantCode]);
 
   const { data: duplicateFrom } = useQuery({

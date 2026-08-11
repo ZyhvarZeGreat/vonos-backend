@@ -3,8 +3,10 @@ import type { ReportSource } from "@vonos/types";
 import { reportsForArchetype } from "@/lib/registries/reportRegistry";
 import type { NavSection } from "@/components/organisms/Sidebar";
 
+import { tenantPath } from "@/lib/utils/tenantMount";
+
 function tenantRoute(code: string, slug: string): string {
-  return `/${code}/${slug}`;
+  return tenantPath(code, slug);
 }
 
 function hasReportsModule(config: TenantConfig): boolean {

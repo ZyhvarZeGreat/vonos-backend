@@ -11,6 +11,7 @@ import { hq6CopyForSlug } from "@/lib/registries/hq6PageCopy";
 import { goToList } from "@/lib/utils/goToList";
 import { withBasePath } from "@/lib/utils/basePath";
 import type { SaleFormPresetStatus } from "@/stores/uiStore";
+import { tenantBasePath } from "@/lib/utils/tenantMount";
 
 function listSlugForSaleStatus(status: string | null | undefined): string {
   if (status === "draft") return "drafts";
@@ -82,7 +83,7 @@ function AddSalePage({
           }
         }
         if (!tenantCode) return;
-        goToList(`/${tenantCode}/${listSlugForSaleStatus(sale.status)}`);
+        goToList(`${tenantBasePath(tenantCode)}/${listSlugForSaleStatus(sale.status)}`);
       }}
     />
   );

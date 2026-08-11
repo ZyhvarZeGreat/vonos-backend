@@ -36,6 +36,7 @@ import {
 } from "@/lib/utils/ledgerAmountStyles";
 import { cn } from "@/lib/utils/cn";
 import { toast } from "@/stores/toastStore";
+import { tenantBasePath } from "@/lib/utils/tenantMount";
 
 function humanizeSubType(subType: string | null | undefined): string {
   if (!subType?.trim()) return "—";
@@ -161,7 +162,7 @@ export function AccountBookView({ accountId }: { accountId?: string }) {
 
   const currency = account?.currency ?? "NGN";
   const accountsHref = tenantCode
-    ? `/${tenantCode}/payment-accounts`
+    ? `${tenantBasePath(tenantCode)}/payment-accounts`
     : "/payment-accounts";
 
   const handleExport = async () => {

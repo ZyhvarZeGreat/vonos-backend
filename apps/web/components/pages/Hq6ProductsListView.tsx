@@ -53,6 +53,7 @@ import {
   Hq6Breadcrumbs,
   useHq6Breadcrumbs,
 } from "@/components/hq6/Hq6Breadcrumbs";
+import { tenantBasePath } from "@/lib/utils/tenantMount";
 
 const TAX_RATES_STORAGE_PREFIX = "vonos:hq6-tax-rates:";
 const DEFAULT_TAX_FILTER_OPTIONS = [
@@ -681,7 +682,7 @@ export function Hq6ProductsListView({
                       onClick={() => {
                         if (!requireCan("product.create")) return;
                         if (!tenantCode) return;
-                        router.push(`/${tenantCode}/add-product`);
+                        router.push(`${tenantBasePath(tenantCode)}/add-product`);
                       }}
                     />
                     <UposGradientActionButton
@@ -904,7 +905,7 @@ export function Hq6ProductsListView({
                               key={row.id}
                               role="row"
                               className={index % 2 === 0 ? "odd" : "even"}
-                              data-href={`/${tenantCode}/${listSlug}/${row.id}`}
+                              data-href={`${tenantBasePath(tenantCode)}/${listSlug}/${row.id}`}
                               onMouseEnter={() => {
                                 prefetchDetail(row.id);
                                 if (tenantId) {
@@ -986,7 +987,7 @@ export function Hq6ProductsListView({
                                           label: "Labels",
                                           onClick: () =>
                                             router.push(
-                                              `/${tenantCode}/print-labels?productId=${row.id}`,
+                                              `${tenantBasePath(tenantCode)}/print-labels?productId=${row.id}`,
                                             ),
                                         },
                                         {
@@ -1009,7 +1010,7 @@ export function Hq6ProductsListView({
                                                 row,
                                               );
                                             }
-                                            const href = `/${tenantCode}/add-product?edit=${row.id}`;
+                                            const href = `${tenantBasePath(tenantCode)}/add-product?edit=${row.id}`;
                                             router.prefetch(href);
                                             router.push(href);
                                           },
@@ -1051,7 +1052,7 @@ export function Hq6ProductsListView({
                                                 label: "Product stock history",
                                                 onClick: () =>
                                                   router.push(
-                                                    `/${tenantCode}/${listSlug}/${row.id}?view=stock_history`,
+                                                    `${tenantBasePath(tenantCode)}/${listSlug}/${row.id}?view=stock_history`,
                                                   ),
                                               },
                                             ]
@@ -1072,7 +1073,7 @@ export function Hq6ProductsListView({
                                                 row,
                                               );
                                             }
-                                            const href = `/${tenantCode}/add-product?d=${row.id}`;
+                                            const href = `${tenantBasePath(tenantCode)}/add-product?d=${row.id}`;
                                             router.prefetch(href);
                                             router.push(href);
                                           },
@@ -1085,7 +1086,7 @@ export function Hq6ProductsListView({
                               {isColVisible("name") ? (
                                 <td className={sort?.sortBy === "name" ? "sorting_1" : undefined}>
                                   <a
-                                    href={`/${tenantCode}/${listSlug}/${row.id}`}
+                                    href={`${tenantBasePath(tenantCode)}/${listSlug}/${row.id}`}
                                     onClick={(e) => {
                                       e.preventDefault();
                                       setViewItem(row);

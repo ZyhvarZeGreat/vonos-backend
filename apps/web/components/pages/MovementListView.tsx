@@ -33,6 +33,7 @@ import { formatDate } from "@/lib/utils/formatDate";
 import { uniqueFieldOptions } from "@/lib/utils/listFilters";
 import { compositeListCursorFrom } from "@/lib/utils/pagination";
 import { useQueryClient } from "@tanstack/react-query";
+import { tenantBasePath } from "@/lib/utils/tenantMount";
 
 interface MovementListViewProps {
   type: "inbound" | "outbound";
@@ -169,7 +170,7 @@ function MovementListViewBody({
                         onClick: () => {
                           if (!tenantCode) return;
                           window.location.href = withBasePath(
-                            `/${tenantCode}/add-purchase?edit=${row.id}`,
+                            `${tenantBasePath(tenantCode)}/add-purchase?edit=${row.id}`,
                           );
                         },
                       },
@@ -255,7 +256,7 @@ function MovementListViewBody({
       primaryAction={
         type === "inbound" && tenantCode ? (
           <a
-            href={`/${tenantCode}/add-purchase`}
+            href={`${tenantBasePath(tenantCode)}/add-purchase`}
             className="inline-flex h-9 items-center rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground"
           >
             Add Purchase

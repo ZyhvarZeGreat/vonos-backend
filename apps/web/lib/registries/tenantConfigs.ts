@@ -3,13 +3,14 @@ import { catalogPresetsForCode, HQ6_POS_ENABLED_MODULES, RETAIL_CATALOG_ENABLED_
 import type { NavSection } from "@/components/organisms/Sidebar";
 import { adminNavTail } from "@/lib/registries/adminNavItems";
 import { allPosNavItems, posNavSectionsForConfig } from "@/lib/registries/posNavSections";
+import { tenantPath } from "@/lib/utils/tenantMount";
 
 function withCatalog(config: TenantConfig): TenantConfig {
   return { ...config, ...catalogPresetsForCode(config.code) };
 }
 
 const stockNavItems = (code: string) => [
-  { label: "Home", icon: "home", route: `/${code}/overview`, pageType: "dashboard" as const },
+  { label: "Home", icon: "home", route: tenantPath(code, "overview"), pageType: "dashboard" as const },
   ...adminNavTail(code),
 ];
 
@@ -46,8 +47,8 @@ export const kidsWearTenantConfig: TenantConfig = withCatalog({
 });
 
 const transactionNavItems = (code: string) => [
-  { label: "Home", icon: "home", route: `/${code}/overview`, pageType: "dashboard" as const },
-  { label: "Customers", icon: "users", route: `/${code}/customers`, pageType: "list" as const },
+  { label: "Home", icon: "home", route: tenantPath(code, "overview"), pageType: "dashboard" as const },
+  { label: "Customers", icon: "users", route: tenantPath(code, "customers"), pageType: "list" as const },
   ...adminNavTail(code),
 ];
 
@@ -227,11 +228,11 @@ export const saloonTenantConfig: TenantConfig = withCatalog({
   name: "Vonos Saloon",
   archetype: "appointment",
   navItems: [
-    { label: "Home", icon: "home", route: "/VS/overview", pageType: "dashboard" },
-    { label: "Appointments", icon: "calendar", route: "/VS/appointments", pageType: "list" },
-    { label: "Customers", icon: "users", route: "/VS/customers", pageType: "list" },
-    { label: "Services", icon: "scissors", route: "/VS/services", pageType: "list" },
-    { label: "Stylist Schedule", icon: "clock", route: "/VS/stylist-schedule", pageType: "form" },
+    { label: "Home", icon: "home", route: tenantPath("VS", "overview"), pageType: "dashboard" },
+    { label: "Appointments", icon: "calendar", route: tenantPath("VS", "appointments"), pageType: "list" },
+    { label: "Customers", icon: "users", route: tenantPath("VS", "customers"), pageType: "list" },
+    { label: "Services", icon: "scissors", route: tenantPath("VS", "services"), pageType: "list" },
+    { label: "Stylist Schedule", icon: "clock", route: tenantPath("VS", "stylist-schedule"), pageType: "form" },
     ...adminNavTail("VS"),
   ],
   kpiCards: [

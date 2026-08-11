@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useRouteTenant } from "@/lib/hooks/useRouteTenant";
 import { toast } from "@/stores/toastStore";
+import { tenantBasePath } from "@/lib/utils/tenantMount";
 
 /**
  * Ultimate POS — cash_register/create.blade.php (Open Cash Register).
@@ -77,7 +78,7 @@ export function Hq6PosOpenRegisterView() {
                       return;
                     }
                     toast.success("Cash register opened");
-                    router.push(`/${tenantCode}/pos`);
+                    router.push(`${tenantBasePath(tenantCode)}/pos`);
                   }}
                 >
                   Open Register

@@ -2,6 +2,16 @@ import { getTenantConfigByCode, allNavRoutesForConfig } from "@/lib/registries/t
 import { isEntityPageSlug } from "@/lib/registries/entityPages";
 import type { TenantCode } from "@/lib/registries/tenants";
 import { isTenantCode } from "@/lib/registries/tenants";
+import {
+  OPERATIONS_MOUNTED_TENANTS,
+  tenantPath,
+} from "@/lib/utils/tenantMount";
+
+export {
+  OPERATIONS_MOUNTED_TENANTS,
+  tenantBasePath,
+  tenantPath,
+} from "@/lib/utils/tenantMount";
 
 export interface ParsedTenantPath {
   tenantCode: string | null;
@@ -10,7 +20,7 @@ export interface ParsedTenantPath {
   recordId: string | null;
 }
 
-/** Parse /{tenant}/… paths into tenant, section, and optional record id. */
+/** Parse /{tenant}/… or /operations/{VS|VKW}/… into tenant, section, and optional record id. */
 export function parseTenantPath(pathname: string): ParsedTenantPath {
   const parts = pathname.split("/").filter(Boolean);
 
@@ -26,25 +36,37 @@ export function parseTenantPath(pathname: string): ParsedTenantPath {
     };
   }
 
-  const tenantCode = parts[0] ?? null;
-  const section = parts[1] ?? "overview";
-  const recordId = parts.length >= 3 && section !== "overview" && section !== "finance"
-    ? parts[2] ?? null
-    : null;
+  let offset = 0;
+  if (
+    parts[0] === "operations" &&
+    parts[1] &&
+    OPERATIONS_MOUNTED_TENANTS.has(parts[1])
+  ) {
+    offset = 1;
+  }
+
+  const tenantCode = parts[offset] ?? null;
+  const section = parts[offset + 1] ?? "overview";
+  const recordId =
+    parts.length >= offset + 3 &&
+    section !== "overview" &&
+    section !== "finance"
+      ? (parts[offset + 2] ?? null)
+      : null;
 
   return { tenantCode, section, recordId };
 }
 
 export function tenantOverviewPath(code: TenantCode): string {
-  return `/${code}/overview`;
+  return tenantPath(code, "overview");
 }
 
 export function tenantListPath(tenantCode: string, listSlug: string): string {
-  return `/${tenantCode}/${listSlug}`;
+  return tenantPath(tenantCode, listSlug);
 }
 
 export function tenantFinancePath(tenantCode: string): string {
-  return `/${tenantCode}/finance`;
+  return tenantPath(tenantCode, "finance");
 }
 
 export function tenantDetailPath(
@@ -52,7 +74,7 @@ export function tenantDetailPath(
   listSlug: string,
   recordId: string,
 ): string {
-  return `/${tenantCode}/${listSlug}/${recordId}`;
+  return tenantPath(tenantCode, listSlug, recordId);
 }
 
 /** True when pathname is on this nav route (list or detail under it). */
@@ -67,8 +89,7 @@ function sectionExistsForTenant(tenantCode: string, section: string): boolean {
   const config = getTenantConfigByCode(tenantCode);
   if (!config) return false;
   return allNavRoutesForConfig(config).some((item) => {
-    const parts = item.route.split("/").filter(Boolean);
-    return parts[1] === section;
+    return parseTenantPath(item.route).section === section;
   });
 }
 

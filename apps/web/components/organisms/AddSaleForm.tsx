@@ -9,6 +9,7 @@ import { useRouter } from "next/navigation";
 import { Info, Minus, Plus, Trash2, X } from "lucide-react";
 import type { Customer, SaleDetail, TenantConfig } from "@vonos/types";
 import { isGroupStockConsumerTenant, isOutsideOrServiceCatalogItem } from "@vonos/types";
+import { tenantPath } from "@/lib/utils/tenantMount";
 import { Button } from "@/components/atoms/Button";
 import { ClearableNumberInput } from "@/components/atoms/ClearableNumberInput";
 import { Input } from "@/components/atoms/Input";
@@ -1748,7 +1749,7 @@ export function AddSaleForm({
                   title="Add new product"
                   onClick={() =>
                     tenantConfig?.code
-                      ? router.push(`/${tenantConfig.code}/add-product`)
+                      ? router.push(tenantPath(tenantConfig.code, "add-product"))
                       : undefined
                   }
                 >

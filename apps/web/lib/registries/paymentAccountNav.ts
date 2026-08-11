@@ -1,4 +1,5 @@
 import type { TenantCode } from "@/lib/registries/tenants";
+import { tenantPath } from "@/lib/utils/tenantMount";
 
 export const PAYMENT_ACCOUNT_PAGE_TABS = [
   { id: "payment-accounts", label: "List Accounts", slug: "payment-accounts" },
@@ -26,5 +27,5 @@ export function paymentAccountPageRoute(
   code: TenantCode,
   slug: PaymentAccountPageSlug,
 ): string {
-  return `/${code}/${slug}`;
+  return tenantPath(code, slug);
 }

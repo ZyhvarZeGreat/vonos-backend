@@ -49,6 +49,7 @@ import {
 } from "@/lib/query/modalQueryKeys";
 import { cn } from "@/lib/utils/cn";
 import { formatHq6Currency } from "@/lib/utils/hq6Format";
+import { tenantBasePath } from "@/lib/utils/tenantMount";
 
 interface PurchaseLine {
   itemId: string;
@@ -467,7 +468,7 @@ export function AddPurchaseView() {
       void qc.invalidateQueries({ queryKey: ["payment-accounts", tenantId] });
       void qc.invalidateQueries({ queryKey: ["items", tenantId] });
       void qc.invalidateQueries({ queryKey: ["catalog"] });
-      if (tenantCode) goToList(`/${tenantCode}/purchases`);
+      if (tenantCode) goToList(`${tenantBasePath(tenantCode)}/purchases`);
     },
     onError: (err: Error) => {
       toast.error(err.message || "Failed to save purchase");
@@ -571,7 +572,7 @@ export function AddPurchaseView() {
                   type="button"
                   className="hq6-btn hq6-btn-blue shrink-0"
                   title="Add supplier"
-                  onClick={() => router.push(`/${tenantCode}/suppliers`)}
+                  onClick={() => router.push(`${tenantBasePath(tenantCode)}/suppliers`)}
                 >
                   <Plus className="h-4 w-4" />
                 </button>
@@ -690,7 +691,7 @@ export function AddPurchaseView() {
         <section className="hq6-form-card">
           <div className="hq6-form-products-toolbar">
             <Link
-              href={`/${tenantCode}/import-products`}
+              href={`${tenantBasePath(tenantCode)}/import-products`}
               className="hq6-btn-purple inline-flex items-center justify-center no-underline"
             >
               Import Products
@@ -714,7 +715,7 @@ export function AddPurchaseView() {
               ) : null}
             </div>
             {!groupStockConsumer ? (
-            <Link href={`/${tenantCode}/add-product`} className="hq6-form-link">
+            <Link href={`${tenantBasePath(tenantCode)}/add-product`} className="hq6-form-link">
               + Add new product
             </Link>
             ) : null}

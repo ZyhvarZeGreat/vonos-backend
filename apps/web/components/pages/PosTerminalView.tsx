@@ -23,6 +23,7 @@ import { announceRedirect } from "@/lib/utils/announceRedirect";
 import { Hq6PosOpenRegisterView } from "@/components/pages/Hq6PosTerminalView";
 import { formatCurrency } from "@/lib/utils/formatCurrency";
 import { isGroupStockConsumerTenant } from "@vonos/types";
+import { tenantBasePath } from "@/lib/utils/tenantMount";
 
 interface SaleLineDraft {
   key: string;
@@ -152,7 +153,7 @@ function PosTerminalViewBody() {
     onSuccess: (sale) => {
       resetCart();
       announceRedirect("Opening sale…");
-      router.push(`/${tenantCode}/sales/${sale.id}`);
+      router.push(`${tenantBasePath(tenantCode)}/sales/${sale.id}`);
     },
     onError: (err: Error) => setError(err.message),
   });

@@ -22,6 +22,7 @@ import { formatDate } from "@/lib/utils/formatDate";
 import { stockMovementSeedFromListRow } from "@/lib/utils/listModalSeeds";
 import { invoiceDocumentLayoutProps } from "@/lib/utils/resolveInvoiceLayout";
 import type { StockMovementListRow } from "@vonos/types";
+import { tenantBasePath } from "@/lib/utils/tenantMount";
 
 export interface MovementRecordModalProps {
   movementId: string | null;
@@ -138,7 +139,7 @@ export function MovementRecordModal({
         showBack={showBack}
         fullPageHref={
           showFullPageLink && movementId && tenantCode
-            ? `/${tenantCode}/${listSlug}/${movementId}`
+            ? `${tenantBasePath(tenantCode)}/${listSlug}/${movementId}`
             : undefined
         }
         isLoading={isLoading && !movement}

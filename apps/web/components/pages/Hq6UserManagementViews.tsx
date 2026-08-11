@@ -42,6 +42,7 @@ import {
   validatePhone,
 } from "@/lib/utils/formValidation";
 import { toast } from "@/stores/toastStore";
+import { tenantBasePath } from "@/lib/utils/tenantMount";
 
 interface PosRegisterRow {
   id: string;
@@ -82,7 +83,7 @@ export function Hq6PosListView() {
                 id: "open",
                 label: "Open POS",
                 onClick: () =>
-                  router.push(`/${tenantCode}/pos-terminal?register=${row.id}`),
+                  router.push(`${tenantBasePath(tenantCode)}/pos-terminal?register=${row.id}`),
               },
               {
                 id: "edit",
@@ -101,7 +102,7 @@ export function Hq6PosListView() {
         header: "Cash Register",
         render: (row) => (
           <Link
-            href={`/${tenantCode}/pos-terminal?register=${row.id}`}
+            href={`${tenantBasePath(tenantCode)}/pos-terminal?register=${row.id}`}
             className="font-medium text-[var(--hq6-blue)] hover:underline"
           >
             {row.name}
@@ -130,7 +131,7 @@ export function Hq6PosListView() {
     <Hq6StandardListShell
       slug="pos"
       tabLabel="All cash registers"
-      addHref={`/${tenantCode}/pos-terminal`}
+      addHref={`${tenantBasePath(tenantCode)}/pos-terminal`}
       columnOptions={columnOptions}
       chrome={chrome}
       pageSize={25}
@@ -147,7 +148,7 @@ export function Hq6PosListView() {
       ]}
       tabActions={
         <>
-          <Link href={`/${tenantCode}/pos-terminal`} className="hq6-btn hq6-btn-blue">
+          <Link href={`${tenantBasePath(tenantCode)}/pos-terminal`} className="hq6-btn hq6-btn-blue">
             <Plus className="h-3.5 w-3.5" />
             Add
           </Link>

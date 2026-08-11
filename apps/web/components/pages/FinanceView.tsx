@@ -55,6 +55,7 @@ import { AdminEntityFinanceSheet } from "@/components/pages/AdminEntityFinanceSh
 import { isTenantCode } from "@/lib/registries/tenants";
 
 import { ROUTE_PREFETCH_STALE_MS } from "@/lib/prefetch/routePrefetchRegistry";
+import { tenantBasePath } from "@/lib/utils/tenantMount";
 
 const FINANCE_STALE_MS = ROUTE_PREFETCH_STALE_MS;
 
@@ -747,7 +748,7 @@ export function FinanceView({ groupMode = false }: FinanceViewProps) {
                   className="hq6-btn hq6-btn-blue"
                   onClick={() => {
                     if (tenantCode) {
-                      router.push(`/${tenantCode}/add-expense`);
+                      router.push(`${tenantBasePath(tenantCode)}/add-expense`);
                       return;
                     }
                     openAddExpenseModal();
@@ -822,7 +823,7 @@ export function FinanceView({ groupMode = false }: FinanceViewProps) {
                   ctaLabel: "Add Expense",
                   onCta: () => {
                     if (isHq6 && tenantCode) {
-                      router.push(`/${tenantCode}/add-expense`);
+                      router.push(`${tenantBasePath(tenantCode)}/add-expense`);
                       return;
                     }
                     openAddExpenseModal();
@@ -843,7 +844,7 @@ export function FinanceView({ groupMode = false }: FinanceViewProps) {
         message="Only accountants (and roles with Financial dashboard access) can view financials. Ask VAG to tick that checkbox on your role if you need it."
         ctaLabel={tenantCode ? "Back to home" : undefined}
         onCta={
-          tenantCode ? () => router.push(`/${tenantCode}/overview`) : undefined
+          tenantCode ? () => router.push(`${tenantBasePath(tenantCode)}/overview`) : undefined
         }
       />
     );

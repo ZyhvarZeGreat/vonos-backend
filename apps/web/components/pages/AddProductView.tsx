@@ -15,6 +15,7 @@ import {
   productEditQueryKey,
 } from "@/lib/query/prefetchListDetails";
 import { goToList } from "@/lib/utils/goToList";
+import { tenantBasePath } from "@/lib/utils/tenantMount";
 
 function productsListSlug(
   isHq6: boolean,
@@ -37,7 +38,7 @@ export function AddProductView() {
   const editId = searchParams.get("edit");
 
   const catalogListPath = tenantCode
-    ? `/${tenantCode}/${productsListSlug(isHq6, config?.archetype)}`
+    ? `${tenantBasePath(tenantCode)}/${productsListSlug(isHq6, config?.archetype)}`
     : null;
 
   const cachedItem = (id: string | null): Item | undefined => {

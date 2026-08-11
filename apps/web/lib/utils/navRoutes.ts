@@ -1,6 +1,7 @@
 import type { NavSection } from "@/components/organisms/Sidebar";
 import type { TenantConfig } from "@vonos/types";
 import { getTenantConfigByCode, navSectionsForConfig } from "@/lib/registries/tenantConfigs";
+import { tenantPath } from "@/lib/utils/tenantMount";
 
 /** Union API + static enabledModules so sidebar feature flags (e.g. hrm) stay visible when DB seed lags. */
 function resolveTenantNavConfig(
@@ -24,5 +25,5 @@ export function navSectionsForTenant(
 }
 
 export function tenantNavPath(tenantCode: string, slug: string): string {
-  return `/${tenantCode}/${slug}`;
+  return tenantPath(tenantCode, slug);
 }

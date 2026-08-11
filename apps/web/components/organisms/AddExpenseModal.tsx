@@ -15,6 +15,7 @@ import { useIsVaHq6 } from "@/lib/hooks/useIsVaHq6";
 import { useRouteTenant, useTenantId } from "@/lib/hooks/useRouteTenant";
 import { ENTITY_LIST } from "@/lib/registries/tenants";
 import { useUiStore } from "@/stores/uiStore";
+import { tenantBasePath } from "@/lib/utils/tenantMount";
 
 const FALLBACK_CATEGORIES = [
   { value: "MISCELLANEOUS", label: "MISCELLANEOUS" },
@@ -74,7 +75,7 @@ export function AddExpenseModal() {
   useEffect(() => {
     if (!open || !isHq6 || stayInAdmin || !tenantCode) return;
     closeModal();
-    router.push(`/${tenantCode}/add-expense`);
+    router.push(`${tenantBasePath(tenantCode)}/add-expense`);
   }, [closeModal, isHq6, open, router, stayInAdmin, tenantCode]);
 
   const mutation = useAppMutation({

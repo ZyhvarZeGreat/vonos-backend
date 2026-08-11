@@ -3,6 +3,7 @@
 import { useParams, usePathname, useRouter } from "next/navigation";
 import { announceRedirect } from "@/lib/utils/announceRedirect";
 import { useRouteTenant } from "@/lib/hooks/useRouteTenant";
+import { tenantPath } from "@/lib/utils/tenantMount";
 
 export function useRecordNavigation(listSlug: string) {
   const params = useParams<{ tenant: string }>();
@@ -21,12 +22,12 @@ export function useRecordNavigation(listSlug: string) {
     if (adminHrm) {
       return `/admin/hrm/${listSlug}/${recordId}`;
     }
-    return `/${tenant}/${listSlug}/${recordId}`;
+    return tenantPath(tenant, listSlug, recordId);
   };
 
   const listPath = adminHrm
     ? `/admin/hrm/${listSlug}`
-    : `/${tenant}/${listSlug}`;
+    : tenantPath(tenant, listSlug);
 
   return {
     detailPath,

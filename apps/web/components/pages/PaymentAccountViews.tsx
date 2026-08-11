@@ -53,6 +53,7 @@ import { formatCurrency } from "@/lib/utils/formatCurrency";
 import { uniqueFieldOptions } from "@/lib/utils/listFilters";
 import { useUiStore } from "@/stores/uiStore";
 import type { ReportsDashboard } from "@vonos/types";
+import { tenantBasePath } from "@/lib/utils/tenantMount";
 
 const EXPORT_COLUMNS = [
   { key: "name", header: "Name" },
@@ -215,7 +216,7 @@ function PaymentAccountsListViewBody() {
                 label: "Account Book",
                 onClick: () => {
                   if (!tenantCode) return;
-                  router.push(`/${tenantCode}/account-book/${row.id}`);
+                  router.push(`${tenantBasePath(tenantCode)}/account-book/${row.id}`);
                 },
               },
               ...(row.isClosed

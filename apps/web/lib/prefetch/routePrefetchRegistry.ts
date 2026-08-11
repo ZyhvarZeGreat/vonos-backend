@@ -33,6 +33,7 @@ import { prefetchGroupOverview } from "@/lib/prefetch/prefetchGroupOverview";
 import { scheduleIdleBatch } from "@/lib/prefetch/scheduleIdle";
 import { REPORT_TABS } from "@/lib/registries/reportTabs";
 import type { ListSortState } from "@/lib/api/fetchAllPages";
+import { tenantBasePath } from "@/lib/utils/tenantMount";
 
 export const ROUTE_PREFETCH_STALE_MS = ADMIN_ENTITY_STALE_MS;
 
@@ -548,7 +549,7 @@ export function prefetchTenantNavRoutes(
   const routes = config
     ? allNavRoutesForConfig(config).map((item) => item.route)
     : ["overview", "jobs", "finance", "reports", "hrm"].map(
-        (slug) => `/${tenantCode}/${slug}`,
+        (slug) => `${tenantBasePath(tenantCode)}/${slug}`,
       );
 
   const unique = [...new Set(routes)];
@@ -598,7 +599,7 @@ export function prefetchTenantShell(
   dateBounds?: DateRangeBounds | null,
 ): void {
   prefetchRoute(queryClient, {
-    pathname: `/${tenantCode}/overview`,
+    pathname: `${tenantBasePath(tenantCode)}/overview`,
     tenantCode,
     tenantId,
     dateBounds,

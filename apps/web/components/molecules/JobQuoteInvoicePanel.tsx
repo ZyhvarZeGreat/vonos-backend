@@ -23,6 +23,7 @@ import { saleRecordPath } from "@/lib/utils/recordDetailPath";
 import { isHq6Tenant } from "@/lib/utils/isHq6Tenant";
 import { invoiceDocumentLayoutProps } from "@/lib/utils/resolveInvoiceLayout";
 import { useUiStore } from "@/stores/uiStore";
+import { tenantBasePath } from "@/lib/utils/tenantMount";
 
 type BillingTab = "quotation" | "invoice";
 
@@ -391,7 +392,7 @@ export function JobQuoteInvoicePanel({ job, onJobChange }: JobQuoteInvoicePanelP
                 const slug =
                   tab === "quotation" ? "add-quotation" : "add-sale";
                 if (isHq6Tenant(tenantCode)) {
-                  router.push(`/${tenantCode}/${slug}?job=${job.id}`);
+                  router.push(`${tenantBasePath(tenantCode)}/${slug}?job=${job.id}`);
                   return;
                 }
                 openAddSaleModal(

@@ -8,6 +8,7 @@ import { notifyInsufficientPrivilege } from "@/lib/utils/privilegeToast";
 import { parseTenantPath } from "@/lib/utils/tenantRoutes";
 import { isAuthSkipped } from "@/lib/utils/devAccess";
 import { useAuthStore } from "@/stores/authStore";
+import { tenantBasePath } from "@/lib/utils/tenantMount";
 
 function routeSlugFromPath(pathname: string): string {
   const { section } = parseTenantPath(pathname);
@@ -43,7 +44,7 @@ export function PrivilegeRouteGuard({
     if (lastDenied.current === pathname) return;
     lastDenied.current = pathname;
     notifyInsufficientPrivilege("view");
-    router.replace(`/${tenantCode}/overview`);
+    router.replace(`${tenantBasePath(tenantCode)}/overview`);
   }, [pathname, canAny, isFullAccess, hydrated, router, tenantCode]);
 
   return null;

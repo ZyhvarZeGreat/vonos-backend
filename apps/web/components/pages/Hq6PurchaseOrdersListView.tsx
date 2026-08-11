@@ -36,6 +36,7 @@ import { formatHq6Currency, formatHq6DateTime } from "@/lib/utils/hq6Format";
 import { businessLocationName } from "@/lib/utils/locationLabels";
 import { entitySaleLocations } from "@/lib/hooks/useBusinessLocationOptions";
 import { toast } from "@/stores/toastStore";
+import { tenantBasePath } from "@/lib/utils/tenantMount";
 
 /** Exact UPOS purchase_order/index — Action · Date · Reference No · Location · Supplier · Status · Quantity Remaining · Shipping Status · Added By */
 export function Hq6PurchaseOrdersListView() {
@@ -180,14 +181,14 @@ export function Hq6PurchaseOrdersListView() {
                 label: "View",
                 icon: <Eye size={15} strokeWidth={1.75} />,
                 onClick: () =>
-                  router.push(`/${tenantCode}/inbound/${row.id}`),
+                  router.push(`${tenantBasePath(tenantCode)}/inbound/${row.id}`),
               },
               {
                 id: "edit",
                 label: "Edit",
                 icon: <Pencil size={15} strokeWidth={1.75} />,
                 onClick: () =>
-                  router.push(`/${tenantCode}/add-purchase?edit=${row.id}`),
+                  router.push(`${tenantBasePath(tenantCode)}/add-purchase?edit=${row.id}`),
               },
               {
                 id: "delete",
@@ -292,7 +293,7 @@ export function Hq6PurchaseOrdersListView() {
       slug="purchase-orders"
       title="Purchase Order"
       tabLabel="All purchase orders"
-      onAdd={() => router.push(`/${tenantCode}/add-purchase`)}
+      onAdd={() => router.push(`${tenantBasePath(tenantCode)}/add-purchase`)}
       onExport={() => void handleExport()}
       columnOptions={columnOptions}
       chrome={chrome}

@@ -5,6 +5,9 @@ const basePath = (process.env.NEXT_PUBLIC_BASE_PATH ?? "")
   .trim()
   .replace(/\/+$/, "");
 
+/** Only when the app is not already mounted at `/operations` — avoids /operations/operations/VS. */
+const nestOperationsTenants = basePath !== "/operations";
+
 const nextConfig: NextConfig = {
   ...(basePath ? { basePath } : {}),
   allowedDevOrigins: ["127.0.0.1", "localhost"],
@@ -41,6 +44,28 @@ const nextConfig: NextConfig = {
         source: "/VSS",
         destination: "/VISP",
         permanent: true,
+      },
+    ];
+  },
+  async rewrites() {
+    if (!nestOperationsTenants) return [];
+    // VS/VKW public URLs start at /operations/{CODE}; map onto existing [tenant] pages.
+    return [
+      {
+        source: "/operations/VS",
+        destination: "/VS",
+      },
+      {
+        source: "/operations/VS/:path*",
+        destination: "/VS/:path*",
+      },
+      {
+        source: "/operations/VKW",
+        destination: "/VKW",
+      },
+      {
+        source: "/operations/VKW/:path*",
+        destination: "/VKW/:path*",
       },
     ];
   },

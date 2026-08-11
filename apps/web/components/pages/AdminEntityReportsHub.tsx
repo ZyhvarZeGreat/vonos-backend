@@ -17,6 +17,7 @@ import { getTenantConfigByCode } from "@/lib/registries/tenantConfigs";
 import { reportsForArchetype } from "@/lib/registries/reportRegistry";
 import { useListPageFilters } from "@/lib/hooks/useListPageFilters";
 import { cn } from "@/lib/utils/cn";
+import { tenantBasePath } from "@/lib/utils/tenantMount";
 
 export interface AdminEntityReportsHubProps {
   tenantCode: TenantCode;
@@ -91,7 +92,7 @@ export function AdminEntityReportsHub({
   const reportHref = (slug: string) => {
     if (linkMode === "tenant") {
       const hq6Path = REPORT_SLUG_TO_HQ6_PATH[slug] ?? slug.replace(/^report-/, "");
-      return `/${tenantCode}/reports/${hq6Path}`;
+      return `${tenantBasePath(tenantCode)}/reports/${hq6Path}`;
     }
     return `/admin/reports/${tenantCode}/${slug}`;
   };
@@ -187,7 +188,7 @@ export function AdminEntityReportsHub({
               key={tab.slug}
               href={
                 linkMode === "tenant"
-                  ? `/${tenantCode}/${tab.slug}`
+                  ? `${tenantBasePath(tenantCode)}/${tab.slug}`
                   : `/admin/reports/${tenantCode}/${tab.slug}`
               }
               className="hq6-card hq6-report-link-card flex items-start gap-3 transition-colors hover:border-[var(--color-brand-primary)]/40"

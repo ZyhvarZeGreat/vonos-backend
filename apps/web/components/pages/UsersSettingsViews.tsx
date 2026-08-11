@@ -14,6 +14,7 @@ import { linesToList, listToLines } from "@/lib/utils/catalogConfig";
 import { useRouteTenant } from "@/lib/hooks/useRouteTenant";
 import { useTenantStore } from "@/stores/tenantStore";
 import { accentForTenantCode } from "@/lib/registries/tenantAccents";
+import { tenantBasePath } from "@/lib/utils/tenantMount";
 
 const SETTINGS_TABS = [
   { id: "branding", label: "Branding" },
@@ -40,7 +41,7 @@ function DefaultSettingsView() {
   const [saveError, setSaveError] = useState<string | null>(null);
 
   const accent = tenantCode ? accentForTenantCode(tenantCode) : "#2563eb";
-  const locationsHref = tenantCode ? `/${tenantCode}/locations` : "#";
+  const locationsHref = tenantCode ? `${tenantBasePath(tenantCode)}/locations` : "#";
 
   useEffect(() => {
     setDisplayName(config?.name ?? tenantName ?? "");

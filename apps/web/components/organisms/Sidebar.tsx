@@ -86,6 +86,7 @@ import { dateRangePresetToApiBounds } from "@/lib/utils/dateRange";
 import { isTenantCode } from "@/lib/registries/tenants";
 import { useUiStore } from "@/stores/uiStore";
 import type { IconComponent } from "@/lib/utils/icons";
+import { tenantBasePath } from "@/lib/utils/tenantMount";
 
 const iconMap: Record<string, IconComponent> = {
   home: Home,
@@ -493,7 +494,7 @@ export function Sidebar({
               href={
                 tenantCode === "VAG"
                   ? "/admin/security"
-                  : `/${tenantCode}/settings`
+                  : `${tenantBasePath(tenantCode)}/settings`
               }
               className="mb-2 block w-full rounded-lg bg-[var(--color-brand-primary)] py-2 text-center text-base font-medium text-white transition-colors hover:bg-[var(--color-brand-primary-hover)]"
             >

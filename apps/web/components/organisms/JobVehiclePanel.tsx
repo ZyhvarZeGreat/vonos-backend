@@ -13,6 +13,7 @@ import { linkJobVehicle } from "@/lib/api/jobs";
 import { createVehicle, getVehicles } from "@/lib/api/vehicles";
 import { useAppMutation } from "@/lib/hooks/useAppMutation";
 import { cn } from "@/lib/utils/cn";
+import { tenantBasePath } from "@/lib/utils/tenantMount";
 
 interface JobVehiclePanelProps {
   job: JobDetail;
@@ -57,7 +58,7 @@ export function JobVehiclePanel({
             {vehicle ? (
               <div>
                 <Link
-                  href={`/${tenantCode}/vehicles/${vehicle.id}`}
+                  href={`${tenantBasePath(tenantCode)}/vehicles/${vehicle.id}`}
                   className="font-medium text-foreground hover:text-[var(--color-brand-accent)] hover:underline"
                 >
                   {vehicle.plateNumber}

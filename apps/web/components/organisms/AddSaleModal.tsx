@@ -10,6 +10,7 @@ import { getSaleInvoiceUrl } from "@/lib/api/sales";
 import { getTenantConfigById } from "@/lib/registries/tenantConfigs";
 import { ENTITY_LIST } from "@/lib/registries/tenants";
 import { useUiStore } from "@/stores/uiStore";
+import { tenantBasePath } from "@/lib/utils/tenantMount";
 
 export function AddSaleModal() {
   const router = useRouter();
@@ -53,7 +54,7 @@ export function AddSaleModal() {
     if (saleJobId) params.set("job", saleJobId);
     const qs = params.toString();
     closeModal();
-    router.push(`/${tenantCode}/${slug}${qs ? `?${qs}` : ""}`);
+    router.push(`${tenantBasePath(tenantCode)}/${slug}${qs ? `?${qs}` : ""}`);
   }, [
     closeModal,
     isHq6,
