@@ -467,6 +467,65 @@ export class AuthService {
     return payload;
   }
 
+  /**
+   * Resolve HQ6 permission-matrix keys for the authenticated user's assigned
+   * TenantRole. Used by backend permission-based guards.
+   *
+   * Cached per (userId, tokenVersion) to avoid querying on every request.
+   */
+  async resolveTenantRolePermissions(
+    userId: string,
+    tokenVersion: number,
+  ): Promise<string[]> {
+    const cacheKey = `auth:tenantRolePerms:${userId}:${tokenVersion}`;
+    const cached = await this.cache.get<string[] | null>(cacheKey);
+    if (cached) return cached;
+
+    const tenantRole = await this.prisma.tenantRole.findFirst({
+      where: {
+        users: { some: { id: userId } },
+        deletedAt: null,
+      },
+      select: { id: true, name: true, permissions: true, locked: true },
+    });
+
+    // Fallback: if tenantRole relation isn't indexed as expected, query via tenantRoleId.
+    const user = tenantRole
+      ? null
+      : await this.prisma.user.findFirst({
+          where: { id: userId, deletedAt: null, status: 'active' },
+          select: {
+            tenantRoleId: true,
+            tenantRole: {
+              select: { id: true, name: true, permissions: true, locked: true },
+            },
+          },
+        });
+
+    const effectiveRole = tenantRole ?? user?.tenantRole ?? null;
+
+    let permissions: string[] = [];
+    if (!effectiveRole) {
+      permissions = [];
+    } else if (isFullAccessTenantRole(effectiveRole)) {
+      permissions = ['*'];
+    } else {
+      permissions = [...effectiveRole.permissions];
+      if (isFinanceAuthorizedRoleName(effectiveRole.name)) {
+        permissions = [
+          ...new Set([...permissions, ...FINANCE_ROLE_DEFAULT_PERMISSIONS]),
+        ];
+      }
+    }
+
+    await this.cache.set(
+      cacheKey,
+      permissions,
+      ACCESS_TOKEN_VERSION_CACHE_TTL_S,
+    );
+    return permissions;
+  }
+
   private async issueSession(
     user: SessionUser,
     options?: { activeTenantId?: string | null },

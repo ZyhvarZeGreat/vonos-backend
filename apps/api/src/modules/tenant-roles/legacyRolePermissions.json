@@ -303,6 +303,7 @@
       "view_due_sells_only",
       "view_export_buttons",
       "view_overdue_sells_only",
+      "expense.edit",
       "view_own_expense",
       "view_paid_sells_only",
       "view_partial_sells_only",

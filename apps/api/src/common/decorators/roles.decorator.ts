@@ -8,4 +8,9 @@ export interface AuthenticatedUser {
   sub: string;
   tenantId: string | null;
   role: Role;
+  /**
+   * HQ6 / permission-matrix keys attached for permission-based guards.
+   * Present when the auth layer resolves TenantRole permissions (cached).
+   */
+  tenantRolePermissions?: string[] | null;
 }

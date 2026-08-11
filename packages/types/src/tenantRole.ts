@@ -44,6 +44,10 @@ export const HR_ROLE_DEFAULT_PERMISSIONS: readonly string[] = [
   "user.create",
   "user.update",
   "roles.view",
+  // HR can manage the shared VAG role matrix (create/update/delete role definitions).
+  "roles.create",
+  "roles.update",
+  "roles.delete",
   "essentials.crud_leave_type",
   "essentials.crud_all_leave",
   "essentials.approve_leave",

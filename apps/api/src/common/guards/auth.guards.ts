@@ -26,10 +26,16 @@ export class JwtAuthGuard implements CanActivate {
     const token = authHeader.slice(7);
     try {
       const payload = await this.authService.validateAccessToken(token);
+      const tenantRolePermissions =
+        await this.authService.resolveTenantRolePermissions(
+          payload.sub,
+          payload.tokenVersion,
+        );
       request.user = {
         sub: payload.sub,
         tenantId: payload.tenantId,
         role: payload.role,
+        tenantRolePermissions,
       };
       return true;
     } catch {

@@ -7,7 +7,9 @@ import {
   Patch,
   Post,
   Query,
+  ForbiddenException,
   UseGuards,
+  Req,
 } from '@nestjs/common';
 import type {
   CreateTenantRoleRequest,
@@ -15,6 +17,7 @@ import type {
   UpdateTenantRoleRequest,
 } from '@vonos/types';
 import { Roles } from '../../common/decorators/roles.decorator';
+import type { AuthenticatedUser } from '../../common/decorators/roles.decorator';
 import {
   JwtAuthGuard,
   RolesGuard,
@@ -34,14 +37,40 @@ export class TenantRolesController {
 
   /** Role definitions are VAG-only — tenant admins may list/assign, not edit. */
   @Post()
-  @Roles('super_admin')
-  create(@Body() dto: CreateTenantRoleRequest) {
+  @Roles('admin', 'manager', 'staff', 'super_admin')
+  create(
+    @Body() dto: CreateTenantRoleRequest,
+    @Req()
+    req: {
+      user: AuthenticatedUser;
+      tenantScope: string | null;
+    },
+  ) {
+    const perms = req.user.tenantRolePermissions ?? [];
+    const canCreate = perms.includes('*') || perms.includes('roles.create');
+    if (!canCreate) throw new ForbiddenException('Missing roles.create');
+    if (req.tenantScope !== 'tenant_vag_001') {
+      throw new ForbiddenException('VAG only');
+    }
     return this.service.create(dto);
   }
 
   @Post('import')
-  @Roles('super_admin')
-  importRoles(@Body() dto: ImportTenantRolesRequest) {
+  @Roles('admin', 'manager', 'staff', 'super_admin')
+  importRoles(
+    @Body() dto: ImportTenantRolesRequest,
+    @Req()
+    req: {
+      user: AuthenticatedUser;
+      tenantScope: string | null;
+    },
+  ) {
+    const perms = req.user.tenantRolePermissions ?? [];
+    const canImport = perms.includes('*') || perms.includes('roles.create');
+    if (!canImport) throw new ForbiddenException('Missing roles.create');
+    if (req.tenantScope !== 'tenant_vag_001') {
+      throw new ForbiddenException('VAG only');
+    }
     return this.service.importRoles(dto);
   }
 
@@ -51,14 +80,41 @@ export class TenantRolesController {
   }
 
   @Patch(':id')
-  @Roles('super_admin')
-  update(@Param('id') id: string, @Body() dto: UpdateTenantRoleRequest) {
+  @Roles('admin', 'manager', 'staff', 'super_admin')
+  update(
+    @Param('id') id: string,
+    @Body() dto: UpdateTenantRoleRequest,
+    @Req()
+    req: {
+      user: AuthenticatedUser;
+      tenantScope: string | null;
+    },
+  ) {
+    const perms = req.user.tenantRolePermissions ?? [];
+    const canUpdate = perms.includes('*') || perms.includes('roles.update');
+    if (!canUpdate) throw new ForbiddenException('Missing roles.update');
+    if (req.tenantScope !== 'tenant_vag_001') {
+      throw new ForbiddenException('VAG only');
+    }
     return this.service.update(id, dto);
   }
 
   @Delete(':id')
-  @Roles('super_admin')
-  remove(@Param('id') id: string) {
+  @Roles('admin', 'manager', 'staff', 'super_admin')
+  remove(
+    @Param('id') id: string,
+    @Req()
+    req: {
+      user: AuthenticatedUser;
+      tenantScope: string | null;
+    },
+  ) {
+    const perms = req.user.tenantRolePermissions ?? [];
+    const canDelete = perms.includes('*') || perms.includes('roles.delete');
+    if (!canDelete) throw new ForbiddenException('Missing roles.delete');
+    if (req.tenantScope !== 'tenant_vag_001') {
+      throw new ForbiddenException('VAG only');
+    }
     return this.service.remove(id);
   }
 }

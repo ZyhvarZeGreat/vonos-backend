@@ -1,12 +1,14 @@
 import {
   Body,
   Controller,
+  ForbiddenException,
   Delete,
   Get,
   Param,
   Patch,
   Post,
   Query,
+  Req,
   UseGuards,
 } from '@nestjs/common';
 import {
@@ -15,6 +17,7 @@ import {
   TenantGuard,
 } from '../../common/guards/auth.guards';
 import { Roles } from '../../common/decorators/roles.decorator';
+import type { AuthenticatedUser } from '../../common/decorators/roles.decorator';
 import { ExpensesService } from './expenses.service';
 import type {
   CreateExpenseRequest,
@@ -102,17 +105,33 @@ export class ExpensesController {
   }
 
   @Patch(':id')
-  @Roles('admin', 'manager', 'super_admin')
+  @Roles('admin', 'manager', 'staff', 'super_admin')
   update(
     @Param('id') id: string,
     @Body() dto: UpdateExpenseRequest,
+    @Req()
+    req: {
+      user: AuthenticatedUser;
+    },
   ) {
+    const perms = req.user.tenantRolePermissions ?? [];
+    const canEdit = perms.includes('*') || perms.includes('expense.edit');
+    if (!canEdit) throw new ForbiddenException('Missing expense.edit');
     return this.service.updateExpense(id, dto);
   }
 
   @Delete(':id')
-  @Roles('admin', 'manager', 'super_admin')
-  delete(@Param('id') id: string) {
+  @Roles('admin', 'manager', 'staff', 'super_admin')
+  delete(
+    @Param('id') id: string,
+    @Req()
+    req: {
+      user: AuthenticatedUser;
+    },
+  ) {
+    const perms = req.user.tenantRolePermissions ?? [];
+    const canDelete = perms.includes('*') || perms.includes('expense.delete');
+    if (!canDelete) throw new ForbiddenException('Missing expense.delete');
     return this.service.deleteExpense(id);
   }
 }
