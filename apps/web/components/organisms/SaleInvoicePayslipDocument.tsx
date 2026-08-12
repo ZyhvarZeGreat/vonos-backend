@@ -86,8 +86,8 @@ export function FormattedTermsBlock({
 }) {
   const sections = formatTermsSections(body);
   const size = finePrint
-    ? "text-[8px] leading-[1.35] text-neutral-700"
-    : "text-[11px] leading-relaxed text-neutral-700";
+    ? "text-[10px] leading-[1.4] text-neutral-700"
+    : "text-[13px] leading-relaxed text-neutral-700";
 
   return (
     <div className={cn(size, "space-y-1.5", className)}>
@@ -95,7 +95,7 @@ export function FormattedTermsBlock({
         <p
           className={cn(
             "font-bold text-neutral-900",
-            finePrint && "text-[8px]",
+            finePrint && "text-[10px]",
           )}
         >
           {title}
@@ -133,7 +133,7 @@ function MetaRow({
 }) {
   if (value == null || !String(value).trim()) return null;
   return (
-    <div className="text-[12px] leading-[1.45] text-neutral-900">
+    <div className="text-[14px] leading-[1.45] text-neutral-900">
       <span className="font-bold">
         {label}
         {colon ? ":" : ""}
@@ -170,18 +170,21 @@ function invoiceWords(amount: number): string {
   return raw || "zero";
 }
 
-function BrandMark({ size = 72 }: { size?: number }) {
+/**
+ * Full Vonos mark (VG emblem over “VONOS GROUP”) — never crop to a circle or
+ * place the emblem beside the wordmark; the asset already stacks them.
+ */
+function BrandMark({ width = 132 }: { width?: number }) {
+  // Stacked mark (emblem over wordmark) is roughly square — do not crop.
+  const height = width;
   return (
-    <div
-      className="relative shrink-0 overflow-hidden rounded-full border border-neutral-200 bg-white"
-      style={{ width: size, height: size }}
-    >
+    <div className="relative shrink-0 bg-white" style={{ width, height }}>
       <Image
-        src={publicAssetPath("/brand/vonos-autos-logo.png")}
-        alt="Vonos Autos"
+        src={publicAssetPath("/brand/vonos-group-logo.png")}
+        alt="Vonos Group"
         fill
-        className="object-contain p-1.5"
-        sizes={`${size}px`}
+        className="object-contain object-top"
+        sizes={`${width}px`}
         priority
       />
     </div>
@@ -210,12 +213,12 @@ function CompanyBlock({
   return (
     <div
       className={cn(
-        "min-w-0 text-[12px] leading-[1.45] text-neutral-900",
+        "min-w-0 text-[14px] leading-[1.5] text-neutral-900",
         align === "right" && "text-right",
       )}
     >
-      <p className="text-[15px] font-bold">{name}</p>
-      {section ? <p>{section}</p> : null}
+      <p className="text-[18px] font-bold tracking-tight">{name}</p>
+      {section ? <p className="text-[14px]">{section}</p> : null}
       {address ? (
         <p>
           <span className="font-bold">Address:</span> {address}
@@ -244,6 +247,50 @@ function CompanyBlock({
   );
 }
 
+/** Logo stacked above company lines — never side-by-side. */
+function LetterheadBrand({
+  name,
+  section,
+  address,
+  mobile,
+  mobileSecondary,
+  email,
+  serviceStaff,
+  align = "left",
+  logoWidth = 128,
+}: {
+  name: string;
+  section?: string | null;
+  address?: string | null;
+  mobile?: string | null;
+  mobileSecondary?: string | null;
+  email?: string | null;
+  serviceStaff?: string | null;
+  align?: "left" | "right";
+  logoWidth?: number;
+}) {
+  return (
+    <div
+      className={cn(
+        "flex shrink-0 flex-col gap-2",
+        align === "right" ? "items-end" : "items-start",
+      )}
+    >
+      <BrandMark width={logoWidth} />
+      <CompanyBlock
+        name={name}
+        section={section}
+        address={address}
+        mobile={mobile}
+        mobileSecondary={mobileSecondary}
+        email={email}
+        serviceStaff={serviceStaff}
+        align={align}
+      />
+    </div>
+  );
+}
+
 function CustomerFields({
   customerDisplay,
   phone,
@@ -262,7 +309,7 @@ function CustomerFields({
   repeatName?: boolean;
 }) {
   return (
-    <div className="space-y-0.5 text-[12px] leading-[1.45] text-neutral-900">
+    <div className="space-y-0.5 text-[14px] leading-[1.5] text-neutral-900">
       <p className="font-bold">Customer</p>
       <p>{customerDisplay || "—"}</p>
       {repeatName && customerDisplay ? <p>{customerDisplay}</p> : null}
@@ -270,7 +317,7 @@ function CustomerFields({
       <MetaRow label="Plate Number" value={plateNumber} />
       <MetaRow label="Car Model & Year" value={carModelYear} />
       <MetaRow label="Car Mileage" value={mileage} />
-      <div className="text-[12px] leading-[1.45] text-neutral-900">
+      <div className="text-[14px] leading-[1.5] text-neutral-900">
         <span className="font-bold">Sales Person :</span>{" "}
         {salesPerson?.trim() || "—"}
       </div>
@@ -295,12 +342,12 @@ function LineItemsTable({
   // HQ6 print: vertical column rules only — no horizontal lines between item rows.
   // Outer top/bottom + header underline frame the table (matches printed HQ6 slips).
   const th =
-    "border-x border-[#d1d5db] border-y-0 bg-[#f3f4f6] px-2 py-1.5 text-left text-[11px] font-semibold text-[#6b7280]";
+    "border-x border-[#d1d5db] border-y-0 bg-[#f3f4f6] px-2 py-1.5 text-left text-[13px] font-semibold text-[#6b7280]";
   const td =
-    "border-x border-[#d1d5db] border-y-0 px-2 py-1.5 text-[12px] text-neutral-900 align-top";
+    "border-x border-[#d1d5db] border-y-0 px-2 py-1.5 text-[14px] text-neutral-900 align-top";
 
   return (
-    <table className="w-full border-collapse border border-[#d1d5db] text-[12px]">
+    <table className="w-full border-collapse border border-[#d1d5db] text-[14px]">
       <thead>
         <tr className="border-b border-[#d1d5db]">
           <th className={`${th} w-10 text-center`}>#</th>
@@ -379,18 +426,18 @@ function FinePrintFooter({
   return (
     <footer className="mt-4 space-y-2 px-7 pb-5 pt-1">
       {notes?.trim() ? (
-        <p className="text-[11px] text-neutral-800">
+        <p className="text-[13px] text-neutral-800">
           <span className="font-bold">Note: </span>
           {notes.trim()}
         </p>
       ) : null}
       {disclaimer ? (
-        <p className="text-[8px] italic leading-[1.35] text-neutral-700">
+        <p className="text-[10px] italic leading-[1.4] text-neutral-700">
           {disclaimer}
         </p>
       ) : null}
       {supportLine ? (
-        <p className="text-[9px] font-bold text-neutral-900">{supportLine}</p>
+        <p className="text-[13px] font-bold text-neutral-900">{supportLine}</p>
       ) : null}
       {termsBody ? (
         <div className="pt-0.5">
@@ -503,19 +550,17 @@ export function SaleInvoicePayslipDocument({
                 />
               </div>
 
-              <div className="flex shrink-0 items-start gap-3">
-                <CompanyBlock
-                  name={tenantName}
-                  section={tenantSection}
-                  address={tenantAddress}
-                  mobile={tenantMobile}
-                  mobileSecondary={tenantMobileSecondary}
-                  email={tenantEmail}
-                  serviceStaff={serviceStaffName}
-                  align="right"
-                />
-                <BrandMark />
-              </div>
+              <LetterheadBrand
+                name={tenantName}
+                section={tenantSection}
+                address={tenantAddress}
+                mobile={tenantMobile}
+                mobileSecondary={tenantMobileSecondary}
+                email={tenantEmail}
+                serviceStaff={serviceStaffName}
+                align="right"
+                logoWidth={132}
+              />
             </div>
           </header>
 
@@ -536,12 +581,12 @@ export function SaleInvoicePayslipDocument({
 
           <section className="grid gap-6 px-7 py-5 sm:grid-cols-2">
             <div>
-              <p className="text-[12px] font-bold text-neutral-900">
+              <p className="text-[14px] font-bold text-neutral-900">
                 Authorized Signatory
               </p>
               <div className="mt-14 w-52" />
             </div>
-            <div className="space-y-1 text-right text-[12px] sm:justify-self-end">
+            <div className="space-y-1 text-right text-[14px] sm:justify-self-end">
               <p>
                 Total Quantity:{" "}
                 <span className="tabular-nums">{totalQty.toFixed(2)}</span>
@@ -560,13 +605,13 @@ export function SaleInvoicePayslipDocument({
                   </span>
                 </p>
               ) : null}
-              <p className="pt-1 text-[20px] font-bold leading-tight text-[#9ca3af]">
+              <p className="pt-1 text-[22px] font-bold leading-tight text-[#9ca3af]">
                 Total:{" "}
                 <span className="text-neutral-800">
                   {formatHq6Currency(totalPayable, currency)}
                 </span>
               </p>
-              <p className="text-[11px] text-neutral-600">
+              <p className="text-[13px] text-neutral-600">
                 ({invoiceWords(totalPayable)})
               </p>
             </div>
@@ -578,28 +623,24 @@ export function SaleInvoicePayslipDocument({
       {isPacking ? (
         <>
           <header className="flex items-start justify-between gap-6 px-7 pb-2 pt-5">
-            <div className="min-w-0">
-              <BrandMark size={78} />
-              <div className="mt-2">
-                <CompanyBlock
-                  name={tenantName}
-                  section={tenantSection}
-                  address={tenantAddress}
-                  mobile={tenantMobile}
-                  mobileSecondary={tenantMobileSecondary}
-                  email={tenantEmail}
-                  serviceStaff={serviceStaffName}
-                />
-              </div>
-            </div>
+            <LetterheadBrand
+              name={tenantName}
+              section={tenantSection}
+              address={tenantAddress}
+              mobile={tenantMobile}
+              mobileSecondary={tenantMobileSecondary}
+              email={tenantEmail}
+              serviceStaff={serviceStaffName}
+              logoWidth={120}
+            />
             <div className="shrink-0 pt-1 text-right">
               <p className="text-[28px] font-bold leading-none text-neutral-700">
                 {heading}
               </p>
-              <p className="mt-4 text-[13px] font-bold text-neutral-900">
+              <p className="mt-4 text-[14px] font-bold text-neutral-900">
                 Invoice No. {invoiceNo}
               </p>
-              <p className="text-[12px] text-neutral-700">
+              <p className="text-[14px] text-neutral-700">
                 <span className="text-neutral-500">Date</span> {dateLabel}
               </p>
             </div>
@@ -616,10 +657,10 @@ export function SaleInvoicePayslipDocument({
               repeatName
             />
             <div>
-              <p className="text-[12px] font-bold text-neutral-900">
+              <p className="text-[14px] font-bold text-neutral-900">
                 Shipping Address:
               </p>
-              <p className="mt-1 min-h-[3rem] whitespace-pre-wrap text-[12px] text-neutral-800">
+              <p className="mt-1 min-h-[3rem] whitespace-pre-wrap text-[14px] text-neutral-800">
                 {sale.shippingAddress?.trim() || ""}
               </p>
             </div>
@@ -630,7 +671,7 @@ export function SaleInvoicePayslipDocument({
           </section>
 
           <section className="px-7 py-6">
-            <p className="text-[12px] font-bold text-neutral-900">
+            <p className="text-[14px] font-bold text-neutral-900">
               Authorized Signatory
             </p>
             <div className="mt-12 w-52" />
@@ -642,22 +683,16 @@ export function SaleInvoicePayslipDocument({
       {isDelivery ? (
         <>
           <header className="flex items-start justify-between gap-6 px-7 pb-3 pt-5">
-            <div className="min-w-0">
-              <div className="flex items-start gap-3">
-                <BrandMark size={78} />
-                <div className="pt-1">
-                  <CompanyBlock
-                    name={tenantName}
-                    section={tenantSection}
-                    address={tenantAddress}
-                    mobile={tenantMobile}
-                    mobileSecondary={tenantMobileSecondary}
-                    email={tenantEmail}
-                    serviceStaff={serviceStaffName}
-                  />
-                </div>
-              </div>
-            </div>
+            <LetterheadBrand
+              name={tenantName}
+              section={tenantSection}
+              address={tenantAddress}
+              mobile={tenantMobile}
+              mobileSecondary={tenantMobileSecondary}
+              email={tenantEmail}
+              serviceStaff={serviceStaffName}
+              logoWidth={120}
+            />
             <div className="shrink-0 text-right">
               <p className="text-[28px] font-bold leading-none text-neutral-700">
                 {heading}
@@ -673,7 +708,7 @@ export function SaleInvoicePayslipDocument({
                 <MetaRow label="Plate Number" value={plateNumber} />
                 <MetaRow label="Car Model & Year" value={carModelYear} />
                 <MetaRow label="Car Mileage" value={noteFields.mileage} />
-                <div className="text-[12px] leading-[1.45] text-neutral-900">
+                <div className="text-[14px] leading-[1.5] text-neutral-900">
                   <span className="font-bold">Sales Person :</span>{" "}
                   {salesPerson?.trim() || "—"}
                 </div>
@@ -685,7 +720,7 @@ export function SaleInvoicePayslipDocument({
             <LineItemsTable lines={lines} showMoney={false} />
           </section>
 
-          <section className="space-y-3 px-7 py-5 text-[12px]">
+          <section className="space-y-3 px-7 py-5 text-[14px]">
             <p className="font-bold text-neutral-900">
               Above mentioned items received in good condition
             </p>
