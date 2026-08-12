@@ -8,6 +8,7 @@ import { Reflector } from '@nestjs/core';
 import type { AuthenticatedUser } from '../decorators/roles.decorator';
 import { ROLES_KEY } from '../decorators/roles.decorator';
 import { AuthService } from '../../modules/auth/auth.service';
+import { userCanAccessVagPortal } from '../utils/vagPortalAccess';
 
 @Injectable()
 export class JwtAuthGuard implements CanActivate {
@@ -26,16 +27,16 @@ export class JwtAuthGuard implements CanActivate {
     const token = authHeader.slice(7);
     try {
       const payload = await this.authService.validateAccessToken(token);
-      const tenantRolePermissions =
-        await this.authService.resolveTenantRolePermissions(
-          payload.sub,
-          payload.tokenVersion,
-        );
+      const tenantRole = await this.authService.resolveTenantRoleContext(
+        payload.sub,
+        payload.tokenVersion,
+      );
       request.user = {
         sub: payload.sub,
         tenantId: payload.tenantId,
         role: payload.role,
-        tenantRolePermissions,
+        tenantRolePermissions: tenantRole.permissions,
+        tenantRoleName: tenantRole.name,
       };
       return true;
     } catch {
@@ -53,7 +54,7 @@ export class TenantGuard implements CanActivate {
       headers: Record<string, string | string[] | undefined>;
       query: Record<string, string | string[] | undefined>;
     }>();
-    const { tenantId, role } = request.user;
+    const { tenantId } = request.user;
     const viewingHeader = request.headers['x-viewing-tenant'];
     const viewingTenant = Array.isArray(viewingHeader)
       ? viewingHeader[0]
@@ -63,7 +64,7 @@ export class TenantGuard implements CanActivate {
       ? queryTenantRaw[0]
       : queryTenantRaw;
 
-    if (role === 'super_admin') {
+    if (userCanAccessVagPortal(request.user)) {
       request.tenantScope =
         viewingTenant?.trim() || queryTenant?.trim() || null;
     } else {
@@ -89,6 +90,14 @@ export class RolesGuard implements CanActivate {
       .getRequest<{ user: AuthenticatedUser }>();
     // VAG can act on any tenant-scoped write that managers/admins can.
     if (request.user.role === 'super_admin') return true;
+    // HR portal users may call endpoints that list `super_admin` as required
+    // (group overview / cross-tenant HRM). Handlers still enforce permissions.
+    if (
+      required.includes('super_admin') &&
+      userCanAccessVagPortal(request.user)
+    ) {
+      return true;
+    }
     return required.includes(request.user.role);
   }
 }

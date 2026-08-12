@@ -99,7 +99,19 @@ export function WarehouseInventoryView() {
     enabled: Boolean(tenantId) && section === "products",
     filters: apiFilters,
     search,
-    fetchPage: (cursor, limit, _sort, opts) => getItemsPage(tenantId!, { ...apiFilters, includeSummary: opts?.includeSummary }, cursor, limit, { signal: opts?.signal }),
+    searchMode: "hybrid",
+    fetchPage: (cursor, limit, _sort, opts) =>
+      getItemsPage(
+        tenantId!,
+        {
+          ...apiFilters,
+          search: opts?.search,
+          includeSummary: opts?.includeSummary,
+        },
+        cursor,
+        limit,
+        { signal: opts?.signal },
+      ),
     getCursor: (row) => itemListCursor(row),
   });
 

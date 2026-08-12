@@ -52,17 +52,17 @@ export const HQ6_ROLE_PERMISSION_MODULES: Hq6RolePermissionModule[] = [
       { key: "roles.view", label: "View role", type: "checkbox" },
       {
         key: "roles.create",
-        label: "Add Role (VAG only)",
+        label: "Add Role",
         type: "checkbox",
       },
       {
         key: "roles.update",
-        label: "Edit Role (VAG only)",
+        label: "Edit Role",
         type: "checkbox",
       },
       {
         key: "roles.delete",
-        label: "Delete role (VAG only)",
+        label: "Delete role",
         type: "checkbox",
       },
     ],

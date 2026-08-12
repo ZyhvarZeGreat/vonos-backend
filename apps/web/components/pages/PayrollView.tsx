@@ -449,10 +449,12 @@ export function PayrollView({
     queryKey: ["payrolls", tenantId, "ytd", currentYear],
     enabled: Boolean(tenantId) && activeTab === "payrolls",
     search,
+    searchMode: "hybrid",
     filters: payrollListFilters,
     fetchPage: (cursor, limit, _sort, opts) =>
       getPayrollsPage(tenantId!, cursor, limit, {
         ...payrollListFilters,
+        search: opts?.search,
         includeSummary: opts?.includeSummary,
       }),
     getCursor: (row) => payrollListCursor(row),
@@ -462,8 +464,10 @@ export function PayrollView({
     queryKey: ["payroll-groups", tenantId],
     enabled: Boolean(tenantId) && activeTab === "groups",
     search,
+    searchMode: "hybrid",
     fetchPage: (cursor, limit, _sort, opts) =>
       getPayrollGroupsPage(tenantId!, cursor, limit, {
+        search: opts?.search,
         includeSummary: opts?.includeSummary,
       }),
     getCursor: (row) => nameListCursor(row),
@@ -473,8 +477,10 @@ export function PayrollView({
     queryKey: ["pay-components", tenantId],
     enabled: Boolean(tenantId) && activeTab === "components",
     search,
+    searchMode: "hybrid",
     fetchPage: (cursor, limit, _sort, opts) =>
       getPayComponentsPage(tenantId!, cursor, limit, {
+        search: opts?.search,
         includeSummary: opts?.includeSummary,
       }),
     getCursor: (row) => nameListCursor(row),

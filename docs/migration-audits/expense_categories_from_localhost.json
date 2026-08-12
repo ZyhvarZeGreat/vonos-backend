@@ -1,0 +1,2326 @@
+{
+  "totalRows": 482,
+  "uniqueActive": 163,
+  "operational": [
+    {
+      "name": "ABUJA CONSUMABLE PARTS",
+      "code": "ASP"
+    },
+    {
+      "name": "ABUJA GOODS/PARTS",
+      "code": null
+    },
+    {
+      "name": "ABUJA LOGISTICS FOR INTL",
+      "code": "AL"
+    },
+    {
+      "name": "AC GAS SUPPLIED",
+      "code": "AGS"
+    },
+    {
+      "name": "AC WORKMANSHIP",
+      "code": null
+    },
+    {
+      "name": "ACCOMMODATION LOAN",
+      "code": null
+    },
+    {
+      "name": "AIRTIME",
+      "code": "AT"
+    },
+    {
+      "name": "AIRTIME AND DATA",
+      "code": null
+    },
+    {
+      "name": "ALIGNMENT CONSUMABLE",
+      "code": null
+    },
+    {
+      "name": "BATTERY.",
+      "code": "B"
+    },
+    {
+      "name": "Bike fair transport",
+      "code": null
+    },
+    {
+      "name": "BIKE REPAIRS",
+      "code": "BR"
+    },
+    {
+      "name": "BOSS EXPENSE",
+      "code": "B/E"
+    },
+    {
+      "name": "BOSS EXPENSES",
+      "code": null
+    },
+    {
+      "name": "BUMPER REPAIRS",
+      "code": "BR"
+    },
+    {
+      "name": "BWARI AREA COUNCIL LEVY",
+      "code": "BACL"
+    },
+    {
+      "name": "CAR CLEARING PAYMENT",
+      "code": "CCP"
+    },
+    {
+      "name": "CAR WASH",
+      "code": null
+    },
+    {
+      "name": "CARBAD",
+      "code": "C"
+    },
+    {
+      "name": "CASH BACK",
+      "code": "CB"
+    },
+    {
+      "name": "CASH SUMMITTED TO BOSS",
+      "code": "CSTB"
+    },
+    {
+      "name": "CEMEMT",
+      "code": "C"
+    },
+    {
+      "name": "CHINA GOODS",
+      "code": null
+    },
+    {
+      "name": "CHINA GOODS TRANSPORT",
+      "code": null
+    },
+    {
+      "name": "CLEARING OF CAR",
+      "code": null
+    },
+    {
+      "name": "COMPANY ACCOUNT",
+      "code": null
+    },
+    {
+      "name": "COMPANY AUDIT",
+      "code": "CA"
+    },
+    {
+      "name": "COMPANY BIKE EXPENSES",
+      "code": "CBE"
+    },
+    {
+      "name": "COMPANY BIKE REPAIRS",
+      "code": "CBR"
+    },
+    {
+      "name": "CUSTOMER WATER",
+      "code": null
+    },
+    {
+      "name": "CUSTOMER WELFARE/WATER/DRINKS",
+      "code": "C/W"
+    },
+    {
+      "name": "DESIEL",
+      "code": "D"
+    },
+    {
+      "name": "DETERGENT/LIQUID SOAP/RAZOR BLADE",
+      "code": "D/L"
+    },
+    {
+      "name": "DETERGENT/WASHES",
+      "code": null
+    },
+    {
+      "name": "DEVELOPMENT CONTROL",
+      "code": null
+    },
+    {
+      "name": "DIESEL",
+      "code": null
+    },
+    {
+      "name": "DIRECT",
+      "code": "DR"
+    },
+    {
+      "name": "DISPOSAL OF WASTE BIN",
+      "code": "DWB"
+    },
+    {
+      "name": "ELECTRICAL CONSUMABLES",
+      "code": "EWO"
+    },
+    {
+      "name": "ELECTRICAL MATERIALS",
+      "code": null
+    },
+    {
+      "name": "ELECTRICITY",
+      "code": "EE"
+    },
+    {
+      "name": "Electricity bill",
+      "code": null
+    },
+    {
+      "name": "ELECTRICITY PENALTY",
+      "code": null
+    },
+    {
+      "name": "ELECTRONICS/LIGHTENING",
+      "code": "E/L"
+    },
+    {
+      "name": "ENGINE OIL",
+      "code": "EO"
+    },
+    {
+      "name": "ENUGU/ONITSHA LOGISTIC",
+      "code": "E/O/L"
+    },
+    {
+      "name": "EQUIPMENT MAINTENANCE",
+      "code": "EM"
+    },
+    {
+      "name": "EQUIPMENTS AND TOOLS",
+      "code": null
+    },
+    {
+      "name": "FUEL",
+      "code": "F"
+    },
+    {
+      "name": "GENERATOR MAINTENACE",
+      "code": "GM"
+    },
+    {
+      "name": "GRINDING OF TOP/RESURAFCING",
+      "code": "G/R"
+    },
+    {
+      "name": "GWARIMPA BRANCH",
+      "code": "G\\\\B"
+    },
+    {
+      "name": "Gwarimpa expenses 2024",
+      "code": null
+    },
+    {
+      "name": "House rents",
+      "code": null
+    },
+    {
+      "name": "I.O.U",
+      "code": null
+    },
+    {
+      "name": "I.O.U AND SALARY",
+      "code": null
+    },
+    {
+      "name": "INDIRECT",
+      "code": "IDR"
+    },
+    {
+      "name": "INTEREST ON LOAN",
+      "code": null
+    },
+    {
+      "name": "INTERNETS",
+      "code": null
+    },
+    {
+      "name": "INTL SHOP GOODS",
+      "code": null
+    },
+    {
+      "name": "INTL SPARE PARTS LOGISTICS",
+      "code": "ISPC"
+    },
+    {
+      "name": "INTL SPARE PARTS PURCHASE",
+      "code": "ISPP"
+    },
+    {
+      "name": "IOU",
+      "code": "IOU"
+    },
+    {
+      "name": "KEY CUTTING/PROGRAMMING.",
+      "code": "KCP"
+    },
+    {
+      "name": "LAGOS CONSUMABLE PARTS",
+      "code": null
+    },
+    {
+      "name": "LAGOS CONSUMABLE TRANSPORT",
+      "code": null
+    },
+    {
+      "name": "LAGOS GOODS",
+      "code": null
+    },
+    {
+      "name": "LAGOS SPARE PARTS",
+      "code": "LSP"
+    },
+    {
+      "name": "LAGOS SPARE PARTS LOGISTICS",
+      "code": "LSPL"
+    },
+    {
+      "name": "LOAN",
+      "code": "LO"
+    },
+    {
+      "name": "LOCAL GOODS FOR SHOP",
+      "code": null
+    },
+    {
+      "name": "MANAGER WATER/DRINKS",
+      "code": "MWD"
+    },
+    {
+      "name": "MECHANICAL CONSUMABLE",
+      "code": null
+    },
+    {
+      "name": "MEDIA TOOLS",
+      "code": "MT"
+    },
+    {
+      "name": "MEDICALS",
+      "code": null
+    },
+    {
+      "name": "MISCELLANEOUS",
+      "code": null
+    },
+    {
+      "name": "MONIE POINT LOAN",
+      "code": null
+    },
+    {
+      "name": "NEW EQUIPMENT/TOOLS",
+      "code": "NET"
+    },
+    {
+      "name": "NEW PLAZA",
+      "code": null
+    },
+    {
+      "name": "OTHERS TRANSPORT",
+      "code": "OT"
+    },
+    {
+      "name": "OUTSIDE MECHANIC PAYMENT",
+      "code": "OMP"
+    },
+    {
+      "name": "OUTSIDE OIL SUPPLIED",
+      "code": null
+    },
+    {
+      "name": "OUTSIDE SUB-CONTRACTOR",
+      "code": "OSC"
+    },
+    {
+      "name": "OVEN MAINTENANCE",
+      "code": "O/M"
+    },
+    {
+      "name": "PADLOCK,LADDER/REPAIRS",
+      "code": "PLR"
+    },
+    {
+      "name": "PAINT/PANEL",
+      "code": "P/P"
+    },
+    {
+      "name": "PAINT/PANEL MATERIALS OT",
+      "code": "P\\\\P\\\\M"
+    },
+    {
+      "name": "PAINTING MATERIALS",
+      "code": "P/M"
+    },
+    {
+      "name": "PANEL BEATER GAS",
+      "code": "PBG"
+    },
+    {
+      "name": "PANEL BEATER MATERIAL FOR WORK",
+      "code": "P/B/M/W"
+    },
+    {
+      "name": "PARTS FROM VONOS STORE",
+      "code": "PFVS"
+    },
+    {
+      "name": "PENSION FUND",
+      "code": null
+    },
+    {
+      "name": "PLAZA INTERNET",
+      "code": "P/I"
+    },
+    {
+      "name": "PLAZA MAINTENANCE",
+      "code": "PM"
+    },
+    {
+      "name": "PLUMBING WORK/MATERIAL.",
+      "code": "P/W/M."
+    },
+    {
+      "name": "PRINTER REPAIRS/ TONER REFILLING",
+      "code": "PRTR"
+    },
+    {
+      "name": "RADIATOR REPAIRS",
+      "code": "R/R"
+    },
+    {
+      "name": "REFUND",
+      "code": null
+    },
+    {
+      "name": "REFUND TO CUSTOMERS",
+      "code": "RTC"
+    },
+    {
+      "name": "REMITTANCES",
+      "code": null
+    },
+    {
+      "name": "REPAIRS OF MACHINES/EQUIPMENT MAINTENANCE",
+      "code": "EM"
+    },
+    {
+      "name": "REPAIRS PARTS",
+      "code": "RP"
+    },
+    {
+      "name": "REPAIRS/MAINTENACE OF EQUIPMENT AND TOOLS",
+      "code": null
+    },
+    {
+      "name": "SAFETY BOOTH/ OVERHAUL./T.SHIRT",
+      "code": "SBOTS"
+    },
+    {
+      "name": "SALARY",
+      "code": "SL"
+    },
+    {
+      "name": "SANDRA WATER/DRINKS",
+      "code": null
+    },
+    {
+      "name": "SECURITY SUPPLY",
+      "code": "SS"
+    },
+    {
+      "name": "SOCIAL MEDIA",
+      "code": null
+    },
+    {
+      "name": "STAFF AWARDS",
+      "code": null
+    },
+    {
+      "name": "STAFF HOUSE RENT",
+      "code": null
+    },
+    {
+      "name": "STAFF HOUSE RENT ALLOWANCE",
+      "code": null
+    },
+    {
+      "name": "STAFF INJURY/TREATMENT",
+      "code": "SIT"
+    },
+    {
+      "name": "STAFF LOAN",
+      "code": "SL"
+    },
+    {
+      "name": "STAFF MEDICAL TREATMENT",
+      "code": "SMT"
+    },
+    {
+      "name": "STAFF PENSION REMITTANCE",
+      "code": "SPR"
+    },
+    {
+      "name": "STAFF WELFARE.",
+      "code": "S/F"
+    },
+    {
+      "name": "STATIONARY MATERIALS",
+      "code": "S/M"
+    },
+    {
+      "name": "SUBCONTRACTOR WORKMANSHIP",
+      "code": null
+    },
+    {
+      "name": "SYSTEM SOFTWARE INSTALLATION",
+      "code": "SSI"
+    },
+    {
+      "name": "TAX",
+      "code": null
+    },
+    {
+      "name": "TAXES/STAMP DUTY PAYMENT",
+      "code": "TSDP"
+    },
+    {
+      "name": "TINT OF GLASS",
+      "code": "TOG"
+    },
+    {
+      "name": "TIRES",
+      "code": "Ty"
+    },
+    {
+      "name": "TOOLS AND EQUIPMENT",
+      "code": null
+    },
+    {
+      "name": "TOWING OF CARS",
+      "code": "TOC"
+    },
+    {
+      "name": "TRANSMISSION WORK",
+      "code": "T/W"
+    },
+    {
+      "name": "TRANSPORT/BIKE FAIR",
+      "code": null
+    },
+    {
+      "name": "TRANSPORTATIONS",
+      "code": null
+    },
+    {
+      "name": "TYRES PUCHASE",
+      "code": "T/P"
+    },
+    {
+      "name": "UPHOLSTERY WORK",
+      "code": "UW"
+    },
+    {
+      "name": "V.I.O/ROAD SAFETY",
+      "code": "VRS"
+    },
+    {
+      "name": "VONOS SHOP - CRYSTAL GREASE",
+      "code": null
+    },
+    {
+      "name": "VONOS TIRES",
+      "code": "VT"
+    },
+    {
+      "name": "WAITING AREA ITEMS",
+      "code": "WAI"
+    },
+    {
+      "name": "WEBSITE",
+      "code": null
+    },
+    {
+      "name": "WEBSITE PAYMENT",
+      "code": "WSP"
+    },
+    {
+      "name": "WELDING WORK OUTSIDE.",
+      "code": "WWO"
+    },
+    {
+      "name": "WINDSHIELD GLASS/FIXING",
+      "code": "WGF"
+    },
+    {
+      "name": "WORKSHOP FUEL USAGE",
+      "code": "WFU"
+    }
+  ],
+  "budget2024": [
+    "2024 APPLESEED LOAN OF 27,200,000",
+    "2024 EXPENSES FOR ALI JOS BRAKE LOAN(5,000,000.00)",
+    "2024 EXPENSES FOR ALOYSIUS FORTUNE LOAN(20,400,000.00)",
+    "2024 EXPENSES FOR BOSS (6,000,000)",
+    "2024 EXPENSES FOR BUILDING MAINTENANCE (1,100,000.00)",
+    "2024 EXPENSES FOR BWARI TAX AND VAT PAYMENT(1,000,000.00)",
+    "2024 EXPENSES FOR CHINA GOODS PURCHASE(150,000,000.00)",
+    "2024 EXPENSES FOR DIESEL SUPPLY (3,600,000)",
+    "2024 EXPENSES FOR EMMANUEL OKOH LOAN (20,400,000.00)",
+    "2024 EXPENSES FOR EQUIPMENT REPAIRS AND MAINTENANCE(2,500,000.00)",
+    "2024 EXPENSES FOR GWARINPA OTHER TRANSPORT",
+    "2024 EXPENSES FOR LAGOS PURCHASES AND TRANSPORT (100,000,000)",
+    "2024 EXPENSES FOR LOCAL TRANSPORTATION OF CHINA GOODS (50,000,000.00)",
+    "2024 EXPENSES FOR NEPA PENALTY",
+    "2024 EXPENSES FOR NEPA UNITS AND MAINTENANCE( 3,000,000)",
+    "2024 EXPENSES FOR OTHER TRANSPORTATION(1,000,000.00)",
+    "2024 EXPENSES FOR OTHERS MISCELLANEOUS(5,000,000.00)",
+    "2024 EXPENSES FOR SALARY AND I.O.U (36,000,000)",
+    "2024 EXPENSES FOR SOAP AND WASHES(250,0000",
+    "2024 EXPENSES FOR STAFF LOAN (1,000,000)",
+    "2024 EXPENSES FOR TOOL AND EQUIPMT (30,000,000)",
+    "2024 EXPENSES FOR WORKSHOP FUEL CONSUMPTION(240,000)",
+    "2024 EXPENSES NEPA BILL UPSTAIR (1,500,000)",
+    "2024 EXPENSES- STAFF ACCOMODATION (250,0000)"
+  ],
+  "byDb": {
+    "vonomglk_OLD_hq2": {
+      "total": 48,
+      "active": [
+        {
+          "name": "WORKSHOP FUEL USAGE",
+          "code": "WFU"
+        },
+        {
+          "name": "PLAZA MAINTENANCE",
+          "code": null
+        },
+        {
+          "name": "BOSS EXPENSES",
+          "code": null
+        },
+        {
+          "name": "Electricity bill",
+          "code": null
+        },
+        {
+          "name": "DIESEL",
+          "code": null
+        },
+        {
+          "name": "DETERGENT/WASHES",
+          "code": null
+        },
+        {
+          "name": "STAFF MEDICAL TREATMENT",
+          "code": "SMT"
+        },
+        {
+          "name": "AIRTIME AND DATA",
+          "code": null
+        },
+        {
+          "name": "INTERNETS",
+          "code": null
+        },
+        {
+          "name": "EQUIPMENTS AND TOOLS",
+          "code": null
+        },
+        {
+          "name": "MISCELLANEOUS",
+          "code": null
+        },
+        {
+          "name": "REPAIRS/MAINTENACE OF EQUIPMENT AND TOOLS",
+          "code": null
+        },
+        {
+          "name": "STATIONARY MATERIALS",
+          "code": null
+        },
+        {
+          "name": "I.O.U",
+          "code": null
+        },
+        {
+          "name": "SUBCONTRACTOR WORKMANSHIP",
+          "code": null
+        },
+        {
+          "name": "INTEREST ON LOAN",
+          "code": null
+        },
+        {
+          "name": "NEW PLAZA",
+          "code": null
+        },
+        {
+          "name": "SANDRA WATER/DRINKS",
+          "code": null
+        },
+        {
+          "name": "STAFF HOUSE RENT",
+          "code": null
+        },
+        {
+          "name": "STAFF LOAN",
+          "code": null
+        },
+        {
+          "name": "PANEL BEATER MATERIAL FOR WORK",
+          "code": "P/B/M/W"
+        },
+        {
+          "name": "CLEARING OF CAR",
+          "code": null
+        },
+        {
+          "name": "CASH BACK",
+          "code": null
+        },
+        {
+          "name": "SOCIAL MEDIA",
+          "code": null
+        },
+        {
+          "name": "ELECTRICAL MATERIALS",
+          "code": null
+        },
+        {
+          "name": "COMPANY BIKE EXPENSES",
+          "code": "CBE"
+        },
+        {
+          "name": "OTHERS TRANSPORT",
+          "code": "OT"
+        },
+        {
+          "name": "PAINTING MATERIALS",
+          "code": "P/M"
+        },
+        {
+          "name": "MONIE POINT LOAN",
+          "code": null
+        },
+        {
+          "name": "CUSTOMER WATER",
+          "code": null
+        },
+        {
+          "name": "SALARY",
+          "code": null
+        },
+        {
+          "name": "DEVELOPMENT CONTROL",
+          "code": null
+        },
+        {
+          "name": "WEBSITE",
+          "code": null
+        },
+        {
+          "name": "TAX",
+          "code": null
+        },
+        {
+          "name": "PENSION FUND",
+          "code": null
+        },
+        {
+          "name": "STAFF AWARDS",
+          "code": null
+        },
+        {
+          "name": "REMITTANCES",
+          "code": null
+        }
+      ]
+    },
+    "vonomglk_OPS": {
+      "total": 94,
+      "active": [
+        {
+          "name": "DIRECT",
+          "code": "DR"
+        },
+        {
+          "name": "INDIRECT",
+          "code": "IDR"
+        },
+        {
+          "name": "PLAZA MAINTENANCE",
+          "code": "PM"
+        },
+        {
+          "name": "INTL SPARE PARTS PURCHASE",
+          "code": "ISPP"
+        },
+        {
+          "name": "INTL SPARE PARTS LOGISTICS",
+          "code": "ISPC"
+        },
+        {
+          "name": "LAGOS SPARE PARTS",
+          "code": "LSP"
+        },
+        {
+          "name": "LAGOS SPARE PARTS LOGISTICS",
+          "code": "LSPL"
+        },
+        {
+          "name": "DESIEL",
+          "code": "D"
+        },
+        {
+          "name": "FUEL",
+          "code": "F"
+        },
+        {
+          "name": "ABUJA CONSUMABLE PARTS",
+          "code": "ASP"
+        },
+        {
+          "name": "ABUJA LOGISTICS FOR INTL",
+          "code": "AL"
+        },
+        {
+          "name": "AIRTIME",
+          "code": "AT"
+        },
+        {
+          "name": "EQUIPMENT MAINTENANCE",
+          "code": "EM"
+        },
+        {
+          "name": "NEW EQUIPMENT/TOOLS",
+          "code": "NET"
+        },
+        {
+          "name": "ELECTRICITY",
+          "code": "EE"
+        },
+        {
+          "name": "TIRES",
+          "code": "Ty"
+        },
+        {
+          "name": "PAINT/PANEL",
+          "code": "P/P"
+        },
+        {
+          "name": "CARBAD",
+          "code": "C"
+        },
+        {
+          "name": "ENUGU/ONITSHA LOGISTIC",
+          "code": "E/O/L"
+        },
+        {
+          "name": "RADIATOR REPAIRS",
+          "code": "R/R"
+        },
+        {
+          "name": "PLAZA INTERNET",
+          "code": "P/I"
+        },
+        {
+          "name": "BOSS EXPENSE",
+          "code": "B/E"
+        },
+        {
+          "name": "SALARY",
+          "code": "SL"
+        },
+        {
+          "name": "REFUND TO CUSTOMERS",
+          "code": "RTC"
+        },
+        {
+          "name": "GRINDING OF TOP/RESURAFCING",
+          "code": "G/R"
+        },
+        {
+          "name": "TYRES PUCHASE",
+          "code": "T/P"
+        },
+        {
+          "name": "DETERGENT/LIQUID SOAP/RAZOR BLADE",
+          "code": "D/L"
+        },
+        {
+          "name": "BATTERY.",
+          "code": "B"
+        },
+        {
+          "name": "TRANSMISSION WORK",
+          "code": "T/W"
+        },
+        {
+          "name": "REPAIRS PARTS",
+          "code": "RP"
+        },
+        {
+          "name": "LOAN",
+          "code": "LO"
+        },
+        {
+          "name": "STAFF INJURY/TREATMENT",
+          "code": "SIT"
+        },
+        {
+          "name": "KEY CUTTING/PROGRAMMING.",
+          "code": "KCP"
+        },
+        {
+          "name": "DISPOSAL OF WASTE BIN",
+          "code": "DWB"
+        },
+        {
+          "name": "STAFF WELFARE.",
+          "code": "S/F"
+        },
+        {
+          "name": "BUMPER REPAIRS",
+          "code": "BR"
+        },
+        {
+          "name": "MANAGER WATER/DRINKS",
+          "code": "MWD"
+        },
+        {
+          "name": "ELECTRICAL CONSUMABLES",
+          "code": "EWO"
+        },
+        {
+          "name": "WELDING WORK OUTSIDE.",
+          "code": "WWO"
+        },
+        {
+          "name": "AC WORKMANSHIP",
+          "code": null
+        },
+        {
+          "name": "SECURITY SUPPLY",
+          "code": "SS"
+        },
+        {
+          "name": "WINDSHIELD GLASS/FIXING",
+          "code": "WGF"
+        },
+        {
+          "name": "VONOS SHOP - CRYSTAL GREASE",
+          "code": null
+        },
+        {
+          "name": "UPHOLSTERY WORK",
+          "code": "UW"
+        },
+        {
+          "name": "SAFETY BOOTH/ OVERHAUL./T.SHIRT",
+          "code": "SBOTS"
+        },
+        {
+          "name": "CEMEMT",
+          "code": "C"
+        },
+        {
+          "name": "AC GAS SUPPLIED",
+          "code": "AGS"
+        },
+        {
+          "name": "TINT OF GLASS",
+          "code": "TOG"
+        },
+        {
+          "name": "INTL SHOP GOODS",
+          "code": null
+        },
+        {
+          "name": "LOCAL GOODS FOR SHOP",
+          "code": null
+        },
+        {
+          "name": "Bike fair transport",
+          "code": null
+        },
+        {
+          "name": "salary",
+          "code": null
+        },
+        {
+          "name": "IOU",
+          "code": null
+        },
+        {
+          "name": "House rents",
+          "code": null
+        },
+        {
+          "name": "LAGOS CONSUMABLE PARTS",
+          "code": null
+        },
+        {
+          "name": "LAGOS CONSUMABLE TRANSPORT",
+          "code": null
+        },
+        {
+          "name": "ALIGNMENT CONSUMABLE",
+          "code": null
+        },
+        {
+          "name": "MECHANICAL CONSUMABLE",
+          "code": null
+        },
+        {
+          "name": "PRINTER REPAIRS/ TONER REFILLING",
+          "code": "PRTR"
+        },
+        {
+          "name": "V.I.O/ROAD SAFETY",
+          "code": "VRS"
+        },
+        {
+          "name": "CAR CLEARING PAYMENT",
+          "code": "CCP"
+        },
+        {
+          "name": "MEDIA TOOLS",
+          "code": "MT"
+        },
+        {
+          "name": "PANEL BEATER GAS",
+          "code": "PBG"
+        },
+        {
+          "name": "OVEN MAINTENANCE",
+          "code": "O/M"
+        },
+        {
+          "name": "STATIONARY MATERIALS",
+          "code": "S/M"
+        },
+        {
+          "name": "CUSTOMER WELFARE/WATER/DRINKS",
+          "code": "C/W"
+        },
+        {
+          "name": "TOOLS AND EQUIPMENT",
+          "code": null
+        },
+        {
+          "name": "ELECTRONICS/LIGHTENING",
+          "code": "E/L"
+        },
+        {
+          "name": "PLUMBING WORK/MATERIAL.",
+          "code": "P/W/M."
+        },
+        {
+          "name": "TAXES/STAMP DUTY PAYMENT",
+          "code": "TSDP"
+        },
+        {
+          "name": "TOWING OF CARS",
+          "code": "TOC"
+        },
+        {
+          "name": "GENERATOR MAINTENACE",
+          "code": "GM"
+        },
+        {
+          "name": "OUTSIDE MECHANIC PAYMENT",
+          "code": "OMP"
+        },
+        {
+          "name": "IOU",
+          "code": "IOU"
+        },
+        {
+          "name": "STAFF LOAN",
+          "code": "SL"
+        },
+        {
+          "name": "ACCOMMODATION LOAN",
+          "code": null
+        },
+        {
+          "name": "TRANSPORT/BIKE FAIR",
+          "code": null
+        },
+        {
+          "name": "AIRTIME",
+          "code": null
+        },
+        {
+          "name": "FUEL",
+          "code": null
+        },
+        {
+          "name": "BIKE REPAIRS",
+          "code": "BR"
+        },
+        {
+          "name": "SYSTEM SOFTWARE INSTALLATION",
+          "code": "SSI"
+        },
+        {
+          "name": "CASH SUMMITTED TO BOSS",
+          "code": "CSTB"
+        },
+        {
+          "name": "PADLOCK,LADDER/REPAIRS",
+          "code": "PLR"
+        },
+        {
+          "name": "OUTSIDE OIL SUPPLIED",
+          "code": null
+        },
+        {
+          "name": "BWARI AREA COUNCIL LEVY",
+          "code": "BACL"
+        },
+        {
+          "name": "ENGINE OIL",
+          "code": "EO"
+        },
+        {
+          "name": "PARTS FROM VONOS STORE",
+          "code": "PFVS"
+        },
+        {
+          "name": "VONOS TIRES",
+          "code": "VT"
+        },
+        {
+          "name": "CASH BACK",
+          "code": "CB"
+        },
+        {
+          "name": "STAFF PENSION REMITTANCE",
+          "code": "SPR"
+        },
+        {
+          "name": "WEBSITE PAYMENT",
+          "code": "WSP"
+        }
+      ]
+    },
+    "vonomglk_Quotation": {
+      "total": 122,
+      "active": [
+        {
+          "name": "DIRECT",
+          "code": "DR"
+        },
+        {
+          "name": "INDIRECT",
+          "code": "IDR"
+        },
+        {
+          "name": "PLAZA MAINTENANCE",
+          "code": "PM"
+        },
+        {
+          "name": "INTL SPARE PARTS PURCHASE",
+          "code": "ISPP"
+        },
+        {
+          "name": "INTL SPARE PARTS LOGISTICS",
+          "code": "ISPC"
+        },
+        {
+          "name": "LAGOS SPARE PARTS",
+          "code": "LSP"
+        },
+        {
+          "name": "LAGOS SPARE PARTS LOGISTICS",
+          "code": "LSPL"
+        },
+        {
+          "name": "DESIEL",
+          "code": "D"
+        },
+        {
+          "name": "FUEL",
+          "code": "F"
+        },
+        {
+          "name": "ABUJA CONSUMABLE PARTS",
+          "code": "ASP"
+        },
+        {
+          "name": "ABUJA LOGISTICS FOR INTL",
+          "code": "AL"
+        },
+        {
+          "name": "AIRTIME",
+          "code": "AT"
+        },
+        {
+          "name": "REPAIRS OF MACHINES/EQUIPMENT MAINTENANCE",
+          "code": "EM"
+        },
+        {
+          "name": "ELECTRICITY",
+          "code": "EE"
+        },
+        {
+          "name": "TIRES",
+          "code": "Ty"
+        },
+        {
+          "name": "PAINT/PANEL MATERIALS OT",
+          "code": "P\\\\P\\\\M"
+        },
+        {
+          "name": "CARBAD",
+          "code": "C"
+        },
+        {
+          "name": "ENUGU/ONITSHA LOGISTIC",
+          "code": "E/O/L"
+        },
+        {
+          "name": "RADIATOR REPAIRS",
+          "code": "R/R"
+        },
+        {
+          "name": "PLAZA INTERNET",
+          "code": "P/I"
+        },
+        {
+          "name": "BOSS EXPENSE",
+          "code": "B/E"
+        },
+        {
+          "name": "SALARY",
+          "code": "SL"
+        },
+        {
+          "name": "REFUND TO CUSTOMERS",
+          "code": "RTC"
+        },
+        {
+          "name": "GRINDING OF TOP/RESURAFCING",
+          "code": "G/R"
+        },
+        {
+          "name": "TYRES PUCHASE",
+          "code": "T/P"
+        },
+        {
+          "name": "DETERGENT/LIQUID SOAP/RAZOR BLADE",
+          "code": "D/L"
+        },
+        {
+          "name": "BATTERY.",
+          "code": "B"
+        },
+        {
+          "name": "TRANSMISSION WORK",
+          "code": "T/W"
+        },
+        {
+          "name": "REPAIRS PARTS",
+          "code": "RP"
+        },
+        {
+          "name": "LOAN",
+          "code": "LO"
+        },
+        {
+          "name": "STAFF INJURY/TREATMENT",
+          "code": "SIT"
+        },
+        {
+          "name": "DISPOSAL OF WASTE BIN",
+          "code": "DWB"
+        },
+        {
+          "name": "STAFF WELFARE.",
+          "code": "S/F"
+        },
+        {
+          "name": "BUMPER REPAIRS",
+          "code": "BR"
+        },
+        {
+          "name": "MANAGER WATER/DRINKS",
+          "code": "MWD"
+        },
+        {
+          "name": "ELECTRICAL CONSUMABLES",
+          "code": "EWO"
+        },
+        {
+          "name": "WELDING WORK OUTSIDE.",
+          "code": "WWO"
+        },
+        {
+          "name": "AC WORKMANSHIP",
+          "code": null
+        },
+        {
+          "name": "SECURITY SUPPLY",
+          "code": "SS"
+        },
+        {
+          "name": "WINDSHIELD GLASS/FIXING",
+          "code": "WGF"
+        },
+        {
+          "name": "VONOS SHOP - CRYSTAL GREASE",
+          "code": null
+        },
+        {
+          "name": "UPHOLSTERY WORK",
+          "code": "UW"
+        },
+        {
+          "name": "SAFETY BOOTH/ OVERHAUL./T.SHIRT",
+          "code": "SBOTS"
+        },
+        {
+          "name": "AC GAS SUPPLIED",
+          "code": "AGS"
+        },
+        {
+          "name": "TINT OF GLASS",
+          "code": "TOG"
+        },
+        {
+          "name": "INTL SHOP GOODS",
+          "code": null
+        },
+        {
+          "name": "LOCAL GOODS FOR SHOP",
+          "code": null
+        },
+        {
+          "name": "Bike fair transport",
+          "code": null
+        },
+        {
+          "name": "salary",
+          "code": null
+        },
+        {
+          "name": "IOU",
+          "code": null
+        },
+        {
+          "name": "House rents",
+          "code": null
+        },
+        {
+          "name": "LAGOS CONSUMABLE TRANSPORT",
+          "code": null
+        },
+        {
+          "name": "ALIGNMENT CONSUMABLE",
+          "code": null
+        },
+        {
+          "name": "MECHANICAL CONSUMABLE",
+          "code": null
+        },
+        {
+          "name": "PRINTER REPAIRS/ TONER REFILLING",
+          "code": "PRTR"
+        },
+        {
+          "name": "V.I.O/ROAD SAFETY",
+          "code": "VRS"
+        },
+        {
+          "name": "CAR CLEARING PAYMENT",
+          "code": "CCP"
+        },
+        {
+          "name": "PANEL BEATER GAS",
+          "code": "PBG"
+        },
+        {
+          "name": "OVEN MAINTENANCE",
+          "code": "O/M"
+        },
+        {
+          "name": "STATIONARY MATERIALS",
+          "code": "S/M"
+        },
+        {
+          "name": "CUSTOMER WELFARE/WATER/DRINKS",
+          "code": "C/W"
+        },
+        {
+          "name": "ELECTRONICS/LIGHTENING",
+          "code": "E/L"
+        },
+        {
+          "name": "PLUMBING WORK/MATERIAL.",
+          "code": "P/W/M."
+        },
+        {
+          "name": "TAXES/STAMP DUTY PAYMENT",
+          "code": "TSDP"
+        },
+        {
+          "name": "TOWING OF CARS",
+          "code": "TOC"
+        },
+        {
+          "name": "GENERATOR MAINTENACE",
+          "code": "GM"
+        },
+        {
+          "name": "OUTSIDE SUB-CONTRACTOR",
+          "code": "OSC"
+        },
+        {
+          "name": "IOU",
+          "code": "IOU"
+        },
+        {
+          "name": "STAFF LOAN",
+          "code": "SL"
+        },
+        {
+          "name": "ACCOMMODATION LOAN",
+          "code": null
+        },
+        {
+          "name": "TRANSPORT/BIKE FAIR",
+          "code": null
+        },
+        {
+          "name": "AIRTIME",
+          "code": null
+        },
+        {
+          "name": "FUEL",
+          "code": null
+        },
+        {
+          "name": "BIKE REPAIRS",
+          "code": "BR"
+        },
+        {
+          "name": "SYSTEM SOFTWARE INSTALLATION",
+          "code": "SSI"
+        },
+        {
+          "name": "CASH SUMMITTED TO BOSS",
+          "code": "CSTB"
+        },
+        {
+          "name": "PADLOCK,LADDER/REPAIRS",
+          "code": "PLR"
+        },
+        {
+          "name": "OUTSIDE OIL SUPPLIED",
+          "code": null
+        },
+        {
+          "name": "BWARI AREA COUNCIL LEVY",
+          "code": "BACL"
+        },
+        {
+          "name": "ENGINE OIL",
+          "code": "EO"
+        },
+        {
+          "name": "PARTS FROM VONOS STORE",
+          "code": "PFVS"
+        },
+        {
+          "name": "VONOS TIRES",
+          "code": "VT"
+        },
+        {
+          "name": "CASH BACK",
+          "code": "CB"
+        },
+        {
+          "name": "STAFF PENSION REMITTANCE",
+          "code": "SPR"
+        },
+        {
+          "name": "WEBSITE PAYMENT",
+          "code": "WSP"
+        },
+        {
+          "name": "GWARIMPA BRANCH",
+          "code": "G\\\\B"
+        },
+        {
+          "name": "COMPANY AUDIT",
+          "code": "CA"
+        },
+        {
+          "name": "2024 EXPENSES FOR BUILDING MAINTENANCE (1,100,000.00)",
+          "code": "EXP"
+        },
+        {
+          "name": "2024 EXPENSES FOR STAFF LOAN (1,000,000)",
+          "code": null
+        },
+        {
+          "name": "2024 EXPENSES- STAFF ACCOMODATION (250,0000)",
+          "code": null
+        },
+        {
+          "name": "2024 EXPENSES FOR NEPA UNITS AND MAINTENANCE( 3,000,000)",
+          "code": null
+        },
+        {
+          "name": "2024 EXPENSES NEPA BILL UPSTAIR (1,500,000)",
+          "code": null
+        },
+        {
+          "name": "2024 EXPENSES FOR TOOL AND EQUIPMT (30,000,000)",
+          "code": null
+        },
+        {
+          "name": "2024 EXPENSES FOR LAGOS PURCHASES AND TRANSPORT (100,000,000)",
+          "code": null
+        },
+        {
+          "name": "2024 EXPENSES FOR SALARY AND I.O.U (36,000,000)",
+          "code": null
+        },
+        {
+          "name": "2024 EXPENSES FOR DIESEL SUPPLY (3,600,000)",
+          "code": null
+        },
+        {
+          "name": "2024 EXPENSES FOR NEPA PENALTY",
+          "code": null
+        },
+        {
+          "name": "2024 EXPENSES FOR LOCAL TRANSPORTATION OF CHINA GOODS (50,000,000.00)",
+          "code": null
+        },
+        {
+          "name": "2024 EXPENSES FOR CHINA GOODS PURCHASE(150,000,000.00)",
+          "code": null
+        },
+        {
+          "name": "Gwarimpa expenses 2024",
+          "code": null
+        },
+        {
+          "name": "2024 EXPENSES FOR BOSS (6,000,000)",
+          "code": null
+        },
+        {
+          "name": "2024 EXPENSES FOR OTHER TRANSPORTATION(1,000,000.00)",
+          "code": null
+        },
+        {
+          "name": "2024 EXPENSES FOR ALI JOS BRAKE LOAN(5,000,000.00)",
+          "code": null
+        },
+        {
+          "name": "2024 EXPENSES FOR BWARI TAX AND VAT PAYMENT(1,000,000.00)",
+          "code": null
+        },
+        {
+          "name": "2024 EXPENSES FOR OTHERS MISCELLANEOUS(5,000,000.00)",
+          "code": null
+        },
+        {
+          "name": "2024 EXPENSES FOR EQUIPMENT REPAIRS AND MAINTENANCE(2,500,000.00)",
+          "code": null
+        },
+        {
+          "name": "2024 EXPENSES FOR SOAP AND WASHES(250,0000",
+          "code": null
+        },
+        {
+          "name": "2024 EXPENSES FOR WORKSHOP FUEL CONSUMPTION(240,000)",
+          "code": null
+        },
+        {
+          "name": "2024 EXPENSES FOR ALOYSIUS FORTUNE LOAN(20,400,000.00)",
+          "code": null
+        },
+        {
+          "name": "2024 EXPENSES FOR EMMANUEL OKOH LOAN (20,400,000.00)",
+          "code": null
+        },
+        {
+          "name": "2024 EXPENSES FOR GWARINPA OTHER TRANSPORT",
+          "code": null
+        },
+        {
+          "name": "MANAGER WATER/DRINKS",
+          "code": null
+        },
+        {
+          "name": "2024 APPLESEED LOAN OF 27,200,000",
+          "code": null
+        }
+      ]
+    },
+    "vonomglk_hq2": {
+      "total": 48,
+      "active": [
+        {
+          "name": "WORKSHOP FUEL USAGE",
+          "code": "WFU"
+        },
+        {
+          "name": "PLAZA MAINTENANCE",
+          "code": null
+        },
+        {
+          "name": "BOSS EXPENSES",
+          "code": null
+        },
+        {
+          "name": "Electricity bill",
+          "code": null
+        },
+        {
+          "name": "DIESEL",
+          "code": null
+        },
+        {
+          "name": "DETERGENT/WASHES",
+          "code": null
+        },
+        {
+          "name": "STAFF MEDICAL TREATMENT",
+          "code": "SMT"
+        },
+        {
+          "name": "AIRTIME AND DATA",
+          "code": null
+        },
+        {
+          "name": "INTERNETS",
+          "code": null
+        },
+        {
+          "name": "EQUIPMENTS AND TOOLS",
+          "code": null
+        },
+        {
+          "name": "MISCELLANEOUS",
+          "code": null
+        },
+        {
+          "name": "REPAIRS/MAINTENACE OF EQUIPMENT AND TOOLS",
+          "code": null
+        },
+        {
+          "name": "STATIONARY MATERIALS",
+          "code": null
+        },
+        {
+          "name": "I.O.U",
+          "code": null
+        },
+        {
+          "name": "SUBCONTRACTOR WORKMANSHIP",
+          "code": null
+        },
+        {
+          "name": "INTEREST ON LOAN",
+          "code": null
+        },
+        {
+          "name": "NEW PLAZA",
+          "code": null
+        },
+        {
+          "name": "SANDRA WATER/DRINKS",
+          "code": null
+        },
+        {
+          "name": "STAFF HOUSE RENT",
+          "code": null
+        },
+        {
+          "name": "STAFF LOAN",
+          "code": null
+        },
+        {
+          "name": "PANEL BEATER MATERIAL FOR WORK",
+          "code": "P/B/M/W"
+        },
+        {
+          "name": "CLEARING OF CAR",
+          "code": null
+        },
+        {
+          "name": "CASH BACK",
+          "code": null
+        },
+        {
+          "name": "SOCIAL MEDIA",
+          "code": null
+        },
+        {
+          "name": "ELECTRICAL MATERIALS",
+          "code": null
+        },
+        {
+          "name": "COMPANY BIKE EXPENSES",
+          "code": "CBE"
+        },
+        {
+          "name": "OTHERS TRANSPORT",
+          "code": "OT"
+        },
+        {
+          "name": "PAINTING MATERIALS",
+          "code": "P/M"
+        },
+        {
+          "name": "MONIE POINT LOAN",
+          "code": null
+        },
+        {
+          "name": "CUSTOMER WATER",
+          "code": null
+        },
+        {
+          "name": "SALARY",
+          "code": null
+        },
+        {
+          "name": "DEVELOPMENT CONTROL",
+          "code": null
+        },
+        {
+          "name": "WEBSITE",
+          "code": null
+        },
+        {
+          "name": "TAX",
+          "code": null
+        },
+        {
+          "name": "PENSION FUND",
+          "code": null
+        },
+        {
+          "name": "STAFF AWARDS",
+          "code": null
+        },
+        {
+          "name": "REMITTANCES",
+          "code": null
+        }
+      ]
+    },
+    "vonomglk_hq3temp": {
+      "total": 48,
+      "active": [
+        {
+          "name": "WORKSHOP FUEL USAGE",
+          "code": "WFU"
+        },
+        {
+          "name": "PLAZA MAINTENANCE",
+          "code": null
+        },
+        {
+          "name": "BOSS EXPENSES",
+          "code": null
+        },
+        {
+          "name": "Electricity bill",
+          "code": null
+        },
+        {
+          "name": "DIESEL",
+          "code": null
+        },
+        {
+          "name": "DETERGENT/WASHES",
+          "code": null
+        },
+        {
+          "name": "STAFF MEDICAL TREATMENT",
+          "code": "SMT"
+        },
+        {
+          "name": "AIRTIME AND DATA",
+          "code": null
+        },
+        {
+          "name": "INTERNETS",
+          "code": null
+        },
+        {
+          "name": "EQUIPMENTS AND TOOLS",
+          "code": null
+        },
+        {
+          "name": "MISCELLANEOUS",
+          "code": null
+        },
+        {
+          "name": "REPAIRS/MAINTENACE OF EQUIPMENT AND TOOLS",
+          "code": null
+        },
+        {
+          "name": "STATIONARY MATERIALS",
+          "code": null
+        },
+        {
+          "name": "I.O.U",
+          "code": null
+        },
+        {
+          "name": "SUBCONTRACTOR WORKMANSHIP",
+          "code": null
+        },
+        {
+          "name": "INTEREST ON LOAN",
+          "code": null
+        },
+        {
+          "name": "NEW PLAZA",
+          "code": null
+        },
+        {
+          "name": "WAITING AREA ITEMS",
+          "code": null
+        },
+        {
+          "name": "STAFF HOUSE RENT",
+          "code": null
+        },
+        {
+          "name": "STAFF LOAN",
+          "code": null
+        },
+        {
+          "name": "PANEL BEATER MATERIAL FOR WORK",
+          "code": "P/B/M/W"
+        },
+        {
+          "name": "CLEARING OF CAR",
+          "code": null
+        },
+        {
+          "name": "CASH BACK",
+          "code": null
+        },
+        {
+          "name": "SOCIAL MEDIA",
+          "code": null
+        },
+        {
+          "name": "ELECTRICAL MATERIALS",
+          "code": null
+        },
+        {
+          "name": "COMPANY BIKE EXPENSES",
+          "code": "CBE"
+        },
+        {
+          "name": "OTHERS TRANSPORT",
+          "code": "OT"
+        },
+        {
+          "name": "PAINTING MATERIALS",
+          "code": "P/M"
+        },
+        {
+          "name": "MONIE POINT LOAN",
+          "code": null
+        },
+        {
+          "name": "CUSTOMER WATER",
+          "code": null
+        },
+        {
+          "name": "SALARY",
+          "code": null
+        },
+        {
+          "name": "DEVELOPMENT CONTROL",
+          "code": null
+        },
+        {
+          "name": "WEBSITE",
+          "code": null
+        },
+        {
+          "name": "TAX",
+          "code": null
+        },
+        {
+          "name": "PENSION FUND",
+          "code": null
+        },
+        {
+          "name": "STAFF AWARDS",
+          "code": null
+        },
+        {
+          "name": "REMITTANCES",
+          "code": null
+        }
+      ]
+    },
+    "vonomglk_spmarket": {
+      "total": 36,
+      "active": [
+        {
+          "name": "FUEL",
+          "code": null
+        },
+        {
+          "name": "CHINA GOODS",
+          "code": null
+        },
+        {
+          "name": "CHINA GOODS TRANSPORT",
+          "code": null
+        },
+        {
+          "name": "PLAZA MAINTENANCE",
+          "code": null
+        },
+        {
+          "name": "BOSS EXPENSES",
+          "code": null
+        },
+        {
+          "name": "TRANSPORTATIONS",
+          "code": null
+        },
+        {
+          "name": "Electricity bill",
+          "code": null
+        },
+        {
+          "name": "DIESEL",
+          "code": null
+        },
+        {
+          "name": "DETERGENT/WASHES",
+          "code": null
+        },
+        {
+          "name": "MEDICALS",
+          "code": null
+        },
+        {
+          "name": "AIRTIME AND DATA",
+          "code": null
+        },
+        {
+          "name": "INTERNETS",
+          "code": null
+        },
+        {
+          "name": "EQUIPMENTS AND TOOLS",
+          "code": null
+        },
+        {
+          "name": "CARBAD",
+          "code": null
+        },
+        {
+          "name": "MISCELLANEOUS",
+          "code": null
+        },
+        {
+          "name": "REPAIRS/MAINTENACE OF EQUIPMENT AND TOOLS",
+          "code": null
+        },
+        {
+          "name": "STATIONARY MATERIALS",
+          "code": null
+        },
+        {
+          "name": "I.O.U AND SALARY",
+          "code": null
+        },
+        {
+          "name": "ABUJA GOODS/PARTS",
+          "code": null
+        },
+        {
+          "name": "SUBCONTRACTOR WORKMANSHIP",
+          "code": null
+        },
+        {
+          "name": "INTEREST ON LOAN",
+          "code": null
+        },
+        {
+          "name": "NEW PLAZA",
+          "code": null
+        },
+        {
+          "name": "SANDRA WATER/DRINKS",
+          "code": null
+        },
+        {
+          "name": "STAFF HOUSE RENT ALLOWANCE",
+          "code": null
+        },
+        {
+          "name": "STAFF LOAN",
+          "code": null
+        },
+        {
+          "name": "LAGOS GOODS",
+          "code": null
+        },
+        {
+          "name": "PANEL BEATER GAS",
+          "code": null
+        },
+        {
+          "name": "CLEARING OF CAR",
+          "code": null
+        },
+        {
+          "name": "CASH BACK",
+          "code": null
+        },
+        {
+          "name": "ELECTRICITY PENALTY",
+          "code": null
+        },
+        {
+          "name": "REFUND",
+          "code": null
+        },
+        {
+          "name": "CAR WASH",
+          "code": null
+        },
+        {
+          "name": "SOCIAL MEDIA",
+          "code": null
+        },
+        {
+          "name": "ELECTRICAL MATERIALS",
+          "code": null
+        },
+        {
+          "name": "COMPANY BIKE REPAIRS",
+          "code": "CBR"
+        }
+      ]
+    },
+    "vonomglk_vonos_institute": {
+      "total": 48,
+      "active": [
+        {
+          "name": "WORKSHOP FUEL USAGE",
+          "code": "WFU"
+        },
+        {
+          "name": "PLAZA MAINTENANCE",
+          "code": null
+        },
+        {
+          "name": "BOSS EXPENSES",
+          "code": null
+        },
+        {
+          "name": "Electricity bill",
+          "code": null
+        },
+        {
+          "name": "DIESEL",
+          "code": null
+        },
+        {
+          "name": "DETERGENT/WASHES",
+          "code": null
+        },
+        {
+          "name": "STAFF MEDICAL TREATMENT",
+          "code": "SMT"
+        },
+        {
+          "name": "AIRTIME AND DATA",
+          "code": null
+        },
+        {
+          "name": "INTERNETS",
+          "code": null
+        },
+        {
+          "name": "EQUIPMENTS AND TOOLS",
+          "code": null
+        },
+        {
+          "name": "MISCELLANEOUS",
+          "code": null
+        },
+        {
+          "name": "REPAIRS/MAINTENACE OF EQUIPMENT AND TOOLS",
+          "code": null
+        },
+        {
+          "name": "STATIONARY MATERIALS",
+          "code": null
+        },
+        {
+          "name": "I.O.U",
+          "code": null
+        },
+        {
+          "name": "SUBCONTRACTOR WORKMANSHIP",
+          "code": null
+        },
+        {
+          "name": "INTEREST ON LOAN",
+          "code": null
+        },
+        {
+          "name": "NEW PLAZA",
+          "code": null
+        },
+        {
+          "name": "SANDRA WATER/DRINKS",
+          "code": null
+        },
+        {
+          "name": "STAFF HOUSE RENT",
+          "code": null
+        },
+        {
+          "name": "STAFF LOAN",
+          "code": null
+        },
+        {
+          "name": "PANEL BEATER MATERIAL FOR WORK",
+          "code": "P/B/M/W"
+        },
+        {
+          "name": "CLEARING OF CAR",
+          "code": null
+        },
+        {
+          "name": "CASH BACK",
+          "code": null
+        },
+        {
+          "name": "SOCIAL MEDIA",
+          "code": null
+        },
+        {
+          "name": "ELECTRICAL MATERIALS",
+          "code": null
+        },
+        {
+          "name": "COMPANY BIKE EXPENSES",
+          "code": "CBE"
+        },
+        {
+          "name": "OTHERS TRANSPORT",
+          "code": "OT"
+        },
+        {
+          "name": "PAINTING MATERIALS",
+          "code": "P/M"
+        },
+        {
+          "name": "MONIE POINT LOAN",
+          "code": null
+        },
+        {
+          "name": "CUSTOMER WATER",
+          "code": null
+        },
+        {
+          "name": "SALARY",
+          "code": null
+        },
+        {
+          "name": "DEVELOPMENT CONTROL",
+          "code": null
+        },
+        {
+          "name": "WEBSITE",
+          "code": null
+        },
+        {
+          "name": "TAX",
+          "code": null
+        },
+        {
+          "name": "PENSION FUND",
+          "code": null
+        },
+        {
+          "name": "STAFF AWARDS",
+          "code": null
+        },
+        {
+          "name": "REMITTANCES",
+          "code": null
+        }
+      ]
+    },
+    "vonomglk_vsp": {
+      "total": 38,
+      "active": [
+        {
+          "name": "FUEL",
+          "code": null
+        },
+        {
+          "name": "CHINA GOODS",
+          "code": null
+        },
+        {
+          "name": "CHINA GOODS TRANSPORT",
+          "code": null
+        },
+        {
+          "name": "PLAZA MAINTENANCE",
+          "code": null
+        },
+        {
+          "name": "BOSS EXPENSES",
+          "code": null
+        },
+        {
+          "name": "TRANSPORTATIONS",
+          "code": null
+        },
+        {
+          "name": "Electricity bill",
+          "code": null
+        },
+        {
+          "name": "DIESEL",
+          "code": null
+        },
+        {
+          "name": "DETERGENT/WASHES",
+          "code": null
+        },
+        {
+          "name": "MEDICALS",
+          "code": null
+        },
+        {
+          "name": "AIRTIME AND DATA",
+          "code": null
+        },
+        {
+          "name": "INTERNETS",
+          "code": null
+        },
+        {
+          "name": "EQUIPMENTS AND TOOLS",
+          "code": null
+        },
+        {
+          "name": "CARBAD",
+          "code": null
+        },
+        {
+          "name": "MISCELLANEOUS",
+          "code": null
+        },
+        {
+          "name": "REPAIRS/MAINTENACE OF EQUIPMENT AND TOOLS",
+          "code": null
+        },
+        {
+          "name": "STATIONARY MATERIALS",
+          "code": null
+        },
+        {
+          "name": "I.O.U AND SALARY",
+          "code": null
+        },
+        {
+          "name": "ABUJA GOODS/PARTS",
+          "code": null
+        },
+        {
+          "name": "SUBCONTRACTOR WORKMANSHIP",
+          "code": null
+        },
+        {
+          "name": "INTEREST ON LOAN",
+          "code": null
+        },
+        {
+          "name": "NEW PLAZA",
+          "code": null
+        },
+        {
+          "name": "SANDRA WATER/DRINKS",
+          "code": null
+        },
+        {
+          "name": "STAFF HOUSE RENT ALLOWANCE",
+          "code": null
+        },
+        {
+          "name": "STAFF LOAN",
+          "code": null
+        },
+        {
+          "name": "LAGOS GOODS",
+          "code": null
+        },
+        {
+          "name": "PANEL BEATER GAS",
+          "code": null
+        },
+        {
+          "name": "CLEARING OF CAR",
+          "code": null
+        },
+        {
+          "name": "CASH BACK",
+          "code": null
+        },
+        {
+          "name": "ELECTRICITY PENALTY",
+          "code": null
+        },
+        {
+          "name": "REFUND",
+          "code": null
+        },
+        {
+          "name": "CAR WASH",
+          "code": null
+        },
+        {
+          "name": "SOCIAL MEDIA",
+          "code": null
+        },
+        {
+          "name": "ELECTRICAL MATERIALS",
+          "code": null
+        },
+        {
+          "name": "COMPANY BIKE REPAIRS",
+          "code": "CBR"
+        },
+        {
+          "name": "WAITING AREA ITEMS",
+          "code": "WAI"
+        },
+        {
+          "name": "COMPANY ACCOUNT",
+          "code": null
+        }
+      ]
+    }
+  }
+}

@@ -10,6 +10,52 @@ import { isAuthSkipped } from "@/lib/utils/devAccess";
 
 const PUBLIC_PREFIXES = ["/login", "/reset-password", "/invite", "/invoice"];
 const skipAuth = isAuthSkipped();
+/** Re-pull TenantRole permissions often enough that role matrix edits apply without a full re-login. */
+const PERMISSIONS_REFRESH_MS = 45_000;
+let lastPermissionsRefreshAt = 0;
+
+function applyRefreshResult(
+  result: NonNullable<Awaited<ReturnType<typeof refreshAccessToken>>>,
+): void {
+  useAuthStore.getState().setAuth({
+    userId: result.user.id,
+    email: result.user.email,
+    name: result.user.name,
+    tenantId: result.user.tenantId,
+    role: result.user.role,
+    token: result.accessToken,
+    tenantRoleId: result.user.tenantRoleId ?? null,
+    tenantRoleName: result.user.tenantRoleName ?? null,
+    tenantRolePermissions: result.user.tenantRolePermissions ?? [],
+    tenantRoleLocked: result.user.tenantRoleLocked ?? false,
+    allowedTenantCodes: result.user.allowedTenantCodes ?? [],
+  });
+}
+
+function softRefreshSession(force = false): void {
+  const state = useAuthStore.getState();
+  if (!state.token || !state.isAuthenticated) return;
+  const now = Date.now();
+  if (!force && now - lastPermissionsRefreshAt < PERMISSIONS_REFRESH_MS) {
+    return;
+  }
+  lastPermissionsRefreshAt = now;
+  void refreshAccessToken()
+    .then((result) => {
+      if (!result) {
+        if (!decodeAccessToken(useAuthStore.getState().token ?? "")) {
+          useAuthStore.getState().clearAuth();
+        }
+        return;
+      }
+      applyRefreshResult(result);
+    })
+    .catch(() => {
+      if (!decodeAccessToken(useAuthStore.getState().token ?? "")) {
+        useAuthStore.getState().clearAuth();
+      }
+    });
+}
 
 function isPublicPath(pathname: string): boolean {
   if (pathname.startsWith("/dev")) return true;
@@ -34,39 +80,17 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
       const expiresSoon =
         decoded?.exp != null && decoded.exp * 1000 < Date.now() + 2 * 60 * 1000;
       if (!decoded || expiresSoon) {
-        void refreshAccessToken()
-          .then((result) => {
-            if (!result) {
-              // Only wipe session when the access token is already unusable.
-              if (!decodeAccessToken(useAuthStore.getState().token ?? "")) {
-                useAuthStore.getState().clearAuth();
-              }
-              return;
-            }
-            useAuthStore.getState().setAuth({
-              userId: result.user.id,
-              email: result.user.email,
-              name: result.user.name,
-              tenantId: result.user.tenantId,
-              role: result.user.role,
-              token: result.accessToken,
-              tenantRoleId: result.user.tenantRoleId ?? null,
-              tenantRoleName: result.user.tenantRoleName ?? null,
-              tenantRolePermissions: result.user.tenantRolePermissions ?? [],
-              tenantRoleLocked: result.user.tenantRoleLocked ?? false,
-              allowedTenantCodes: result.user.allowedTenantCodes ?? [],
-            });
-          })
-          .catch(() => {
-            if (!decodeAccessToken(useAuthStore.getState().token ?? "")) {
-              useAuthStore.getState().clearAuth();
-            }
-          });
+        softRefreshSession(true);
+      } else if (state.isAuthenticated && !isPublicPath(pathname)) {
+        // Keep permission keys in sync after Roles page edits.
+        softRefreshSession(false);
       }
     }
 
     if (pathname === "/login" && state.isAuthenticated && state.role) {
-      router.replace(getPostLoginPath(state.role, state.tenantId));
+      router.replace(
+        getPostLoginPath(state.role, state.tenantId, state.tenantRoleName),
+      );
       return;
     }
 
@@ -80,6 +104,12 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     }
   }, [hydrated, isAuthenticated, pathname, router]);
 
+  useEffect(() => {
+    if (skipAuth || !hydrated || !isAuthenticated) return;
+    const onFocus = () => softRefreshSession(false);
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [hydrated, isAuthenticated]);
   if (skipAuth) {
     return <>{children}</>;
   }

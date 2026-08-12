@@ -12,6 +12,7 @@ import { businessLocationName } from "@/lib/utils/locationLabels";
 import { useRouteTenant } from "@/lib/hooks/useRouteTenant";
 import { cn } from "@/lib/utils/cn";
 import { parseExpenseNotes } from "@/lib/utils/expenseNotes";
+import { Hq6AuditTrail } from "@/components/hq6/Hq6AuditTrail";
 
 /**
  * HQ6 Expense details — same document frame as sell/purchase view modals.
@@ -248,6 +249,13 @@ export function ExpenseViewModal({
               </p>
             </div>
           </div>
+
+          <Hq6AuditTrail
+            entityType="expense"
+            entityId={expense.id}
+            title="Activity"
+            enabled={Boolean(expense)}
+          />
         </div>
       ) : null}
     </Hq6Modal>

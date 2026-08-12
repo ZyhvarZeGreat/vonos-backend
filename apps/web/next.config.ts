@@ -49,8 +49,16 @@ const nextConfig: NextConfig = {
   },
   async rewrites() {
     if (!nestOperationsTenants) return [];
-    // VS/VKW public URLs start at /operations/{CODE}; map onto existing [tenant] pages.
+    // VC/VS/VKW public URLs start at /operations/{CODE}; map onto existing [tenant] pages.
     return [
+      {
+        source: "/operations/VC",
+        destination: "/VC",
+      },
+      {
+        source: "/operations/VC/:path*",
+        destination: "/VC/:path*",
+      },
       {
         source: "/operations/VS",
         destination: "/VS",

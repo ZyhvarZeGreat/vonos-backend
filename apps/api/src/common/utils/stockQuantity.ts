@@ -76,6 +76,59 @@ export function parseMovementLines(lines: unknown): MovementLine[] {
 }
 
 /** Persist on write so list queries never expand lines JSON. */
+/** Sum quantities per itemId for inbound receipt stock math. */
+export function movementLineQtyByItemId(
+  lines: MovementLine[],
+): Map<string, number> {
+  const byItem = new Map<string, number>();
+  for (const line of lines) {
+    if (!line.itemId) continue;
+    byItem.set(
+      line.itemId,
+      (byItem.get(line.itemId) ?? 0) + line.quantity,
+    );
+  }
+  return byItem;
+}
+
+/**
+ * Stock delta when an inbound purchase changes status and/or line quantities.
+ * When already Received and staying Received, use net qty change only — do not
+ * fully reverse the old receipt then re-apply (that fails if stock was sold).
+ */
+export function inboundReceiptStockDelta(args: {
+  wasReceived: boolean;
+  willReceive: boolean;
+  prevLines: MovementLine[];
+  nextLines: MovementLine[];
+}): Map<string, number> {
+  const prevByItem = args.wasReceived
+    ? movementLineQtyByItemId(args.prevLines)
+    : new Map<string, number>();
+  const nextByItem = args.willReceive
+    ? movementLineQtyByItemId(args.nextLines)
+    : new Map<string, number>();
+  const deltas = new Map<string, number>();
+  const itemIds = new Set([...prevByItem.keys(), ...nextByItem.keys()]);
+
+  for (const itemId of itemIds) {
+    const prevQty = prevByItem.get(itemId) ?? 0;
+    const nextQty = nextByItem.get(itemId) ?? 0;
+    let delta: number;
+    if (args.wasReceived && args.willReceive) {
+      delta = nextQty - prevQty;
+    } else if (args.wasReceived) {
+      delta = -prevQty;
+    } else if (args.willReceive) {
+      delta = nextQty;
+    } else {
+      delta = 0;
+    }
+    if (delta !== 0) deltas.set(itemId, delta);
+  }
+  return deltas;
+}
+
 export function movementLineRollups(lines: unknown): {
   itemCount: number;
   grandTotal: number;

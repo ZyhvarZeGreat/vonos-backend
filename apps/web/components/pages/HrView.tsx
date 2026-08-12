@@ -199,12 +199,13 @@ function HrViewBody({ allTenants = false, embedded = false }: HrViewProps) {
     queryKey: ["workforce", allTenants ? "all" : tenantId],
     enabled: activeTab === "workforce" && (allTenants || Boolean(tenantId)),
     search,
+    searchMode: "hybrid",
     fetchPage: (cursor, limit, _sort, opts) =>
       allTenants
-        ? getAllTenantsWorkforcePage(cursor, limit, search || undefined, {
+        ? getAllTenantsWorkforcePage(cursor, limit, opts?.search || undefined, {
             includeSummary: opts?.includeSummary,
           })
-        : getWorkforcePage(tenantId!, cursor, limit, search || undefined, {
+        : getWorkforcePage(tenantId!, cursor, limit, opts?.search || undefined, {
             includeSummary: opts?.includeSummary,
           }),
     getCursor: (row) => workforceListCursor(row),
@@ -230,19 +231,22 @@ function HrViewBody({ allTenants = false, embedded = false }: HrViewProps) {
     queryKey: ["users", allTenants ? "all" : tenantId],
     enabled: activeTab === "app-access" && (allTenants || Boolean(tenantId)),
     search,
+    searchMode: "hybrid",
     filters: { role: roleFilter || undefined, status: statusFilter || undefined },
     fetchPage: (cursor, limit, _sort, opts) =>
       allTenants
         ? getAllTenantUsersPage(cursor, limit, {
             role: roleFilter || undefined,
             status: statusFilter || undefined,
-        includeSummary: opts?.includeSummary,
-      })
+            search: opts?.search,
+            includeSummary: opts?.includeSummary,
+          })
         : getUsersPage(tenantId!, cursor, limit, {
             role: roleFilter || undefined,
             status: statusFilter || undefined,
-        includeSummary: opts?.includeSummary,
-      }),
+            search: opts?.search,
+            includeSummary: opts?.includeSummary,
+          }),
     getCursor: (row) => nameListCursor(row),
   });
 

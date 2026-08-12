@@ -20,11 +20,13 @@ export function warmPostLoginDestination(
   options: {
     role: Role;
     tenantId: string | null;
+    tenantRoleName?: string | null;
     destination?: string;
   },
 ): string {
   const destination =
-    options.destination ?? getPostLoginPath(options.role, options.tenantId);
+    options.destination ??
+    getPostLoginPath(options.role, options.tenantId, options.tenantRoleName);
 
   if (destination.startsWith("/admin")) {
     prefetchGroupOverview(queryClient);

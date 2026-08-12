@@ -47,7 +47,7 @@ export class UsersController {
       status,
     };
     if (allTenants === 'true') {
-      return this.usersService.listAllTenants(request.user.role, filters);
+      return this.usersService.listAllTenants(request.user, filters);
     }
     return this.usersService.listForTenant(filters);
   }

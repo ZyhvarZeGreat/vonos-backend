@@ -1,4 +1,5 @@
 import type { LoginSuccessResponse } from "@vonos/types";
+import { canAccessVagPortal } from "@vonos/types";
 import { useAuthStore } from "@/stores/authStore";
 import { stripBasePath, withBasePath } from "@/lib/utils/basePath";
 import { applyIdempotencyHeaders } from "@/lib/utils/idempotency";
@@ -16,11 +17,11 @@ export function apiUrl(path: string): string {
 
 function buildAuthHeaders(): Record<string, string> {
   const headers: Record<string, string> = {};
-  const { token, role } = useAuthStore.getState();
+  const { token, role, tenantRoleName } = useAuthStore.getState();
   if (token) {
     headers.Authorization = `Bearer ${token}`;
   }
-  if (role === "super_admin") {
+  if (canAccessVagPortal({ role, tenantRoleName })) {
     const viewingTenant = resolveViewingTenantId();
     if (viewingTenant) {
       headers["X-Viewing-Tenant"] = viewingTenant;

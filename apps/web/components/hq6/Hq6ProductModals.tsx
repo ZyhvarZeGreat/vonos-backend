@@ -10,6 +10,11 @@ import {
 import { Hq6Modal, Hq6Field, Hq6ModalSaveClose } from "@/components/hq6/Hq6Modal";
 import { ProductThumbnail } from "@/components/atoms/ProductThumbnail";
 import { isPriceCatalogOnlyTenant } from "@vonos/types";
+import type { TenantConfig } from "@vonos/types";
+import {
+  defaultEntityLocationCode,
+  locationsForTenantConfig,
+} from "@/lib/hooks/useBusinessLocationOptions";
 import { useRouteTenant } from "@/lib/hooks/useRouteTenant";
 import { formatHq6Currency } from "@/lib/utils/hq6Format";
 import { parseForm } from "@/lib/validation/parseForm";
@@ -20,6 +25,21 @@ function productLocationsForTenant(code: string | undefined) {
   const home = productHomeLocationsForTenant(code);
   if (home.length > 0) return home;
   return null;
+}
+
+/** Opening stock / view: own product home, else tenant business locations (VS/VKW). */
+function stockLocationsForOpening(
+  code: string | undefined,
+  config: TenantConfig | null | undefined,
+) {
+  const home = productLocationsForTenant(code);
+  if (home && home.length > 0) return home;
+  const fromConfig = locationsForTenantConfig(config);
+  if (fromConfig.length > 0) return fromConfig;
+  if (code?.trim()) {
+    return [{ code: code.trim().toUpperCase(), name: config?.name ?? code }];
+  }
+  return [];
 }
 
 function dash(value: string | number | null | undefined): string {
@@ -68,9 +88,7 @@ export function Hq6ViewProductModal({
     config?.archetype,
   );
 
-  const locations =
-    productLocationsForTenant(config?.code) ??
-    config?.businessLocations;
+  const locations = stockLocationsForOpening(config?.code, config);
 
   const locationName = (code: string | null | undefined) => {
     if (!code) return "--";
@@ -385,11 +403,8 @@ export function Hq6OpeningStockModal({
 }) {
   const { config } = useRouteTenant();
   const stockLocations = useMemo(
-    () =>
-      productLocationsForTenant(config?.code) ??
-      config?.businessLocations ??
-      [],
-    [config?.code, config?.businessLocations],
+    () => stockLocationsForOpening(config?.code, config),
+    [config?.code, config?.name, config?.businessLocations],
   );
   const [qty, setQty] = useState("");
   const [unitCost, setUnitCost] = useState("");
@@ -404,9 +419,12 @@ export function Hq6OpeningStockModal({
       setUnitCost(String(item.costPrice ?? 0));
       setDate(new Date().toISOString().slice(0, 10));
       setNote("");
-      setLocation(item.locationCode ?? stockLocations[0]?.code ?? "");
+      const preferred =
+        item.locationCode?.trim() ||
+        defaultEntityLocationCode(stockLocations, config?.code);
+      setLocation(preferred);
     }
-  }, [open, item, stockLocations]);
+  }, [open, item, stockLocations, config?.code]);
 
   const qtyNum = Number(qty) || 0;
   const costNum = Number(unitCost) || 0;
@@ -434,9 +452,16 @@ export function Hq6OpeningStockModal({
                 toast.error("Enter a valid unit cost");
                 return;
               }
+              const loc =
+                location.trim() ||
+                defaultEntityLocationCode(stockLocations, config?.code);
+              if (!loc) {
+                toast.error("No business location configured for this entity");
+                return;
+              }
               setSaving(true);
               try {
-                await onSave?.(n, location, cost);
+                await onSave?.(n, loc, cost);
                 toast.success("Opening stock updated");
                 onClose();
               } catch (err) {

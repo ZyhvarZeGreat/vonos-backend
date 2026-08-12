@@ -18,6 +18,7 @@ const ALLOWED_MIME = new Set([
   'image/jpg',
   'image/png',
   'image/webp',
+  'image/avif',
   'image/gif',
 ]);
 
@@ -26,6 +27,7 @@ const EXT_BY_MIME: Record<string, string> = {
   'image/jpg': 'jpg',
   'image/png': 'png',
   'image/webp': 'webp',
+  'image/avif': 'avif',
   'image/gif': 'gif',
 };
 
@@ -95,7 +97,7 @@ export class MediaService {
     const mime = (file.mimetype || '').toLowerCase();
     if (!ALLOWED_MIME.has(mime)) {
       throw new BadRequestException(
-        'Image must be JPEG, PNG, WebP, or GIF',
+        'Image must be JPEG, PNG, WebP, AVIF, or GIF',
       );
     }
 

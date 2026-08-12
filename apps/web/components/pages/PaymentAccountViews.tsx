@@ -96,12 +96,14 @@ function PaymentAccountsListViewBody() {
     queryKey: ["payment-accounts", tenantId],
     enabled: Boolean(tenantId),
     search,
+    searchMode: "hybrid",
     filters: {
       status: statusFilter || undefined,
       type: typeFilter || undefined,
     },
     fetchPage: (cursor, limit, _sort, opts) =>
       getPaymentAccountsPage(tenantId!, cursor, limit, {
+        search: opts?.search,
         includeSummary: opts?.includeSummary,
       }),
     getCursor: (row) => nameListCursor(row),

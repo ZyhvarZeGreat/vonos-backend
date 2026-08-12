@@ -4,6 +4,7 @@ import { Info } from "lucide-react";
 import type { TenantConfig } from "@vonos/types";
 import { Hq6BusyButton } from "@/components/hq6/Hq6BusyButton";
 import { ProductImageDropzone } from "@/components/molecules/ProductImageDropzone";
+import { useAppPermissions } from "@/lib/hooks/useHq6Permissions";
 import { cn } from "@/lib/utils/cn";
 import {
   DEFAULT_HQ6_TAX_OPTIONS,
@@ -147,6 +148,8 @@ export function Hq6AddProductFormBody({
   onImageChange,
   onBrochureChange,
 }: Hq6AddProductFormBodyProps) {
+  const { can } = useAppPermissions();
+  const canOpeningStock = can("product.opening_stock");
   return (
     <div
       className="hq6-add-product-form product_form"
@@ -639,6 +642,19 @@ export function Hq6AddProductFormBody({
                             })
                           }
                         />
+                        <input
+                          className="form-control"
+                          type="number"
+                          min="0"
+                          placeholder="Opening qty"
+                          style={{ marginTop: 6 }}
+                          value={row.quantity}
+                          onChange={(e) =>
+                            updateLocationDetail(row.locationCode, {
+                              quantity: e.target.value,
+                            })
+                          }
+                        />
                       </div>
                     </div>
                   ))}
@@ -832,7 +848,7 @@ export function Hq6AddProductFormBody({
         ) : null}
         {!isEdit ? (
           <>
-            {!priceCatalogOnly ? (
+            {!priceCatalogOnly && canOpeningStock ? (
               <Hq6BusyButton
                 type="button"
                 className={cn(
@@ -860,6 +876,18 @@ export function Hq6AddProductFormBody({
               Save And Add Another
             </Hq6BusyButton>
           </>
+        ) : !priceCatalogOnly && canOpeningStock ? (
+          <Hq6BusyButton
+            type="button"
+            className={cn("tw-dw-btn tw-text-white", "hq6-btn-opening-stock")}
+            style={{ marginRight: 8, background: "#7c3aed" }}
+            busy={isPending && saveMode === "saveOpeningStock"}
+            busyLabel="Saving…"
+            disabled={isPending}
+            onClick={() => onSubmit("saveOpeningStock")}
+          >
+            Save & Update Opening Stock
+          </Hq6BusyButton>
         ) : null}
         <Hq6BusyButton
           type="button"

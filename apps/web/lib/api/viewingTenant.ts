@@ -8,18 +8,24 @@ import {
 import { useAuthStore } from "@/stores/authStore";
 import { useTenantStore } from "@/stores/tenantStore";
 import { useUiStore } from "@/stores/uiStore";
+import { canAccessVagPortal } from "@vonos/types";
 
 /**
  * Tenant id the API should scope to for the current screen.
- * Super admins on /admin/* use the admin viewing entity (never a leaked
- * activeTenantId from a previous entity visit).
- * Super admins on /{code}/* (or /operations/{VS|VKW}/*) use the URL segment.
+ * VAG portal users (super_admin or HR) on /admin/* use the admin viewing
+ * entity (never a leaked activeTenantId from a previous entity visit).
+ * On /{code}/* (or /operations/{VC|VS|VKW}/*) use the URL segment.
  * Everyone else: JWT tenant only.
  */
 export function resolveViewingTenantId(): string | null {
-  const { role, tenantId: authTenantId } = useAuthStore.getState();
+  const {
+    role,
+    tenantId: authTenantId,
+    tenantRoleName,
+  } = useAuthStore.getState();
 
-  if (role !== "super_admin") {
+  const isPortal = canAccessVagPortal({ role, tenantRoleName });
+  if (!isPortal) {
     return authTenantId;
   }
 

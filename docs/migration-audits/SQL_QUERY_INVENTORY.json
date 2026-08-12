@@ -1,0 +1,690 @@
+{
+  "generated": "chion/sql-speed-bench",
+  "total": 114,
+  "sites": [
+    {
+      "file": "src/common/utils/availableStock.ts",
+      "line": 32,
+      "kind": "queryRaw",
+      "fn": "reservedQtyBySku"
+    },
+    {
+      "file": "src/common/utils/dailyFinanceRollup.ts",
+      "line": 9,
+      "kind": "executeRaw",
+      "fn": "(inline/unknown)"
+    },
+    {
+      "file": "src/common/utils/dailyFinanceRollup.ts",
+      "line": 85,
+      "kind": "queryRaw",
+      "fn": "(inline/unknown)"
+    },
+    {
+      "file": "src/common/utils/dailyFinanceRollup.ts",
+      "line": 89,
+      "kind": "executeRaw",
+      "fn": "(inline/unknown)"
+    },
+    {
+      "file": "src/common/utils/dailyFinanceRollup.ts",
+      "line": 132,
+      "kind": "executeRaw",
+      "fn": "applyDailyFinanceDelta"
+    },
+    {
+      "file": "src/common/utils/dailyFinanceRollup.ts",
+      "line": 133,
+      "kind": "executeRaw",
+      "fn": "applyDailyFinanceDelta"
+    },
+    {
+      "file": "src/common/utils/dailyFinanceRollup.ts",
+      "line": 159,
+      "kind": "executeRaw",
+      "fn": "applyDailyFinanceDelta"
+    },
+    {
+      "file": "src/common/utils/dailyFinanceRollup.ts",
+      "line": 304,
+      "kind": "queryRaw",
+      "fn": "sumDailyFinanceRollupForTenants"
+    },
+    {
+      "file": "src/common/utils/dailyFinanceRollup.ts",
+      "line": 319,
+      "kind": "queryRaw",
+      "fn": "groupRevenueByTenantFromRollup"
+    },
+    {
+      "file": "src/common/utils/dailyFinanceRollup.ts",
+      "line": 347,
+      "kind": "queryRaw",
+      "fn": "groupRevenueTrendByMonthFromRollup"
+    },
+    {
+      "file": "src/common/utils/dailyFinanceRollup.ts",
+      "line": 394,
+      "kind": "queryRaw",
+      "fn": "groupFinanceByTenantFromRollup"
+    },
+    {
+      "file": "src/common/utils/dailyFinanceRollup.ts",
+      "line": 435,
+      "kind": "queryRaw",
+      "fn": "groupDailyFinanceTrend"
+    },
+    {
+      "file": "src/common/utils/dailyFinanceRollup.ts",
+      "line": 507,
+      "kind": "executeRaw",
+      "fn": "backfillDailyFinanceFromLedger"
+    },
+    {
+      "file": "src/common/utils/dailyFinanceRollup.ts",
+      "line": 511,
+      "kind": "executeRaw",
+      "fn": "backfillDailyFinanceFromLedger"
+    },
+    {
+      "file": "src/common/utils/dailyFinanceRollup.ts",
+      "line": 515,
+      "kind": "executeRaw",
+      "fn": "backfillDailyFinanceFromLedger"
+    },
+    {
+      "file": "src/common/utils/dailyFinanceRollup.ts",
+      "line": 544,
+      "kind": "executeRaw",
+      "fn": "backfillDailyFinanceFromLedger"
+    },
+    {
+      "file": "src/common/utils/outstandingReceivables.ts",
+      "line": 14,
+      "kind": "queryRaw",
+      "fn": "computeOutstandingReceivables"
+    },
+    {
+      "file": "src/common/utils/outstandingReceivables.ts",
+      "line": 39,
+      "kind": "queryRaw",
+      "fn": "computeAllTimeOutstandingReceivables"
+    },
+    {
+      "file": "src/common/utils/tenantEntitySnapshot.ts",
+      "line": 76,
+      "kind": "queryRaw",
+      "fn": "itemStatsByTenant"
+    },
+    {
+      "file": "src/common/utils/tenantEntitySnapshot.ts",
+      "line": 102,
+      "kind": "queryRaw",
+      "fn": "jobCountsByTenant"
+    },
+    {
+      "file": "src/common/utils/tenantEntitySnapshot.ts",
+      "line": 158,
+      "kind": "queryRaw",
+      "fn": "fetchLiveEntityMaps"
+    },
+    {
+      "file": "src/common/utils/tenantEntitySnapshot.ts",
+      "line": 170,
+      "kind": "queryRaw",
+      "fn": "fetchLiveEntityMaps"
+    },
+    {
+      "file": "src/common/utils/tenantEntitySnapshot.ts",
+      "line": 195,
+      "kind": "queryRaw",
+      "fn": "fetchLiveEntityMaps"
+    },
+    {
+      "file": "src/common/utils/tenantEntitySnapshot.ts",
+      "line": 210,
+      "kind": "queryRaw",
+      "fn": "(inline/unknown)"
+    },
+    {
+      "file": "src/health/health.controller.ts",
+      "line": 19,
+      "kind": "queryRaw",
+      "fn": "(inline/unknown)"
+    },
+    {
+      "file": "src/modules/hrm/hrm.service.ts",
+      "line": 237,
+      "kind": "queryRawUnsafe",
+      "fn": "(inline/unknown)"
+    },
+    {
+      "file": "src/modules/items/items.service.ts",
+      "line": 490,
+      "kind": "queryRaw",
+      "fn": "(inline/unknown)"
+    },
+    {
+      "file": "src/modules/ledger/groupLedger.ts",
+      "line": 94,
+      "kind": "queryRaw",
+      "fn": "buildGroupLedgerByEntity"
+    },
+    {
+      "file": "src/modules/ledger/groupLedger.ts",
+      "line": 192,
+      "kind": "queryRaw",
+      "fn": "buildGroupLedgerSummary"
+    },
+    {
+      "file": "src/modules/ledger/ledgerCharts.ts",
+      "line": 106,
+      "kind": "queryRaw",
+      "fn": "buildGroupLedgerCharts"
+    },
+    {
+      "file": "src/modules/ledger/ledgerCharts.ts",
+      "line": 139,
+      "kind": "queryRaw",
+      "fn": "(inline/unknown)"
+    },
+    {
+      "file": "src/modules/overview/groupOverview.ts",
+      "line": 224,
+      "kind": "queryRaw",
+      "fn": "loadGroupAlertInputs"
+    },
+    {
+      "file": "src/modules/overview/groupOverview.ts",
+      "line": 238,
+      "kind": "queryRaw",
+      "fn": "loadGroupAlertInputs"
+    },
+    {
+      "file": "src/modules/overview/overviewAggregators.ts",
+      "line": 55,
+      "kind": "queryRaw",
+      "fn": "jobOverviewPhase1"
+    },
+    {
+      "file": "src/modules/overview/overviewFinance.ts",
+      "line": 30,
+      "kind": "queryRaw",
+      "fn": "buildLedgerFinanceSlice"
+    },
+    {
+      "file": "src/modules/overview/overviewFinance.ts",
+      "line": 160,
+      "kind": "queryRaw",
+      "fn": "(inline/unknown)"
+    },
+    {
+      "file": "src/modules/overview/overviewFinance.ts",
+      "line": 204,
+      "kind": "queryRaw",
+      "fn": "(inline/unknown)"
+    },
+    {
+      "file": "src/modules/overview/overviewFinance.ts",
+      "line": 406,
+      "kind": "queryRaw",
+      "fn": "buildVaHq6HomeBundle"
+    },
+    {
+      "file": "src/modules/payments/payments.service.ts",
+      "line": 411,
+      "kind": "queryRaw",
+      "fn": "(inline/unknown)"
+    },
+    {
+      "file": "src/modules/reports/aggregators/appointmentReportQueries.ts",
+      "line": 33,
+      "kind": "queryRaw",
+      "fn": "appointmentKpiSnapshot"
+    },
+    {
+      "file": "src/modules/reports/aggregators/appointmentReportQueries.ts",
+      "line": 85,
+      "kind": "queryRaw",
+      "fn": "stylistRevenueInWindow"
+    },
+    {
+      "file": "src/modules/reports/aggregators/appointmentReportQueries.ts",
+      "line": 114,
+      "kind": "queryRaw",
+      "fn": "noShowTrend"
+    },
+    {
+      "file": "src/modules/reports/aggregators/appointmentReportQueries.ts",
+      "line": 138,
+      "kind": "queryRaw",
+      "fn": "todayAppointmentSummary"
+    },
+    {
+      "file": "src/modules/reports/aggregators/groupReportQueries.ts",
+      "line": 49,
+      "kind": "queryRaw",
+      "fn": "groupRevenueByTenant"
+    },
+    {
+      "file": "src/modules/reports/aggregators/groupReportQueries.ts",
+      "line": 79,
+      "kind": "queryRaw",
+      "fn": "groupJobsByTenant"
+    },
+    {
+      "file": "src/modules/reports/aggregators/groupReportQueries.ts",
+      "line": 115,
+      "kind": "queryRaw",
+      "fn": "groupRevenueTrendByMonth"
+    },
+    {
+      "file": "src/modules/reports/aggregators/groupReportQueries.ts",
+      "line": 153,
+      "kind": "queryRaw",
+      "fn": "tenantStockValue"
+    },
+    {
+      "file": "src/modules/reports/aggregators/groupReportQueries.ts",
+      "line": 167,
+      "kind": "queryRaw",
+      "fn": "tenantTodaySalesRevenue"
+    },
+    {
+      "file": "src/modules/reports/aggregators/groupReportQueries.ts",
+      "line": 193,
+      "kind": "queryRaw",
+      "fn": "tenantTodayAppointmentStats"
+    },
+    {
+      "file": "src/modules/reports/aggregators/jobReportQueries.ts",
+      "line": 53,
+      "kind": "queryRaw",
+      "fn": "jobCostSummaryInWindow"
+    },
+    {
+      "file": "src/modules/reports/aggregators/jobReportQueries.ts",
+      "line": 81,
+      "kind": "queryRaw",
+      "fn": "jobCostByMonth"
+    },
+    {
+      "file": "src/modules/reports/aggregators/jobReportQueries.ts",
+      "line": 117,
+      "kind": "queryRaw",
+      "fn": "jobTableRowsInWindow"
+    },
+    {
+      "file": "src/modules/reports/aggregators/jobReportQueries.ts",
+      "line": 161,
+      "kind": "queryRaw",
+      "fn": "deliveredTurnaroundDays"
+    },
+    {
+      "file": "src/modules/reports/aggregators/jobReportQueries.ts",
+      "line": 185,
+      "kind": "queryRaw",
+      "fn": "deliveredTurnaroundHistogram"
+    },
+    {
+      "file": "src/modules/reports/aggregators/jobReportQueries.ts",
+      "line": 226,
+      "kind": "queryRaw",
+      "fn": "avgDeliveredTurnaroundDays"
+    },
+    {
+      "file": "src/modules/reports/aggregators/jobSalesData.ts",
+      "line": 133,
+      "kind": "queryRaw",
+      "fn": "computeJobRevenueTotal"
+    },
+    {
+      "file": "src/modules/reports/aggregators/ledgerReportQueries.ts",
+      "line": 43,
+      "kind": "queryRaw",
+      "fn": "ledgerSummaryInWindow"
+    },
+    {
+      "file": "src/modules/reports/aggregators/ledgerReportQueries.ts",
+      "line": 85,
+      "kind": "queryRaw",
+      "fn": "ledgerPlTrend"
+    },
+    {
+      "file": "src/modules/reports/aggregators/ledgerReportQueries.ts",
+      "line": 125,
+      "kind": "queryRaw",
+      "fn": "ledgerExpenseBreakdown"
+    },
+    {
+      "file": "src/modules/reports/aggregators/ledgerReportQueries.ts",
+      "line": 154,
+      "kind": "queryRaw",
+      "fn": "ledgerRevenueBreakdown"
+    },
+    {
+      "file": "src/modules/reports/aggregators/paymentAccountReportHandlers.ts",
+      "line": 112,
+      "kind": "queryRaw",
+      "fn": "computeSupplierDue"
+    },
+    {
+      "file": "src/modules/reports/aggregators/paymentAccountReportHandlers.ts",
+      "line": 121,
+      "kind": "queryRaw",
+      "fn": "computeClosingStock"
+    },
+    {
+      "file": "src/modules/reports/aggregators/paymentAccountReportHandlers.ts",
+      "line": 137,
+      "kind": "queryRaw",
+      "fn": "openingBalancesBefore"
+    },
+    {
+      "file": "src/modules/reports/aggregators/profitLossBreakdownSql.ts",
+      "line": 45,
+      "kind": "queryRaw",
+      "fn": "queryProfitLossBreakdownTab"
+    },
+    {
+      "file": "src/modules/reports/aggregators/profitLossBreakdownSql.ts",
+      "line": 83,
+      "kind": "queryRaw",
+      "fn": "queryProfitLossBreakdownTab"
+    },
+    {
+      "file": "src/modules/reports/aggregators/profitLossBreakdownSql.ts",
+      "line": 120,
+      "kind": "queryRaw",
+      "fn": "(inline/unknown)"
+    },
+    {
+      "file": "src/modules/reports/aggregators/profitLossBreakdownSql.ts",
+      "line": 158,
+      "kind": "queryRaw",
+      "fn": "(inline/unknown)"
+    },
+    {
+      "file": "src/modules/reports/aggregators/profitLossBreakdownSql.ts",
+      "line": 200,
+      "kind": "queryRaw",
+      "fn": "(inline/unknown)"
+    },
+    {
+      "file": "src/modules/reports/aggregators/profitLossBreakdownSql.ts",
+      "line": 241,
+      "kind": "queryRaw",
+      "fn": "(inline/unknown)"
+    },
+    {
+      "file": "src/modules/reports/aggregators/profitLossBreakdownSql.ts",
+      "line": 291,
+      "kind": "queryRaw",
+      "fn": "(inline/unknown)"
+    },
+    {
+      "file": "src/modules/reports/aggregators/profitLossBreakdownSql.ts",
+      "line": 333,
+      "kind": "queryRaw",
+      "fn": "(inline/unknown)"
+    },
+    {
+      "file": "src/modules/reports/aggregators/profitLossQueries.ts",
+      "line": 35,
+      "kind": "queryRaw",
+      "fn": "stockValuation"
+    },
+    {
+      "file": "src/modules/reports/aggregators/profitLossQueries.ts",
+      "line": 65,
+      "kind": "queryRaw",
+      "fn": "sumMovementJsonByTypes"
+    },
+    {
+      "file": "src/modules/reports/aggregators/salesReportQueries.ts",
+      "line": 107,
+      "kind": "queryRaw",
+      "fn": "salesRevenueTrend"
+    },
+    {
+      "file": "src/modules/reports/aggregators/salesReportQueries.ts",
+      "line": 134,
+      "kind": "queryRaw",
+      "fn": "topProductsInWindow"
+    },
+    {
+      "file": "src/modules/reports/aggregators/salesReportQueries.ts",
+      "line": 176,
+      "kind": "queryRaw",
+      "fn": "paymentStatusBreakdown"
+    },
+    {
+      "file": "src/modules/reports/aggregators/salesReportQueries.ts",
+      "line": 205,
+      "kind": "queryRaw",
+      "fn": "salesOrderTrend"
+    },
+    {
+      "file": "src/modules/reports/aggregators/salesReportQueries.ts",
+      "line": 229,
+      "kind": "queryRaw",
+      "fn": "hourlyOrderCounts"
+    },
+    {
+      "file": "src/modules/reports/aggregators/salesReportQueries.ts",
+      "line": 304,
+      "kind": "queryRaw",
+      "fn": "salesRevenueByBucket"
+    },
+    {
+      "file": "src/modules/reports/aggregators/salesReportQueries.ts",
+      "line": 316,
+      "kind": "queryRaw",
+      "fn": "salesRevenueByBucket"
+    },
+    {
+      "file": "src/modules/reports/aggregators/salesReportQueries.ts",
+      "line": 356,
+      "kind": "queryRaw",
+      "fn": "purchaseRevenueByBucket"
+    },
+    {
+      "file": "src/modules/reports/aggregators/salesReportQueries.ts",
+      "line": 373,
+      "kind": "queryRaw",
+      "fn": "purchaseRevenueByBucket"
+    },
+    {
+      "file": "src/modules/reports/aggregators/salesReportQueries.ts",
+      "line": 413,
+      "kind": "queryRaw",
+      "fn": "ledgerCostByBucket"
+    },
+    {
+      "file": "src/modules/reports/aggregators/salesReportQueries.ts",
+      "line": 426,
+      "kind": "queryRaw",
+      "fn": "ledgerCostByBucket"
+    },
+    {
+      "file": "src/modules/reports/aggregators/salesReportQueries.ts",
+      "line": 454,
+      "kind": "queryRaw",
+      "fn": "salesByDay"
+    },
+    {
+      "file": "src/modules/reports/aggregators/salesReportQueries.ts",
+      "line": 493,
+      "kind": "queryRaw",
+      "fn": "salesByCreatedBy"
+    },
+    {
+      "file": "src/modules/reports/aggregators/salesReportQueries.ts",
+      "line": 533,
+      "kind": "queryRaw",
+      "fn": "salesByServiceStaff"
+    },
+    {
+      "file": "src/modules/reports/aggregators/salesReportQueries.ts",
+      "line": 579,
+      "kind": "queryRaw",
+      "fn": "salesByPaymentStatus"
+    },
+    {
+      "file": "src/modules/reports/aggregators/salesReportQueries.ts",
+      "line": 619,
+      "kind": "queryRaw",
+      "fn": "taxDiscountAggregates"
+    },
+    {
+      "file": "src/modules/reports/aggregators/salesReportQueries.ts",
+      "line": 674,
+      "kind": "queryRaw",
+      "fn": "taxReportSummaryAggregates"
+    },
+    {
+      "file": "src/modules/reports/aggregators/salesReportQueries.ts",
+      "line": 722,
+      "kind": "queryRaw",
+      "fn": "taxReportSummaryAggregates"
+    },
+    {
+      "file": "src/modules/reports/aggregators/salesReportQueries.ts",
+      "line": 765,
+      "kind": "queryRaw",
+      "fn": "(inline/unknown)"
+    },
+    {
+      "file": "src/modules/reports/aggregators/salesReportQueries.ts",
+      "line": 1243,
+      "kind": "queryRaw",
+      "fn": "customerNameSegments"
+    },
+    {
+      "file": "src/modules/reports/aggregators/salesReportQueries.ts",
+      "line": 1283,
+      "kind": "queryRaw",
+      "fn": "inboundPurchaseLines"
+    },
+    {
+      "file": "src/modules/reports/aggregators/stockReportQueries.ts",
+      "line": 56,
+      "kind": "queryRaw",
+      "fn": "stockMetrics"
+    },
+    {
+      "file": "src/modules/reports/aggregators/stockReportQueries.ts",
+      "line": 82,
+      "kind": "queryRaw",
+      "fn": "stockMetrics"
+    },
+    {
+      "file": "src/modules/reports/aggregators/stockReportQueries.ts",
+      "line": 144,
+      "kind": "queryRaw",
+      "fn": "itemsByCategoryValue"
+    },
+    {
+      "file": "src/modules/reports/aggregators/stockReportQueries.ts",
+      "line": 169,
+      "kind": "queryRaw",
+      "fn": "movementTrend"
+    },
+    {
+      "file": "src/modules/reports/aggregators/stockReportQueries.ts",
+      "line": 197,
+      "kind": "queryRaw",
+      "fn": "lowStockByCategory"
+    },
+    {
+      "file": "src/modules/reports/aggregators/stockReportQueries.ts",
+      "line": 265,
+      "kind": "queryRaw",
+      "fn": "topStockValueItems"
+    },
+    {
+      "file": "src/modules/reports/aggregators/tableReportHandlers.ts",
+      "line": 647,
+      "kind": "queryRaw",
+      "fn": "(inline/unknown)"
+    },
+    {
+      "file": "src/modules/reports/aggregators/tableReportHandlers.ts",
+      "line": 827,
+      "kind": "queryRaw",
+      "fn": "buildProductSellAggregated"
+    },
+    {
+      "file": "src/modules/reports/aggregators/tableReportHandlers.ts",
+      "line": 852,
+      "kind": "queryRaw",
+      "fn": "(inline/unknown)"
+    },
+    {
+      "file": "src/modules/reports/aggregators/tableReportHandlers.ts",
+      "line": 969,
+      "kind": "queryRaw",
+      "fn": "buildProductPurchaseReport"
+    },
+    {
+      "file": "src/modules/reports/aggregators/tableReportHandlers.ts",
+      "line": 1061,
+      "kind": "queryRaw",
+      "fn": "(inline/unknown)"
+    },
+    {
+      "file": "src/modules/reports/aggregators/tableReportHandlers.ts",
+      "line": 1196,
+      "kind": "queryRaw",
+      "fn": "buildItemsReport"
+    },
+    {
+      "file": "src/modules/reports/aggregators/transactionReportHandlers.ts",
+      "line": 1145,
+      "kind": "queryRaw",
+      "fn": "buildCustomerGroupsReport"
+    },
+    {
+      "file": "src/modules/reports/aggregators/transactionReportHandlers.ts",
+      "line": 1342,
+      "kind": "queryRaw",
+      "fn": "buildStockExpiryReport"
+    },
+    {
+      "file": "src/modules/sales/sales.service.ts",
+      "line": 676,
+      "kind": "queryRaw",
+      "fn": "(inline/unknown)"
+    },
+    {
+      "file": "src/modules/sales/sales.service.ts",
+      "line": 853,
+      "kind": "queryRaw",
+      "fn": "(inline/unknown)"
+    },
+    {
+      "file": "src/modules/sales/sales.service.ts",
+      "line": 909,
+      "kind": "queryRaw",
+      "fn": "(inline/unknown)"
+    },
+    {
+      "file": "src/modules/sales/sales.service.ts",
+      "line": 938,
+      "kind": "queryRaw",
+      "fn": "(inline/unknown)"
+    },
+    {
+      "file": "src/modules/sales/sales.service.ts",
+      "line": 978,
+      "kind": "queryRaw",
+      "fn": "(inline/unknown)"
+    },
+    {
+      "file": "src/modules/stock-movements/stock-movements.service.ts",
+      "line": 1552,
+      "kind": "queryRaw",
+      "fn": "(inline/unknown)"
+    }
+  ]
+}

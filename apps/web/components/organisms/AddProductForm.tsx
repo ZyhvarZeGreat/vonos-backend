@@ -23,6 +23,7 @@ import {
   patchEntityInQueries,
   prependEntityInQueries,
 } from "@/lib/query/optimistic";
+import { locationsForTenantConfig } from "@/lib/hooks/useBusinessLocationOptions";
 import { useIsVaHq6 } from "@/lib/hooks/useIsVaHq6";
 import { parseForm } from "@/lib/validation/parseForm";
 import { productFormSchema } from "@/lib/validation/schemas";
@@ -85,10 +86,13 @@ export function AddProductForm({
 }: AddProductFormProps) {
   const isHq6 = useIsVaHq6();
   const homeLocations = productHomeLocationsForTenant(tenantConfig?.code);
+  const presetLocations = locationsForTenantConfig(tenantConfig);
   const locations =
     homeLocations.length > 0
       ? homeLocations
-      : (tenantConfig?.businessLocations ?? PRODUCT_STOCK_BUSINESS_LOCATIONS);
+      : presetLocations.length > 0
+        ? presetLocations
+        : PRODUCT_STOCK_BUSINESS_LOCATIONS;
   /** Job-centric (VA/VP): catalog only — no stock; prices default to 0 on create. */
   const priceCatalogOnly = isPriceCatalogOnlyTenant(
     tenantConfig?.code,

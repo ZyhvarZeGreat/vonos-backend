@@ -34,7 +34,7 @@ import { AuditService } from '../audit/audit.service';
 import { InvoiceHubService } from '../invoices/invoice-hub.service';
 import { buildCompositeCursorQuery, decodeCompositeCursor } from '../../common/utils/pagination';
 import type { PaginatedList } from '../../common/utils/paginatedList';
-import { saleTextSearchWhere } from '../../common/utils/listSearch';
+import { saleTextSearchWhere, saleSearchSql } from '../../common/utils/listSearch';
 import { resolveListSort } from '../../common/utils/listSort';
 import { computeStockStatus, movementLineRollups } from '../../common/utils/stockQuantity';
 import { adjustItemLocationStock } from '../../common/utils/itemLocationStock';
@@ -462,12 +462,14 @@ export class SalesService {
     const includeSummary = filters.includeSummary !== false;
 
     // Fast path: one SQL round-trip for the page (joins + paid + line count).
-    // Search / non-date cursor stay on Prisma.
+    // Non-date cursors stay on Prisma. Search uses the same SQL with ILIKE
+    // on indexed reference / customer / job columns.
     const canFastPath =
-      !search &&
-      (!filters.cursor ||
-        ((sort.sortField === 'date' || sort.sortField === 'updatedAt' || sort.sortField === 'createdAt') &&
-          sort.sortValueType === 'date'));
+      !filters.cursor ||
+      ((sort.sortField === 'date' ||
+        sort.sortField === 'updatedAt' ||
+        sort.sortField === 'createdAt') &&
+        sort.sortValueType === 'date');
     if (canFastPath) {
       const page = await this.listSalesPageRaw(tenantId, filters, sort, limit);
       let totalCount: number | undefined;
@@ -481,7 +483,7 @@ export class SalesService {
       const ms = Date.now() - startedAt;
       if (ms > 500) {
         this.logger.warn(
-          `list ${ms}ms tenant=${tenantId} rows=${page.length} search=0 fast=1`,
+          `list ${ms}ms tenant=${tenantId} rows=${page.length} search=${search ? 1 : 0} fast=1`,
         );
       }
 
@@ -764,6 +766,7 @@ export class SalesService {
             )
           )
         )
+        AND ${saleSearchSql(filters.search)}
       ORDER BY ${Prisma.raw(sortCol)} ${Prisma.raw(sortDirSql)}, s.id ${Prisma.raw(sortDirSql)}
       LIMIT ${limit}
     `;
@@ -850,8 +853,10 @@ export class SalesService {
         const rows = await this.tenantDb.db.$queryRaw<
           Array<{ c: number; s: number }>
         >`
-          SELECT COUNT(*)::int AS c, COALESCE(SUM(total), 0)::float AS s
+          SELECT COUNT(*)::int AS c, COALESCE(SUM(s.total), 0)::float AS s
           FROM "Sale" s
+          LEFT JOIN "Customer" c ON c.id = s."customerId"
+          LEFT JOIN "Job" j ON j.id = s."jobId"
           WHERE s."tenantId" = ${tenantId}
             AND s."deletedAt" IS NULL
             AND (${filters.from ?? null}::timestamptz IS NULL OR s.date >= ${filters.from ? new Date(filters.from) : null}::timestamptz)
@@ -876,6 +881,7 @@ export class SalesService {
                 AND s.status::text NOT IN ('draft', 'quotation')
               )
             )
+            AND ${saleSearchSql(filters.search)}
         `;
         return {
           totalCount: Number(rows[0]?.c ?? 0),
@@ -1153,10 +1159,11 @@ export class SalesService {
   }): Promise<SaleDetail> {
     const tenantId = this.tenantDb.requireTenantId();
 
-    const createdBy = await this.auditService.createdByFields();
-    let locationCode = await this.tenantDb.resolveBusinessLocation(
-      body.locationCode,
-    );
+    const [createdBy, resolvedLocation] = await Promise.all([
+      this.auditService.createdByFields(),
+      this.tenantDb.resolveBusinessLocation(body.locationCode),
+    ]);
+    let locationCode = resolvedLocation;
     const currency = body.currency ?? 'NGN';
     const saleDate = body.date ? new Date(body.date) : new Date();
     const status = normalizeCreateStatus(body.status);
@@ -1185,44 +1192,47 @@ export class SalesService {
     } | null = null;
 
     if (jobId) {
-      linkedJob = await this.tenantDb.db.job.findFirst({
-        where: { id: jobId, tenantId, deletedAt: null },
-        select: {
-          id: true,
-          reference: true,
-          customerId: true,
-          customerName: true,
-          locationCode: true,
-          invoiceAmount: true,
-          materials: {
-            select: {
-              itemId: true,
-              name: true,
-              quantity: true,
-              unitCost: true,
+      const [job, existingForJob] = await Promise.all([
+        this.tenantDb.db.job.findFirst({
+          where: { id: jobId, tenantId, deletedAt: null },
+          select: {
+            id: true,
+            reference: true,
+            customerId: true,
+            customerName: true,
+            locationCode: true,
+            invoiceAmount: true,
+            materials: {
+              select: {
+                itemId: true,
+                name: true,
+                quantity: true,
+                unitCost: true,
+              },
+            },
+            labourEntries: {
+              select: {
+                hours: true,
+                rate: true,
+                totalCost: true,
+                staffId: true,
+              },
             },
           },
-          labourEntries: {
-            select: {
-              hours: true,
-              rate: true,
-              totalCost: true,
-              staffId: true,
-            },
+        }),
+        this.tenantDb.db.sale.findFirst({
+          where: {
+            tenantId,
+            jobId,
+            deletedAt: null,
           },
-        },
-      });
+          select: { id: true, reference: true },
+        }),
+      ]);
+      linkedJob = job;
       if (!linkedJob) {
         throw new BadRequestException('Job not found');
       }
-      const existingForJob = await this.tenantDb.db.sale.findFirst({
-        where: {
-          tenantId,
-          jobId,
-          deletedAt: null,
-        },
-        select: { id: true, reference: true },
-      });
       if (existingForJob) {
         throw new BadRequestException(
           `Job ${linkedJob.reference} already has sale ${existingForJob.reference}`,
@@ -1237,63 +1247,62 @@ export class SalesService {
     let cleanerUserId = body.cleanerUserId?.trim() || null;
     let cleanerName = body.cleanerName?.trim() || null;
 
-    if (body.serviceStaffEmployeeId?.trim()) {
-      const employeeId = body.serviceStaffEmployeeId.trim();
-      let employee = await this.tenantDb.db.employee.findFirst({
-        where: {
-          id: employeeId,
-          tenantId,
-          deletedAt: null,
-          isServiceStaff: true,
-        },
-        select: { id: true, name: true, userId: true },
-      });
-      // Fall back if the flag was never marked but the employee exists.
-      if (!employee) {
-        employee = await this.tenantDb.db.employee.findFirst({
-          where: {
-            id: employeeId,
-            tenantId,
-            deletedAt: null,
-          },
-          select: { id: true, name: true, userId: true },
-        });
-      }
-      if (!employee) {
+    const employeeIdInput = body.serviceStaffEmployeeId?.trim();
+    const customerIdInput = body.customerId?.trim();
+    const customerNameHint = (
+      body.customerName ??
+      linkedJob?.customerName ??
+      ''
+    ).trim();
+
+    const [employeeRow, customerById, customerByName] = await Promise.all([
+      employeeIdInput
+        ? this.tenantDb.db.employee.findFirst({
+            where: { id: employeeIdInput, tenantId, deletedAt: null },
+            select: { id: true, name: true, userId: true },
+          })
+        : Promise.resolve(null),
+      customerIdInput
+        ? this.tenantDb.db.customer.findFirst({
+            where: { id: customerIdInput, tenantId, deletedAt: null },
+          })
+        : Promise.resolve(null),
+      !customerIdInput && customerNameHint
+        ? this.tenantDb.db.customer.findFirst({
+            where: {
+              tenantId,
+              deletedAt: null,
+              name: { equals: customerNameHint, mode: 'insensitive' },
+            },
+          })
+        : Promise.resolve(null),
+    ]);
+
+    if (employeeIdInput) {
+      if (!employeeRow) {
         throw new BadRequestException('Service staff employee not found');
       }
-      serviceStaffEmployeeId = employee.id;
-      cleanerName = cleanerName || employee.name;
-      cleanerUserId = cleanerUserId || employee.userId;
+      serviceStaffEmployeeId = employeeRow.id;
+      cleanerName = cleanerName || employeeRow.name;
+      cleanerUserId = cleanerUserId || employeeRow.userId;
     }
 
     let customerId: string | null = null;
-    if (body.customerId?.trim()) {
-      const existing = await this.tenantDb.db.customer.findFirst({
-        where: { id: body.customerId.trim(), tenantId, deletedAt: null },
-      });
-      if (!existing) {
+    if (customerIdInput) {
+      if (!customerById) {
         throw new BadRequestException('Customer not found');
       }
-      customerId = existing.id;
+      customerId = customerById.id;
     } else if (linkedJob?.customerId) {
       customerId = linkedJob.customerId;
-    } else if (body.customerName?.trim() || linkedJob?.customerName?.trim()) {
-      const name = (body.customerName ?? linkedJob?.customerName ?? '').trim();
-      const existing = await this.tenantDb.db.customer.findFirst({
-        where: {
-          tenantId,
-          deletedAt: null,
-          name: { equals: name, mode: 'insensitive' },
-        },
-      });
-      if (existing) {
-        customerId = existing.id;
-      } else if (name) {
+    } else if (customerNameHint) {
+      if (customerByName) {
+        customerId = customerByName.id;
+      } else {
         const customer = await this.tenantDb.db.customer.create({
           data: {
             tenantId,
-            name,
+            name: customerNameHint,
             ...createdBy,
           },
         });
@@ -1312,15 +1321,12 @@ export class SalesService {
     const orderDiscount = body.discountAmount ?? 0;
     const taxAmount = body.taxAmount ?? 0;
     /** Job materials already moved stock — do not deduct again on the sale. */
-    const sellingTenantForStock = await this.tenantDb.db.tenant.findFirst({
-      where: { id: tenantId, deletedAt: null },
-      select: { code: true },
-    });
+    const sellingTenant = await this.tenantDb.getTenantCodeAndConfig();
     /** VA/VP: price catalog only — never deduct/validate stock (local or VW/VISP/VSP).
      * Staff can still source parts outside; zero stock must not block quotes/sales. */
     const skipStock =
       Boolean(jobId) ||
-      isGroupStockConsumerTenant(sellingTenantForStock?.code);
+      isGroupStockConsumerTenant(sellingTenant?.code);
 
     const paymentRows =
       !isProvisional && body.payments && body.payments.length > 0
@@ -1391,7 +1397,10 @@ export class SalesService {
           entityType: 'sale',
           entityId: row.id,
           summary: `Recorded sale ${row.reference}`,
-          metadata: { total: toNumber(row.total), paymentStatus: row.paymentStatus },
+          metadata: {
+            total: toNumber(row.total),
+            paymentStatus: row.paymentStatus,
+          },
         });
 
         this.refreshSaleSideEffects({
@@ -1901,17 +1910,19 @@ export class SalesService {
     },
   ): Promise<SaleDetail> {
     const tenantId = this.tenantDb.requireTenantId();
-    const existing = await this.tenantDb.db.sale.findFirst({
-      where: { id, tenantId, deletedAt: null },
-      include: {
-        customer: true,
-        lines: true,
-        payments: { where: { deletedAt: null }, select: { id: true, amount: true } },
-      },
-    });
+    const [existing, createdBy] = await Promise.all([
+      this.tenantDb.db.sale.findFirst({
+        where: { id, tenantId, deletedAt: null },
+        include: {
+          customer: true,
+          lines: true,
+          payments: { where: { deletedAt: null }, select: { id: true, amount: true } },
+        },
+      }),
+      this.auditService.createdByFields(),
+    ]);
     if (!existing) throw new NotFoundException('Sale not found');
 
-    const createdBy = await this.auditService.createdByFields();
     let locationCode = await this.tenantDb.resolveBusinessLocation(
       body.locationCode ?? existing.locationCode ?? undefined,
     );
@@ -1927,28 +1938,6 @@ export class SalesService {
 
     let jobId: string | null =
       body.jobId !== undefined ? body.jobId.trim() || null : existing.jobId;
-    if (jobId) {
-      const job = await this.tenantDb.db.job.findFirst({
-        where: { id: jobId, tenantId, deletedAt: null },
-        select: { id: true, reference: true, locationCode: true },
-      });
-      if (!job) throw new BadRequestException('Job not found');
-      const existingForJob = await this.tenantDb.db.sale.findFirst({
-        where: {
-          tenantId,
-          jobId,
-          deletedAt: null,
-          id: { not: id },
-        },
-        select: { id: true, reference: true },
-      });
-      if (existingForJob) {
-        throw new BadRequestException(
-          `Job ${job.reference} already has sale ${existingForJob.reference}`,
-        );
-      }
-      if (!locationCode && job.locationCode) locationCode = job.locationCode;
-    }
 
     let serviceStaffEmployeeId: string | null =
       existing.serviceStaffEmployeeId;
@@ -1961,51 +1950,78 @@ export class SalesService {
         ? body.cleanerName?.trim() || null
         : existing.cleanerName;
 
-    if (body.serviceStaffEmployeeId?.trim()) {
-      const employeeId = body.serviceStaffEmployeeId.trim();
-      let employee = await this.tenantDb.db.employee.findFirst({
+    const customerIdInput = body.customerId?.trim();
+    const customerNameInput = body.customerName?.trim();
+    const employeeIdInput = body.serviceStaffEmployeeId?.trim();
+
+    // Parallelize independent lookups (was 3–6 sequential Neon RTTs).
+    const [jobRow, employeeRow, customerById, customerByName] =
+      await Promise.all([
+        jobId
+          ? this.tenantDb.db.job.findFirst({
+              where: { id: jobId, tenantId, deletedAt: null },
+              select: { id: true, reference: true, locationCode: true },
+            })
+          : Promise.resolve(null),
+        employeeIdInput
+          ? this.tenantDb.db.employee.findFirst({
+              where: { id: employeeIdInput, tenantId, deletedAt: null },
+              select: { id: true, name: true, userId: true },
+            })
+          : Promise.resolve(null),
+        customerIdInput
+          ? this.tenantDb.db.customer.findFirst({
+              where: { id: customerIdInput, tenantId, deletedAt: null },
+            })
+          : Promise.resolve(null),
+        !customerIdInput && customerNameInput
+          ? this.tenantDb.db.customer.findFirst({
+              where: {
+                tenantId,
+                deletedAt: null,
+                name: { equals: customerNameInput, mode: 'insensitive' },
+              },
+            })
+          : Promise.resolve(null),
+      ]);
+
+    if (jobId) {
+      if (!jobRow) throw new BadRequestException('Job not found');
+      const existingForJob = await this.tenantDb.db.sale.findFirst({
         where: {
-          id: employeeId,
           tenantId,
+          jobId,
           deletedAt: null,
-          isServiceStaff: true,
+          id: { not: id },
         },
-        select: { id: true, name: true, userId: true },
+        select: { id: true, reference: true },
       });
-      if (!employee) {
-        employee = await this.tenantDb.db.employee.findFirst({
-          where: { id: employeeId, tenantId, deletedAt: null },
-          select: { id: true, name: true, userId: true },
-        });
+      if (existingForJob) {
+        throw new BadRequestException(
+          `Job ${jobRow.reference} already has sale ${existingForJob.reference}`,
+        );
       }
-      if (!employee) {
+      if (!locationCode && jobRow.locationCode) locationCode = jobRow.locationCode;
+    }
+
+    if (employeeIdInput) {
+      if (!employeeRow) {
         throw new BadRequestException('Service staff employee not found');
       }
-      serviceStaffEmployeeId = employee.id;
-      cleanerName = cleanerName || employee.name;
-      cleanerUserId = cleanerUserId || employee.userId;
+      serviceStaffEmployeeId = employeeRow.id;
+      cleanerName = cleanerName || employeeRow.name;
+      cleanerUserId = cleanerUserId || employeeRow.userId;
     }
 
     let customerId: string | null = existing.customerId;
-    if (body.customerId?.trim()) {
-      const customer = await this.tenantDb.db.customer.findFirst({
-        where: { id: body.customerId.trim(), tenantId, deletedAt: null },
-      });
-      if (!customer) throw new BadRequestException('Customer not found');
-      customerId = customer.id;
-    } else if (body.customerName?.trim()) {
-      const name = body.customerName.trim();
-      const found = await this.tenantDb.db.customer.findFirst({
-        where: {
-          tenantId,
-          deletedAt: null,
-          name: { equals: name, mode: 'insensitive' },
-        },
-      });
-      if (found) customerId = found.id;
+    if (customerIdInput) {
+      if (!customerById) throw new BadRequestException('Customer not found');
+      customerId = customerById.id;
+    } else if (customerNameInput) {
+      if (customerByName) customerId = customerByName.id;
       else {
         const created = await this.tenantDb.db.customer.create({
-          data: { tenantId, name, ...createdBy },
+          data: { tenantId, name: customerNameInput, ...createdBy },
         });
         customerId = created.id;
       }
@@ -2370,12 +2386,24 @@ export class SalesService {
     );
 
     const saleTotal = toNumber(row.total);
+    const prevPayment = existing.paymentStatus ?? 'due';
+    const nextPayment = row.paymentStatus ?? prevPayment;
+    const prevStatus = existing.status ?? null;
+    const nextStatus = row.status ?? prevStatus;
     void this.auditService.log({
       action: 'updated',
       entityType: 'sale',
       entityId: row.id,
       summary: `Updated sale ${row.reference}`,
-      metadata: { total: saleTotal, paymentStatus: row.paymentStatus },
+      metadata: {
+        total: saleTotal,
+        paymentStatus: nextPayment,
+        ...(prevPayment !== nextPayment
+          ? { from: prevPayment, to: nextPayment }
+          : prevStatus !== nextStatus && prevStatus && nextStatus
+            ? { from: prevStatus, to: nextStatus }
+            : {}),
+      },
     });
 
     if (wasFinalized && saleTotal !== toNumber(existing.total)) {
@@ -2626,7 +2654,13 @@ export class SalesService {
       entityType: 'sale',
       entityId: id,
       summary: `Finalized sale ${row.reference}`,
-      metadata: { paymentStatus },
+      metadata: {
+        paymentStatus,
+        from: existing.status ?? 'draft',
+        to: 'completed',
+        fromPaymentStatus: existing.paymentStatus ?? 'due',
+        toPaymentStatus: paymentStatus,
+      },
     });
 
     this.refreshSaleSideEffects({
@@ -3246,15 +3280,32 @@ export class SalesService {
     });
 
     await this.syncSalePaymentStatus(saleId, tenantId);
+    const remainingDue = Math.max(0, due - apply);
+    const totalPaidAfter = alreadyPaid + apply;
+    const nextPaymentStatus = paymentStatusFromAmounts(total, totalPaidAfter);
     await this.auditService.log({
       action: 'created',
       entityType: 'payment',
       entityId: created.id,
       summary: `Added payment on sale ${sale.reference}`,
+      metadata: {
+        amount: apply,
+        from: sale.paymentStatus ?? 'due',
+        to: nextPaymentStatus,
+      },
+    });
+    await this.auditService.log({
+      action: 'updated',
+      entityType: 'sale',
+      entityId: saleId,
+      summary: `Payment added on sale ${sale.reference}`,
+      metadata: {
+        from: sale.paymentStatus ?? 'due',
+        to: nextPaymentStatus,
+        paymentStatus: nextPaymentStatus,
+      },
     });
 
-    const remainingDue = Math.max(0, due - apply);
-    const totalPaidAfter = alreadyPaid + apply;
     return {
       id: created.id,
       amount: toNumber(created.amount),

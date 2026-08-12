@@ -49,11 +49,11 @@ export async function withListPageCache<T>(
 
   const pending = (async () => {
     try {
-      // Re-check after winning the flight — another worker may have set Redis.
-      const again = await cache.get<T>(cacheKey);
-      if (again != null) return again;
+      // Skip a second Redis GET on miss — single-flight already collapses
+      // same-process races; cross-process duplicates are rare vs +1 Upstash RTT.
       const value = await loader();
-      await cache.set(cacheKey, value, ttlSeconds);
+      // Return rows before Upstash write finishes — set is best-effort cache fill.
+      void cache.set(cacheKey, value, ttlSeconds);
       return value;
     } finally {
       inflight.delete(cacheKey);

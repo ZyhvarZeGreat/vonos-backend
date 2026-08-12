@@ -155,12 +155,15 @@ export function Hq6UsersListView() {
     enabled: useAllTenants || Boolean(tenantId),
     defaultPageSize: USERS_PAGE_SIZE,
     search,
+    searchMode: "hybrid",
     fetchPage: (cursor, limit, _sort, opts) =>
       useAllTenants
         ? getAllTenantUsersPage(cursor, limit, {
+            search: opts?.search,
             includeSummary: opts?.includeSummary,
           })
         : getUsersPage(tenantId!, cursor, limit, {
+            search: opts?.search,
             includeSummary: opts?.includeSummary,
           }),
   });
@@ -376,9 +379,6 @@ export function Hq6UsersListView() {
                             ariaControls="users_table"
                             value={search}
                             onChange={setSearch}
-                            
-                            disabled={busy}
-                          
                             isSearching={isSearching}
                           />
                         </div>

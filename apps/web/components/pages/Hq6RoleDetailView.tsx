@@ -170,10 +170,61 @@ export function Hq6RoleDetailView({
 
   const roleIdempotencyKeyRef = useRef<string | null>(null);
 
+  type RoleSavePayload = {
+    name: string;
+    permissions: string[];
+    isServiceStaff: boolean;
+  };
+
+  const patchRolesListCache = useCallback(
+    (role: Pick<TenantRole, "id" | "name" | "permissions" | "isServiceStaff">) => {
+      if (!tenantId) return;
+      queryClient.setQueryData<TenantRole[]>(
+        ["tenant-roles", tenantId],
+        (old) => {
+          const rows = old ?? [];
+          const nameKey = role.name.trim().toLowerCase();
+          const idx = rows.findIndex(
+            (r) =>
+              r.id === role.id || r.name.trim().toLowerCase() === nameKey,
+          );
+          if (idx < 0) {
+            if (isCreate) {
+              return [
+                {
+                  id: role.id,
+                  tenantId,
+                  name: role.name,
+                  permissions: role.permissions,
+                  isServiceStaff: role.isServiceStaff,
+                  locked: role.name.trim().toLowerCase() === "admin",
+                  createdAt: new Date().toISOString(),
+                  updatedAt: new Date().toISOString(),
+                },
+                ...rows,
+              ];
+            }
+            return rows;
+          }
+          const next = [...rows];
+          next[idx] = {
+            ...next[idx]!,
+            name: role.name,
+            permissions: role.permissions,
+            isServiceStaff: role.isServiceStaff,
+            updatedAt: new Date().toISOString(),
+          };
+          return next;
+        },
+      );
+    },
+    [tenantId, queryClient, isCreate],
+  );
+
   const saveMutation = useMutation({
     retry: (failureCount, error) =>
       failureCount < 2 && isTransientWriteError(error),
-    mutationFn: async (): Promise<TenantRole> => {
+    mutationFn: async (payload: RoleSavePayload): Promise<TenantRole> => {
       const key = roleIdempotencyKeyRef.current ?? newIdempotencyKey();
       roleIdempotencyKeyRef.current = key;
       return withIdempotencyKey(key, async () => {
@@ -181,38 +232,34 @@ export function Hq6RoleDetailView({
           throw new Error("Only VAG can create or edit roles.");
         }
         if (!tenantId) throw new Error("No tenant selected");
-        const valid = parseForm(roleFormSchema, { name: roleName });
-        if (!valid) throw new Error("Role Name is required.");
-        const name = valid.name;
-        const permissions = Array.from(selected);
-        const isServiceStaff = selected.has("is_service_staff");
         if (isCreate) {
           return createTenantRole(tenantId, {
-            name,
-            permissions,
-            isServiceStaff,
-            locked: name.toLowerCase() === "admin",
+            name: payload.name,
+            permissions: payload.permissions,
+            isServiceStaff: payload.isServiceStaff,
+            locked: payload.name.toLowerCase() === "admin",
           });
         }
         return updateTenantRole(tenantId, recordId, {
-          name,
-          permissions,
-          isServiceStaff,
+          name: payload.name,
+          permissions: payload.permissions,
+          isServiceStaff: payload.isServiceStaff,
         });
       });
     },
     onSuccess: async (role) => {
       toast.success(
         isCreate
-          ? `Role “${role.name}” added across all entities.`
-          : `Role “${role.name}” updated across all entities.`,
+          ? `Role “${role.name}” added.`
+          : `Role “${role.name}” saved.`,
       );
-      void queryClient.invalidateQueries({ queryKey: ["tenant-roles"] });
-      void queryClient.invalidateQueries({ queryKey: ["tenant-role"] });
-      // Navigation already happened on submit (leave-first).
+      patchRolesListCache(role);
+      await queryClient.invalidateQueries({ queryKey: ["tenant-roles"] });
+      await queryClient.invalidateQueries({ queryKey: ["tenant-role"] });
     },
     onError: (err: Error) => {
       toast.error(err.message || "Failed to save role");
+      void queryClient.invalidateQueries({ queryKey: ["tenant-roles"] });
     },
     onSettled: () => {
       roleIdempotencyKeyRef.current = null;
@@ -239,8 +286,8 @@ export function Hq6RoleDetailView({
   if (isCreate && !canEditMatrix) {
     return (
       <EmptyState
-        title="VAG only"
-        message="Only Vonos Autos Group (VAG) can create or edit role definitions."
+        title="Missing permission"
+        message="Your role needs Add Role or Edit Role to change role definitions."
         ctaLabel="Back to roles"
         onCta={() => router.push(listPath)}
       />
@@ -266,7 +313,7 @@ export function Hq6RoleDetailView({
     );
   }
 
-  // VAG may edit any non-locked role; Admin stays locked by design.
+  // Users with roles.* may edit any non-locked role; Admin stays locked by design.
   const readOnly =
     !canEditMatrix || mode === "view" || Boolean(existing?.locked);
 
@@ -279,10 +326,15 @@ export function Hq6RoleDetailView({
           staff by default; only Accountant gets Financial dashboard access
           unless you tick that checkbox for another role (including HR).
         </p>
+      ) : canEditMatrix ? (
+        <p className="tw-mb-3 tw-text-sm tw-text-gray-600">
+          Changes save on this entity and sync to the shared role catalog across
+          operating entities by role name.
+        </p>
       ) : (
         <p className="tw-mb-3 tw-text-sm tw-text-gray-600">
-          Role definitions are managed by Vonos Autos Group (VAG). You can
-          view permissions here; assign roles on the Users page.
+          You can view permissions here. Editing requires Add/Edit Role on your
+          assigned job role; assign roles on the Users page.
         </p>
       )}
       <div className="hq6-role-edit-box">
@@ -295,14 +347,30 @@ export function Hq6RoleDetailView({
             ) {
               return;
             }
-            if (!readOnly) {
-              goToList(
-                isCreate
-                  ? "Creating role…"
-                  : "Saving & returning to roles…",
-              );
-              saveMutation.mutate();
+            if (readOnly) return;
+            const valid = parseForm(roleFormSchema, { name: roleName });
+            if (!valid) {
+              toast.error("Role Name is required.");
+              return;
             }
+            // Capture before leave-first navigation unmounts this form.
+            const payload: RoleSavePayload = {
+              name: valid.name,
+              permissions: Array.from(selected),
+              isServiceStaff: selected.has("is_service_staff"),
+            };
+            patchRolesListCache({
+              id: isCreate ? `temp-${payload.name}` : recordId,
+              name: payload.name,
+              permissions: payload.permissions,
+              isServiceStaff: payload.isServiceStaff,
+            });
+            goToList(
+              isCreate
+                ? "Creating role…"
+                : "Saving & returning to roles…",
+            );
+            saveMutation.mutate(payload);
           }}
         >
           <div className="hq6-role-name-row">
@@ -325,14 +393,13 @@ export function Hq6RoleDetailView({
 
           <div className="hq6-role-perms-label-row">
             <label>Permissions:</label>
-            {!isCreate ? (
-              <span className="tw-ml-2 tw-text-sm tw-text-gray-500">
-                {existing?.locked ||
-                existing?.name.trim().toLowerCase() === "admin"
-                  ? "Full access (Admin)"
-                  : `${selected.size} privilege${selected.size === 1 ? "" : "s"}`}
-              </span>
-            ) : null}
+            <span className="tw-ml-2 tw-text-sm tw-text-gray-500">
+              {existing?.locked ||
+              roleName.trim().toLowerCase() === "admin" ||
+              existing?.name.trim().toLowerCase() === "admin"
+                ? "Full access (Admin)"
+                : `${selected.size} privilege${selected.size === 1 ? "" : "s"}`}
+            </span>
           </div>
 
           {HQ6_ROLE_PERMISSION_MODULES.map((module) => {

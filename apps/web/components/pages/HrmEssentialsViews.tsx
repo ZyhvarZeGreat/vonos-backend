@@ -147,9 +147,10 @@ export function HrmLeaveTypeView() {
     enabled: Boolean(tenantId),
     defaultPageSize: HQ6_TABLE_PAGE_SIZE,
     search,
+    searchMode: "hybrid",
     fetchPage: (cursor, limit, _s, opts) =>
       getLeaveTypesPage(tenantId!, cursor, limit, {
-        search,
+        search: opts?.search,
         includeSummary: opts?.includeSummary,
       }),
     getCursor: (row) => nameListCursor(row),
@@ -333,10 +334,11 @@ export function HrmLeaveView() {
     enabled: Boolean(tenantId),
     defaultPageSize: HQ6_TABLE_PAGE_SIZE,
     search,
+    searchMode: "hybrid",
     filters: { designationId },
     fetchPage: (cursor, limit, _s, opts) =>
       getLeavesPage(tenantId!, cursor, limit, {
-        search,
+        search: opts?.search,
         designationId: designationId || undefined,
         includeSummary: opts?.includeSummary,
       }),
@@ -576,9 +578,10 @@ export function HrmHolidayView() {
     enabled: Boolean(tenantId),
     defaultPageSize: HQ6_TABLE_PAGE_SIZE,
     search,
+    searchMode: "hybrid",
     fetchPage: (cursor, limit, _s, opts) =>
       getHolidaysPage(tenantId!, cursor, limit, {
-        search,
+        search: opts?.search,
         includeSummary: opts?.includeSummary,
       }),
     getCursor: (row) => dateListCursor(row),
@@ -795,9 +798,10 @@ export function HrmDepartmentsView() {
     enabled: Boolean(tenantId),
     defaultPageSize: HQ6_TABLE_PAGE_SIZE,
     search,
+    searchMode: "hybrid",
     fetchPage: (cursor, limit, _s, opts) =>
       getPayrollGroupsPage(tenantId!, cursor, limit, {
-        search,
+        search: opts?.search,
         includeSummary: opts?.includeSummary,
       }),
     getCursor: (row) => nameListCursor(row),
@@ -971,9 +975,10 @@ export function HrmDesignationsView() {
     enabled: Boolean(tenantId),
     defaultPageSize: HQ6_TABLE_PAGE_SIZE,
     search,
+    searchMode: "hybrid",
     fetchPage: (cursor, limit, _s, opts) =>
       getDesignationsPage(tenantId!, cursor, limit, {
-        search,
+        search: opts?.search,
         includeSummary: opts?.includeSummary,
       }),
     getCursor: (row) => nameListCursor(row),
@@ -1133,9 +1138,10 @@ export function HrmSalesTargetsView() {
     enabled: Boolean(tenantId),
     defaultPageSize: HQ6_TABLE_PAGE_SIZE,
     search,
+    searchMode: "hybrid",
     fetchPage: (cursor, limit, _s, opts) =>
       getSalesTargetsPage(tenantId!, cursor, limit, {
-        search,
+        search: opts?.search,
         includeSummary: opts?.includeSummary,
       }),
     getCursor: (row) => userNameListCursor(row),
@@ -1316,9 +1322,10 @@ export function HrmAttendanceView() {
     enabled: Boolean(tenantId) && tab === "shifts",
     defaultPageSize: HQ6_TABLE_PAGE_SIZE,
     search,
+    searchMode: "hybrid",
     fetchPage: (cursor, limit, _s, opts) =>
       getAttendanceShiftsPage(tenantId!, cursor, limit, {
-        search,
+        search: opts?.search,
         includeSummary: opts?.includeSummary,
       }),
     getCursor: (row) => nameListCursor(row),
@@ -1329,10 +1336,11 @@ export function HrmAttendanceView() {
     enabled: Boolean(tenantId) && (tab === "all" || tab === "by-date"),
     defaultPageSize: HQ6_TABLE_PAGE_SIZE,
     search,
+    searchMode: "hybrid",
     filters: { date: tab === "by-date" ? date : "" },
     fetchPage: (cursor, limit, _s, opts) =>
       getAttendancesPage(tenantId!, cursor, limit, {
-        search,
+        search: opts?.search,
         date: tab === "by-date" ? date : undefined,
         includeSummary: opts?.includeSummary,
       }),

@@ -10,7 +10,7 @@ import {
   withListPageCache,
 } from '../../common/utils/listPageCache';
 import { toIso } from '../../common/utils/serializers';
-import { tokenizedSearchWhere } from '../../common/utils/listSearch';
+import { vehicleTextSearchWhere } from '../../common/utils/listSearch';
 
 function serialize(row: {
   id: string;
@@ -90,14 +90,7 @@ export class VehiclesService {
       where: {
         tenantId,
         deletedAt: null,
-        ...(tokenizedSearchWhere(filters.search, (_token, contains) => [
-          { plateNumber: contains },
-          { vin: contains },
-          { make: contains },
-          { model: contains },
-          { ownerName: contains },
-          { ownerPhone: contains },
-        ]) ?? {}),
+        ...(vehicleTextSearchWhere(filters.search) ?? {}),
         ...(filters.make ? { make: filters.make } : {}),
         ...(pagination.where ?? {}),
       },

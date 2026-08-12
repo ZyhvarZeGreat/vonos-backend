@@ -56,6 +56,7 @@ export function KitchenDisplayView() {
     queryKey: ["kitchen-orders", tenantId],
     enabled: Boolean(tenantId),
     search,
+    searchMode: "hybrid",
     filters: {
       from: bounds?.from,
       to: bounds?.to,
@@ -69,6 +70,7 @@ export function KitchenDisplayView() {
         {
           from: bounds?.from,
           to: bounds?.to,
+          search: opts?.search,
           includeSummary: opts?.includeSummary,
         },
         cursor,

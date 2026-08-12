@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { readFileSync } from 'node:fs';
@@ -20,6 +21,7 @@ import {
 import { TenantDbService } from '../../common/prisma/tenant-db.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { CacheService } from '../../common/cache/cache.service';
+import { bumpAuthSessionsForTenantRoles } from '../../common/cache/authSessionInvalidation';
 import { invalidateTenantDashboardCache } from '../../common/cache/cacheInvalidation';
 import { ensureOperatingTenant, OPERATING_TENANTS } from '../../common/tenants/ensureOperatingTenant';
 import { toIso } from '../../common/utils/serializers';
@@ -94,6 +96,8 @@ function roleCatalogEntries(): Array<{
 
 @Injectable()
 export class TenantRolesService {
+  private readonly logger = new Logger(TenantRolesService.name);
+
   constructor(
     private readonly tenantDb: TenantDbService,
     private readonly prisma: PrismaService,
@@ -115,6 +119,42 @@ export class TenantRolesService {
 
   private operatingEntityTenants() {
     return OPERATING_TENANTS.filter((t) => t.code !== 'VAG');
+  }
+
+  /**
+   * Resolve a role row for this catalog tenant without a full multi-tenant sync.
+   * Peer ids (after entity switch) map to the local copy by name; missing locals
+   * are materialized from the peer row.
+   */
+  private async resolveLocalRole(id: string, tenantId: string) {
+    const local = await this.prisma.tenantRole.findFirst({
+      where: { id, tenantId, deletedAt: null },
+    });
+    if (local) return local;
+
+    const any = await this.prisma.tenantRole.findFirst({
+      where: { id, deletedAt: null },
+    });
+    if (!any) return null;
+
+    const byName = await this.prisma.tenantRole.findFirst({
+      where: {
+        tenantId,
+        deletedAt: null,
+        name: { equals: any.name, mode: 'insensitive' },
+      },
+    });
+    if (byName) return byName;
+
+    return this.prisma.tenantRole.create({
+      data: {
+        tenantId,
+        name: any.name,
+        permissions: any.permissions,
+        isServiceStaff: any.isServiceStaff,
+        locked: any.locked,
+      },
+    });
   }
 
   async list(filters: { search?: string } = {}): Promise<TenantRole[]> {
@@ -149,26 +189,7 @@ export class TenantRolesService {
     const tenantId = this.resolveCatalogTenantId(requestTenantId);
     await this.backfillEmptyLegacyPermissions(tenantId);
 
-    // Prefer this tenant's copy; fall back to any peer copy of the same id
-    // (legacy) or same name after catalog sync.
-    let row = await this.prisma.tenantRole.findFirst({
-      where: { id, tenantId, deletedAt: null },
-    });
-    if (!row) {
-      const any = await this.prisma.tenantRole.findFirst({
-        where: { id, deletedAt: null },
-      });
-      if (any) {
-        await this.syncSharedRoleCatalog();
-        row = await this.prisma.tenantRole.findFirst({
-          where: {
-            tenantId,
-            deletedAt: null,
-            name: { equals: any.name, mode: 'insensitive' },
-          },
-        });
-      }
-    }
+    const row = await this.resolveLocalRole(id, tenantId);
     if (!row) throw new NotFoundException('Role not found');
     return this.toRole(row);
   }
@@ -207,39 +228,28 @@ export class TenantRolesService {
         locked,
       },
     });
-    await this.propagateRoleToOtherTenants({
+    this.catalogSyncAt = Date.now();
+    void invalidateTenantDashboardCache(this.cache, tenantId);
+    void this.propagateRoleToOtherTenants({
       name,
       permissions,
       isServiceStaff,
       locked,
       sourceTenantId: tenantId,
+    }).catch((err: unknown) => {
+      this.logger.warn(
+        `role create propagate failed name=${name}: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
     });
-    this.catalogSyncAt = 0; // force peers to pick up on next list
-    void invalidateTenantDashboardCache(this.cache, tenantId);
     return this.toRole(row);
   }
 
   async update(id: string, dto: UpdateTenantRoleRequest): Promise<TenantRole> {
     const requestTenantId = this.tenantDb.requireTenantId();
     const tenantId = this.resolveCatalogTenantId(requestTenantId);
-    let existing = await this.prisma.tenantRole.findFirst({
-      where: { id, tenantId, deletedAt: null },
-    });
-    if (!existing) {
-      // Id may belong to a peer tenant after entity switch — resolve by syncing.
-      const any = await this.prisma.tenantRole.findFirst({
-        where: { id, deletedAt: null },
-      });
-      if (!any) throw new NotFoundException('Role not found');
-      await this.syncSharedRoleCatalog();
-      existing = await this.prisma.tenantRole.findFirst({
-        where: {
-          tenantId,
-          deletedAt: null,
-          name: { equals: any.name, mode: 'insensitive' },
-        },
-      });
-    }
+    const existing = await this.resolveLocalRole(id, tenantId);
     if (!existing) throw new NotFoundException('Role not found');
 
     const data: {
@@ -287,39 +297,41 @@ export class TenantRolesService {
       where: { id: existing.id },
       data,
     });
-    await this.propagateRoleToOtherTenants({
+    this.catalogSyncAt = Date.now();
+    void invalidateTenantDashboardCache(this.cache, tenantId);
+    if (dto.permissions !== undefined) {
+      void bumpAuthSessionsForTenantRoles(this.prisma, this.cache, [
+        row.id,
+      ]).catch((err: unknown) => {
+        this.logger.warn(
+          `role update session bump failed id=${row.id}: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+      });
+    }
+    void this.propagateRoleToOtherTenants({
       name: row.name,
       permissions: row.permissions,
       isServiceStaff: row.isServiceStaff,
       locked: row.locked,
       sourceTenantId: tenantId,
       previousName: existing.name,
+      bumpSessions: dto.permissions !== undefined,
+    }).catch((err: unknown) => {
+      this.logger.warn(
+        `role update propagate failed name=${row.name}: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
     });
-    this.catalogSyncAt = 0;
-    void invalidateTenantDashboardCache(this.cache, tenantId);
     return this.toRole(row);
   }
 
   async remove(id: string): Promise<void> {
     const requestTenantId = this.tenantDb.requireTenantId();
     const tenantId = this.resolveCatalogTenantId(requestTenantId);
-    let existing = await this.prisma.tenantRole.findFirst({
-      where: { id, tenantId, deletedAt: null },
-    });
-    if (!existing) {
-      const any = await this.prisma.tenantRole.findFirst({
-        where: { id, deletedAt: null },
-      });
-      if (!any) throw new NotFoundException('Role not found');
-      await this.syncSharedRoleCatalog();
-      existing = await this.prisma.tenantRole.findFirst({
-        where: {
-          tenantId,
-          deletedAt: null,
-          name: { equals: any.name, mode: 'insensitive' },
-        },
-      });
-    }
+    const existing = await this.resolveLocalRole(id, tenantId);
     if (!existing) throw new NotFoundException('Role not found');
     if (existing.locked || existing.name.toLowerCase() === 'admin') {
       throw new BadRequestException(`“${existing.name}” cannot be deleted`);
@@ -333,12 +345,18 @@ export class TenantRolesService {
       where: { tenantRoleId: existing.id },
       data: { tenantRoleId: null },
     });
-    await this.propagateRoleDeleteToOtherTenants({
+    this.catalogSyncAt = Date.now();
+    void invalidateTenantDashboardCache(this.cache, tenantId);
+    void this.propagateRoleDeleteToOtherTenants({
       name: existing.name,
       sourceTenantId: tenantId,
+    }).catch((err: unknown) => {
+      this.logger.warn(
+        `role delete propagate failed name=${existing.name}: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
     });
-    this.catalogSyncAt = 0;
-    void invalidateTenantDashboardCache(this.cache, tenantId);
   }
 
   /**
@@ -422,6 +440,7 @@ export class TenantRolesService {
   /**
    * Keep custom / edited roles aligned across every operating entity so the
    * Create User form sees the same role names everywhere.
+   * One findMany + parallel upserts (no per-tenant ensureOperatingTenant).
    */
   private async propagateRoleToOtherTenants(args: {
     name: string;
@@ -430,46 +449,62 @@ export class TenantRolesService {
     locked: boolean;
     sourceTenantId: string;
     previousName?: string;
+    bumpSessions?: boolean;
   }): Promise<void> {
     const matchName = (args.previousName ?? args.name).trim().toLowerCase();
-    for (const tenant of this.operatingEntityTenants()) {
-      if (tenant.id === args.sourceTenantId) continue;
-      await ensureOperatingTenant(this.prisma, tenant.id);
+    const peers = this.operatingEntityTenants().filter(
+      (tenant) => tenant.id !== args.sourceTenantId,
+    );
+    if (peers.length === 0) return;
 
-      const existing = await this.prisma.tenantRole.findFirst({
-        where: {
-          tenantId: tenant.id,
-          deletedAt: null,
-          name: { equals: matchName, mode: 'insensitive' },
-        },
-      });
+    const existingPeers = await this.prisma.tenantRole.findMany({
+      where: {
+        tenantId: { in: peers.map((t) => t.id) },
+        deletedAt: null,
+        name: { equals: matchName, mode: 'insensitive' },
+      },
+    });
+    const byTenant = new Map(existingPeers.map((row) => [row.tenantId, row]));
+    const touchedRoleIds: string[] = [];
 
-      if (existing) {
-        if (existing.locked || existing.name.toLowerCase() === 'admin') {
-          // Never overwrite locked Admin roles on peer tenants.
-          continue;
+    await Promise.all(
+      peers.map(async (tenant) => {
+        const existing = byTenant.get(tenant.id);
+        if (existing) {
+          if (existing.locked || existing.name.toLowerCase() === 'admin') {
+            return;
+          }
+          await this.prisma.tenantRole.update({
+            where: { id: existing.id },
+            data: {
+              name: args.name,
+              permissions: args.permissions,
+              isServiceStaff: args.isServiceStaff,
+              locked: args.locked || existing.locked,
+            },
+          });
+          touchedRoleIds.push(existing.id);
+        } else {
+          await this.prisma.tenantRole.create({
+            data: {
+              tenantId: tenant.id,
+              name: args.name,
+              permissions: args.permissions,
+              isServiceStaff: args.isServiceStaff,
+              locked: args.locked,
+            },
+          });
         }
-        await this.prisma.tenantRole.update({
-          where: { id: existing.id },
-          data: {
-            name: args.name,
-            permissions: args.permissions,
-            isServiceStaff: args.isServiceStaff,
-            locked: args.locked || existing.locked,
-          },
-        });
-      } else {
-        await this.prisma.tenantRole.create({
-          data: {
-            tenantId: tenant.id,
-            name: args.name,
-            permissions: args.permissions,
-            isServiceStaff: args.isServiceStaff,
-            locked: args.locked,
-          },
-        });
-      }
-      void invalidateTenantDashboardCache(this.cache, tenant.id);
+        void invalidateTenantDashboardCache(this.cache, tenant.id);
+      }),
+    );
+
+    if (args.bumpSessions && touchedRoleIds.length > 0) {
+      await bumpAuthSessionsForTenantRoles(
+        this.prisma,
+        this.cache,
+        touchedRoleIds,
+      );
     }
   }
 
@@ -481,19 +516,23 @@ export class TenantRolesService {
     const matchName = args.name.trim().toLowerCase();
     if (!matchName || matchName === 'admin') return;
 
-    for (const tenant of this.operatingEntityTenants()) {
-      if (tenant.id === args.sourceTenantId) continue;
+    const peers = this.operatingEntityTenants().filter(
+      (tenant) => tenant.id !== args.sourceTenantId,
+    );
+    if (peers.length === 0) return;
 
-      const peers = await this.prisma.tenantRole.findMany({
-        where: {
-          tenantId: tenant.id,
-          deletedAt: null,
-          name: { equals: matchName, mode: 'insensitive' },
-        },
-        select: { id: true, locked: true, name: true },
-      });
-      for (const peer of peers) {
-        if (peer.locked || peer.name.toLowerCase() === 'admin') continue;
+    const existingPeers = await this.prisma.tenantRole.findMany({
+      where: {
+        tenantId: { in: peers.map((t) => t.id) },
+        deletedAt: null,
+        name: { equals: matchName, mode: 'insensitive' },
+      },
+      select: { id: true, tenantId: true, locked: true, name: true },
+    });
+
+    await Promise.all(
+      existingPeers.map(async (peer) => {
+        if (peer.locked || peer.name.toLowerCase() === 'admin') return;
         await this.prisma.tenantRole.update({
           where: { id: peer.id },
           data: { deletedAt: new Date() },
@@ -502,9 +541,9 @@ export class TenantRolesService {
           where: { tenantRoleId: peer.id },
           data: { tenantRoleId: null },
         });
-      }
-      void invalidateTenantDashboardCache(this.cache, tenant.id);
-    }
+        void invalidateTenantDashboardCache(this.cache, peer.tenantId);
+      }),
+    );
   }
 
   private catalogSyncAt = 0;

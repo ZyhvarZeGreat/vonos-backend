@@ -93,19 +93,16 @@ export function Hq6VariationsListView() {
     enabled: Boolean(tenantId),
     defaultPageSize: HQ6_TABLE_PAGE_SIZE,
     search,
+    searchMode: "hybrid",
     fetchPage: (cursor, limit, _sort, opts) =>
       getVariationsPage(tenantId!, cursor, limit, {
+        search: opts?.search,
         includeSummary: opts?.includeSummary,
       }),
     getCursor: (row) => chronoListCursor(row),
   });
 
-  const filteredItems = useMemo(() => {
-    return matchSearchRows(items, search, [
-      "name",
-      (row) => row.values.join(" "),
-    ]);
-  }, [search, items]);
+  const filteredItems = items;
 
   const openCreate = useCallback(() => {
     setEditing(null);

@@ -116,6 +116,8 @@ export const BUSINESS_LOCATION_PRESETS: Record<string, BusinessLocation[]> = {
     { code: "BL0008", name: "LABOUR/CONSUMABLES" },
   ],
   VS: [{ code: "BL0003", name: "Vonos saloon" }],
+  /** Kids Wear — single retail shop (no multi-branch stock yet). */
+  VKW: [{ code: "VKW", name: "Vonos Kids Wear" }],
   /** Mechanic own branch only — sister entities are not sale/expense locations. */
   VA: [PRODUCT_HOME_BY_CODE.VA],
   /** Painting own branch only. */

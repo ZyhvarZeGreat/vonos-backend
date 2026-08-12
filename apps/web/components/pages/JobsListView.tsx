@@ -100,10 +100,15 @@ export function JobsListView() {
     enabled: Boolean(tenantId),
     filters: apiFilters,
     search,
+    searchMode: "hybrid",
     fetchPage: (cursor, limit, _sort, opts) =>
       getJobsPage(
         tenantId!,
-        { ...apiFilters, includeSummary: opts?.includeSummary },
+        {
+          ...apiFilters,
+          search: opts?.search,
+          includeSummary: opts?.includeSummary,
+        },
         cursor,
         limit,
       ),

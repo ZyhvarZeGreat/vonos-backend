@@ -7,6 +7,7 @@ const JPEG_QUALITY = 0.82;
 function extensionForMime(mime: string): string {
   if (mime === "image/png") return "png";
   if (mime === "image/webp") return "webp";
+  if (mime === "image/avif") return "avif";
   return "jpg";
 }
 
@@ -15,7 +16,12 @@ function extensionForMime(mime: string): string {
  * body limit. Small files and GIFs (animation) pass through unchanged.
  */
 export async function compressProductImage(file: File): Promise<File> {
-  if (!file.type.startsWith("image/") || file.type === "image/gif") {
+  // GIF/AVIF pass through — animation / modern codec; server accepts AVIF as-is.
+  if (
+    !file.type.startsWith("image/") ||
+    file.type === "image/gif" ||
+    file.type === "image/avif"
+  ) {
     return file;
   }
   // Already small enough — skip canvas work.
@@ -40,12 +46,13 @@ export async function compressProductImage(file: File): Promise<File> {
     if (!ctx) return file;
     ctx.drawImage(bitmap, 0, 0, width, height);
 
-    const preferJpeg = file.type !== "image/png" && file.type !== "image/webp";
-    const mime = preferJpeg
-      ? "image/jpeg"
-      : file.type === "image/webp"
-        ? "image/webp"
-        : "image/png";
+    const preserveFormat =
+      file.type === "image/png" || file.type === "image/webp";
+    const mime = preserveFormat
+      ? file.type === "image/png"
+        ? "image/png"
+        : "image/webp"
+      : "image/jpeg";
 
     const blob = await new Promise<Blob | null>((resolve) => {
       canvas.toBlob(

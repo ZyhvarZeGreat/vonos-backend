@@ -4,6 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
+import { Prisma as PrismaRuntime } from '@prisma/client';
 import type {
   MovementSource,
   MovementStatus,
@@ -12,7 +13,7 @@ import type {
   PurchasePaymentStatus,
   PurchaseViewBundle,
 } from '@vonos/types';
-import { isOutsideOrServiceCatalogItem } from '@vonos/types';
+import { shouldAdjustLocalItemStock } from '@vonos/types';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { TenantDbService } from '../../common/prisma/tenant-db.service';
 import { CacheService } from '../../common/cache/cache.service';
@@ -33,10 +34,20 @@ import { resolveListSort } from '../../common/utils/listSort';
 import {
   computeStockStatus,
   movementLineRollups,
+  movementLineQtyByItemId,
   parseMovementLines,
+  inboundReceiptStockDelta,
   shouldApplyInboundQty,
   shouldApplyOutboundQty,
 } from '../../common/utils/stockQuantity';
+import {
+  applyInboundStockDeltas,
+  inboundStockLineLookup,
+} from '../../common/utils/applyInboundStockDeltas';
+import {
+  purchaseHeaderChanged,
+  purchaseLinesEqual,
+} from '../../common/utils/purchaseDiff';
 import { resolveActiveItem } from '../../common/utils/resolveActiveItem';
 import { toIso, toNumber } from '../../common/utils/serializers';
 import { paymentStatusFromAmounts } from '../../common/utils/paymentStatus';
@@ -47,8 +58,8 @@ import {
   syncPurchasePaymentAccountDebit,
 } from '../../common/utils/recordPaymentAccountTxn';
 import {
-  relationStringOr,
-  tokenizedSearchWhere,
+  stockMovementTextSearchWhere,
+  transferTextSearchWhere,
 } from '../../common/utils/listSearch';
 import {
   serializeMovement,
@@ -60,6 +71,12 @@ import {
 } from './stock-movements.mapper';
 import { AuditService } from '../audit/audit.service';
 import { InvoiceHubService } from '../invoices/invoice-hub.service';
+
+/** Neon pooler + multi-line stock side-effects need more than the 5s default. */
+const PURCHASE_TX_OPTIONS = {
+  maxWait: 15_000,
+  timeout: 60_000,
+} as const;
 
 function movementStatusWhere(
   status?: MovementStatus,
@@ -106,6 +123,36 @@ export class StockMovementsService {
     private readonly cache: CacheService,
     private readonly invoiceHub: InvoiceHubService,
   ) {}
+
+  /** VA / VP / job catalog — purchases must not adjust Item.quantity. */
+  private async tenantStockContext(tenantId: string): Promise<{
+    code: string | null;
+    archetype: string | null;
+  }> {
+    // Prefer request-memoized tenant load (shared with location resolve).
+    if (tenantId === this.tenantDb.resolveTenantId()) {
+      const tenant = await this.tenantDb.getTenantCodeAndConfig();
+      const cfg = tenant?.config as { archetype?: string | null } | null;
+      return {
+        code: tenant?.code ?? null,
+        archetype: cfg?.archetype ?? null,
+      };
+    }
+    const row = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { code: true, config: true },
+    });
+    const cfg = row?.config as { archetype?: string | null } | null;
+    return {
+      code: row?.code ?? null,
+      archetype: cfg?.archetype ?? null,
+    };
+  }
+
+  private async skipsLocalStock(tenantId: string): Promise<boolean> {
+    const tenant = await this.tenantStockContext(tenantId);
+    return !shouldAdjustLocalItemStock(tenant, null);
+  }
 
   async list(filters: {
     type?: MovementType;
@@ -218,16 +265,7 @@ export class StockMovementsService {
           ...(filters.paymentMethod
             ? { paymentMethod: filters.paymentMethod }
             : {}),
-          ...(tokenizedSearchWhere(filters.search, (_token, contains) => [
-            { reference: contains },
-            { notes: contains },
-            { paymentMethod: contains },
-            { locationCode: contains },
-            { createdByName: contains },
-            relationStringOr('supplier', 'name', contains),
-            relationStringOr('supplier', 'contactName', contains),
-            relationStringOr('supplier', 'phone', contains),
-          ]) ?? {}),
+          ...(stockMovementTextSearchWhere(filters.search) ?? {}),
           ...dateFilter,
         };
         // Skip lines JSON on list — use denormalized itemCount / grandTotal.
@@ -458,53 +496,58 @@ export class StockMovementsService {
           }, 0)
         : 0;
 
+    const catalogOnly = await this.skipsLocalStock(tenantId);
+    const tenantCtx = await this.tenantStockContext(tenantId);
+
     if (applyInbound || applyOutbound) {
       const db = this.prisma.forTenant(tenantId);
       await db.$transaction(async (tx) => {
-        for (const line of lines) {
-          const item = await resolveActiveItem(tx, {
-            tenantId,
-            itemId: line.itemId,
-            sku: line.sku,
-          });
-          if (!item) {
-            throw new BadRequestException(
-              `Item not found: ${line.sku || line.itemId}`,
-            );
-          }
-          if (
-            isOutsideOrServiceCatalogItem({
-              name: line.name || item.name,
-              sku: item.sku || line.sku,
-              category: item.category,
-            })
-          ) {
-            continue;
-          }
+        if (!catalogOnly) {
+          for (const line of lines) {
+            const item = await resolveActiveItem(tx, {
+              tenantId,
+              itemId: line.itemId,
+              sku: line.sku,
+            });
+            if (!item) {
+              throw new BadRequestException(
+                `Item not found: ${line.sku || line.itemId}`,
+              );
+            }
+            if (
+              !shouldAdjustLocalItemStock(tenantCtx, {
+                name: line.name || item.name,
+                sku: item.sku || line.sku,
+                category: item.category,
+              })
+            ) {
+              continue;
+            }
 
-          const delta = applyInbound ? line.quantity : -line.quantity;
-          const nextQuantity = item.quantity + delta;
-          if (nextQuantity < 0) {
-            throw new BadRequestException(
-              `Insufficient stock for ${line.sku || item.sku} (need ${line.quantity}, have ${item.quantity})`,
-            );
+            const delta = applyInbound ? line.quantity : -line.quantity;
+            const nextQuantity = item.quantity + delta;
+            if (nextQuantity < 0) {
+              throw new BadRequestException(
+                `Insufficient stock for ${line.sku || item.sku} (need ${line.quantity}, have ${item.quantity})`,
+              );
+            }
+
+            await tx.item.update({
+              where: { id: item.id },
+              data: {
+                quantity: nextQuantity,
+                status: computeStockStatus(nextQuantity, item.reorderPoint),
+              },
+            });
+
+            await adjustItemLocationStock(tx, {
+              tenantId,
+              itemId: item.id,
+              locationCode: existing.locationCode ?? item.locationCode,
+              binLocation: item.binLocation,
+              delta,
+            });
           }
-
-          await tx.item.update({
-            where: { id: item.id },
-            data: {
-              quantity: nextQuantity,
-              status: computeStockStatus(nextQuantity, item.reorderPoint),
-            },
-          });
-
-          await adjustItemLocationStock(tx, {
-            tenantId,
-            itemId: item.id,
-            locationCode: existing.locationCode ?? item.locationCode,
-            binLocation: item.binLocation,
-            delta,
-          });
         }
 
         await tx.stockMovement.update({
@@ -591,7 +634,7 @@ export class StockMovementsService {
         movementId: id,
         tenantId,
       });
-    });
+    }, PURCHASE_TX_OPTIONS);
 
     if (existing.supplierId) {
       await refreshSupplierPurchaseRollups(
@@ -765,7 +808,7 @@ export class StockMovementsService {
     const method = dto.method?.trim() || 'cash';
     const createdBy = await this.auditService.createdByFields();
 
-    await this.tenantDb.db.$transaction(async (tx) => {
+    const paymentId = await this.tenantDb.db.$transaction(async (tx) => {
       const payment = await tx.payment.create({
         data: {
           tenantId,
@@ -810,6 +853,7 @@ export class StockMovementsService {
           totalPaid: newPaid,
         },
       });
+      return payment.id;
     });
 
     if (movement.supplierId) {
@@ -825,6 +869,18 @@ export class StockMovementsService {
       entityType: 'stockMovement',
       entityId: id,
       summary: `Recorded payment of ${apply} on ${movement.reference}`,
+      metadata: { paymentId, amount: apply },
+    });
+    await this.auditService.log({
+      action: 'created',
+      entityType: 'payment',
+      entityId: paymentId,
+      summary: `Purchase payment ${apply} on ${movement.reference}`,
+      metadata: {
+        amount: apply,
+        movementId: id,
+        reference: movement.reference,
+      },
     });
 
     return {
@@ -1051,6 +1107,21 @@ export class StockMovementsService {
       movement.supplierId,
     );
 
+    void this.auditService.log({
+      action: 'updated',
+      entityType: 'payment',
+      entityId: paymentId,
+      summary: `Updated purchase payment on ${movement.reference}`,
+      metadata: { amount, movementId, reference: movement.reference },
+    });
+    void this.auditService.log({
+      action: 'updated',
+      entityType: 'stockMovement',
+      entityId: movementId,
+      summary: `Updated payment on ${movement.reference}`,
+      metadata: { paymentId, amount },
+    });
+
     return {
       id: updated.id,
       amount: toNumber(updated.amount),
@@ -1096,6 +1167,21 @@ export class StockMovementsService {
       movement.reference,
       movement.supplierId,
     );
+
+    void this.auditService.log({
+      action: 'deleted',
+      entityType: 'payment',
+      entityId: paymentId,
+      summary: `Deleted purchase payment on ${movement.reference}`,
+      metadata: { movementId, reference: movement.reference },
+    });
+    void this.auditService.log({
+      action: 'updated',
+      entityType: 'stockMovement',
+      entityId: movementId,
+      summary: `Removed payment from ${movement.reference}`,
+      metadata: { paymentId },
+    });
   }
 
   async create(body: {
@@ -1121,10 +1207,11 @@ export class StockMovementsService {
     date?: string;
   }) {
     const tenantId = this.tenantDb.requireTenantId();
-    const createdBy = await this.auditService.createdByFields();
-    const locationCode = await this.tenantDb.resolveBusinessLocation(
-      body.locationCode,
-    );
+    const [createdBy, locationCode, tenantCtx] = await Promise.all([
+      this.auditService.createdByFields(),
+      this.tenantDb.resolveBusinessLocation(body.locationCode),
+      this.tenantStockContext(tenantId),
+    ]);
     const rollups = movementLineRollups(body.lines);
     const initialStatus = body.status ?? 'Ordered';
     const row = await this.tenantDb.db.stockMovement.create({
@@ -1150,57 +1237,34 @@ export class StockMovementsService {
 
     // Default purchase UI saves as Received — apply stock once on create.
     // (updateStatus only runs on later status changes.)
+    // VA / VP catalog-only tenants: purchases are billing records, not stock receipts.
+    const catalogOnly = !shouldAdjustLocalItemStock(tenantCtx, null);
     if (
+      !catalogOnly &&
       body.type === 'inbound' &&
       shouldApplyInboundQty('Ordered', initialStatus)
     ) {
       const db = this.prisma.forTenant(tenantId);
       await db.$transaction(async (tx) => {
-        for (const line of body.lines) {
-          const item = await resolveActiveItem(tx, {
-            tenantId,
-            itemId: line.itemId,
-            sku: line.sku,
-          });
-          if (!item) {
-            throw new BadRequestException(
-              `Item not found: ${line.sku || line.itemId}`,
-            );
-          }
-          if (
-            isOutsideOrServiceCatalogItem({
-              name: line.name || item.name,
-              sku: item.sku || line.sku,
-              category: item.category,
-            })
-          ) {
-            continue;
-          }
-          const qty = Math.max(0, Math.round(Number(line.quantity) || 0));
-          if (qty <= 0) continue;
-          const nextQuantity = item.quantity + qty;
-          await tx.item.update({
-            where: { id: item.id },
-            data: {
-              quantity: nextQuantity,
-              status: computeStockStatus(nextQuantity, item.reorderPoint),
-            },
-          });
-          await adjustItemLocationStock(tx, {
-            tenantId,
-            itemId: item.id,
-            locationCode: locationCode ?? item.locationCode,
-            binLocation: item.binLocation,
-            delta: qty,
-          });
-        }
-      });
+        await applyInboundStockDeltas(tx, {
+          tenantId,
+          tenant: tenantCtx,
+          qtyByItem: movementLineQtyByItemId(body.lines),
+          lineLookup: inboundStockLineLookup(body.lines),
+          locationCode,
+        });
+      }, PURCHASE_TX_OPTIONS);
     }
 
     if (body.type === 'inbound') {
-      await this.invoiceHub.ensurePurchaseInvoice(this.tenantDb.db, row);
+      // Invoice hub is not required for the create response — defer like expenses.
+      void this.invoiceHub
+        .ensurePurchaseInvoice(this.tenantDb.db, row)
+        .catch((err: unknown) => {
+          console.error('[purchases] ensurePurchaseInvoice failed', err);
+        });
     }
-    await this.auditService.log({
+    void this.auditService.log({
       action: 'created',
       entityType: 'stockMovement',
       entityId: row.id,
@@ -1267,95 +1331,176 @@ export class StockMovementsService {
     const prevLines = parseMovementLines(existing.lines);
     const wasReceived = existing.status === 'Received';
     const willReceive = nextStatus === 'Received';
+    const prevFullLines = Array.isArray(existing.lines)
+      ? (existing.lines as Array<Record<string, unknown>>)
+      : [];
+    const linesJsonChanged = !purchaseLinesEqual(
+      prevFullLines.map((line) => ({
+        itemId: String(line.itemId ?? ''),
+        sku: String(line.sku ?? ''),
+        name: String(line.name ?? ''),
+        quantity: Number(line.quantity ?? 0),
+        unitCost:
+          line.unitCost === undefined || line.unitCost === null
+            ? undefined
+            : Number(line.unitCost),
+        discountPercent:
+          line.discountPercent === undefined || line.discountPercent === null
+            ? undefined
+            : Number(line.discountPercent),
+        unitSellingPrice:
+          line.unitSellingPrice === undefined || line.unitSellingPrice === null
+            ? undefined
+            : Number(line.unitSellingPrice),
+        expDate: typeof line.expDate === 'string' ? line.expDate : undefined,
+      })),
+      nextLines.map((line) => ({
+        itemId: line.itemId,
+        sku: line.sku,
+        name: line.name,
+        quantity: line.quantity,
+        unitCost: line.unitCost,
+        discountPercent: (line as { discountPercent?: number }).discountPercent,
+        unitSellingPrice: (line as { unitSellingPrice?: number })
+          .unitSellingPrice,
+        expDate: line.expDate,
+      })),
+    );
 
-    const row = await this.tenantDb.db.$transaction(async (tx) => {
-      // Net stock when Received ↔ lines/status change (inbound only).
-      if (existing.type === 'inbound' && (wasReceived || willReceive)) {
-        const qtyByItem = new Map<string, number>();
-        const bump = (itemId: string, delta: number) => {
-          qtyByItem.set(itemId, (qtyByItem.get(itemId) ?? 0) + delta);
-        };
-        if (wasReceived) {
-          for (const line of prevLines) {
-            if (line.itemId) bump(line.itemId, -line.quantity);
-          }
-        }
-        if (willReceive) {
-          for (const line of nextLines) {
-            if (line.itemId) bump(line.itemId, line.quantity);
-          }
-        }
-        for (const [itemId, delta] of qtyByItem) {
-          if (delta === 0) continue;
-          const item = await resolveActiveItem(tx, {
+    const nextPaymentMethod =
+      body.paymentMethod !== undefined
+        ? body.paymentMethod?.trim() || null
+        : existing.paymentMethod;
+    const headerChanged = purchaseHeaderChanged(
+      {
+        reference: existing.reference,
+        status: existing.status,
+        supplierId: existing.supplierId,
+        locationCode: existing.locationCode,
+        dateIso: existing.date.toISOString(),
+        notes: existing.notes,
+        paymentMethod: existing.paymentMethod,
+        paymentStatus: existing.paymentStatus,
+      },
+      {
+        reference: nextReference,
+        status: nextStatus,
+        supplierId: nextSupplierId ?? null,
+        locationCode: locationCode ?? null,
+        dateIso: nextDate.toISOString(),
+        notes: nextNotes ?? null,
+        paymentMethod: nextPaymentMethod,
+        paymentStatus: nextPaymentStatus ?? null,
+      },
+    );
+
+    const catalogOnly = await this.skipsLocalStock(tenantId);
+    const tenantCtx = await this.tenantStockContext(tenantId);
+    const stockDeltas =
+      !catalogOnly &&
+      existing.type === 'inbound' &&
+      (wasReceived || willReceive)
+        ? inboundReceiptStockDelta({
+            wasReceived,
+            willReceive,
+            prevLines,
+            nextLines,
+          })
+        : new Map<string, number>();
+    const needsStock = stockDeltas.size > 0;
+    const needsInvoice =
+      existing.type === 'inbound' && (headerChanged || linesJsonChanged);
+    const needsMovementWrite =
+      headerChanged ||
+      linesJsonChanged ||
+      body.type !== undefined ||
+      body.source !== undefined;
+
+    // No-op edit (notes/lines/header/stock all identical) — skip DB write.
+    if (!needsMovementWrite && !needsStock) {
+      return serializeMovement(existing);
+    }
+
+    let row: Awaited<
+      ReturnType<Prisma.TransactionClient['stockMovement']['update']>
+    > & { supplier: { name: string } | null };
+    try {
+      if (needsStock) {
+        row = await this.tenantDb.db.$transaction(async (tx) => {
+          await applyInboundStockDeltas(tx, {
             tenantId,
-            itemId,
+            tenant: tenantCtx,
+            qtyByItem: stockDeltas,
+            lineLookup: inboundStockLineLookup(nextLines),
+            locationCode,
           });
-          if (!item) {
-            throw new BadRequestException(`Item not found: ${itemId}`);
-          }
-          if (
-            isOutsideOrServiceCatalogItem({
-              name: item.name,
-              sku: item.sku,
-              category: item.category,
-            })
-          ) {
-            continue;
-          }
-          const nextQuantity = item.quantity + delta;
-          if (nextQuantity < 0) {
-            throw new BadRequestException(
-              `Insufficient stock for ${item.sku} (delta ${delta}, have ${item.quantity})`,
-            );
-          }
-          await tx.item.update({
-            where: { id: item.id },
+          return tx.stockMovement.update({
+            where: { id },
             data: {
-              quantity: nextQuantity,
-              status: computeStockStatus(nextQuantity, item.reorderPoint),
+              ...(body.type ? { type: body.type } : {}),
+              reference: nextReference,
+              status: nextStatus,
+              paymentStatus: nextPaymentStatus,
+              ...(body.paymentMethod !== undefined
+                ? { paymentMethod: body.paymentMethod?.trim() || null }
+                : {}),
+              lines: nextLines as unknown as import('@prisma/client').Prisma.InputJsonValue,
+              itemCount: rollups.itemCount,
+              grandTotal: rollups.grandTotal,
+              notes: nextNotes ?? null,
+              supplierId: nextSupplierId ?? null,
+              ...(body.source ? { source: body.source } : {}),
+              locationCode,
+              date: nextDate,
             },
+            include: { supplier: { select: { name: true } } },
           });
-          await adjustItemLocationStock(tx, {
-            tenantId,
-            itemId: item.id,
-            locationCode: locationCode ?? item.locationCode,
-            binLocation: item.binLocation,
-            delta,
-          });
-        }
+        }, PURCHASE_TX_OPTIONS);
+      } else {
+        row = await this.tenantDb.db.stockMovement.update({
+          where: { id },
+          data: {
+            ...(body.type ? { type: body.type } : {}),
+            reference: nextReference,
+            status: nextStatus,
+            paymentStatus: nextPaymentStatus,
+            ...(body.paymentMethod !== undefined
+              ? { paymentMethod: body.paymentMethod?.trim() || null }
+              : {}),
+            ...(linesJsonChanged
+              ? {
+                  lines:
+                    nextLines as unknown as import('@prisma/client').Prisma.InputJsonValue,
+                  itemCount: rollups.itemCount,
+                  grandTotal: rollups.grandTotal,
+                }
+              : {}),
+            notes: nextNotes ?? null,
+            supplierId: nextSupplierId ?? null,
+            ...(body.source ? { source: body.source } : {}),
+            locationCode,
+            date: nextDate,
+          },
+          include: { supplier: { select: { name: true } } },
+        });
       }
-
-      const updated = await tx.stockMovement.update({
-        where: { id },
-        data: {
-          ...(body.type ? { type: body.type } : {}),
-          reference: nextReference,
-          status: nextStatus,
-          paymentStatus: nextPaymentStatus,
-          ...(body.paymentMethod !== undefined
-            ? { paymentMethod: body.paymentMethod?.trim() || null }
-            : {}),
-          lines: nextLines as unknown as import('@prisma/client').Prisma.InputJsonValue,
-          itemCount: rollups.itemCount,
-          grandTotal: rollups.grandTotal,
-          notes: nextNotes ?? null,
-          supplierId: nextSupplierId ?? null,
-          ...(body.source ? { source: body.source } : {}),
-          locationCode,
-          date: nextDate,
-        },
-        include: { supplier: { select: { name: true } } },
-      });
-
-      if (updated.type === 'inbound') {
-        await this.invoiceHub.ensurePurchaseInvoice(tx, updated);
+    } catch (error) {
+      if (
+        error instanceof PrismaRuntime.PrismaClientKnownRequestError &&
+        error.code === 'P2028'
+      ) {
+        throw new BadRequestException(
+          'Purchase update timed out — please try again',
+        );
       }
+      throw error;
+    }
 
-      return updated;
-    });
+    if (needsInvoice) {
+      await this.invoiceHub.ensurePurchaseInvoice(this.tenantDb.db, row);
+    }
 
-    await this.auditService.log({
+    void this.auditService.log({
       action: 'updated',
       entityType: 'stockMovement',
       entityId: row.id,
@@ -1402,12 +1547,7 @@ export class StockMovementsService {
               },
             }
           : {}),
-        ...(tokenizedSearchWhere(filters.search, (_token, contains) => [
-          { reference: contains },
-          { notes: contains },
-          { locationCode: contains },
-          { createdByName: contains },
-        ]) ?? {}),
+        ...(transferTextSearchWhere(filters.search) ?? {}),
         ...(pagination.where ?? {}),
       },
       orderBy: [{ date: 'desc' }, { id: 'desc' }],

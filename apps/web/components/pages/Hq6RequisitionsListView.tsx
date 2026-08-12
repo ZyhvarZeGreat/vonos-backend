@@ -60,8 +60,10 @@ export function Hq6RequisitionsListView() {
     queryKey: ["requisitions", tenantId],
     enabled: Boolean(tenantId),
     search,
+    searchMode: "hybrid",
     fetchPage: (cursor, limit, _sort, opts) =>
       getRequisitionsPage(tenantId!, cursor, limit, {
+        search: opts?.search,
         includeSummary: opts?.includeSummary,
       }),
     getCursor: (row) => chronoListCursor(row),

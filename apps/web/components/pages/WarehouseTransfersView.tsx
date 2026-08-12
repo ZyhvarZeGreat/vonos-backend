@@ -127,6 +127,7 @@ export function WarehouseTransfersView() {
   } = useServerListPage<TransferRow>({
     queryKey: ["transfers"],
     search,
+    searchMode: "hybrid",
     filters: {
       status: statusFilter || (activeTab !== "all" ? activeTab : undefined),
       from: bounds?.from,
@@ -138,6 +139,7 @@ export function WarehouseTransfersView() {
         from: bounds?.from,
         to: bounds?.to,
         status: statusFilter || (activeTab !== "all" ? activeTab : undefined),
+        search: opts?.search,
         includeSummary: opts?.includeSummary,
       }),
     getCursor: (row) => movementListCursor(row),

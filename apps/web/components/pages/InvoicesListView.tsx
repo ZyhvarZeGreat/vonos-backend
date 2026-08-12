@@ -67,8 +67,19 @@ export function InvoicesListView() {
   const listPage = useServerListPage<InvoiceListRow>({
     queryKey: ["invoices", tenantId, listFilters],
     enabled: Boolean(tenantId),
+    search,
+    searchMode: "hybrid",
     fetchPage: (cursor, limit, _sort, opts) =>
-      getInvoicesPage(tenantId!, { ...listFilters, includeSummary: opts?.includeSummary }, cursor, limit),
+      getInvoicesPage(
+        tenantId!,
+        {
+          ...listFilters,
+          search: opts?.search,
+          includeSummary: opts?.includeSummary,
+        },
+        cursor,
+        limit,
+      ),
     getCursor: (row) => invoiceListCursor(row),
   });
 

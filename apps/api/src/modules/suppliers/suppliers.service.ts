@@ -324,10 +324,10 @@ export class SuppliersService {
     taxPayerId?: string | null;
   }): Promise<SupplierListRow> {
     const tenantId = this.tenantDb.requireTenantId();
-    const createdBy = await this.auditService.createdByFields();
-    const locationCode = await this.tenantDb.resolveBusinessLocation(
-      body.locationCode,
-    );
+    const [createdBy, locationCode] = await Promise.all([
+      this.auditService.createdByFields(),
+      this.tenantDb.resolveBusinessLocation(body.locationCode),
+    ]);
     const row = await this.tenantDb.db.supplier.create({
       data: {
         tenantId,
@@ -351,7 +351,7 @@ export class SuppliersService {
       },
       include: { assignedToUser: { select: { name: true } } },
     });
-    await this.auditService.log({
+    void this.auditService.log({
       action: 'created',
       entityType: 'supplier',
       entityId: row.id,

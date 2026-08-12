@@ -24,7 +24,7 @@ import {
   buildTenantLedgerCharts,
 } from './ledgerCharts';
 import { CacheService } from '../../common/cache/cache.service';
-import { tokenizedSearchWhere } from '../../common/utils/listSearch';
+import { ledgerTextSearchWhere } from '../../common/utils/listSearch';
 import {
   listPageFilterKey,
   withListPageCache,
@@ -109,12 +109,7 @@ export class LedgerService {
         ...excludeCashBookLedgerWhere(),
         ...(filters.type ? { type: filters.type } : {}),
         ...(filters.category ? { category: filters.category } : {}),
-        ...(tokenizedSearchWhere(filters.search, (_token, contains) => [
-          { description: contains },
-          { category: contains },
-          { currency: contains },
-          { linkedRecordType: contains },
-        ]) ?? {}),
+        ...(ledgerTextSearchWhere(filters.search) ?? {}),
         ...ledgerDateFilter(filters.from, filters.to),
         ...(pagination.where ?? {}),
       },

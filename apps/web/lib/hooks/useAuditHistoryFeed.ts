@@ -1,4 +1,6 @@
-import { useQuery } from "@tanstack/react-query";
+"use client";
+
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { getAuditLog } from "@/lib/api/audit";
 import { formatDateTime } from "@/lib/utils/formatDate";
@@ -13,7 +15,8 @@ const AUDIT_DEFER_MS = 300;
 
 /**
  * Audit feed for detail sidebars — deferred until idle (or 300ms) so the
- * primary shell query wins the first paint RTT.
+ * primary shell query wins the first paint RTT. Skips defer when already cached
+ * (e.g. seeded from sale /view prefetch).
  */
 export function useAuditHistoryFeed(
   entityType: string,
@@ -21,11 +24,24 @@ export function useAuditHistoryFeed(
   tenantId: string | null | undefined,
   options?: { enabled?: boolean },
 ): { entries: HistoryFeedEntry[]; isLoading: boolean } {
-  const [deferredReady, setDeferredReady] = useState(false);
+  const queryClient = useQueryClient();
+  const cacheKey = ["audit-entity", tenantId, entityType, entityId] as const;
+  const hasCached =
+    Boolean(tenantId && entityId) &&
+    queryClient.getQueryData(cacheKey) != null;
+
+  const [deferredReady, setDeferredReady] = useState(hasCached);
 
   useEffect(() => {
     if (!tenantId || !entityId) {
       setDeferredReady(false);
+      return;
+    }
+    if (
+      queryClient.getQueryData(["audit-entity", tenantId, entityType, entityId]) !=
+      null
+    ) {
+      setDeferredReady(true);
       return;
     }
     let cancelled = false;
@@ -50,14 +66,14 @@ export function useAuditHistoryFeed(
       }
       if (timeoutId != null) clearTimeout(timeoutId);
     };
-  }, [tenantId, entityId]);
+  }, [tenantId, entityId, entityType, queryClient]);
 
   const explicitEnabled = options?.enabled !== false;
   const enabled =
     explicitEnabled && Boolean(tenantId && entityId) && deferredReady;
 
   const { data, isLoading } = useQuery({
-    queryKey: ["audit-entity", tenantId, entityType, entityId],
+    queryKey: cacheKey,
     queryFn: () =>
       getAuditLog({ entityType, entityId: entityId!, limit: 20 }, tenantId),
     enabled,
@@ -74,6 +90,9 @@ export function useAuditHistoryFeed(
       subtitle: entry.actorName ?? undefined,
       date: formatDateTime(entry.occurredAt),
       status: undefined,
+      action: entry.action,
+      actorName: entry.actorName ?? undefined,
+      metadata: entry.metadata ?? null,
     })) ?? [];
 
   return { entries, isLoading: enabled && isLoading };

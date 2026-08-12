@@ -17,6 +17,7 @@ import { stockMovementSeedFromListRow } from "@/lib/utils/listModalSeeds";
 import { businessLocationName } from "@/lib/utils/locationLabels";
 import { parsePurchaseNotes } from "@/lib/utils/purchaseNotes";
 import { cn } from "@/lib/utils/cn";
+import { Hq6AuditTrail } from "@/components/hq6/Hq6AuditTrail";
 
 function partyFromNotes(notes: string | null): string {
   if (!notes) return "—";
@@ -436,6 +437,13 @@ export function Hq6PurchaseViewModal({
               </p>
             </div>
           </div>
+
+          <Hq6AuditTrail
+            entityType="stockMovement"
+            entityId={purchaseId}
+            title="Activity"
+            enabled={open}
+          />
         </div>
       )}
     </Hq6Modal>

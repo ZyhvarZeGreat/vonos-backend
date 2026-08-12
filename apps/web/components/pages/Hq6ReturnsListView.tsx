@@ -141,12 +141,17 @@ export function Hq6ReturnsListView() {
     enabled: Boolean(tenantId),
     filters: apiFilters,
     search: search,
+    searchMode: "hybrid",
     defaultPageSize: HQ6_TABLE_PAGE_SIZE,
     fetchPage: (cursor, limit, listSort, opts) =>
       getReturnsPage(
         tenantId!,
         withListSort(
-          { ...apiFilters, includeSummary: opts?.includeSummary },
+          {
+            ...apiFilters,
+            search: opts?.search,
+            includeSummary: opts?.includeSummary,
+          },
           listSort,
         ),
         cursor,

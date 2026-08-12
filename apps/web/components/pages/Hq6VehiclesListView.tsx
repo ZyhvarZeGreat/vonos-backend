@@ -140,8 +140,10 @@ export function Hq6VehiclesListView() {
     queryKey: ["vehicles", tenantId],
     enabled: Boolean(tenantId),
     search,
+    searchMode: "hybrid",
     fetchPage: (cursor, limit, _sort, opts) =>
       getVehiclesPage(tenantId!, cursor, limit, {
+        search: opts?.search,
         includeSummary: opts?.includeSummary,
       }),
     getCursor: (row) => chronoListCursor(row),

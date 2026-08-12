@@ -73,7 +73,12 @@ function CustomerGroupsListViewBody() {
   } = useServerListPage<CustomerGroup>({
     queryKey: ["customer-groups", tenantId],
     enabled: Boolean(tenantId),
-    fetchPage: (cursor, limit, _sort, opts) => getCustomerGroupsPage(tenantId!, cursor, limit, { includeSummary: opts?.includeSummary }),
+    searchMode: "hybrid",
+    fetchPage: (cursor, limit, _sort, opts) =>
+      getCustomerGroupsPage(tenantId!, cursor, limit, {
+        search: opts?.search,
+        includeSummary: opts?.includeSummary,
+      }),
     getCursor: (row) => nameListCursor(row),
   });
 

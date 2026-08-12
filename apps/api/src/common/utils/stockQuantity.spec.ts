@@ -1,4 +1,5 @@
 import {
+  inboundReceiptStockDelta,
   movementLineRollups,
   shouldApplyInboundQty,
   shouldApplyOutboundQty,
@@ -16,6 +17,45 @@ describe('stockQuantity', () => {
     expect(shouldApplyOutboundQty('Pending', 'Shipped')).toBe(true);
     expect(shouldApplyOutboundQty('Shipped', 'Delivered')).toBe(false);
     expect(shouldApplyOutboundQty('Delivered', 'Shipped')).toBe(false);
+  });
+
+  it('uses net qty delta when a Received purchase stays Received', () => {
+    const prev = [
+      { itemId: 'a', sku: 'A', name: 'A', quantity: 10 },
+    ];
+    const next = [
+      { itemId: 'a', sku: 'A', name: 'A', quantity: 10 },
+    ];
+    expect(
+      inboundReceiptStockDelta({
+        wasReceived: true,
+        willReceive: true,
+        prevLines: prev,
+        nextLines: next,
+      }),
+    ).toEqual(new Map());
+  });
+
+  it('applies net increase when Received purchase qty rises', () => {
+    expect(
+      inboundReceiptStockDelta({
+        wasReceived: true,
+        willReceive: true,
+        prevLines: [{ itemId: 'a', sku: 'A', name: 'A', quantity: 10 }],
+        nextLines: [{ itemId: 'a', sku: 'A', name: 'A', quantity: 12 }],
+      }),
+    ).toEqual(new Map([['a', 2]]));
+  });
+
+  it('reverses receipt when status leaves Received', () => {
+    expect(
+      inboundReceiptStockDelta({
+        wasReceived: true,
+        willReceive: false,
+        prevLines: [{ itemId: 'a', sku: 'A', name: 'A', quantity: 8 }],
+        nextLines: [{ itemId: 'a', sku: 'A', name: 'A', quantity: 8 }],
+      }),
+    ).toEqual(new Map([['a', -8]]));
   });
 
   it('rolls up line count and discounted totals', () => {

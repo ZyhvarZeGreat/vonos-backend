@@ -24,3 +24,15 @@ describe('price-catalog tenants (VA / VP)', () => {
     expect(isPriceCatalogOnlyTenant('VSP', 'transaction')).toBe(false);
   });
 });
+
+describe('catalog location presets (VS / VKW)', () => {
+  it('provides a default business location for saloon and kids wear', async () => {
+    const { catalogPresetsForCode } = await import('./catalogPresets');
+    expect(catalogPresetsForCode('VS').businessLocations).toEqual([
+      { code: 'BL0003', name: 'Vonos saloon' },
+    ]);
+    expect(catalogPresetsForCode('VKW').businessLocations).toEqual([
+      { code: 'VKW', name: 'Vonos Kids Wear' },
+    ]);
+  });
+});

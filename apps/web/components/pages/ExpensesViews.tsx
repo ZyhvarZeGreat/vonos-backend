@@ -139,10 +139,12 @@ function ExpensesListViewBody() {
     queryKey: ["expenses", tenantId],
     enabled: Boolean(tenantId),
     search,
+    searchMode: "hybrid",
     filters: listFilters,
     fetchPage: (cursor, limit, _sort, opts) =>
       getExpensesPage(tenantId!, cursor, limit, {
         ...listFilters,
+        search: opts?.search,
         includeSummary: opts?.includeSummary,
       }),
     getCursor: (row) => expenseListCursor(row),
@@ -765,7 +767,7 @@ export function AddExpenseView() {
                     &nbsp; <span className="hidden-xs">Browse..</span>
                     <input
                       type="file"
-                      accept=".pdf,.csv,.zip,.doc,.docx,.jpeg,.jpg,.png"
+                      accept=".pdf,.csv,.zip,.doc,.docx,.jpeg,.jpg,.png,.avif"
                     />
                   </div>
                 </div>
@@ -773,7 +775,7 @@ export function AddExpenseView() {
               <p className="hq6-form-hint">
                 Max File size: 5MB
                 <br />
-                Allowed File: .pdf, .csv, .zip, .doc, .docx, .jpeg, .jpg, .png
+                Allowed File: .pdf, .csv, .zip, .doc, .docx, .jpeg, .jpg, .png, .avif
               </p>
             </label>
             <div />

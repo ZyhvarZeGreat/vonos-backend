@@ -5,6 +5,7 @@ import {
   compressProductImage,
   PRODUCT_IMAGE_MAX_BYTES,
 } from "@/lib/utils/compressProductImage";
+import { canAccessVagPortal } from "@vonos/types";
 
 export type ProductImageUploadResult = {
   url: string;
@@ -18,9 +19,9 @@ export type ProductImageUploadOptions = {
 
 function authHeaders(): Record<string, string> {
   const headers: Record<string, string> = {};
-  const { token, role } = useAuthStore.getState();
+  const { token, role, tenantRoleName } = useAuthStore.getState();
   if (token) headers.Authorization = `Bearer ${token}`;
-  if (role === "super_admin") {
+  if (canAccessVagPortal({ role, tenantRoleName })) {
     const viewingTenant = resolveViewingTenantId();
     if (viewingTenant) headers["X-Viewing-Tenant"] = viewingTenant;
   }

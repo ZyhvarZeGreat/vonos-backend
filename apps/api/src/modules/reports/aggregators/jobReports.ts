@@ -3,12 +3,12 @@ import type { TenantScopedPrisma } from '../../../common/prisma/prisma.service';
 import { runPool } from '../../../common/utils/mapPool';
 import { computeDelta, priorWindow, resolveDateWindow } from './date-utils';
 import {
-  avgDeliveredTurnaroundDays,
+  avgDeliveredTurnaroundPair,
+  deliveredQuoteRevenuePair,
   deliveredTurnaroundHistogram,
   jobCostByMonth,
-  jobCostSummaryInWindow,
+  jobCostSummaryPair,
   jobTableRowsInWindow,
-  sumDeliveredQuoteRevenue,
 } from './jobReportQueries';
 
 type JobTab = 'costing' | 'turnaround';
@@ -32,24 +32,8 @@ export async function buildJobReports(
   const pipelineFrom = prior.from;
   const pipelineTo = window.to;
 
-  const jobCountWhere = (range: { from: Date; to: Date }, status?: string) => ({
-    tenantId,
-    deletedAt: null,
-    createdAt: { gte: range.from, lte: range.to },
-    ...(status ? { status } : {}),
-  });
-
   if (tab === 'turnaround') {
-    // Cap fan-out — unbounded Promise.all stampedes Neon and triggers P1001.
-    const [
-      activeJobs,
-      totalRevenue,
-      histogram,
-      periodAvgTurnaround,
-      priorAvgTurnaround,
-      periodDelivered,
-      priorDelivered,
-    ] = await runPool(
+    const [activeJobs, revenuePair, histogram, turnaroundPair] = await runPool(
       [
         () =>
           db.job.count({
@@ -59,15 +43,26 @@ export async function buildJobReports(
               status: { notIn: ['Delivered', 'Cancelled'] },
             },
           }),
-        () => sumDeliveredQuoteRevenue(db, tenantId, window.from, window.to),
+        () =>
+          deliveredQuoteRevenuePair(
+            db,
+            tenantId,
+            window.from,
+            window.to,
+            prior.from,
+            prior.to,
+          ),
         () =>
           deliveredTurnaroundHistogram(db, tenantId, window.from, window.to),
         () =>
-          avgDeliveredTurnaroundDays(db, tenantId, window.from, window.to),
-        () =>
-          avgDeliveredTurnaroundDays(db, tenantId, prior.from, prior.to),
-        () => db.job.count({ where: jobCountWhere(window, 'Delivered') }),
-        () => db.job.count({ where: jobCountWhere(prior, 'Delivered') }),
+          avgDeliveredTurnaroundPair(
+            db,
+            tenantId,
+            window.from,
+            window.to,
+            prior.from,
+            prior.to,
+          ),
       ],
       REPORT_QUERY_CONCURRENCY,
     );
@@ -84,16 +79,19 @@ export async function buildJobReports(
           icon: 'clock',
           metricKey: 'avgTurnaroundDays',
           color: '#9333ea',
-          value: Number(periodAvgTurnaround.toFixed(1)),
-          ...computeDelta(periodAvgTurnaround, priorAvgTurnaround),
+          value: Number(turnaroundPair.current.toFixed(1)),
+          ...computeDelta(turnaroundPair.current, turnaroundPair.prior),
         },
         {
           label: 'Jobs Delivered',
           icon: 'check-circle',
           metricKey: 'jobsDelivered',
           color: '#059669',
-          value: periodDelivered,
-          ...computeDelta(periodDelivered, priorDelivered),
+          value: revenuePair.currentDelivered,
+          ...computeDelta(
+            revenuePair.currentDelivered,
+            revenuePair.priorDelivered,
+          ),
         },
         {
           label: 'Active Jobs',
@@ -107,7 +105,7 @@ export async function buildJobReports(
           icon: 'wallet',
           metricKey: 'totalRevenue',
           color: '#e11d48',
-          value: totalRevenue,
+          value: revenuePair.current,
           currency: 'NGN',
         },
       ],
@@ -125,16 +123,8 @@ export async function buildJobReports(
     };
   }
 
-  // Costing tab — two waves max concurrency 2 (KPIs then charts/table).
-  const [
-    activeJobs,
-    completedJobs,
-    priorCompleted,
-    totalRevenue,
-    priorRevenue,
-    periodCostSummary,
-    priorCostSummary,
-  ] = await runPool(
+  // Costing tab — paired current/prior queries cut Neon RTTs.
+  const [activeJobs, revenuePair, costPair] = await runPool(
     [
       () =>
         db.job.count({
@@ -144,12 +134,24 @@ export async function buildJobReports(
             status: { notIn: ['Delivered', 'Cancelled'] },
           },
         }),
-      () => db.job.count({ where: jobCountWhere(window, 'Delivered') }),
-      () => db.job.count({ where: jobCountWhere(prior, 'Delivered') }),
-      () => sumDeliveredQuoteRevenue(db, tenantId, window.from, window.to),
-      () => sumDeliveredQuoteRevenue(db, tenantId, prior.from, prior.to),
-      () => jobCostSummaryInWindow(db, tenantId, window.from, window.to),
-      () => jobCostSummaryInWindow(db, tenantId, prior.from, prior.to),
+      () =>
+        deliveredQuoteRevenuePair(
+          db,
+          tenantId,
+          window.from,
+          window.to,
+          prior.from,
+          prior.to,
+        ),
+      () =>
+        jobCostSummaryPair(
+          db,
+          tenantId,
+          window.from,
+          window.to,
+          prior.from,
+          prior.to,
+        ),
     ],
     REPORT_QUERY_CONCURRENCY,
   );
@@ -172,8 +174,8 @@ export async function buildJobReports(
     REPORT_QUERY_CONCURRENCY,
   );
 
-  const avgJobCost = avgCost(periodCostSummary);
-  const priorAvgCost = avgCost(priorCostSummary);
+  const avgJobCost = avgCost(costPair.current);
+  const priorAvgCost = avgCost(costPair.prior);
 
   const pipelineData = statusGroups.map((group) => ({
     label: group.status,
@@ -194,17 +196,20 @@ export async function buildJobReports(
         icon: 'check-circle',
         metricKey: 'completedJobs',
         color: '#2563eb',
-        value: completedJobs,
-        ...computeDelta(completedJobs, priorCompleted),
+        value: revenuePair.currentDelivered,
+        ...computeDelta(
+          revenuePair.currentDelivered,
+          revenuePair.priorDelivered,
+        ),
       },
       {
         label: 'Revenue',
         icon: 'wallet',
         metricKey: 'totalRevenue',
         color: '#e11d48',
-        value: totalRevenue,
+        value: revenuePair.current,
         currency: 'NGN',
-        ...computeDelta(totalRevenue, priorRevenue),
+        ...computeDelta(revenuePair.current, revenuePair.prior),
       },
       {
         label: 'Avg Job Cost',

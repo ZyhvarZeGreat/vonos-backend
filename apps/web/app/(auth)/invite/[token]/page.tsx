@@ -61,7 +61,13 @@ export default function AcceptInvitePage() {
         tenantRoleLocked: result.user.tenantRoleLocked ?? false,
         allowedTenantCodes: result.user.allowedTenantCodes ?? [],
       });
-      router.replace(getPostLoginPath(result.user.role, result.user.tenantId));
+      router.replace(
+        getPostLoginPath(
+          result.user.role,
+          result.user.tenantId,
+          result.user.tenantRoleName,
+        ),
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to accept invite");
     } finally {

@@ -21,6 +21,7 @@ export async function invalidateTenantDashboardCache(
   cache: CacheService,
   tenantId: string,
 ): Promise<void> {
+  // Bump first so subsequent reads miss; group-overview DEL is best-effort.
   await cache.bumpTenantVersion(tenantId);
   const window = currentGroupOverviewWindowKey();
   cache.clearL1Matching([
@@ -28,7 +29,7 @@ export async function invalidateTenantDashboardCache(
     'report-group:',
     'ledger-group-',
   ]);
-  await cache.del(
+  void cache.del(
     `group-overview:${window}`,
     `group-overview:summary:${window}`,
     `group-overview:details:${window}`,
@@ -46,7 +47,7 @@ export async function invalidateTenantListCache(
   tenantId: string,
   resources: string[],
 ): Promise<void> {
-  for (const resource of resources) {
-    await cache.bumpListVersion(tenantId, resource);
-  }
+  await Promise.all(
+    resources.map((resource) => cache.bumpListVersion(tenantId, resource)),
+  );
 }

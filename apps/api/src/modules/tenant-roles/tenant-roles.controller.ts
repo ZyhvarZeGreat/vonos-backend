@@ -24,6 +24,7 @@ import {
   TenantGuard,
 } from '../../common/guards/auth.guards';
 import { TenantRolesService } from './tenant-roles.service';
+import { userHasPermission } from '../../common/utils/userPermissions';
 
 @Controller('tenant-roles')
 @UseGuards(JwtAuthGuard, TenantGuard, RolesGuard)
@@ -35,22 +36,15 @@ export class TenantRolesController {
     return this.service.list({ search });
   }
 
-  /** Role definitions are VAG-only — tenant admins may list/assign, not edit. */
+  /** Create/update/delete require roles.* keys (HR defaults include them). */
   @Post()
   @Roles('admin', 'manager', 'staff', 'super_admin')
   create(
     @Body() dto: CreateTenantRoleRequest,
-    @Req()
-    req: {
-      user: AuthenticatedUser;
-      tenantScope: string | null;
-    },
+    @Req() req: { user: AuthenticatedUser },
   ) {
-    const perms = req.user.tenantRolePermissions ?? [];
-    const canCreate = perms.includes('*') || perms.includes('roles.create');
-    if (!canCreate) throw new ForbiddenException('Missing roles.create');
-    if (req.tenantScope !== 'tenant_vag_001') {
-      throw new ForbiddenException('VAG only');
+    if (!userHasPermission(req.user, 'roles.create')) {
+      throw new ForbiddenException('Missing roles.create');
     }
     return this.service.create(dto);
   }
@@ -59,17 +53,10 @@ export class TenantRolesController {
   @Roles('admin', 'manager', 'staff', 'super_admin')
   importRoles(
     @Body() dto: ImportTenantRolesRequest,
-    @Req()
-    req: {
-      user: AuthenticatedUser;
-      tenantScope: string | null;
-    },
+    @Req() req: { user: AuthenticatedUser },
   ) {
-    const perms = req.user.tenantRolePermissions ?? [];
-    const canImport = perms.includes('*') || perms.includes('roles.create');
-    if (!canImport) throw new ForbiddenException('Missing roles.create');
-    if (req.tenantScope !== 'tenant_vag_001') {
-      throw new ForbiddenException('VAG only');
+    if (!userHasPermission(req.user, 'roles.create')) {
+      throw new ForbiddenException('Missing roles.create');
     }
     return this.service.importRoles(dto);
   }
@@ -84,17 +71,10 @@ export class TenantRolesController {
   update(
     @Param('id') id: string,
     @Body() dto: UpdateTenantRoleRequest,
-    @Req()
-    req: {
-      user: AuthenticatedUser;
-      tenantScope: string | null;
-    },
+    @Req() req: { user: AuthenticatedUser },
   ) {
-    const perms = req.user.tenantRolePermissions ?? [];
-    const canUpdate = perms.includes('*') || perms.includes('roles.update');
-    if (!canUpdate) throw new ForbiddenException('Missing roles.update');
-    if (req.tenantScope !== 'tenant_vag_001') {
-      throw new ForbiddenException('VAG only');
+    if (!userHasPermission(req.user, 'roles.update')) {
+      throw new ForbiddenException('Missing roles.update');
     }
     return this.service.update(id, dto);
   }
@@ -103,17 +83,10 @@ export class TenantRolesController {
   @Roles('admin', 'manager', 'staff', 'super_admin')
   remove(
     @Param('id') id: string,
-    @Req()
-    req: {
-      user: AuthenticatedUser;
-      tenantScope: string | null;
-    },
+    @Req() req: { user: AuthenticatedUser },
   ) {
-    const perms = req.user.tenantRolePermissions ?? [];
-    const canDelete = perms.includes('*') || perms.includes('roles.delete');
-    if (!canDelete) throw new ForbiddenException('Missing roles.delete');
-    if (req.tenantScope !== 'tenant_vag_001') {
-      throw new ForbiddenException('VAG only');
+    if (!userHasPermission(req.user, 'roles.delete')) {
+      throw new ForbiddenException('Missing roles.delete');
     }
     return this.service.remove(id);
   }

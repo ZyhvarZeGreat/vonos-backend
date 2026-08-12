@@ -19,10 +19,11 @@ import {
   modalKeys,
   prefetchModalQuery,
 } from "@/lib/query/modalQueryKeys";
+import { seedSaleViewSideCaches } from "@/lib/query/seedSaleViewCaches";
 
 type Qc = QueryClient;
 
-/** Prefetch full sale invoice bundle (View). Also seeds the light payments cache. */
+/** Prefetch full sale invoice bundle (View). Also seeds payments + activity caches. */
 export function prefetchSaleListModals(
   queryClient: Qc,
   tenantId: string,
@@ -32,10 +33,7 @@ export function prefetchSaleListModals(
     queryKey: modalKeys.saleView(tenantId, saleId),
     queryFn: async () => {
       const bundle = await getSaleView(saleId, tenantId);
-      queryClient.setQueryData(
-        modalKeys.salePayments(tenantId, saleId),
-        bundle.payments,
-      );
+      seedSaleViewSideCaches(queryClient, tenantId, bundle);
       return bundle;
     },
     staleTime: MODAL_RECORD_STALE_MS,

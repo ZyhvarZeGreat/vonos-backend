@@ -102,7 +102,7 @@ export function AccountBookView({ accountId }: { accountId?: string }) {
     queryKey: ["account-book", tenantId, accountId],
     enabled: Boolean(accountId),
     search,
-    searchMode: "server",
+    searchMode: "hybrid",
     filters: apiFilters,
     defaultPageSize: HQ6_TABLE_PAGE_SIZE,
     fetchPage: (cursor, limit, _sort, opts) =>

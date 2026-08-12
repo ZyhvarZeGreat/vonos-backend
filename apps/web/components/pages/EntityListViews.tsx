@@ -163,7 +163,19 @@ function SalesListViewBody({
     enabled: Boolean(tenantId),
     filters: apiFilters,
     search,
-    fetchPage: (cursor, limit, _sort, opts) => getSalesPage(tenantId!, { ...apiFilters, includeSummary: opts?.includeSummary }, cursor, limit, { signal: opts?.signal }),
+    searchMode: "hybrid",
+    fetchPage: (cursor, limit, _sort, opts) =>
+      getSalesPage(
+        tenantId!,
+        {
+          ...apiFilters,
+          search: opts?.search,
+          includeSummary: opts?.includeSummary,
+        },
+        cursor,
+        limit,
+        { signal: opts?.signal },
+      ),
     getCursor: (row) => saleListCursor(row),
   });
 
@@ -412,7 +424,18 @@ export function OrdersListView() {
     enabled: Boolean(tenantId),
     filters: apiFilters,
     search,
-    fetchPage: (cursor, limit, _sort, opts) => getOrdersPage(tenantId!, { ...apiFilters, includeSummary: opts?.includeSummary }, cursor, limit),
+    searchMode: "hybrid",
+    fetchPage: (cursor, limit, _sort, opts) =>
+      getOrdersPage(
+        tenantId!,
+        {
+          ...apiFilters,
+          search: opts?.search,
+          includeSummary: opts?.includeSummary,
+        },
+        cursor,
+        limit,
+      ),
     getCursor: (row) =>
       saleListCursor({ id: row.id, date: row.saleDate ?? row.createdAt }),
   });
@@ -530,7 +553,7 @@ function CustomersListViewBody() {
       from: bounds?.from,
       to: bounds?.to,
     }),
-    [bounds?.from, bounds?.to, search],
+    [bounds?.from, bounds?.to],
   );
 
   const {
@@ -544,7 +567,7 @@ function CustomersListViewBody() {
     goPrev,
     setPageSize,
     isLoading,
-
+    isSearching,
     isFetching,
     isPaging,
     error,
@@ -555,12 +578,14 @@ function CustomersListViewBody() {
     enabled: Boolean(tenantId),
     filters: apiFilters,
     search,
+    searchMode: "hybrid",
     defaultSort: { sortBy: "updatedAt", sortDir: "desc" },
     fetchPage: (cursor, limit, listSort, opts) =>
       getCustomersPage(
         tenantId!,
         {
           ...apiFilters,
+          search: opts?.search,
           includeSummary: opts?.includeSummary,
           ...(listSort?.sortBy
             ? { sortBy: listSort.sortBy, sortDir: listSort.sortDir }
@@ -681,8 +706,8 @@ function CustomersListViewBody() {
         onPageSelect={goToPage}
         canSelectPage={canSelectPage}
         totalCount={totalCount}
-        isLoading={isLoading}
-        isFetching={isFetching}
+        isLoading={isLoading || isSearching}
+        isFetching={isFetching || isSearching}
           isPaging={isPaging}
         error={error ? "Failed to load customers" : null}
         onRowClick={(row) => openRecord(row.id, row)}
@@ -752,7 +777,18 @@ function ReturnsListViewBody() {
     enabled: Boolean(tenantId),
     filters: apiFilters,
     search,
-    fetchPage: (cursor, limit, _sort, opts) => getReturnsPage(tenantId!, { ...apiFilters, includeSummary: opts?.includeSummary }, cursor, limit),
+    searchMode: "hybrid",
+    fetchPage: (cursor, limit, _sort, opts) =>
+      getReturnsPage(
+        tenantId!,
+        {
+          ...apiFilters,
+          search: opts?.search,
+          includeSummary: opts?.includeSummary,
+        },
+        cursor,
+        limit,
+      ),
     getCursor: (row) => saleListCursor(row),
   });
 
@@ -904,8 +940,10 @@ function VehiclesListViewBody() {
     queryKey: ["vehicles", tenantId],
     enabled: Boolean(tenantId),
     search,
+    searchMode: "hybrid",
     fetchPage: (cursor, limit, _sort, opts) =>
       getVehiclesPage(tenantId!, cursor, limit, {
+        search: opts?.search,
         includeSummary: opts?.includeSummary,
       }),
     getCursor: (row) => plateListCursor(row),
@@ -1088,8 +1126,10 @@ function RequisitionsListViewBody() {
     queryKey: ["requisitions", tenantId],
     enabled: Boolean(tenantId),
     search,
+    searchMode: "hybrid",
     fetchPage: (cursor, limit, _sort, opts) =>
       getRequisitionsPage(tenantId!, cursor, limit, {
+        search: opts?.search,
         includeSummary: opts?.includeSummary,
       }),
     getCursor: (row) => createdAtListCursor(row),
@@ -1210,8 +1250,10 @@ export function IncomingRequisitionsListView() {
     queryKey: ["incoming-requisitions", tenantId],
     enabled: Boolean(tenantId),
     search,
+    searchMode: "hybrid",
     fetchPage: (cursor, limit, _sort, opts) =>
       getIncomingRequisitionsPage(tenantId!, cursor, limit, {
+        search: opts?.search,
         includeSummary: opts?.includeSummary,
       }),
     getCursor: (row) => createdAtListCursor(row),
@@ -1333,8 +1375,19 @@ export function MenuItemsListView() {
     enabled: Boolean(tenantId),
     filters: apiFilters,
     search,
+    searchMode: "hybrid",
     fetchPage: async (cursor, limit, _sort, opts) => {
-      const page = await getItemsPage(tenantId!, { ...apiFilters, includeSummary: opts?.includeSummary }, cursor, limit, { signal: opts?.signal });
+      const page = await getItemsPage(
+        tenantId!,
+        {
+          ...apiFilters,
+          search: opts?.search,
+          includeSummary: opts?.includeSummary,
+        },
+        cursor,
+        limit,
+        { signal: opts?.signal },
+      );
       return {
         ...page,
         items: page.items.map((item) => ({
@@ -1440,8 +1493,10 @@ export function ServicesListView() {
     queryKey: ["salon-services", tenantId],
     enabled: Boolean(tenantId),
     search,
+    searchMode: "hybrid",
     fetchPage: (cursor, limit, _sort, opts) =>
       getSalonServicesPage(tenantId!, cursor, limit, {
+        search: opts?.search,
         includeSummary: opts?.includeSummary,
       }),
     getCursor: (row) => nameListCursor(row),
@@ -1572,7 +1627,18 @@ export function CatalogListView() {
     enabled: Boolean(tenantId) && section === "products",
     filters: apiFilters,
     search,
-    fetchPage: (cursor, limit, _sort, opts) => getCatalogPage(tenantId!, { ...apiFilters, includeSummary: opts?.includeSummary }, cursor, limit),
+    searchMode: "hybrid",
+    fetchPage: (cursor, limit, _sort, opts) =>
+      getCatalogPage(
+        tenantId!,
+        {
+          ...apiFilters,
+          search: opts?.search,
+          includeSummary: opts?.includeSummary,
+        },
+        cursor,
+        limit,
+      ),
     getCursor: (row) => itemListCursor(row),
   });
 

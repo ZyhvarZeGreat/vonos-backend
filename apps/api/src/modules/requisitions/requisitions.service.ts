@@ -20,6 +20,7 @@ import {
   withListPageCache,
 } from '../../common/utils/listPageCache';
 import { toIso } from '../../common/utils/serializers';
+import { requisitionTextSearchWhere } from '../../common/utils/listSearch';
 import { computeStockStatus, movementLineRollups } from '../../common/utils/stockQuantity';
 import { adjustItemLocationStock } from '../../common/utils/itemLocationStock';
 import {
@@ -136,21 +137,7 @@ export class RequisitionsService {
       where: {
         sourceTenantId,
         deletedAt: null,
-        ...(filters.search
-          ? {
-              OR: [
-                {
-                  reference: {
-                    contains: filters.search,
-                    mode: 'insensitive',
-                  },
-                },
-                {
-                  notes: { contains: filters.search, mode: 'insensitive' },
-                },
-              ],
-            }
-          : {}),
+        ...(requisitionTextSearchWhere(filters.search) ?? {}),
         ...(pagination.where ?? {}),
       },
       orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
@@ -198,21 +185,7 @@ export class RequisitionsService {
       where: {
         tenantId,
         deletedAt: null,
-        ...(filters.search
-          ? {
-              OR: [
-                {
-                  reference: {
-                    contains: filters.search,
-                    mode: 'insensitive',
-                  },
-                },
-                {
-                  notes: { contains: filters.search, mode: 'insensitive' },
-                },
-              ],
-            }
-          : {}),
+        ...(requisitionTextSearchWhere(filters.search) ?? {}),
         ...(pagination.where ?? {}),
       },
       orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],

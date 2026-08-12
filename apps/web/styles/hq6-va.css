@@ -3875,27 +3875,48 @@ html.upos-shell [data-hq6="true"] .hq6-contact-page.hq6-page {
   margin-top: 1rem;
 }
 
+.hq6-sale-activity-heading {
+  font-size: 1.15rem;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+
+.hq6-sale-activity-action {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem 0.55rem;
+}
+
+.hq6-sale-activity-action-label {
+  font-size: 0.95rem;
+  font-weight: 800;
+  color: #111827;
+}
+
 .hq6-sale-activity-note {
   display: block;
-  margin-bottom: 0.25rem;
+  margin-bottom: 0;
+  font-size: 0.9rem;
 }
 
 .hq6-sale-activity-badges {
   display: inline-flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0.25rem;
+  gap: 0.35rem;
 }
 
 .hq6-sale-activity-badge {
   display: inline-block;
-  padding: 0.1rem 0.4rem;
-  border-radius: 0.2rem;
+  padding: 0.2rem 0.55rem;
+  border-radius: 0.25rem;
   background: #00c0ef;
   color: #fff;
-  font-size: 0.75rem;
-  font-weight: 600;
-  line-height: 1.4;
+  font-size: 0.875rem;
+  font-weight: 700;
+  line-height: 1.35;
+  letter-spacing: 0.01em;
 }
 
 .hq6-sale-activity-badge-to {
@@ -3903,8 +3924,10 @@ html.upos-shell [data-hq6="true"] .hq6-contact-page.hq6-page {
 }
 
 .hq6-sale-activity-arrow {
-  color: #6b7280;
-  font-size: 0.75rem;
+  color: #374151;
+  font-size: 1rem;
+  font-weight: 800;
+  line-height: 1;
 }
 
 /* —— HQ6 Add Sale / Add Purchase form pages —— */

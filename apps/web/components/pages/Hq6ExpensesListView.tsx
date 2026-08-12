@@ -252,11 +252,13 @@ export function Hq6ExpensesListView() {
     queryKey: ["expenses", tenantId, "hq6"],
     enabled: Boolean(tenantId),
     search,
+    searchMode: "hybrid",
     filters: listFilters,
     defaultPageSize: HQ6_TABLE_PAGE_SIZE,
     fetchPage: (cursor, limit, _sort, opts) =>
       getExpensesPage(tenantId!, cursor, limit, {
         ...listFilters,
+        search: opts?.search,
         includeSummary: opts?.includeSummary,
       }),
     getCursor: (row) => expenseListCursor(row),

@@ -21,6 +21,7 @@ import {
   excludeCashBookLedgerWhere,
 } from '../../common/utils/ledgerCashBook';
 import { toIso, toNumber } from '../../common/utils/serializers';
+import { ledgerTextSearchWhere } from '../../common/utils/listSearch';
 import { resolveDateWindow } from '../reports/aggregators/date-utils';
 import {
   groupFinanceByTenantFromRollup,
@@ -252,24 +253,7 @@ export async function buildGroupLedgerList(
       ...excludeCashBookLedgerWhere(),
       ...(filters.type ? { type: filters.type } : {}),
       ...(filters.category ? { category: filters.category } : {}),
-      ...(filters.search
-        ? {
-            OR: [
-              {
-                description: {
-                  contains: filters.search,
-                  mode: 'insensitive',
-                },
-              },
-              {
-                category: {
-                  contains: filters.search,
-                  mode: 'insensitive',
-                },
-              },
-            ],
-          }
-        : {}),
+      ...(ledgerTextSearchWhere(filters.search) ?? {}),
       ...(filters.from || filters.to
         ? {
             date: {

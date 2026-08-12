@@ -43,10 +43,11 @@ export function AdminShell({
   const hydrated = useAuthStore((state) => state.hydrated);
   const role = useAuthStore((state) => state.role);
   const tenantId = useAuthStore((state) => state.tenantId);
+  const tenantRoleName = useAuthStore((state) => state.tenantRoleName);
   const authName = useAuthStore((state) => state.name);
   const authEmail = useAuthStore((state) => state.email);
   const viewingCode = useAdminEntityStore((state) => state.viewingCode);
-  const { canAny, isFullAccess } = useAppPermissions();
+  const { canAny, isFullAccess, isVag } = useAppPermissions();
   const viewingUnit =
     viewingCode && isVagViewUnitId(viewingCode)
       ? getVagViewUnit(viewingCode)
@@ -74,15 +75,15 @@ export function AdminShell({
   useEffect(() => {
     if (skipAuth) return;
     if (!hydrated) return;
-    if (role && role !== "super_admin") {
-      router.replace(getPostLoginPath(role, tenantId));
+    if (role && !isVag) {
+      router.replace(getPostLoginPath(role, tenantId, tenantRoleName));
     }
-  }, [skipAuth, hydrated, role, tenantId, router]);
+  }, [skipAuth, hydrated, role, isVag, tenantId, tenantRoleName, router]);
 
   // Block deep-links to Finance / financial Reports when the assigned role
   // does not include those permissions (e.g. HR on VAG).
   useEffect(() => {
-    if (skipAuth || !hydrated || role !== "super_admin") return;
+    if (skipAuth || !hydrated || !isVag) return;
     if (isFullAccess) return;
     const match = Object.entries(VAG_NAV_VIEW_PERMISSIONS).find(([route]) => {
       if (route === "/admin/overview") return false;
@@ -94,13 +95,13 @@ export function AdminShell({
     if (!canAny(...keys)) {
       router.replace("/admin/hrm/users");
     }
-  }, [skipAuth, hydrated, role, isFullAccess, canAny, pathname, router]);
+  }, [skipAuth, hydrated, isVag, isFullAccess, canAny, pathname, router]);
 
   useEffect(() => {
     if (skipAuth) return;
-    if (!hydrated || role !== "super_admin") return;
+    if (!hydrated || !isVag) return;
     scheduleIdle(() => prefetchVagAdminShell(queryClient));
-  }, [skipAuth, hydrated, role, queryClient]);
+  }, [skipAuth, hydrated, isVag, queryClient]);
 
   useEffect(() => {
     const theme = uposThemeVars(shellAccentCode);
@@ -110,7 +111,7 @@ export function AdminShell({
     }
   }, [shellAccentCode]);
 
-  if (!skipAuth && role && role !== "super_admin") {
+  if (!skipAuth && role && !isVag) {
     return null;
   }
 

@@ -17,6 +17,7 @@ import { Hq6PrintModal } from "@/components/hq6/Hq6PrintModal";
 import { useHq6ListChrome } from "@/components/hq6/Hq6StandardListShell";
 import {
   getAllCustomers,
+  getCustomersListSummary,
   getCustomersPage,
   setCustomerStatus,
 } from "@/lib/api/customers";
@@ -196,7 +197,6 @@ export function Hq6CustomersListView() {
     customerGroupId,
     hasNoSellFrom,
     openingBalance,
-    search,
     sellDue,
     sellReturn,
     status,
@@ -224,18 +224,30 @@ export function Hq6CustomersListView() {
     enabled: Boolean(tenantId),
     filters: apiFilters,
     search,
+    // Full-catalog API search (same path as Add Sale customer picker), not
+    // match-sorter over the sliding window of warm pages.
+    searchMode: "hybrid",
     defaultPageSize: HQ6_TABLE_PAGE_SIZE,
     defaultSort: { sortBy: "updatedAt", sortDir: "desc" },
     fetchPage: (cursor, limit, listSort, opts) =>
       getCustomersPage(
         tenantId!,
         withListSort(
-          { ...apiFilters, includeSummary: opts?.includeSummary },
+          {
+            ...apiFilters,
+            search: opts?.search,
+            includeSummary: opts?.includeSummary,
+          },
           listSort,
         ),
         cursor,
         limit,
       ),
+    fetchSummary: (opts) =>
+      getCustomersListSummary(tenantId!, {
+        ...apiFilters,
+        search: opts?.search,
+      }),
     getCursor: (row, listSort) => {
       const sortBy = listSort?.sortBy ?? "updatedAt";
       const type =
@@ -304,13 +316,19 @@ export function Hq6CustomersListView() {
     pageIndex,
     pageSize: effectiveSize,
     itemCount: customers.length,
-    totalCount: totalCount ?? totalItems,
+    // Only pass a real server/search total — never page length as a fake total.
+    totalCount,
   });
   const busy = isPaging || isSearching || (isLoading && customers.length === 0);
+  // Skeleton for empty table while search/load is in flight — never flash
+  // "No data available" mid-search.
+  const showSearchSkeleton =
+    customers.length === 0 && (isLoading || isSearching);
 
-  const dueTotal =
-    amountSummary?.totalDue ??
-    customers.reduce((sum, row) => sum + (row.totalSellDue ?? 0), 0);
+  // Footer sell-due must come from the deferred list summary (full filtered
+  // catalog). Falling back to the visible page sum makes totals look wrong.
+  const dueTotal = amountSummary?.totalDue;
+  // Return-due has no API aggregate yet — page sum only (labeled in footer).
   const returnDueTotal = customers.reduce(
     (sum, row) => sum + (row.totalSellReturn ?? 0),
     0,
@@ -320,7 +338,10 @@ export function Hq6CustomersListView() {
 
   const handleExport = useCallback(async () => {
     if (!tenantId) return;
-    const rows = await getAllCustomers(tenantId, apiFilters);
+    const rows = await getAllCustomers(tenantId, {
+      ...apiFilters,
+      search: search.trim() || undefined,
+    });
     exportList(
       "customers",
       [
@@ -343,7 +364,7 @@ export function Hq6CustomersListView() {
       })),
       "Export Customers Spreadsheet",
     );
-  }, [apiFilters, exportList, tenantId]);
+  }, [apiFilters, exportList, search, tenantId]);
 
   const pageNumbers = useMemo(
     () =>
@@ -750,15 +771,27 @@ export function Hq6CustomersListView() {
                                   Failed to load customers.
                                 </td>
                               </tr>
-                            ) : isLoading && customers.length === 0 ? (
-                              <tr className="odd">
-                                <td
-                                  colSpan={colSpan}
-                                  className="dataTables_empty"
+                            ) : showSearchSkeleton ? (
+                              Array.from({ length: 8 }).map((_, rowIdx) => (
+                                <tr
+                                  key={`sk-${rowIdx}`}
+                                  className={rowIdx % 2 === 0 ? "odd" : "even"}
                                 >
-                                  Processing...
-                                </td>
-                              </tr>
+                                  {Array.from({ length: Math.min(colSpan, 8) }).map(
+                                    (__, colIdx) => (
+                                      <td key={colIdx}>
+                                        <span
+                                          className="tw-inline-block tw-h-3.5 tw-animate-pulse tw-rounded tw-bg-gray-200"
+                                          style={{
+                                            width: `${48 + ((rowIdx + colIdx) % 4) * 12}%`,
+                                          }}
+                                          aria-hidden
+                                        />
+                                      </td>
+                                    ),
+                                  )}
+                                </tr>
+                              ))
                             ) : customers.length === 0 ? (
                               <tr className="odd">
                                 <td
@@ -1015,7 +1048,9 @@ export function Hq6CustomersListView() {
                                 </td>
                                 {showCol("totalSellDue") ? (
                                   <td className="footer_contact_due">
-                                    {formatHq6Currency(dueTotal)}
+                                    {dueTotal != null
+                                      ? formatHq6Currency(dueTotal)
+                                      : "—"}
                                   </td>
                                 ) : null}
                                 {showCol("totalSellReturn") ? (
@@ -1041,7 +1076,7 @@ export function Hq6CustomersListView() {
                         {formatListEntriesLabel({
                           from,
                           to,
-                          total: totalCount ?? to,
+                          total: totalCount,
                         })}
                       </div>
                       <div

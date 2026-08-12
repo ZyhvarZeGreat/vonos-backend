@@ -16,6 +16,11 @@ type VonosRequest = Request & {
 @Injectable({ scope: Scope.REQUEST })
 export class TenantDbService {
   private client: TenantScopedPrisma | null = null;
+  /** One tenant config load per request — validators / location resolve share it. */
+  private tenantConfigPromise: Promise<{
+    code: string | null;
+    config: object;
+  } | null> | null = null;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -51,19 +56,37 @@ export class TenantDbService {
     return this.request.user?.sub ?? null;
   }
 
+  private loadTenantConfig(): Promise<{
+    code: string | null;
+    config: object;
+  } | null> {
+    if (!this.tenantConfigPromise) {
+      const tenantId = this.requireTenantId();
+      this.tenantConfigPromise = this.prisma.tenant
+        .findUnique({
+          where: { id: tenantId },
+          select: { code: true, config: true },
+        })
+        .then((tenant) =>
+          tenant
+            ? {
+                code: tenant.code,
+                config: {
+                  ...((tenant.config as object | null) ?? {}),
+                  code: tenant.code,
+                },
+              }
+            : null,
+        );
+    }
+    return this.tenantConfigPromise;
+  }
+
   async resolveBusinessLocation(
     locationCode?: string | null,
   ): Promise<string | null> {
-    const tenantId = this.requireTenantId();
-    const tenant = await this.prisma.tenant.findUnique({
-      where: { id: tenantId },
-      select: { code: true, config: true },
-    });
-    const config = {
-      ...((tenant?.config as object | null) ?? {}),
-      code: tenant?.code,
-    };
-    return assertBusinessLocation(config, locationCode);
+    const tenant = await this.loadTenantConfig();
+    return assertBusinessLocation(tenant?.config ?? {}, locationCode);
   }
 
   /**
@@ -74,16 +97,17 @@ export class TenantDbService {
   async businessLocationValidator(): Promise<
     (locationCode?: string | null) => string | null
   > {
-    const tenantId = this.requireTenantId();
-    const tenant = await this.prisma.tenant.findUnique({
-      where: { id: tenantId },
-      select: { code: true, config: true },
-    });
-    const config = {
-      ...((tenant?.config as object | null) ?? {}),
-      code: tenant?.code,
-    };
+    const tenant = await this.loadTenantConfig();
+    const config = tenant?.config ?? {};
     return (locationCode?: string | null) =>
       assertProductStockLocation(config, locationCode);
+  }
+
+  /** Same memoized tenant row used by location validators (code + config). */
+  async getTenantCodeAndConfig(): Promise<{
+    code: string | null;
+    config: object;
+  } | null> {
+    return this.loadTenantConfig();
   }
 }

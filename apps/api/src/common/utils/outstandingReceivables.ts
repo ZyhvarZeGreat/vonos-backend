@@ -11,17 +11,10 @@ export async function computeOutstandingReceivables(
 ): Promise<number> {
   const window = resolveDateWindow(from, to);
 
+  // Use cached Sale.totalPaid — avoid full Payment table aggregate join.
   const rows = await db.$queryRaw<[{ outstanding: Prisma.Decimal | null }]>`
-    SELECT COALESCE(SUM(
-      s.total - COALESCE(p.paid, 0)
-    ), 0) AS outstanding
+    SELECT COALESCE(SUM(GREATEST(s.total - s."totalPaid", 0)), 0) AS outstanding
     FROM "Sale" s
-    LEFT JOIN (
-      SELECT "saleId", SUM(amount) AS paid
-      FROM "Payment"
-      WHERE "deletedAt" IS NULL
-      GROUP BY "saleId"
-    ) p ON p."saleId" = s.id
     WHERE s."deletedAt" IS NULL
       AND s.status NOT IN ('draft', 'quotation')
       AND s."paymentStatus" IN ('due', 'partial')
@@ -37,16 +30,8 @@ export async function computeAllTimeOutstandingReceivables(
   db: TenantScopedPrisma,
 ): Promise<number> {
   const rows = await db.$queryRaw<[{ outstanding: Prisma.Decimal | null }]>`
-    SELECT COALESCE(SUM(
-      s.total - COALESCE(p.paid, 0)
-    ), 0) AS outstanding
+    SELECT COALESCE(SUM(GREATEST(s.total - s."totalPaid", 0)), 0) AS outstanding
     FROM "Sale" s
-    LEFT JOIN (
-      SELECT "saleId", SUM(amount) AS paid
-      FROM "Payment"
-      WHERE "deletedAt" IS NULL
-      GROUP BY "saleId"
-    ) p ON p."saleId" = s.id
     WHERE s."deletedAt" IS NULL
       AND s.status NOT IN ('draft', 'quotation')
       AND s."paymentStatus" IN ('due', 'partial')

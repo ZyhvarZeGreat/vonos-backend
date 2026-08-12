@@ -260,6 +260,9 @@ export function Hq6SalesListView({
     enabled: Boolean(tenantId),
     filters: apiFilters,
     search: search,
+    // Full-catalog API search (invoice / customer / plate), not match-sorter
+    // over the sliding window of warm pages.
+    searchMode: "hybrid",
     defaultPageSize: HQ6_TABLE_PAGE_SIZE,
     defaultSort: { sortBy: "updatedAt", sortDir: "desc" },
     staleTime: 10 * 60_000,
@@ -267,7 +270,11 @@ export function Hq6SalesListView({
       getSalesPage(
         tenantId!,
         withListSort(
-          { ...apiFilters, includeSummary: opts?.includeSummary },
+          {
+            ...apiFilters,
+            search: opts?.search,
+            includeSummary: opts?.includeSummary,
+          },
           listSort,
         ),
         cursor,
@@ -625,7 +632,16 @@ export function Hq6SalesListView({
           }
           return item;
         });
-        return <Hq6ActionsMenu items={guarded} />;
+        return (
+          <Hq6ActionsMenu
+            items={guarded}
+            onOpenChange={(menuOpen) => {
+              if (menuOpen && tenantId) {
+                prefetchSaleListModals(queryClient, tenantId, row.id);
+              }
+            }}
+          />
+        );
       },
     }),
     [
@@ -1433,8 +1449,8 @@ export function Hq6SalesListView({
           density={chrome.density}
           onDensityChange={chrome.setDensity}
           showDensityControl={false}
-          isLoading={isLoading}
-          isFetching={isFetching && !isLoading}
+          isLoading={isLoading || isSearching}
+          isFetching={(isFetching || isSearching) && !isLoading}
           error={error ? "Could not load sales." : null}
           onRowClick={(row) => openRecord(row.id, row)}
           emptyState={{ message: "No data available in table" }}

@@ -1,4 +1,4 @@
-import type { Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 
 const INSENSITIVE = 'insensitive' as const;
 
@@ -119,6 +119,96 @@ export function itemTextSearchWhere(
       return { OR: branches };
     }),
   };
+}
+
+/** Max IDs pulled from FTS before Prisma cursor/filter pass. */
+export const LIST_FTS_CANDIDATE_LIMIT = 500;
+
+type FtsQueryClient = {
+  $queryRaw: <T = unknown>(
+    query: TemplateStringsArray,
+    ...values: unknown[]
+  ) => Promise<T>;
+};
+
+/**
+ * Multi-word free-text → Postgres FTS (`searchVector` @@ plainto_tsquery).
+ * SKU / phone / plate / single-token stay on btree + trigram paths.
+ */
+export function shouldUseFtsListSearch(
+  search: string | undefined | null,
+): boolean {
+  if (!search?.trim()) return false;
+  if (isSkuLikeLookup(search)) return false;
+  if (isPhoneLikeLookup(search)) return false;
+  if (isPlateLikeLookup(search)) return false;
+  const tokens = tokenizeListSearch(search).filter((t) => t.length >= 2);
+  return tokens.length >= 2;
+}
+
+/** Normalize typedown into a safe plainto_tsquery input (space-joined tokens). */
+export function normalizeFtsQuery(search: string | undefined | null): string {
+  return tokenizeListSearch(search)
+    .filter((t) => t.length >= 2)
+    .slice(0, 4)
+    .join(' ');
+}
+
+/**
+ * Ranked Item IDs for multi-word search via generated `searchVector`.
+ * Empty → caller should fall back to trigram `itemTextSearchWhere`.
+ */
+export async function fetchItemFtsIds(
+  db: FtsQueryClient,
+  tenantId: string | { in: string[] },
+  search: string,
+  limit = LIST_FTS_CANDIDATE_LIMIT,
+): Promise<string[]> {
+  const q = normalizeFtsQuery(search);
+  if (!q) return [];
+
+  const tenantSql =
+    typeof tenantId === 'string'
+      ? Prisma.sql`"tenantId" = ${tenantId}`
+      : Prisma.sql`"tenantId" IN (${Prisma.join(tenantId.in)})`;
+
+  const rows = await db.$queryRaw<Array<{ id: string }>>`
+    SELECT id
+    FROM "Item"
+    WHERE ${tenantSql}
+      AND "deletedAt" IS NULL
+      AND "searchVector" @@ plainto_tsquery('simple', ${q})
+    ORDER BY ts_rank_cd("searchVector", plainto_tsquery('simple', ${q})) DESC,
+             id DESC
+    LIMIT ${limit}
+  `;
+  return rows.map((row) => row.id);
+}
+
+/**
+ * Ranked Customer IDs for multi-word search via generated `searchVector`.
+ * Empty → caller should fall back to trigram `contactTextSearchWhere`.
+ */
+export async function fetchCustomerFtsIds(
+  db: FtsQueryClient,
+  tenantId: string,
+  search: string,
+  limit = LIST_FTS_CANDIDATE_LIMIT,
+): Promise<string[]> {
+  const q = normalizeFtsQuery(search);
+  if (!q) return [];
+
+  const rows = await db.$queryRaw<Array<{ id: string }>>`
+    SELECT id
+    FROM "Customer"
+    WHERE "tenantId" = ${tenantId}
+      AND "deletedAt" IS NULL
+      AND "searchVector" @@ plainto_tsquery('simple', ${q})
+    ORDER BY ts_rank_cd("searchVector", plainto_tsquery('simple', ${q})) DESC,
+             id DESC
+    LIMIT ${limit}
+  `;
+  return rows.map((row) => row.id);
 }
 
 /**
@@ -301,15 +391,13 @@ export function supplierTextSearchWhere(
     };
   }
 
+  // Indexed fields only — address/notes/locationCode defeat GIN trigram use.
   const tokenized = tokenizedSearchWhere(raw, (_token, contains) => [
     { name: contains },
     { contactName: contains },
     { email: contains },
     { phone: contains },
-    { address: contains },
     { taxNumber: contains },
-    { notes: contains },
-    { locationCode: contains },
   ]);
 
   // Full-phrase OR + tokenized AND — typing "Sunny Day 7" must still hit
@@ -345,10 +433,13 @@ export function tokenizedSearchWhere<T extends object>(
 }
 
 /**
- * Sales / invoice list search:
- * - invoice-like single token → equality + prefix on reference (btree-friendly)
- *   plus customer name/phone prefix
- * - else → tokenized contains across sale + customer fields
+ * Sale list search:
+ * - phone → customer phone
+ * - plate / invoice-like → reference + customer name/plate (indexed)
+ * - else → tokenized contains on **indexed** fields only
+ *   (Sale.reference, Customer.name/phone, Job.reference, trackingNumber).
+ *   Do NOT OR across notes / paymentMethod / location / staff — those defeat
+ *   GIN trigram indexes and turn Neon list search into multi-second scans.
  */
 export function saleTextSearchWhere(
   search: string | undefined | null,
@@ -384,14 +475,131 @@ export function saleTextSearchWhere(
           OR: [
             { reference: equalsInsensitive(token) },
             { reference: startsWithInsensitive(token) },
+            { reference: containsInsensitive(token) },
             { trackingNumber: equalsInsensitive(token) },
             { trackingNumber: startsWithInsensitive(token) },
             { customer: { name: startsWithInsensitive(token) } },
             { customer: { name: containsInsensitive(token) } },
             { customer: { phone: startsWithInsensitive(token) } },
             { job: { reference: startsWithInsensitive(token) } },
+            { job: { reference: containsInsensitive(token) } },
             ...plateOr,
-            { notes: containsInsensitive(token) },
+          ],
+        },
+      ],
+    };
+  }
+
+  // Name / free-text: keep the OR tight so Postgres can use gin_trgm on
+  // Sale.reference + Customer.name/phone.
+  return tokenizedSearchWhere(raw, (_token, contains) => [
+    { reference: contains },
+    { trackingNumber: contains },
+    relationStringOr('customer', 'name', contains),
+    relationStringOr('customer', 'phone', contains),
+    relationStringOr('job', 'reference', contains),
+  ]);
+}
+
+/**
+ * Raw-SQL fragment for sale list search (fast path). Empty → TRUE.
+ * Tokens are AND-ed; each token matches reference / customer / job / tracking.
+ */
+export function saleSearchSql(search: string | undefined | null): Prisma.Sql {
+  const raw = search?.trim();
+  if (!raw) return Prisma.sql`TRUE`;
+
+  const tokens = tokenizeListSearch(raw)
+    .filter((t) => t.length >= 2)
+    .slice(0, 3);
+  const patterns =
+    tokens.length > 0 ? tokens.map((t) => `%${t}%`) : [`%${raw}%`];
+
+  return Prisma.join(
+    patterns.map(
+      (p) => Prisma.sql`(
+      s.reference ILIKE ${p}
+      OR COALESCE(s."trackingNumber", '') ILIKE ${p}
+      OR COALESCE(c.name, '') ILIKE ${p}
+      OR COALESCE(c.phone, '') ILIKE ${p}
+      OR COALESCE(j.reference, '') ILIKE ${p}
+    )`,
+    ),
+    ' AND ',
+  );
+}
+
+/** Purchase / inbound / outbound list — reference + supplier only (trigram-backed). */
+export function stockMovementTextSearchWhere(
+  search: string | undefined | null,
+): { AND: Array<{ OR: object[] }> } | undefined {
+  return tokenizedSearchWhere(search, (_token, contains) => [
+    { reference: contains },
+    relationStringOr('supplier', 'name', contains),
+    relationStringOr('supplier', 'phone', contains),
+  ]);
+}
+
+/** Transfer list — reference only (StockMovement_reference_trgm_idx). */
+export function transferTextSearchWhere(
+  search: string | undefined | null,
+): { AND: Array<{ OR: object[] }> } | undefined {
+  return tokenizedSearchWhere(search, (_token, contains) => [
+    { reference: contains },
+  ]);
+}
+
+/** Sell / purchase payment list — ref + account + linked sale. */
+export function paymentTextSearchWhere(
+  search: string | undefined | null,
+): { AND: Array<{ OR: object[] }> } | undefined {
+  return tokenizedSearchWhere(search, (_token, contains) => [
+    { paymentRefNo: contains },
+    relationStringOr('account', 'name', contains),
+    relationStringOr('sale', 'reference', contains),
+  ]);
+}
+
+/** Account book rows — ref + note only. */
+export function accountTransactionTextSearchWhere(
+  search: string | undefined | null,
+): { AND: Array<{ OR: object[] }> } | undefined {
+  return tokenizedSearchWhere(search, (_token, contains) => [
+    { refNo: contains },
+    { note: contains },
+  ]);
+}
+
+/** Expense list — ref / contact / category / linked customer. */
+export function expenseTextSearchWhere(
+  search: string | undefined | null,
+): { AND: Array<{ OR: object[] }> } | undefined {
+  return tokenizedSearchWhere(search, (_token, contains) => [
+    { refNo: contains },
+    { contactName: contains },
+    relationStringOr('category', 'name', contains),
+    relationStringOr('expenseForCustomer', 'name', contains),
+    relationStringOr('contactCustomer', 'name', contains),
+  ]);
+}
+
+/** Vehicle registry — plate-first when plate-like; else plate/make/model/owner. */
+export function vehicleTextSearchWhere(
+  search: string | undefined | null,
+): { AND: Array<{ OR: object[] }> } | undefined {
+  const raw = search?.trim();
+  if (!raw) return undefined;
+
+  if (isPlateLikeLookup(raw)) {
+    const compact = compactPlateToken(raw);
+    return {
+      AND: [
+        {
+          OR: [
+            { plateNumber: containsInsensitive(compact) },
+            { plateNumber: containsInsensitive(raw) },
+            { plateNumber: containsInsensitive(raw.replace(/\s+/g, '-')) },
+            { ownerName: containsInsensitive(compact) },
           ],
         },
       ],
@@ -399,18 +607,62 @@ export function saleTextSearchWhere(
   }
 
   return tokenizedSearchWhere(raw, (_token, contains) => [
-    { reference: contains },
-    { paymentMethod: contains },
-    { locationCode: contains },
-    { notes: contains },
-    { createdByName: contains },
-    { cleanerName: contains },
-    { shippingStatus: contains },
-    { trackingNumber: contains },
+    { plateNumber: contains },
+    { make: contains },
+    { model: contains },
+    { ownerName: contains },
+    { ownerPhone: contains },
+  ]);
+}
+
+/** Appointment calendar — stylist / service / customer (skip notes/status). */
+export function appointmentTextSearchWhere(
+  search: string | undefined | null,
+): { AND: Array<{ OR: object[] }> } | undefined {
+  return tokenizedSearchWhere(search, (_token, contains) => [
+    { stylistName: contains },
+    { serviceName: contains },
     relationStringOr('customer', 'name', contains),
     relationStringOr('customer', 'phone', contains),
-    relationStringOr('customer', 'email', contains),
-    relationStringOr('job', 'reference', contains),
+  ]);
+}
+
+/** Ledger — description + category (LedgerEntry_description_trgm_idx). */
+export function ledgerTextSearchWhere(
+  search: string | undefined | null,
+): { AND: Array<{ OR: object[] }> } | undefined {
+  return tokenizedSearchWhere(search, (_token, contains) => [
+    { description: contains },
+    { category: contains },
+  ]);
+}
+
+/** Job list — reference + denormalized customerName (trigram-backed). */
+export function jobTextSearchWhere(
+  search: string | undefined | null,
+): { AND: Array<{ OR: object[] }> } | undefined {
+  return tokenizedSearchWhere(search, (_token, contains) => [
+    { reference: contains },
+    { customerName: contains },
+  ]);
+}
+
+/** Invoice list — reference + contactName (trigram-backed). */
+export function invoiceTextSearchWhere(
+  search: string | undefined | null,
+): { AND: Array<{ OR: object[] }> } | undefined {
+  return tokenizedSearchWhere(search, (_token, contains) => [
+    { reference: contains },
+    { contactName: contains },
+  ]);
+}
+
+/** Requisition — reference only (notes scan is O(n)). */
+export function requisitionTextSearchWhere(
+  search: string | undefined | null,
+): { AND: Array<{ OR: object[] }> } | undefined {
+  return tokenizedSearchWhere(search, (_token, contains) => [
+    { reference: contains },
   ]);
 }
 

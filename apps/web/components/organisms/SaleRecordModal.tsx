@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { Eye, CheckCircle, RotateCcw } from "lucide-react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Sale, SaleReturnDisposition } from "@vonos/types";
 import { Button } from "@/components/atoms/Button";
 import { Select } from "@/components/atoms/Select";
@@ -23,6 +23,7 @@ import {
   MODAL_REF_STALE_MS,
   modalKeys,
 } from "@/lib/query/modalQueryKeys";
+import { seedSaleViewSideCaches } from "@/lib/query/seedSaleViewCaches";
 import { patchEntityInQueries } from "@/lib/query/optimistic";
 import { formatSaleNotesForDisplay } from "@/lib/utils/saleInvoiceNotes";
 import {
@@ -65,9 +66,14 @@ export function SaleRecordModal({
   const [disposition, setDisposition] = useState<SaleReturnDisposition>("refunded");
   const [returnNotes, setReturnNotes] = useState("");
 
+  const queryClient = useQueryClient();
   const { data: bundle, isLoading, error } = useQuery({
     queryKey: modalKeys.saleView(tenantId, saleId),
-    queryFn: () => getSaleView(saleId!, tenantId!),
+    queryFn: async () => {
+      const data = await getSaleView(saleId!, tenantId!);
+      seedSaleViewSideCaches(queryClient, tenantId!, data);
+      return data;
+    },
     enabled: Boolean(tenantId && saleId) && !isHq6,
     staleTime: MODAL_RECORD_STALE_MS,
     placeholderData: (prev) => prev,

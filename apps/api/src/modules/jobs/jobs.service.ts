@@ -22,7 +22,7 @@ import {
 } from '../../common/utils/listPageCache';
 import { toIso, toNumber } from '../../common/utils/serializers';
 import { computeStockStatus, movementLineRollups } from '../../common/utils/stockQuantity';
-import { tokenizedSearchWhere } from '../../common/utils/listSearch';
+import { jobTextSearchWhere } from '../../common/utils/listSearch';
 
 export interface JobDetail extends Job {
   customer?: {
@@ -119,12 +119,7 @@ export class JobsService {
               },
             }
           : {}),
-        // Denormalized + trigram-backed (Job_reference/customerName_trgm_idx).
-        // Avoid Customer/Vehicle joins so the planner can use GIN indexes.
-        ...(tokenizedSearchWhere(filters.search, (_token, contains) => [
-          { reference: contains },
-          { customerName: contains },
-        ]) ?? {}),
+        ...(jobTextSearchWhere(filters.search) ?? {}),
         ...(pagination.where ?? {}),
       },
       orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],

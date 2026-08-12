@@ -18,6 +18,7 @@ import { devPasswordHash, hashPassword, isStrongPassword, STRONG_PASSWORD_HINT }
 import { TenantDbService } from '../../common/prisma/tenant-db.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { CacheService } from '../../common/cache/cache.service';
+import { invalidateUserAuthSession } from '../../common/cache/authSessionInvalidation';
 import { invalidateTenantDashboardCache } from '../../common/cache/cacheInvalidation';
 import { toIso } from '../../common/utils/serializers';
 import { resolvePrimaryWebOrigin } from '../../common/utils/webOrigin';
@@ -28,6 +29,7 @@ import {
   tokenizedSearchWhere,
 } from '../../common/utils/listSearch';
 import { locationCodesForTenantCode } from '../../common/utils/workLocationTenantCodes';
+import { assertVagPortalAccess } from '../../common/utils/vagPortalAccess';
 
 /** Synthetic scope for unscoped VAG all-tenants user list cache. */
 const VAG_USERS_CACHE_SCOPE = '__vag__';
@@ -267,7 +269,7 @@ export class UsersService {
   }
 
   async listAllTenants(
-    requestRole: string,
+    requestUser: AuthenticatedUser,
     filters: {
       cursor?: string;
       limit?: number;
@@ -276,9 +278,7 @@ export class UsersService {
       status?: string;
     } = {},
   ): Promise<UserListRow[]> {
-    if (requestRole !== 'super_admin') {
-      throw new ForbiddenException('Super admin access required');
-    }
+    assertVagPortalAccess(requestUser);
 
     const filterKey = listPageFilterKey({
       search: filters.search,
@@ -554,6 +554,8 @@ export class UsersService {
       );
       data.tenantRoleId = roleBinding.tenantRoleId;
       data.role = roleBinding.jwtRole;
+      // Force session refresh so the UI picks up the new role matrix.
+      data.tokenVersion = { increment: 1 };
     } else if (body.role !== undefined) {
       if (!ROLES.includes(body.role)) {
         throw new BadRequestException('Invalid role');
@@ -599,6 +601,13 @@ export class UsersService {
       },
     });
     this.invalidateUserCaches(row.tenantId);
+    if (
+      body.tenantRoleId !== undefined ||
+      body.role !== undefined ||
+      body.password !== undefined
+    ) {
+      void invalidateUserAuthSession(this.cache, updated.id);
+    }
     return { user: this.toUser(updated) };
   }
 

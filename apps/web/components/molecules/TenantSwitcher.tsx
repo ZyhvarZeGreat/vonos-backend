@@ -6,7 +6,6 @@ import { usePathname, useRouter } from "next/navigation";
 import { ChevronDown } from "lucide-react";
 import {
   AUTOS_GROUP_ORDER,
-  ENTITY_LIST,
   getTenantByCode,
 } from "@/lib/registries/tenants";
 import { iconForTenantCode } from "@/lib/registries/tenantIcons";
@@ -77,14 +76,9 @@ export function TenantSwitcher({
         .map((code) => getTenantByCode(code))
         .filter((e): e is NonNullable<typeof e> => Boolean(e));
     }
-    const autosCodes = new Set<string>(AUTOS_GROUP_ORDER);
-    const autos = AUTOS_GROUP_ORDER.map((code) => getTenantByCode(code)).filter(
+    return AUTOS_GROUP_ORDER.map((code) => getTenantByCode(code)).filter(
       (e): e is NonNullable<typeof e> => Boolean(e),
     );
-    const rest = ENTITY_LIST.filter(
-      (e) => e.status === "active" && !autosCodes.has(e.code),
-    );
-    return [...autos, ...rest];
   }, [allowedTenantCodes, isSuperAdmin]);
 
   const warmEntityRoute = (code: TenantCode) => {

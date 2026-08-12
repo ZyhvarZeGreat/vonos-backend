@@ -19,6 +19,7 @@ export * from "./group";
 export * from "./stock";
 export * from "./catalogPresets";
 export * from "./outsideCatalog";
+export * from "./localStockPolicy";
 export * from "./audit";
 export * from "./reports";
 export * from "./overview";

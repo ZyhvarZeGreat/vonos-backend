@@ -114,6 +114,7 @@ describe('TenantRolesService propagate (unit)', () => {
         ),
       },
       user: {
+        findMany: jest.fn(async () => []),
         updateMany: jest.fn(async () => ({ count: 0 })),
       },
     };
@@ -124,6 +125,7 @@ describe('TenantRolesService propagate (unit)', () => {
       clearL1Matching: jest.fn(),
       del: jest.fn(async () => undefined),
       delByPrefix: jest.fn(),
+      invalidatePrefix: jest.fn(async () => undefined),
     };
 
     service = new TenantRolesService(
@@ -150,6 +152,9 @@ describe('TenantRolesService propagate (unit)', () => {
 
     expect(created.tenantId).toBe(TENANT_A);
     expect(created.name).toBe('Shared Mechanic');
+
+    // Propagation is fire-and-forget so the HTTP save returns immediately.
+    await new Promise((r) => setImmediate(r));
 
     const peer = roles.find(
       (r) =>
@@ -186,6 +191,7 @@ describe('TenantRolesService propagate (unit)', () => {
     await service.update('role_src', {
       permissions: ['user.view', 'user.update'],
     });
+    await new Promise((r) => setImmediate(r));
 
     expect(roles.find((r) => r.id === 'role_peer')?.permissions).toEqual([
       'user.view',
@@ -216,6 +222,7 @@ describe('TenantRolesService propagate (unit)', () => {
     roles.push(source, peer, admin);
 
     await service.remove('role_src');
+    await new Promise((r) => setImmediate(r));
 
     expect(roles.find((r) => r.id === 'role_src')?.deletedAt).toBeInstanceOf(
       Date,

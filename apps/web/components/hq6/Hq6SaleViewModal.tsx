@@ -11,6 +11,7 @@ import {
   MODAL_RECORD_STALE_MS,
   modalKeys,
 } from "@/lib/query/modalQueryKeys";
+import { seedSaleViewSideCaches } from "@/lib/query/seedSaleViewCaches";
 import {
   formatHq6Currency,
   formatHq6Date,
@@ -36,6 +37,42 @@ function actionLabel(action: string): string {
   if (action === "updated" || action === "edited") return "Edited";
   if (action === "deleted") return "Deleted";
   return action.charAt(0).toUpperCase() + action.slice(1);
+}
+
+function formatActivityTag(value: unknown): string {
+  const raw = String(value ?? "").trim();
+  if (!raw) return "—";
+  if (raw === "due") return "Due";
+  if (raw === "partial") return "Partial";
+  if (raw === "paid") return "Paid";
+  if (raw === "draft") return "Draft";
+  if (raw === "quotation") return "Quotation";
+  if (raw === "completed") return "Final";
+  return raw.charAt(0).toUpperCase() + raw.slice(1).replace(/_/g, " ");
+}
+
+/** Status / payment movement for badge row: From → To */
+function activityMovement(
+  metadata: Record<string, unknown> | null | undefined,
+): { from: string; to: string } | null {
+  if (!metadata || typeof metadata !== "object") return null;
+  const from =
+    metadata.from ??
+    metadata.fromStatus ??
+    metadata.previousStatus ??
+    metadata.fromPaymentStatus ??
+    metadata.previousPaymentStatus;
+  const to =
+    metadata.to ??
+    metadata.toStatus ??
+    metadata.newStatus ??
+    metadata.toPaymentStatus ??
+    metadata.paymentStatus;
+  if (from == null || to == null) return null;
+  const fromLabel = formatActivityTag(from);
+  const toLabel = formatActivityTag(to);
+  if (fromLabel === toLabel) return null;
+  return { from: fromLabel, to: toLabel };
 }
 
 function seedToDetail(seed: Sale): SaleDetail {
@@ -78,10 +115,7 @@ export function Hq6SaleViewModal({
     queryKey: modalKeys.saleView(effectiveTenantId, saleId),
     queryFn: async () => {
       const data = await getSaleView(saleId!, effectiveTenantId!);
-      queryClient.setQueryData(
-        modalKeys.salePayments(effectiveTenantId, saleId),
-        data.payments,
-      );
+      seedSaleViewSideCaches(queryClient, effectiveTenantId!, data);
       return data;
     },
     enabled: Boolean(open && effectiveTenantId && saleId),
@@ -90,14 +124,16 @@ export function Hq6SaleViewModal({
       prev?.sale?.id === saleId ? prev : undefined,
   });
 
-  const sale =
-    bundle?.sale?.id === saleId ? bundle.sale : seeded;
+  // Prefer the prefetched /view bundle (invoice + payments + activities).
+  const sale = bundle?.sale?.id === saleId ? bundle.sale : seeded;
   const payments = bundle?.sale?.id === saleId ? (bundle.payments ?? []) : [];
   const activities =
     bundle?.sale?.id === saleId ? (bundle.activities ?? []) : [];
   const detailPending = Boolean(open && saleId && !bundle?.sale);
   const paymentsLoading = detailPending && (isLoading || isFetching);
-  const activitiesLoading = paymentsLoading;
+  // Same payload as invoice — only spin if /view is still in flight.
+  const activitiesLoading =
+    detailPending && !activities.length && (isLoading || isFetching);
   const linesLoading = detailPending && (sale?.lines.length ?? 0) === 0;
 
   const currency = sale?.currency ?? "NGN";
@@ -467,7 +503,9 @@ export function Hq6SaleViewModal({
             </div>
           </div>
 
-          <h4 className="hq6-purchase-view-section-title">Activities:</h4>
+          <h4 className="hq6-purchase-view-section-title hq6-sale-activity-heading">
+            Sale activity
+          </h4>
           <div className="hq6-product-view-table-wrap">
             <table className="hq6-product-view-table hq6-sale-activities">
               <thead>
@@ -492,34 +530,49 @@ export function Hq6SaleViewModal({
                     </td>
                   </tr>
                 ) : (
-                  activities.map((entry) => (
-                    <tr key={entry.id}>
-                      <td className="whitespace-nowrap">
-                        {formatHq6DateTime(entry.occurredAt)}
-                      </td>
-                      <td>{actionLabel(entry.action)}</td>
-                      <td>{entry.actorName ?? "—"}</td>
-                      <td>
-                        <span className="hq6-sale-activity-note">
-                          {entry.summary}
-                        </span>
-                        {entry.metadata &&
-                        typeof entry.metadata === "object" &&
-                        "from" in entry.metadata &&
-                        "to" in entry.metadata ? (
-                          <span className="hq6-sale-activity-badges">
-                            <span className="hq6-sale-activity-badge">
-                              {String(entry.metadata.from)}
+                  activities.map((entry) => {
+                    const movement = activityMovement(
+                      entry.metadata && typeof entry.metadata === "object"
+                        ? (entry.metadata as Record<string, unknown>)
+                        : null,
+                    );
+                    return (
+                      <tr key={entry.id}>
+                        <td className="whitespace-nowrap">
+                          {formatHq6DateTime(entry.occurredAt)}
+                        </td>
+                        <td>
+                          <div className="hq6-sale-activity-action">
+                            <span className="hq6-sale-activity-action-label">
+                              {actionLabel(entry.action)}
                             </span>
-                            <span className="hq6-sale-activity-arrow">→</span>
-                            <span className="hq6-sale-activity-badge hq6-sale-activity-badge-to">
-                              {String(entry.metadata.to)}
-                            </span>
+                            {movement ? (
+                              <span
+                                className="hq6-sale-activity-badges"
+                                title={`${movement.from} → ${movement.to}`}
+                              >
+                                <span className="hq6-sale-activity-badge">
+                                  {movement.from}
+                                </span>
+                                <span className="hq6-sale-activity-arrow" aria-hidden>
+                                  →
+                                </span>
+                                <span className="hq6-sale-activity-badge hq6-sale-activity-badge-to">
+                                  {movement.to}
+                                </span>
+                              </span>
+                            ) : null}
+                          </div>
+                        </td>
+                        <td>{entry.actorName ?? "—"}</td>
+                        <td>
+                          <span className="hq6-sale-activity-note">
+                            {entry.summary}
                           </span>
-                        ) : null}
-                      </td>
-                    </tr>
-                  ))
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>

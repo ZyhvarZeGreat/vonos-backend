@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ListPage, ListSortState } from "@/lib/api/fetchAllPages";
 import { DEFAULT_TABLE_PAGE_SIZE } from "@/lib/api/fetchAllPages";
 import { SEARCH_DEBOUNCE_MS } from "@/lib/constants/search";
@@ -69,14 +69,16 @@ export interface UseServerListPageOptions<T extends { id: string }> {
   filters?: Record<string, unknown>;
   search?: string;
   /**
-   * `local` (default) — match-sorter over a warm catalog (not just the
-   * visible page). Pages 1…N accumulate in the background on mount.
-   * `server` — debounced API search across the full catalog.
+   * `local` — match-sorter over a warm catalog (sliding window only).
+   * `server` / `hybrid` — browse with sliding-window prefetch (most recent
+   * first); when the user types, switch to debounced full-catalog API search.
+   * Prefer `hybrid` for HQ6 tables; `server` is kept as an alias.
    */
-  searchMode?: "local" | "server";
+  searchMode?: "local" | "server" | "hybrid";
   /**
    * While on the list, background-load this many pages into the local
    * search roster (default 10). Search filters that roster, not page 1 only.
+   * Only used when `searchMode` is `local`.
    */
   localSearchWarmPages?: number;
   /**
@@ -95,7 +97,7 @@ export interface UseServerListPageOptions<T extends { id: string }> {
   staleTime?: number;
   /**
    * How many pages ahead to warm after the current page settles.
-   * Default 2 so Next (and Next+1) resolve from cache without Neon.
+   * Default 1 so Next is warm without stacking Neon RTTs on open.
    */
   prefetchPagesAhead?: number;
   /**
@@ -107,6 +109,11 @@ export interface UseServerListPageOptions<T extends { id: string }> {
   getCursor?: (row: T, sort: ListSortState | null) => string;
   /** Initial server sort — when set, DataTable should use serverSort. */
   defaultSort?: ListSortState | null;
+}
+
+/** Browse + sliding window; typedown uses the API (not the warm page window). */
+function isApiSearchMode(mode: "local" | "server" | "hybrid"): boolean {
+  return mode === "server" || mode === "hybrid";
 }
 
 export function useServerListPage<T extends { id: string }>({
@@ -125,12 +132,13 @@ export function useServerListPage<T extends { id: string }>({
   debounceSearchMs = searchMode === "local" ? 0 : SEARCH_DEBOUNCE_MS,
   refetchInterval,
   staleTime = 10 * 60_000,
-  prefetchPagesAhead = 2,
+  prefetchPagesAhead = 1,
   retainPagesBehind = 3,
   getCursor,
   defaultSort = { sortBy: "updatedAt", sortDir: "desc" },
 }: UseServerListPageOptions<T>) {
   const queryClient = useQueryClient();
+  const apiSearch = isApiSearchMode(searchMode);
   const debouncedSearch = useDebouncedValue(search.trim(), debounceSearchMs);
   const {
     pageIndex,
@@ -151,14 +159,15 @@ export function useServerListPage<T extends { id: string }>({
   const [isJumping, setIsJumping] = useState(false);
 
   // Local mode: never put typedown search in the query key (no Neon round-trip).
+  // Hybrid/server: empty search = browse recent pages; non-empty = API search.
   const filterKey = useMemo(() => {
     const { search: _ignoredSearch, ...restFilters } = filters;
     return stableListFilterKey(
       restFilters,
       sort,
-      searchMode === "server" ? { search: debouncedSearch } : undefined,
+      apiSearch ? { search: debouncedSearch } : undefined,
     );
-  }, [filters, debouncedSearch, searchMode, sort]);
+  }, [apiSearch, filters, debouncedSearch, sort]);
 
   const resetRef = useRef(reset);
   resetRef.current = reset;
@@ -172,28 +181,27 @@ export function useServerListPage<T extends { id: string }>({
   searchModeRef.current = searchMode;
   const debouncedSearchRef = useRef(debouncedSearch);
   debouncedSearchRef.current = debouncedSearch;
+  const apiSearchRef = useRef(apiSearch);
+  apiSearchRef.current = apiSearch;
 
   const pageFetchOpts = useCallback(
     (extra?: ListPageFetchOpts): ListPageFetchOpts => ({
       ...extra,
-      search:
-        searchMode === "server" && debouncedSearch
-          ? debouncedSearch
-          : undefined,
+      search: apiSearch && debouncedSearch ? debouncedSearch : undefined,
     }),
-    [debouncedSearch, searchMode],
+    [apiSearch, debouncedSearch],
   );
 
   const didMountRef = useRef(false);
 
-  useEffect(() => {
-    // On first mount we must respect the URL deep-link (e.g. `?page=4`).
-    // Resetting here clears the cursor stack and also forces the URL back to page 1.
+  // Reset to page 1 before paint when filters/search/sort change — useEffect
+  // ran after paint and briefly showed the old cursor + new search (often
+  // empty → "No data available") before snapping back to page 1.
+  useLayoutEffect(() => {
     if (!didMountRef.current) {
       didMountRef.current = true;
       return;
     }
-    // pageSize changes already reset inside setPageSize — only reset for filter/sort.
     resetRef.current();
   }, [filterKey]);
 
@@ -213,7 +221,7 @@ export function useServerListPage<T extends { id: string }>({
           fetchPageRef.current(fetchCursor, pageSize, sort, {
             includeSummary: false,
             search:
-              searchModeRef.current === "server" && debouncedSearchRef.current
+              apiSearchRef.current && debouncedSearchRef.current
                 ? debouncedSearchRef.current
                 : undefined,
           }),
@@ -251,12 +259,18 @@ export function useServerListPage<T extends { id: string }>({
     // mutation invalidated this query (or there is no data yet).
     refetchOnMount: (query) => query.isStale() && query.state.isInvalidated,
     refetchOnReconnect: false,
-    placeholderData: keepPreviousData,
+    // Keep prior *rows* while the next page loads — but never keep an empty
+    // page as placeholder. An empty prior search + keepPreviousData paints
+    // "No data available" for the whole next search round-trip.
+    placeholderData: (previousData: ListPage<T> | undefined) => {
+      if (!previousData || previousData.items.length === 0) return undefined;
+      return previousData;
+    },
   });
 
   const resolveSummary = useCallback(async (): Promise<ListPageSummary> => {
     const searchArg =
-      searchMode === "server" && debouncedSearch ? debouncedSearch : undefined;
+      apiSearch && debouncedSearch ? debouncedSearch : undefined;
     if (fetchSummary) return fetchSummary({ search: searchArg });
     const page = await fetchPage(undefined, 1, sort, pageFetchOpts({
       includeSummary: true,
@@ -266,18 +280,23 @@ export function useServerListPage<T extends { id: string }>({
       amountSummary: page.amountSummary,
     };
   }, [
+    apiSearch,
     debouncedSearch,
     fetchPage,
     fetchSummary,
     pageFetchOpts,
-    searchMode,
     sort,
   ]);
 
   const summaryQuery = useQuery({
     queryKey: [...queryKey, "summary", filterKey],
     queryFn: resolveSummary,
-    enabled: enabled && deferSummary,
+    // Skip count/sum while the user is still typing (debounce pending).
+    // After settle, one summary request runs on the fast SQL path.
+    enabled:
+      enabled &&
+      deferSummary &&
+      !(apiSearch && search.trim() !== debouncedSearch),
     staleTime,
     gcTime: Math.max(staleTime * 6, 30 * 60_000),
     refetchOnMount: (query) => query.isStale() && query.state.isInvalidated,
@@ -543,8 +562,7 @@ export function useServerListPage<T extends { id: string }>({
               fetchPageRef.current(walkCursorValue, pageSize, settledSort, {
                 includeSummary: false,
                 search:
-                  searchModeRef.current === "server" &&
-                  debouncedSearchRef.current
+                  apiSearchRef.current && debouncedSearchRef.current
                     ? debouncedSearchRef.current
                     : undefined,
               }),
@@ -752,14 +770,17 @@ export function useServerListPage<T extends { id: string }>({
       Boolean(pageQuery.isPlaceholderData) &&
       paintItems == null);
 
-  /** Typedown search in flight (debounce and/or server fetch with stale rows). */
+  /** Typedown search in flight (debounce and/or server fetch). */
   const isSearching = Boolean(
     isSearchWarming ||
-      (searchMode === "server" &&
+      (apiSearch &&
         (search.trim() !== debouncedSearch ||
-          (pageQuery.isFetching &&
-            Boolean(pageQuery.isPlaceholderData) &&
-            (search.trim().length > 0 || debouncedSearch.length > 0)))),
+          // Any in-flight/pending page for an active search term — including
+          // when prior empty results left no placeholder (isPending + []).
+          ((search.trim().length > 0 || debouncedSearch.length > 0) &&
+            (pageQuery.isFetching ||
+              pageQuery.isPending ||
+              Boolean(pageQuery.isPlaceholderData))))),
   );
 
   return {

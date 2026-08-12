@@ -1,0 +1,956 @@
+{
+  "branch": "chion/sql-speed-bench",
+  "tenant": "tenant_va_001",
+  "generatedAt": "2026-08-12T18:58:34.451Z",
+  "catalogSize": 57,
+  "ok": 57,
+  "failed": 0,
+  "totals": {
+    "sumExplainMs": 425.46,
+    "sumWallMs": 55364.05,
+    "p50ExplainMs": 1.218,
+    "p95ExplainMs": 44.035,
+    "maxExplainMs": 104.581,
+    "seqScanCount": 4
+  },
+  "byGroup": {
+    "list": {
+      "count": 11,
+      "sumExplainMs": 134.304,
+      "maxExplainMs": 24.566,
+      "slowest": "list.items.search"
+    },
+    "sales": {
+      "count": 17,
+      "sumExplainMs": 69.964,
+      "maxExplainMs": 45.719,
+      "slowest": "sales.revenueTrend.365d"
+    },
+    "ledger": {
+      "count": 10,
+      "sumExplainMs": 11.846,
+      "maxExplainMs": 9.282,
+      "slowest": "ledger.summary.30d"
+    },
+    "overview": {
+      "count": 1,
+      "sumExplainMs": 2.197,
+      "maxExplainMs": 2.197,
+      "slowest": "overview.ledgerFinanceSlice.30d"
+    },
+    "rollup": {
+      "count": 3,
+      "sumExplainMs": 22.079,
+      "maxExplainMs": 10.577,
+      "slowest": "rollup.trendByMonth.365d"
+    },
+    "stock": {
+      "count": 7,
+      "sumExplainMs": 51.145999999999994,
+      "maxExplainMs": 44.035,
+      "slowest": "stock.itemMetrics"
+    },
+    "jobs": {
+      "count": 3,
+      "sumExplainMs": 17.085,
+      "maxExplainMs": 13.463,
+      "slowest": "jobs.costSummary.30d"
+    },
+    "finance": {
+      "count": 1,
+      "sumExplainMs": 0.229,
+      "maxExplainMs": 0.229,
+      "slowest": "finance.outstandingReceivables.30d"
+    },
+    "group": {
+      "count": 2,
+      "sumExplainMs": 11.979,
+      "maxExplainMs": 8.138,
+      "slowest": "group.revenueByTenant.30d"
+    },
+    "payments": {
+      "count": 1,
+      "sumExplainMs": 104.581,
+      "maxExplainMs": 104.581,
+      "slowest": "payments.accountBalances"
+    },
+    "appointments": {
+      "count": 1,
+      "sumExplainMs": 0.045,
+      "maxExplainMs": 0.045,
+      "slowest": "appointments.kpi.30d"
+    }
+  },
+  "slowest20": [
+    {
+      "id": "payments.accountBalances",
+      "group": "payments",
+      "window": "snapshot",
+      "explainMs": 104.581,
+      "wallMs": 808.08,
+      "seqScan": true,
+      "indexes": []
+    },
+    {
+      "id": "sales.revenueTrend.365d",
+      "group": "sales",
+      "window": "365d",
+      "explainMs": 45.719,
+      "wallMs": 685.34,
+      "seqScan": false,
+      "indexes": []
+    },
+    {
+      "id": "stock.itemMetrics",
+      "group": "stock",
+      "window": "snapshot",
+      "explainMs": 44.035,
+      "wallMs": 799.48,
+      "seqScan": false,
+      "indexes": []
+    },
+    {
+      "id": "list.items.search",
+      "group": "list",
+      "window": "list",
+      "explainMs": 24.566,
+      "wallMs": 793.36,
+      "seqScan": false,
+      "indexes": [
+        "Item_tenantId_updatedAt_id_active_idx"
+      ]
+    },
+    {
+      "id": "list.payments",
+      "group": "list",
+      "window": "list",
+      "explainMs": 21.591,
+      "wallMs": 500.41,
+      "seqScan": false,
+      "indexes": [
+        "Payment_tenantId_createdAt_id_active_idx"
+      ]
+    },
+    {
+      "id": "list.ledger",
+      "group": "list",
+      "window": "list",
+      "explainMs": 17.096,
+      "wallMs": 1199.48,
+      "seqScan": false,
+      "indexes": [
+        "LedgerEntry_tenantId_date_id_active_idx"
+      ]
+    },
+    {
+      "id": "list.invoices",
+      "group": "list",
+      "window": "list",
+      "explainMs": 16.2,
+      "wallMs": 576.18,
+      "seqScan": false,
+      "indexes": [
+        "Invoice_tenantId_documentDate_id_active_idx"
+      ]
+    },
+    {
+      "id": "list.items",
+      "group": "list",
+      "window": "list",
+      "explainMs": 14.744,
+      "wallMs": 2421.14,
+      "seqScan": false,
+      "indexes": [
+        "Item_tenantId_updatedAt_id_active_idx"
+      ]
+    },
+    {
+      "id": "jobs.costSummary.30d",
+      "group": "jobs",
+      "window": "30d",
+      "explainMs": 13.463,
+      "wallMs": 1271.36,
+      "seqScan": true,
+      "indexes": []
+    },
+    {
+      "id": "sales.purchaseRevenueByBucket.30d",
+      "group": "sales",
+      "window": "30d",
+      "explainMs": 13.006,
+      "wallMs": 536.51,
+      "seqScan": false,
+      "indexes": [
+        "StockMovement_tenantId_type_date_active_idx"
+      ]
+    },
+    {
+      "id": "list.movements",
+      "group": "list",
+      "window": "list",
+      "explainMs": 12.246,
+      "wallMs": 496.26,
+      "seqScan": false,
+      "indexes": []
+    },
+    {
+      "id": "rollup.trendByMonth.365d",
+      "group": "rollup",
+      "window": "365d",
+      "explainMs": 10.577,
+      "wallMs": 982.32,
+      "seqScan": true,
+      "indexes": []
+    },
+    {
+      "id": "list.customers.search",
+      "group": "list",
+      "window": "list",
+      "explainMs": 9.924,
+      "wallMs": 558.07,
+      "seqScan": false,
+      "indexes": [
+        "Customer_tenantId_name_id_active_idx"
+      ]
+    },
+    {
+      "id": "ledger.summary.30d",
+      "group": "ledger",
+      "window": "30d",
+      "explainMs": 9.282,
+      "wallMs": 977.03,
+      "seqScan": false,
+      "indexes": []
+    },
+    {
+      "id": "list.customers",
+      "group": "list",
+      "window": "list",
+      "explainMs": 8.318,
+      "wallMs": 3009.31,
+      "seqScan": false,
+      "indexes": [
+        "Customer_tenantId_name_id_active_idx"
+      ]
+    },
+    {
+      "id": "group.revenueByTenant.30d",
+      "group": "group",
+      "window": "30d",
+      "explainMs": 8.138,
+      "wallMs": 1499.89,
+      "seqScan": false,
+      "indexes": []
+    },
+    {
+      "id": "list.expenses",
+      "group": "list",
+      "window": "list",
+      "explainMs": 7.289,
+      "wallMs": 1233.35,
+      "seqScan": false,
+      "indexes": [
+        "Expense_tenantId_expenseDate_id_active_idx"
+      ]
+    },
+    {
+      "id": "rollup.groupByTenant.30d",
+      "group": "rollup",
+      "window": "30d",
+      "explainMs": 5.959,
+      "wallMs": 1408.05,
+      "seqScan": false,
+      "indexes": []
+    },
+    {
+      "id": "rollup.sumDailyFinance.30d",
+      "group": "rollup",
+      "window": "30d",
+      "explainMs": 5.543,
+      "wallMs": 1017.31,
+      "seqScan": false,
+      "indexes": [
+        "TenantDailyFinance_tenantId_date_key"
+      ]
+    },
+    {
+      "id": "group.jobsByTenant.30d",
+      "group": "group",
+      "window": "30d",
+      "explainMs": 3.841,
+      "wallMs": 1334.53,
+      "seqScan": false,
+      "indexes": [
+        "Job_tenantId_status_createdAt_active_idx"
+      ]
+    }
+  ],
+  "all": [
+    {
+      "id": "payments.accountBalances",
+      "group": "payments",
+      "window": "snapshot",
+      "explainMs": 104.581,
+      "planMs": 32.255,
+      "wallMs": 808.08,
+      "rows": 59,
+      "seqScan": true,
+      "indexes": []
+    },
+    {
+      "id": "sales.revenueTrend.365d",
+      "group": "sales",
+      "window": "365d",
+      "explainMs": 45.719,
+      "planMs": 0.185,
+      "wallMs": 685.34,
+      "rows": 13,
+      "seqScan": false,
+      "indexes": []
+    },
+    {
+      "id": "stock.itemMetrics",
+      "group": "stock",
+      "window": "snapshot",
+      "explainMs": 44.035,
+      "planMs": 3.151,
+      "wallMs": 799.48,
+      "rows": 1,
+      "seqScan": false,
+      "indexes": []
+    },
+    {
+      "id": "list.items.search",
+      "group": "list",
+      "window": "list",
+      "explainMs": 24.566,
+      "planMs": 3.255,
+      "wallMs": 793.36,
+      "rows": 26,
+      "seqScan": false,
+      "indexes": [
+        "Item_tenantId_updatedAt_id_active_idx"
+      ]
+    },
+    {
+      "id": "list.payments",
+      "group": "list",
+      "window": "list",
+      "explainMs": 21.591,
+      "planMs": 28.459,
+      "wallMs": 500.41,
+      "rows": 26,
+      "seqScan": false,
+      "indexes": [
+        "Payment_tenantId_createdAt_id_active_idx"
+      ]
+    },
+    {
+      "id": "list.ledger",
+      "group": "list",
+      "window": "list",
+      "explainMs": 17.096,
+      "planMs": 25.4,
+      "wallMs": 1199.48,
+      "rows": 26,
+      "seqScan": false,
+      "indexes": [
+        "LedgerEntry_tenantId_date_id_active_idx"
+      ]
+    },
+    {
+      "id": "list.invoices",
+      "group": "list",
+      "window": "list",
+      "explainMs": 16.2,
+      "planMs": 35.419,
+      "wallMs": 576.18,
+      "rows": 26,
+      "seqScan": false,
+      "indexes": [
+        "Invoice_tenantId_documentDate_id_active_idx"
+      ]
+    },
+    {
+      "id": "list.items",
+      "group": "list",
+      "window": "list",
+      "explainMs": 14.744,
+      "planMs": 42.551,
+      "wallMs": 2421.14,
+      "rows": 26,
+      "seqScan": false,
+      "indexes": [
+        "Item_tenantId_updatedAt_id_active_idx"
+      ]
+    },
+    {
+      "id": "jobs.costSummary.30d",
+      "group": "jobs",
+      "window": "30d",
+      "explainMs": 13.463,
+      "planMs": 8.005,
+      "wallMs": 1271.36,
+      "rows": 1,
+      "seqScan": true,
+      "indexes": []
+    },
+    {
+      "id": "sales.purchaseRevenueByBucket.30d",
+      "group": "sales",
+      "window": "30d",
+      "explainMs": 13.006,
+      "planMs": 6.071,
+      "wallMs": 536.51,
+      "rows": 9,
+      "seqScan": false,
+      "indexes": [
+        "StockMovement_tenantId_type_date_active_idx"
+      ]
+    },
+    {
+      "id": "list.movements",
+      "group": "list",
+      "window": "list",
+      "explainMs": 12.246,
+      "planMs": 30.215,
+      "wallMs": 496.26,
+      "rows": 26,
+      "seqScan": false,
+      "indexes": []
+    },
+    {
+      "id": "rollup.trendByMonth.365d",
+      "group": "rollup",
+      "window": "365d",
+      "explainMs": 10.577,
+      "planMs": 0.157,
+      "wallMs": 982.32,
+      "rows": 13,
+      "seqScan": true,
+      "indexes": []
+    },
+    {
+      "id": "list.customers.search",
+      "group": "list",
+      "window": "list",
+      "explainMs": 9.924,
+      "planMs": 2.984,
+      "wallMs": 558.07,
+      "rows": 26,
+      "seqScan": false,
+      "indexes": [
+        "Customer_tenantId_name_id_active_idx"
+      ]
+    },
+    {
+      "id": "ledger.summary.30d",
+      "group": "ledger",
+      "window": "30d",
+      "explainMs": 9.282,
+      "planMs": 2.812,
+      "wallMs": 977.03,
+      "rows": 3,
+      "seqScan": false,
+      "indexes": []
+    },
+    {
+      "id": "list.customers",
+      "group": "list",
+      "window": "list",
+      "explainMs": 8.318,
+      "planMs": 22.167,
+      "wallMs": 3009.31,
+      "rows": 26,
+      "seqScan": false,
+      "indexes": [
+        "Customer_tenantId_name_id_active_idx"
+      ]
+    },
+    {
+      "id": "group.revenueByTenant.30d",
+      "group": "group",
+      "window": "30d",
+      "explainMs": 8.138,
+      "planMs": 0.197,
+      "wallMs": 1499.89,
+      "rows": 4,
+      "seqScan": false,
+      "indexes": []
+    },
+    {
+      "id": "list.expenses",
+      "group": "list",
+      "window": "list",
+      "explainMs": 7.289,
+      "planMs": 30.853,
+      "wallMs": 1233.35,
+      "rows": 1,
+      "seqScan": false,
+      "indexes": [
+        "Expense_tenantId_expenseDate_id_active_idx"
+      ]
+    },
+    {
+      "id": "rollup.groupByTenant.30d",
+      "group": "rollup",
+      "window": "30d",
+      "explainMs": 5.959,
+      "planMs": 0.977,
+      "wallMs": 1408.05,
+      "rows": 4,
+      "seqScan": false,
+      "indexes": []
+    },
+    {
+      "id": "rollup.sumDailyFinance.30d",
+      "group": "rollup",
+      "window": "30d",
+      "explainMs": 5.543,
+      "planMs": 9.715,
+      "wallMs": 1017.31,
+      "rows": 1,
+      "seqScan": false,
+      "indexes": [
+        "TenantDailyFinance_tenantId_date_key"
+      ]
+    },
+    {
+      "id": "group.jobsByTenant.30d",
+      "group": "group",
+      "window": "30d",
+      "explainMs": 3.841,
+      "planMs": 0.204,
+      "wallMs": 1334.53,
+      "rows": 1,
+      "seqScan": false,
+      "indexes": [
+        "Job_tenantId_status_createdAt_active_idx"
+      ]
+    },
+    {
+      "id": "jobs.tableRows.30d",
+      "group": "jobs",
+      "window": "30d",
+      "explainMs": 2.404,
+      "planMs": 5.093,
+      "wallMs": 644.06,
+      "rows": 50,
+      "seqScan": false,
+      "indexes": [
+        "Job_tenantId_createdAt_idx"
+      ]
+    },
+    {
+      "id": "sales.topProducts.365d",
+      "group": "sales",
+      "window": "365d",
+      "explainMs": 2.281,
+      "planMs": 4.474,
+      "wallMs": 491.34,
+      "rows": 12,
+      "seqScan": false,
+      "indexes": [
+        "SaleLine_saleId_idx"
+      ]
+    },
+    {
+      "id": "overview.ledgerFinanceSlice.30d",
+      "group": "overview",
+      "window": "30d",
+      "explainMs": 2.197,
+      "planMs": 0.184,
+      "wallMs": 1460.05,
+      "rows": 1,
+      "seqScan": false,
+      "indexes": []
+    },
+    {
+      "id": "stock.movementMetrics.30d",
+      "group": "stock",
+      "window": "30d",
+      "explainMs": 2.184,
+      "planMs": 0.159,
+      "wallMs": 700.45,
+      "rows": 1,
+      "seqScan": false,
+      "indexes": [
+        "StockMovement_tenantId_type_deletedAt_date_idx"
+      ]
+    },
+    {
+      "id": "list.jobs",
+      "group": "list",
+      "window": "list",
+      "explainMs": 2.175,
+      "planMs": 0.407,
+      "wallMs": 1335.28,
+      "rows": 26,
+      "seqScan": false,
+      "indexes": [
+        "Job_tenantId_createdAt_id_active_idx"
+      ]
+    },
+    {
+      "id": "stock.byCategoryValue",
+      "group": "stock",
+      "window": "snapshot",
+      "explainMs": 2.088,
+      "planMs": 2.063,
+      "wallMs": 1066.11,
+      "rows": 12,
+      "seqScan": false,
+      "indexes": []
+    },
+    {
+      "id": "stock.lowStockItems",
+      "group": "stock",
+      "window": "snapshot",
+      "explainMs": 1.847,
+      "planMs": 0.258,
+      "wallMs": 1116.66,
+      "rows": 50,
+      "seqScan": false,
+      "indexes": []
+    },
+    {
+      "id": "sales.topProducts.30d",
+      "group": "sales",
+      "window": "30d",
+      "explainMs": 1.554,
+      "planMs": 4.146,
+      "wallMs": 473.37,
+      "rows": 12,
+      "seqScan": false,
+      "indexes": []
+    },
+    {
+      "id": "jobs.avgTurnaround.30d",
+      "group": "jobs",
+      "window": "30d",
+      "explainMs": 1.218,
+      "planMs": 0.189,
+      "wallMs": 746.93,
+      "rows": 1,
+      "seqScan": true,
+      "indexes": []
+    },
+    {
+      "id": "sales.paymentStatus.365d",
+      "group": "sales",
+      "window": "365d",
+      "explainMs": 0.829,
+      "planMs": 0.185,
+      "wallMs": 543.07,
+      "rows": 3,
+      "seqScan": false,
+      "indexes": []
+    },
+    {
+      "id": "sales.byCreatedBy.365d",
+      "group": "sales",
+      "window": "365d",
+      "explainMs": 0.829,
+      "planMs": 0.192,
+      "wallMs": 496.75,
+      "rows": 6,
+      "seqScan": false,
+      "indexes": []
+    },
+    {
+      "id": "sales.hourlyOrders.365d",
+      "group": "sales",
+      "window": "365d",
+      "explainMs": 0.825,
+      "planMs": 0.186,
+      "wallMs": 568.88,
+      "rows": 13,
+      "seqScan": false,
+      "indexes": []
+    },
+    {
+      "id": "sales.byDay.365d",
+      "group": "sales",
+      "window": "365d",
+      "explainMs": 0.816,
+      "planMs": 0.184,
+      "wallMs": 498.49,
+      "rows": 13,
+      "seqScan": false,
+      "indexes": []
+    },
+    {
+      "id": "sales.orderTrend.365d",
+      "group": "sales",
+      "window": "365d",
+      "explainMs": 0.812,
+      "planMs": 0.188,
+      "wallMs": 502.77,
+      "rows": 13,
+      "seqScan": false,
+      "indexes": []
+    },
+    {
+      "id": "stock.topValueItems",
+      "group": "stock",
+      "window": "snapshot",
+      "explainMs": 0.738,
+      "planMs": 0.162,
+      "wallMs": 947.86,
+      "rows": 8,
+      "seqScan": false,
+      "indexes": []
+    },
+    {
+      "id": "sales.sumWindow.365d",
+      "group": "sales",
+      "window": "365d",
+      "explainMs": 0.706,
+      "planMs": 0.203,
+      "wallMs": 543.49,
+      "rows": 1,
+      "seqScan": false,
+      "indexes": []
+    },
+    {
+      "id": "sales.orderTrend.30d",
+      "group": "sales",
+      "window": "30d",
+      "explainMs": 0.406,
+      "planMs": 0.206,
+      "wallMs": 536.12,
+      "rows": 13,
+      "seqScan": false,
+      "indexes": []
+    },
+    {
+      "id": "sales.revenueTrend.30d",
+      "group": "sales",
+      "window": "30d",
+      "explainMs": 0.397,
+      "planMs": 0.392,
+      "wallMs": 1649.75,
+      "rows": 13,
+      "seqScan": false,
+      "indexes": []
+    },
+    {
+      "id": "sales.byDay.30d",
+      "group": "sales",
+      "window": "30d",
+      "explainMs": 0.394,
+      "planMs": 0.199,
+      "wallMs": 1438.84,
+      "rows": 13,
+      "seqScan": false,
+      "indexes": []
+    },
+    {
+      "id": "ledger.plTrend.365d",
+      "group": "ledger",
+      "window": "365d",
+      "explainMs": 0.389,
+      "planMs": 0.217,
+      "wallMs": 613.9,
+      "rows": 43,
+      "seqScan": false,
+      "indexes": []
+    },
+    {
+      "id": "sales.paymentStatus.30d",
+      "group": "sales",
+      "window": "30d",
+      "explainMs": 0.387,
+      "planMs": 0.229,
+      "wallMs": 611.95,
+      "rows": 3,
+      "seqScan": false,
+      "indexes": []
+    },
+    {
+      "id": "sales.hourlyOrders.30d",
+      "group": "sales",
+      "window": "30d",
+      "explainMs": 0.383,
+      "planMs": 0.228,
+      "wallMs": 604.2,
+      "rows": 13,
+      "seqScan": false,
+      "indexes": []
+    },
+    {
+      "id": "ledger.plTrend.30d",
+      "group": "ledger",
+      "window": "30d",
+      "explainMs": 0.356,
+      "planMs": 0.235,
+      "wallMs": 528.9,
+      "rows": 41,
+      "seqScan": false,
+      "indexes": []
+    },
+    {
+      "id": "sales.byCreatedBy.30d",
+      "group": "sales",
+      "window": "30d",
+      "explainMs": 0.348,
+      "planMs": 0.256,
+      "wallMs": 462.3,
+      "rows": 6,
+      "seqScan": false,
+      "indexes": []
+    },
+    {
+      "id": "ledger.costByBucket.365d",
+      "group": "ledger",
+      "window": "365d",
+      "explainMs": 0.293,
+      "planMs": 0.234,
+      "wallMs": 715.2,
+      "rows": 16,
+      "seqScan": false,
+      "indexes": []
+    },
+    {
+      "id": "ledger.revenueBreakdown.30d",
+      "group": "ledger",
+      "window": "30d",
+      "explainMs": 0.288,
+      "planMs": 0.202,
+      "wallMs": 3560.01,
+      "rows": 2,
+      "seqScan": false,
+      "indexes": []
+    },
+    {
+      "id": "ledger.summary.365d",
+      "group": "ledger",
+      "window": "365d",
+      "explainMs": 0.273,
+      "planMs": 0.178,
+      "wallMs": 833.1,
+      "rows": 3,
+      "seqScan": false,
+      "indexes": []
+    },
+    {
+      "id": "sales.sumWindow.30d",
+      "group": "sales",
+      "window": "30d",
+      "explainMs": 0.272,
+      "planMs": 0.172,
+      "wallMs": 572.84,
+      "rows": 1,
+      "seqScan": false,
+      "indexes": []
+    },
+    {
+      "id": "ledger.revenueBreakdown.365d",
+      "group": "ledger",
+      "window": "365d",
+      "explainMs": 0.249,
+      "planMs": 0.204,
+      "wallMs": 924.14,
+      "rows": 2,
+      "seqScan": false,
+      "indexes": []
+    },
+    {
+      "id": "ledger.costByBucket.30d",
+      "group": "ledger",
+      "window": "30d",
+      "explainMs": 0.241,
+      "planMs": 0.209,
+      "wallMs": 512.18,
+      "rows": 16,
+      "seqScan": false,
+      "indexes": []
+    },
+    {
+      "id": "ledger.expenseBreakdown.30d",
+      "group": "ledger",
+      "window": "30d",
+      "explainMs": 0.239,
+      "planMs": 0.225,
+      "wallMs": 1022.36,
+      "rows": 12,
+      "seqScan": false,
+      "indexes": []
+    },
+    {
+      "id": "ledger.expenseBreakdown.365d",
+      "group": "ledger",
+      "window": "365d",
+      "explainMs": 0.236,
+      "planMs": 0.197,
+      "wallMs": 700.76,
+      "rows": 12,
+      "seqScan": false,
+      "indexes": []
+    },
+    {
+      "id": "finance.outstandingReceivables.30d",
+      "group": "finance",
+      "window": "30d",
+      "explainMs": 0.229,
+      "planMs": 0.323,
+      "wallMs": 2053.6,
+      "rows": 1,
+      "seqScan": false,
+      "indexes": []
+    },
+    {
+      "id": "stock.movementTrend.30d",
+      "group": "stock",
+      "window": "30d",
+      "explainMs": 0.201,
+      "planMs": 0.213,
+      "wallMs": 532.78,
+      "rows": 9,
+      "seqScan": false,
+      "indexes": [
+        "StockMovement_tenantId_type_date_active_idx"
+      ]
+    },
+    {
+      "id": "list.sales",
+      "group": "list",
+      "window": "list",
+      "explainMs": 0.155,
+      "planMs": 0.534,
+      "wallMs": 1746.48,
+      "rows": 26,
+      "seqScan": false,
+      "indexes": [
+        "Sale_tenantId_date_idx"
+      ]
+    },
+    {
+      "id": "stock.reservedQtyBySku",
+      "group": "stock",
+      "window": "snapshot",
+      "explainMs": 0.053,
+      "planMs": 9.649,
+      "wallMs": 768.91,
+      "rows": 0,
+      "seqScan": false,
+      "indexes": [
+        "Requisition_tenantId_status_idx"
+      ]
+    },
+    {
+      "id": "appointments.kpi.30d",
+      "group": "appointments",
+      "window": "30d",
+      "explainMs": 0.045,
+      "planMs": 9.919,
+      "wallMs": 732.71,
+      "rows": 1,
+      "seqScan": false,
+      "indexes": [
+        "Appointment_tenantId_status_startTime_idx"
+      ]
+    }
+  ],
+  "failures": []
+}

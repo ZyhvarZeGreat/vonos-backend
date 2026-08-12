@@ -11,10 +11,11 @@ export async function getDiscountsPage(
   tenantId: string,
   cursor: string | undefined,
   limit = DEFAULT_TABLE_PAGE_SIZE,
-  opts?: { includeSummary?: boolean },
+  opts?: { includeSummary?: boolean; search?: string },
 ): Promise<ListPage<Discount>> {
   return fetchTenantListPage("/discounts", tenantId, cursor, limit, {
     includeSummary: opts?.includeSummary ?? false,
+    search: opts?.search,
   });
 }
 

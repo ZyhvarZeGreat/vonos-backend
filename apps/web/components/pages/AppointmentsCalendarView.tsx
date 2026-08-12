@@ -42,6 +42,7 @@ export function AppointmentsCalendarView() {
     queryKey: ["appointments", tenantId],
     enabled: Boolean(tenantId),
     search,
+    searchMode: "hybrid",
     filters: {
       from: bounds?.from,
       to: bounds?.to,
@@ -53,6 +54,7 @@ export function AppointmentsCalendarView() {
         from: bounds?.from,
         to: bounds?.to,
         status: statusFilter || undefined,
+        search: opts?.search,
         includeSummary: opts?.includeSummary,
       }),
     getCursor: (row) => appointmentListCursor(row),

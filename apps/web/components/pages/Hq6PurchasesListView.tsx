@@ -197,19 +197,28 @@ export function Hq6PurchasesListView() {
     enabled: Boolean(tenantId),
     filters: apiFilters,
     search: search,
+    searchMode: "hybrid",
     defaultPageSize: HQ6_TABLE_PAGE_SIZE,
     defaultSort: { sortBy: "updatedAt", sortDir: "desc" },
     fetchPage: (cursor, limit, listSort, opts) =>
       getStockMovementsPage(
         tenantId!,
         withListSort(
-          { ...apiFilters, includeSummary: opts?.includeSummary },
+          {
+            ...apiFilters,
+            search: opts?.search,
+            includeSummary: opts?.includeSummary,
+          },
           listSort,
         ),
         cursor,
         limit,
       ),
-    fetchSummary: () => getStockMovementsListSummary(tenantId!, apiFilters),
+    fetchSummary: (opts) =>
+      getStockMovementsListSummary(tenantId!, {
+        ...apiFilters,
+        search: opts?.search,
+      }),
     getCursor: (row, listSort) => {
       const requested = listSort?.sortBy ?? "updatedAt";
       const sortBy =
@@ -690,7 +699,10 @@ export function Hq6PurchasesListView() {
           />
           <Hq6ConfirmModal
             open={Boolean(deleteTarget)}
-            onClose={() => setDeleteTarget(null)}
+            onClose={() => {
+              if (!deleting) setDeleteTarget(null);
+            }}
+            confirming={deleting}
             onConfirm={() => {
               if (!tenantId || !deleteTarget || deleting) return;
               setDeleting(true);

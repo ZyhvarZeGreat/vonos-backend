@@ -75,6 +75,19 @@ export function isHrRoleName(name: string): boolean {
 }
 
 /**
+ * VAG portal access: group admin JWT, or any user assigned an HR TenantRole
+ * (entity-scoped HR still lands on /admin and may edit the shared catalog).
+ */
+export function canAccessVagPortal(opts: {
+  role: Role | null | undefined;
+  tenantRoleName?: string | null;
+}): boolean {
+  if (opts.role === "super_admin") return true;
+  if (opts.tenantRoleName && isHrRoleName(opts.tenantRoleName)) return true;
+  return false;
+}
+
+/**
  * Permission keys that unlock Finance nav / P&L / payment accounts / costs.
  * Any one grants finance surface access (see HQ6_NAV_VIEW_PERMISSIONS.finance).
  */

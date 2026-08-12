@@ -26,6 +26,8 @@ export interface HistoryFeedEntry {
   actorName?: string;
   action?: string;
   href?: string;
+  /** Audit metadata — e.g. payment/status from → to for activity badges. */
+  metadata?: Record<string, unknown> | null;
 }
 
 export interface GenericField {

@@ -123,14 +123,6 @@ export function hasHq6PermissionKey(
   permissionKey: string,
   context: PermissionContext & { fallbackRole?: Role | null },
 ): boolean {
-  // Role matrix edits are VAG-only.
-  if (
-    permissionKey === "roles.create" ||
-    permissionKey === "roles.update" ||
-    permissionKey === "roles.delete"
-  ) {
-    return context.fallbackRole === "super_admin";
-  }
   if (context.fallbackRole === "super_admin") return true;
   if (context.fallbackRole === "admin") return true;
   if (

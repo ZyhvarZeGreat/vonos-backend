@@ -1,6 +1,6 @@
 /**
- * URL tenant code → backend tenant id. All 8 operating entities are active in the shell.
- * All operating entities appear on VAG group surfaces (overview, switcher, invites).
+ * URL tenant code → backend tenant id.
+ * Autos-group entities roll up on VAG; operations (VC/VS/VKW) are separate mounts.
  */
 export const TENANT_REGISTRY = {
   VW: {
@@ -17,7 +17,7 @@ export const TENANT_REGISTRY = {
     name: "Vonos Kids Wear",
     archetype: "stock" as const,
     status: "active" as const,
-    group: "autos" as const,
+    group: "operations" as const,
   },
   VISP: {
     tenantId: "tenant_visp_001",
@@ -57,7 +57,7 @@ export const TENANT_REGISTRY = {
     name: "Vonos Cafe",
     archetype: "transaction" as const,
     status: "active" as const,
-    group: "autos" as const,
+    group: "operations" as const,
   },
   VS: {
     tenantId: "tenant_vs_001",
@@ -65,7 +65,7 @@ export const TENANT_REGISTRY = {
     name: "Vonos Saloon",
     archetype: "appointment" as const,
     status: "active" as const,
-    group: "autos" as const,
+    group: "operations" as const,
   },
 } as const;
 
@@ -89,7 +89,7 @@ export function getTenantCodeFromId(tenantId: string | null): TenantCode | null 
 export const ENTITY_LIST = Object.values(TENANT_REGISTRY);
 
 /**
- * Display order for Vonos Group surfaces (admin overview, switcher, etc.).
+ * Display order for Vonos Autos Group surfaces (admin overview, switcher, etc.).
  * VA leads so Automotive is the first card on Group Overview.
  */
 export const AUTOS_GROUP_ORDER = [
@@ -98,6 +98,12 @@ export const AUTOS_GROUP_ORDER = [
   "VW",
   "VISP",
   "VSP",
+] as const satisfies ReadonlyArray<
+  Extract<(typeof TENANT_REGISTRY)[TenantCode]["code"], TenantCode>
+>;
+
+/** Cafe / Saloon / Kids Wear — not in VAG roll-ups. */
+export const OPERATIONS_GROUP_ORDER = [
   "VC",
   "VS",
   "VKW",
@@ -110,9 +116,18 @@ export const AUTOS_GROUP_ENTITIES = AUTOS_GROUP_ORDER.map(
   (code) => TENANT_REGISTRY[code],
 );
 
+export const OPERATIONS_GROUP_ENTITIES = OPERATIONS_GROUP_ORDER.map(
+  (code) => TENANT_REGISTRY[code],
+);
+
 export function isAutosGroupEntity(code: string): boolean {
   const entry = getTenantByCode(code);
   return entry?.group === "autos" && entry.status === "active";
+}
+
+export function isOperationsGroupEntity(code: string): boolean {
+  const entry = getTenantByCode(code);
+  return entry?.group === "operations" && entry.status === "active";
 }
 
 /** Retired entity codes — redirect in next.config. VSS → VISP. */

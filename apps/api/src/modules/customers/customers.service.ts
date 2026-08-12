@@ -41,7 +41,11 @@ import type { PaginatedList } from '../../common/utils/paginatedList';
 import { parseCsv, pickCsvField } from '../../common/utils/csvImport';
 import { refreshCustomerFinancialRollups } from '../../common/utils/customerRollups';
 import { recordPaymentAccountTxn } from '../../common/utils/recordPaymentAccountTxn';
-import { contactTextSearchWhere } from '../../common/utils/listSearch';
+import {
+  contactTextSearchWhere,
+  fetchCustomerFtsIds,
+  shouldUseFtsListSearch,
+} from '../../common/utils/listSearch';
 import { toIso, toNumber } from '../../common/utils/serializers';
 import { AuditService } from '../audit/audit.service';
 
@@ -54,11 +58,13 @@ function plateFromCustomerName(name: string | null | undefined): string | null {
 
 /** Trim + upper-case the manually-entered Contact ID (vehicle reg. for VA). */
 function normalizeContactId(
-  details: CustomerContactDetails | null | undefined,
+  details: CustomerContactDetails | null | undefined | unknown,
 ): string | null {
   if (!details || typeof details !== 'object') return null;
   const raw =
-    typeof details.contactId === 'string' ? details.contactId.trim() : '';
+    typeof (details as CustomerContactDetails).contactId === 'string'
+      ? (details as CustomerContactDetails).contactId!.trim()
+      : '';
   return raw ? raw.toUpperCase() : null;
 }
 
@@ -316,8 +322,19 @@ export class CustomersService {
             },
           }
         : {}),
-      // Phone / single-token → prefix path; else trigram name/email/phone.
-      ...(contactTextSearchWhere(filters.search) ?? {}),
+      // Phone / single-token → prefix/trigram; multi-word → FTS candidates.
+      ...(await (async () => {
+        if (!filters.search) return {};
+        if (shouldUseFtsListSearch(filters.search)) {
+          const ftsIds = await fetchCustomerFtsIds(
+            this.tenantDb.db,
+            tenantId,
+            filters.search,
+          );
+          if (ftsIds.length > 0) return { id: { in: ftsIds } };
+        }
+        return contactTextSearchWhere(filters.search) ?? {};
+      })()),
       ...(sinceCutoff
         ? {
             NOT: {
@@ -334,6 +351,7 @@ export class CustomersService {
     };
 
     // Rows first; legacy IDs from warm map (0 RTT) or page-scoped IN (1 RTT).
+    // Skip Redis/Neon when every row already has Contact ID in details JSON.
     const includeSummary = filters.includeSummary !== false;
     const [rows, totalCount, amountAgg] = await Promise.all([
       this.tenantDb.db.customer.findMany({
@@ -387,15 +405,21 @@ export class CustomersService {
 
     // Typeahead pickers render the name only — skip the legacy Contact ID
     // resolution round-trip entirely.
-    const legacyById = filters.lite
-      ? new Map<string, string>()
-      : await getLegacyContactIdsForPage(
+    let legacyById = new Map<string, string>();
+    if (!filters.lite) {
+      const missingIds = rows
+        .filter((row) => !normalizeContactId(row.details))
+        .map((row) => row.id);
+      if (missingIds.length > 0) {
+        legacyById = await getLegacyContactIdsForPage(
           this.tenantDb.db,
           this.cache,
           tenantId,
           'customer',
-          rows.map((row) => row.id),
+          missingIds,
         );
+      }
+    }
 
     const items = rows.map((row) =>
       serializeCustomer(row, { contactId: legacyById.get(row.id) ?? null }),
@@ -484,10 +508,13 @@ export class CustomersService {
     if (parsedDetails && typeof parsedDetails === 'object') {
       parsedDetails.contactId = contactId;
     }
-    if (contactId) {
-      await this.assertContactIdUnique(tenantId, contactId);
-    }
-    await this.resolveAssignedEmployee(tenantId, parsedDetails);
+    // Uniqueness + assignee in parallel when both needed.
+    await Promise.all([
+      contactId
+        ? this.assertContactIdUnique(tenantId, contactId)
+        : Promise.resolve(),
+      this.resolveAssignedEmployee(tenantId, parsedDetails),
+    ]);
     const detailsJson = toDetailsJson(parsedDetails);
     const row = await this.tenantDb.db.customer.create({
       data: {
@@ -508,7 +535,7 @@ export class CustomersService {
         assignedToUser: { select: { name: true } },
       },
     });
-    await this.auditService.log({
+    void this.auditService.log({
       action: 'created',
       entityType: 'customer',
       entityId: row.id,
@@ -539,10 +566,12 @@ export class CustomersService {
     if (parsedDetails && typeof parsedDetails === 'object') {
       const contactId = normalizeContactId(parsedDetails);
       parsedDetails.contactId = contactId;
-      if (contactId) {
-        await this.assertContactIdUnique(tenantId, contactId, id);
-      }
-      await this.resolveAssignedEmployee(tenantId, parsedDetails);
+      await Promise.all([
+        contactId
+          ? this.assertContactIdUnique(tenantId, contactId, id)
+          : Promise.resolve(),
+        this.resolveAssignedEmployee(tenantId, parsedDetails),
+      ]);
     }
     const detailsJson = toDetailsJson(parsedDetails);
 
@@ -572,7 +601,7 @@ export class CustomersService {
         assignedToUser: { select: { name: true } },
       },
     });
-    await this.auditService.log({
+    void this.auditService.log({
       action: 'updated',
       entityType: 'customer',
       entityId: id,

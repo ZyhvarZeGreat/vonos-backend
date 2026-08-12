@@ -13,7 +13,7 @@ import { Prisma } from '@prisma/client';
 import { TenantDbService } from '../../common/prisma/tenant-db.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { CacheService } from '../../common/cache/cache.service';
-import { invalidateTenantDashboardCache } from '../../common/cache/cacheInvalidation';
+import { invalidateTenantDashboardCache, invalidateTenantListCache } from '../../common/cache/cacheInvalidation';
 import { AuditService } from '../audit/audit.service';
 import { buildCompositeCursorQuery } from '../../common/utils/pagination';
 import {
@@ -36,8 +36,10 @@ import { adjustItemLocationStock } from '../../common/utils/itemLocationStock';
 import { toNumber } from '../../common/utils/serializers';
 import { applyLastPurchasePrices } from '../../common/utils/lastPurchasePrices';
 import {
+  fetchItemFtsIds,
   itemTextSearchWhere,
   relationStringOr,
+  shouldUseFtsListSearch,
 } from '../../common/utils/listSearch';
 import { serializeItem } from './items.mapper';
 import {
@@ -140,12 +142,34 @@ export class ItemsService {
     private readonly cache: CacheService,
   ) {}
 
-  private invalidateItemCaches(extraTenantIds: string[] = []): void {
+  private invalidateItemCaches(
+    extraTenantIds: string[] = [],
+    opts: { stockChanged?: boolean } = {},
+  ): void {
     const tenantId = this.tenantDb.requireTenantId();
-    void invalidateTenantDashboardCache(this.cache, tenantId);
+    // Metadata edits (name/price/tax) must not cold-miss overview/reports.
+    // Stock qty changes still need dashboard KPI refresh.
+    if (opts.stockChanged) {
+      void invalidateTenantDashboardCache(this.cache, tenantId);
+      for (const id of extraTenantIds) {
+        if (id && id !== tenantId) {
+          void invalidateTenantDashboardCache(this.cache, id);
+        }
+      }
+      return;
+    }
+    void invalidateTenantListCache(this.cache, tenantId, [
+      'items',
+      'catalog:v9',
+      'catalog:v8',
+    ]);
     for (const id of extraTenantIds) {
       if (id && id !== tenantId) {
-        void invalidateTenantDashboardCache(this.cache, id);
+        void invalidateTenantListCache(this.cache, id, [
+          'items',
+          'catalog:v9',
+          'catalog:v8',
+        ]);
       }
     }
   }
@@ -253,6 +277,53 @@ export class ItemsService {
       sortValueType: sort.sortValueType,
     });
 
+    let searchWhere:
+      | { id: { in: string[] } }
+      | ReturnType<typeof itemTextSearchWhere>
+      | undefined;
+    if (filters.search && shouldUseFtsListSearch(filters.search)) {
+      const ftsIds = await fetchItemFtsIds(db, tenantId, filters.search);
+      searchWhere =
+        ftsIds.length > 0
+          ? { id: { in: ftsIds } }
+          : itemTextSearchWhere(filters.search, {
+              extraFuzzyFields: (_token, contains) => [
+                { category: contains },
+                relationStringOr('brand', 'name', contains),
+              ],
+            });
+    } else if (filters.search) {
+      searchWhere = itemTextSearchWhere(filters.search, {
+        // category has btree; skip description (no trigram → seq scan).
+        extraFuzzyFields: (_token, contains) => [
+          { category: contains },
+          relationStringOr('brand', 'name', contains),
+        ],
+      });
+    }
+
+    const locationWhere = filters.locationCode
+      ? {
+          OR: [
+            { locationCode: filters.locationCode },
+            { binLocation: filters.locationCode },
+            {
+              locationStock: {
+                some: {
+                  OR: [
+                    { locationCode: filters.locationCode },
+                    { binLocation: filters.locationCode },
+                  ],
+                },
+              },
+            },
+          ],
+        }
+      : undefined;
+    const andClauses = [searchWhere, locationWhere].filter(
+      (clause): clause is NonNullable<typeof clause> => clause != null,
+    );
+
     const rows = await db.item.findMany({
       where: {
         tenantId,
@@ -275,39 +346,7 @@ export class ItemsService {
         ...(filters.availableForRetail !== undefined
           ? { availableForRetail: filters.availableForRetail }
           : {}),
-        ...(() => {
-          const searchWhere = filters.search
-            ? itemTextSearchWhere(filters.search, {
-                extraFuzzyFields: (_token, contains) => [
-                  { category: contains },
-                  { description: contains },
-                  relationStringOr('brand', 'name', contains),
-                ],
-              })
-            : undefined;
-          const locationWhere = filters.locationCode
-            ? {
-                OR: [
-                  { locationCode: filters.locationCode },
-                  { binLocation: filters.locationCode },
-                  {
-                    locationStock: {
-                      some: {
-                        OR: [
-                          { locationCode: filters.locationCode },
-                          { binLocation: filters.locationCode },
-                        ],
-                      },
-                    },
-                  },
-                ],
-              }
-            : undefined;
-          const andClauses = [searchWhere, locationWhere].filter(
-            (clause): clause is NonNullable<typeof clause> => clause != null,
-          );
-          return andClauses.length > 0 ? { AND: andClauses } : {};
-        })(),
+        ...(andClauses.length > 0 ? { AND: andClauses } : {}),
         ...(pagination.where ?? {}),
       },
       orderBy: [{ [sort.sortField]: sort.sortDir }, { id: sort.sortDir }],
@@ -531,8 +570,12 @@ export class ItemsService {
 
   async create(dto: CreateItemDto): Promise<Item> {
     const tenantId = this.tenantDb.requireTenantId();
-    const createdBy = await this.auditService.createdByFields();
-    const validate = await this.tenantDb.businessLocationValidator();
+    // One wave: actor + tenant config (validator shares the memoized tenant load).
+    const [createdBy, validate, tenantRow] = await Promise.all([
+      this.auditService.createdByFields(),
+      this.tenantDb.businessLocationValidator(),
+      this.tenantDb.getTenantCodeAndConfig(),
+    ]);
 
     const locationRows =
       dto.locationStock && dto.locationStock.length > 0
@@ -542,13 +585,9 @@ export class ItemsService {
     // Primary location/quantity: derived from per-location rows when present,
     // otherwise from the flat fields. Own-scope catalogs default to this
     // tenant's product home (VSP→VSP) so marketplace rows are not labeled VW.
-    const tenantRow = await this.tenantDb.db.tenant.findFirst({
-      where: { id: tenantId, deletedAt: null },
-      select: { code: true, config: true },
-    });
     const homeLocations = productStockBusinessLocations({
-      ...((tenantRow?.config as object | null) ?? {}),
-      code: tenantRow?.code,
+      ...(tenantRow?.config ?? {}),
+      code: tenantRow?.code ?? undefined,
     });
     const defaultHomeCode = homeLocations[0]?.code ?? null;
 
@@ -635,13 +674,15 @@ export class ItemsService {
       },
       include: ITEM_DETAIL_INCLUDE,
     });
-    await this.auditService.log({
+    void this.auditService.log({
       action: 'created',
       entityType: 'item',
       entityId: row.id,
       summary: `Created item ${row.sku}`,
     });
-    void this.invalidateItemCaches();
+    void this.invalidateItemCaches([], {
+      stockChanged: quantity !== 0 || locationRows.length > 0,
+    });
     return serializeItem(row);
   }
 
@@ -839,7 +880,7 @@ export class ItemsService {
         : await db.item.update({
             where: { id },
             data: itemData,
-            include: ITEM_DETAIL_INCLUDE,
+            include: ITEM_BRAND_INCLUDE,
           });
     void this.auditService.log({
       action: 'updated',
@@ -849,6 +890,7 @@ export class ItemsService {
     });
     void this.invalidateItemCaches(
       homeTenantId !== requestTenantId ? [homeTenantId] : [],
+      { stockChanged: stockFieldsChanged },
     );
     return serializeItem(row);
   }
@@ -865,13 +907,13 @@ export class ItemsService {
       where: { id },
       data: { deletedAt: new Date() },
     });
-    await this.auditService.log({
+    void this.auditService.log({
       action: 'deleted',
       entityType: 'item',
       entityId: id,
       summary: `Deleted item ${existing.sku}`,
     });
-    void this.invalidateItemCaches();
+    void this.invalidateItemCaches([], { stockChanged: true });
   }
 
   /**
@@ -983,7 +1025,18 @@ export class ItemsService {
         deletedAt: null,
         tenantId: { in: tenants.map((t) => t.id) },
         ...(term
-          ? itemTextSearchWhere(term) ?? {}
+          ? shouldUseFtsListSearch(term)
+            ? await (async () => {
+                const ftsIds = await fetchItemFtsIds(
+                  this.prisma,
+                  { in: tenants.map((t) => t.id) },
+                  term,
+                );
+                return ftsIds.length > 0
+                  ? { id: { in: ftsIds } }
+                  : (itemTextSearchWhere(term) ?? {});
+              })()
+            : (itemTextSearchWhere(term) ?? {})
           : {}),
       },
       select: {
@@ -1312,7 +1365,7 @@ export class ItemsService {
     }
 
     if (result.updated > 0) {
-      void this.invalidateItemCaches();
+      void this.invalidateItemCaches([], { stockChanged: true });
     }
 
     return result;

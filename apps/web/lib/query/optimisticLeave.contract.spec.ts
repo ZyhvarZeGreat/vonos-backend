@@ -23,11 +23,18 @@ describe("list redirect on Save (source contracts)", () => {
     expect(view).not.toContain("announceRedirect");
   });
 
-  it("purchase save navigates to purchases on success", () => {
+  it("purchase save shows progress then navigates on success", () => {
     const src = read("components/pages/AddPurchaseView.tsx");
     expect(src).toContain("handleSave");
     expect(src).toContain("goToList");
-    expect(src).toMatch(/onSuccess: \(\) => \{[\s\S]*goToList\(`\/\$\{tenantCode\}\/purchases`\)/);
+    expect(src).toContain("progressLabel");
+    expect(src).toContain("Hq6LoadProgress");
+    expect(src).toMatch(
+      /onSuccess: \(\) => \{[\s\S]*goToList\([\s\S]*purchases/,
+    );
+    expect(src).not.toMatch(
+      /handleSave[\s\S]*mutation\.mutate\(\)[\s\S]*goToList/,
+    );
     expect(src).toContain("onClick={handleSave}");
     expect(src).toMatch(/void Promise\.allSettled\(/);
     expect(src).not.toContain("announceRedirect");

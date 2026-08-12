@@ -18,7 +18,9 @@ import type {
 import { isFullAccessTenantRole } from '@vonos/types';
 import {
   FINANCE_ROLE_DEFAULT_PERMISSIONS,
+  HR_ROLE_DEFAULT_PERMISSIONS,
   isFinanceAuthorizedRoleName,
+  isHrRoleName,
 } from '@vonos/types';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { CacheService } from '../../common/cache/cache.service';
@@ -468,17 +470,20 @@ export class AuthService {
   }
 
   /**
-   * Resolve HQ6 permission-matrix keys for the authenticated user's assigned
-   * TenantRole. Used by backend permission-based guards.
+   * Resolve HQ6 permission-matrix keys + role name for the authenticated
+   * user's assigned TenantRole. Used by backend permission-based guards.
    *
    * Cached per (userId, tokenVersion) to avoid querying on every request.
    */
-  async resolveTenantRolePermissions(
+  async resolveTenantRoleContext(
     userId: string,
     tokenVersion: number,
-  ): Promise<string[]> {
-    const cacheKey = `auth:tenantRolePerms:${userId}:${tokenVersion}`;
-    const cached = await this.cache.get<string[] | null>(cacheKey);
+  ): Promise<{ permissions: string[]; name: string | null }> {
+    const cacheKey = `auth:tenantRoleCtx:${userId}:${tokenVersion}`;
+    const cached = await this.cache.get<{
+      permissions: string[];
+      name: string | null;
+    } | null>(cacheKey);
     if (cached) return cached;
 
     const tenantRole = await this.prisma.tenantRole.findFirst({
@@ -511,6 +516,9 @@ export class AuthService {
       permissions = ['*'];
     } else {
       permissions = [...effectiveRole.permissions];
+      if (isHrRoleName(effectiveRole.name) && permissions.length === 0) {
+        permissions = [...HR_ROLE_DEFAULT_PERMISSIONS];
+      }
       if (isFinanceAuthorizedRoleName(effectiveRole.name)) {
         permissions = [
           ...new Set([...permissions, ...FINANCE_ROLE_DEFAULT_PERMISSIONS]),
@@ -518,12 +526,21 @@ export class AuthService {
       }
     }
 
-    await this.cache.set(
-      cacheKey,
+    const result = {
       permissions,
-      ACCESS_TOKEN_VERSION_CACHE_TTL_S,
-    );
-    return permissions;
+      name: effectiveRole?.name ?? null,
+    };
+    await this.cache.set(cacheKey, result, ACCESS_TOKEN_VERSION_CACHE_TTL_S);
+    return result;
+  }
+
+  /** @deprecated Prefer resolveTenantRoleContext */
+  async resolveTenantRolePermissions(
+    userId: string,
+    tokenVersion: number,
+  ): Promise<string[]> {
+    const ctx = await this.resolveTenantRoleContext(userId, tokenVersion);
+    return ctx.permissions;
   }
 
   private async issueSession(
@@ -599,6 +616,9 @@ export class AuthService {
         permissions = ['*'];
       } else {
         permissions = [...tenantRole.permissions];
+        if (isHrRoleName(tenantRole.name) && permissions.length === 0) {
+          permissions = [...HR_ROLE_DEFAULT_PERMISSIONS];
+        }
         // Session-time merge so Accountant sees Finance even before a Roles
         // catalog backfill has rewritten the DB row. Other roles need the
         // Financial dashboard checkbox on their TenantRole matrix.

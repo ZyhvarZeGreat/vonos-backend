@@ -145,7 +145,6 @@ export function Hq6SuppliersListView() {
       openingBalance,
       purchaseDue,
       purchaseReturn,
-      search,
       status,
     ],
   );
@@ -172,10 +171,12 @@ export function Hq6SuppliersListView() {
     enabled: Boolean(tenantId),
     filters: apiFilters,
     search,
+    searchMode: "hybrid",
     defaultPageSize: HQ6_TABLE_PAGE_SIZE,
     fetchPage: (cursor, limit, listSort, opts) =>
       getSuppliersPage(tenantId!, cursor, limit, {
         ...apiFilters,
+        search: opts?.search,
         includeSummary: opts?.includeSummary,
         ...(listSort?.sortBy
           ? { sortBy: listSort.sortBy, sortDir: listSort.sortDir }
@@ -207,13 +208,13 @@ export function Hq6SuppliersListView() {
     pageIndex,
     pageSize: effectiveSize,
     itemCount: suppliers.length,
-    totalCount: totalCount ?? totalItems,
+    totalCount,
   });
   const busy = isPaging || isSearching || (isLoading && suppliers.length === 0);
+  const showSearchSkeleton =
+    suppliers.length === 0 && (isLoading || isSearching);
 
-  const dueTotal =
-    amountSummary?.totalDue ??
-    suppliers.reduce((sum, row) => sum + (row.totalPurchaseDue ?? 0), 0);
+  const dueTotal = amountSummary?.totalDue;
   const returnDueTotal = suppliers.reduce(
     (sum, row) => sum + (row.totalPurchaseReturn ?? 0),
     0,
@@ -575,15 +576,25 @@ export function Hq6SuppliersListView() {
                                   Failed to load suppliers.
                                 </td>
                               </tr>
-                            ) : isLoading && suppliers.length === 0 ? (
-                              <tr className="odd">
-                                <td
-                                  colSpan={14}
-                                  className="dataTables_empty"
+                            ) : showSearchSkeleton ? (
+                              Array.from({ length: 8 }).map((_, rowIdx) => (
+                                <tr
+                                  key={`sk-${rowIdx}`}
+                                  className={rowIdx % 2 === 0 ? "odd" : "even"}
                                 >
-                                  Processing...
-                                </td>
-                              </tr>
+                                  {Array.from({ length: 8 }).map((__, colIdx) => (
+                                    <td key={colIdx}>
+                                      <span
+                                        className="tw-inline-block tw-h-3.5 tw-animate-pulse tw-rounded tw-bg-gray-200"
+                                        style={{
+                                          width: `${48 + ((rowIdx + colIdx) % 4) * 12}%`,
+                                        }}
+                                        aria-hidden
+                                      />
+                                    </td>
+                                  ))}
+                                </tr>
+                              ))
                             ) : suppliers.length === 0 ? (
                               <tr className="odd">
                                 <td
@@ -843,7 +854,9 @@ export function Hq6SuppliersListView() {
                                 </td>
                                 {showCol("totalPurchaseDue") ? (
                                   <td className="footer_contact_due">
-                                    {formatHq6Currency(dueTotal)}
+                                    {dueTotal != null
+                                      ? formatHq6Currency(dueTotal)
+                                      : "—"}
                                   </td>
                                 ) : null}
                                 {showCol("totalPurchaseReturn") ? (
@@ -866,7 +879,7 @@ export function Hq6SuppliersListView() {
                         {formatListEntriesLabel({
                           from,
                           to,
-                          total: totalCount ?? to,
+                          total: totalCount,
                         })}
             </div>
                       <div

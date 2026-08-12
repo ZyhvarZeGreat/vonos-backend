@@ -22,10 +22,8 @@ import { buildCompositeCursorQuery } from '../../common/utils/pagination';
 import type { PaginatedList } from '../../common/utils/paginatedList';
 import { toIso, toNumber } from '../../common/utils/serializers';
 import { InvoiceHubService } from '../invoices/invoice-hub.service';
-import {
-  relationStringOr,
-  tokenizedSearchWhere,
-} from '../../common/utils/listSearch';
+import { AuditService } from '../audit/audit.service';
+import { expenseTextSearchWhere } from '../../common/utils/listSearch';
 import {
   softDeleteExpenseAccountTxns,
   syncExpenseAccountDebit,
@@ -126,6 +124,7 @@ export class ExpensesService {
     private readonly tenantDb: TenantDbService,
     private readonly invoiceHub: InvoiceHubService,
     private readonly cache: CacheService,
+    private readonly auditService: AuditService,
   ) {}
 
   async listExpenses(filters: {
@@ -232,18 +231,7 @@ export class ExpensesService {
           : filters.paymentStatus
             ? { paymentStatus: filters.paymentStatus }
             : {}),
-      ...(tokenizedSearchWhere(filters.search, (_token, contains) => [
-        { refNo: contains },
-        { contactName: contains },
-        { note: contains },
-        { expenseFor: contains },
-        { subCategory: contains },
-        { locationCode: contains },
-        { paymentStatus: contains },
-        relationStringOr('category', 'name', contains),
-        relationStringOr('expenseForCustomer', 'name', contains),
-        relationStringOr('contactCustomer', 'name', contains),
-      ]) ?? {}),
+      ...(expenseTextSearchWhere(filters.search) ?? {}),
     };
     const rows = await this.tenantDb.db.expense.findMany({
       where: {
@@ -332,14 +320,8 @@ export class ExpensesService {
       Number(dto.totalAmount) > 0;
 
     const authUserId = this.tenantDb.getAuthUserId();
-    let createdByName: string | null = null;
-    if (authUserId) {
-      const user = await this.tenantDb.db.user.findFirst({
-        where: { id: authUserId },
-        select: { name: true },
-      });
-      createdByName = user?.name ?? null;
-    }
+    const createdBy = await this.auditService.createdByFields();
+    const createdByName = createdBy.createdByName ?? null;
 
     const expenseData = {
       tenantId,
@@ -361,7 +343,7 @@ export class ExpensesService {
       recurInterval: dto.recurInterval ?? null,
       recurIntervalType: dto.recurIntervalType ?? null,
       expenseDate: dto.expenseDate ? new Date(dto.expenseDate) : new Date(),
-      createdById: authUserId,
+      createdById: authUserId ?? createdBy.createdByUserId ?? null,
       createdByName,
     };
 
@@ -404,7 +386,7 @@ export class ExpensesService {
           include: expenseInclude,
         });
     if (!shouldDebit) {
-      await upsertExpenseLedgerEntry(this.tenantDb.db, {
+      void upsertExpenseLedgerEntry(this.tenantDb.db, {
         tenantId,
         expenseId: row.id,
         amount: dto.totalAmount,
@@ -412,6 +394,8 @@ export class ExpensesService {
         description:
           row.note?.trim() || row.refNo || `Expense ${row.id.slice(-8)}`,
         date: row.expenseDate,
+      }).catch((err: unknown) => {
+        console.error('[expenses] ledger upsert failed', err);
       });
     }
 
@@ -432,6 +416,17 @@ export class ExpensesService {
       console.error('[expenses] daily finance rollup failed', err);
     });
     this.invalidateCaches();
+    void this.auditService.log({
+      action: 'created',
+      entityType: 'expense',
+      entityId: row.id,
+      summary: `Created expense ${row.refNo?.trim() || row.id.slice(-8)}`,
+      metadata: {
+        totalAmount: toNumber(row.totalAmount),
+        paymentStatus: row.paymentStatus,
+        category: row.category?.name ?? null,
+      },
+    });
     return this.serializeExpense(row, row.createdByName ?? null);
   }
 
@@ -633,6 +628,16 @@ export class ExpensesService {
       );
     }
     this.invalidateCaches();
+    void this.auditService.log({
+      action: 'updated',
+      entityType: 'expense',
+      entityId: row.id,
+      summary: `Updated expense ${row.refNo?.trim() || row.id.slice(-8)}`,
+      metadata: {
+        totalAmount: toNumber(row.totalAmount),
+        paymentStatus: row.paymentStatus,
+      },
+    });
     return this.serializeExpense(row, createdByName, nextPaymentMethod);
   }
 
@@ -680,6 +685,12 @@ export class ExpensesService {
       -toNumber(existing.totalAmount),
     );
     this.invalidateCaches();
+    void this.auditService.log({
+      action: 'deleted',
+      entityType: 'expense',
+      entityId: id,
+      summary: `Deleted expense ${existing.refNo?.trim() || id.slice(-8)}`,
+    });
   }
 
   async listCategories(filters: {

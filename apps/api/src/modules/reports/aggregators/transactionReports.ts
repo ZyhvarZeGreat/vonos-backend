@@ -5,7 +5,7 @@ import { computeDelta, priorWindow, resolveDateWindow, asChartData } from './dat
 import {
   hourlyOrderCounts,
   paymentStatusBreakdown,
-  salesKpiSnapshot,
+  salesKpiSnapshotPair,
   salesRevenueTrend,
   topProductsInWindow,
 } from './salesReportQueries';
@@ -24,10 +24,17 @@ export async function buildTransactionReports(
   const window = resolveDateWindow(from, to);
   const prior = priorWindow(window);
 
-  const [period, priorPeriod, trendData, topProducts] = await runPool(
+  const [kpiPair, trendData, topProducts] = await runPool(
     [
-      () => salesKpiSnapshot(db, tenantId, window.from, window.to),
-      () => salesKpiSnapshot(db, tenantId, prior.from, prior.to),
+      () =>
+        salesKpiSnapshotPair(
+          db,
+          tenantId,
+          window.from,
+          window.to,
+          prior.from,
+          prior.to,
+        ),
       () => salesRevenueTrend(db, tenantId, window),
       () =>
         tab === 'sales'
@@ -37,6 +44,8 @@ export async function buildTransactionReports(
     NEON_QUERY_CONCURRENCY,
   );
 
+  const period = kpiPair.current;
+  const priorPeriod = kpiPair.prior;
   const {
     transactionCount,
     revenue,

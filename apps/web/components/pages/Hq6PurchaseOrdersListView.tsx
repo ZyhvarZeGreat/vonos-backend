@@ -150,6 +150,7 @@ export function Hq6PurchaseOrdersListView() {
     enabled: Boolean(tenantId),
     filters: apiFilters,
     search,
+    searchMode: "hybrid",
     defaultPageSize: HQ6_TABLE_PAGE_SIZE,
     fetchPage: (cursor, limit, listSort, opts) =>
       getStockMovementsPage(
@@ -157,6 +158,7 @@ export function Hq6PurchaseOrdersListView() {
         withListSort(
           {
             ...apiFilters,
+            search: opts?.search,
             includeSummary: opts?.includeSummary,
           },
           listSort,
@@ -460,6 +462,7 @@ export function Hq6PurchaseReturnsListView() {
     enabled: Boolean(tenantId),
     filters: apiFilters,
     search,
+    searchMode: "hybrid",
     defaultPageSize: HQ6_TABLE_PAGE_SIZE,
     fetchPage: (cursor, limit, listSort, opts) =>
       getStockMovementsPage(
@@ -467,6 +470,7 @@ export function Hq6PurchaseReturnsListView() {
         withListSort(
           {
             ...apiFilters,
+            search: opts?.search,
             includeSummary: opts?.includeSummary,
           },
           listSort,

@@ -5,6 +5,7 @@
  * Usage (from apps/api):
  *   npx ts-node --transpile-only prisma/scripts/seed-expense-categories.ts
  *   TENANT_CODE=VA npx ts-node --transpile-only prisma/scripts/seed-expense-categories.ts
+ *   TENANT_CODES=VA,VW,VISP,VSP,VP npx ts-node --transpile-only prisma/scripts/seed-expense-categories.ts
  *   npx ts-node --transpile-only prisma/scripts/seed-expense-categories.ts --dry-run
  */
 import { PrismaClient } from '@prisma/client';
@@ -12,6 +13,10 @@ import { PrismaClient } from '@prisma/client';
 const prisma = new PrismaClient();
 const dryRun = process.argv.includes('--dry-run');
 const onlyCode = (process.env.TENANT_CODE ?? '').trim().toUpperCase();
+const tenantCodes = (process.env.TENANT_CODES ?? '')
+  .split(',')
+  .map((c) => c.trim().toUpperCase())
+  .filter(Boolean);
 
 const OPERATING = new Set([
   'VA',
@@ -23,6 +28,13 @@ const OPERATING = new Set([
   'VS',
   'VKW',
 ]);
+
+const TARGET_CODES =
+  tenantCodes.length > 0
+    ? new Set(tenantCodes)
+    : onlyCode
+      ? new Set([onlyCode])
+      : OPERATING;
 
 /** Former HQ / Ultimate POS expense categories (operational catalog).
  * Includes restored soft-deleted HQ rows + group operational names;
@@ -225,17 +237,15 @@ async function main() {
       select: { id: true, code: true, name: true },
       orderBy: { code: 'asc' },
     })
-  ).filter((t) => {
-    const code = t.code.toUpperCase();
-    if (onlyCode) return code === onlyCode;
-    return OPERATING.has(code);
-  });
+  ).filter((t) => TARGET_CODES.has(t.code.toUpperCase()));
 
   if (tenants.length === 0) {
     throw new Error(
-      onlyCode
-        ? `Tenant ${onlyCode} not found`
-        : 'No operating tenants found to seed',
+      tenantCodes.length > 0
+        ? `No tenants found for TENANT_CODES=${tenantCodes.join(',')}`
+        : onlyCode
+          ? `Tenant ${onlyCode} not found`
+          : 'No operating tenants found to seed',
     );
   }
 

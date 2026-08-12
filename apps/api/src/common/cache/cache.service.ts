@@ -20,6 +20,8 @@ const L1_LONG_KEY_PREFIXES = [
   'workforce:',
   'invoice-settings:',
   'list:',
+  'listEpoch:',
+  'listVer:',
   'auth:tv:',
   'legacy-map:',
 ];
@@ -33,6 +35,12 @@ export class CacheService implements OnModuleInit {
     { data: string; expiresAt: number }
   >();
   private readonly l1 = new Map<string, { data: string; expiresAt: number }>();
+  /** Avoid 2× Upstash GETs per list request for epoch/listVer. */
+  private readonly listKeyMeta = new Map<
+    string,
+    { epoch: number; version: number; expiresAt: number }
+  >();
+  private static readonly LIST_KEY_META_TTL_MS = 60_000;
 
   onModuleInit() {
     const url = process.env.UPSTASH_REDIS_REST_URL;
@@ -113,8 +121,10 @@ export class CacheService implements OnModuleInit {
   }
 
   async bumpTenantVersion(tenantId: string): Promise<void> {
-    const current = await this.getTenantCacheVersion(tenantId);
-    const listEpoch = await this.getListEpoch(tenantId);
+    const [current, listEpoch] = await Promise.all([
+      this.getTenantCacheVersion(tenantId),
+      this.getListEpoch(tenantId),
+    ]);
     // Drop L1 entries for this tenant so bump takes effect immediately.
     for (const key of [...this.l1.keys()]) {
       if (
@@ -124,6 +134,9 @@ export class CacheService implements OnModuleInit {
       ) {
         this.l1.delete(key);
       }
+    }
+    for (const key of [...this.listKeyMeta.keys()]) {
+      if (key.startsWith(`${tenantId}:`)) this.listKeyMeta.delete(key);
     }
     await Promise.all([
       this.set(this.versionKey(tenantId), current + 1, 60 * 60 * 24 * 30),
@@ -160,6 +173,7 @@ export class CacheService implements OnModuleInit {
         this.l1.delete(key);
       }
     }
+    this.listKeyMeta.delete(`${tenantId}:${resource}`);
     await this.set(
       this.listVersionKey(tenantId, resource),
       current + 1,
@@ -172,10 +186,20 @@ export class CacheService implements OnModuleInit {
     resource: string,
     key: string,
   ): Promise<string> {
+    const memoKey = `${tenantId}:${resource}`;
+    const memo = this.listKeyMeta.get(memoKey);
+    if (memo && memo.expiresAt > Date.now()) {
+      return `le${memo.epoch}:listv${memo.version}:${tenantId}:${key}`;
+    }
     const [epoch, version] = await Promise.all([
       this.getListEpoch(tenantId),
       this.getListCacheVersion(tenantId, resource),
     ]);
+    this.listKeyMeta.set(memoKey, {
+      epoch,
+      version,
+      expiresAt: Date.now() + CacheService.LIST_KEY_META_TTL_MS,
+    });
     return `le${epoch}:listv${version}:${tenantId}:${key}`;
   }
 

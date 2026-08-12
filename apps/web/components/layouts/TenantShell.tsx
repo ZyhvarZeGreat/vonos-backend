@@ -25,6 +25,7 @@ export function TenantShell({ children }: { children: React.ReactNode }) {
   const hydrated = useAuthStore((state) => state.hydrated);
   const role = useAuthStore((state) => state.role);
   const userTenantId = useAuthStore((state) => state.tenantId);
+  const tenantRoleName = useAuthStore((state) => state.tenantRoleName);
   const setTenantConfig = useTenantStore((state) => state.setTenantConfig);
   const clearTenant = useTenantStore((state) => state.clearTenant);
   const dateRange = useUiStore((state) => state.dateRange);
@@ -97,11 +98,24 @@ export function TenantShell({ children }: { children: React.ReactNode }) {
 
     if (
       registryEntry.tenantId &&
-      !canAccessTenant(role, userTenantId, registryEntry.tenantId)
+      !canAccessTenant(
+        role,
+        userTenantId,
+        registryEntry.tenantId,
+        tenantRoleName,
+      )
     ) {
       router.replace("/admin/overview");
     }
-  }, [skipAuth, hydrated, registryEntry, role, userTenantId, router]);
+  }, [
+    skipAuth,
+    hydrated,
+    registryEntry,
+    role,
+    userTenantId,
+    tenantRoleName,
+    router,
+  ]);
 
   useEffect(() => {
     if (configQuery.data) {

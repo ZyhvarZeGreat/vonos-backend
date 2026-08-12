@@ -12,6 +12,7 @@ export function auditEntryToHistoryFeed(entry: AuditLogEntry): HistoryFeedEntry 
     date: formatDateTime(entry.occurredAt),
     actorName: entry.actorName ?? undefined,
     action: entry.action,
+    metadata: entry.metadata ?? null,
   };
 }
 

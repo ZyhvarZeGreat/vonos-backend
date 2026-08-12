@@ -61,31 +61,85 @@ export async function salesKpiSnapshot(
   from: Date,
   to: Date,
 ): Promise<SalesKpiSnapshot> {
-  const [agg, refundedCount, currency] = await runPool(
-    [
-      () =>
-        db.sale.aggregate({
-          where: saleBaseWhere(tenantId, from, to),
-          _count: { _all: true },
-          _sum: { total: true },
-        }),
-      () =>
-        db.sale.count({
-          where: {
-            ...saleBaseWhere(tenantId, from, to),
-            status: { in: ['refunded', 'partially_refunded', 'written_off'] },
-          },
-        }),
-      () => salesCurrency(db, tenantId),
-    ],
-    NEON_QUERY_CONCURRENCY,
-  );
+  const pair = await salesKpiSnapshotPair(db, tenantId, from, to, from, to);
+  return pair.current;
+}
 
+/** Current + prior sales KPIs in one round trip (cuts Neon RTT on reports). */
+export async function salesKpiSnapshotPair(
+  db: TenantScopedPrisma,
+  tenantId: string,
+  curFrom: Date,
+  curTo: Date,
+  priorFrom: Date,
+  priorTo: Date,
+): Promise<{ current: SalesKpiSnapshot; prior: SalesKpiSnapshot }> {
+  const earliest =
+    priorFrom.getTime() <= curFrom.getTime() ? priorFrom : curFrom;
+  const latest = priorTo.getTime() >= curTo.getTime() ? priorTo : curTo;
+
+  const rows = await db.$queryRaw<
+    [
+      {
+        cur_count: bigint;
+        cur_revenue: Prisma.Decimal | null;
+        cur_refunded: bigint;
+        prior_count: bigint;
+        prior_revenue: Prisma.Decimal | null;
+        prior_refunded: bigint;
+        currency: string | null;
+      },
+    ]
+  >`
+    SELECT
+      COUNT(*) FILTER (
+        WHERE date >= ${curFrom} AND date <= ${curTo}
+      )::bigint AS cur_count,
+      COALESCE(SUM(total) FILTER (
+        WHERE date >= ${curFrom} AND date <= ${curTo}
+      ), 0) AS cur_revenue,
+      COUNT(*) FILTER (
+        WHERE date >= ${curFrom} AND date <= ${curTo}
+          AND status IN ('refunded', 'partially_refunded', 'written_off')
+      )::bigint AS cur_refunded,
+      COUNT(*) FILTER (
+        WHERE date >= ${priorFrom} AND date <= ${priorTo}
+      )::bigint AS prior_count,
+      COALESCE(SUM(total) FILTER (
+        WHERE date >= ${priorFrom} AND date <= ${priorTo}
+      ), 0) AS prior_revenue,
+      COUNT(*) FILTER (
+        WHERE date >= ${priorFrom} AND date <= ${priorTo}
+          AND status IN ('refunded', 'partially_refunded', 'written_off')
+      )::bigint AS prior_refunded,
+      (
+        SELECT currency FROM "Sale"
+        WHERE "tenantId" = ${tenantId} AND "deletedAt" IS NULL
+        ORDER BY id ASC LIMIT 1
+      ) AS currency
+    FROM "Sale"
+    WHERE "tenantId" = ${tenantId}
+      AND "deletedAt" IS NULL
+      AND status::text <> 'draft'
+      AND date >= ${earliest}
+      AND date <= ${latest}
+  `;
+
+  const row = rows[0];
+  const currency = row?.currency ?? 'NGN';
   return {
-    transactionCount: agg._count._all,
-    revenue: toNumber(agg._sum.total ?? 0),
-    refundedCount,
-    currency,
+    current: {
+      transactionCount: Number(row?.cur_count ?? 0),
+      revenue: toNumber(row?.cur_revenue ?? 0),
+      refundedCount: Number(row?.cur_refunded ?? 0),
+      currency,
+    },
+    prior: {
+      transactionCount: Number(row?.prior_count ?? 0),
+      revenue: toNumber(row?.prior_revenue ?? 0),
+      refundedCount: Number(row?.prior_refunded ?? 0),
+      currency,
+    },
   };
 }
 
@@ -140,20 +194,24 @@ export async function topProductsInWindow(
       revenue: Prisma.Decimal | null;
     }>
   >`
+    WITH period_sales AS (
+      SELECT id
+      FROM "Sale"
+      WHERE "tenantId" = ${tenantId}
+        AND "deletedAt" IS NULL
+        AND status::text <> 'draft'
+        AND date >= ${from}
+        AND date <= ${to}
+    )
     SELECT
       MAX(COALESCE(NULLIF(TRIM(sl.sku), ''), sl.name)) AS sku,
       MAX(sl.name) AS label,
       MAX(sl."itemId") AS "itemId",
       COALESCE(SUM(sl.quantity), 0) AS units,
       COALESCE(SUM(sl."lineTotal"), 0) AS revenue
-    FROM "SaleLine" sl
-    INNER JOIN "Sale" s ON s.id = sl."saleId"
-    WHERE s."tenantId" = ${tenantId}
-      AND s."deletedAt" IS NULL
-      AND s.status::text <> 'draft'
-      AND s.date >= ${from}
-      AND s.date <= ${to}
-    GROUP BY LOWER(COALESCE(NULLIF(TRIM(sl.sku), ''), sl.name))
+    FROM period_sales s
+    INNER JOIN "SaleLine" sl ON sl."saleId" = s.id
+    GROUP BY COALESCE(NULLIF(TRIM(sl.sku), ''), sl.name)
     ORDER BY units DESC, revenue DESC
     LIMIT ${limit}
   `;

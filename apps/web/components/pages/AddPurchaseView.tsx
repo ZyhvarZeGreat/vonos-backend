@@ -14,6 +14,7 @@ import { ClearableNumberInput } from "@/components/atoms/ClearableNumberInput";
 import { AsyncMenuSelect } from "@/components/molecules/AsyncMenuSelect";
 import { ProductItemSearch, type CatalogPartPick } from "@/components/molecules/ProductItemSearch";
 import { Hq6BusyButton } from "@/components/hq6/Hq6BusyButton";
+import { Hq6LoadProgress } from "@/components/hq6/Hq6LoadProgress";
 import { Hq6FormShell } from "@/components/hq6/Hq6Chrome";
 import {
   createStockMovement,
@@ -50,6 +51,12 @@ import {
 import { cn } from "@/lib/utils/cn";
 import { formatHq6Currency } from "@/lib/utils/hq6Format";
 import { tenantBasePath } from "@/lib/utils/tenantMount";
+import {
+  purchaseAdditionalPaymentAmount,
+  purchaseAlreadyPaid,
+  purchaseSaveReference,
+} from "@/lib/utils/purchaseEditPayment";
+import { sellPriceChanges } from "@/lib/utils/purchaseSellPriceDiff";
 
 interface PurchaseLine {
   itemId: string;
@@ -252,6 +259,19 @@ export function AddPurchaseView() {
   const [form, setForm] = useState<PurchaseFormState>(emptyForm);
   const [lines, setLines] = useState<PurchaseLine[]>([]);
   const [prefillDone, setPrefillDone] = useState(false);
+  const baselineSellPricesRef = useRef<
+    Array<{ itemId: string; unitSellingPrice: number }>
+  >([]);
+  const purchaseIdempotencyKeyRef = useRef<string | null>(null);
+
+  // Same route for add vs edit — reset when ?edit= changes or is cleared.
+  useEffect(() => {
+    setPrefillDone(false);
+    setForm(emptyForm());
+    setLines([]);
+    baselineSellPricesRef.current = [];
+    purchaseIdempotencyKeyRef.current = null;
+  }, [editId]);
 
   const selectedSupplierLabel = useMemo(() => {
     const match = suppliers.find((s) => s.id === form.supplierId);
@@ -277,7 +297,11 @@ export function AddPurchaseView() {
         ? existing.status
         : "Received";
     const parsedNotes = parsePurchaseNotes(existing.notes);
-    const alreadyPaid = Math.max(0, Number(existing.totalPaid ?? 0));
+    const alreadyPaid = purchaseAlreadyPaid(
+      editId,
+      existing.totalPaid,
+      existingPayments,
+    );
     const latestPayment =
       existingPayments.find((p) => p.accountId?.trim()) ??
       existingPayments[0];
@@ -337,6 +361,12 @@ export function AddPurchaseView() {
             itemSellPrice(byId.get(line.itemId) ?? {}),
         })),
       );
+      baselineSellPricesRef.current = existing.lines.map((line) => ({
+        itemId: line.itemId,
+        unitSellingPrice:
+          line.unitSellingPrice ??
+          itemSellPrice(byId.get(line.itemId) ?? {}),
+      }));
       setPrefillDone(true);
     })();
     return () => {
@@ -376,11 +406,17 @@ export function AddPurchaseView() {
     netTotal - orderDiscount + purchaseTax + shippingCharges + extraExpensesTotal,
   );
   const paymentAmount = Number(form.paymentAmount) || 0;
-  const alreadyPaid = Math.max(0, Number(existing?.totalPaid ?? 0));
+  const alreadyPaid = purchaseAlreadyPaid(
+    editId,
+    existing?.totalPaid,
+    existingPayments,
+  );
   /** On edit, Amount shows total already paid — only the increase is a new payment. */
-  const additionalPaymentAmount = editId
-    ? Math.max(0, paymentAmount - alreadyPaid)
-    : paymentAmount;
+  const additionalPaymentAmount = purchaseAdditionalPaymentAmount(
+    editId,
+    paymentAmount,
+    alreadyPaid,
+  );
   const paymentDue = Math.max(
     0,
     purchaseTotal - (editId ? Math.max(alreadyPaid, paymentAmount) : paymentAmount),
@@ -392,9 +428,11 @@ export function AddPurchaseView() {
   const collectingPayment =
     additionalPaymentAmount > 0.009 && (!editId || showAddPaymentOnEdit);
 
-  const purchaseIdempotencyKeyRef = useRef<string | null>(null);
-
   const mutation = useMutation({
+    meta: {
+      progressLabel: editId ? "Updating purchase" : "Saving purchase",
+      suppressErrorToast: true,
+    },
     // Leave-first: keep trying in the background after we hit the list.
     retry: (failureCount, error) =>
       failureCount < 2 && isTransientWriteError(error),
@@ -402,7 +440,6 @@ export function AddPurchaseView() {
       const key =
         purchaseIdempotencyKeyRef.current ?? newIdempotencyKey();
       purchaseIdempotencyKeyRef.current = key;
-      return withIdempotencyKey(key, async () => {
       if (!tenantId) throw new Error("No tenant");
       if (collectingPayment && !form.paymentAccountId.trim()) {
         throw new Error(
@@ -410,9 +447,14 @@ export function AddPurchaseView() {
         );
       }
       const status: MovementStatus = form.status;
+      const reference = purchaseSaveReference(
+        form.reference,
+        editId,
+        existing?.reference,
+      );
       const payload = {
         type: "inbound" as const,
-        reference: form.reference || `PO-${Date.now()}`,
+        reference,
         status,
         supplierId: form.supplierId || undefined,
         locationCode: form.locationCode || undefined,
@@ -440,27 +482,39 @@ export function AddPurchaseView() {
         })),
       };
       const saved = editId
-        ? await updateStockMovement(tenantId, editId, payload)
-        : await createStockMovement(tenantId, payload);
-      // Don't block Save on sell-price sync — fire in background.
+        ? await withIdempotencyKey(`${key}:write`, () =>
+            updateStockMovement(tenantId, editId, payload),
+          )
+        : await withIdempotencyKey(`${key}:write`, () =>
+            createStockMovement(tenantId, payload),
+          );
+      // Only sync sell prices that actually changed on this edit.
+      const priceUpdates = sellPriceChanges(
+        baselineSellPricesRef.current,
+        lines.map((line) => ({
+          itemId: line.itemId,
+          unitSellingPrice: line.unitSellingPrice,
+        })),
+      );
       void Promise.allSettled(
-        lines.map((line) =>
-          updateItem(line.itemId, { sellPrice: line.unitSellingPrice }),
+        priceUpdates.map((row) =>
+          updateItem(row.itemId, { sellPrice: row.sellPrice }),
         ),
       );
       if (collectingPayment) {
-        await payStockMovement(tenantId, saved.id, {
-          amount: additionalPaymentAmount,
-          method: form.paymentMethod || "cash",
-          accountId: form.paymentAccountId || undefined,
-          note: form.paymentNote.trim() || undefined,
-          paidOn: form.paidOn
-            ? new Date(form.paidOn).toISOString()
-            : undefined,
-        });
+        await withIdempotencyKey(`${key}:pay`, () =>
+          payStockMovement(tenantId, saved.id, {
+            amount: additionalPaymentAmount,
+            method: form.paymentMethod || "cash",
+            accountId: form.paymentAccountId || undefined,
+            note: form.paymentNote.trim() || undefined,
+            paidOn: form.paidOn
+              ? new Date(form.paidOn).toISOString()
+              : undefined,
+          }),
+        );
       }
       return saved;
-      });
     },
     onSuccess: () => {
       toast.success(editId ? "Purchase updated" : "Purchase saved");
@@ -468,7 +522,9 @@ export function AddPurchaseView() {
       void qc.invalidateQueries({ queryKey: ["payment-accounts", tenantId] });
       void qc.invalidateQueries({ queryKey: ["items", tenantId] });
       void qc.invalidateQueries({ queryKey: ["catalog"] });
-      if (tenantCode) goToList(`${tenantBasePath(tenantCode)}/purchases`);
+      if (tenantCode) {
+        goToList(`${tenantBasePath(tenantCode)}/purchases`);
+      }
     },
     onError: (err: Error) => {
       toast.error(err.message || "Failed to save purchase");
@@ -668,11 +724,11 @@ export function AddPurchaseView() {
               <div className="hq6-form-file">
                 <input
                   type="file"
-                  accept=".pdf,.csv,.zip,.doc,.docx,.jpeg,.jpg,.png"
+                      accept=".pdf,.csv,.zip,.doc,.docx,.jpeg,.jpg,.png,.avif"
                 />
               </div>
               <p className="hq6-form-hint">
-                Max File size: 5MB · Allowed: .pdf, .csv, .zip, .doc, .docx, .jpeg, .jpg, .png
+                    Max File size: 5MB · Allowed: .pdf, .csv, .zip, .doc, .docx, .jpeg, .jpg, .png, .avif
               </p>
             </label>
             <label className="hq6-form-label" style={{ gridColumn: "1 / -1" }}>
@@ -1102,6 +1158,13 @@ export function AddPurchaseView() {
               </div>
             </>
           <div className="hq6-form-save-row">
+            {mutation.isPending ? (
+              <Hq6LoadProgress
+                compact
+                label={editId ? "Updating purchase" : "Saving purchase"}
+                className="mb-2 w-full"
+              />
+            ) : null}
             <Hq6BusyButton
               className="hq6-btn-purple"
               busy={mutation.isPending}
@@ -1249,18 +1312,27 @@ export function AddPurchaseView() {
           </div>
         ) : null}
 
-        <div className="flex justify-end gap-2">
-          <Button variant="secondary" onClick={() => router.back()}>
+        <div className="flex flex-col items-end gap-2">
+          {mutation.isPending ? (
+            <Hq6LoadProgress
+              compact
+              label={editId ? "Updating purchase" : "Saving purchase"}
+              className="w-full max-w-xs"
+            />
+          ) : null}
+          <div className="flex justify-end gap-2">
+          <Button variant="secondary" onClick={() => router.back()} disabled={mutation.isPending}>
             Cancel
           </Button>
           <Button
             isLoading={mutation.isPending}
             loadingText={editId ? "Updating…" : "Saving…"}
             onClick={handleSave}
-            disabled={!canSave}
+            disabled={!canSave || mutation.isPending}
           >
             {editId ? "Update Purchase" : "Save Purchase"}
           </Button>
+          </div>
         </div>
       </div>
     </div>

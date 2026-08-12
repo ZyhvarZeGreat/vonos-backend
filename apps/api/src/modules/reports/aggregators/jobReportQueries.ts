@@ -44,31 +44,88 @@ const labourSubquery = (tenantId: string, from: Date, to: Date) => Prisma.sql`
   GROUP BY jl."jobId"
 `;
 
+/**
+ * Global window totals without per-job LEFT JOINs (bench hotspot).
+ * Materials + labour summed independently, then added — one round trip.
+ */
 export async function jobCostSummaryInWindow(
   db: TenantScopedPrisma,
   tenantId: string,
   from: Date,
   to: Date,
 ): Promise<JobCostSummary> {
+  const pair = await jobCostSummaryPair(db, tenantId, from, to, from, to);
+  return pair.current;
+}
+
+/** Current + prior job cost KPIs in a single Neon round trip. */
+export async function jobCostSummaryPair(
+  db: TenantScopedPrisma,
+  tenantId: string,
+  curFrom: Date,
+  curTo: Date,
+  priorFrom: Date,
+  priorTo: Date,
+): Promise<{ current: JobCostSummary; prior: JobCostSummary }> {
+  const earliest =
+    priorFrom.getTime() <= curFrom.getTime() ? priorFrom : curFrom;
+  const latest = priorTo.getTime() >= curTo.getTime() ? priorTo : curTo;
+
   const rows = await db.$queryRaw<
-    [{ job_count: bigint; total_cost: Prisma.Decimal | null }]
+    [
+      {
+        cur_job_count: bigint;
+        prior_job_count: bigint;
+        cur_materials: Prisma.Decimal | null;
+        cur_labour: Prisma.Decimal | null;
+        prior_materials: Prisma.Decimal | null;
+        prior_labour: Prisma.Decimal | null;
+      },
+    ]
   >`
+    WITH jobs AS (
+      SELECT id, "createdAt"
+      FROM "Job"
+      WHERE "tenantId" = ${tenantId}
+        AND "deletedAt" IS NULL
+        AND "createdAt" >= ${earliest}
+        AND "createdAt" <= ${latest}
+    )
     SELECT
-      COUNT(*)::bigint AS job_count,
-      COALESCE(SUM(COALESCE(m.total, 0) + COALESCE(l.total, 0)), 0) AS total_cost
-    FROM "Job" j
-    LEFT JOIN (${materialSubquery(tenantId, from, to)}) m ON m."jobId" = j.id
-    LEFT JOIN (${labourSubquery(tenantId, from, to)}) l ON l."jobId" = j.id
-    WHERE j."tenantId" = ${tenantId}
-      AND j."deletedAt" IS NULL
-      AND j."createdAt" >= ${from}
-      AND j."createdAt" <= ${to}
+      (SELECT COUNT(*)::bigint FROM jobs
+        WHERE "createdAt" >= ${curFrom} AND "createdAt" <= ${curTo}) AS cur_job_count,
+      (SELECT COUNT(*)::bigint FROM jobs
+        WHERE "createdAt" >= ${priorFrom} AND "createdAt" <= ${priorTo}) AS prior_job_count,
+      (SELECT COALESCE(SUM(jm."totalCost"), 0)
+        FROM "JobMaterial" jm
+        INNER JOIN jobs j ON j.id = jm."jobId"
+        WHERE j."createdAt" >= ${curFrom} AND j."createdAt" <= ${curTo}) AS cur_materials,
+      (SELECT COALESCE(SUM(jl."totalCost"), 0)
+        FROM "JobLabour" jl
+        INNER JOIN jobs j ON j.id = jl."jobId"
+        WHERE j."createdAt" >= ${curFrom} AND j."createdAt" <= ${curTo}) AS cur_labour,
+      (SELECT COALESCE(SUM(jm."totalCost"), 0)
+        FROM "JobMaterial" jm
+        INNER JOIN jobs j ON j.id = jm."jobId"
+        WHERE j."createdAt" >= ${priorFrom} AND j."createdAt" <= ${priorTo}) AS prior_materials,
+      (SELECT COALESCE(SUM(jl."totalCost"), 0)
+        FROM "JobLabour" jl
+        INNER JOIN jobs j ON j.id = jl."jobId"
+        WHERE j."createdAt" >= ${priorFrom} AND j."createdAt" <= ${priorTo}) AS prior_labour
   `;
 
   const row = rows[0];
   return {
-    jobCount: Number(row?.job_count ?? 0),
-    totalCost: toNumber(row?.total_cost ?? 0),
+    current: {
+      jobCount: Number(row?.cur_job_count ?? 0),
+      totalCost:
+        toNumber(row?.cur_materials ?? 0) + toNumber(row?.cur_labour ?? 0),
+    },
+    prior: {
+      jobCount: Number(row?.prior_job_count ?? 0),
+      totalCost:
+        toNumber(row?.prior_materials ?? 0) + toNumber(row?.prior_labour ?? 0),
+    },
   };
 }
 
@@ -223,23 +280,60 @@ export async function avgDeliveredTurnaroundDays(
   from: Date,
   to: Date,
 ): Promise<number> {
-  const rows = await db.$queryRaw<Array<{ avg_days: number | null }>>`
+  const pair = await avgDeliveredTurnaroundPair(
+    db,
+    tenantId,
+    from,
+    to,
+    from,
+    to,
+  );
+  return pair.current;
+}
+
+/** Current + prior avg turnaround in one round trip. */
+export async function avgDeliveredTurnaroundPair(
+  db: TenantScopedPrisma,
+  tenantId: string,
+  curFrom: Date,
+  curTo: Date,
+  priorFrom: Date,
+  priorTo: Date,
+): Promise<{ current: number; prior: number }> {
+  const earliest =
+    priorFrom.getTime() <= curFrom.getTime() ? priorFrom : curFrom;
+  const latest = priorTo.getTime() >= curTo.getTime() ? priorTo : curTo;
+
+  const rows = await db.$queryRaw<
+    [{ cur_avg: number | null; prior_avg: number | null }]
+  >`
     SELECT
-      AVG(
+      AVG(days) FILTER (
+        WHERE "createdAt" >= ${curFrom} AND "createdAt" <= ${curTo}
+      ) AS cur_avg,
+      AVG(days) FILTER (
+        WHERE "createdAt" >= ${priorFrom} AND "createdAt" <= ${priorTo}
+      ) AS prior_avg
+    FROM (
+      SELECT
+        j."createdAt",
         GREATEST(
           0,
           EXTRACT(EPOCH FROM (j."updatedAt" - j."createdAt")) / 86400.0
-        )
-      ) AS avg_days
-    FROM "Job" j
-    WHERE j."tenantId" = ${tenantId}
-      AND j."deletedAt" IS NULL
-      AND j.status = 'Delivered'
-      AND j."createdAt" >= ${from}
-      AND j."createdAt" <= ${to}
+        ) AS days
+      FROM "Job" j
+      WHERE j."tenantId" = ${tenantId}
+        AND j."deletedAt" IS NULL
+        AND j.status = 'Delivered'
+        AND j."createdAt" >= ${earliest}
+        AND j."createdAt" <= ${latest}
+    ) d
   `;
 
-  return rows[0]?.avg_days ?? 0;
+  return {
+    current: rows[0]?.cur_avg ?? 0,
+    prior: rows[0]?.prior_avg ?? 0,
+  };
 }
 
 export async function sumDeliveredQuoteRevenue(
@@ -248,16 +342,73 @@ export async function sumDeliveredQuoteRevenue(
   from: Date,
   to: Date,
 ): Promise<number> {
-  const result = await db.job.aggregate({
-    where: {
-      tenantId,
-      deletedAt: null,
-      createdAt: { gte: from, lte: to },
-      status: 'Delivered',
-      quoteAmount: { not: null },
-    },
-    _sum: { quoteAmount: true },
-  });
+  const pair = await deliveredQuoteRevenuePair(
+    db,
+    tenantId,
+    from,
+    to,
+    from,
+    to,
+  );
+  return pair.current;
+}
 
-  return toNumber(result._sum.quoteAmount ?? 0);
+/** Current + prior delivered quote revenue + delivered counts in one round trip. */
+export async function deliveredQuoteRevenuePair(
+  db: TenantScopedPrisma,
+  tenantId: string,
+  curFrom: Date,
+  curTo: Date,
+  priorFrom: Date,
+  priorTo: Date,
+): Promise<{
+  current: number;
+  prior: number;
+  currentDelivered: number;
+  priorDelivered: number;
+}> {
+  const earliest =
+    priorFrom.getTime() <= curFrom.getTime() ? priorFrom : curFrom;
+  const latest = priorTo.getTime() >= curTo.getTime() ? priorTo : curTo;
+
+  const rows = await db.$queryRaw<
+    [
+      {
+        cur_revenue: Prisma.Decimal | null;
+        prior_revenue: Prisma.Decimal | null;
+        cur_delivered: bigint;
+        prior_delivered: bigint;
+      },
+    ]
+  >`
+    SELECT
+      COALESCE(SUM("quoteAmount") FILTER (
+        WHERE "createdAt" >= ${curFrom} AND "createdAt" <= ${curTo}
+          AND "quoteAmount" IS NOT NULL
+      ), 0) AS cur_revenue,
+      COALESCE(SUM("quoteAmount") FILTER (
+        WHERE "createdAt" >= ${priorFrom} AND "createdAt" <= ${priorTo}
+          AND "quoteAmount" IS NOT NULL
+      ), 0) AS prior_revenue,
+      COUNT(*) FILTER (
+        WHERE "createdAt" >= ${curFrom} AND "createdAt" <= ${curTo}
+      )::bigint AS cur_delivered,
+      COUNT(*) FILTER (
+        WHERE "createdAt" >= ${priorFrom} AND "createdAt" <= ${priorTo}
+      )::bigint AS prior_delivered
+    FROM "Job"
+    WHERE "tenantId" = ${tenantId}
+      AND "deletedAt" IS NULL
+      AND status = 'Delivered'
+      AND "createdAt" >= ${earliest}
+      AND "createdAt" <= ${latest}
+  `;
+
+  const row = rows[0];
+  return {
+    current: toNumber(row?.cur_revenue ?? 0),
+    prior: toNumber(row?.prior_revenue ?? 0),
+    currentDelivered: Number(row?.cur_delivered ?? 0),
+    priorDelivered: Number(row?.prior_delivered ?? 0),
+  };
 }

@@ -4,7 +4,9 @@ import {
   isSkuLikeLookup,
   itemTextSearchWhere,
   contactTextSearchWhere,
+  normalizeFtsQuery,
   saleTextSearchWhere,
+  shouldUseFtsListSearch,
   supplierTextSearchWhere,
   tokenizeListSearch,
 } from './listSearch';
@@ -102,7 +104,7 @@ describe('listSearch', () => {
     );
   });
 
-  it('uses trigram contains for phrase search', () => {
+  it('uses trigram contains for phrase search (where helper)', () => {
     const where = itemTextSearchWhere('brake pad');
     expect(where?.AND).toHaveLength(2);
     expect(where?.AND[0]?.OR).toEqual(
@@ -112,6 +114,16 @@ describe('listSearch', () => {
         { carModel: { contains: 'brake', mode: 'insensitive' } },
       ]),
     );
+  });
+
+  it('routes multi-word free text to FTS (not SKU/phone/plate)', () => {
+    expect(shouldUseFtsListSearch('brake pad')).toBe(true);
+    expect(shouldUseFtsListSearch('brake pad camry')).toBe(true);
+    expect(shouldUseFtsListSearch('Camry')).toBe(false);
+    expect(shouldUseFtsListSearch('BP-4412')).toBe(false);
+    expect(shouldUseFtsListSearch('08012345678')).toBe(false);
+    expect(shouldUseFtsListSearch('ABC-123XY')).toBe(false);
+    expect(normalizeFtsQuery('  brake   pad  camry ')).toBe('brake pad camry');
   });
 
   it('skips 1-character fuzzy tokens', () => {

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Sale, SaleDetail } from "@vonos/types";
 import { DocumentPreviewModal } from "@/components/organisms/DocumentPreviewModal";
 import {
@@ -16,6 +16,7 @@ import {
   MODAL_REF_STALE_MS,
   modalKeys,
 } from "@/lib/query/modalQueryKeys";
+import { seedSaleViewSideCaches } from "@/lib/query/seedSaleViewCaches";
 import { stripHtmlToText } from "@/lib/utils/stripHtml";
 import {
   VONOS_INVOICE_ADDRESS,
@@ -82,9 +83,14 @@ export function Hq6PrintInvoiceModal({
       ? seedToDetail(initialSale)
       : null;
 
+  const queryClient = useQueryClient();
   const { data: bundle, isError } = useQuery({
     queryKey: modalKeys.saleView(effectiveTenantId, saleId),
-    queryFn: () => getSaleView(saleId!, effectiveTenantId!),
+    queryFn: async () => {
+      const data = await getSaleView(saleId!, effectiveTenantId!);
+      seedSaleViewSideCaches(queryClient, effectiveTenantId!, data);
+      return data;
+    },
     enabled: Boolean(open && effectiveTenantId && saleId),
     staleTime: MODAL_RECORD_STALE_MS,
   });

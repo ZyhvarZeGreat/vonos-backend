@@ -13,4 +13,6 @@ export interface AuthenticatedUser {
    * Present when the auth layer resolves TenantRole permissions (cached).
    */
   tenantRolePermissions?: string[] | null;
+  /** Assigned TenantRole display name (e.g. HR & OPERATIONS MANAGER). */
+  tenantRoleName?: string | null;
 }

@@ -106,7 +106,7 @@ export function Hq6PaymentsListView() {
     queryKey: ["payments", tenantId, unlinkedOnly ? "unlinked" : "all"],
     enabled: Boolean(tenantId),
     search,
-    searchMode: "server",
+    searchMode: "hybrid",
     filters: {
       ...apiFilters,
       type: typeFilter || undefined,

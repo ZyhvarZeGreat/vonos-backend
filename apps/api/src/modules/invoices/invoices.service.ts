@@ -12,7 +12,7 @@ import {
   withListPageCache,
 } from '../../common/utils/listPageCache';
 import { toIso, toNumber } from '../../common/utils/serializers';
-import { tokenizedSearchWhere } from '../../common/utils/listSearch';
+import { invoiceTextSearchWhere } from '../../common/utils/listSearch';
 
 @Injectable()
 export class InvoicesService {
@@ -126,11 +126,7 @@ export class InvoicesService {
               },
             }
           : {}),
-        // Trigram-backed only (Invoice_reference/contactName_trgm_idx).
-        ...(tokenizedSearchWhere(filters.search, (_token, contains) => [
-          { reference: contains },
-          { contactName: contains },
-        ]) ?? {}),
+        ...(invoiceTextSearchWhere(filters.search) ?? {}),
         ...(pagination.where ?? {}),
       },
       orderBy: [{ documentDate: 'desc' }, { id: 'desc' }],

@@ -10,10 +10,7 @@ import {
   withListPageCache,
 } from '../../common/utils/listPageCache';
 import { toIso, toNumber } from '../../common/utils/serializers';
-import {
-  relationStringOr,
-  tokenizedSearchWhere,
-} from '../../common/utils/listSearch';
+import { appointmentTextSearchWhere } from '../../common/utils/listSearch';
 
 function serializeAppointment(row: {
   id: string;
@@ -112,15 +109,7 @@ export class AppointmentsService {
               },
             }
           : {}),
-        ...(tokenizedSearchWhere(filters.search, (_token, contains) => [
-          { stylistName: contains },
-          { serviceName: contains },
-          { notes: contains },
-          { status: contains },
-          { locationCode: contains },
-          relationStringOr('customer', 'name', contains),
-          relationStringOr('customer', 'phone', contains),
-        ]) ?? {}),
+        ...(appointmentTextSearchWhere(filters.search) ?? {}),
         ...(pagination.where ?? {}),
       },
       include: { customer: { select: { name: true } } },

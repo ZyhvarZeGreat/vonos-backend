@@ -1914,7 +1914,7 @@ export function AddSaleForm({
               <div className="hq6-form-file">
                 <input
                   type="file"
-                  accept=".pdf,.csv,.zip,.doc,.docx,.jpeg,.jpg,.png"
+                    accept=".pdf,.csv,.zip,.doc,.docx,.jpeg,.jpg,.png,.avif"
                 />
               </div>
             </label>

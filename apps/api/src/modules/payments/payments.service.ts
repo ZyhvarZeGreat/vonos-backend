@@ -16,8 +16,8 @@ import type { PaginatedList } from '../../common/utils/paginatedList';
 import { syncSalePaymentAccountCredit } from '../../common/utils/recordPaymentAccountTxn';
 import { toIso, toNumber } from '../../common/utils/serializers';
 import {
-  relationStringOr,
-  tokenizedSearchWhere,
+  paymentTextSearchWhere,
+  accountTransactionTextSearchWhere,
 } from '../../common/utils/listSearch';
 
 const BULK_LINK_MAX = 500;
@@ -86,15 +86,7 @@ export class PaymentsService {
             },
           }
         : {}),
-      ...(tokenizedSearchWhere(filters.search, (_token, contains) => [
-        { paymentRefNo: contains },
-        { note: contains },
-        { method: contains },
-        { paymentFor: contains },
-        { createdByName: contains },
-        relationStringOr('account', 'name', contains),
-        relationStringOr('sale', 'reference', contains),
-      ]) ?? {}),
+      ...(paymentTextSearchWhere(filters.search) ?? {}),
     };
   }
 
@@ -406,11 +398,7 @@ export class PaymentsService {
               },
             }
           : {}),
-        ...(tokenizedSearchWhere(filters.search, (_token, contains) => [
-          { note: contains },
-          { refNo: contains },
-          { paymentMethod: contains },
-        ]) ?? {}),
+        ...(accountTransactionTextSearchWhere(filters.search) ?? {}),
         ...(pagination.where ?? {}),
       },
       orderBy: [{ operationDate: 'desc' }, { id: 'desc' }],

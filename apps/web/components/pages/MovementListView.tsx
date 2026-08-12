@@ -122,12 +122,17 @@ function MovementListViewBody({
     enabled: Boolean(tenantId),
     filters: apiFilters,
     search,
+    searchMode: "hybrid",
     defaultSort: { sortBy: "updatedAt", sortDir: "desc" },
     fetchPage: (cursor, limit, listSort, opts) =>
       getStockMovementsPage(
         tenantId!,
         withListSort(
-          { ...apiFilters, includeSummary: opts?.includeSummary },
+          {
+            ...apiFilters,
+            search: opts?.search,
+            includeSummary: opts?.includeSummary,
+          },
           listSort,
         ),
         cursor,

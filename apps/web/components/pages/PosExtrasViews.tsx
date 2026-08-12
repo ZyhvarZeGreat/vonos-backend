@@ -183,7 +183,12 @@ function DiscountsListViewBody() {
   } = useServerListPage<Discount>({
     queryKey: ["discounts", tenantId],
     enabled: Boolean(tenantId),
-    fetchPage: (cursor, limit, _sort, opts) => getDiscountsPage(tenantId!, cursor, limit, { includeSummary: opts?.includeSummary }),
+    searchMode: "hybrid",
+    fetchPage: (cursor, limit, _sort, opts) =>
+      getDiscountsPage(tenantId!, cursor, limit, {
+        search: opts?.search,
+        includeSummary: opts?.includeSummary,
+      }),
     getCursor: (row) => nameListCursor(row),
   });
 
@@ -358,7 +363,12 @@ function VariationsListViewBody() {
   } = useServerListPage<VariationTemplate>({
     queryKey: ["variations", tenantId],
     enabled: Boolean(tenantId),
-    fetchPage: (cursor, limit, _sort, opts) => getVariationsPage(tenantId!, cursor, limit, { includeSummary: opts?.includeSummary }),
+    searchMode: "hybrid",
+    fetchPage: (cursor, limit, _sort, opts) =>
+      getVariationsPage(tenantId!, cursor, limit, {
+        search: opts?.search,
+        includeSummary: opts?.includeSummary,
+      }),
     getCursor: (row) => nameListCursor(row),
   });
 

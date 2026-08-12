@@ -22,15 +22,25 @@ export function Hq6ActionsMenu({
   items,
   label = "Actions",
   className,
+  onOpenChange,
 }: {
   items: Hq6ActionItem[];
   label?: string;
   className?: string;
+  /** Fired when the menu opens — warm View / Pay prefetch before click. */
+  onOpenChange?: (open: boolean) => void;
 }) {
   const [open, setOpen] = useState(false);
   const anchorRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const menuId = useId();
+  const onOpenChangeRef = useRef(onOpenChange);
+  onOpenChangeRef.current = onOpenChange;
+
+  const setMenuOpen = (next: boolean) => {
+    setOpen(next);
+    onOpenChangeRef.current?.(next);
+  };
 
   useEffect(() => {
     if (!open) return;
@@ -42,10 +52,10 @@ export function Hq6ActionsMenu({
       ) {
         return;
       }
-      setOpen(false);
+      setMenuOpen(false);
     };
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setOpen(false);
+      if (event.key === "Escape") setMenuOpen(false);
     };
     document.addEventListener("mousedown", onDoc);
     document.addEventListener("keydown", onKey);
@@ -53,10 +63,16 @@ export function Hq6ActionsMenu({
       document.removeEventListener("mousedown", onDoc);
       document.removeEventListener("keydown", onKey);
     };
+    // setMenuOpen closes via latest onOpenChangeRef — intentional.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only rebind while open
   }, [open]);
 
   return (
-    <div ref={anchorRef} className={cn("relative inline-block", className)}>
+    <div
+      ref={anchorRef}
+      className={cn("relative inline-block", className)}
+      onMouseEnter={() => onOpenChangeRef.current?.(true)}
+    >
       <button
         type="button"
         className="tw-dw-btn tw-dw-btn-xs tw-dw-btn-outline tw-dw-btn-info hq6-actions-toggle"
@@ -65,7 +81,7 @@ export function Hq6ActionsMenu({
         aria-controls={menuId}
         onClick={(e) => {
           e.stopPropagation();
-          setOpen((v) => !v);
+          setMenuOpen(!open);
         }}
       >
         {label}
@@ -100,7 +116,7 @@ export function Hq6ActionsMenu({
                     item.danger && "hq6-actions-menu-item-danger",
                   )}
                   onClick={() => {
-                    setOpen(false);
+                    setMenuOpen(false);
                     item.onClick();
                   }}
                 >

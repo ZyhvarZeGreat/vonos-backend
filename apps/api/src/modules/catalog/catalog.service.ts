@@ -21,9 +21,44 @@ import {
 import { serializeItem } from '../items/items.mapper';
 import { applyLastPurchasePrices } from '../../common/utils/lastPurchasePrices';
 import {
+  fetchItemFtsIds,
   itemTextSearchWhere,
   relationStringOr,
+  shouldUseFtsListSearch,
 } from '../../common/utils/listSearch';
+
+/** List columns only — never hydrate full Item + unused relations. */
+const CATALOG_LIST_SELECT = {
+  id: true,
+  tenantId: true,
+  sku: true,
+  name: true,
+  category: true,
+  subCategory: true,
+  description: true,
+  imageUrl: true,
+  barcodeType: true,
+  unit: true,
+  weight: true,
+  carModel: true,
+  enableImei: true,
+  preparationMinutes: true,
+  quantity: true,
+  binLocation: true,
+  locationCode: true,
+  reorderPoint: true,
+  costPrice: true,
+  sellPrice: true,
+  currency: true,
+  status: true,
+  availableForRetail: true,
+  brandId: true,
+  createdByUserId: true,
+  createdByName: true,
+  createdAt: true,
+  updatedAt: true,
+  brand: { select: { name: true } },
+} as const;
 
 @Injectable()
 export class CatalogService {
@@ -70,20 +105,39 @@ export class CatalogService {
     });
   }
 
-  private catalogBaseWhere(
+  private async catalogBaseWhere(
     tenantIds: string[],
     filters: ItemFilters,
     sharedRetailOnly: boolean,
   ) {
-    const searchWhere = filters.search
-      ? itemTextSearchWhere(filters.search, {
-          extraFuzzyFields: (_token, contains) => [
-            { category: contains },
-            { description: contains },
-            relationStringOr('brand', 'name', contains),
-          ],
-        })
-      : undefined;
+    let searchWhere:
+      | { id: { in: string[] } }
+      | ReturnType<typeof itemTextSearchWhere>
+      | undefined;
+    if (filters.search && shouldUseFtsListSearch(filters.search)) {
+      const ftsIds = await fetchItemFtsIds(
+        this.prisma,
+        { in: tenantIds },
+        filters.search,
+      );
+      searchWhere =
+        ftsIds.length > 0
+          ? { id: { in: ftsIds } }
+          : itemTextSearchWhere(filters.search, {
+              extraFuzzyFields: (_token, contains) => [
+                { category: contains },
+                relationStringOr('brand', 'name', contains),
+              ],
+            });
+    } else if (filters.search) {
+      searchWhere = itemTextSearchWhere(filters.search, {
+        // category has btree; skip description (no trigram → seq scan).
+        extraFuzzyFields: (_token, contains) => [
+          { category: contains },
+          relationStringOr('brand', 'name', contains),
+        ],
+      });
+    }
     const locationWhere = filters.locationCode
       ? {
           OR: [
@@ -157,7 +211,7 @@ export class CatalogService {
     return withListPageCache(
       this.cache,
       requestTenantId,
-      'catalog:v8',
+      'catalog:v9',
       filterKey,
       () => this.listUncached(filters, requestTenantId),
     );
@@ -201,7 +255,7 @@ export class CatalogService {
       limit,
       sortValueType: sort.sortValueType,
     });
-    const baseWhere = this.catalogBaseWhere(
+    const baseWhere = await this.catalogBaseWhere(
       tenantIds,
       filters,
       sharedRetailOnly,
@@ -219,7 +273,7 @@ export class CatalogService {
           ...baseWhere,
           ...(pagination.where ?? {}),
         },
-        include: { brand: { select: { name: true } } },
+        select: CATALOG_LIST_SELECT,
         orderBy: [
           { [sort.sortField]: sort.sortDir },
           { id: sort.sortDir },
@@ -298,7 +352,7 @@ export async function warmDefaultCatalogListPages(
         await withListPageCache(
           cache,
           tenantId,
-          'catalog:v8',
+          'catalog:v9',
           filterKey,
           async () => {
             const baseWhere = {
@@ -308,7 +362,7 @@ export async function warmDefaultCatalogListPages(
             const [rows, totalCount] = await Promise.all([
               prisma.item.findMany({
                 where: baseWhere,
-                include: { brand: { select: { name: true } } },
+                select: CATALOG_LIST_SELECT,
                 orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
                 take: limit,
               }),

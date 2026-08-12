@@ -247,13 +247,13 @@ export function Hq6RolesListView() {
     queryKey: ["tenant-roles", tenantId],
     queryFn: () => getTenantRoles(tenantId!),
     enabled: Boolean(tenantId),
-    staleTime: 5 * 60_000,
-    placeholderData: (previous) => previous,
+    staleTime: 30_000,
+    refetchOnMount: "always",
   });
 
-  // One-time: push browser-local roles into DB (VAG only — import is super_admin).
+  // One-time: push browser-local roles into DB (portal users with roles.create).
   useEffect(() => {
-    if (!tenantId || !tenantCode || migratedLocal || !isVag) return;
+    if (!tenantId || !tenantCode || migratedLocal || !canCreateRole) return;
     const local = loadStoredRoles(tenantCode);
     const hasCustom = local.some((r) => r.permissions.length > 0);
     if (!hasCustom) {
@@ -282,7 +282,7 @@ export function Hq6RolesListView() {
         setMigratedLocal(true);
       }
     })();
-  }, [tenantId, tenantCode, migratedLocal, queryClient, isVag]);
+  }, [tenantId, tenantCode, migratedLocal, queryClient, canCreateRole]);
 
   const filtered = useMemo(() => {
     const rows = filterRowsBySearch(roles, search);

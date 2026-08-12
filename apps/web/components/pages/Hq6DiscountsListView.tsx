@@ -151,7 +151,13 @@ export function Hq6DiscountsListView() {
     queryKey: ["discounts", tenantId, "hq6"],
     enabled: Boolean(tenantId),
     defaultPageSize: HQ6_TABLE_PAGE_SIZE,
-    fetchPage: (cursor, limit, _sort, opts) => getDiscountsPage(tenantId!, cursor, limit, { includeSummary: opts?.includeSummary }),
+    search: localSearch,
+    searchMode: "hybrid",
+    fetchPage: (cursor, limit, _sort, opts) =>
+      getDiscountsPage(tenantId!, cursor, limit, {
+        search: opts?.search,
+        includeSummary: opts?.includeSummary,
+      }),
     getCursor: (row) => chronoListCursor(row),
   });
 
@@ -350,8 +356,8 @@ export function Hq6DiscountsListView() {
     .map((c) => ({ key: c.key, label: String(c.header) }));
 
   const filtered = useMemo(
-    () => matchSearchRows(items, localSearch, ["name"]),
-    [items, localSearch],
+    () => items,
+    [items],
   );
 
   const exportList = useListExport();

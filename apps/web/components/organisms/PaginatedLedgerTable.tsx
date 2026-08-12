@@ -53,15 +53,18 @@ export function PaginatedLedgerTable<T extends LedgerEntry | LedgerListRow>({
       to: to ?? null,
     },
     search: search ?? "",
+    searchMode: "hybrid",
     prefetchPagesAhead: 5,
     deferSummary: false,
-    fetchPage: async (cursor, limit) => {
-      const filters: LedgerQueryFilters = { limit };
+    fetchPage: async (cursor, limit, _sort, opts) => {
+      const filters: LedgerQueryFilters = {
+        limit,
+        search: opts?.search,
+      };
       if (type) filters.type = type;
       if (category) filters.category = category;
       if (from) filters.from = from;
       if (to) filters.to = to;
-      // Search is local match-sorter via useServerListPage — never send to API.
       if (groupMode) {
         const result = await getGroupLedgerEntriesPage(filters, cursor, limit);
         return result as { items: T[]; hasMore: boolean; pageSize: number };

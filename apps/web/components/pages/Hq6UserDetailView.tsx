@@ -926,7 +926,7 @@ export function Hq6UserDetailView({
 
   /* ——— Edit / Create form (manage_user/edit|create.blade.php) ——— */
   if (isEdit) {
-    return (
+  return (
       <div className="hq6-page hq6-user-form-page">
         <section className="content-header">
           <h1 className="tw-text-xl md:tw-text-3xl tw-font-bold tw-text-black">
@@ -1643,7 +1643,7 @@ export function Hq6UserDetailView({
                             is the home entity for role &amp; payroll. Multiple
                             enables the header location switcher and shows this
                             user on each assigned entity&apos;s Users list (VW,
-                            VM→VA, VP, VISP, VSP, VC, VS, VKW).
+                            VM→VA, VP, VISP, VSP; operations: VC, VS, VKW).
                           </p>
                         </div>
                       </div>
@@ -1662,14 +1662,14 @@ export function Hq6UserDetailView({
                 >
                   {isCreate ? "Save" : "Update"}
                 </Hq6BusyButton>{" "}
-                <button
-                  type="button"
+        <button
+          type="button"
                   className="tw-dw-btn"
                   disabled={saving}
                   onClick={() => goToList("Redirecting to users…")}
-                >
+        >
                   Cancel
-                </button>
+        </button>
               </div>
             </div>
           </form>
@@ -1733,13 +1733,13 @@ export function Hq6UserDetailView({
             </div>
           </dl>
 
-          <button
-            type="button"
+            <button
+              type="button"
             className="hq6-user-show-edit-btn"
-            onClick={() => router.push(`${detailPath(recordId)}/edit`)}
-          >
-            Edit
-          </button>
+              onClick={() => router.push(`${detailPath(recordId)}/edit`)}
+            >
+              Edit
+            </button>
         </div>
 
         <div className="hq6-user-show-card hq6-user-show-tabs-card">
@@ -1751,9 +1751,9 @@ export function Hq6UserDetailView({
                 { id: "activities" as const, label: "Activities" },
               ] as const
             ).map((tab) => (
-              <button
+            <button
                 key={tab.id}
-                type="button"
+              type="button"
                 className={cn(
                   "hq6-user-show-tab",
                   activeTab === tab.id && "hq6-user-show-tab-active",
@@ -1761,7 +1761,7 @@ export function Hq6UserDetailView({
                 onClick={() => setActiveTab(tab.id)}
               >
                 {tab.label}
-              </button>
+          </button>
             ))}
           </nav>
 
@@ -1787,7 +1787,7 @@ export function Hq6UserDetailView({
                   <strong>Status:</strong>{" "}
                   {user?.status === "active" ? "Active" : "Inactive"}
                 </p>
-              </div>
+          </div>
             ) : null}
             {activeTab === "docs" ? (
               <p className="hq6-user-show-empty">No documents or notes.</p>
@@ -1796,8 +1796,8 @@ export function Hq6UserDetailView({
               <p className="hq6-user-show-empty">No activity logged yet.</p>
             ) : null}
           </div>
-        </div>
-      </div>
+          </div>
+          </div>
 
       <div className="hq6-user-show-footer">
         <button
@@ -1807,7 +1807,7 @@ export function Hq6UserDetailView({
         >
           Back to users
         </button>
-      </div>
+          </div>
 
       <Hq6ConfirmModal
         open={deleteOpen}

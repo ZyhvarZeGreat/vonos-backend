@@ -48,14 +48,16 @@ export function LoginForm() {
   // Already signed in (bookmark / back) — leave login without waiting on AuthGuard.
   useEffect(() => {
     if (!hydrated || !isAuthenticated || !role) return;
+    const tenantRoleName = useAuthStore.getState().tenantRoleName;
     const redirect = searchParams.get("redirect");
     const requested =
       redirect && redirect.startsWith("/") && !redirect.startsWith("/login")
         ? redirect
-        : getPostLoginPath(role, tenantId);
+        : getPostLoginPath(role, tenantId, tenantRoleName);
     const destination = warmPostLoginDestination(queryClient, {
       role,
       tenantId,
+      tenantRoleName,
       destination: requested,
     });
     router.prefetch(destination);
@@ -91,11 +93,16 @@ export function LoginForm() {
     const requested =
       redirect && redirect.startsWith("/") && !redirect.startsWith("/login")
         ? redirect
-        : getPostLoginPath(result.user.role, result.user.tenantId);
+        : getPostLoginPath(
+            result.user.role,
+            result.user.tenantId,
+            result.user.tenantRoleName,
+          );
 
     const destination = warmPostLoginDestination(queryClient, {
       role: result.user.role,
       tenantId: result.user.tenantId,
+      tenantRoleName: result.user.tenantRoleName,
       destination: requested,
     });
 

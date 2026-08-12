@@ -80,8 +80,11 @@ export function Hq6PaymentAccountsListView() {
     queryKey: ["payment-accounts", tenantId, "hq6"],
     enabled: Boolean(tenantId),
     defaultPageSize: HQ6_TABLE_PAGE_SIZE,
+    search: localSearch,
+    searchMode: "hybrid",
     fetchPage: (cursor, limit, _sort, opts) =>
       getPaymentAccountsPage(tenantId!, cursor, limit, {
+        search: opts?.search,
         includeSummary: opts?.includeSummary,
       }),
     getCursor: (row) => chronoListCursor(row),
@@ -111,13 +114,8 @@ export function Hq6PaymentAccountsListView() {
     let rows = items;
     if (statusFilter === "active") rows = rows.filter((row) => !row.isClosed);
     if (statusFilter === "closed") rows = rows.filter((row) => row.isClosed);
-    return matchSearchRows(rows, localSearch, [
-      "name",
-      "accountNumber",
-      "accountType",
-      "note",
-    ]);
-  }, [items, localSearch, statusFilter]);
+    return rows;
+  }, [items, statusFilter]);
 
   const accountTypes = useMemo(() => {
     const map = new Map<string, number>();

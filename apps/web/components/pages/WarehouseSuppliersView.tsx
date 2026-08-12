@@ -191,6 +191,7 @@ function WarehouseSuppliersViewBody() {
     queryKey: ["suppliers", tenantId],
     enabled: Boolean(tenantId),
     search,
+    searchMode: "hybrid",
     filters: isHq6
       ? hq6ApiFilters
       : {
@@ -204,6 +205,7 @@ function WarehouseSuppliersViewBody() {
           : {
               status: activeTab === "active" ? "active" : undefined,
             }),
+        search: opts?.search,
         includeSummary: opts?.includeSummary,
       }, { signal: opts?.signal }),
     getCursor: (row) => nameListCursor(row),

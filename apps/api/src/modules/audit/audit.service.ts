@@ -20,6 +20,11 @@ export interface AuditLogInput {
 
 @Injectable({ scope: Scope.REQUEST })
 export class AuditService {
+  private actorPromise: Promise<{
+    userId: string;
+    name: string;
+  } | null> | null = null;
+
   constructor(
     private readonly tenantDb: TenantDbService,
     private readonly prisma: PrismaService,
@@ -135,6 +140,8 @@ export class AuditService {
       stockMovement: 'Stock movement',
       job: 'Job',
       sale: 'Sale',
+      payment: 'Payment',
+      expense: 'Expense',
       supplier: 'Supplier',
       appointment: 'Appointment',
       ledgerEntry: 'Ledger entry',
@@ -153,14 +160,19 @@ export class AuditService {
     userId: string;
     name: string;
   } | null> {
-    const userId = this.tenantDb.getAuthUserId();
-    if (!userId) return null;
-    const user = await this.prisma.user.findUnique({
-      where: { id: userId },
-      select: { id: true, name: true },
-    });
-    if (!user) return null;
-    return { userId: user.id, name: user.name };
+    if (!this.actorPromise) {
+      this.actorPromise = (async () => {
+        const userId = this.tenantDb.getAuthUserId();
+        if (!userId) return null;
+        const user = await this.prisma.user.findUnique({
+          where: { id: userId },
+          select: { id: true, name: true },
+        });
+        if (!user) return null;
+        return { userId: user.id, name: user.name };
+      })();
+    }
+    return this.actorPromise;
   }
 
   private serialize(row: {

@@ -3,6 +3,7 @@
 import { useMemo } from "react";
 import type { Role } from "@vonos/types";
 import {
+  canAccessVagPortal,
   isFinancePermissionKey,
   isFullAccessTenantRole,
 } from "@vonos/types";
@@ -14,14 +15,14 @@ import {
 
 /**
  * Fallback only when the user has no TenantRole permission keys yet.
- * Tenant JWT `admin` and locked Admin roles always get full access
- * (except VAG-only role-matrix edits).
+ * Tenant JWT `admin` and locked Admin roles always get full access.
  * Finance keys are never implied from JWT staff/manager/viewer — only from
  * an assigned TenantRole matrix (Accountant by default, or explicit checkbox).
+ * Role-matrix keys (roles.create/update/delete) also require an explicit
+ * TenantRole checkbox (or Admin / VAG full access).
  */
 function jwtImpliesPermission(role: Role | null, key: string): boolean {
   if (!role) return false;
-  // Role matrix editing is VAG-only — never grant via JWT fallback.
   if (
     key === "roles.create" ||
     key === "roles.update" ||
@@ -85,9 +86,9 @@ export interface AppPermissionsApi {
     keys: string[],
     kind?: PrivilegeDenialKind,
   ) => boolean;
-  /** VAG super_admin — only principal that may edit role definitions. */
+  /** VAG portal (super_admin or HR TenantRole). */
   isVag: boolean;
-  /** Full access: VAG, JWT admin, or locked Admin TenantRole. */
+  /** Full access: VAG without limited role, JWT admin, or locked Admin TenantRole. */
   isFullAccess: boolean;
   /** True when the session has concrete TenantRole permission keys. */
   hasRolePermissions: boolean;
@@ -98,7 +99,7 @@ export interface AppPermissionsApi {
 /**
  * Entity-agnostic permission checks from the logged-in user's DB TenantRole.
  * Same rules on VA / VW / VISP / … — only the assigned role's checkboxes matter
- * for staff/manager; Admin / VAG always pass (except Roles matrix = VAG only).
+ * for staff/manager; Admin / unrestricted VAG always pass.
  */
 export function useAppPermissions(): AppPermissionsApi {
   const role = useAuthStore((s) => s.role);
@@ -107,7 +108,7 @@ export function useAppPermissions(): AppPermissionsApi {
   const roleName = useAuthStore((s) => s.tenantRoleName);
 
   return useMemo(() => {
-    const isVag = role === "super_admin";
+    const isVag = canAccessVagPortal({ role, tenantRoleName: roleName });
     const hasRolePermissions =
       permissions.length > 0 && !permissions.includes("*");
     const isFullAccessRole =
@@ -121,21 +122,14 @@ export function useAppPermissions(): AppPermissionsApi {
             name: roleName,
           }),
       );
-    // VAG portal access (super_admin) is separate from full permission grant.
-    // A VAG user assigned a concrete TenantRole (e.g. HR) is limited to that
+    // VAG portal access is separate from full permission grant.
+    // A VAG/HR user assigned a concrete TenantRole is limited to that
     // role's checkboxes — Finance stays off unless Financial dashboard is ticked.
     const isFullAccess =
-      isFullAccessRole || (isVag && !hasRolePermissions);
+      isFullAccessRole ||
+      (isVag && !hasRolePermissions && role === "super_admin");
 
     const can = (key: string): boolean => {
-      // Hard security rule: only VAG edits the Roles matrix.
-      if (
-        key === "roles.create" ||
-        key === "roles.update" ||
-        key === "roles.delete"
-      ) {
-        return isVag;
-      }
       if (isFullAccess) return true;
       // Assigned role with checkboxes → those keys only.
       if (hasRolePermissions) return permissions.includes(key);

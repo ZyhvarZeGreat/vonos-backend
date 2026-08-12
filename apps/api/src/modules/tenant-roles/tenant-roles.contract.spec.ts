@@ -25,19 +25,20 @@ describe('TenantRolesService shared catalog contract', () => {
       src.indexOf('async create('),
       src.indexOf('async update('),
     );
-    expect(create).toContain('await this.propagateRoleToOtherTenants');
+    // Fire-and-forget so save returns before peer tenants finish.
+    expect(create).toContain('void this.propagateRoleToOtherTenants');
 
     const update = src.slice(
       src.indexOf('async update('),
       src.indexOf('async remove('),
     );
-    expect(update).toContain('await this.propagateRoleToOtherTenants');
+    expect(update).toContain('void this.propagateRoleToOtherTenants');
 
     const remove = src.slice(
       src.indexOf('async remove('),
       src.indexOf('async importRoles('),
     );
-    expect(remove).toContain('await this.propagateRoleDeleteToOtherTenants');
+    expect(remove).toContain('void this.propagateRoleDeleteToOtherTenants');
   });
 
   it('syncs the shared catalog on list and skips locked Admin peers', () => {
@@ -57,14 +58,18 @@ describe('TenantRolesService shared catalog contract', () => {
     expect(src).toContain('FINANCE_ROLE_DEFAULT_PERMISSIONS');
   });
 
-  it('gates mutating endpoints to super_admin on the controller', () => {
+  it('gates mutating endpoints with roles.* permission checks', () => {
     const controller = readFileSync(
       join(__dirname, 'tenant-roles.controller.ts'),
       'utf8',
     );
-    expect(controller).toContain("@Roles('super_admin')");
-    expect(controller).toContain('create(@Body()');
-    expect(controller).toContain('update(@Param');
-    expect(controller).toContain('remove(@Param');
+    expect(controller).toContain("roles.create");
+    expect(controller).toContain("roles.update");
+    expect(controller).toContain("roles.delete");
+    expect(controller).toContain('userHasPermission');
+    expect(controller).not.toContain("VAG only");
+    expect(controller).toContain('create(');
+    expect(controller).toContain('update(');
+    expect(controller).toContain('remove(');
   });
 });

@@ -46,9 +46,21 @@ describe("hasPermission (AGENTS.md role matrix)", () => {
 });
 
 describe("hasHq6PermissionKey", () => {
-  it("reserves role matrix edits for super_admin", () => {
+  it("grants role matrix edits from TenantRole permissions", () => {
     expect(
       hasHq6PermissionKey("roles.update", { fallbackRole: "admin" }),
+    ).toBe(true);
+    expect(
+      hasHq6PermissionKey("roles.update", {
+        fallbackRole: "manager",
+        tenantRolePermissions: ["roles.update"],
+      }),
+    ).toBe(true);
+    expect(
+      hasHq6PermissionKey("roles.update", {
+        fallbackRole: "manager",
+        tenantRolePermissions: ["user.view"],
+      }),
     ).toBe(false);
     expect(
       hasHq6PermissionKey("roles.update", { fallbackRole: "super_admin" }),

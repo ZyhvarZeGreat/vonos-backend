@@ -21,7 +21,7 @@ import {
   optimisticTempId,
   prependEntityInQueries,
 } from "@/lib/query/optimistic";
-import { AUTOS_GROUP_ENTITIES } from "@/lib/registries/tenants";
+import { AUTOS_GROUP_ENTITIES, OPERATIONS_GROUP_ENTITIES } from "@/lib/registries/tenants";
 import { cn } from "@/lib/utils/cn";
 import {
   firstValidationError,
@@ -105,7 +105,7 @@ export function InviteUserModal({
     if (allTenants && isSuperAdmin) {
       options.push({ value: VAG_ENTITY_VALUE, label: "Vonos Autos Group (VAG)" });
     }
-    for (const entity of AUTOS_GROUP_ENTITIES) {
+    for (const entity of [...AUTOS_GROUP_ENTITIES, ...OPERATIONS_GROUP_ENTITIES]) {
       options.push({
         value: entity.tenantId,
         label: `${entity.name} (${entity.code})`,
@@ -140,6 +140,8 @@ export function InviteUserModal({
     if (!resolvedTenantId) return null;
     return (
       AUTOS_GROUP_ENTITIES.find((e) => e.tenantId === resolvedTenantId)?.code ??
+      OPERATIONS_GROUP_ENTITIES.find((e) => e.tenantId === resolvedTenantId)
+        ?.code ??
       null
     );
   }, [resolvedTenantId]);

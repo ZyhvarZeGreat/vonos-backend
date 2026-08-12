@@ -10,6 +10,7 @@ import { Eye, Mail, Pencil, Plus, Printer, Trash2 } from "lucide-react";
 import { Hq6ConfirmModal } from "@/components/hq6/Hq6ConfirmModal";
 import { Hq6BusyButton } from "@/components/hq6/Hq6BusyButton";
 import { Hq6Field, Hq6Modal } from "@/components/hq6/Hq6Modal";
+import { Hq6AuditTrail } from "@/components/hq6/Hq6AuditTrail";
 import {
   deleteSalePayment,
   getSalePayments,
@@ -706,6 +707,13 @@ export function Hq6ViewPaymentsModal({
             </table>
           </div>
         ) : null}
+        <Hq6AuditTrail
+          entityType={kind === "sale" ? "sale" : "stockMovement"}
+          entityId={recordId}
+          title="Record activity"
+          enabled={open}
+          className="print:hidden"
+        />
       </Hq6Modal>
 
       <Hq6Modal
@@ -808,7 +816,7 @@ export function Hq6ViewPaymentsModal({
             <input
               className="hq6-modal-input"
               type="file"
-              accept=".pdf,.csv,.zip,.doc,.docx,.jpeg,.jpg,.png"
+              accept=".pdf,.csv,.zip,.doc,.docx,.jpeg,.jpg,.png,.avif"
               onChange={(e) =>
                 setEditDocName(e.target.files?.[0]?.name ?? "")
               }
@@ -816,7 +824,7 @@ export function Hq6ViewPaymentsModal({
             <p className="mt-1 text-xs text-[#6b7280]">
               {editDocName
                 ? `Selected: ${editDocName}`
-                : "Previously uploaded file will be replaced. Allowed File: .pdf, .csv, .zip, .doc, .docx, .jpeg, .jpg, .png"}
+                : "Previously uploaded file will be replaced. Allowed File: .pdf, .csv, .zip, .doc, .docx, .jpeg, .jpg, .png, .avif"}
             </p>
           </Hq6Field>
 
@@ -947,6 +955,12 @@ export function Hq6ViewPaymentsModal({
                 ) : null}
               </div>
             </div>
+            <Hq6AuditTrail
+              entityType="payment"
+              entityId={viewing.id}
+              title="Payment activity"
+              enabled={Boolean(viewing)}
+            />
           </div>
         ) : null}
       </Hq6Modal>
