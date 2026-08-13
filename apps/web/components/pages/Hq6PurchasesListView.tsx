@@ -617,7 +617,8 @@ export function Hq6PurchasesListView() {
             tenantId={tenantId}
             onClose={() => setPayTarget(null)}
             onPaid={() => {
-              void queryClient.invalidateQueries({ queryKey: ["stock-movements"] });
+              // Do not invalidate list caches here — Pay modal already patched
+              // the row. A refetch can race server list cache and flip Paid → Due.
               void queryClient.invalidateQueries({ queryKey: ["suppliers"] });
               if (payTarget) {
                 void queryClient.invalidateQueries({

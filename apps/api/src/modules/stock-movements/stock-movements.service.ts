@@ -17,7 +17,10 @@ import { shouldAdjustLocalItemStock } from '@vonos/types';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { TenantDbService } from '../../common/prisma/tenant-db.service';
 import { CacheService } from '../../common/cache/cache.service';
-import { invalidateTenantDashboardCache } from '../../common/cache/cacheInvalidation';
+import {
+  invalidateTenantDashboardCache,
+  invalidateTenantListCache,
+} from '../../common/cache/cacheInvalidation';
 import { applyDailyFinanceDelta } from '../../common/utils/dailyFinanceRollup';
 import { refreshSupplierPurchaseRollups } from '../../common/utils/supplierRollups';
 import {
@@ -964,7 +967,13 @@ export class StockMovementsService {
     if (supplierId) {
       await refreshSupplierPurchaseRollups(this.tenantDb.db, supplierId);
     }
-    void invalidateTenantDashboardCache(this.cache, tenantId);
+    // Await list bust before pay APIs return — otherwise React Query refetch
+    // can hit a stale purchases page and flip Paid → Due.
+    await invalidateTenantDashboardCache(this.cache, tenantId);
+    await invalidateTenantListCache(this.cache, tenantId, [
+      'stock-movements:v2',
+      'stock-movements',
+    ]);
   }
 
   /**

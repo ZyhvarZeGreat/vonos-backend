@@ -40,7 +40,8 @@ export class CacheService implements OnModuleInit {
     string,
     { epoch: number; version: number; expiresAt: number }
   >();
-  private static readonly LIST_KEY_META_TTL_MS = 60_000;
+  /** Keep short — long memos let other API instances serve pre-bump list keys. */
+  private static readonly LIST_KEY_META_TTL_MS = 2_000;
 
   onModuleInit() {
     const url = process.env.UPSTASH_REDIS_REST_URL;

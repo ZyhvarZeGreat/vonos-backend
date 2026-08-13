@@ -251,6 +251,9 @@ export function Hq6ViewPaymentsModal({
     successMessage: "Payment updated",
     progressLabel: "Updating payment",
     optimistic: {
+      // List rows are patched in update — do not invalidate sales/purchases
+      // lists or a stale cache page can flip Paid → Due.
+      invalidate: false,
       keys: [
         paymentsQueryKey,
         kind === "sale" ? ["sales"] : ["stock-movements"],
@@ -354,6 +357,7 @@ export function Hq6ViewPaymentsModal({
     successMessage: "Payment deleted",
     progressLabel: "Deleting payment",
     optimistic: {
+      invalidate: false,
       keys: [
         paymentsQueryKey,
         kind === "sale" ? ["sales"] : ["stock-movements"],

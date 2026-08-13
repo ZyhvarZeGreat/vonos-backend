@@ -3178,7 +3178,10 @@ export class SalesService {
     if (sale.customerId) {
       await refreshCustomerFinancialRollups(this.tenantDb.db, sale.customerId);
     }
-    void invalidateTenantDashboardCache(this.cache, tenantId);
+    // Await list bust before pay APIs return — otherwise React Query refetch
+    // can hit a stale sales:v2 page and flip Paid → Due.
+    await invalidateTenantDashboardCache(this.cache, tenantId);
+    await invalidateTenantListCache(this.cache, tenantId, ['sales:v2', 'sales']);
   }
 
   /** HQ6 sales row “Add payment” — post one payment against an open sale. */

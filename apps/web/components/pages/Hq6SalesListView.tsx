@@ -1412,7 +1412,9 @@ export function Hq6SalesListView({
               tenantId={tenantId}
               onClose={() => setPaySale(null)}
               onPaid={(saleId) => {
-                void queryClient.invalidateQueries({ queryKey: ["sales"] });
+                // Do not invalidate ["sales"] here — Pay modal already patched
+                // the list row. A refetch can race server list cache and flip
+                // Paid back to Due.
                 void queryClient.invalidateQueries({
                   queryKey: modalKeys.saleView(tenantId, saleId),
                 });
