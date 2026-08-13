@@ -112,18 +112,22 @@ export function AddExpenseModal() {
       if (!tenantId) throw new Error("No tenant");
       const name =
         categoryName.replace(/\s*\([^)]*\)\s*$/, "").trim() || categoryName;
-      const parsed = parseForm(expenseFormSchema, {
-        amount,
-        category: name,
-        description,
-        date,
-      });
+      const parsed = parseForm(
+        expenseFormSchema,
+        {
+          amount,
+          category: name,
+          description,
+          date,
+        },
+        { setError },
+      );
+      if (!parsed) throw new Error("Please check the form and try again.");
       return createExpense(tenantId, {
-        amount: parsed.amount,
-        category: parsed.category,
+        totalAmount: Number(parsed.amount),
         categoryId: categoryId || undefined,
-        description: parsed.description,
-        date: parsed.date,
+        note: parsed.description || undefined,
+        expenseDate: parsed.date,
         paymentStatus: "due",
       });
     },
@@ -145,7 +149,7 @@ export function AddExpenseModal() {
   if (isHq6 && !stayInAdmin) return null;
 
   return (
-    <Modal open={open} onClose={handleClose} size="md">
+    <Modal open={open} onClose={handleClose}>
       <ModalHeader
         title={
           entityLabel ? `Add Expense — ${entityLabel}` : "Add Expense"
