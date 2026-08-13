@@ -7,6 +7,7 @@ import { ChevronDown } from "lucide-react";
 import {
   AUTOS_GROUP_ORDER,
   getTenantByCode,
+  isOperationsGroupEntity,
 } from "@/lib/registries/tenants";
 import { iconForTenantCode } from "@/lib/registries/tenantIcons";
 import { accentForTenantCode } from "@/lib/registries/tenantAccents";
@@ -36,8 +37,10 @@ export interface TenantSwitcherProps {
 
 /**
  * Entity / work-location switcher.
- * - `super_admin`: all entities + VAG overview
- * - Staff with multiple work-location clearances: only those entities (JWT re-scoped)
+ * - `super_admin`: Autos Group entities + VAG overview
+ * - Staff with multiple work-location clearances: only those Autos entities
+ * - Cafe / Saloon / Kids Wear (operations mounts) are isolated — never listed,
+ *   and the dropdown is hidden while viewing one of them.
  */
 export function TenantSwitcher({
   tenantCode,
@@ -57,8 +60,7 @@ export function TenantSwitcher({
   const beginEntitySwitch = useUiStore((s) => s.beginEntitySwitch);
   const clearEntitySwitch = useUiStore((s) => s.clearEntitySwitch);
   const isSuperAdmin = role === "super_admin";
-  const canSwitchEntities =
-    isSuperAdmin || (allowedTenantCodes?.length ?? 0) > 1;
+  const onOpsMount = isOperationsGroupEntity(tenantCode);
   const onAdmin = pathname.startsWith("/admin");
   const [open, setOpen] = useState(false);
   const [switching, setSwitching] = useState(false);
@@ -71,15 +73,22 @@ export function TenantSwitcher({
   );
 
   const switchableEntities = useMemo(() => {
-    if (!isSuperAdmin) {
-      return (allowedTenantCodes ?? [])
-        .map((code) => getTenantByCode(code))
-        .filter((e): e is NonNullable<typeof e> => Boolean(e));
-    }
-    return AUTOS_GROUP_ORDER.map((code) => getTenantByCode(code)).filter(
-      (e): e is NonNullable<typeof e> => Boolean(e),
-    );
+    const base = !isSuperAdmin
+      ? (allowedTenantCodes ?? [])
+          .map((code) => getTenantByCode(code))
+          .filter((e): e is NonNullable<typeof e> => Boolean(e))
+      : AUTOS_GROUP_ORDER.map((code) => getTenantByCode(code)).filter(
+          (e): e is NonNullable<typeof e> => Boolean(e),
+        );
+    // VC / VS / VKW are separate /operations mounts — not switch targets.
+    return base.filter((e) => !isOperationsGroupEntity(e.code));
   }, [allowedTenantCodes, isSuperAdmin]);
+
+  const canSwitchEntities =
+    !onOpsMount &&
+    (isSuperAdmin
+      ? switchableEntities.length > 0
+      : switchableEntities.length > 1);
 
   const warmEntityRoute = (code: TenantCode) => {
     const href = resolveEntitySwitchPath(code, pathname);

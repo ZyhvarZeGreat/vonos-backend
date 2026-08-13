@@ -5,9 +5,6 @@ const basePath = (process.env.NEXT_PUBLIC_BASE_PATH ?? "")
   .trim()
   .replace(/\/+$/, "");
 
-/** Only when the app is not already mounted at `/operations` — avoids /operations/operations/VS. */
-const nestOperationsTenants = basePath !== "/operations";
-
 const nextConfig: NextConfig = {
   ...(basePath ? { basePath } : {}),
   allowedDevOrigins: ["127.0.0.1", "localhost"],
@@ -24,7 +21,7 @@ const nextConfig: NextConfig = {
       process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001",
   },
   async redirects() {
-    return [
+    const redirects = [
       {
         source: "/VM/:path*",
         destination: "/VA/:path*",
@@ -46,37 +43,33 @@ const nextConfig: NextConfig = {
         permanent: true,
       },
     ];
+
+    // Only when the app is not already at basePath=/operations — otherwise
+    // these would become /operations/operations/VC.
+    if (basePath !== "/operations") {
+      redirects.push(
+        {
+          source: "/operations/VC",
+          destination: "/operations/VC/overview",
+          permanent: false,
+        },
+        {
+          source: "/operations/VS",
+          destination: "/operations/VS/overview",
+          permanent: false,
+        },
+        {
+          source: "/operations/VKW",
+          destination: "/operations/VKW/overview",
+          permanent: false,
+        },
+      );
+    }
+
+    return redirects;
   },
-  async rewrites() {
-    if (!nestOperationsTenants) return [];
-    // VC/VS/VKW public URLs start at /operations/{CODE}; map onto existing [tenant] pages.
-    return [
-      {
-        source: "/operations/VC",
-        destination: "/VC",
-      },
-      {
-        source: "/operations/VC/:path*",
-        destination: "/VC/:path*",
-      },
-      {
-        source: "/operations/VS",
-        destination: "/VS",
-      },
-      {
-        source: "/operations/VS/:path*",
-        destination: "/VS/:path*",
-      },
-      {
-        source: "/operations/VKW",
-        destination: "/VKW",
-      },
-      {
-        source: "/operations/VKW/:path*",
-        destination: "/VKW/:path*",
-      },
-    ];
-  },
+  // VC/VS/VKW live at app/operations/[tenant]/* (no rewrite). Rewrites fought
+  // soft client navigations and 404'd when only app/operations/page.tsx existed.
 };
 
 export default nextConfig;

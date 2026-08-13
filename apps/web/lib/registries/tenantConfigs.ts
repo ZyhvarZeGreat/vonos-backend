@@ -90,10 +90,10 @@ export const cafeTenantConfig: TenantConfig = withCatalog({
   name: "Vonos Cafe",
   archetype: "transaction",
   navItems: [
-    { label: "Home", icon: "home", route: "/VC/overview", pageType: "dashboard" },
-    { label: "Tables", icon: "grid-3x3", route: "/VC/tables", pageType: "list" },
-    { label: "Customers", icon: "users", route: "/VC/customers", pageType: "list" },
-    { label: "Suppliers", icon: "truck", route: "/VC/suppliers", pageType: "list" },
+    { label: "Home", icon: "home", route: tenantPath("VC", "overview"), pageType: "dashboard" },
+    { label: "Tables", icon: "grid-3x3", route: tenantPath("VC", "tables"), pageType: "list" },
+    { label: "Customers", icon: "users", route: tenantPath("VC", "customers"), pageType: "list" },
+    { label: "Suppliers", icon: "truck", route: tenantPath("VC", "suppliers"), pageType: "list" },
     ...adminNavTail("VC"),
   ],
   kpiCards: [

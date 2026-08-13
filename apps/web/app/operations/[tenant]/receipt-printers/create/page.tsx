@@ -1,0 +1,1 @@
+export { default } from "@/app/(dashboard)/[tenant]/receipt-printers/create/page";
