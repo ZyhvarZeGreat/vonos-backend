@@ -11,27 +11,53 @@ import { apiFetch, withTenantQuery } from "@/lib/api/client";
 import {
   DEFAULT_TABLE_PAGE_SIZE,
   EXPORT_PAGE_SIZE,
-  FILTER_DROPDOWN_INITIAL_LIMIT,
-  FILTER_ROSTER_TTL_MS,
-  IN_MEMORY_FILTER_CATALOG_LIMIT,
   fetchAllPages,
   fetchFirstPage,
+  fetchListPage,
   type ListPage,
 } from "@/lib/api/fetchAllPages";
+import { createAccumulatingPicker } from "@/lib/api/accumulatingPicker";
 import { appendListQuery, fetchTenantListPage } from "@/lib/api/listPageHelpers";
-import { createAsyncTtlCache } from "@/lib/utils/asyncTtlCache";
-import { matchSorter, rankings } from "match-sorter";
+import { nameListCursor } from "@/lib/utils/pagination";
 
 const EXPENSES_PATH = "/expenses";
 const CATEGORIES_PATH = "/expenses/categories";
 
-const expenseCategoryRosterCache = createAsyncTtlCache<ExpenseCategory[]>({
-  ttlMs: FILTER_ROSTER_TTL_MS,
-  maxEntries: 128,
-});
+/** Same chunk size as sale-form pickers feel: first 25, then +25 on scroll. */
+const EXPENSE_CATEGORY_PICKER_BATCH = 25;
+
+type ExpenseCategoryPicker = ReturnType<
+  typeof createAccumulatingPicker<ExpenseCategory>
+>;
+const expenseCategoryPickers = new Map<string, ExpenseCategoryPicker>();
+
+function expenseCategoryPickerFor(tenantId: string): ExpenseCategoryPicker {
+  let picker = expenseCategoryPickers.get(tenantId);
+  if (!picker) {
+    picker = createAccumulatingPicker<ExpenseCategory>({
+      batchSize: EXPENSE_CATEGORY_PICKER_BATCH,
+      getCursor: (row) => nameListCursor(row),
+      searchKeys: ["name", "code"],
+      fetchPage: (cursor, limit, search) =>
+        fetchListPage(
+          (pageCursor, pageLimit) =>
+            fetchExpenseCategoriesRaw(
+              tenantId,
+              pageCursor,
+              pageLimit,
+              search,
+            ),
+          cursor,
+          limit,
+        ),
+    });
+    expenseCategoryPickers.set(tenantId, picker);
+  }
+  return picker;
+}
 
 export function clearExpenseCategoryOptionCache(): void {
-  expenseCategoryRosterCache.clear();
+  expenseCategoryPickers.clear();
 }
 
 export type ExpenseListFilters = Pick<
@@ -70,9 +96,14 @@ async function fetchExpenseCategoriesRaw(
   tenantId: string,
   cursor?: string,
   limit?: number,
+  search?: string,
 ): Promise<ExpenseCategory[]> {
   const tenantPath = withTenantQuery(CATEGORIES_PATH, tenantId);
-  const url = appendListQuery(tenantPath, { cursor, limit });
+  const url = appendListQuery(tenantPath, {
+    cursor,
+    limit,
+    search: search?.trim() || undefined,
+  });
   const res = await apiFetch(url);
   if (!res.ok) throw new Error("Failed to fetch expense categories");
   return res.json();
@@ -148,6 +179,7 @@ export async function getAllExpenseCategories(
   return fetchAllPages(
     (cursor, limit) => fetchExpenseCategoriesRaw(tenantId, cursor, limit),
     EXPORT_PAGE_SIZE,
+    (row) => nameListCursor(row),
   );
 }
 
@@ -209,26 +241,43 @@ export async function deleteExpenseCategory(
 }
 
 /**
- * Expense-category picker options — full roster (HQ catalogs exceed 100).
- * Search filters client-side over the cached full list.
+ * Expense-category picker — same pattern as sale-form customer/supplier:
+ * first 25 on open, scroll for +25, type searches loaded rows then API.
+ */
+export async function getExpenseCategoriesForPicker(
+  tenantId: string,
+  search?: string,
+): Promise<ExpenseCategory[]> {
+  const page = await expenseCategoryPickerFor(tenantId).load(tenantId, search);
+  return page.items;
+}
+
+/** Next batch while scrolling the category dropdown. */
+export async function loadMoreExpenseCategoriesForPicker(
+  tenantId: string,
+): Promise<{ items: ExpenseCategory[]; appended: ExpenseCategory[]; hasMore: boolean }> {
+  return expenseCategoryPickerFor(tenantId).loadMore(tenantId);
+}
+
+export function expenseCategoriesPickerHasMore(tenantId: string): boolean {
+  return expenseCategoryPickerFor(tenantId).hasMore(tenantId);
+}
+
+/** Prefetch first 25 so the form opens with options ready. */
+export async function prefetchExpenseCategoriesForPicker(
+  tenantId: string,
+): Promise<ExpenseCategory[]> {
+  const page = await expenseCategoryPickerFor(tenantId).ensureFirst(tenantId);
+  return page.items;
+}
+
+/**
+ * @deprecated Prefer getExpenseCategoriesForPicker + loadMore for dropdowns.
+ * Kept for call sites that only need the current loaded/search window.
  */
 export async function getExpenseCategories(
   tenantId: string,
   search?: string,
 ): Promise<ExpenseCategory[]> {
-  const q = search?.trim() ?? "";
-  const cacheKey = JSON.stringify(["expense-cat-picker", tenantId, "all"]);
-  const roster = await expenseCategoryRosterCache.get(cacheKey, () =>
-    fetchAllPages(
-      (cursor, pageLimit) =>
-        fetchExpenseCategoriesRaw(tenantId, cursor, pageLimit),
-      FILTER_DROPDOWN_INITIAL_LIMIT,
-    ),
-  );
-  if (!q) return roster;
-  return matchSorter(roster, q, {
-    keys: ["name", "code"],
-    threshold: rankings.CONTAINS,
-    keepDiacritics: true,
-  });
+  return getExpenseCategoriesForPicker(tenantId, search);
 }

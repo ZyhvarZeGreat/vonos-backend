@@ -29,8 +29,10 @@ import {
   deleteExpense,
   getAllExpenses,
   getExpense,
-  getExpenseCategories,
+  getExpenseCategoriesForPicker,
   getExpensesPage,
+  expenseCategoriesPickerHasMore,
+  loadMoreExpenseCategoriesForPicker,
   updateExpense,
 } from "@/lib/api/expenses";
 import {
@@ -198,14 +200,33 @@ export function Hq6ExpensesListView() {
   const loadCategoryOptions = useCallback(
     async (query: string) => {
       if (!tenantId) return { options: [], hasMore: false };
-      const rows = await getExpenseCategories(tenantId, query || undefined);
+      const rows = await getExpenseCategoriesForPicker(
+        tenantId,
+        query || undefined,
+      );
       for (const row of rows) {
         categoryLabelById.current.set(row.id, row.name);
       }
-      return rows.map((c) => ({ value: c.id, label: c.name }));
+      return {
+        options: rows.map((c) => ({ value: c.id, label: c.name })),
+        hasMore: !query.trim() && expenseCategoriesPickerHasMore(tenantId),
+      };
     },
     [tenantId],
   );
+
+  const loadMoreCategoryOptions = useCallback(async () => {
+    if (!tenantId) return { options: [], hasMore: false, append: true };
+    const page = await loadMoreExpenseCategoriesForPicker(tenantId);
+    for (const row of page.appended) {
+      categoryLabelById.current.set(row.id, row.name);
+    }
+    return {
+      options: page.appended.map((c) => ({ value: c.id, label: c.name })),
+      hasMore: page.hasMore,
+      append: true,
+    };
+  }, [tenantId]);
 
   const listFilters = useMemo(
     () => ({
@@ -612,6 +633,7 @@ export function Hq6ExpensesListView() {
               }}
               emptyLabel="All"
               loadOptions={loadCategoryOptions}
+              loadMoreOptions={loadMoreCategoryOptions}
               prefetchKey={tenantId}
             />
             <Hq6FilterSelect

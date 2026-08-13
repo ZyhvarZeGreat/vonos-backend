@@ -18,7 +18,7 @@ import {
 } from "@/lib/api/expenses";
 import { useAppMutation } from "@/lib/hooks/useAppMutation";
 import { useServerListPage } from "@/lib/hooks/useServerListPage";
-import { chronoListCursor } from "@/lib/utils/pagination";
+import { nameListCursor } from "@/lib/utils/pagination";
 
 import { HQ6_TABLE_PAGE_SIZE } from "@/lib/api/fetchAllPages";
 import { useListExport } from "@/lib/hooks/useListExport";
@@ -72,7 +72,7 @@ export function Hq6ExpenseCategoriesListView() {
       getExpenseCategoriesPage(tenantId!, cursor, limit, {
         includeSummary: opts?.includeSummary,
       }),
-    getCursor: (row) => chronoListCursor(row),
+    getCursor: (row) => nameListCursor(row),
   });
 
   const filtered = useMemo(

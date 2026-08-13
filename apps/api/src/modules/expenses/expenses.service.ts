@@ -698,12 +698,13 @@ export class ExpensesService {
     limit?: number;
     search?: string;
   } = {}): Promise<ExpenseCategory[]> {
+    // Alphabetical — matches expense form / filter pickers (nameListCursor).
     const pagination = buildCompositeCursorQuery({
-      sortField: 'updatedAt',
-      sortDir: 'desc',
+      sortField: 'name',
+      sortDir: 'asc',
       cursor: filters.cursor,
       limit: filters.limit ?? 10,
-      sortValueType: 'date',
+      sortValueType: 'string',
     });
     const rows = await this.tenantDb.db.expenseCategory.findMany({
       where: {
@@ -714,7 +715,7 @@ export class ExpensesService {
           : {}),
         ...(pagination.where ?? {}),
       },
-      orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
+      orderBy: [{ name: 'asc' }, { id: 'asc' }],
       take: pagination.take,
     });
     return rows.map((row) => ({

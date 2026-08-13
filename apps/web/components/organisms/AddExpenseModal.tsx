@@ -1,26 +1,30 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { useQuery } from "@tanstack/react-query";
 import { useAppMutation } from "@/lib/hooks/useAppMutation";
 import { parseForm } from "@/lib/validation/parseForm";
 import { expenseFormSchema } from "@/lib/validation/schemas";
 import { Button } from "@/components/atoms/Button";
 import { Input } from "@/components/atoms/Input";
 import { Modal, ModalFooter, ModalHeader } from "@/components/atoms/Modal";
-import { Select } from "@/components/atoms/Select";
-import { createExpense, getExpenseCategories } from "@/lib/api/expenses";
+import { AsyncMenuSelect } from "@/components/molecules/AsyncMenuSelect";
+import {
+  createExpense,
+  expenseCategoriesPickerHasMore,
+  getExpenseCategoriesForPicker,
+  loadMoreExpenseCategoriesForPicker,
+  prefetchExpenseCategoriesForPicker,
+} from "@/lib/api/expenses";
 import { useIsVaHq6 } from "@/lib/hooks/useIsVaHq6";
 import { useRouteTenant, useTenantId } from "@/lib/hooks/useRouteTenant";
 import { ENTITY_LIST } from "@/lib/registries/tenants";
 import { useUiStore } from "@/stores/uiStore";
 import { tenantBasePath } from "@/lib/utils/tenantMount";
 
-const FALLBACK_CATEGORIES = [
-  { value: "MISCELLANEOUS", label: "MISCELLANEOUS" },
-  { value: "other", label: "Other" },
-];
+function categoryLabel(c: { name: string; code?: string | null }) {
+  return c.code ? `${c.name} (${c.code})` : c.name;
+}
 
 export function AddExpenseModal() {
   const router = useRouter();
@@ -43,33 +47,48 @@ export function AddExpenseModal() {
     return hit ? hit.name.replace(/^Vonos\s+/i, "") : null;
   }, [tenantId]);
 
-  const { data: dbCategories = [] } = useQuery({
-    queryKey: ["expense-categories", tenantId],
-    queryFn: () => getExpenseCategories(tenantId!),
-    enabled: Boolean(open && tenantId),
-  });
+  const loadCategoryOptions = useCallback(
+    async (query: string) => {
+      if (!tenantId) return { options: [], hasMore: false };
+      const rows = await getExpenseCategoriesForPicker(
+        tenantId,
+        query || undefined,
+      );
+      return {
+        options: rows.map((c) => ({
+          value: c.id,
+          label: categoryLabel(c),
+        })),
+        hasMore: !query.trim() && expenseCategoriesPickerHasMore(tenantId),
+      };
+    },
+    [tenantId],
+  );
 
-  const categoryOptions = useMemo(() => {
-    if (dbCategories.length === 0) return FALLBACK_CATEGORIES;
-    return dbCategories.map((c) => ({
-      value: c.name,
-      label: c.code ? `${c.name} (${c.code})` : c.name,
-    }));
-  }, [dbCategories]);
+  const loadMoreCategoryOptions = useCallback(async () => {
+    if (!tenantId) return { options: [], hasMore: false, append: true };
+    const page = await loadMoreExpenseCategoriesForPicker(tenantId);
+    return {
+      options: page.appended.map((c) => ({
+        value: c.id,
+        label: categoryLabel(c),
+      })),
+      hasMore: page.hasMore,
+      append: true,
+    };
+  }, [tenantId]);
 
   const [amount, setAmount] = useState("");
-  const [category, setCategory] = useState("");
+  const [categoryId, setCategoryId] = useState("");
+  const [categoryName, setCategoryName] = useState("");
   const [description, setDescription] = useState("");
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!open) return;
-    const first = categoryOptions[0]?.value;
-    if (first && !categoryOptions.some((o) => o.value === category)) {
-      setCategory(first);
-    }
-  }, [open, categoryOptions, category]);
+    if (!open || !tenantId) return;
+    void prefetchExpenseCategoriesForPicker(tenantId);
+  }, [open, tenantId]);
 
   // HQ6 entity apps: Add Expense is a full page — except VAG admin in-place flow.
   useEffect(() => {
@@ -78,65 +97,58 @@ export function AddExpenseModal() {
     router.push(`${tenantBasePath(tenantCode)}/add-expense`);
   }, [closeModal, isHq6, open, router, stayInAdmin, tenantCode]);
 
-  const mutation = useAppMutation({
-    mutationFn: async () => {
-      if (!tenantId) throw new Error("No business selected");
-      const valid = parseForm(expenseFormSchema, {
-        amount,
-        description,
-        category,
-        date,
-      });
-      if (!valid) {
-        throw new Error("Enter a valid amount and description");
-      }
-      const parsed = Number(valid.amount);
-      const categoryId = dbCategories.find(
-        (row) => row.name.toLowerCase() === category.trim().toLowerCase(),
-      )?.id;
-      return createExpense(tenantId, {
-        categoryId,
-        totalAmount: parsed,
-        note: String(valid.description).trim(),
-        expenseDate: date,
-        paymentStatus: "due",
-      });
-    },
-    successMessage: entityLabel
-      ? `Expense added for ${entityLabel}`
-      : "Expense added",
-    invalidateKeys: [
-      ["expenses"],
-      ["ledgerEntries"],
-      ["ledgerTablePage"],
-      ["ledgerSummary"],
-      ["adminFinanceSummary"],
-      ["ledgerChartEntries"],
-    ],
-    onSuccess: () => {
-      setAmount("");
-      setDescription("");
-      setError(null);
-      closeModal();
-    },
-    onError: (err: Error) => setError(err.message),
-  });
-
   const handleClose = () => {
+    setAmount("");
+    setCategoryId("");
+    setCategoryName("");
+    setDescription("");
+    setDate(new Date().toISOString().slice(0, 10));
     setError(null);
     closeModal();
   };
 
-  if (!open || (isHq6 && !stayInAdmin)) return null;
+  const mutation = useAppMutation({
+    mutationFn: async () => {
+      if (!tenantId) throw new Error("No tenant");
+      const name =
+        categoryName.replace(/\s*\([^)]*\)\s*$/, "").trim() || categoryName;
+      const parsed = parseForm(expenseFormSchema, {
+        amount,
+        category: name,
+        description,
+        date,
+      });
+      return createExpense(tenantId, {
+        amount: parsed.amount,
+        category: parsed.category,
+        categoryId: categoryId || undefined,
+        description: parsed.description,
+        date: parsed.date,
+        paymentStatus: "due",
+      });
+    },
+    successMessage: "Expense added",
+    onSuccess: () => {
+      handleClose();
+      if (stayInAdmin) return;
+      if (isHq6 && tenantCode) {
+        router.push(`${tenantBasePath(tenantCode)}/list-expenses`);
+        return;
+      }
+      router.push("/VW/finance?tab=ledger");
+    },
+    onError: (err) => {
+      setError(err instanceof Error ? err.message : "Failed to add expense");
+    },
+  });
+
+  if (isHq6 && !stayInAdmin) return null;
 
   return (
-    <Modal open={open} onClose={handleClose}>
+    <Modal open={open} onClose={handleClose} size="md">
       <ModalHeader
-        title="Add Expense"
-        subtitle={
-          entityLabel
-            ? `Posting to ${entityLabel} expenses`
-            : "Record an expense (shows on Expenses and Finance)"
+        title={
+          entityLabel ? `Add Expense — ${entityLabel}` : "Add Expense"
         }
         onClose={handleClose}
       />
@@ -149,12 +161,24 @@ export function AddExpenseModal() {
           value={amount}
           onChange={(e) => setAmount(e.target.value)}
         />
-        <Select
-          label="Category"
-          value={category}
-          onChange={(e) => setCategory(e.target.value)}
-          options={categoryOptions}
-        />
+        <div>
+          <label className="mb-1 block text-sm font-medium text-foreground">
+            Category
+          </label>
+          <AsyncMenuSelect
+            value={categoryId}
+            selectedLabel={categoryName || undefined}
+            onChange={(id, option) => {
+              setCategoryId(id);
+              setCategoryName(option?.label ?? "");
+            }}
+            loadOptions={loadCategoryOptions}
+            loadMoreOptions={loadMoreCategoryOptions}
+            placeholder="Select category…"
+            emptyMessage="No categories found"
+            prefetchKey={tenantId}
+          />
+        </div>
         <Input
           label="Description"
           value={description}

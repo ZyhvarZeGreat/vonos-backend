@@ -2,7 +2,7 @@
 
 import { Hq6DateTimeInput } from "@/components/hq6/Hq6DateTimeInput";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { Printer } from "lucide-react";
@@ -14,6 +14,7 @@ import { ExpenseViewModal } from "@/components/organisms/ExpenseViewModal";
 import { ServerPaginatedTable } from "@/components/organisms/ServerPaginatedTable";
 import { ListPageShell } from "@/components/organisms/ListPageShell";
 import { RowActionsMenu } from "@/components/molecules/RowActionsMenu";
+import { AsyncMenuSelect } from "@/components/molecules/AsyncMenuSelect";
 import { useIsVaHq6 } from "@/lib/hooks/useIsVaHq6";
 import { Hq6FormShell } from "@/components/hq6/Hq6Chrome";
 import { Hq6BusyButton } from "@/components/hq6/Hq6BusyButton";
@@ -42,9 +43,12 @@ import {
   deleteExpenseCategory,
   getAllExpenses,
   getExpense,
-  getExpenseCategories,
+  getExpenseCategoriesForPicker,
   getExpenseCategoriesPage,
   getExpensesPage,
+  expenseCategoriesPickerHasMore,
+  loadMoreExpenseCategoriesForPicker,
+  prefetchExpenseCategoriesForPicker,
   updateExpense,
   updateExpenseCategory,
 } from "@/lib/api/expenses";
@@ -362,6 +366,7 @@ function ExpensesListViewBody() {
 
 type ExpenseFormState = {
   categoryId: string;
+  categoryName: string;
   refNo: string;
   subCategory: string;
   totalAmount: string;
@@ -385,6 +390,7 @@ type ExpenseFormState = {
 
 const emptyForm = (): ExpenseFormState => ({
   categoryId: "",
+  categoryName: "",
   refNo: "",
   subCategory: "",
   totalAmount: "",
@@ -422,6 +428,7 @@ function expenseToForm(expense: Expense): ExpenseFormState {
   const parsed = parseExpenseNotes(expense.note);
   return {
     categoryId: expense.categoryId ?? "",
+    categoryName: expense.categoryName ?? "",
     refNo: expense.refNo ?? "",
     subCategory: expense.subCategory ?? "",
     totalAmount: String(expense.totalAmount),
@@ -458,15 +465,46 @@ export function AddExpenseView() {
   const patchForm = (patch: Partial<ExpenseFormState>) =>
     setForm((prev) => ({ ...prev, ...patch }));
 
-  const { data: categories = [] } = useQuery({
-    queryKey: ["expense-categories", tenantId],
-    queryFn: () => getExpenseCategories(tenantId!),
-    enabled: Boolean(tenantId),
-  });
+  const categoryLabel = (c: { name: string; code?: string | null }) =>
+    c.code ? `${c.name} (${c.code})` : c.name;
 
-  // Warm payment-account dropdown with the page.
+  const loadCategoryOptions = useCallback(
+    async (query: string) => {
+      if (!tenantId) return { options: [], hasMore: false };
+      const rows = await getExpenseCategoriesForPicker(
+        tenantId,
+        query || undefined,
+      );
+      return {
+        options: rows.map((c) => ({
+          value: c.id,
+          label: categoryLabel(c),
+        })),
+        hasMore: !query.trim() && expenseCategoriesPickerHasMore(tenantId),
+      };
+    },
+    [tenantId],
+  );
+
+  const loadMoreCategoryOptions = useCallback(async () => {
+    if (!tenantId) return { options: [], hasMore: false, append: true };
+    const page = await loadMoreExpenseCategoriesForPicker(tenantId);
+    return {
+      options: page.appended.map((c) => ({
+        value: c.id,
+        label: categoryLabel(c),
+      })),
+      hasMore: page.hasMore,
+      append: true,
+    };
+  }, [tenantId]);
+
+  const categorySelectedLabel = form.categoryName.trim() || undefined;
+
+  // Warm first 25 categories + payment accounts with the form (sale-picker pattern).
   useEffect(() => {
     if (!tenantId) return;
+    void prefetchExpenseCategoriesForPicker(tenantId);
     void getPaymentAccountsForPicker(tenantId);
   }, [tenantId]);
 
@@ -621,20 +659,22 @@ export function AddExpenseView() {
             </label>
             <label className="hq6-form-label">
               <span>Expense Category:</span>
-              <select
-                className="hq6-form-input"
+              <AsyncMenuSelect
                 value={form.categoryId}
-                onChange={(e) =>
-                  patchForm({ categoryId: e.target.value })
+                selectedLabel={categorySelectedLabel}
+                onChange={(id, option) =>
+                  patchForm({
+                    categoryId: id,
+                    categoryName: option?.label ?? "",
+                  })
                 }
-              >
-                <option value="">Please Select</option>
-                {categories.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
+                loadOptions={loadCategoryOptions}
+                loadMoreOptions={loadMoreCategoryOptions}
+                placeholder="Please Select"
+                emptyMessage="No categories found"
+                className="hq6-form-input !h-auto min-h-[2.25rem] px-0 py-0"
+                prefetchKey={tenantId}
+              />
             </label>
             <label className="hq6-form-label">
               <span>Sub category:</span>
@@ -1046,20 +1086,21 @@ export function AddExpenseView() {
                   <label className="mb-1 block text-sm font-medium text-foreground">
                     Expense Category
                   </label>
-                  <select
-                    className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm"
+                  <AsyncMenuSelect
                     value={form.categoryId}
-                    onChange={(e) =>
-                      patchForm({ categoryId: e.target.value })
+                    selectedLabel={categorySelectedLabel}
+                    onChange={(id, option) =>
+                      patchForm({
+                        categoryId: id,
+                        categoryName: option?.label ?? "",
+                      })
                     }
-                  >
-                    <option value="">Select category…</option>
-                    {categories.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name}
-                      </option>
-                    ))}
-                  </select>
+                    loadOptions={loadCategoryOptions}
+                    loadMoreOptions={loadMoreCategoryOptions}
+                    placeholder="Select category…"
+                    emptyMessage="No categories found"
+                    prefetchKey={tenantId}
+                  />
                 </div>
                 <div>
                   <label className="mb-1 block text-sm font-medium text-foreground">
