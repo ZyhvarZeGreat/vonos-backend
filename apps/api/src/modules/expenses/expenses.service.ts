@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
 import type {
   Expense,
@@ -20,6 +24,7 @@ import {
 } from '../../common/utils/hq6ListWarm';
 import { buildCompositeCursorQuery } from '../../common/utils/pagination';
 import type { PaginatedList } from '../../common/utils/paginatedList';
+import { paymentStatusFromAmounts } from '../../common/utils/paymentStatus';
 import { toIso, toNumber } from '../../common/utils/serializers';
 import { InvoiceHubService } from '../invoices/invoice-hub.service';
 import { AuditService } from '../audit/audit.service';
@@ -116,6 +121,40 @@ async function upsertExpenseLedgerEntry(
       date: params.date,
     },
   });
+}
+
+function settleExpensePayment(input: {
+  total: number;
+  paymentDue?: number;
+  accountId: string | null;
+  previousStatus?: string | null;
+}): {
+  paymentStatus: 'paid' | 'partial' | 'due' | 'overdue';
+  paymentDue: number;
+  paidAmount: number;
+} {
+  const total = Math.max(0, Number.isFinite(input.total) ? input.total : 0);
+  const due =
+    input.paymentDue !== undefined
+      ? Math.max(0, Math.min(total, Number(input.paymentDue) || 0))
+      : input.accountId
+        ? 0
+        : total;
+  const paidAmount = Math.max(0, total - due);
+  if (paidAmount > 1e-6 && !input.accountId) {
+    throw new BadRequestException(
+      'Select a Payment Account so this expense payment posts to the account book',
+    );
+  }
+  return {
+    paymentStatus: paymentStatusFromAmounts(
+      total,
+      paidAmount,
+      input.previousStatus,
+    ),
+    paymentDue: due,
+    paidAmount,
+  };
 }
 
 @Injectable()
@@ -302,22 +341,14 @@ export class ExpensesService {
   async createExpense(dto: CreateExpenseRequest): Promise<Expense> {
     const tenantId = this.tenantDb.requireTenantId();
     const accountId = dto.accountId?.trim() || null;
-    // Payment account attached ⇒ always paid (HQ6 settles when account is set).
-    const paymentStatus = accountId
-      ? 'paid'
-      : dto.paymentStatus === 'partial' || dto.paymentStatus === 'overdue'
-        ? dto.paymentStatus
-        : 'due';
-    const paymentDue =
-      paymentStatus === 'paid'
-        ? 0
-        : dto.paymentDue !== undefined
-          ? Math.max(0, Number(dto.paymentDue))
-          : Number(dto.totalAmount);
-    const shouldDebit =
-      Boolean(accountId) &&
-      paymentStatus !== 'due' &&
-      Number(dto.totalAmount) > 0;
+    const settled = settleExpensePayment({
+      total: Number(dto.totalAmount),
+      paymentDue: dto.paymentDue,
+      accountId,
+      previousStatus: dto.paymentStatus,
+    });
+    const { paymentStatus, paymentDue, paidAmount } = settled;
+    const shouldDebit = Boolean(accountId) && paidAmount > 0;
 
     const authUserId = this.tenantDb.getAuthUserId();
     const createdBy = await this.auditService.createdByFields();
@@ -359,7 +390,7 @@ export class ExpensesService {
             tenantId,
             expenseId: created.id,
             accountId: accountId!,
-            amount: dto.totalAmount,
+            amount: paidAmount,
             operationDate: created.expenseDate,
             refNo: created.refNo,
             note:
@@ -486,20 +517,18 @@ export class ExpensesService {
       dto.accountId !== undefined
         ? dto.accountId || null
         : existing.accountId;
-    // Payment account attached ⇒ always paid; clearing account ⇒ due.
-    const paymentStatus = accountId
-      ? 'paid'
-      : dto.paymentStatus === 'partial' || dto.paymentStatus === 'overdue'
-        ? dto.paymentStatus
-        : 'due';
-    const paymentDue =
-      paymentStatus === 'paid'
-        ? 0
-        : dto.paymentDue !== undefined
-          ? Math.max(0, Number(dto.paymentDue))
-          : paymentStatus === 'due'
+    const settled = settleExpensePayment({
+      total: updatedTotal,
+      paymentDue:
+        dto.paymentDue !== undefined
+          ? dto.paymentDue
+          : dto.accountId !== undefined && !accountId
             ? updatedTotal
-            : toNumber(existing.paymentDue);
+            : toNumber(existing.paymentDue),
+      accountId,
+      previousStatus: dto.paymentStatus ?? existing.paymentStatus,
+    });
+    const { paymentStatus, paymentDue, paidAmount } = settled;
 
     const prevTotal = toNumber(existing.totalAmount);
     const prevDate = existing.expenseDate;
@@ -558,15 +587,12 @@ export class ExpensesService {
         include: expenseInclude,
       });
 
-      const shouldDebit =
-        Boolean(accountId) &&
-        paymentStatus !== 'due' &&
-        updatedTotal > 0;
+      const shouldDebit = Boolean(accountId) && paidAmount > 0;
       await syncExpenseAccountDebit(tx, {
         tenantId,
         expenseId: updated.id,
         accountId: shouldDebit ? accountId : null,
-        amount: updatedTotal,
+        amount: paidAmount,
         operationDate: updated.expenseDate,
         refNo: updated.refNo,
         note:
@@ -807,13 +833,12 @@ export class ExpensesService {
       contactName: row.contactCustomer?.name ?? row.contactName ?? null,
       totalAmount: toNumber(row.totalAmount),
       taxAmount: toNumber(row.taxAmount),
-      // Legacy HQ6 saves stored a payment account but left status "due".
-      paymentStatus:
-        row.paymentStatus === 'due' && row.accountId ? 'paid' : row.paymentStatus,
-      paymentDue:
-        row.paymentStatus === 'paid' || row.accountId
-          ? 0
-          : toNumber(row.paymentDue),
+      paymentStatus: paymentStatusFromAmounts(
+        toNumber(row.totalAmount),
+        Math.max(0, toNumber(row.totalAmount) - toNumber(row.paymentDue)),
+        row.paymentStatus,
+      ),
+      paymentDue: Math.max(0, toNumber(row.paymentDue)),
       note: row.note,
       accountId: row.accountId,
       accountName: row.account?.name ?? null,
@@ -879,14 +904,15 @@ export async function warmDefaultExpenseListPages(
             contactName: row.contactCustomer?.name ?? row.contactName ?? null,
             totalAmount: toNumber(row.totalAmount),
             taxAmount: toNumber(row.taxAmount),
-            paymentStatus:
-              row.paymentStatus === 'due' && row.accountId
-                ? 'paid'
-                : row.paymentStatus,
-            paymentDue:
-              row.paymentStatus === 'paid' || row.accountId
-                ? 0
-                : toNumber(row.paymentDue),
+            paymentStatus: paymentStatusFromAmounts(
+              toNumber(row.totalAmount),
+              Math.max(
+                0,
+                toNumber(row.totalAmount) - toNumber(row.paymentDue),
+              ),
+              row.paymentStatus,
+            ),
+            paymentDue: Math.max(0, toNumber(row.paymentDue)),
             note: row.note,
             accountId: row.accountId,
             accountName: row.account?.name ?? null,

@@ -98,7 +98,9 @@ export function Hq6PaySupplierModal({
     setAccountId("");
     setNote("");
     setPaidOn(nowPaidOnLocal());
-  }, [open, supplier, totals.totalDue]);
+    // Reset only when the modal opens for this supplier — not when totals refetch.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- totals snapshotted on open
+  }, [open, supplier?.id]);
 
   const handleSave = async () => {
     if (!tenantId || !supplier) return;

@@ -840,6 +840,11 @@ function ExpensePaymentsViewBody({
         throw new Error("Enter a valid amount");
       }
       const accountId = editAccountId.trim() || null;
+      if (amount > 0 && !accountId) {
+        throw new Error(
+          "Select a Payment Account so this expense payment posts to the account book",
+        );
+      }
       const nextNotes = parseExpenseNotes(expense.note);
       const noteBlob = buildExpenseNoteBlob(
         nextNotes.expenseNote,
@@ -849,13 +854,17 @@ function ExpensePaymentsViewBody({
           applicableTax: nextNotes.applicableTax,
         },
       );
-      // Account set ⇒ paid (API). Clear account ⇒ due for the full amount.
+      // Edit payment amount — do not overwrite the expense total.
+      const total = expense.totalAmount ?? 0;
+      const paid = amount;
+      const paymentDue = Math.max(0, total - paid);
+      const paymentStatus =
+        paid <= 0 ? "due" : paid + 0.0001 >= total ? "paid" : "partial";
       return updateExpense(tenantId, expense.id, {
-        totalAmount: amount,
         accountId,
         paymentMethod: editMethod || null,
-        paymentStatus: accountId ? "paid" : "due",
-        paymentDue: accountId ? 0 : amount,
+        paymentStatus,
+        paymentDue,
         note: noteBlob ?? null,
         paymentNote: editNote.trim() || null,
       });

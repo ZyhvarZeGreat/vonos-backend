@@ -75,12 +75,14 @@ export function Hq6PaySaleModal({
 
   useEffect(() => {
     if (!open || !sale) return;
-    setAmount(due > 0 ? due.toFixed(2) : "");
+    const nextDue =
+      sale.sellDue ?? Math.max(0, sale.total - (sale.totalPaid ?? 0));
+    setAmount(nextDue > 0 ? nextDue.toFixed(2) : "");
     setMethod("cash");
     setAccountId("");
     setNote("");
     setPaidOn(nowPaidOnLocal());
-  }, [due, open, sale]);
+  }, [open, sale?.id]);
 
   const handleSave = async () => {
     if (!tenantId || !sale) return;

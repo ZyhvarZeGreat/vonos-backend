@@ -75,12 +75,13 @@ export function Hq6PayPurchaseModal({
 
   useEffect(() => {
     if (!open || !purchase) return;
-    setAmount(due > 0 ? due.toFixed(2) : "");
+    const nextDue = purchase.paymentDue ?? 0;
+    setAmount(nextDue > 0 ? nextDue.toFixed(2) : "");
     setMethod("cash");
     setAccountId("");
     setNote("");
     setPaidOn(nowPaidOnLocal());
-  }, [due, open, purchase]);
+  }, [open, purchase?.id]);
 
   const handleSave = async () => {
     if (!tenantId || !purchase) return;

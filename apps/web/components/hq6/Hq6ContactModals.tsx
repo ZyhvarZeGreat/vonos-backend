@@ -807,7 +807,9 @@ export function Hq6PayContactModal({
     setAccountId("");
     setNote("");
     setPaidOn(nowPaidOnLocal());
-  }, [customer, open, totals.totalDue]);
+    // Reset only when the modal opens for this customer — not when totals refetch.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- totals snapshotted on open
+  }, [open, customer?.id]);
 
   const handleSave = async () => {
     if (!tenantId || !customer) return;

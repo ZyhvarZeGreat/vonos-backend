@@ -370,6 +370,7 @@ type ExpenseFormState = {
   refNo: string;
   subCategory: string;
   totalAmount: string;
+  paymentAmount: string;
   taxAmount: string;
   note: string;
   expenseDate: string;
@@ -394,6 +395,7 @@ const emptyForm = (): ExpenseFormState => ({
   refNo: "",
   subCategory: "",
   totalAmount: "",
+  paymentAmount: "",
   taxAmount: "",
   note: "",
   expenseDate: new Date().toISOString().slice(0, 16),
@@ -432,6 +434,9 @@ function expenseToForm(expense: Expense): ExpenseFormState {
     refNo: expense.refNo ?? "",
     subCategory: expense.subCategory ?? "",
     totalAmount: String(expense.totalAmount),
+    paymentAmount: String(
+      Math.max(0, expense.totalAmount - (expense.paymentDue ?? 0)),
+    ),
     taxAmount: String(expense.taxAmount),
     note: parsed.expenseNote,
     expenseDate: expense.expenseDate.slice(0, 16),
@@ -538,20 +543,16 @@ export function AddExpenseView() {
       if (!Number.isFinite(amount) || amount <= 0) {
         throw new Error("Enter a valid expense amount");
       }
-      // Selecting a payment account means the expense is settled (HQ6 amount
-      // field is locked to the full total). Clear account → remains due.
+      const paid = Math.max(0, Number(form.paymentAmount) || 0);
+      const paymentDue = Math.max(0, amount - paid);
+      const paymentStatus =
+        paid <= 0 ? "due" : paid + 0.0001 >= amount ? "paid" : "partial";
       const hasPaymentAccount = Boolean(form.paymentAccountId.trim());
-      const paymentStatus = hasPaymentAccount
-        ? "paid"
-        : form.paymentStatus === "paid"
-          ? "due"
-          : form.paymentStatus || "due";
-      if (paymentStatus !== "due" && amount > 0 && !hasPaymentAccount) {
+      if (paid > 0 && !hasPaymentAccount) {
         throw new Error(
           "Select a Payment Account so this expense is posted to the account book",
         );
       }
-      const paymentDue = paymentStatus === "paid" ? 0 : amount;
       const payload = {
         categoryId: form.categoryId || undefined,
         refNo: form.refNo || undefined,
@@ -607,13 +608,8 @@ export function AddExpenseView() {
       toast.error("Enter a valid expense amount");
       return;
     }
-    const hasPaymentAccount = Boolean(form.paymentAccountId.trim());
-    const paymentStatus = hasPaymentAccount
-      ? "paid"
-      : form.paymentStatus === "paid"
-        ? "due"
-        : form.paymentStatus || "due";
-    if (paymentStatus !== "due" && amount > 0 && !hasPaymentAccount) {
+    const paid = Math.max(0, Number(form.paymentAmount) || 0);
+    if (paid > 0 && !form.paymentAccountId.trim()) {
       toast.error(
         "Select a Payment Account so this expense is posted to the account book",
       );
@@ -624,12 +620,11 @@ export function AddExpenseView() {
 
   const locations = entitySaleLocations(config);
   const amountTotal = Number(form.totalAmount) || 0;
+  const paidNow = Math.max(0, Number(form.paymentAmount) || 0);
   const hasPaymentAccount = Boolean(form.paymentAccountId.trim());
-  const effectivePaymentStatus = hasPaymentAccount
-    ? "paid"
-    : form.paymentStatus || "due";
-  const paymentDue =
-    effectivePaymentStatus === "paid" ? 0 : Math.max(0, amountTotal);
+  const effectivePaymentStatus =
+    paidNow <= 0 ? "due" : paidNow + 0.0001 >= amountTotal ? "paid" : "partial";
+  const paymentDue = Math.max(0, amountTotal - paidNow);
 
   const hq6FormBody =
     isEdit && loadingExpense ? (
@@ -778,8 +773,12 @@ export function AddExpenseView() {
                   const totalAmount = e.target.value;
                   const rate = taxRatePercent(form.applicableTax, taxOptions);
                   const total = Number(totalAmount) || 0;
+                  const syncPay =
+                    form.paymentAmount === "" ||
+                    form.paymentAmount === form.totalAmount;
                   patchForm({
                     totalAmount,
+                    ...(syncPay ? { paymentAmount: totalAmount } : {}),
                     ...(rate > 0
                       ? {
                           taxAmount:
@@ -923,13 +922,13 @@ export function AddExpenseView() {
                 type="text"
                 inputMode="decimal"
                 className="hq6-form-input"
-                value={form.totalAmount}
-                placeholder=""
-                readOnly
-                aria-readonly="true"
-                title="Equals the expense total amount above"
+                value={form.paymentAmount}
+                placeholder="0.00"
+                onChange={(e) => patchForm({ paymentAmount: e.target.value })}
               />
-              <p className="hq6-form-hint">Matches the expense total above</p>
+              <p className="hq6-form-hint">
+                Enter how much is paid now. Leave 0 to keep the expense due.
+              </p>
             </label>
             <label className="hq6-form-label">
               <span>
@@ -966,15 +965,26 @@ export function AddExpenseView() {
                 value={effectivePaymentStatus}
                 onChange={(e) => {
                   const paymentStatus = e.target.value;
-                  patchForm({
-                    paymentStatus,
-                    ...(paymentStatus === "due"
-                      ? { paymentAccountId: "" }
-                      : {}),
-                  });
+                  if (paymentStatus === "due") {
+                    patchForm({
+                      paymentStatus,
+                      paymentAmount: "0",
+                      paymentAccountId: "",
+                    });
+                    return;
+                  }
+                  if (paymentStatus === "paid") {
+                    patchForm({
+                      paymentStatus,
+                      paymentAmount: form.totalAmount || "0",
+                    });
+                    return;
+                  }
+                  patchForm({ paymentStatus });
                 }}
               >
                 <option value="due">Due</option>
+                <option value="partial">Partial</option>
                 <option value="paid">Paid</option>
               </select>
             </label>
@@ -990,7 +1000,6 @@ export function AddExpenseView() {
                 onChange={(id) =>
                   patchForm({
                     paymentAccountId: id,
-                    paymentStatus: id.trim() ? "paid" : "due",
                   })
                 }
                 emptyLabel="None"
