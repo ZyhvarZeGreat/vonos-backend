@@ -186,7 +186,9 @@ export async function finalizeSale(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body ?? {}),
   });
-  if (!response.ok) throw new Error("Failed to finalize sale");
+  if (!response.ok) {
+    return throwApiError(response, "Failed to finalize sale");
+  }
   return response.json();
 }
 

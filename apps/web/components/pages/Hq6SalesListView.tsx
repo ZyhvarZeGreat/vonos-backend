@@ -1319,9 +1319,7 @@ export function Hq6SalesListView({
                     }
                   },
                   write: () =>
-                    finalizeSale(tenantId, target.id, {
-                      payments: [{ amount: 0, method: "cash" }],
-                    }),
+                    finalizeSale(tenantId, target.id),
                   label: "Converting",
                   successMessage: `Converted ${target.reference} to invoice`,
                   onSuccess: () => {

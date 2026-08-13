@@ -58,6 +58,13 @@ const CATALOG_LIST_SELECT = {
   createdAt: true,
   updatedAt: true,
   brand: { select: { name: true } },
+  locationStock: {
+    select: {
+      locationCode: true,
+      binLocation: true,
+      quantity: true,
+    },
+  },
 } as const;
 
 @Injectable()
@@ -100,8 +107,13 @@ export class CatalogService {
     return rows.map((row) => {
       const reserved =
         reservedByTenant.get(row.tenantId)?.get(row.sku.toUpperCase()) ?? 0;
-      const { available } = breakdownFromOnHand(row.quantity, reserved);
-      return { ...row, availableQuantity: available };
+      const locSum = (row.locationStock ?? []).reduce(
+        (sum, loc) => sum + loc.quantity,
+        0,
+      );
+      const onHand = Math.max(row.quantity, locSum);
+      const { available } = breakdownFromOnHand(onHand, reserved);
+      return { ...row, quantity: onHand, availableQuantity: available };
     });
   }
 

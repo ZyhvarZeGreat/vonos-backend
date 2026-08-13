@@ -381,17 +381,13 @@ export class ItemsService {
         createdAt: true,
         updatedAt: true,
         brand: { select: { name: true } },
-        ...(filters.locationCode
-          ? {
-              locationStock: {
-                select: {
-                  locationCode: true,
-                  binLocation: true,
-                  quantity: true,
-                },
-              },
-            }
-          : {}),
+        locationStock: {
+          select: {
+            locationCode: true,
+            binLocation: true,
+            quantity: true,
+          },
+        },
       },
       take: pagination.take,
     });
@@ -1085,7 +1081,12 @@ export class ItemsService {
       const key = item.sku;
       const reserved =
         reservedByTenant.get(item.tenantId)?.get(item.sku.toUpperCase()) ?? 0;
-      const { available } = breakdownFromOnHand(item.quantity, reserved);
+      const locSum = item.locationStock.reduce(
+        (sum, loc) => sum + loc.quantity,
+        0,
+      );
+      const onHand = Math.max(item.quantity, locSum);
+      const { available } = breakdownFromOnHand(onHand, reserved);
       const group =
         groups.get(key) ??
         ({
@@ -1097,13 +1098,13 @@ export class ItemsService {
           entities: [],
         } satisfies StockAvailabilityResult['groups'][number]);
 
-      group.totalQuantity += item.quantity;
+      group.totalQuantity += onHand;
       group.totalAvailable += available;
       group.entities.push({
         tenantCode: tenant.code,
         tenantName: tenant.name,
         itemId: item.id,
-        quantity: item.quantity,
+        quantity: onHand,
         reserved,
         available,
         reorderPoint: item.reorderPoint,

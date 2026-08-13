@@ -47,6 +47,10 @@ export function serializeItem(row: ItemWithStock): Item {
     binLocation: entry.binLocation === '' ? null : entry.binLocation,
     quantity: entry.quantity,
   }));
+  const locSum = locationStock.reduce((sum, entry) => sum + entry.quantity, 0);
+  // Prefer location bins when header qty is stale (common after opening-stock
+  // / location edits) so pickers don't show "0 left" while bins have stock.
+  const quantity = Math.max(row.quantity, locSum);
 
   return {
     id: row.id,
@@ -63,7 +67,8 @@ export function serializeItem(row: ItemWithStock): Item {
     carModel: row.carModel ?? null,
     enableImei: row.enableImei ?? false,
     preparationMinutes: row.preparationMinutes ?? null,
-    quantity: row.quantity,
+    quantity,
+    availableQuantity: quantity,
     binLocation: row.binLocation,
     locationCode: row.locationCode,
     reorderPoint: row.reorderPoint,

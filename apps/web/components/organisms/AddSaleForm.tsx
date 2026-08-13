@@ -535,10 +535,12 @@ export function AddSaleForm({
     Number(form.paymentAmount) ||
     (form.paymentAmount.trim() === "0"
       ? 0
-      : // Editing an existing final invoice: empty amount means "no new payment",
-        // not "pay the full total again" (that was blocking Update without a
-        // payment account).
-        editSaleId && loadedAsFinal
+      : // Editing an existing final invoice: empty amount means "no new payment".
+        // Converting draft/quotation → final: also empty = due (pay later).
+        editSaleId &&
+          (loadedAsFinal ||
+            editSale?.recordStatus === "draft" ||
+            editSale?.recordStatus === "quotation")
         ? 0
         : totalPayable);
   const changeReturn = Math.max(0, paidAmount - totalPayable);
@@ -836,7 +838,13 @@ export function AddSaleForm({
         (editSale?.recordStatus === "draft" ||
           editSale?.recordStatus === "quotation") &&
         statusToSave === "final";
-      const needsNewPayment = !isProvisional && (!editSaleId || convertingToFinal);
+      // Convert quotation/draft → final does not require payment / account (status due).
+      // Only brand-new finals or explicit pay-on-edit need a payment payload.
+      const needsNewPayment =
+        !isProvisional &&
+        !convertingToFinal &&
+        !editSaleId &&
+        paidAmount > 0;
       const addingPaymentOnEdit =
         !isProvisional &&
         loadedAsFinal &&
@@ -846,11 +854,16 @@ export function AddSaleForm({
       // Empty payment field must not imply "pay full total" on quotations/drafts.
       const amountToCharge = isProvisional
         ? Number(form.paymentAmount) || 0
-        : paidAmount;
+        : convertingToFinal
+          ? Number(form.paymentAmount) || 0
+          : paidAmount;
+      const paymentAccountId = form.paymentAccountId.trim();
+      // Convert quotation/draft → final: no payment account → still convert as due.
+      // Account is only required when collecting money on a new/edited final.
       if (
         (needsNewPayment || addingPaymentOnEdit) &&
         amountToCharge > 0 &&
-        !form.paymentAccountId.trim()
+        !paymentAccountId
       ) {
         throw new Error(
           "Select a Payment Account so this money is posted to the account book",
@@ -904,18 +917,32 @@ export function AddSaleForm({
           sourceTenantCode: line.sourceTenantCode,
           supplierId: line.createPurchase ? line.supplierId || undefined : undefined,
         })),
-        payments: needsNewPayment
-          ? [
+        payments: (() => {
+          if (isProvisional) return [];
+          // Convert without a payment account → empty payments → sale stays due.
+          if (convertingToFinal) {
+            if (amountToCharge <= 0 || !paymentAccountId) return [];
+            return [
               {
                 amount: amountToCharge,
                 method: form.paymentMethod,
                 note: form.paymentNote.trim() || undefined,
-                accountId: form.paymentAccountId || undefined,
+                accountId: paymentAccountId,
               },
-            ]
-          : isProvisional
-            ? []
-            : undefined,
+            ];
+          }
+          if (needsNewPayment || addingPaymentOnEdit) {
+            return [
+              {
+                amount: amountToCharge,
+                method: form.paymentMethod,
+                note: form.paymentNote.trim() || undefined,
+                accountId: paymentAccountId || undefined,
+              },
+            ];
+          }
+          return undefined;
+        })(),
         paymentMethod: isProvisional
           ? undefined
           : form.paymentMethod || undefined,
@@ -1021,7 +1048,10 @@ export function AddSaleForm({
           editSale?.recordStatus === "quotation") &&
         statusToSave === "final";
       const needsNewPayment =
-        !isProvisional && (!editSaleId || convertingToFinal);
+        !isProvisional &&
+        !convertingToFinal &&
+        !editSaleId &&
+        paidAmount > 0;
       const addingPaymentOnEdit =
         !isProvisional &&
         loadedAsFinal &&
@@ -1030,7 +1060,10 @@ export function AddSaleForm({
         canAddPaymentForStatus(editSale?.paymentStatus, remainingDue);
       const amountToCharge = isProvisional
         ? Number(form.paymentAmount) || 0
-        : paidAmount;
+        : convertingToFinal
+          ? Number(form.paymentAmount) || 0
+          : paidAmount;
+      // Convert without payment account is allowed (sale becomes due).
       if (
         (needsNewPayment || addingPaymentOnEdit) &&
         amountToCharge > 0 &&

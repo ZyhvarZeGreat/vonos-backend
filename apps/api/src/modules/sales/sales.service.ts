@@ -37,7 +37,10 @@ import type { PaginatedList } from '../../common/utils/paginatedList';
 import { saleTextSearchWhere, saleSearchSql } from '../../common/utils/listSearch';
 import { resolveListSort } from '../../common/utils/listSort';
 import { computeStockStatus, movementLineRollups } from '../../common/utils/stockQuantity';
-import { adjustItemLocationStock } from '../../common/utils/itemLocationStock';
+import {
+  adjustItemLocationStock,
+  effectiveItemOnHand,
+} from '../../common/utils/itemLocationStock';
 import { resolveActiveItem } from '../../common/utils/resolveActiveItem';
 import {
   parseCsv,
@@ -228,10 +231,29 @@ export class SalesService {
         }
         continue;
       }
-      const nextQuantity = toNumber(item.quantity) + entry.delta;
+      const headerQty = toNumber(item.quantity);
+      const onHand =
+        entry.delta < 0
+          ? await effectiveItemOnHand(tx, item.id, headerQty)
+          : headerQty;
+      if (entry.delta < 0 && onHand > headerQty) {
+        // Heal stale header so convert/sale matches location bins on products.
+        await tx.item.update({
+          where: { id: item.id },
+          data: {
+            quantity: onHand,
+            status: computeStockStatus(
+              onHand,
+              item.reorderPoint != null ? toNumber(item.reorderPoint) : null,
+            ),
+          },
+        });
+        item.quantity = { toString: () => String(onHand) };
+      }
+      const nextQuantity = onHand + entry.delta;
       if (nextQuantity < 0) {
         throw new BadRequestException(
-          `Insufficient stock for ${entry.sku} (need ${Math.abs(entry.delta)}, have ${toNumber(item.quantity)})`,
+          `Insufficient stock for ${entry.sku} (need ${Math.abs(entry.delta)}, have ${onHand})`,
         );
       }
       await tx.item.update({
@@ -1704,14 +1726,11 @@ export class SalesService {
       const resolvedPayments =
         !isProvisional && body.payments && body.payments.length > 0
           ? body.payments
-          : isProvisional
-            ? []
-            : [{ amount: total, method: 'cash' as const }];
+          : [];
       const paidTotal = resolvedPayments.reduce((sum, row) => sum + row.amount, 0);
       let paymentStatus: PaymentStatus | null = isProvisional ? 'due' : 'paid';
       if (!isProvisional) {
-        if (paidTotal <= 0) paymentStatus = 'due';
-        else if (paidTotal < total) paymentStatus = 'partial';
+        paymentStatus = paymentStatusFromAmounts(total, paidTotal);
       }
 
       const sale = await tx.sale.create({
@@ -2142,7 +2161,7 @@ export class SalesService {
             itemTenantId: item.tenantId,
             itemId: item.id,
             sku: line.sku,
-            locationCode: item.locationCode ?? locationCode,
+            locationCode: locationCode ?? item.locationCode,
             binLocation: item.binLocation,
             delta: sign * qty,
           });
@@ -2192,8 +2211,16 @@ export class SalesService {
         if (isProvisional) {
           paidTotal = 0;
           paymentStatus = 'due';
-        } else if (becomingFinal && body.payments && body.payments.length > 0) {
-          paidTotal = body.payments.reduce((sum, p) => sum + p.amount, 0);
+        } else if (becomingFinal) {
+          // Quotation/draft → final: only count payments that have an account.
+          // No payment account attached → due (collect later).
+          if (body.payments && body.payments.length > 0) {
+            paidTotal = body.payments
+              .filter((p) => Boolean(p.accountId?.trim()) && p.amount > 0)
+              .reduce((sum, p) => sum + p.amount, 0);
+          } else {
+            paidTotal = 0;
+          }
           paymentStatus = paymentStatusFromAmounts(total, paidTotal);
         } else {
           paymentStatus = paymentStatusFromAmounts(total, paidTotal, existing.paymentStatus);
@@ -2328,6 +2355,8 @@ export class SalesService {
         if (becomingFinal && body.payments) {
           for (const payment of body.payments) {
             if (payment.amount <= 0) continue;
+            // Convert without a payment account → no payment row (sale stays due).
+            if (!payment.accountId?.trim()) continue;
             const createdPayment = await tx.payment.create({
               data: {
                 tenantId,
@@ -2339,30 +2368,33 @@ export class SalesService {
                 paymentFor: 'sale',
                 saleId: id,
                 invoiceId: invoice.id,
-                accountId: payment.accountId ?? null,
+                accountId: payment.accountId,
                 note: payment.note ?? null,
                 createdByName: createdBy.createdByName ?? null,
               },
             });
-            if (payment.accountId) {
-              await recordPaymentAccountTxn(tx, {
-                tenantId,
-                accountId: payment.accountId,
-                type: 'credit',
-                subType: 'sale_payment',
-                amount: payment.amount,
-                operationDate: saleDate,
-                refNo: createdPayment.paymentRefNo,
-                note: payment.note ?? `Sale payment — ${updated.reference}`,
-                paymentMethod: payment.method ?? 'cash',
-                saleId: id,
-                paymentId: createdPayment.id,
-                invoiceId: invoice.id,
-                createdByName: createdBy.createdByName ?? null,
-              });
-            }
+            await recordPaymentAccountTxn(tx, {
+              tenantId,
+              accountId: payment.accountId,
+              type: 'credit',
+              subType: 'sale_payment',
+              amount: payment.amount,
+              operationDate: saleDate,
+              refNo: createdPayment.paymentRefNo,
+              note: payment.note ?? `Sale payment — ${updated.reference}`,
+              paymentMethod: payment.method ?? 'cash',
+              saleId: id,
+              paymentId: createdPayment.id,
+              invoiceId: invoice.id,
+              createdByName: createdBy.createdByName ?? null,
+            });
           }
-          const newPaid = body.payments.reduce((sum, p) => sum + p.amount, 0);
+          const newPaid = (
+            await tx.payment.findMany({
+              where: { tenantId, saleId: id, deletedAt: null },
+              select: { amount: true },
+            })
+          ).reduce((sum, p) => sum + toNumber(p.amount), 0);
           await tx.sale.update({
             where: { id },
             data: {
@@ -2472,14 +2504,17 @@ export class SalesService {
     }
 
     const total = toNumber(existing.total);
-    const paymentRows =
-      body.payments && body.payments.length > 0
-        ? body.payments
-        : [{ amount: total, method: 'cash' }];
+    // Convert without a payment account → due. Only count payments that have an account.
+    const paymentRows = (body.payments ?? []).filter(
+      (row) => Boolean(row.accountId?.trim()) && row.amount > 0,
+    );
     const paidTotal = paymentRows.reduce((sum, row) => sum + row.amount, 0);
-    let paymentStatus: PaymentStatus = 'paid';
-    if (paidTotal <= 0) paymentStatus = 'due';
-    else if (paidTotal < total) paymentStatus = 'partial';
+    const paymentStatus = paymentStatusFromAmounts(total, paidTotal);
+
+    const createdBy = {
+      createdByUserId: existing.createdByUserId ?? null,
+      createdByName: existing.createdByName ?? null,
+    };
 
     const row = await this.prisma.$transaction(
       async (tx) => {
@@ -2489,6 +2524,13 @@ export class SalesService {
       });
       const sellingCode = sellingTenant?.code?.toUpperCase() ?? '';
       const catalogOnlySeller = isGroupStockConsumerTenant(sellingCode);
+      const outboundLines: Array<{
+        itemId: string;
+        sku: string;
+        name: string;
+        quantity: number;
+        unitCost: number;
+      }> = [];
 
       // VA/VP: never touch stock on finalize — catalog billing; outside sourcing OK.
       if (!existing.jobId && !catalogOnlySeller) {
@@ -2543,7 +2585,8 @@ export class SalesService {
               data: { itemId: item.id },
             });
           }
-          const currentQty = toNumber(item.quantity);
+          const headerQty = toNumber(item.quantity);
+          const currentQty = await effectiveItemOnHand(tx, item.id, headerQty);
           const nextQuantity = currentQty - qty;
           if (nextQuantity < 0) {
             throw new BadRequestException(
@@ -2564,6 +2607,13 @@ export class SalesService {
             binLocation: item.binLocation,
             delta: -qty,
           });
+          outboundLines.push({
+            itemId: item.id,
+            sku: line.sku,
+            name: line.name || item.name,
+            quantity: qty,
+            unitCost: toNumber(line.unitPrice),
+          });
         }
       }
 
@@ -2572,10 +2622,11 @@ export class SalesService {
         data: {
           status: 'completed',
           paymentStatus,
+          totalPaid: paidTotal,
           paymentMethod:
             paymentRows.find((p) => p.method?.trim())?.method?.trim() ||
             existing.paymentMethod ||
-            'cash',
+            null,
           shippingStatus: existing.shippingStatus ?? 'pending',
         },
         include: {
@@ -2589,6 +2640,18 @@ export class SalesService {
         await tx.job.update({
           where: { id: existing.jobId },
           data: { invoiceAmount: total },
+        });
+      }
+
+      if (!existing.jobId && !catalogOnlySeller) {
+        await this.writeSaleOutboundMovement(tx, {
+          tenantId,
+          saleId: id,
+          saleReference: sale.reference,
+          locationCode: existing.locationCode,
+          date: existing.date,
+          lines: outboundLines,
+          createdBy,
         });
       }
 
