@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ImageIcon, Printer } from "lucide-react";
+import { ImageIcon, Plus, Printer, X } from "lucide-react";
 import type { Item, ItemLocationStock } from "@vonos/types";
 import {
   PRODUCT_STOCK_BUSINESS_LOCATIONS,
@@ -390,6 +390,36 @@ export function Hq6ViewProductModal({
   );
 }
 
+type OpeningStockEntry = {
+  key: string;
+  qty: string;
+  unitCost: string;
+  date: string;
+  note: string;
+};
+
+function localTodayDate(): string {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, "0");
+  const d = String(now.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+function nextOpeningStockKey(): string {
+  return `os-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function blankOpeningStockEntry(unitCost: string): OpeningStockEntry {
+  return {
+    key: nextOpeningStockKey(),
+    qty: "",
+    unitCost,
+    date: localTodayDate(),
+    note: "",
+  };
+}
+
 export function Hq6OpeningStockModal({
   open,
   onClose,
@@ -406,19 +436,22 @@ export function Hq6OpeningStockModal({
     () => stockLocationsForOpening(config?.code, config),
     [config?.code, config?.name, config?.businessLocations],
   );
-  const [qty, setQty] = useState("");
-  const [unitCost, setUnitCost] = useState("");
-  const [date, setDate] = useState("");
-  const [note, setNote] = useState("");
+  const [rows, setRows] = useState<OpeningStockEntry[]>([]);
   const [location, setLocation] = useState("");
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (open && item) {
-      setQty(String(item.quantity ?? 0));
-      setUnitCost(String(item.costPrice ?? 0));
-      setDate(new Date().toISOString().slice(0, 10));
-      setNote("");
+      const cost = String(item.costPrice ?? 0);
+      setRows([
+        {
+          key: nextOpeningStockKey(),
+          qty: String(item.quantity ?? 0),
+          unitCost: cost,
+          date: localTodayDate(),
+          note: "",
+        },
+      ]);
       const preferred =
         item.locationCode?.trim() ||
         defaultEntityLocationCode(stockLocations, config?.code);
@@ -426,9 +459,35 @@ export function Hq6OpeningStockModal({
     }
   }, [open, item, stockLocations, config?.code]);
 
-  const qtyNum = Number(qty) || 0;
-  const costNum = Number(unitCost) || 0;
-  const subtotal = qtyNum * costNum;
+  const patchRow = (key: string, patch: Partial<OpeningStockEntry>) => {
+    setRows((prev) =>
+      prev.map((row) => (row.key === key ? { ...row, ...patch } : row)),
+    );
+  };
+
+  const addRow = (afterKey: string) => {
+    setRows((prev) => {
+      const source = prev.find((row) => row.key === afterKey) ?? prev[prev.length - 1];
+      const next = blankOpeningStockEntry(source?.unitCost ?? "0");
+      const index = prev.findIndex((row) => row.key === afterKey);
+      if (index < 0) return [...prev, next];
+      const copy = [...prev];
+      copy.splice(index + 1, 0, next);
+      return copy;
+    });
+  };
+
+  const removeRow = (key: string) => {
+    setRows((prev) => (prev.length <= 1 ? prev : prev.filter((row) => row.key !== key)));
+  };
+
+  const rowSubtotal = (row: OpeningStockEntry) =>
+    (Number(row.qty) || 0) * (Number(row.unitCost) || 0);
+  const totalQty = rows.reduce((sum, row) => sum + (Number(row.qty) || 0), 0);
+  const totalAmount = rows.reduce((sum, row) => sum + rowSubtotal(row), 0);
+  const lastUnitCost =
+    [...rows].reverse().find((row) => row.unitCost.trim() !== "")?.unitCost ??
+    "0";
   const locationLabel =
     stockLocations.find((l) => l.code === location)?.name ?? location;
 
@@ -437,17 +496,21 @@ export function Hq6OpeningStockModal({
       open={open}
       onClose={onClose}
       title="Add Opening Stock"
-      size="xl"
+      size="2xl"
       footer={
         <Hq6ModalSaveClose
           onClose={onClose}
           saving={saving}
           onSave={() => {
             void (async () => {
-              const valid = parseForm(openingStockSchema, { quantity: qty });
-              if (!valid) return;
-              const n = Number(valid.quantity);
-              const cost = Number(unitCost);
+              for (const row of rows) {
+                const valid = parseForm(openingStockSchema, {
+                  quantity: row.qty === "" ? "0" : row.qty,
+                });
+                if (!valid) return;
+              }
+              const n = totalQty;
+              const cost = Number(lastUnitCost);
               if (!Number.isFinite(cost) || cost < 0) {
                 toast.error("Enter a valid unit cost");
                 return;
@@ -505,8 +568,8 @@ export function Hq6OpeningStockModal({
           )}
 
           {/* UPOS-style green header table */}
-          <div className="overflow-x-auto rounded border border-[#d1d5db]">
-            <table className="w-full text-sm">
+          <div className="hq6-os-table-wrap">
+            <table className="hq6-os-table">
               <thead>
                 <tr className="bg-[#28a745] text-white">
                   <th className="px-3 py-2 text-left font-semibold">Product Name</th>
@@ -515,63 +578,104 @@ export function Hq6OpeningStockModal({
                   <th className="px-3 py-2 text-center font-semibold">Subtotal (Before Tax)</th>
                   <th className="px-3 py-2 text-center font-semibold">Date</th>
                   <th className="px-3 py-2 text-center font-semibold">Note</th>
-                  <th className="px-3 py-2 w-10" />
+                  <th className="hq6-os-actions-col" aria-label="Row actions" />
                 </tr>
               </thead>
               <tbody>
-                <tr className="border-b border-[#e5e7eb]">
-                  <td className="px-3 py-2 font-medium text-[#111827]">{item.name}</td>
-                  <td className="px-3 py-2">
-                    <input
-                      type="number"
-                      min={0}
-                      step="0.01"
-                      className="hq6-modal-input w-24 text-center mx-auto block"
-                      value={qty}
-                      onChange={(e) => setQty(e.target.value)}
-                    />
-                  </td>
-                  <td className="px-3 py-2">
-                    <div className="flex items-center justify-center gap-1">
+                {rows.map((row, index) => (
+                  <tr key={row.key} className="border-b border-[#e5e7eb]">
+                    <td className="px-3 py-2 font-medium text-[#111827]">
+                      {item.name}
+                    </td>
+                    <td className="px-3 py-2">
                       <input
                         type="number"
                         min={0}
                         step="0.01"
-                        className="hq6-modal-input w-28 text-right"
-                        value={unitCost}
-                        onChange={(e) => setUnitCost(e.target.value)}
+                        className="hq6-modal-input hq6-os-qty-input"
+                        value={row.qty}
+                        onChange={(e) =>
+                          patchRow(row.key, { qty: e.target.value })
+                        }
+                        aria-label={
+                          index === 0
+                            ? "Quantity remaining"
+                            : `Opening stock quantity ${index + 1}`
+                        }
                       />
-                    </div>
-                  </td>
-                  <td className="px-3 py-2 text-center tabular-nums">
-                    {subtotal.toFixed(2)}
-                  </td>
-                  <td className="px-3 py-2">
-                    <input
-                      type="date"
-                      className="hq6-modal-input w-36 mx-auto block"
-                      value={date}
-                      onChange={(e) => setDate(e.target.value)}
-                    />
-                  </td>
-                  <td className="px-3 py-2">
-                    <textarea
-                      className="hq6-modal-input w-full"
-                      rows={1}
-                      value={note}
-                      onChange={(e) => setNote(e.target.value)}
-                    />
-                  </td>
-                  <td className="px-3 py-2 text-center">
-                    <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-[#6c757d] text-white text-xs cursor-default">+</span>
-                  </td>
-                </tr>
+                    </td>
+                    <td className="px-3 py-2">
+                      <div className="flex items-center justify-center gap-1">
+                        <input
+                          type="number"
+                          min={0}
+                          step="0.01"
+                          className="hq6-modal-input w-28 text-right"
+                          value={row.unitCost}
+                          onChange={(e) =>
+                            patchRow(row.key, { unitCost: e.target.value })
+                          }
+                          aria-label={`Unit cost ${index + 1}`}
+                        />
+                      </div>
+                    </td>
+                    <td className="px-3 py-2 text-center tabular-nums">
+                      {rowSubtotal(row).toFixed(2)}
+                    </td>
+                    <td className="px-3 py-2">
+                      <input
+                        type="date"
+                        className="hq6-modal-input w-36 mx-auto block"
+                        value={row.date}
+                        onChange={(e) =>
+                          patchRow(row.key, { date: e.target.value })
+                        }
+                        aria-label={`Date ${index + 1}`}
+                      />
+                    </td>
+                    <td className="px-3 py-2">
+                      <textarea
+                        className="hq6-modal-input w-full"
+                        rows={1}
+                        value={row.note}
+                        onChange={(e) =>
+                          patchRow(row.key, { note: e.target.value })
+                        }
+                        aria-label={`Note ${index + 1}`}
+                      />
+                    </td>
+                    <td className="hq6-os-actions-col">
+                      <div className="hq6-os-row-actions">
+                        <button
+                          type="button"
+                          className="hq6-os-icon-btn hq6-os-icon-btn-add"
+                          aria-label="Add opening stock row"
+                          title="Add another stock amount"
+                          onClick={() => addRow(row.key)}
+                        >
+                          <Plus strokeWidth={2.5} />
+                        </button>
+                        {index > 0 ? (
+                          <button
+                            type="button"
+                            className="hq6-os-icon-btn hq6-os-icon-btn-remove"
+                            aria-label="Remove opening stock row"
+                            title="Remove this stock amount"
+                            onClick={() => removeRow(row.key)}
+                          >
+                            <X strokeWidth={2.5} />
+                          </button>
+                        ) : null}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
 
           <div className="text-right text-sm font-semibold text-[#111827]">
-            Total Amount (Exc. Tax): {subtotal.toFixed(2)}
+            Total Amount (Exc. Tax): {totalAmount.toFixed(2)}
           </div>
         </div>
       )}

@@ -28,4 +28,10 @@ describe("finance permission gating (source contracts)", () => {
     expect(src).toContain("canViewFinance");
     expect(src).toContain("Finance restricted");
   });
+
+  it("HQ6 tenant sidebar includes the Finance page (Roles Financial dashboard)", () => {
+    const src = read("lib/registries/posNavSections.ts");
+    expect(src).toContain('route: r(code, "finance")');
+    expect(src).toContain('label: "Finance"');
+  });
 });

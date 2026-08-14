@@ -329,8 +329,8 @@ function settingsItems(code: string): NavItem[] {
  * HQ6 Ultimate POS-style collapsible sidebar groups.
  * Order matches hq6.vonosautomarket.com AdminSidebarMenu.php:
  * Home > User Management > Contacts > Products > Purchases > Sell >
- * Expenses > Payment Accounts > Reports > Orders > Notification Templates >
- * Settings > HRM > Essentials
+ * Expenses > Payment Accounts > Finance > Reports > Orders >
+ * Notification Templates > Settings > HRM > Essentials
  *
  * Plus an Operations section for archetype-only routes when HQ6 is active.
  */
@@ -411,6 +411,22 @@ export function posNavSectionsForConfig(config: TenantConfig): NavSection[] {
       icon: "credit-card",
       collapsible: true,
       items: paymentAccountItems(code, config),
+    });
+  }
+
+  // 8b. Finance (ledger + P&L) — Roles "Financial dashboard" checkbox
+  if (has(config, "finance")) {
+    sections.push({
+      label: "Finance",
+      icon: "wallet",
+      items: [
+        {
+          label: "Finance",
+          icon: "wallet",
+          route: r(code, "finance"),
+          pageType: "dashboard",
+        },
+      ],
     });
   }
 
