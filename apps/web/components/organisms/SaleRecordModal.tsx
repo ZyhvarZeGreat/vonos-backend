@@ -116,6 +116,8 @@ export function SaleRecordModal({
       subtotal={subtotal}
       total={sale.total}
       currency={sale.currency}
+      taxAmount={sale.taxAmount}
+      discountAmount={sale.discountAmount}
       notes={null}
       balanceDue={sale.customerTotalSellDue ?? null}
       {...layoutProps}

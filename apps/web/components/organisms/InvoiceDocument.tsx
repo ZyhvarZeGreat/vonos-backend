@@ -47,6 +47,9 @@ export interface InvoiceDocumentProps {
   subtotal: number;
   total: number;
   currency: string;
+  /** Order-level tax (sale `taxAmount`). */
+  taxAmount?: number | null;
+  discountAmount?: number | null;
   notes?: string | null;
   validUntil?: string | null;
   balanceDue?: number | null;
@@ -82,6 +85,8 @@ export function InvoiceDocument({
   subtotal,
   total,
   currency,
+  taxAmount,
+  discountAmount,
   notes,
   validUntil,
   balanceDue,
@@ -362,6 +367,30 @@ export function InvoiceDocument({
                 </td>
               </tr>
             ) : null}
+            {discountAmount != null && discountAmount > 0 ? (
+              <tr>
+                <td
+                  colSpan={isSlim ? 2 : 4}
+                  className="pt-1 text-right text-sm font-medium text-muted"
+                >
+                  Discount:(-)
+                </td>
+                <td className="pt-1 pr-1 text-right tabular-nums">
+                  {formatCurrency(discountAmount, currency)}
+                </td>
+              </tr>
+            ) : null}
+            <tr>
+              <td
+                colSpan={isSlim ? 2 : 4}
+                className="pt-1 text-right text-sm font-medium text-muted"
+              >
+                Order Tax:(+)
+              </td>
+              <td className="pt-1 pr-1 text-right tabular-nums">
+                {formatCurrency(Math.max(0, taxAmount ?? 0), currency)}
+              </td>
+            </tr>
             <tr>
               <td
                 colSpan={isSlim ? 2 : 4}
@@ -385,6 +414,19 @@ export function InvoiceDocument({
               <tr>
                 <td colSpan={5} className="pt-3 text-sm italic text-muted">
                   Amount in words: {amountInWords}
+                </td>
+              </tr>
+            ) : null}
+            {!isSlim ? (
+              <tr>
+                <td colSpan={5} className="pt-3 text-sm">
+                  <p className="font-semibold text-foreground">Tax details</p>
+                  <p className="mt-1 flex justify-between gap-8 text-muted">
+                    <span>Order Tax</span>
+                    <span className="tabular-nums text-foreground">
+                      {formatCurrency(Math.max(0, taxAmount ?? 0), currency)}
+                    </span>
+                  </p>
                 </td>
               </tr>
             ) : null}

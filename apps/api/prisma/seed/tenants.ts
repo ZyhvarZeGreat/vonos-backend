@@ -411,6 +411,7 @@ export async function seedTenantsAndUsers(prisma: PrismaClient): Promise<void> {
     { id: 'user_visp_admin', email: 'admin@visp.vonos', tenantId: 'tenant_visp_001', name: 'VISP Admin' },
     { id: 'user_vsp_admin', email: 'admin@vsp.vonos', tenantId: 'tenant_vsp_001', name: 'VSP Admin' },
     { id: 'user_vc_admin', email: 'admin@vc.vonos', tenantId: 'tenant_vc_001', name: 'Cafe Admin' },
+    { id: 'user_vkw_admin', email: 'admin@vkw.vonos', tenantId: 'tenant_vkw_001', name: 'Kids Wear Admin' },
     {
       id: 'user_va_admin',
       email: 'admin@va.vonos',

@@ -75,6 +75,8 @@ export function SaleReceiptPanel({ sale }: SaleReceiptPanelProps) {
       subtotal={subtotal}
       total={sale.total}
       currency={sale.currency}
+      taxAmount={sale.taxAmount}
+      discountAmount={sale.discountAmount}
       notes={notes || null}
       balanceDue={sale.customerTotalSellDue ?? null}
       {...layoutProps}

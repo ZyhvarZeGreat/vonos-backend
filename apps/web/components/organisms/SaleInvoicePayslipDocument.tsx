@@ -503,6 +503,7 @@ export function SaleInvoicePayslipDocument({
 
   const lineTotal = lines.reduce((sum, line) => sum + line.subtotal, 0);
   const discountAmount = sale.discountAmount ?? 0;
+  const orderTax = Math.max(0, sale.taxAmount ?? 0);
   const totalPayable = sale.total ?? lineTotal;
   const totalQty = lines.reduce((sum, line) => sum + line.qty, 0);
   const totalPaid = sale.totalPaid ?? 0;
@@ -599,12 +600,18 @@ export function SaleInvoicePayslipDocument({
               </p>
               {discountAmount > 0 ? (
                 <p>
-                  Discount:{" "}
+                  Discount:(-){" "}
                   <span className="tabular-nums">
-                    − {formatHq6Currency(discountAmount, currency)}
+                    {formatHq6Currency(discountAmount, currency)}
                   </span>
                 </p>
               ) : null}
+              <p>
+                Order Tax:(+){" "}
+                <span className="tabular-nums">
+                  {formatHq6Currency(orderTax, currency)}
+                </span>
+              </p>
               <p className="pt-1 text-[22px] font-bold leading-tight text-[#9ca3af]">
                 Total:{" "}
                 <span className="text-neutral-800">
@@ -614,6 +621,15 @@ export function SaleInvoicePayslipDocument({
               <p className="text-[13px] text-neutral-600">
                 ({invoiceWords(totalPayable)})
               </p>
+              <div className="mt-3 border-t border-[#d1d5db] pt-2 text-left sm:text-right">
+                <p className="font-bold text-neutral-900">Tax details</p>
+                <div className="mt-1 flex justify-end gap-8 text-[13px]">
+                  <span className="text-neutral-600">Order Tax</span>
+                  <span className="tabular-nums">
+                    {formatHq6Currency(orderTax, currency)}
+                  </span>
+                </div>
+              </div>
             </div>
           </section>
         </>

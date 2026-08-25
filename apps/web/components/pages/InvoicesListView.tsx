@@ -172,6 +172,8 @@ export function InvoicesListView() {
       subtotal={invoiceDetailSubtotal(previewDetail)}
       total={previewDetail.total}
       currency={previewDetail.currency}
+      taxAmount={previewDetail.taxAmount}
+      discountAmount={previewDetail.discountAmount}
       notes={previewDetail.notes}
       validUntil={previewDetail.dueDate}
       {...layoutProps}
