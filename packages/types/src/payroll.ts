@@ -4,6 +4,9 @@ export type PayComponentType = "allowance" | "deduction";
 export interface Payroll {
   id: string;
   tenantId: string;
+  /** Present on VAG all-tenants payroll lists. */
+  tenantCode?: string | null;
+  tenantName?: string | null;
   payrollGroupId: string | null;
   payrollGroupName: string | null;
   employeeRecordId: string | null;
@@ -207,6 +210,8 @@ export interface SyncEmployeeByUserRequest {
   locationCode?: string | null;
   name?: string;
   designationId?: string;
+  /** When set, overrides role/designation derivation for the sales service-staff roster. */
+  isServiceStaff?: boolean;
   accountHolderName?: string | null;
   bankName?: string | null;
   bankBranch?: string | null;
@@ -244,6 +249,8 @@ export interface PayrollFilters {
   employeeRecordId?: string;
   locationCode?: string;
   designationId?: string;
+  /** Filter all-tenants lists to one entity code (e.g. VA). */
+  tenantCode?: string;
   month?: number;
   year?: number;
   status?: string;

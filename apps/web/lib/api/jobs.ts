@@ -8,6 +8,7 @@ import type {
   UpdateJobMaterialRequest,
 } from "@vonos/types";
 import { apiFetch, withTenantQuery } from "@/lib/api/client";
+import { throwApiError } from "@/lib/api/parseApiError";
 import {
   DEFAULT_TABLE_PAGE_SIZE,
   EXPORT_PAGE_SIZE,
@@ -261,6 +262,23 @@ export async function createJob(
 export async function advanceJobStatus(id: string): Promise<Job> {
   const response = await apiFetch(`/jobs/${id}/status`, { method: "PATCH" });
   if (!response.ok) throw new Error("Failed to advance job status");
+  clearJobOptionCache();
+  return response.json();
+}
+
+/** Set job stage + optional notes (VA/VP sales Action modal). */
+export async function updateJobStatus(
+  id: string,
+  body: { status: string; notes?: string },
+): Promise<Job> {
+  const response = await apiFetch(`/jobs/${id}/status`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    return throwApiError(response, "Failed to update job status");
+  }
   clearJobOptionCache();
   return response.json();
 }

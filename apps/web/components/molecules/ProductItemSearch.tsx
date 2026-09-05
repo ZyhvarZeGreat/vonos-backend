@@ -191,6 +191,7 @@ export function ProductItemSearch({
     queryFn: async () => {
       const result = await getStockAvailability({
         limit: IN_MEMORY_FILTER_CATALOG_LIMIT,
+        stockHomesOnly: true,
       });
       return result.groups;
     },

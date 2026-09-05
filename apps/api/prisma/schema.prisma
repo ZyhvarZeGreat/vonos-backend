@@ -163,6 +163,8 @@ model Tenant {
   discounts           Discount[]
   variationTemplates  VariationTemplate[]
   tenantRoles         TenantRole[]
+  storeOrderLines     StoreOrderLine[]
+  storeOrderSales     StoreOrderSale[]
 }
 
 model Appointment {
@@ -664,6 +666,7 @@ model Sale {
   lines SaleLine[]
   payments Payment[]
   invoice Invoice?
+  storeOrderLinks StoreOrderSale[]
 
   @@unique([tenantId, reference])
   @@unique([tenantId, jobId])
@@ -1476,4 +1479,74 @@ model IdempotencyRecord {
   @@unique([scope, key])
   @@index([expiresAt])
   @@index([status, updatedAt])
+}
+
+enum StoreOrderStatus {
+  pending_payment
+  paid
+  cancelled
+  fulfilled
+}
+
+enum StoreFulfillmentType {
+  collection
+  fitment
+  delivery
+}
+
+/// Guest checkout from the public parts shop (VISP + VSP catalog).
+model StoreOrder {
+  id                 String               @id @default(cuid())
+  reference          String               @unique
+  status             StoreOrderStatus       @default(pending_payment)
+  fulfillment        StoreFulfillmentType
+  customerName       String
+  customerEmail      String
+  customerPhone      String
+  registration       String?
+  notes              String?
+  currency           String               @default("NGN")
+  subtotal           Decimal
+  total              Decimal
+  paystackReference  String?              @unique
+  paystackAccessCode String?
+  paidAt             DateTime?
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+
+  lines StoreOrderLine[]
+  sales StoreOrderSale[]
+
+  @@index([status, createdAt])
+}
+
+model StoreOrderLine {
+  id        String     @id @default(cuid())
+  orderId   String
+  order     StoreOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  tenantId  String
+  tenant    Tenant     @relation(fields: [tenantId], references: [id])
+  itemId    String
+  sku       String
+  name      String
+  qty       Int
+  unitPrice Decimal
+  lineTotal Decimal
+
+  @@index([orderId])
+  @@index([tenantId])
+  @@index([tenantId, sku])
+}
+
+model StoreOrderSale {
+  id       String     @id @default(cuid())
+  orderId  String
+  order    StoreOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  tenantId String
+  tenant   Tenant     @relation(fields: [tenantId], references: [id])
+  saleId   String
+  sale     Sale       @relation(fields: [saleId], references: [id])
+
+  @@unique([orderId, tenantId])
+  @@index([saleId])
 }

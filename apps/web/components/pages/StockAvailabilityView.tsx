@@ -19,6 +19,7 @@ import {
   isVagViewUnitId,
 } from "@/lib/registries/vagViewUnits";
 import { useAdminEntityStore } from "@/stores/adminEntityStore";
+import { PRODUCT_STOCK_BUSINESS_LOCATIONS } from "@vonos/types";
 
 type AvailabilityFilter = "all" | "available" | "unavailable";
 
@@ -52,12 +53,17 @@ export function stockAvailabilityQueryKey(options: {
  * Cross-entity stock lookup for the Autos Group.
  * Page-sized API fetches + sliding window (same feel as entity list tables).
  */
-export function StockAvailabilityView() {
+export function StockAvailabilityView({
+  stockHomesOnly = false,
+}: {
+  /** Limit entity filter + API scope to VW / VISP / VSP (entity Group Stock page). */
+  stockHomesOnly?: boolean;
+} = {}) {
   const isHq6 = useIsVaHq6();
   const viewingCode = useAdminEntityStore((s) => s.viewingCode);
   const [query, setQuery] = useState("");
   const [entityFilter, setEntityFilter] = useState(
-    () => entityCodeFromViewing(viewingCode),
+    () => (stockHomesOnly ? "" : entityCodeFromViewing(viewingCode)),
   );
   const [availability, setAvailability] =
     useState<AvailabilityFilter>("all");
@@ -67,8 +73,9 @@ export function StockAvailabilityView() {
   const debouncedSearch = useDebouncedValue(query, SEARCH_DEBOUNCE_MS);
 
   useEffect(() => {
+    if (stockHomesOnly) return;
     setEntityFilter(entityCodeFromViewing(viewingCode));
-  }, [viewingCode]);
+  }, [viewingCode, stockHomesOnly]);
 
   useEffect(() => {
     setFetchLimit(STOCK_FETCH_PAGE);
@@ -81,13 +88,14 @@ export function StockAvailabilityView() {
       availability,
       search: debouncedSearch,
       fetchLimit,
-    }),
+    }).concat(stockHomesOnly ? ["homes"] : []),
     queryFn: () =>
       getStockAvailability({
         limit: fetchLimit,
         entityCode: entityFilter || undefined,
         availability,
         search: debouncedSearch.trim() || undefined,
+        stockHomesOnly: stockHomesOnly || undefined,
       }),
     staleTime: ADMIN_ENTITY_STALE_MS,
     placeholderData: (prev) => prev,
@@ -124,13 +132,18 @@ export function StockAvailabilityView() {
 
   const entityOptions = useMemo(
     () => [
-      { value: "", label: "All entities" },
-      ...AUTOS_GROUP_ENTITIES.map((e) => ({
-        value: e.code,
-        label: e.name,
-      })),
+      { value: "", label: stockHomesOnly ? "All (VW / VISP / VSP)" : "All entities" },
+      ...(stockHomesOnly
+        ? PRODUCT_STOCK_BUSINESS_LOCATIONS.map((e) => ({
+            value: e.code,
+            label: e.name,
+          }))
+        : AUTOS_GROUP_ENTITIES.map((e) => ({
+            value: e.code,
+            label: e.name,
+          }))),
     ],
-    [],
+    [stockHomesOnly],
   );
 
   const fieldClass = isHq6
@@ -150,18 +163,19 @@ export function StockAvailabilityView() {
       {!isHq6 ? (
         <div>
           <h2 className="text-2xl font-semibold text-foreground">
-            Stock Availability
+            {stockHomesOnly ? "Group Stock" : "Stock Availability"}
           </h2>
           <p className="mt-1 text-sm text-muted">
-            Loads a sliding window of products (not the full catalog). Search
-            hits the server. Available = on hand minus Approved requisition
-            holds.
+            {stockHomesOnly
+              ? "On-hand quantities across Warehouse, Institute, and Marketplace. View only — edit stock on your own entity."
+              : "Loads a sliding window of products (not the full catalog). Search hits the server. Available = on hand minus Approved requisition holds."}
           </p>
         </div>
       ) : (
         <p className={`text-sm ${muted}`}>
-          Sliding window list — same pacing as entity tables. Search is
-          server-side. “Show info for” scopes the entity filter when set.
+          {stockHomesOnly
+            ? "VW / VISP / VSP on-hand — view only. Edit quantities only on your own entity (Opening Stock)."
+            : "Sliding window list — same pacing as entity tables. Search is server-side. “Show info for” scopes the entity filter when set."}
         </p>
       )}
 

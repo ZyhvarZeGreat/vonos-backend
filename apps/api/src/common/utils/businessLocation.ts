@@ -2,10 +2,12 @@ import { BadRequestException } from '@nestjs/common';
 import type { TenantConfig } from '@vonos/types';
 import {
   catalogPresetsForCode,
+  isProductOwnScopeTenant,
   isProductStockTenant,
   productHomeLocationsForTenant,
   PRODUCT_STOCK_BUSINESS_LOCATIONS,
 } from '@vonos/types';
+import type { BusinessLocation } from '@vonos/types';
 
 const ENTITY_LOCATION_CODES = new Set([
   'VA',
@@ -106,7 +108,24 @@ export function assertBusinessLocation(
   return code;
 }
 
-/** Product stock location: this tenant's own product home only. */
+function matchProductStockLocation(
+  locations: BusinessLocation[],
+  raw: string,
+): string | null {
+  const lower = raw.trim().toLowerCase();
+  const match = locations.find(
+    (row) =>
+      row.code.toLowerCase() === lower || row.name.toLowerCase() === lower,
+  );
+  return match?.code ?? null;
+}
+
+/**
+ * Product stock location: this tenant's own product home only.
+ * Legacy imports often left sister-entity or WordPress branch codes
+ * (e.g. VW / BL0001 on a VISP row) — remap those onto the tenant home
+ * instead of rejecting the write.
+ */
 export function assertProductStockLocation(
   config: unknown,
   locationCode?: string | null,
@@ -116,12 +135,20 @@ export function assertProductStockLocation(
     return locationCode?.trim() || null;
   }
 
-  const code = locationCode?.trim();
-  if (!code) {
+  const raw = locationCode?.trim();
+  if (!raw) {
     return null;
   }
-  if (!locations.some((row) => row.code === code)) {
-    throw new BadRequestException('Unknown business location');
+
+  const direct = matchProductStockLocation(locations, raw);
+  if (direct) return direct;
+
+  const typed = config as TenantConfig | null | undefined;
+  const tenantCode = typed?.code?.trim().toUpperCase();
+  if (tenantCode && isProductOwnScopeTenant(tenantCode)) {
+    const home = matchProductStockLocation(locations, tenantCode);
+    if (home) return home;
   }
-  return code;
+
+  throw new BadRequestException(`Unknown business location: ${raw}`);
 }

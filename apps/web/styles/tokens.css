@@ -61,9 +61,9 @@
   --color-chart-bar-secondary: #93c5fd;
   --color-chart-bar-tertiary: #e9d5ff;
 
-  /* Typography — body: Helvetica Neue; headings: Plus Jakarta Sans */
+  /* Typography — body: Helvetica Neue; headings: Host Grotesk */
   --font-body: var(--font-helvetica-neue), "Helvetica Neue", Helvetica, Arial, sans-serif;
-  --font-heading: var(--font-plus-jakarta-sans), "Plus Jakarta Sans", sans-serif;
+  --font-heading: var(--font-host-grotesk), "Host Grotesk", sans-serif;
   --font-sans: var(--font-body);
   --letter-spacing: -0.5px;
   --letter-spacing-heading: -0.02em;

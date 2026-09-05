@@ -1,0 +1,10 @@
+// AUTO-GENERATED from standalone scrape — do not edit by hand
+// Regenerate: npm run prepare:subpages
+
+import ScrapedSection from "@/components/marketing/ScrapedSection";
+
+const SECTION_HTML = `<section data-scroll="load" class="section-spacing-bottom"><div class="container-medium"><div class="section-title"><div scroll-item="" class="why-choose-caption"><div class="pre-title w-variant-7e8276b8-3fa3-b83e-411c-2eeab6ce4110">Why choose us</div><h2 class="heading-h4 no-margin-bottom">From fixed-price quotes to industry-leading diagnostics, every service is designed to give you complete confidence in your vehicle and the team working on it.</h2></div></div><div class="w-layout-grid grid-why-choose"><div scroll-item="" class="why-choose-item"><div class="why-choose-wrap"><img loading="lazy" src="/images/icons/tag.svg" alt="Icon" class="why-choose-icon"></div><div class="why-choose-content"><div class="why-choose-title">Fixed-price quotes</div><p class="why-choose-description">The price we quote is the price you pay. If we spot something else, we ask first.</p></div></div><div scroll-item="" class="why-choose-item"><div class="why-choose-wrap"><img loading="lazy" src="/images/icons/calendar.svg" alt="Calendar Icon" class="why-choose-icon"></div><div class="why-choose-content"><div class="why-choose-title">12-month warranty</div><p class="why-choose-description">Every repair is guaranteed for 12 months or 12,000 miles, parts and labor.</p></div></div><div><div scroll-item="" class="why-choose-item"><div class="why-choose-wrap"><img loading="lazy" src="/images/icons/security.svg" alt="Security Icon" class="why-choose-icon"></div><div class="why-choose-content"><div class="why-choose-title">Dealer-level kit</div><p class="why-choose-description">Manufacturer-grade diagnostics without the manufacturer-grade bill or the wait.</p></div></div></div></div></div></section>`;
+
+export default function ValuePropsSection() {
+  return <ScrapedSection html={SECTION_HTML} qa="05-value-props" />;
+}

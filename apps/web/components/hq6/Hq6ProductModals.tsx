@@ -1,14 +1,17 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { ImageIcon, Plus, Printer, X } from "lucide-react";
 import type { Item, ItemLocationStock } from "@vonos/types";
 import {
   PRODUCT_STOCK_BUSINESS_LOCATIONS,
+  isProductStockTenant,
   productHomeLocationsForTenant,
 } from "@vonos/types";
 import { Hq6Modal, Hq6Field, Hq6ModalSaveClose } from "@/components/hq6/Hq6Modal";
 import { ProductThumbnail } from "@/components/atoms/ProductThumbnail";
+import { GroupPeerStockTable } from "@/components/molecules/GroupPeerStockReadout";
 import { isPriceCatalogOnlyTenant } from "@vonos/types";
 import type { TenantConfig } from "@vonos/types";
 import {
@@ -16,6 +19,7 @@ import {
   locationsForTenantConfig,
 } from "@/lib/hooks/useBusinessLocationOptions";
 import { useRouteTenant } from "@/lib/hooks/useRouteTenant";
+import { getItemOpeningStock, getPeerStockBySkus } from "@/lib/api/items";
 import { formatHq6Currency } from "@/lib/utils/hq6Format";
 import { parseForm } from "@/lib/validation/parseForm";
 import { openingStockSchema } from "@/lib/validation/schemas";
@@ -40,6 +44,33 @@ function stockLocationsForOpening(
     return [{ code: code.trim().toUpperCase(), name: config?.name ?? code }];
   }
   return [];
+}
+
+/** Prefer a configured location; ignore legacy sister-entity codes on the item. */
+function openingStockLocationForItem(
+  item: Item,
+  stockLocations: ReturnType<typeof stockLocationsForOpening>,
+  tenantCode?: string | null,
+): string {
+  const matchCode = (raw: string | null | undefined) => {
+    const trimmed = raw?.trim();
+    if (!trimmed) return null;
+    const lower = trimmed.toLowerCase();
+    return (
+      stockLocations.find((loc) => loc.code.toLowerCase() === lower)?.code ??
+      null
+    );
+  };
+
+  for (const candidate of [
+    item.locationCode,
+    ...(item.locationStock ?? []).map((row) => row.locationCode),
+  ]) {
+    const matched = matchCode(candidate);
+    if (matched) return matched;
+  }
+
+  return defaultEntityLocationCode(stockLocations, tenantCode);
 }
 
 function dash(value: string | number | null | undefined): string {
@@ -87,6 +118,15 @@ export function Hq6ViewProductModal({
     tenantCode ?? config?.code,
     config?.archetype,
   );
+  const showGroupPeerStock = isProductStockTenant(tenantCode ?? config?.code);
+
+  const peerStockQuery = useQuery({
+    queryKey: ["peer-stock", item?.sku],
+    enabled: open && showGroupPeerStock && Boolean(item?.sku?.trim()),
+    queryFn: () => getPeerStockBySkus([item!.sku]),
+    staleTime: 60_000,
+  });
+  const peerEntities = peerStockQuery.data?.rows[0]?.entities;
 
   const locations = stockLocationsForOpening(config?.code, config);
 
@@ -385,6 +425,25 @@ export function Hq6ViewProductModal({
             </div>
           </>
         ) : null}
+
+        {showGroupPeerStock ? (
+          <>
+            <div className="hq6-product-view-section-title">
+              <strong>Group stock (VW / VISP / VSP)</strong>
+              <span className="ml-2 text-xs font-normal text-muted">
+                Read-only — change stock only on your entity
+              </span>
+            </div>
+            {peerStockQuery.isLoading ? (
+              <p className="text-sm text-muted">Loading group stock…</p>
+            ) : (
+              <GroupPeerStockTable
+                entities={peerEntities}
+                highlightCode={tenantCode ?? config?.code}
+              />
+            )}
+          </>
+        ) : null}
       </div>
     </Hq6Modal>
   );
@@ -392,11 +451,28 @@ export function Hq6ViewProductModal({
 
 type OpeningStockEntry = {
   key: string;
+  /** Set for saved history rows — those stay read-only. */
+  recordId?: string;
   qty: string;
   unitCost: string;
   date: string;
   note: string;
+  createdByName?: string | null;
+  createdAt?: string | null;
 };
+
+function formatOpeningStockAddedAt(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
 
 function localTodayDate(): string {
   const now = new Date();
@@ -420,6 +496,14 @@ function blankOpeningStockEntry(unitCost: string): OpeningStockEntry {
   };
 }
 
+export type OpeningStockSaveRow = {
+  id?: string;
+  quantity: number;
+  unitCost: number;
+  date: string;
+  note?: string;
+};
+
 export function Hq6OpeningStockModal({
   open,
   onClose,
@@ -429,9 +513,13 @@ export function Hq6OpeningStockModal({
   open: boolean;
   onClose: () => void;
   item: Item | null;
-  onSave?: (qty: number, locationCode: string, unitCost: number) => Promise<void>;
+  onSave?: (
+    rows: OpeningStockSaveRow[],
+    locationCode: string,
+    unitCost: number,
+  ) => Promise<void>;
 }) {
-  const { config } = useRouteTenant();
+  const { config, tenantId } = useRouteTenant();
   const stockLocations = useMemo(
     () => stockLocationsForOpening(config?.code, config),
     [config?.code, config?.name, config?.businessLocations],
@@ -439,35 +527,82 @@ export function Hq6OpeningStockModal({
   const [rows, setRows] = useState<OpeningStockEntry[]>([]);
   const [location, setLocation] = useState("");
   const [saving, setSaving] = useState(false);
+  const [loadingRecords, setLoadingRecords] = useState(false);
 
   useEffect(() => {
-    if (open && item) {
-      const cost = String(item.costPrice ?? 0);
-      setRows([
-        {
-          key: nextOpeningStockKey(),
-          qty: String(item.quantity ?? 0),
-          unitCost: cost,
-          date: localTodayDate(),
-          note: "",
-        },
-      ]);
-      const preferred =
-        item.locationCode?.trim() ||
-        defaultEntityLocationCode(stockLocations, config?.code);
-      setLocation(preferred);
-    }
-  }, [open, item, stockLocations, config?.code]);
+    if (!open || !item) return;
+
+    let cancelled = false;
+    const cost = String(item.costPrice ?? 0);
+    setLocation(
+      openingStockLocationForItem(item, stockLocations, config?.code),
+    );
+    setLoadingRecords(true);
+
+    void (async () => {
+      try {
+        const records = await getItemOpeningStock(item.id);
+        if (cancelled) return;
+        if (records.length > 0) {
+          const history: OpeningStockEntry[] = records.map((record) => ({
+            key: record.id,
+            recordId: record.id,
+            qty: String(record.quantity),
+            unitCost: String(record.unitCost ?? item.costPrice ?? 0),
+            date: record.date || localTodayDate(),
+            note: record.note ?? "",
+            createdByName: record.createdByName,
+            createdAt: record.createdAt ?? null,
+          }));
+          // History is read-only; always offer one blank row to add more stock.
+          setRows([...history, blankOpeningStockEntry(cost)]);
+          const firstLoc = records.find((r) => r.locationCode?.trim())
+            ?.locationCode;
+          if (firstLoc) {
+            const matched = stockLocations.find(
+              (l) => l.code.toLowerCase() === firstLoc.trim().toLowerCase(),
+            );
+            if (matched) setLocation(matched.code);
+          }
+        } else {
+          setRows([
+            {
+              ...blankOpeningStockEntry(cost),
+              qty: String(item.quantity ?? 0),
+            },
+          ]);
+        }
+      } catch {
+        if (cancelled) return;
+        setRows([
+          {
+            ...blankOpeningStockEntry(cost),
+            qty: String(item.quantity ?? 0),
+          },
+        ]);
+      } finally {
+        if (!cancelled) setLoadingRecords(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [open, item, stockLocations, config?.code, tenantId]);
 
   const patchRow = (key: string, patch: Partial<OpeningStockEntry>) => {
     setRows((prev) =>
-      prev.map((row) => (row.key === key ? { ...row, ...patch } : row)),
+      prev.map((row) => {
+        if (row.key !== key || row.recordId) return row;
+        return { ...row, ...patch };
+      }),
     );
   };
 
   const addRow = (afterKey: string) => {
     setRows((prev) => {
-      const source = prev.find((row) => row.key === afterKey) ?? prev[prev.length - 1];
+      const source =
+        prev.find((row) => row.key === afterKey) ?? prev[prev.length - 1];
       const next = blankOpeningStockEntry(source?.unitCost ?? "0");
       const index = prev.findIndex((row) => row.key === afterKey);
       if (index < 0) return [...prev, next];
@@ -478,7 +613,13 @@ export function Hq6OpeningStockModal({
   };
 
   const removeRow = (key: string) => {
-    setRows((prev) => (prev.length <= 1 ? prev : prev.filter((row) => row.key !== key)));
+    setRows((prev) => {
+      const target = prev.find((row) => row.key === key);
+      if (!target || target.recordId) return prev;
+      const editableCount = prev.filter((row) => !row.recordId).length;
+      if (editableCount <= 1) return prev;
+      return prev.filter((row) => row.key !== key);
+    });
   };
 
   const rowSubtotal = (row: OpeningStockEntry) =>
@@ -490,6 +631,8 @@ export function Hq6OpeningStockModal({
     "0";
   const locationLabel =
     stockLocations.find((l) => l.code === location)?.name ?? location;
+  const editableRows = rows.filter((row) => !row.recordId);
+  const hasHistory = rows.some((row) => Boolean(row.recordId));
 
   return (
     <Hq6Modal
@@ -501,15 +644,15 @@ export function Hq6OpeningStockModal({
         <Hq6ModalSaveClose
           onClose={onClose}
           saving={saving}
+          saveDisabled={loadingRecords}
           onSave={() => {
             void (async () => {
-              for (const row of rows) {
+              for (const row of editableRows) {
                 const valid = parseForm(openingStockSchema, {
                   quantity: row.qty === "" ? "0" : row.qty,
                 });
                 if (!valid) return;
               }
-              const n = totalQty;
               const cost = Number(lastUnitCost);
               if (!Number.isFinite(cost) || cost < 0) {
                 toast.error("Enter a valid unit cost");
@@ -522,9 +665,17 @@ export function Hq6OpeningStockModal({
                 toast.error("No business location configured for this entity");
                 return;
               }
+              // Keep prior OS rows + new editable rows (append-only history).
+              const payload: OpeningStockSaveRow[] = rows.map((row) => ({
+                id: row.recordId,
+                quantity: Number(row.qty) || 0,
+                unitCost: Number(row.unitCost) || 0,
+                date: row.date || localTodayDate(),
+                note: row.note.trim() || undefined,
+              }));
               setSaving(true);
               try {
-                await onSave?.(n, loc, cost);
+                await onSave?.(payload, loc, cost);
                 toast.success("Opening stock updated");
                 onClose();
               } catch (err) {
@@ -541,6 +692,8 @@ export function Hq6OpeningStockModal({
     >
       {!item ? (
         <p className="text-sm text-muted">No product selected.</p>
+      ) : loadingRecords ? (
+        <p className="text-sm text-muted">Loading opening stock records…</p>
       ) : (
         <div className="space-y-4">
           <div className="text-sm text-[#6b7280]">
@@ -548,9 +701,14 @@ export function Hq6OpeningStockModal({
             <span className="font-semibold text-[#111827]">
               {locationLabel} ({location})
             </span>
+            {hasHistory ? (
+              <span className="mt-1 block text-xs">
+                Past opening-stock rows are locked. Add a new row to increase
+                stock.
+              </span>
+            ) : null}
           </div>
 
-          {/* Location selector */}
           {stockLocations.length > 1 && (
             <Hq6Field label="Business Location">
               <select
@@ -567,115 +725,182 @@ export function Hq6OpeningStockModal({
             </Hq6Field>
           )}
 
-          {/* UPOS-style green header table */}
           <div className="hq6-os-table-wrap">
             <table className="hq6-os-table">
               <thead>
                 <tr className="bg-[#28a745] text-white">
-                  <th className="px-3 py-2 text-left font-semibold">Product Name</th>
-                  <th className="px-3 py-2 text-center font-semibold">Quantity Remaining</th>
-                  <th className="px-3 py-2 text-center font-semibold">Unit Cost (Before Tax)</th>
-                  <th className="px-3 py-2 text-center font-semibold">Subtotal (Before Tax)</th>
-                  <th className="px-3 py-2 text-center font-semibold">Date</th>
-                  <th className="px-3 py-2 text-center font-semibold">Note</th>
+                  <th className="text-left font-semibold">
+                    Product Name
+                  </th>
+                  <th className="text-center font-semibold">
+                    Quantity Remaining
+                  </th>
+                  <th className="text-center font-semibold">
+                    Unit Cost (Before Tax)
+                  </th>
+                  <th className="text-center font-semibold">
+                    Subtotal (Before Tax)
+                  </th>
+                  <th className="text-center font-semibold">Date</th>
+                  <th className="text-center font-semibold">Note</th>
+                  <th className="text-left font-semibold">
+                    First added
+                  </th>
                   <th className="hq6-os-actions-col" aria-label="Row actions" />
                 </tr>
               </thead>
               <tbody>
-                {rows.map((row, index) => (
-                  <tr key={row.key} className="border-b border-[#e5e7eb]">
-                    <td className="px-3 py-2 font-medium text-[#111827]">
-                      {item.name}
-                    </td>
-                    <td className="px-3 py-2">
-                      <input
-                        type="number"
-                        min={0}
-                        step="0.01"
-                        className="hq6-modal-input hq6-os-qty-input"
-                        value={row.qty}
-                        onChange={(e) =>
-                          patchRow(row.key, { qty: e.target.value })
-                        }
-                        aria-label={
-                          index === 0
-                            ? "Quantity remaining"
-                            : `Opening stock quantity ${index + 1}`
-                        }
-                      />
-                    </td>
-                    <td className="px-3 py-2">
-                      <div className="flex items-center justify-center gap-1">
-                        <input
-                          type="number"
-                          min={0}
-                          step="0.01"
-                          className="hq6-modal-input w-28 text-right"
-                          value={row.unitCost}
-                          onChange={(e) =>
-                            patchRow(row.key, { unitCost: e.target.value })
-                          }
-                          aria-label={`Unit cost ${index + 1}`}
-                        />
-                      </div>
-                    </td>
-                    <td className="px-3 py-2 text-center tabular-nums">
-                      {rowSubtotal(row).toFixed(2)}
-                    </td>
-                    <td className="px-3 py-2">
-                      <input
-                        type="date"
-                        className="hq6-modal-input w-36 mx-auto block"
-                        value={row.date}
-                        onChange={(e) =>
-                          patchRow(row.key, { date: e.target.value })
-                        }
-                        aria-label={`Date ${index + 1}`}
-                      />
-                    </td>
-                    <td className="px-3 py-2">
-                      <textarea
-                        className="hq6-modal-input w-full"
-                        rows={1}
-                        value={row.note}
-                        onChange={(e) =>
-                          patchRow(row.key, { note: e.target.value })
-                        }
-                        aria-label={`Note ${index + 1}`}
-                      />
-                    </td>
-                    <td className="hq6-os-actions-col">
-                      <div className="hq6-os-row-actions">
-                        <button
-                          type="button"
-                          className="hq6-os-icon-btn hq6-os-icon-btn-add"
-                          aria-label="Add opening stock row"
-                          title="Add another stock amount"
-                          onClick={() => addRow(row.key)}
-                        >
-                          <Plus strokeWidth={2.5} />
-                        </button>
-                        {index > 0 ? (
+                {rows.map((row, index) => {
+                  const locked = Boolean(row.recordId);
+                  return (
+                    <tr
+                      key={row.key}
+                      className={
+                        locked
+                          ? "border-b border-[#e5e7eb] bg-[#f9fafb]"
+                          : "border-b border-[#e5e7eb]"
+                      }
+                    >
+                      <td className="font-medium text-[#111827]">
+                        {item.name}
+                        {locked ? (
+                          <div className="mt-0.5 text-xs font-normal text-[#6b7280]">
+                            Saved record
+                          </div>
+                        ) : null}
+                      </td>
+                      <td>
+                        {locked ? (
+                          <span className="block text-center tabular-nums">
+                            {row.qty}
+                          </span>
+                        ) : (
+                          <input
+                            type="number"
+                            min={0}
+                            step="0.01"
+                            className="hq6-modal-input hq6-os-qty-input"
+                            value={row.qty}
+                            onChange={(e) =>
+                              patchRow(row.key, { qty: e.target.value })
+                            }
+                            aria-label={`Opening stock quantity ${index + 1}`}
+                          />
+                        )}
+                      </td>
+                      <td>
+                        {locked ? (
+                          <span className="block text-center tabular-nums">
+                            {Number(row.unitCost || 0).toFixed(2)}
+                          </span>
+                        ) : (
+                          <div className="flex items-center justify-center gap-1">
+                            <input
+                              type="number"
+                              min={0}
+                              step="0.01"
+                              className="hq6-modal-input w-28 text-right"
+                              value={row.unitCost}
+                              onChange={(e) =>
+                                patchRow(row.key, {
+                                  unitCost: e.target.value,
+                                })
+                              }
+                              aria-label={`Unit cost ${index + 1}`}
+                            />
+                          </div>
+                        )}
+                      </td>
+                      <td className="text-center tabular-nums">
+                        {rowSubtotal(row).toFixed(2)}
+                      </td>
+                      <td>
+                        {locked ? (
+                          <span className="block text-center tabular-nums text-sm">
+                            {row.date}
+                          </span>
+                        ) : (
+                          <input
+                            type="date"
+                            className="hq6-modal-input mx-auto block w-36"
+                            value={row.date}
+                            onChange={(e) =>
+                              patchRow(row.key, { date: e.target.value })
+                            }
+                            aria-label={`Date ${index + 1}`}
+                          />
+                        )}
+                      </td>
+                      <td>
+                        {locked ? (
+                          <span className="block text-sm text-[#374151]">
+                            {row.note.trim() || "—"}
+                          </span>
+                        ) : (
+                          <textarea
+                            className="hq6-modal-input w-full"
+                            rows={1}
+                            value={row.note}
+                            onChange={(e) =>
+                              patchRow(row.key, { note: e.target.value })
+                            }
+                            aria-label={`Note ${index + 1}`}
+                          />
+                        )}
+                      </td>
+                      <td className="text-left text-xs text-[#4b5563]">
+                        {locked ? (
+                          <>
+                            <div className="font-medium text-[#111827]">
+                              {row.createdByName?.trim() || "—"}
+                            </div>
+                            <div>
+                              {formatOpeningStockAddedAt(row.createdAt)}
+                            </div>
+                          </>
+                        ) : (
+                          <span className="text-[#9ca3af]">New</span>
+                        )}
+                      </td>
+                      <td className="hq6-os-actions-col">
+                        <div className="hq6-os-row-actions">
                           <button
                             type="button"
-                            className="hq6-os-icon-btn hq6-os-icon-btn-remove"
-                            aria-label="Remove opening stock row"
-                            title="Remove this stock amount"
-                            onClick={() => removeRow(row.key)}
+                            className="hq6-os-icon-btn hq6-os-icon-btn-add"
+                            aria-label="Add opening stock row"
+                            title="Add another stock amount"
+                            onClick={() => addRow(row.key)}
                           >
-                            <X strokeWidth={2.5} />
+                            <Plus strokeWidth={2.5} />
                           </button>
-                        ) : null}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                          {!locked && editableRows.length > 1 ? (
+                            <button
+                              type="button"
+                              className="hq6-os-icon-btn hq6-os-icon-btn-remove"
+                              aria-label="Remove opening stock row"
+                              title="Remove this stock amount"
+                              onClick={() => removeRow(row.key)}
+                            >
+                              <X strokeWidth={2.5} />
+                            </button>
+                          ) : null}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
 
-          <div className="text-right text-sm font-semibold text-[#111827]">
-            Total Amount (Exc. Tax): {totalAmount.toFixed(2)}
+          <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+            <span className="text-[#6b7280]">
+              Total qty:{" "}
+              <span className="font-semibold text-[#111827]">{totalQty}</span>
+            </span>
+            <span className="font-semibold text-[#111827]">
+              Total Amount (Exc. Tax): {totalAmount.toFixed(2)}
+            </span>
           </div>
         </div>
       )}

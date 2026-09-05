@@ -26,6 +26,11 @@ const HQ6_PAGE_COPY: Record<
     title: "Import Opening Stock",
     subtitle: "",
   },
+  "group-stock": {
+    title: "Group Stock",
+    subtitle: "VW / VISP / VSP quantities (view only)",
+    searchPlaceholder: "Search by name or SKU…",
+  },
   "price-groups": {
     title: "Selling Price Group",
     subtitle: "",

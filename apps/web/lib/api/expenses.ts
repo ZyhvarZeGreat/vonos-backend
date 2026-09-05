@@ -143,6 +143,40 @@ export async function updateExpense(
   return res.json();
 }
 
+/** Incremental payment toward remaining expense due (Add Payment modal). */
+export async function payExpense(
+  tenantId: string,
+  id: string,
+  input: {
+    amount: number;
+    method?: string;
+    accountId?: string;
+    note?: string;
+    paidOn?: string;
+  },
+): Promise<{
+  expenseId: string;
+  amountApplied: number;
+  currency: string;
+  remainingDue: number;
+  paymentStatus: string;
+}> {
+  const res = await apiFetch(
+    withTenantQuery(`${EXPENSES_PATH}/${id}/pay`, tenantId),
+    {
+      method: "POST",
+      body: JSON.stringify(input),
+    },
+  );
+  if (!res.ok) {
+    const body = (await res.json().catch(() => null)) as {
+      message?: string;
+    } | null;
+    throw new Error(body?.message ?? "Failed to record expense payment");
+  }
+  return res.json();
+}
+
 export async function deleteExpense(tenantId: string, id: string): Promise<void> {
   const res = await apiFetch(withTenantQuery(`${EXPENSES_PATH}/${id}`, tenantId), {
     method: "DELETE",

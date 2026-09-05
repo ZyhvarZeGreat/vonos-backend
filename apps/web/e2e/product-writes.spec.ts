@@ -333,11 +333,11 @@ test("transaction tenant can save opening stock from catalog list", async ({
   const patched = capture.patched as Record<string, unknown>;
 
   expect(patched.costPrice).toBe(2600);
-  expect(patched.locationStock).toEqual([
-    {
-      locationCode: "VISP",
-      binLocation: null,
+  expect(patched.locationCode).toBe("VISP");
+  expect(patched.rows).toEqual([
+    expect.objectContaining({
       quantity: 100,
-    },
+      unitCost: 2600,
+    }),
   ]);
 });

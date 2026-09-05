@@ -3,6 +3,7 @@ import type {
   ItemFilters,
   ItemLocationStockInput,
   KpiSummary,
+  PeerStockBySkuResult,
   StockAvailabilityResult,
   StockStatus,
   CsvImportResult,
@@ -202,6 +203,7 @@ export async function getStockAvailability(
         limit?: number;
         entityCode?: string;
         availability?: "all" | "available" | "unavailable";
+        stockHomesOnly?: boolean;
       },
 ): Promise<StockAvailabilityResult> {
   const params =
@@ -215,12 +217,26 @@ export async function getStockAvailability(
   if (params.availability && params.availability !== "all") {
     searchParams.set("availability", params.availability);
   }
+  if (params.stockHomesOnly) searchParams.set("stockHomesOnly", "1");
   const query = searchParams.toString();
   const path = query
     ? `/items/stock-availability?${query}`
     : "/items/stock-availability";
   const response = await apiFetch(path);
   if (!response.ok) throw new Error("Failed to fetch stock availability");
+  return response.json();
+}
+
+export async function getPeerStockBySkus(
+  skus: string[],
+): Promise<PeerStockBySkuResult> {
+  const unique = [
+    ...new Set(skus.map((s) => s.trim()).filter(Boolean)),
+  ].slice(0, 100);
+  if (unique.length === 0) return { rows: [] };
+  const searchParams = new URLSearchParams({ skus: unique.join(",") });
+  const response = await apiFetch(`/items/peer-stock?${searchParams}`);
+  if (!response.ok) throw new Error("Failed to fetch peer stock");
   return response.json();
 }
 
@@ -277,6 +293,19 @@ export interface ItemStockHistoryRow {
   newQuantity: number;
   unitCost: number | null;
   customerSupplierInfo: string | null;
+  createdByName?: string | null;
+}
+
+export interface OpeningStockRecord {
+  id: string;
+  quantity: number;
+  unitCost: number | null;
+  date: string;
+  note: string | null;
+  createdByName: string | null;
+  /** ISO timestamp — when the OS row was first saved. */
+  createdAt?: string | null;
+  locationCode: string | null;
 }
 
 export async function getItemStockHistory(
@@ -285,6 +314,81 @@ export async function getItemStockHistory(
   const response = await apiFetch(`/items/${id}/stock-history`);
   if (!response.ok) throw new Error("Failed to fetch stock history");
   return response.json();
+}
+
+export async function getItemOpeningStock(
+  id: string,
+): Promise<OpeningStockRecord[]> {
+  const response = await apiFetch(`/items/${id}/opening-stock`);
+  if (!response.ok) throw new Error("Failed to fetch opening stock");
+  return response.json();
+}
+
+export async function saveItemOpeningStock(
+  id: string,
+  body: {
+    locationCode: string;
+    costPrice?: number;
+    rows: Array<{
+      id?: string;
+      quantity: number;
+      unitCost: number;
+      date: string;
+      note?: string;
+    }>;
+  },
+  tenantId?: string,
+  /** Current item — used to preserve other location bins on legacy fallback. */
+  currentItem?: Item | null,
+): Promise<Item> {
+  const osPath = tenantId
+    ? withTenantQuery(`/items/${id}/opening-stock`, tenantId)
+    : `/items/${id}/opening-stock`;
+
+  // Prefer dedicated opening-stock route (dated OS/… movements).
+  for (const method of ["POST", "PATCH"] as const) {
+    const response = await apiFetch(osPath, {
+      method,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (response.ok) {
+      clearItemOptionCache();
+      return response.json();
+    }
+    // Live API may not have deployed this route yet — try next / fall back.
+    if (response.status !== 404) {
+      return throwApiError(response, "Failed to save opening stock");
+    }
+  }
+
+  // Fallback: PATCH /items/:id (always exists) — set on-hand qty for the location.
+  // Does not keep per-row OS history until the dedicated route is live on Railway.
+  const nextQty = body.rows.reduce(
+    (sum, row) => sum + (Number(row.quantity) || 0),
+    0,
+  );
+  const loc = body.locationCode.trim();
+  const otherLocs = (currentItem?.locationStock ?? [])
+    .filter((row) => row.locationCode.trim().toLowerCase() !== loc.toLowerCase())
+    .map((row) => ({
+      locationCode: row.locationCode,
+      quantity: row.quantity,
+      binLocation: row.binLocation ?? "",
+    }));
+
+  return updateItem(
+    id,
+    {
+      locationCode: loc,
+      costPrice: body.costPrice,
+      locationStock: [
+        ...otherLocs,
+        { locationCode: loc, quantity: nextQty, binLocation: "" },
+      ],
+    },
+    tenantId,
+  );
 }
 
 export async function deleteItem(tenantId: string, id: string): Promise<void> {

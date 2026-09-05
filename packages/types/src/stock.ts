@@ -41,3 +41,21 @@ export interface StockAvailabilityResult {
   query: string;
   groups: StockAvailabilityGroup[];
 }
+
+/** Read-only qty for one stock-home entity (VW / VISP / VSP) for a SKU. */
+export interface PeerStockEntityQty {
+  tenantCode: string;
+  tenantName: string;
+  itemId: string | null;
+  quantity: number;
+  available: number;
+}
+
+export interface PeerStockBySkuRow {
+  sku: string;
+  entities: PeerStockEntityQty[];
+}
+
+export interface PeerStockBySkuResult {
+  rows: PeerStockBySkuRow[];
+}

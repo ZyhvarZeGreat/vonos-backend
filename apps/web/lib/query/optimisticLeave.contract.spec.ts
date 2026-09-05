@@ -75,10 +75,14 @@ describe("list redirect on Save (source contracts)", () => {
   it("payroll pay/deduction capture ids before closePay/closeDeduction", () => {
     const src = read("components/pages/PayrollView.tsx");
     expect(src).toMatch(
-      /payrollIds:\s*\[\.\.\.payTargetIds\][\s\S]*?closePayModal\(\);[\s\S]*?payMutation\.mutate\(vars\)/,
+      /const batches = \[\.\.\.batchMap\.values\(\)\];[\s\S]*?closePayModal\(\);[\s\S]*?payMutation\.mutate\(\{ batches \}\)/,
     );
     expect(src).toMatch(
-      /payrollId:\s*deductionTarget\.id[\s\S]*?closeDeductionModal\(\);[\s\S]*?addDeductionMutation\.mutate\(vars\)/,
+      /payrollId:\s*deductionTarget\.id[\s\S]*?setDeductionTarget\(null\);[\s\S]*?addDeductionMutation\.mutate\(vars\)/,
+    );
+    // Must not reset() the mutation after capturing — that cancelled applies.
+    expect(src).not.toMatch(
+      /closeDeductionModal\(\);\s*\n\s*addDeductionMutation\.mutate/,
     );
   });
 

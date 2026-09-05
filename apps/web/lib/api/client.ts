@@ -50,11 +50,19 @@ function redirectToLogin(): void {
   if (typeof window === "undefined") return;
   const path = stripBasePath(window.location.pathname);
   if (
+    path === "/" ||
+    path === "" ||
     path === "/login" ||
     path.startsWith("/login/") ||
     path.startsWith("/invite") ||
     path.startsWith("/reset-password") ||
-    path.startsWith("/invoice")
+    path.startsWith("/invoice") ||
+    path.startsWith("/about") ||
+    path.startsWith("/services") ||
+    path.startsWith("/shop") ||
+    path.startsWith("/track") ||
+    path.startsWith("/contact") ||
+    path.startsWith("/maintenance")
   ) {
     return;
   }

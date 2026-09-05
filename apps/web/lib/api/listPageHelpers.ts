@@ -40,7 +40,10 @@ export function appendListQuery(
     qs.set(key, String(value));
   }
   const query = qs.toString();
-  return query ? `${basePath}?${query}` : basePath;
+  if (!query) return basePath;
+  // Path may already include ?tenantId=… from withTenantQuery — never append a second ?.
+  const separator = basePath.includes("?") ? "&" : "?";
+  return `${basePath}${separator}${query}`;
 }
 
 export async function fetchJsonListPage<T extends { id: string }>(

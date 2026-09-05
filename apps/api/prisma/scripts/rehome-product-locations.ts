@@ -1,19 +1,19 @@
 /**
  * Remap Item / ItemLocationStock location codes onto each tenant's own
- * product home (VSP→VSP, VISP→VISP, …).
+ * product home (VISP→VISP, VSP→VSP, …).
  *
- * Legacy shared-catalog imports left many marketplace rows with
- * locationCode = "VW" ("Vonos Warehouse"), which made VSP pricing feel like
- * a warehouse-only edit.
+ * Legacy Ultimate POS / shared-catalog imports left many institute rows with
+ * locationCode = "BL005" ("VONOS PAINTING MATERIALS") or sister-entity codes
+ * (VW / VP). Those labels leak into the products list and block location edit
+ * because the VISP form only allows the VISP home.
  *
  * Usage:
  *   npx tsx prisma/scripts/rehome-product-locations.ts
- *   TENANTS=VSP,VISP npx tsx prisma/scripts/rehome-product-locations.ts --execute
+ *   TENANTS=VISP npx tsx prisma/scripts/rehome-product-locations.ts --execute
  */
 import { PrismaClient } from '@prisma/client';
 
 const DEFAULT_TENANTS = ['VSP', 'VISP'] as const;
-const SISTER_CODES = new Set(['VA', 'VP', 'VW', 'VISP', 'VSP']);
 
 const execute = process.argv.includes('--execute');
 const tenantFilter = (process.env.TENANTS ?? DEFAULT_TENANTS.join(','))
@@ -42,20 +42,19 @@ async function main() {
 
     for (const tenant of tenants) {
       const home = tenant.code.trim().toUpperCase();
-      const foreign = [...SISTER_CODES].filter((c) => c !== home);
 
       const itemCount = await prisma.item.count({
         where: {
           tenantId: tenant.id,
           deletedAt: null,
-          locationCode: { in: foreign },
+          NOT: { locationCode: home },
         },
       });
 
       const stockCount = await prisma.itemLocationStock.count({
         where: {
           item: { tenantId: tenant.id, deletedAt: null },
-          locationCode: { in: foreign },
+          NOT: { locationCode: home },
         },
       });
 
@@ -67,10 +66,27 @@ async function main() {
         },
       });
 
+      const foreignCodes = await prisma.itemLocationStock.groupBy({
+        by: ['locationCode'],
+        where: {
+          item: { tenantId: tenant.id, deletedAt: null },
+          NOT: { locationCode: home },
+        },
+        _count: { _all: true },
+      });
+
       console.log(
-        `${home}: ${itemCount} item(s) with foreign location, ` +
+        `${home}: ${itemCount} item(s) with foreign/blank location, ` +
           `${stockCount} locationStock row(s), ${blankItems} blank location(s)`,
       );
+      if (foreignCodes.length > 0) {
+        console.log(
+          '  stock codes:',
+          foreignCodes
+            .map((row) => `${row.locationCode}×${row._count._all}`)
+            .join(', '),
+        );
+      }
 
       if (!execute) continue;
 
@@ -78,7 +94,7 @@ async function main() {
         where: {
           tenantId: tenant.id,
           deletedAt: null,
-          locationCode: { in: foreign },
+          locationCode: { not: home },
         },
         data: { locationCode: home },
       });
@@ -92,54 +108,52 @@ async function main() {
         data: { locationCode: home },
       });
 
-      // Merge stock rows that would collide after remap (same item + bin).
-      const stockRows = await prisma.itemLocationStock.findMany({
-        where: {
-          item: { tenantId: tenant.id, deletedAt: null },
-          locationCode: { in: foreign },
-        },
-        select: {
-          id: true,
-          itemId: true,
-          locationCode: true,
-          binLocation: true,
-          quantity: true,
-        },
-      });
+      // Merge foreign stock into an existing home row (same item + bin), then
+      // delete the foreign duplicate — bulk SQL so remote DBs stay fast.
+      const merged = await prisma.$executeRaw`
+        WITH foreign_rows AS (
+          SELECT ils.id, ils."itemId", ils."binLocation", ils.quantity
+          FROM "ItemLocationStock" ils
+          INNER JOIN "Item" i ON i.id = ils."itemId"
+          WHERE i."tenantId" = ${tenant.id}
+            AND i."deletedAt" IS NULL
+            AND ils."locationCode" <> ${home}
+        ),
+        collisions AS (
+          SELECT f.id AS foreign_id, h.id AS home_id, f.quantity AS foreign_qty
+          FROM foreign_rows f
+          INNER JOIN "ItemLocationStock" h
+            ON h."itemId" = f."itemId"
+           AND h."locationCode" = ${home}
+           AND h."binLocation" = f."binLocation"
+        ),
+        bump AS (
+          UPDATE "ItemLocationStock" h
+          SET quantity = h.quantity + c.foreign_qty,
+              "updatedAt" = NOW()
+          FROM collisions c
+          WHERE h.id = c.home_id
+          RETURNING c.foreign_id
+        )
+        DELETE FROM "ItemLocationStock" ils
+        USING bump
+        WHERE ils.id = bump.foreign_id
+      `;
 
-      let stockUpdated = 0;
-      let stockMerged = 0;
-      for (const row of stockRows) {
-        const bin = row.binLocation ?? null;
-        const existing = await prisma.itemLocationStock.findFirst({
-          where: {
-            itemId: row.itemId,
-            locationCode: home,
-            binLocation: bin,
-            NOT: { id: row.id },
-          },
-          select: { id: true, quantity: true },
-        });
-
-        if (existing) {
-          await prisma.itemLocationStock.update({
-            where: { id: existing.id },
-            data: { quantity: existing.quantity + row.quantity },
-          });
-          await prisma.itemLocationStock.delete({ where: { id: row.id } });
-          stockMerged += 1;
-        } else {
-          await prisma.itemLocationStock.update({
-            where: { id: row.id },
-            data: { locationCode: home },
-          });
-          stockUpdated += 1;
-        }
-      }
+      const remapped = await prisma.$executeRaw`
+        UPDATE "ItemLocationStock" ils
+        SET "locationCode" = ${home},
+            "updatedAt" = NOW()
+        FROM "Item" i
+        WHERE i.id = ils."itemId"
+          AND i."tenantId" = ${tenant.id}
+          AND i."deletedAt" IS NULL
+          AND ils."locationCode" <> ${home}
+      `;
 
       console.log(
         `  → items: ${itemResult.count} remapped, ${blankResult.count} filled; ` +
-          `stock: ${stockUpdated} remapped, ${stockMerged} merged`,
+          `stock: ${Number(remapped)} remapped, ${Number(merged)} collision merge(s)`,
       );
     }
 

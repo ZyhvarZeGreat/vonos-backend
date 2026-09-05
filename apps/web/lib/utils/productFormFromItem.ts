@@ -156,39 +156,99 @@ export function productFormFromItem(
   };
 }
 
+/** True when the item carries a sister-entity location not in this tenant's list. */
+export function itemHasForeignLocation(
+  source: Item | null | undefined,
+  locations: Array<{ code: string }>,
+): boolean {
+  if (!source || locations.length === 0) return false;
+  const allowed = new Set(
+    locations.map((loc) => loc.code.trim().toUpperCase()),
+  );
+  const codes = [
+    source.locationCode,
+    ...(source.locationStock?.map((row) => row.locationCode) ?? []),
+  ]
+    .map((c) => c?.trim().toUpperCase())
+    .filter((c): c is string => Boolean(c));
+  if (codes.length === 0) return false;
+  return codes.some((code) => !allowed.has(code));
+}
+
 export function selectedLocationCodesFromItem(
   source: Item | null | undefined,
   locations: Array<{ code: string }>,
 ): string[] {
   if (!source || locations.length === 0) return [];
+  const allowed = new Set(
+    locations.map((loc) => loc.code.trim().toUpperCase()),
+  );
   const fromStock =
     source.locationStock
       ?.map((row) => row.locationCode)
       .filter((code): code is string => Boolean(code)) ?? [];
   const fromPrimary = source.locationCode ? [source.locationCode] : [];
-  return [...new Set([...fromStock, ...fromPrimary])].filter((code) =>
-    locations.some((loc) => loc.code === code),
+  const matched = [...new Set([...fromStock, ...fromPrimary])].filter((code) =>
+    allowed.has(code.trim().toUpperCase()),
   );
+  if (matched.length > 0) return matched;
+
+  // Legacy rows often carry sister-entity codes (e.g. VP on a VISP product).
+  // Fall back to this tenant's configured homes so edit/opening-stock work.
+  const hasAnyLocation =
+    Boolean(source.locationCode?.trim()) ||
+    (source.locationStock?.length ?? 0) > 0;
+  if (!hasAnyLocation) return [];
+  return locations.map((loc) => loc.code);
 }
 
 export function locationDetailsFromItem(
   source: Item | null | undefined,
   locations: Array<{ code: string; name: string }>,
 ): ProductLocationDetailState[] {
-  return locations.map((loc) => {
+  const allowed = new Set(
+    locations.map((loc) => loc.code.trim().toUpperCase()),
+  );
+
+  let orphanQty = 0;
+  let orphanBin: string | null = null;
+  for (const row of source?.locationStock ?? []) {
+    const code = row.locationCode?.trim().toUpperCase() ?? "";
+    if (!code || allowed.has(code)) continue;
+    orphanQty += Number(row.quantity) || 0;
+    if (!orphanBin && row.binLocation?.trim()) {
+      orphanBin = row.binLocation;
+    }
+  }
+
+  const primaryCode = source?.locationCode?.trim().toUpperCase() ?? "";
+  const primaryIsForeign = Boolean(primaryCode) && !allowed.has(primaryCode);
+  if (primaryIsForeign && orphanQty === 0 && source?.quantity != null) {
+    orphanQty = Number(source.quantity) || 0;
+  }
+  if (primaryIsForeign && !orphanBin && source?.binLocation?.trim()) {
+    orphanBin = source.binLocation;
+  }
+
+  return locations.map((loc, index) => {
     const stock = source?.locationStock?.find(
-      (row) => row.locationCode === loc.code,
+      (row) =>
+        row.locationCode.trim().toUpperCase() === loc.code.trim().toUpperCase(),
     );
+    const foldOrphan = index === 0 && !stock && orphanQty > 0;
     const bin = decodeProductBin(
       stock?.binLocation ??
+        (foldOrphan ? orphanBin : null) ??
         (source?.locationCode === loc.code ? source?.binLocation : null),
     );
     const qty =
       stock != null
         ? String(stock.quantity)
-        : source?.locationCode === loc.code && source.quantity != null
-          ? String(source.quantity)
-          : "";
+        : foldOrphan
+          ? String(orphanQty)
+          : source?.locationCode === loc.code && source.quantity != null
+            ? String(source.quantity)
+            : "";
     return {
       locationCode: loc.code,
       locationName: loc.name,

@@ -22,6 +22,7 @@ import { invalidateUserAuthSession } from '../../common/cache/authSessionInvalid
 import { invalidateTenantDashboardCache } from '../../common/cache/cacheInvalidation';
 import { toIso } from '../../common/utils/serializers';
 import { resolvePrimaryWebOrigin } from '../../common/utils/webOrigin';
+import { isServiceStaffEligible } from '../../common/utils/serviceStaffDesignations';
 import { AuthMailService } from '../auth/auth-mail.service';
 import { INVITE_DAYS } from '../auth/auth.constants';
 import {
@@ -608,6 +609,12 @@ export class UsersService {
     ) {
       void invalidateUserAuthSession(this.cache, updated.id);
     }
+    if (body.tenantRoleId !== undefined) {
+      void this.syncEmployeeServiceStaffFromUserRole(
+        updated.id,
+        updated.tenantRoleId,
+      );
+    }
     return { user: this.toUser(updated) };
   }
 
@@ -739,6 +746,53 @@ export class UsersService {
     }
 
     return { email, name, role: body.role, targetTenantId };
+  }
+
+  /** Keep Employee.isServiceStaff aligned when a user's job role changes. */
+  private async syncEmployeeServiceStaffFromUserRole(
+    userId: string,
+    tenantRoleId: string | null,
+  ): Promise<void> {
+    let roleIsServiceStaff = false;
+    if (tenantRoleId) {
+      const role = await this.prisma.tenantRole.findFirst({
+        where: { id: tenantRoleId, deletedAt: null },
+        select: { isServiceStaff: true },
+      });
+      roleIsServiceStaff = Boolean(role?.isServiceStaff);
+    }
+
+    if (roleIsServiceStaff) {
+      await this.prisma.employee.updateMany({
+        where: { userId, deletedAt: null },
+        data: { isServiceStaff: true },
+      });
+      return;
+    }
+
+    const employees = await this.prisma.employee.findMany({
+      where: { userId, deletedAt: null },
+      select: {
+        id: true,
+        isServiceStaff: true,
+        department: true,
+        designation: { select: { name: true } },
+      },
+    });
+    await Promise.all(
+      employees.map(async (emp) => {
+        const keep = isServiceStaffEligible({
+          roleIsServiceStaff: false,
+          designation: emp.designation?.name,
+          department: emp.department,
+        });
+        if (emp.isServiceStaff === keep) return;
+        await this.prisma.employee.update({
+          where: { id: emp.id },
+          data: { isServiceStaff: keep },
+        });
+      }),
+    );
   }
 
   private async resolveTenantRoleBinding(

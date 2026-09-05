@@ -16,8 +16,9 @@ export function AdminHrmTenantGate({ children }: { children: ReactNode }) {
   const pathname = usePathname() ?? "";
   const isUsersHrm = pathname.startsWith("/admin/hrm/users");
   const isRolesHrm = pathname.startsWith("/admin/hrm/roles");
+  const isPayrollHrm = pathname.startsWith("/admin/hrm/payroll");
 
-  if (isUsersHrm || isRolesHrm) {
+  if (isUsersHrm || isRolesHrm || isPayrollHrm) {
     return <>{children}</>;
   }
 

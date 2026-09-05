@@ -38,10 +38,10 @@ import {
   fetchListPage,
   type ListPage,
 } from "@/lib/api/fetchAllPages";
-import { appendListQuery, fetchTenantListPage } from "@/lib/api/listPageHelpers";
+import { appendListQuery, fetchJsonListPage, fetchTenantListPage } from "@/lib/api/listPageHelpers";
 import { createAccumulatingPicker } from "@/lib/api/accumulatingPicker";
 import { createAsyncTtlCache } from "@/lib/utils/asyncTtlCache";
-import { compositeListCursorFrom } from "@/lib/utils/pagination";
+import { compositeListCursorFrom, payrollListCursor, workforceListCursor } from "@/lib/utils/pagination";
 import { matchSorter, rankings } from "match-sorter";
 
 /** Full staff roster for filters/pickers — cleared only on HRM mutations. */
@@ -186,6 +186,23 @@ export async function getWorkforcePage(
   });
 }
 
+/** Full workforce roster for add-payroll multi-select (not for table paging). */
+export async function getAllWorkforce(
+  tenantId: string,
+): Promise<WorkforceMember[]> {
+  return fetchAllPages(
+    async (cursor, limit) => {
+      const page = await getWorkforcePage(tenantId, cursor, limit, undefined, {
+        includeSummary: false,
+      });
+      return page.items;
+    },
+    EXPORT_PAGE_SIZE,
+    (row) => workforceListCursor(row),
+    IN_MEMORY_FILTER_CATALOG_LIMIT,
+  );
+}
+
 export async function getAllTenantsWorkforcePage(
   cursor: string | undefined,
   limit = DEFAULT_TABLE_PAGE_SIZE,
@@ -255,6 +272,7 @@ export async function getPayrollsPage(
     employeeRecordId: filters.employeeRecordId,
     locationCode: filters.locationCode,
     designationId: filters.designationId,
+    tenantCode: filters.tenantCode,
     month: filters.month != null ? String(filters.month) : undefined,
     year: filters.year != null ? String(filters.year) : undefined,
     status: filters.status,
@@ -263,6 +281,72 @@ export async function getPayrollsPage(
     sortDir: filters.sortDir,
     includeSummary: filters.includeSummary ?? false,
   });
+}
+
+/** VAG super-admin: payrolls across all businesses. */
+export async function getAllTenantsPayrollsPage(
+  cursor: string | undefined,
+  limit = DEFAULT_TABLE_PAGE_SIZE,
+  filters: PayrollFilters & { includeSummary?: boolean } = {},
+): Promise<ListPage<Payroll>> {
+  return fetchJsonListPage<Payroll>(PAYROLL_PATH, cursor, limit, {
+    allTenants: true,
+    search: filters.search,
+    payrollGroupId: filters.payrollGroupId,
+    employeeRecordId: filters.employeeRecordId,
+    locationCode: filters.locationCode,
+    designationId: filters.designationId,
+    tenantCode: filters.tenantCode,
+    month: filters.month != null ? String(filters.month) : undefined,
+    year: filters.year != null ? String(filters.year) : undefined,
+    status: filters.status,
+    paymentStatus: filters.paymentStatus,
+    sortBy: filters.sortBy,
+    sortDir: filters.sortDir,
+    includeSummary: filters.includeSummary ?? false,
+  });
+}
+
+/** Unpaid (due + partial) payrolls matching filters — settle a group or designation. */
+export async function getUnpaidPayrolls(
+  tenantId: string,
+  filters: Omit<PayrollFilters, "paymentStatus"> = {},
+): Promise<Payroll[]> {
+  const unpaid: Payroll[] = [];
+  for (const paymentStatus of ["due", "partial"] as const) {
+    const rows = await fetchAllPages(
+      async (cursor, limit) => {
+        const page = await getPayrollsPage(tenantId, cursor, limit, {
+          ...filters,
+          paymentStatus,
+          includeSummary: false,
+        });
+        return page.items;
+      },
+      EXPORT_PAGE_SIZE,
+      (row) => payrollListCursor(row),
+    );
+    unpaid.push(...rows);
+  }
+  return unpaid.filter((row) => row.paymentStatus !== "paid" && row.netPay > 0);
+}
+
+/** Unpaid (due + partial) payrolls for a group — used to settle a whole group. */
+export async function getUnpaidPayrollsForGroup(
+  tenantId: string,
+  payrollGroupId: string,
+  filters: Omit<PayrollFilters, "payrollGroupId" | "paymentStatus"> = {},
+): Promise<Payroll[]> {
+  return getUnpaidPayrolls(tenantId, { ...filters, payrollGroupId });
+}
+
+/** Unpaid payrolls for a designation. */
+export async function getUnpaidPayrollsForDesignation(
+  tenantId: string,
+  designationId: string,
+  filters: Omit<PayrollFilters, "designationId" | "paymentStatus"> = {},
+): Promise<Payroll[]> {
+  return getUnpaidPayrolls(tenantId, { ...filters, designationId });
 }
 
 /** Full designation roster — loaded once; cleared only on designation mutations. */
@@ -478,6 +562,21 @@ export async function getEmployeesPage(
   return fetchTenantListPage(EMPLOYEES_PATH, tenantId, cursor, limit, {
     search,
   });
+}
+
+/** Full employee roster for add-payroll multi-select (real Employee rows). */
+export async function getAllEmployees(
+  tenantId: string,
+): Promise<Employee[]> {
+  return fetchAllPages(
+    async (cursor, limit) => {
+      const page = await getEmployeesPage(tenantId, cursor, limit);
+      return page.items;
+    },
+    EXPORT_PAGE_SIZE,
+    (row) => compositeListCursorFrom(row, "name", "string"),
+    IN_MEMORY_FILTER_CATALOG_LIMIT,
+  );
 }
 
 export async function createEmployee(

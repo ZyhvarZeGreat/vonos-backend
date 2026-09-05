@@ -42,12 +42,13 @@ export function resolveViewingTenantId(): string | null {
     }
 
     if (segment === "admin") {
-      // Manage users / roles are group-wide — do not inherit the entity
-      // switcher scope (otherwise GET/PATCH hit the wrong tenant, or the
-      // shared roles catalog is overridden by X-Viewing-Tenant).
+      // Manage users / roles / payroll are group-wide — do not inherit the
+      // entity switcher scope (otherwise GET/PATCH hit the wrong tenant, or
+      // shared catalogs / cross-business payroll are overridden by
+      // X-Viewing-Tenant).
       if (
         parts[1] === "hrm" &&
-        (parts[2] === "users" || parts[2] === "roles")
+        (parts[2] === "users" || parts[2] === "roles" || parts[2] === "payroll")
       ) {
         return null;
       }

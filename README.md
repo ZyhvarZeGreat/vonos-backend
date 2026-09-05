@@ -1,17 +1,21 @@
 # Vonos
 
-Multi-tenant operations platform for Vonos Group (8 entities, one codebase).
+Multi-tenant operations platform for Vonos Group (8 entities, one codebase),
+plus the **customer marketing site** (homepage, shop, track) at apex `/`.
+
 ## Docs
 
 - [AGENTS.md](./AGENTS.md) — product + architecture source of truth
 - [FRONTEND.md](./FRONTEND.md) — Next.js implementation plan
 - [BACKEND.md](./BACKEND.md) — NestJS + Prisma implementation plan
+- [docs/HANDOVER_MARKETING_SITE.md](./docs/HANDOVER_MARKETING_SITE.md) — **customer site wired as `/`**
+- [docs/VONOS_PHASE1_CUSTOMER_PLATFORM_PROPOSAL.md](./docs/VONOS_PHASE1_CUSTOMER_PLATFORM_PROPOSAL.md) — Phase 1 front-door proposal
 - [docs/migration-pipeline.md](./docs/migration-pipeline.md) — deferred WP/SQL migration
 
 ## Structure
 
 ```
-apps/web     Next.js frontend + design system
+apps/web     Next.js — marketing (apex) + ops ERP UI
 apps/api     NestJS API + Prisma
 packages/types  Shared TypeScript + Zod contracts
 ```

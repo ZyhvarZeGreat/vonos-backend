@@ -6,6 +6,7 @@ import type {
 } from "@vonos/types";
 import { apiFetch, withTenantQuery } from "@/lib/api/client";
 import { throwApiError } from "@/lib/api/parseApiError";
+import { clearEmployeeOptionCache } from "@/lib/api/hrm";
 
 export async function getTenantRoles(
   tenantId: string,
@@ -46,6 +47,7 @@ export async function createTenantRole(
   if (!response.ok) {
     return throwApiError(response, "Failed to create role");
   }
+  clearEmployeeOptionCache();
   return response.json();
 }
 
@@ -64,6 +66,7 @@ export async function updateTenantRole(
   if (!response.ok) {
     return throwApiError(response, "Failed to update role");
   }
+  clearEmployeeOptionCache();
   return response.json();
 }
 
@@ -78,6 +81,7 @@ export async function deleteTenantRole(
   if (!response.ok) {
     return throwApiError(response, "Failed to delete role");
   }
+  clearEmployeeOptionCache();
 }
 
 export async function importTenantRoles(

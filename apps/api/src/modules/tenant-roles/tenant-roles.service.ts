@@ -25,6 +25,7 @@ import { bumpAuthSessionsForTenantRoles } from '../../common/cache/authSessionIn
 import { invalidateTenantDashboardCache } from '../../common/cache/cacheInvalidation';
 import { ensureOperatingTenant, OPERATING_TENANTS } from '../../common/tenants/ensureOperatingTenant';
 import { toIso } from '../../common/utils/serializers';
+import { isServiceStaffEligible } from '../../common/utils/serviceStaffDesignations';
 
 type LegacyRoleSeed = {
   name: string;
@@ -243,6 +244,15 @@ export class TenantRolesService {
         }`,
       );
     });
+    void this.syncLinkedEmployeesServiceStaff(row.id, isServiceStaff).catch(
+      (err: unknown) => {
+        this.logger.warn(
+          `role create employee sync failed id=${row.id}: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+      },
+    );
     return this.toRole(row);
   }
 
@@ -325,6 +335,18 @@ export class TenantRolesService {
         }`,
       );
     });
+    if (data.isServiceStaff !== undefined) {
+      void this.syncLinkedEmployeesServiceStaff(
+        row.id,
+        row.isServiceStaff,
+      ).catch((err: unknown) => {
+        this.logger.warn(
+          `role update employee sync failed id=${row.id}: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+      });
+    }
     return this.toRole(row);
   }
 
@@ -438,6 +460,55 @@ export class TenantRolesService {
   }
 
   /**
+   * Settings → Roles "Service Staff" toggle drives the sales picker via
+   * Employee.isServiceStaff. When the role flag turns on, mark linked
+   * employees; when it turns off, keep designation-matched workshop roles.
+   */
+  private async syncLinkedEmployeesServiceStaff(
+    tenantRoleId: string,
+    isServiceStaff: boolean,
+  ): Promise<void> {
+    const users = await this.prisma.user.findMany({
+      where: { tenantRoleId, deletedAt: null },
+      select: { id: true },
+    });
+    if (users.length === 0) return;
+    const userIds = users.map((u) => u.id);
+
+    if (isServiceStaff) {
+      await this.prisma.employee.updateMany({
+        where: { userId: { in: userIds }, deletedAt: null },
+        data: { isServiceStaff: true },
+      });
+      return;
+    }
+
+    const employees = await this.prisma.employee.findMany({
+      where: { userId: { in: userIds }, deletedAt: null },
+      select: {
+        id: true,
+        isServiceStaff: true,
+        department: true,
+        designation: { select: { name: true } },
+      },
+    });
+    await Promise.all(
+      employees.map(async (emp) => {
+        const keep = isServiceStaffEligible({
+          roleIsServiceStaff: false,
+          designation: emp.designation?.name,
+          department: emp.department,
+        });
+        if (emp.isServiceStaff === keep) return;
+        await this.prisma.employee.update({
+          where: { id: emp.id },
+          data: { isServiceStaff: keep },
+        });
+      }),
+    );
+  }
+
+  /**
    * Keep custom / edited roles aligned across every operating entity so the
    * Create User form sees the same role names everywhere.
    * One findMany + parallel upserts (no per-tenant ensureOperatingTenant).
@@ -484,6 +555,10 @@ export class TenantRolesService {
             },
           });
           touchedRoleIds.push(existing.id);
+          void this.syncLinkedEmployeesServiceStaff(
+            existing.id,
+            args.isServiceStaff,
+          ).catch(() => undefined);
         } else {
           await this.prisma.tenantRole.create({
             data: {

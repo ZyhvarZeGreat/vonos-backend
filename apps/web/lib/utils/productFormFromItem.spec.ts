@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Item } from "@vonos/types";
 import {
+  itemHasForeignLocation,
   locationDetailsFromItem,
   marginFromFormPrices,
   productFormFromItem,
@@ -127,6 +128,49 @@ describe("locationDetailsFromItem", () => {
         quantity: "",
       },
     ]);
+  });
+
+  it("remaps sister-entity VP stock onto the tenant home for edit", () => {
+    const vispOnly = [{ code: "VISP", name: "Institute" }];
+    const vpItem: Item = {
+      ...item,
+      locationCode: "VP",
+      binLocation: "Rack P · Row 1 · Pos 3",
+      quantity: 8,
+      locationStock: [
+        {
+          locationCode: "VP",
+          binLocation: "Rack P · Row 1 · Pos 3",
+          quantity: 8,
+        },
+      ],
+    };
+
+    expect(itemHasForeignLocation(vpItem, vispOnly)).toBe(true);
+    expect(selectedLocationCodesFromItem(vpItem, vispOnly)).toEqual(["VISP"]);
+    expect(locationDetailsFromItem(vpItem, vispOnly)).toEqual([
+      {
+        locationCode: "VISP",
+        locationName: "Institute",
+        rack: "P",
+        row: "1",
+        position: "3",
+        quantity: "8",
+      },
+    ]);
+  });
+
+  it("treats Ultimate POS BL005 painting-materials stock as foreign on VISP", () => {
+    const vispOnly = [{ code: "VISP", name: "Institute" }];
+    const blItem: Item = {
+      ...item,
+      locationCode: "VISP",
+      locationStock: [
+        { locationCode: "BL005", binLocation: null, quantity: 0 },
+      ],
+    };
+    expect(itemHasForeignLocation(blItem, vispOnly)).toBe(true);
+    expect(selectedLocationCodesFromItem(blItem, vispOnly)).toEqual(["VISP"]);
   });
 });
 

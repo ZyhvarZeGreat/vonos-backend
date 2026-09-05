@@ -14,6 +14,8 @@ type Props = {
   disabled?: boolean;
   id?: string;
   emptyLabel?: string;
+  /** Override route tenant (e.g. VAG cross-entity pay). */
+  tenantId?: string | null;
 };
 
 /**
@@ -26,8 +28,10 @@ export function PaymentAccountSelect({
   disabled,
   id,
   emptyLabel = "Please Select",
+  tenantId: tenantIdProp,
 }: Props) {
-  const tenantId = useTenantId();
+  const routeTenantId = useTenantId();
+  const tenantId = tenantIdProp !== undefined ? tenantIdProp : routeTenantId;
   const [selectedLabel, setSelectedLabel] = useState<string | undefined>();
 
   useEffect(() => {
@@ -71,10 +75,10 @@ export function PaymentAccountSelect({
       onChange={onChange}
       loadOptions={loadOptions}
       debounceMs={0}
-      disabled={disabled}
+      disabled={disabled || !tenantId}
       placeholder={emptyLabel}
       emptyMessage="No matching payment accounts"
-      prefetchKey={tenantId}
+      prefetchKey={tenantId ?? undefined}
     />
   );
 }

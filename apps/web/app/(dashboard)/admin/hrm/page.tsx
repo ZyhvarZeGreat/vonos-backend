@@ -48,8 +48,13 @@ export default function AdminHrmPage() {
           >
             Add roles
           </Link>
+          ,{" "}
+          <Link href="/admin/hrm/payroll" className="tw-text-[#3c8dbc] tw-underline">
+            Payroll
+          </Link>
           . Role definitions are shared across all businesses — no entity pick
-          needed. For users, assign entities on the add/edit form.
+          needed. For users, assign entities on the add/edit form. Payroll lists
+          and pays staff across every business.
         </div>
         <HrmPageView defaultTab="dashboard" summaryOnly />
       </div>

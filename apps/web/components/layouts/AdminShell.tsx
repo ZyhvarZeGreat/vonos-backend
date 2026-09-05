@@ -60,7 +60,9 @@ export function AdminShell({
     pathname === "/admin/overview" || pathname.startsWith("/admin/overview/");
   /** Users assign entities on the form / list is group-wide — no second location select. */
   const onHrmUsers = pathname.startsWith("/admin/hrm/users");
-  const showEntityContextBar = !onGroupOverview && !onHrmUsers;
+  /** Payroll lists all businesses — entity switcher not required. */
+  const onHrmPayroll = pathname.startsWith("/admin/hrm/payroll");
+  const showEntityContextBar = !onGroupOverview && !onHrmUsers && !onHrmPayroll;
 
   const navSections = useMemo(
     () =>

@@ -39,6 +39,7 @@ export class ItemsController {
     @Query('limit') limitRaw?: string,
     @Query('entityCode') entityCode?: string,
     @Query('availability') availability?: string,
+    @Query('stockHomesOnly') stockHomesOnlyRaw?: string,
   ) {
     // Cap high enough for VAG stock sliding-window “warm more” (UI grows 50→100→…).
     // First paint still requests 50; do not restore the old 10k dump.
@@ -53,7 +54,21 @@ export class ItemsController {
         availability === 'available' || availability === 'unavailable'
           ? availability
           : 'all',
+      stockHomesOnly:
+        stockHomesOnlyRaw === '1' || stockHomesOnlyRaw === 'true'
+          ? true
+          : undefined,
     });
+  }
+
+  /** Read-only VW/VISP/VSP qty for a batch of SKUs (product list/view). */
+  @Get('peer-stock')
+  peerStock(@Query('skus') skusRaw?: string) {
+    const skus = (skusRaw ?? '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+    return this.itemsService.peerStockBySkus(skus);
   }
 
   /** Available qty at a source tenant for a SKU (requisition planning). */
@@ -140,6 +155,55 @@ export class ItemsController {
     return this.itemsService.stockHistory(id);
   }
 
+  @Get(':id/opening-stock')
+  listOpeningStock(@Param('id') id: string) {
+    return this.itemsService.listOpeningStock(id);
+  }
+
+  /**
+   * Add/edit opening stock (dated OS/… movements + on-hand qty).
+   * POST/PUT/PATCH all accepted — older proxies sometimes only allow PATCH on :id trees.
+   */
+  @Post(':id/opening-stock')
+  @Roles('staff', 'manager', 'admin', 'super_admin')
+  saveOpeningStockPost(
+    @Param('id') id: string,
+    @Body()
+    body: {
+      locationCode: string;
+      costPrice?: number;
+      rows: Array<{
+        id?: string;
+        quantity: number;
+        unitCost: number;
+        date: string;
+        note?: string;
+      }>;
+    },
+  ) {
+    return this.itemsService.saveOpeningStock(id, body);
+  }
+
+  @Patch(':id/opening-stock')
+  @Roles('staff', 'manager', 'admin', 'super_admin')
+  saveOpeningStockPatch(
+    @Param('id') id: string,
+    @Body()
+    body: {
+      locationCode: string;
+      costPrice?: number;
+      rows: Array<{
+        id?: string;
+        quantity: number;
+        unitCost: number;
+        date: string;
+        note?: string;
+      }>;
+    },
+  ) {
+    return this.itemsService.saveOpeningStock(id, body);
+  }
+
   @Get(':id')
   getById(@Param('id') id: string) {
     return this.itemsService.getById(id);
@@ -209,6 +273,17 @@ export class ItemsController {
       status: StockStatus;
       availableForRetail: boolean;
       locationStock: ItemLocationStockInput[];
+      openingStock: {
+        locationCode: string;
+        costPrice?: number;
+        rows: Array<{
+          id?: string;
+          quantity: number;
+          unitCost: number;
+          date: string;
+          note?: string;
+        }>;
+      };
     }>,
   ) {
     return this.itemsService.update(id, body);

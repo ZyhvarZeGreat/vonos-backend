@@ -270,6 +270,47 @@ export async function installMockApi(page: Page, options: MockApiOptions = {}) {
           201,
         );
       }
+      if (
+        (method === "POST" || method === "PATCH") &&
+        path.includes("/opening-stock")
+      ) {
+        const id = path.slice("/items/".length).split("/")[0] ?? "";
+        const body = request.postDataJSON() as {
+          locationCode?: string;
+          costPrice?: number;
+          rows?: Array<{
+            id?: string;
+            quantity: number;
+            unitCost: number;
+            date: string;
+            note?: string;
+          }>;
+        };
+        options.onItemUpdate?.(id, body);
+        const idx = catalogItems.findIndex((row) => row.id === id);
+        const existing = idx >= 0 ? catalogItems[idx]! : { id };
+        const qty = (body.rows ?? []).reduce(
+          (sum, row) => sum + (Number(row.quantity) || 0),
+          0,
+        );
+        const loc = body.locationCode ?? "VISP";
+        const updated = {
+          ...existing,
+          quantity: qty,
+          costPrice: body.costPrice ?? (existing as { costPrice?: number }).costPrice,
+          locationCode: loc,
+          locationStock: [
+            {
+              locationCode: loc,
+              binLocation: null,
+              quantity: qty,
+            },
+          ],
+          updatedAt: new Date().toISOString(),
+        };
+        if (idx >= 0) catalogItems[idx] = updated;
+        return json(route, updated);
+      }
       if (method === "PATCH") {
         const id = path.slice("/items/".length).split("/")[0] ?? "";
         const body = request.postDataJSON();
@@ -311,6 +352,9 @@ export async function installMockApi(page: Page, options: MockApiOptions = {}) {
           });
         }
         if (path.endsWith("/stock-history")) {
+          return json(route, []);
+        }
+        if (path.endsWith("/opening-stock")) {
           return json(route, []);
         }
         return json(route, existing);

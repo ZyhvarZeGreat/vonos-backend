@@ -64,6 +64,35 @@ describe("buildProductSavePayload smoke — create / edit writes", () => {
     expect(payload.costPrice).toBe(2500);
   });
 
+  it("edit rehome writes remapped location stock without inventing qty 0 wipe", () => {
+    const payload = buildProductSavePayload({
+      form: baseForm,
+      mode: "save",
+      isEdit: true,
+      rehomeForeignLocation: true,
+      selectedLocationCodes: ["VISP"],
+      locationDetails: [
+        {
+          locationCode: "VISP",
+          rack: "P",
+          row: "1",
+          position: "3",
+          quantity: "8",
+        },
+      ],
+    });
+
+    expect(payload.locationCode).toBe("VISP");
+    expect(payload.locationStock).toEqual([
+      {
+        locationCode: "VISP",
+        binLocation: "Rack P · Row 1 · Pos 3",
+        quantity: 8,
+      },
+    ]);
+    expect(payload).not.toHaveProperty("quantity");
+  });
+
   it("keeps cost and sell independent on edit", () => {
     const payload = buildProductSavePayload({
       form: { ...baseForm, purchaseExcTax: "100", sellingExcTax: "900" },

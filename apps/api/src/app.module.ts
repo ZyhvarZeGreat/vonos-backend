@@ -39,6 +39,8 @@ import { VariationsModule } from './modules/variations/variations.module';
 import { InvoicesModule } from './modules/invoices/invoices.module';
 import { TenantRolesModule } from './modules/tenant-roles/tenant-roles.module';
 import { MediaModule } from './modules/media/media.module';
+import { StoreModule } from './modules/store/store.module';
+import { PublicTrackModule } from './modules/public-track/public-track.module';
 
 @Module({
   imports: [
@@ -83,6 +85,8 @@ import { MediaModule } from './modules/media/media.module';
     InvoicesModule,
     TenantRolesModule,
     MediaModule,
+    StoreModule,
+    PublicTrackModule,
   ],
   controllers: [AppController, HealthController],
   providers: [

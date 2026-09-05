@@ -370,7 +370,27 @@ export class InvoiceHubService {
     },
   ) {
     const existing = await this.findByPayrollId(db, payroll.id);
-    if (existing) return existing;
+    if (existing) {
+      // Keep invoice in sync when deductions / allowances change net pay.
+      // Do not overwrite paymentStatus once paid — payPayrolls owns that.
+      const nextTotal = toNumber(payroll.netPay);
+      const nextSubtotal = toNumber(payroll.grossPay);
+      const paidLocked = existing.paymentStatus === 'paid';
+      return db.invoice.update({
+        where: { id: existing.id },
+        data: {
+          total: nextTotal,
+          subtotal: nextSubtotal,
+          notes: payroll.note,
+          contactName: payroll.employeeName,
+          employeeRecordId: payroll.employeeRecordId,
+          status: payroll.status,
+          ...(paidLocked
+            ? {}
+            : { paymentStatus: payroll.paymentStatus }),
+        },
+      });
+    }
 
     const month = payroll.payrollMonth.toISOString().slice(0, 7);
     const reference = `PAY-${month}-${payroll.employeeName.replace(/\s+/g, '-').slice(0, 24)}-${payroll.id.slice(-6)}`;

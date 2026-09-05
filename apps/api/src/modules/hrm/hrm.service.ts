@@ -26,7 +26,7 @@ import { PrismaService } from '../../common/prisma/prisma.service';
 import { buildCompositeCursorQuery } from '../../common/utils/pagination';
 import { resolveListSort } from '../../common/utils/listSort';
 import { toIso, toNumber } from '../../common/utils/serializers';
-import { isServiceStaffDesignation } from '../../common/utils/serviceStaffDesignations';
+import { isServiceStaffEligible } from '../../common/utils/serviceStaffDesignations';
 import { recordPaymentAccountTxn } from '../../common/utils/recordPaymentAccountTxn';
 import { applyDailyFinanceDelta } from '../../common/utils/dailyFinanceRollup';
 import { InvoiceHubService } from '../invoices/invoice-hub.service';
@@ -435,11 +435,14 @@ export class HrmService {
     const grouped = new Map<string, WorkforceMember>();
 
     for (const row of rows) {
-      const key = `${row.tenantId}::${row.employeeName}`;
+      const memberId = row.employeeRecordId?.trim() || null;
+      const key = memberId
+        ? `id::${memberId}`
+        : `${row.tenantId}::${row.employeeName}`;
       const existing = grouped.get(key);
       if (!existing) {
         grouped.set(key, {
-          id: key,
+          id: memberId ?? key,
           tenantId: row.tenantId,
           tenantCode: row.tenant.code,
           tenantName: row.tenant.name,
@@ -644,6 +647,9 @@ export class HrmService {
     },
     tenantId: string,
   ): Promise<Employee[]> {
+    if (filters.serviceStaffOnly) {
+      await this.syncServiceStaffFromUsersThrottled(tenantId);
+    }
     const pagination = buildCompositeCursorQuery({
       sortField: 'name',
       sortDir: 'asc',
@@ -756,7 +762,11 @@ export class HrmService {
     }
 
     const isServiceStaff =
-      dto.isServiceStaff ?? isServiceStaffDesignation(designation.name);
+      dto.isServiceStaff ??
+      isServiceStaffEligible({
+        designation: designation.name,
+        department: dto.department,
+      });
 
     const locationCodes = normalizeLocationCodes(
       dto.locationCodes,
@@ -833,6 +843,17 @@ export class HrmService {
 
     const profilePatch = employeeProfilePatchData(args);
 
+    const serviceStaffFlag = await this.resolveServiceStaffForUserSync({
+      userId: args.userId,
+      designationId:
+        args.designationId?.trim() || existing?.designationId || undefined,
+      department:
+        args.department !== undefined
+          ? args.department
+          : (existing?.department ?? null),
+      explicit: args.isServiceStaff,
+    });
+
     if (existing) {
       const nextLocations =
         locationCodes.length > 0
@@ -852,6 +873,10 @@ export class HrmService {
               }
             : {}),
           ...(args.name?.trim() ? { name: args.name.trim() } : {}),
+          ...(args.designationId?.trim()
+            ? { designationId: args.designationId.trim() }
+            : {}),
+          isServiceStaff: serviceStaffFlag,
           ...profilePatch,
         },
         include: {
@@ -891,7 +916,7 @@ export class HrmService {
       designationId,
       locationCodes,
       locationCode: locationCodes[0],
-      isServiceStaff: false,
+      isServiceStaff: serviceStaffFlag,
       accountHolderName: args.accountHolderName,
       bankName: args.bankName,
       bankBranch: args.bankBranch,
@@ -920,6 +945,187 @@ export class HrmService {
       locationCodes,
     );
     return created;
+  }
+
+  /**
+   * Role toggle OR designation OR department → Employee.isServiceStaff.
+   * Used when syncing a login user into the HRM roster (sales service-staff picker).
+   */
+  private async resolveServiceStaffForUserSync(args: {
+    userId: string;
+    designationId?: string;
+    department?: string | null;
+    explicit?: boolean;
+  }): Promise<boolean> {
+    if (args.explicit !== undefined) return Boolean(args.explicit);
+
+    const user = await this.tenantDb.db.user.findFirst({
+      where: { id: args.userId, deletedAt: null },
+      select: {
+        tenantRole: { select: { isServiceStaff: true } },
+      },
+    });
+
+    let designationName: string | null = null;
+    if (args.designationId) {
+      const designation = await this.tenantDb.db.designation.findFirst({
+        where: { id: args.designationId, deletedAt: null },
+        select: { name: true },
+      });
+      designationName = designation?.name ?? null;
+    }
+
+    return isServiceStaffEligible({
+      roleIsServiceStaff: user?.tenantRole?.isServiceStaff,
+      designation: designationName,
+      department: args.department,
+    });
+  }
+
+  /**
+   * Align Employee.isServiceStaff with active Users (role + department + designation).
+   * Creates a minimal employee row when an eligible user has no payroll link yet.
+   */
+  private async syncServiceStaffFromUsersThrottled(
+    tenantId: string,
+  ): Promise<void> {
+    const cacheKey = `hrm:service-staff-user-sync:${tenantId}`;
+    const cached = await this.cache.get<string>(cacheKey);
+    if (cached) return;
+    await this.cache.set(cacheKey, '1', 60);
+    try {
+      await this.syncServiceStaffFromUsers(tenantId);
+    } catch {
+      await this.cache.del(cacheKey);
+      // List still returns current flags; next picker open retries sync.
+    }
+  }
+
+  async syncServiceStaffFromUsers(tenantId: string): Promise<{
+    updated: number;
+    created: number;
+  }> {
+    const users = await this.prisma.user.findMany({
+      where: {
+        tenantId,
+        deletedAt: null,
+        status: 'active',
+      },
+      select: {
+        id: true,
+        name: true,
+        tenantRole: {
+          select: { name: true, isServiceStaff: true },
+        },
+      },
+      orderBy: { name: 'asc' },
+    });
+    if (users.length === 0) return { updated: 0, created: 0 };
+
+    const employees = await this.prisma.employee.findMany({
+      where: {
+        tenantId,
+        deletedAt: null,
+        userId: { in: users.map((u) => u.id) },
+      },
+      select: {
+        id: true,
+        userId: true,
+        isServiceStaff: true,
+        department: true,
+        designationId: true,
+        designation: { select: { name: true } },
+      },
+    });
+    const employeeByUserId = new Map(
+      employees
+        .filter((e): e is typeof e & { userId: string } => Boolean(e.userId))
+        .map((e) => [e.userId, e]),
+    );
+
+    let defaultDesignationId =
+      (
+        await this.prisma.designation.findFirst({
+          where: { tenantId, deletedAt: null },
+          orderBy: { name: 'asc' },
+          select: { id: true },
+        })
+      )?.id ?? null;
+
+    if (!defaultDesignationId) {
+      const createdDesignation = await this.prisma.designation.create({
+        data: { tenantId, name: 'Staff' },
+        select: { id: true },
+      });
+      defaultDesignationId = createdDesignation.id;
+    }
+
+    const designationIdByRoleName = new Map<string, string>();
+    let updated = 0;
+    let created = 0;
+
+    for (const user of users) {
+      const existing = employeeByUserId.get(user.id);
+      const should = isServiceStaffEligible({
+        roleIsServiceStaff: user.tenantRole?.isServiceStaff,
+        designation:
+          existing?.designation?.name ?? user.tenantRole?.name ?? null,
+        department: existing?.department,
+      });
+
+      if (existing) {
+        if (existing.isServiceStaff !== should) {
+          await this.prisma.employee.update({
+            where: { id: existing.id },
+            data: { isServiceStaff: should },
+          });
+          updated += 1;
+        }
+        continue;
+      }
+
+      if (!should) continue;
+
+      const roleName = user.tenantRole?.name?.trim();
+      let designationId = defaultDesignationId;
+      if (roleName) {
+        const cachedId = designationIdByRoleName.get(roleName.toLowerCase());
+        if (cachedId) {
+          designationId = cachedId;
+        } else {
+          const found = await this.prisma.designation.findFirst({
+            where: {
+              tenantId,
+              deletedAt: null,
+              name: { equals: roleName, mode: 'insensitive' },
+            },
+            select: { id: true },
+          });
+          if (found) {
+            designationId = found.id;
+            designationIdByRoleName.set(roleName.toLowerCase(), found.id);
+          }
+        }
+      }
+
+      await this.prisma.employee.create({
+        data: {
+          tenantId,
+          name: user.name.trim() || 'Staff',
+          userId: user.id,
+          designationId,
+          isServiceStaff: true,
+          locationCodes: [],
+        },
+      });
+      created += 1;
+    }
+
+    if (updated > 0 || created > 0) {
+      void invalidateTenantDashboardCache(this.cache, tenantId);
+      void this.cache.bumpListVersion(tenantId, 'hrm-employees');
+    }
+    return { updated, created };
   }
 
   /**
@@ -976,9 +1182,47 @@ export class HrmService {
     );
   }
 
+  /** VAG super-admin: payrolls across all operating tenants. */
+  async listPayrollsAllTenants(
+    requestRole: string,
+    filters: PayrollFilters & { includeSummary?: boolean } = {},
+  ): Promise<{
+    items: Payroll[];
+    totalCount?: number;
+    hasMore?: boolean;
+  }> {
+    if (requestRole !== 'super_admin') {
+      throw new ForbiddenException('Super admin access required');
+    }
+    const filterKey = listPageFilterKey({
+      search: filters.search,
+      year: filters.year,
+      month: filters.month,
+      payrollGroupId: filters.payrollGroupId,
+      employeeRecordId: filters.employeeRecordId,
+      locationCode: filters.locationCode,
+      designationId: filters.designationId,
+      tenantCode: filters.tenantCode,
+      status: filters.status,
+      paymentStatus: filters.paymentStatus,
+      cursor: filters.cursor,
+      limit: filters.limit ?? 10,
+      sortBy: filters.sortBy,
+      sortDir: filters.sortDir,
+      sum: filters.includeSummary === false ? 0 : 1,
+    });
+    return withListPageCache(
+      this.cache,
+      '__all__',
+      'hrm-payrolls-all',
+      filterKey,
+      () => this.listPayrollsUncached(filters, null),
+    );
+  }
+
   private async listPayrollsUncached(
     filters: PayrollFilters & { includeSummary?: boolean },
-    tenantId: string,
+    tenantId: string | null,
   ): Promise<{
     items: Payroll[];
     totalCount?: number;
@@ -1021,8 +1265,9 @@ export class HrmService {
       sortValueType: sort.sortValueType,
     });
 
+    const tenantCode = filters.tenantCode?.trim();
     const baseWhere = {
-      tenantId,
+      ...(tenantId ? { tenantId } : {}),
       deletedAt: null as null,
       ...monthYearFilter,
       ...(filters.payrollGroupId
@@ -1036,6 +1281,9 @@ export class HrmService {
         : {}),
       ...(filters.designationId
         ? { designationId: filters.designationId }
+        : {}),
+      ...(tenantCode
+        ? { tenant: { code: tenantCode } }
         : {}),
       ...(filters.status ? { status: filters.status } : {}),
       ...(filters.paymentStatus
@@ -1076,6 +1324,26 @@ export class HrmService {
                   },
                 },
               },
+              ...(tenantId
+                ? []
+                : [
+                    {
+                      tenant: {
+                        code: {
+                          contains: filters.search,
+                          mode: 'insensitive' as const,
+                        },
+                      },
+                    },
+                    {
+                      tenant: {
+                        name: {
+                          contains: filters.search,
+                          mode: 'insensitive' as const,
+                        },
+                      },
+                    },
+                  ]),
             ],
           }
         : {}),
@@ -1099,6 +1367,9 @@ export class HrmService {
             taxPayerId: true,
           },
         },
+        ...(tenantId
+          ? {}
+          : { tenant: { select: { code: true, name: true } } }),
       },
       orderBy: [{ [sort.sortField]: sort.sortDir }, { id: sort.sortDir }],
       take: pagination.take,
@@ -1130,22 +1401,48 @@ export class HrmService {
     let designationId = dto.designationId ?? null;
     let payrollGroupId = dto.payrollGroupId ?? null;
     let locationCode = dto.locationCode ?? null;
+    let designationNameHint: string | null = null;
 
     if (dto.employeeRecordId) {
-      const employee = await this.tenantDb.db.employee.findFirst({
-        where: {
-          id: dto.employeeRecordId,
-          tenantId,
-          deletedAt: null,
-        },
-      });
+      const recordKey = dto.employeeRecordId.trim();
+      // Workforce fallback used synthetic ids like `${tenantId}::${name}`.
+      const isSyntheticId = recordKey.includes('::');
+      const employee = isSyntheticId
+        ? await this.tenantDb.db.employee.findFirst({
+            where: {
+              tenantId,
+              deletedAt: null,
+              name: {
+                equals: recordKey.split('::').slice(1).join('::').trim(),
+                mode: 'insensitive',
+              },
+            },
+            include: {
+              designation: { select: { id: true, name: true, deletedAt: true } },
+            },
+          })
+        : await this.tenantDb.db.employee.findFirst({
+            where: {
+              id: recordKey,
+              tenantId,
+              deletedAt: null,
+            },
+            include: {
+              designation: { select: { id: true, name: true, deletedAt: true } },
+            },
+          });
       if (!employee) {
-        throw new BadRequestException('Employee not found');
+        throw new BadRequestException(
+          isSyntheticId
+            ? 'Employee record not found — open Users and create an HR employee for this person first'
+            : 'Employee not found',
+        );
       }
       employeeRecordId = employee.id;
       employeeName = employee.name;
       employeeId = employee.employeeCode;
       designationId = employee.designationId;
+      designationNameHint = employee.designation?.name ?? null;
       payrollGroupId = employee.payrollGroupId ?? payrollGroupId;
       locationCode = employee.locationCode ?? locationCode;
     }
@@ -1155,16 +1452,12 @@ export class HrmService {
         'employeeRecordId or employeeName is required',
       );
     }
-    if (!designationId) {
-      throw new BadRequestException('Designation is required');
-    }
 
-    const designation = await this.tenantDb.db.designation.findFirst({
-      where: { id: designationId, tenantId, deletedAt: null },
-    });
-    if (!designation) {
-      throw new BadRequestException('Designation not found');
-    }
+    designationId = await this.resolveActiveDesignationId(
+      tenantId,
+      designationId,
+      designationNameHint,
+    );
 
     const status =
       dto.status === 'final' || dto.status === 'paid' || dto.status === 'draft'
@@ -1208,6 +1501,77 @@ export class HrmService {
     return this.serializePayroll(row);
   }
 
+  /**
+   * Payroll requires an active designation. Migrated employees sometimes point
+   * at soft-deleted designations — repair to an active row (or create Staff).
+   */
+  private async resolveActiveDesignationId(
+    tenantId: string,
+    designationId: string | null | undefined,
+    nameHint?: string | null,
+  ): Promise<string> {
+    if (designationId) {
+      const active = await this.tenantDb.db.designation.findFirst({
+        where: { id: designationId, tenantId, deletedAt: null },
+        select: { id: true },
+      });
+      if (active) return active.id;
+
+      // findUnique bypasses soft-delete filter — recover the deleted name.
+      const anyRow = await this.tenantDb.db.designation.findUnique({
+        where: { id: designationId },
+        select: { name: true, tenantId: true },
+      });
+      if (anyRow?.tenantId === tenantId && anyRow.name?.trim()) {
+        nameHint = anyRow.name;
+      } else {
+        const softDeleted = await this.tenantDb.db.designation.findFirst({
+          where: {
+            id: designationId,
+            tenantId,
+            deletedAt: { not: null },
+          },
+          select: { name: true },
+        });
+        if (softDeleted?.name?.trim()) {
+          nameHint = softDeleted.name;
+        }
+      }
+    }
+
+    const hint = nameHint?.trim() || 'Staff';
+    const byName = await this.tenantDb.db.designation.findFirst({
+      where: {
+        tenantId,
+        deletedAt: null,
+        name: { equals: hint, mode: 'insensitive' },
+      },
+      select: { id: true },
+    });
+    if (byName) {
+      if (designationId && designationId !== byName.id) {
+        // Heal employee rows still pointing at a deleted designation.
+        await this.tenantDb.db.employee.updateMany({
+          where: { tenantId, designationId, deletedAt: null },
+          data: { designationId: byName.id },
+        });
+      }
+      return byName.id;
+    }
+
+    const created = await this.tenantDb.db.designation.create({
+      data: { tenantId, name: hint },
+      select: { id: true },
+    });
+    if (designationId) {
+      await this.tenantDb.db.employee.updateMany({
+        where: { tenantId, designationId, deletedAt: null },
+        data: { designationId: created.id },
+      });
+    }
+    return created.id;
+  }
+
   async payPayrolls(dto: PayPayrollsRequest): Promise<PayPayrollsResult> {
     const tenantId = this.tenantDb.requireTenantId();
     const payrollIds = [
@@ -1243,111 +1607,10 @@ export class HrmService {
     const method = dto.method?.trim() || 'cash';
     const note = dto.note?.trim() || null;
 
-    const result = await this.tenantDb.db.$transaction(async (tx) => {
-      const rows = await tx.payroll.findMany({
-        where: { id: { in: payrollIds }, tenantId, deletedAt: null },
-        include: {
-          payrollGroup: true,
-          designation: { select: { name: true } },
-          employeeRecord: {
-            select: {
-              accountHolderName: true,
-              bankName: true,
-              bankBranch: true,
-              bankCode: true,
-              bankAccountNo: true,
-              taxPayerId: true,
-            },
-          },
-          invoice: { select: { id: true, reference: true, paymentStatus: true } },
-        },
-      });
-      if (rows.length === 0) {
-        throw new BadRequestException('No matching payrolls found');
-      }
-
-      let paid = 0;
-      let skipped = 0;
-      let totalDebited = 0;
-      const updated: typeof rows = [];
-
-      for (const row of rows) {
-        if (row.paymentStatus === 'paid') {
-          skipped += 1;
-          updated.push(row);
-          continue;
-        }
-
-        const netPay = toNumber(row.netPay);
-        if (netPay <= 0) {
-          skipped += 1;
-          updated.push(row);
-          continue;
-        }
-
-        let invoice = row.invoice;
-        if (!invoice) {
-          invoice = await this.invoiceHub.ensurePayrollInvoice(tx, row);
-        }
-
-        const payment = await tx.payment.create({
-          data: {
-            tenantId,
-            amount: netPay,
-            currency: 'NGN',
-            method,
-            paidOn,
-            paymentFor: 'payroll',
-            accountId: account.id,
-            invoiceId: invoice.id,
-            note:
-              note ||
-              `Payroll — ${row.employeeName} (${toIso(row.payrollMonth).slice(0, 7)})`,
-          },
-        });
-
-        await recordPaymentAccountTxn(tx, {
-          tenantId,
-          accountId: account.id,
-          type: 'debit',
-          subType: 'payroll',
-          amount: netPay,
-          operationDate: paidOn,
-          refNo: invoice.reference,
-          note: payment.note,
-          paymentMethod: method,
-          paymentId: payment.id,
-          invoiceId: invoice.id,
-        });
-
-        // Accrue wage expense once on pay (till already debited above).
-        const monthLabel = toIso(row.payrollMonth).slice(0, 7);
-        await tx.ledgerEntry.create({
-          data: {
-            tenantId,
-            type: 'expense',
-            amount: netPay,
-            currency: 'NGN',
-            category: 'Payroll',
-            description: `Payroll — ${row.employeeName} (${monthLabel})`,
-            linkedRecordType: 'payroll',
-            linkedRecordId: row.id,
-            invoiceId: invoice.id,
-            date: paidOn,
-          },
-        });
-
-        await tx.invoice.update({
-          where: { id: invoice.id },
-          data: { paymentStatus: 'paid' },
-        });
-
-        const next = await tx.payroll.update({
-          where: { id: row.id },
-          data: {
-            paymentStatus: 'paid',
-            status: 'paid',
-          },
+    const result = await this.tenantDb.db.$transaction(
+      async (tx) => {
+        const rows = await tx.payroll.findMany({
+          where: { id: { in: payrollIds }, tenantId, deletedAt: null },
           include: {
             payrollGroup: true,
             designation: { select: { name: true } },
@@ -1366,14 +1629,155 @@ export class HrmService {
             },
           },
         });
+        if (rows.length === 0) {
+          throw new BadRequestException('No matching payrolls found');
+        }
 
-        paid += 1;
-        totalDebited += netPay;
-        updated.push(next);
-      }
+        let paid = 0;
+        let skipped = 0;
+        let totalDebited = 0;
+        const updated: typeof rows = [];
 
-      return { paid, skipped, totalDebited, updated };
-    });
+        for (const row of rows) {
+          if (row.paymentStatus === 'paid') {
+            skipped += 1;
+            updated.push(row);
+            continue;
+          }
+
+          const netPay = toNumber(row.netPay);
+          if (netPay <= 0) {
+            skipped += 1;
+            updated.push(row);
+            continue;
+          }
+
+          let invoice = row.invoice;
+          if (!invoice) {
+            invoice = await this.invoiceHub.ensurePayrollInvoice(tx, row);
+          }
+
+          const payment = await tx.payment.create({
+            data: {
+              tenantId,
+              amount: netPay,
+              currency: 'NGN',
+              method,
+              paidOn,
+              paymentFor: 'payroll',
+              accountId: account.id,
+              invoiceId: invoice.id,
+              note:
+                note ||
+                `Payroll — ${row.employeeName} (${toIso(row.payrollMonth).slice(0, 7)})`,
+            },
+          });
+
+          await recordPaymentAccountTxn(tx, {
+            tenantId,
+            accountId: account.id,
+            type: 'debit',
+            subType: 'payroll',
+            amount: netPay,
+            operationDate: paidOn,
+            refNo: invoice.reference,
+            note: payment.note,
+            paymentMethod: method,
+            paymentId: payment.id,
+            invoiceId: invoice.id,
+          });
+
+          // Accrue wage expense once on pay (till already debited above).
+          const monthLabel = toIso(row.payrollMonth).slice(0, 7);
+          const payrollDescription = `Payroll — ${row.employeeName} (${monthLabel})`;
+
+          let payrollCategory = await tx.expenseCategory.findFirst({
+            where: {
+              tenantId,
+              deletedAt: null,
+              name: { equals: 'Payroll', mode: 'insensitive' },
+            },
+            select: { id: true },
+          });
+          if (!payrollCategory) {
+            payrollCategory = await tx.expenseCategory.create({
+              data: { tenantId, name: 'Payroll', code: 'PAYROLL' },
+              select: { id: true },
+            });
+          }
+
+          // Expense row so Finance / Expenses results list payroll with other costs.
+          // Ledger stays linked to payroll (single P&L hit — no second ledger line).
+          await tx.expense.create({
+            data: {
+              tenantId,
+              refNo: invoice.reference,
+              categoryId: payrollCategory.id,
+              subCategory: 'Wages',
+              totalAmount: netPay,
+              paymentStatus: 'paid',
+              paymentDue: 0,
+              accountId: account.id,
+              note: `${payrollDescription} · payrollId:${row.id}`,
+              expenseDate: paidOn,
+              createdByName: 'HR / Payroll',
+            },
+          });
+
+          await tx.ledgerEntry.create({
+            data: {
+              tenantId,
+              type: 'expense',
+              amount: netPay,
+              currency: 'NGN',
+              category: 'Payroll',
+              description: payrollDescription,
+              linkedRecordType: 'payroll',
+              linkedRecordId: row.id,
+              invoiceId: invoice.id,
+              date: paidOn,
+            },
+          });
+
+          await tx.invoice.update({
+            where: { id: invoice.id },
+            data: { paymentStatus: 'paid' },
+          });
+
+          const next = await tx.payroll.update({
+            where: { id: row.id },
+            data: {
+              paymentStatus: 'paid',
+              status: 'paid',
+            },
+            include: {
+              payrollGroup: true,
+              designation: { select: { name: true } },
+              employeeRecord: {
+                select: {
+                  accountHolderName: true,
+                  bankName: true,
+                  bankBranch: true,
+                  bankCode: true,
+                  bankAccountNo: true,
+                  taxPayerId: true,
+                },
+              },
+              invoice: {
+                select: { id: true, reference: true, paymentStatus: true },
+              },
+            },
+          });
+
+          paid += 1;
+          totalDebited += netPay;
+          updated.push(next);
+        }
+
+        return { paid, skipped, totalDebited, updated };
+      },
+      { maxWait: 15_000, timeout: 60_000 },
+    );
 
     if (result.totalDebited > 0) {
       void applyDailyFinanceDelta(
@@ -1408,6 +1812,11 @@ export class HrmService {
     if (!existing) {
       throw new BadRequestException('Payroll not found');
     }
+    if (existing.paymentStatus === 'paid' || existing.status === 'paid') {
+      throw new BadRequestException(
+        'Cannot add a deduction after payroll is paid',
+      );
+    }
 
     const currentDeduction = toNumber(existing.totalDeduction);
     let nextDeduction = currentDeduction;
@@ -1428,6 +1837,11 @@ export class HrmService {
     const gross = toNumber(existing.grossPay);
     const allowance = toNumber(existing.totalAllowance);
     const netPay = gross + allowance - nextDeduction;
+    if (netPay < 0) {
+      throw new BadRequestException(
+        'Deduction cannot exceed gross pay plus allowances',
+      );
+    }
     const reason = dto.reason?.trim();
     const label = dto.note?.trim() || 'Deduction';
     const note =
@@ -1780,6 +2194,7 @@ export class HrmService {
     createdAt: Date;
     payrollGroup: { name: string } | null;
     designation?: { name: string } | null;
+    tenant?: { code: string; name: string } | null;
     employeeRecord?: {
       accountHolderName: string | null;
       bankName: string | null;
@@ -1793,6 +2208,8 @@ export class HrmService {
     return {
       id: row.id,
       tenantId: row.tenantId,
+      tenantCode: row.tenant?.code ?? null,
+      tenantName: row.tenant?.name ?? null,
       payrollGroupId: row.payrollGroupId,
       payrollGroupName: row.payrollGroup?.name ?? null,
       employeeRecordId: row.employeeRecordId,

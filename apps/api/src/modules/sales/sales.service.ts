@@ -1897,6 +1897,91 @@ export class SalesService {
     return this.toSaleDetail(row);
   }
 
+  /**
+   * VA/VP workshop stage on the sale itself (sales act as jobs — no Job link required).
+   * Stores stage + log in Sale.notes; syncs linked Job when present.
+   */
+  async updateJobWorkshopStatus(
+    id: string,
+    body: { status: string; notes?: string | null },
+  ): Promise<SaleDetail> {
+    const tenantId = this.tenantDb.requireTenantId();
+    const existing = await this.tenantDb.db.sale.findFirst({
+      where: { id, tenantId, deletedAt: null },
+      include: {
+        lines: true,
+        payments: { where: { deletedAt: null }, orderBy: { paidOn: 'asc' } },
+        job: { select: { id: true, hasQuote: true, status: true } },
+      },
+    });
+    if (!existing) throw new NotFoundException('Sale not found');
+
+    let applied;
+    try {
+      applied = applySaleJobStatusNotes({
+        notes: existing.notes,
+        status: body.status,
+        staffNote: body.notes,
+        hasQuote: existing.job?.hasQuote ?? false,
+      });
+    } catch (err) {
+      throw new BadRequestException(
+        err instanceof Error ? err.message : 'Invalid job status',
+      );
+    }
+
+    const row = await this.tenantDb.db.sale.update({
+      where: { id },
+      data: { notes: applied.notes },
+      include: {
+        lines: true,
+        payments: { where: { deletedAt: null }, orderBy: { paidOn: 'asc' } },
+        job: { select: { id: true, reference: true } },
+        serviceStaffEmployee: { select: { name: true } },
+      },
+    });
+
+    if (existing.jobId) {
+      try {
+        await this.tenantDb.db.job.update({
+          where: { id: existing.jobId },
+          data: {
+            status: applied.status,
+            ...(body.notes?.trim()
+              ? {
+                  qcNotes: (() => {
+                    const stamp = new Date()
+                      .toISOString()
+                      .slice(0, 16)
+                      .replace('T', ' ');
+                    const line = `[${stamp}] Status → ${applied.status}: ${body.notes.trim()}`;
+                    return existing.job
+                      ? line
+                      : line;
+                  })(),
+                }
+              : {}),
+          },
+        });
+      } catch {
+        // Sale notes are source of truth when job sync fails.
+      }
+    }
+
+    await this.auditService.log({
+      action: 'updated',
+      entityType: 'sale',
+      entityId: id,
+      summary: `Workshop status → ${applied.status}`,
+      metadata: {
+        status: applied.status,
+        notesAdded: Boolean(body.notes?.trim()),
+      },
+    });
+    void invalidateTenantDashboardCache(this.cache, tenantId);
+    return this.toSaleDetail(row);
+  }
+
   /** In-place sale edit — same id; sync invoice; net stock; keep existing payments. */
   async update(
     id: string,

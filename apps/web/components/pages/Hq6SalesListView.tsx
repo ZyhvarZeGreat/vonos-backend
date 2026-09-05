@@ -53,6 +53,9 @@ import {
 import { formatSaleNotesForDisplay, parseSaleInvoiceNotes } from "@/lib/utils/saleInvoiceNotes";
 import { saleVehicleFields } from "@/lib/utils/saleVehicleFields";
 import { businessLocationName } from "@/lib/utils/locationLabels";
+import { isJobCentricTenant } from "@/lib/utils/isHq6Tenant";
+import { HQ6_PAYMENT_METHOD_OPTIONS } from "@/lib/utils/hq6PaymentMethods";
+import { Hq6UpdateJobStatusModal } from "@/components/hq6/Hq6UpdateJobStatusModal";
 import { entitySaleLocations } from "@/lib/hooks/useBusinessLocationOptions";
 import { hq6PaymentBadgeClass, canAddPaymentForStatus } from "@/lib/utils/hq6PaymentBadge";
 import type { Sale, SaleReturnStatus, SaleStatus } from "@vonos/types";
@@ -62,14 +65,22 @@ import { dismissFirstWrite } from "@/lib/utils/dismissFirstWrite";
 import { announceRedirect } from "@/lib/utils/announceRedirect";
 import { tenantBasePath } from "@/lib/utils/tenantMount";
 
-function SaleCustomerCell({ row }: { row: Sale }) {
+function SaleCustomerCell({
+  row,
+  showVehicleMeta,
+}: {
+  row: Sale;
+  showVehicleMeta: boolean;
+}) {
   const notes = parseSaleInvoiceNotes(row.notes);
   const { customerDisplay, plateNumber, carModelYear } = saleVehicleFields({
     customerName: row.customerName,
     plateNumber: notes.plateNumber,
     carModelYear: notes.carModelYear,
   });
-  const meta = [carModelYear, plateNumber].filter(Boolean).join(" · ");
+  const meta = showVehicleMeta
+    ? [carModelYear, plateNumber].filter(Boolean).join(" · ")
+    : "";
 
   return (
     <div>
@@ -142,11 +153,14 @@ export function Hq6SalesListView({
   });
   const [statusFilter, setStatusFilter] = useState("");
   const [paymentStatusFilter, setPaymentStatusFilter] = useState("");
+  const [paymentMethodFilter, setPaymentMethodFilter] = useState("");
   const [locationFilter, setLocationFilter] = useState("");
   const [customerFilter, setCustomerFilter] = useState("");
   const [serviceStaffFilter, setServiceStaffFilter] = useState("");
+  const showVehicleMeta = isJobCentricTenant(tenantCode);
   const chrome = useHq6ListChrome(slug);
   const [deleteTarget, setDeleteTarget] = useState<Sale | null>(null);
+  const [jobStatusSale, setJobStatusSale] = useState<Sale | null>(null);
   const [invoiceUrlSale, setInvoiceUrlSale] = useState<Sale | null>(null);
   const [paymentsSale, setPaymentsSale] = useState<Sale | null>(null);
   const [paySale, setPaySale] = useState<Sale | null>(null);
@@ -214,6 +228,7 @@ export function Hq6SalesListView({
       paymentStatus: (paymentStatusFilter || undefined) as
         | NonNullable<Sale["paymentStatus"]>
         | undefined,
+      paymentMethod: paymentMethodFilter || undefined,
       locationCode: locationFilter || undefined,
       customerId: customerFilter || undefined,
       serviceStaffEmployeeId: serviceStaffFilter || undefined,
@@ -226,6 +241,7 @@ export function Hq6SalesListView({
       bounds?.to,
       customerFilter,
       locationFilter,
+      paymentMethodFilter,
       paymentStatusFilter,
       saleStatus,
       serviceStaffFilter,
@@ -536,6 +552,16 @@ export function Hq6SalesListView({
                 },
               ]
             : []),
+          ...(isJobCentricTenant(tenantCode) && row.jobId
+            ? [
+                {
+                  id: "update_job_status",
+                  label: "Update job status",
+                  dividerBefore: true,
+                  onClick: () => setJobStatusSale(row),
+                },
+              ]
+            : []),
           {
             id: "delete",
             label: "Delete",
@@ -599,7 +625,8 @@ export function Hq6SalesListView({
           if (
             item.id === "edit" ||
             item.id === "edit_shipping" ||
-            item.id === "convert"
+            item.id === "convert" ||
+            item.id === "update_job_status"
           ) {
             const run = item.onClick;
             return {
@@ -683,7 +710,9 @@ export function Hq6SalesListView({
           key: "customerName",
           header: "Customer name",
           sortable: false,
-          render: (row) => <SaleCustomerCell row={row} />,
+          render: (row) => (
+            <SaleCustomerCell row={row} showVehicleMeta={showVehicleMeta} />
+          ),
         },
         {
           key: "customerPhone",
@@ -734,7 +763,9 @@ export function Hq6SalesListView({
           key: "customerName",
           header: "Customer name",
           sortable: false,
-          render: (row) => <SaleCustomerCell row={row} />,
+          render: (row) => (
+            <SaleCustomerCell row={row} showVehicleMeta={showVehicleMeta} />
+          ),
         },
         {
           key: "customerPhone",
@@ -828,7 +859,9 @@ export function Hq6SalesListView({
         key: "customerName",
         header: "Customer name",
         sortable: false,
-        render: (row) => <SaleCustomerCell row={row} />,
+        render: (row) => (
+          <SaleCustomerCell row={row} showVehicleMeta={showVehicleMeta} />
+        ),
       },
       {
         key: "customerPhone",
@@ -1125,6 +1158,18 @@ export function Hq6SalesListView({
               ]}
             />
             <Hq6FilterSelect
+              label="Payment Method"
+              value={paymentMethodFilter}
+              onChange={setPaymentMethodFilter}
+              options={[
+                { value: "", label: "All" },
+                ...HQ6_PAYMENT_METHOD_OPTIONS.map((opt) => ({
+                  value: opt.value,
+                  label: opt.label,
+                })),
+              ]}
+            />
+            <Hq6FilterSelect
               label="Business Location"
               value={locationFilter}
               onChange={setLocationFilter}
@@ -1266,6 +1311,15 @@ export function Hq6SalesListView({
               initialSale={recordSeed}
               listSlug="sales"
               onClose={closeRecord}
+            />
+            <Hq6UpdateJobStatusModal
+              open={Boolean(jobStatusSale)}
+              sale={jobStatusSale}
+              onClose={() => setJobStatusSale(null)}
+              onUpdated={() => {
+                void queryClient.invalidateQueries({ queryKey: ["jobs"] });
+                void queryClient.invalidateQueries({ queryKey: ["sales"] });
+              }}
             />
             <Hq6ConfirmModal
               open={Boolean(deleteTarget)}

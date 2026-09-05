@@ -50,6 +50,12 @@ export const VAG_NAV_SECTIONS: NavSection[] = [
         route: "/admin/hrm/roles",
         pageType: "list",
       },
+      {
+        label: "Payroll",
+        icon: "wallet",
+        route: "/admin/hrm/payroll",
+        pageType: "list",
+      },
     ],
   },
   {
@@ -104,6 +110,12 @@ export const VAG_NAV_VIEW_PERMISSIONS: Record<string, string[]> = {
   "/admin/hrm/users/new/edit": ["user.create"],
   "/admin/hrm/roles": ["roles.view", "roles.create", "roles.update"],
   "/admin/hrm/roles/new/edit": ["roles.create"],
+  "/admin/hrm/payroll": [
+    "essentials.view_all_payroll",
+    "essentials.create_payroll",
+    "essentials.update_payroll",
+    "essentials.delete_payroll",
+  ],
   "/admin/stock": ["product.view", "stock_report.view"],
   "/admin/finance": [
     "app.finance.view",
@@ -161,6 +173,12 @@ export function isAdminNavActive(pathname: string, route: string): boolean {
       pathname === "/admin/hrm/roles" ||
       (pathname.startsWith("/admin/hrm/roles/") &&
         !pathname.includes("/new/"))
+    );
+  }
+  if (route === "/admin/hrm/payroll") {
+    return (
+      pathname === "/admin/hrm/payroll" ||
+      pathname.startsWith("/admin/hrm/payroll/")
     );
   }
   return pathname === route || pathname.startsWith(`${route}/`);

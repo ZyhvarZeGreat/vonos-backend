@@ -575,6 +575,7 @@ const VAG_ADMIN_ROUTES = [
   "/admin/hrm/users",
   "/admin/hrm/users/new/edit",
   "/admin/hrm/roles/new/edit",
+  "/admin/hrm/payroll",
 ] as const;
 
 /** Warm VAG admin overview first; other admin tabs on idle stagger. */

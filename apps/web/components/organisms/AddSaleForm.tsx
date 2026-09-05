@@ -1237,15 +1237,19 @@ export function AddSaleForm({
                   <div>
                     <strong>Customer:</strong> {form.customerName || "—"}
                   </div>
-                  <div>
-                    <strong>Plate:</strong> {form.plateNumber || "—"}
-                  </div>
-                  <div>
-                    <strong>Car:</strong> {form.carModelYear || "—"}
-                  </div>
-                  <div>
-                    <strong>Mileage:</strong> {form.mileage || "—"}
-                  </div>
+                  {isJobTenant ? (
+                    <>
+                      <div>
+                        <strong>Plate:</strong> {form.plateNumber || "—"}
+                      </div>
+                      <div>
+                        <strong>Car:</strong> {form.carModelYear || "—"}
+                      </div>
+                      <div>
+                        <strong>Mileage:</strong> {form.mileage || "—"}
+                      </div>
+                    </>
+                  ) : null}
                   <div>
                     <strong>Billing:</strong> {form.billingAddress || "—"}
                   </div>
@@ -1367,29 +1371,33 @@ export function AddSaleForm({
               <p className="hq6-form-hint">Keep blank to auto generate</p>
             </label>
 
-            <label className="hq6-form-label">
-              <span>
-                Vehicle Time In (Date entered) <span className="req">*</span>
-              </span>
-              <div className="hq6-form-input-wrap">
-                <Hq6DateTimeInput
-                  className="hq6-form-input"
-                  value={form.vehicleTimeIn}
-                  onChange={(v) => patchForm({ vehicleTimeIn: v })}
-                />
-              </div>
-            </label>
+            {isJobTenant ? (
+              <>
+                <label className="hq6-form-label">
+                  <span>
+                    Vehicle Time In (Date entered) <span className="req">*</span>
+                  </span>
+                  <div className="hq6-form-input-wrap">
+                    <Hq6DateTimeInput
+                      className="hq6-form-input"
+                      value={form.vehicleTimeIn}
+                      onChange={(v) => patchForm({ vehicleTimeIn: v })}
+                    />
+                  </div>
+                </label>
 
-            <label className="hq6-form-label">
-              <span>Vehicle Release Date:</span>
-              <div className="hq6-form-input-wrap">
-                <Hq6DateTimeInput
-                  className="hq6-form-input"
-                  value={form.vehicleReleaseDate}
-                  onChange={(v) => patchForm({ vehicleReleaseDate: v })}
-                />
-              </div>
-            </label>
+                <label className="hq6-form-label">
+                  <span>Vehicle Release Date:</span>
+                  <div className="hq6-form-input-wrap">
+                    <Hq6DateTimeInput
+                      className="hq6-form-input"
+                      value={form.vehicleReleaseDate}
+                      onChange={(v) => patchForm({ vehicleReleaseDate: v })}
+                    />
+                  </div>
+                </label>
+              </>
+            ) : null}
 
             <label className="hq6-form-label">
               <span>Customer location:</span>
@@ -1400,38 +1408,41 @@ export function AddSaleForm({
               />
             </label>
 
-            <label className="hq6-form-label">
-              <span>
-                Vehicle Registration (Plate){" "}
-                {isJobTenant ? <span className="req">*</span> : null}
-              </span>
-              <input
-                className="hq6-form-input"
-                value={form.plateNumber}
-                onChange={(e) => patchForm({ plateNumber: e.target.value })}
-                placeholder="e.g. ABC-123-XY"
-              />
-            </label>
+            {isJobTenant ? (
+              <>
+                <label className="hq6-form-label">
+                  <span>
+                    Vehicle Registration (Plate) <span className="req">*</span>
+                  </span>
+                  <input
+                    className="hq6-form-input"
+                    value={form.plateNumber}
+                    onChange={(e) => patchForm({ plateNumber: e.target.value })}
+                    placeholder="e.g. ABC-123-XY"
+                  />
+                </label>
 
-            <label className="hq6-form-label">
-              <span>Car Model &amp; Year:</span>
-              <input
-                className="hq6-form-input"
-                value={form.carModelYear}
-                onChange={(e) => patchForm({ carModelYear: e.target.value })}
-                placeholder="e.g. Camry 2018"
-              />
-            </label>
+                <label className="hq6-form-label">
+                  <span>Car Model &amp; Year:</span>
+                  <input
+                    className="hq6-form-input"
+                    value={form.carModelYear}
+                    onChange={(e) => patchForm({ carModelYear: e.target.value })}
+                    placeholder="e.g. Camry 2018"
+                  />
+                </label>
 
-            <label className="hq6-form-label">
-              <span>Car mileage:</span>
-              <input
-                className="hq6-form-input"
-                value={form.mileage}
-                onChange={(e) => patchForm({ mileage: e.target.value })}
-                placeholder="e.g. 125000"
-              />
-            </label>
+                <label className="hq6-form-label">
+                  <span>Car mileage:</span>
+                  <input
+                    className="hq6-form-input"
+                    value={form.mileage}
+                    onChange={(e) => patchForm({ mileage: e.target.value })}
+                    placeholder="e.g. 125000"
+                  />
+                </label>
+              </>
+            ) : null}
 
             <label className="hq6-form-label">
               <span>Sales person:</span>
@@ -2330,12 +2341,14 @@ export function AddSaleForm({
             value={form.customerLocation}
             onChange={(e) => patchForm({ customerLocation: e.target.value })}
           />
-          <Input
-            label="Car mileage"
-            value={form.mileage}
-            onChange={(e) => patchForm({ mileage: e.target.value })}
-            placeholder="e.g. 125000"
-          />
+          {isJobTenant ? (
+            <Input
+              label="Car mileage"
+              value={form.mileage}
+              onChange={(e) => patchForm({ mileage: e.target.value })}
+              placeholder="e.g. 125000"
+            />
+          ) : null}
           <div>
             <label className="mb-1 block text-xs font-medium text-muted">
               Sales Person
@@ -2472,18 +2485,24 @@ export function AddSaleForm({
             onChange={(e) => patchForm({ invoiceNo: e.target.value })}
             placeholder="Keep blank to auto generate"
           />
-          <Input
-            label="Vehicle Time In (Date entered)"
-            type="datetime-local"
-            value={form.vehicleTimeIn}
-            onChange={(e) => patchForm({ vehicleTimeIn: e.target.value })}
-          />
-          <Input
-            label="Vehicle Release Date"
-            type="datetime-local"
-            value={form.vehicleReleaseDate}
-            onChange={(e) => patchForm({ vehicleReleaseDate: e.target.value })}
-          />
+          {isJobTenant ? (
+            <>
+              <Input
+                label="Vehicle Time In (Date entered)"
+                type="datetime-local"
+                value={form.vehicleTimeIn}
+                onChange={(e) => patchForm({ vehicleTimeIn: e.target.value })}
+              />
+              <Input
+                label="Vehicle Release Date"
+                type="datetime-local"
+                value={form.vehicleReleaseDate}
+                onChange={(e) =>
+                  patchForm({ vehicleReleaseDate: e.target.value })
+                }
+              />
+            </>
+          ) : null}
           <p className="text-xs text-muted">
             Attach document: not wired yet (max 5MB — pdf, csv, zip, doc, images).
           </p>

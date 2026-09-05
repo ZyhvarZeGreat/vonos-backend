@@ -637,6 +637,27 @@ export function DataTable<T extends { id: string }>({
   const selectedList = Array.from(selectedIds);
   const showBulkBar = selectable && selectedList.length > 0 && (bulkActions?.length ?? 0) > 0;
   const showChrome = Boolean(toolbar) || showDensity || colVisEnabled;
+  const pageIds = visibleData.map((row) => row.id);
+  const allPageSelected =
+    selectable &&
+    pageIds.length > 0 &&
+    pageIds.every((id) => selectedIds.has(id));
+  const somePageSelected =
+    selectable &&
+    pageIds.some((id) => selectedIds.has(id)) &&
+    !allPageSelected;
+
+  function toggleSelectAllOnPage() {
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      if (allPageSelected) {
+        for (const id of pageIds) next.delete(id);
+      } else {
+        for (const id of pageIds) next.add(id);
+      }
+      return next;
+    });
+  }
 
   // Sticky needs a real scrollport. When embedded (HQ6 wrap), the parent scrolls —
   // keep this layer overflow-visible so position:sticky isn't clipped. Otherwise
@@ -900,7 +921,16 @@ export function DataTable<T extends { id: string }>({
                           : "sticky left-0 z-[3] bg-[var(--color-surface-muted)]"),
                     )}
                   >
-                    <span className="sr-only">Select</span>
+                    <input
+                      type="checkbox"
+                      checked={allPageSelected}
+                      ref={(el) => {
+                        if (el) el.indeterminate = somePageSelected;
+                      }}
+                      onChange={toggleSelectAllOnPage}
+                      aria-label="Select all on this page"
+                      title="Select all on this page"
+                    />
                   </th>
                 ) : null}
                 {visibleColumns.map((column, colIndex) => {

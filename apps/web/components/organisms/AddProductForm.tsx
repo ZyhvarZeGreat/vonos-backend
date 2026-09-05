@@ -34,6 +34,7 @@ import {
 } from "@/lib/utils/productSavePayload";
 import {
   emptyProductForm,
+  itemHasForeignLocation,
   locationDetailsFromItem,
   productFormFromItem,
   productImageFileName,
@@ -367,6 +368,9 @@ export function AddProductForm({
         retailMode,
         priceCatalogOnly,
         homeLocationCode: locations[0]?.code,
+        rehomeForeignLocation:
+          Boolean(editFrom) &&
+          itemHasForeignLocation(editFrom, locations),
         selectedLocationCodes,
         locationDetails,
         ...(editFrom

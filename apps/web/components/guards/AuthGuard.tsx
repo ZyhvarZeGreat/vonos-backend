@@ -8,7 +8,19 @@ import { decodeAccessToken } from "@/lib/utils/jwt";
 import { getPostLoginPath } from "@/lib/utils/authRedirect";
 import { isAuthSkipped } from "@/lib/utils/devAccess";
 
-const PUBLIC_PREFIXES = ["/login", "/reset-password", "/invite", "/invoice"];
+const PUBLIC_PREFIXES = [
+  "/login",
+  "/reset-password",
+  "/invite",
+  "/invoice",
+  // Customer marketing site (apex)
+  "/about",
+  "/services",
+  "/shop",
+  "/track",
+  "/contact",
+  "/maintenance",
+];
 const skipAuth = isAuthSkipped();
 /** Re-pull TenantRole permissions often enough that role matrix edits apply without a full re-login. */
 const PERMISSIONS_REFRESH_MS = 45_000;
@@ -58,6 +70,8 @@ function softRefreshSession(force = false): void {
 }
 
 function isPublicPath(pathname: string): boolean {
+  // Apex maintenance / brand landing — must stay reachable without login.
+  if (pathname === "/" || pathname === "") return true;
   if (pathname.startsWith("/dev")) return true;
   return PUBLIC_PREFIXES.some(
     (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),

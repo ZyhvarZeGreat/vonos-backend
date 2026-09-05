@@ -2849,6 +2849,17 @@ textarea.hq6-modal-input {
   font-size: 0.875rem;
 }
 
+.hq6-os-table th,
+.hq6-os-table td {
+  padding: 0.85rem 0.9rem;
+  vertical-align: middle;
+}
+
+.hq6-os-table tbody tr td {
+  padding-top: 1rem;
+  padding-bottom: 1rem;
+}
+
 .hq6-os-qty-input {
   width: 6rem !important;
   max-width: 6rem;

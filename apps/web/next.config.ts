@@ -44,6 +44,9 @@ const nextConfig: NextConfig = {
       },
     ];
 
+    // Apex `/` is the customer marketing site (app/(marketing)/page.tsx).
+    // Ops entry remains /login, /VW/…, /operations/… — not redirected from `/`.
+
     // Only when the app is not already at basePath=/operations — otherwise
     // these would become /operations/operations/VC.
     if (basePath !== "/operations") {

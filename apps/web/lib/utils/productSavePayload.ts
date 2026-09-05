@@ -78,6 +78,11 @@ export function buildProductSavePayload(input: {
   priceCatalogOnly?: boolean;
   /** Own-home location code stamped on catalog-only creates (VA/VP). */
   homeLocationCode?: string;
+  /**
+   * Edit path: rewrite sister-entity location codes (e.g. VP on a VISP row)
+   * onto the selected home locations without changing normal edit behavior.
+   */
+  rehomeForeignLocation?: boolean;
   selectedLocationCodes: string[];
   locationDetails: ProductLocationDetailSlice[];
   skuFallback?: string;
@@ -90,6 +95,7 @@ export function buildProductSavePayload(input: {
     retailMode = false,
     priceCatalogOnly = false,
     homeLocationCode,
+    rehomeForeignLocation = false,
     selectedLocationCodes,
     locationDetails,
     skuFallback,
@@ -112,11 +118,17 @@ export function buildProductSavePayload(input: {
       );
 
   const touchStock =
-    !priceCatalogOnly && (mode === "saveOpeningStock" || !isEdit);
+    !priceCatalogOnly &&
+    (mode === "saveOpeningStock" ||
+      !isEdit ||
+      (rehomeForeignLocation && activeLocations.length > 0));
   let locationStock: ItemLocationStockInput[] | undefined;
   if (touchStock && activeLocations.length > 0) {
     locationStock = activeLocations.map((row) => {
-      const qty = mode === "saveOpeningStock" ? Number(row.quantity) || 0 : 0;
+      const qty =
+        mode === "saveOpeningStock" || rehomeForeignLocation
+          ? Number(row.quantity) || 0
+          : 0;
       return {
         locationCode: row.locationCode,
         binLocation: encodeProductBin(row.rack, row.row, row.position),

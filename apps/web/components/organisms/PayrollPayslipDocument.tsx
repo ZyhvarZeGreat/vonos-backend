@@ -2,15 +2,14 @@
 
 import Image from "next/image";
 import type { InvoiceListRow, Payroll } from "@vonos/types";
-import { formatCurrency } from "@/lib/utils/formatCurrency";
-import { formatDate } from "@/lib/utils/formatDate";
-import { amountToWords } from "@/lib/utils/amountToWords";
+import { formatHq6Currency } from "@/lib/utils/hq6Format";
 import { publicAssetPath } from "@/lib/utils/basePath";
 import { cn } from "@/lib/utils/cn";
 
 export interface PayslipLine {
   label: string;
   detail?: string;
+  rate?: string;
   amount: number;
 }
 
@@ -22,7 +21,7 @@ export interface PayslipExtraDetails {
   bankAccountNo?: string | null;
   daysPresent?: number | null;
   daysAbsent?: number | null;
-  totalWorkDuration?: string | null;
+  totalWorkDuration?: string | number | null;
   paymentMode?: string | null;
   paymentNote?: string | null;
 }
@@ -33,7 +32,10 @@ export interface PayrollPayslipDocumentProps {
   tenantAddress?: string | null;
   locationLabel?: string | null;
   currency?: string;
-  invoice?: Pick<InvoiceListRow, "documentDate" | "reference" | "paymentStatus"> | null;
+  invoice?: Pick<
+    InvoiceListRow,
+    "documentDate" | "reference" | "paymentStatus"
+  > | null;
   extras?: PayslipExtraDetails | null;
   className?: string;
 }
@@ -44,14 +46,112 @@ function monthLabel(iso: string): string {
   return date.toLocaleString("en", { month: "long", year: "numeric" });
 }
 
+/** Ultimate POS payslip dates use DD-MM-YYYY. */
+function payslipDate(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return iso;
+  const dd = String(date.getDate()).padStart(2, "0");
+  const mm = String(date.getMonth() + 1).padStart(2, "0");
+  const yyyy = date.getFullYear();
+  return `${dd}-${mm}-${yyyy}`;
+}
+
+/**
+ * Ultimate POS / PHP NumberFormatter(en_IN) style — e.g. 600000 → "Six lakh".
+ * Title-case, no currency suffix.
+ */
+function amountInWordsIndian(amount: number): string {
+  const n = Math.floor(Math.abs(amount) + 1e-9);
+  if (n === 0) return "Zero";
+
+  const ones = [
+    "",
+    "One",
+    "Two",
+    "Three",
+    "Four",
+    "Five",
+    "Six",
+    "Seven",
+    "Eight",
+    "Nine",
+    "Ten",
+    "Eleven",
+    "Twelve",
+    "Thirteen",
+    "Fourteen",
+    "Fifteen",
+    "Sixteen",
+    "Seventeen",
+    "Eighteen",
+    "Nineteen",
+  ];
+  const tens = [
+    "",
+    "",
+    "Twenty",
+    "Thirty",
+    "Forty",
+    "Fifty",
+    "Sixty",
+    "Seventy",
+    "Eighty",
+    "Ninety",
+  ];
+
+  function underHundred(value: number): string {
+    if (value < 20) return ones[value] ?? "";
+    const t = Math.floor(value / 10);
+    const o = value % 10;
+    return `${tens[t]}${o ? ` ${ones[o]}` : ""}`.trim();
+  }
+
+  function underThousand(value: number): string {
+    if (value < 100) return underHundred(value);
+    const h = Math.floor(value / 100);
+    const rest = value % 100;
+    return `${ones[h]} Hundred${rest ? ` ${underHundred(rest)}` : ""}`;
+  }
+
+  const parts: string[] = [];
+  let remaining = n;
+
+  const crore = Math.floor(remaining / 10_000_000);
+  if (crore) {
+    parts.push(`${underThousand(crore)} Crore`);
+    remaining %= 10_000_000;
+  }
+  const lakh = Math.floor(remaining / 100_000);
+  if (lakh) {
+    parts.push(`${underHundred(lakh)} Lakh`.replace(/^(\w)/, (c) => c));
+    remaining %= 100_000;
+  }
+  const thousand = Math.floor(remaining / 1000);
+  if (thousand) {
+    parts.push(`${underHundred(thousand)} Thousand`);
+    remaining %= 1000;
+  }
+  if (remaining) parts.push(underThousand(remaining));
+
+  // Match UPOS NumberFormatter(en_IN): "Six lakh" / "One lakh twenty two thousand…"
+  const joined = parts
+    .join(" ")
+    .replace(/\bLakh\b/g, "lakh")
+    .replace(/\bCrore\b/g, "crore")
+    .replace(/\bThousand\b/g, "thousand")
+    .replace(/\bHundred\b/g, "hundred");
+  return joined.charAt(0).toUpperCase() + joined.slice(1).toLowerCase();
+}
+
 function buildEarnings(payroll: Payroll): PayslipLine[] {
+  const basic = payroll.grossPay.toLocaleString("en-NG", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
   const lines: PayslipLine[] = [
     {
       label: "Basic salary",
-      detail: `( 1.00 Month * ${payroll.grossPay.toLocaleString("en-NG", {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-      })} )`,
+      detail: `( 1.00 Month * ${basic} )`,
       amount: payroll.grossPay,
     },
   ];
@@ -64,7 +164,6 @@ function buildEarnings(payroll: Payroll): PayslipLine[] {
   return lines;
 }
 
-/** Voucher / payroll refs are notes, not deduction line items. */
 function looksLikeReferenceNote(part: string): boolean {
   return /^(VPR|PR|PAY|REF|INV)[-/]?\d/i.test(part.trim());
 }
@@ -103,7 +202,6 @@ function parseDeductionPart(part: string): PayslipLine | null {
     };
   }
 
-  // Unstructured free text without an amount is not a deduction row.
   return null;
 }
 
@@ -137,7 +235,6 @@ function buildDeductions(payroll: Payroll): PayslipLine[] {
   return named;
 }
 
-/** Pull labeled meta out of payroll notes (legacy SQL / Ultimate POS). */
 function extractNoteField(
   note: string | null | undefined,
   labels: string[],
@@ -155,7 +252,6 @@ function extractNoteField(
   return null;
 }
 
-/** Prefer parenthetical group label as department (e.g. MANAGEMENT STAFF). */
 function departmentLabel(groupName: string | null | undefined): string | null {
   if (!groupName) return null;
   const paren = groupName.match(/\(([^)]+)\)\s*$/);
@@ -163,11 +259,18 @@ function departmentLabel(groupName: string | null | undefined): string | null {
   return groupName;
 }
 
-function InfoRow({ label, value }: { label: string; value?: string | null }) {
+/** Bold label + value on one line — Ultimate POS meta style. */
+function MetaLine({
+  label,
+  value,
+}: {
+  label: string;
+  value?: string | null;
+}) {
   return (
-    <p className="text-[13px] leading-6 text-neutral-900">
-      <span className="font-semibold">{label}:</span>{" "}
-      <span>{value?.trim() ? value : "\u00A0"}</span>
+    <p style={{ margin: "2px 0", fontSize: 13, lineHeight: 1.4 }}>
+      <strong>{label}:</strong>
+      {value?.trim() ? ` ${value}` : ""}
     </p>
   );
 }
@@ -229,9 +332,9 @@ export function PayrollPayslipDocument({
   const accountHolder =
     payroll.accountHolderName?.trim() || payroll.employeeName;
 
-  const daysPresent = extras?.daysPresent ?? null;
-  const daysAbsent = extras?.daysAbsent ?? null;
-  const totalWorkDuration = extras?.totalWorkDuration ?? null;
+  const daysPresent = extras?.daysPresent ?? 0;
+  const daysAbsent = extras?.daysAbsent ?? 0;
+  const totalWorkDuration = extras?.totalWorkDuration ?? 0;
 
   const noteLines =
     payroll.note
@@ -242,7 +345,7 @@ export function PayrollPayslipDocument({
         if (/^Added deduction\s+/i.test(part)) return false;
         if (/^.+?[:：]\s*₦?\s*[\d,.]+\s*$/.test(part)) return false;
         if (
-          /^(Tax Payer ID|Tax ID|TIN|Bank Name|Bank|Branch|Bank Branch|Bank Identifier Code|BIC|Swift|Sort Code|Bank Account No\.?|Account No\.?|Account Number|A\/C)\s*[:：]/i.test(
+          /^(Tax Payer ID|Tax ID|TIN|Bank Name|Bank|Branch|Bank Branch|Bank Identifier Code|BIC|Swift|Sort Code|Bank Account No\.?|Account No\.?|Account Number|A\/C|Basic)\s*[:：]/i.test(
             part,
           )
         ) {
@@ -252,244 +355,477 @@ export function PayrollPayslipDocument({
       }) ?? [];
   const noteText = noteLines.join(" · ");
 
+  const addressLines = (tenantAddress?.trim() || "")
+    .split(/\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  const money = (n: number) => formatHq6Currency(n, currency);
+  const rowCount = Math.max(earnings.length, deductions.length, 1);
+
   return (
     <article
       className={cn(
-        "invoice-document mx-auto max-w-4xl overflow-hidden border border-neutral-800 bg-white text-neutral-900 print:border-black",
+        "invoice-document mx-auto max-w-[860px] bg-white text-neutral-900",
         className,
       )}
+      style={{
+        border: "1px solid #333",
+        fontFamily: "Arial, Helvetica, sans-serif",
+        color: "#111",
+      }}
     >
-      <div className="relative border-b border-neutral-800 px-6 pb-4 pt-5">
-        <div className="flex items-start justify-between gap-6">
-          <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-full border border-neutral-200 bg-white">
-            <Image
-              src={publicAssetPath("/brand/vonos-autos-logo.png")}
-              alt="Vonos Autos"
-              fill
-              className="object-contain p-1.5"
-              sizes="64px"
-              priority
-            />
-          </div>
-          <div className="min-w-0 flex-1 text-right">
-            <p className="text-lg font-bold leading-tight text-neutral-900">
-              {tenantName}
-            </p>
-            {tenantAddress ? (
-              <p className="mt-1 text-xs leading-snug text-neutral-700">
-                {tenantAddress}
-              </p>
-            ) : (
-              <p className="mt-1 text-xs leading-snug text-neutral-700">
-                Vonos Autos Group
-              </p>
-            )}
-          </div>
+      {/* Header: logo center, business top-right */}
+      <div style={{ position: "relative", padding: "20px 24px 0", minHeight: 100 }}>
+        <div
+          style={{
+            position: "absolute",
+            left: "50%",
+            top: 16,
+            transform: "translateX(-50%)",
+            width: 78,
+            height: 78,
+            borderRadius: "50%",
+            overflow: "hidden",
+            border: "1px solid #e5e5e5",
+            background: "#fff",
+          }}
+        >
+          <Image
+            src={publicAssetPath("/brand/vonos-autos-logo.png")}
+            alt="Vonos Autos"
+            fill
+            className="object-contain p-1"
+            sizes="78px"
+            priority
+          />
         </div>
-        <p className="mt-4 text-center text-sm font-semibold text-neutral-900">
-          Payslip for the month of {month}
-        </p>
+        <div style={{ textAlign: "right", marginLeft: "auto", maxWidth: "42%" }}>
+          <div style={{ fontSize: 17, fontWeight: 700, lineHeight: 1.25 }}>
+            {tenantName}
+          </div>
+          {addressLines.map((line) => (
+            <div key={line} style={{ fontSize: 12, lineHeight: 1.45 }}>
+              {line}
+            </div>
+          ))}
+        </div>
       </div>
 
-      <section className="grid border-b border-neutral-800 sm:grid-cols-2">
-        <div className="space-y-0.5 border-b border-neutral-800 px-5 py-4 sm:border-b-0 sm:border-r">
-          <InfoRow label="Employee" value={payroll.employeeName} />
-          <InfoRow label="Employee ID" value={payroll.employeeId} />
-          <InfoRow
-            label="Department"
-            value={departmentLabel(payroll.payrollGroupName)}
-          />
-          <InfoRow label="Designation" value={payroll.designationName} />
-          <InfoRow
-            label="Primary work location"
-            value={locationLabel ?? payroll.locationCode}
-          />
-          <InfoRow label="Tax Payer ID" value={taxPayerId} />
-          <InfoRow label="Status" value={payroll.status} />
-        </div>
-        <div className="space-y-0.5 px-5 py-4">
-          <InfoRow label="Bank Name" value={bankName} />
-          <InfoRow label="Branch" value={bankBranch} />
-          <InfoRow label="Bank Identifier Code" value={bankIdentifierCode} />
-          <InfoRow label="Account Holder's Name" value={accountHolder} />
-          <InfoRow label="Bank Account No." value={bankAccountNo} />
-          <InfoRow label="Payment status" value={payroll.paymentStatus} />
-        </div>
-      </section>
+      <div
+        style={{
+          textAlign: "center",
+          fontSize: 14,
+          fontWeight: 600,
+          padding: "12px 24px 10px",
+          borderBottom: "1px solid #333",
+          marginTop: 12,
+        }}
+      >
+        Payslip for the month of {month}
+      </div>
 
-      <section className="grid grid-cols-3 border-b border-neutral-800 text-[13px] text-neutral-900">
-        <div className="border-r border-neutral-800 px-5 py-3">
-          <span className="font-semibold">Total work duration:</span>{" "}
-          {totalWorkDuration ?? "—"}
-        </div>
-        <div className="border-r border-neutral-800 px-5 py-3">
-          <span className="font-semibold">Days present:</span>{" "}
-          {daysPresent ?? "—"}
-        </div>
-        <div className="px-5 py-3">
-          <span className="font-semibold">Days absent:</span>{" "}
-          {daysAbsent ?? "—"}
-        </div>
-      </section>
+      {/* Employee | Bank — table layout (CSS grid is overridden by section{display:block}) */}
+      <table
+        width="100%"
+        cellPadding={0}
+        cellSpacing={0}
+        style={{ borderBottom: "1px solid #333", borderCollapse: "collapse" }}
+      >
+        <tbody>
+          <tr>
+            <td
+              width="50%"
+              valign="top"
+              style={{
+                padding: "12px 20px",
+                borderRight: "1px solid #333",
+                verticalAlign: "top",
+              }}
+            >
+              <MetaLine label="Employee" value={payroll.employeeName} />
+              <MetaLine
+                label="Department"
+                value={departmentLabel(payroll.payrollGroupName)}
+              />
+              <MetaLine label="Designation" value={payroll.designationName} />
+              <MetaLine
+                label="Primary work location"
+                value={locationLabel ?? payroll.locationCode}
+              />
+              <MetaLine label="Tax Payer ID" value={taxPayerId} />
+            </td>
+            <td
+              width="50%"
+              valign="top"
+              style={{ padding: "12px 20px", verticalAlign: "top" }}
+            >
+              <MetaLine label="Bank Name" value={bankName} />
+              <MetaLine label="Branch" value={bankBranch} />
+              <MetaLine
+                label="Bank Identifier Code"
+                value={bankIdentifierCode}
+              />
+              <MetaLine label="Account Holder's Name" value={accountHolder} />
+              <MetaLine label="Bank Account No." value={bankAccountNo} />
+            </td>
+          </tr>
+        </tbody>
+      </table>
 
-      <section className="grid border-b border-neutral-800 sm:grid-cols-2">
-        <div className="border-b border-neutral-800 sm:border-b-0 sm:border-r">
-          <table className="w-full border-collapse text-[13px] text-neutral-900">
-            <thead>
-              <tr>
-                <th className="px-4 py-2 text-left text-xs font-semibold">
-                  Earnings
-                </th>
-                <th className="px-4 py-2 w-16 text-right text-xs font-semibold">
-                  Rate
-                </th>
-                <th className="px-4 py-2 w-28 text-right text-xs font-semibold">
-                  Amount
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {earnings.map((line) => (
-                <tr key={line.label} className="align-top">
-                  <td className="px-4 py-2">
-                    <div className="space-y-0.5">
-                      <p>{line.label}</p>
-                      {line.detail ? (
-                        <p className="text-xs text-neutral-600">{line.detail}</p>
+      {/* Attendance strip */}
+      <table
+        width="100%"
+        cellPadding={0}
+        cellSpacing={0}
+        style={{ borderBottom: "1px solid #333", borderCollapse: "collapse" }}
+      >
+        <tbody>
+          <tr>
+            <td
+              width="33.33%"
+              style={{
+                padding: "10px 16px",
+                fontSize: 13,
+                borderRight: "1px solid #333",
+              }}
+            >
+              <strong>Total work duration:</strong> {totalWorkDuration}
+            </td>
+            <td
+              width="33.33%"
+              style={{
+                padding: "10px 16px",
+                fontSize: 13,
+                borderRight: "1px solid #333",
+              }}
+            >
+              <strong>Days present:</strong> {daysPresent}
+            </td>
+            <td width="33.33%" style={{ padding: "10px 16px", fontSize: 13 }}>
+              <strong>Days absent:</strong> {daysAbsent}
+            </td>
+          </tr>
+        </tbody>
+      </table>
+
+      {/* Earnings | Deductions — single 6-column table */}
+      <table
+        width="100%"
+        cellPadding={0}
+        cellSpacing={0}
+        style={{ borderCollapse: "collapse", fontSize: 13 }}
+      >
+        <thead>
+          <tr>
+            <th
+              style={{
+                textAlign: "left",
+                padding: "8px 12px",
+                borderBottom: "1px solid #333",
+                borderRight: "1px solid #ddd",
+                fontWeight: 600,
+              }}
+            >
+              Earnings
+            </th>
+            <th
+              style={{
+                textAlign: "right",
+                padding: "8px 8px",
+                borderBottom: "1px solid #333",
+                borderRight: "1px solid #ddd",
+                fontWeight: 600,
+                width: "9%",
+              }}
+            >
+              Rate
+            </th>
+            <th
+              style={{
+                textAlign: "right",
+                padding: "8px 12px",
+                borderBottom: "1px solid #333",
+                borderRight: "1px solid #333",
+                fontWeight: 600,
+                width: "16%",
+              }}
+            >
+              Amount
+            </th>
+            <th
+              style={{
+                textAlign: "left",
+                padding: "8px 12px",
+                borderBottom: "1px solid #333",
+                borderRight: "1px solid #ddd",
+                fontWeight: 600,
+              }}
+            >
+              Deductions
+            </th>
+            <th
+              style={{
+                textAlign: "right",
+                padding: "8px 8px",
+                borderBottom: "1px solid #333",
+                borderRight: "1px solid #ddd",
+                fontWeight: 600,
+                width: "9%",
+              }}
+            >
+              Rate
+            </th>
+            <th
+              style={{
+                textAlign: "right",
+                padding: "8px 12px",
+                borderBottom: "1px solid #333",
+                fontWeight: 600,
+                width: "16%",
+              }}
+            >
+              Amount
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {Array.from({ length: rowCount }).map((_, i) => {
+            const earn = earnings[i];
+            const ded =
+              i === 0 && deductions.length === 0
+                ? ({ label: "None", amount: 0 } as PayslipLine)
+                : deductions[i];
+            return (
+              <tr key={`pay-row-${i}`}>
+                <td
+                  style={{
+                    padding: "8px 12px",
+                    borderRight: "1px solid #ddd",
+                    verticalAlign: "top",
+                  }}
+                >
+                  {earn?.label ?? ""}
+                </td>
+                <td
+                  style={{
+                    padding: "8px 8px",
+                    borderRight: "1px solid #ddd",
+                    textAlign: "right",
+                    verticalAlign: "top",
+                  }}
+                >
+                  {earn?.rate ?? ""}
+                </td>
+                <td
+                  style={{
+                    padding: "8px 12px",
+                    borderRight: "1px solid #333",
+                    textAlign: "right",
+                    verticalAlign: "top",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {earn && earn.amount > 0 ? (
+                    <>
+                      <div>{money(earn.amount)}</div>
+                      {earn.detail ? (
+                        <div
+                          style={{
+                            fontSize: 11,
+                            color: "#555",
+                            marginTop: 2,
+                            whiteSpace: "normal",
+                          }}
+                        >
+                          {earn.detail}
+                        </div>
                       ) : null}
-                    </div>
-                  </td>
-                  <td className="px-4 py-2 text-right text-neutral-500">—</td>
-                  <td className="px-4 py-2 text-right tabular-nums">
-                    {formatCurrency(line.amount, currency)}
-                  </td>
-                </tr>
-              ))}
-              <tr className="border-t border-neutral-800">
-                <td className="px-4 py-2 font-semibold">Total earnings</td>
-                <td className="px-4 py-2" />
-                <td className="px-4 py-2 text-right tabular-nums font-semibold">
-                  {formatCurrency(totalEarnings, currency)}
+                    </>
+                  ) : (
+                    ""
+                  )}
+                </td>
+                <td
+                  style={{
+                    padding: "8px 12px",
+                    borderRight: "1px solid #ddd",
+                    verticalAlign: "top",
+                  }}
+                >
+                  {ded?.label ?? ""}
+                </td>
+                <td
+                  style={{
+                    padding: "8px 8px",
+                    borderRight: "1px solid #ddd",
+                    textAlign: "right",
+                    verticalAlign: "top",
+                  }}
+                >
+                  {ded?.rate ?? ""}
+                </td>
+                <td
+                  style={{
+                    padding: "8px 12px",
+                    textAlign: "right",
+                    verticalAlign: "top",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {ded && ded.amount > 0 ? (
+                    <>
+                      <div>{money(ded.amount)}</div>
+                      {ded.detail ? (
+                        <div
+                          style={{
+                            fontSize: 11,
+                            color: "#555",
+                            marginTop: 2,
+                            whiteSpace: "normal",
+                          }}
+                        >
+                          {ded.detail}
+                        </div>
+                      ) : null}
+                    </>
+                  ) : (
+                    ""
+                  )}
                 </td>
               </tr>
-            </tbody>
-          </table>
-        </div>
+            );
+          })}
+          <tr>
+            <td
+              colSpan={3}
+              style={{
+                padding: "10px 12px",
+                borderTop: "1px solid #333",
+                borderRight: "1px solid #333",
+                fontWeight: 700,
+              }}
+            >
+              Total earnings: {money(totalEarnings)}
+            </td>
+            <td
+              colSpan={3}
+              style={{
+                padding: "10px 12px",
+                borderTop: "1px solid #333",
+                fontWeight: 700,
+              }}
+            >
+              Total deductions: {money(payroll.totalDeduction)}
+            </td>
+          </tr>
+        </tbody>
+      </table>
 
-        <div>
-          <table className="w-full border-collapse text-[13px] text-neutral-900">
-            <thead>
-              <tr>
-                <th className="px-4 py-2 text-left text-xs font-semibold">
-                  Deductions
-                </th>
-                <th className="px-4 py-2 w-16 text-right text-xs font-semibold">
-                  Rate
-                </th>
-                <th className="px-4 py-2 w-28 text-right text-xs font-semibold">
-                  Amount
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {deductions.length === 0 ? (
-                <tr>
-                  <td colSpan={3} className="px-4 py-3 text-neutral-500">
-                    No deductions
-                  </td>
-                </tr>
-              ) : (
-                deductions.map((line, index) => (
-                  <tr
-                    key={`${line.label}-${index}`}
-                    className="align-top"
-                  >
-                    <td className="px-4 py-2">
-                      <div className="space-y-0.5">
-                        <p>{line.label}</p>
-                        {line.detail ? (
-                          <p className="text-xs text-neutral-600">{line.detail}</p>
-                        ) : null}
-                      </div>
-                    </td>
-                    <td className="px-4 py-2 text-right text-neutral-500">—</td>
-                    <td className="px-4 py-2 text-right tabular-nums">
-                      {line.amount > 0 ? formatCurrency(line.amount, currency) : ""}
-                    </td>
-                  </tr>
-                ))
-              )}
-              <tr className="border-t border-neutral-800">
-                <td className="px-4 py-2 font-semibold">Total deductions</td>
-                <td className="px-4 py-2" />
-                <td className="px-4 py-2 text-right tabular-nums font-semibold">
-                  {formatCurrency(payroll.totalDeduction, currency)}
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </section>
+      {/* Net pay */}
+      <table
+        width="100%"
+        cellPadding={0}
+        cellSpacing={0}
+        style={{ borderTop: "1px solid #333", borderCollapse: "collapse" }}
+      >
+        <tbody>
+          <tr>
+            <td
+              style={{
+                padding: "12px 16px",
+                fontSize: 14,
+                fontWeight: 700,
+              }}
+            >
+              Net pay
+            </td>
+            <td
+              style={{
+                padding: "12px 16px",
+                fontSize: 14,
+                fontWeight: 700,
+                textAlign: "right",
+              }}
+            >
+              {money(payroll.netPay)}
+            </td>
+          </tr>
+        </tbody>
+      </table>
 
-      <section className="border-b border-neutral-800 px-5 py-3 text-[13px] text-neutral-900">
-        <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <p>
-            <span className="font-semibold">In words:</span>{" "}
-            {amountToWords(payroll.netPay)}
-          </p>
-          <div className="text-right">
-            <p className="font-semibold">
-              Net pay{" "}
-              <span className="ml-4 tabular-nums">
-                {formatCurrency(payroll.netPay, currency)}
-              </span>
-            </p>
-          </div>
-        </div>
-      </section>
+      <div
+        style={{
+          padding: "8px 16px 12px",
+          fontSize: 13,
+          borderTop: "1px solid #ccc",
+          borderBottom: "1px solid #333",
+        }}
+      >
+        <strong>In words:</strong> {amountInWordsIndian(payroll.netPay)}
+      </div>
 
+      {/* Payment history */}
       {showPayment ? (
-        <section className="border-b border-neutral-800">
-          <table className="w-full text-[13px] text-neutral-900">
-            <thead>
-              <tr className="bg-emerald-600 text-left text-white">
-                <th className="px-3 py-2 font-semibold">#</th>
-                <th className="px-3 py-2 font-semibold">Date</th>
-                <th className="px-3 py-2 font-semibold">Reference No</th>
-                <th className="px-3 py-2 font-semibold">Amount</th>
-                <th className="px-3 py-2 font-semibold">Payment mode</th>
-                <th className="px-3 py-2 font-semibold">Payment note</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr className="border-t border-neutral-800">
-                <td className="px-3 py-2">1</td>
-                <td className="px-3 py-2 whitespace-nowrap">
-                  {formatDate(paymentDate)}
-                </td>
-                <td className="px-3 py-2">{paymentRef}</td>
-                <td className="px-3 py-2 tabular-nums">
-                  {formatCurrency(payroll.netPay, currency)}
-                </td>
-                <td className="px-3 py-2">
-                  {extras?.paymentMode ?? "Bank Transfer"}
-                </td>
-                <td className="px-3 py-2">
-                  {extras?.paymentNote ?? invoice?.paymentStatus ?? "--"}
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </section>
+        <table
+          width="100%"
+          cellPadding={0}
+          cellSpacing={0}
+          style={{
+            borderCollapse: "collapse",
+            fontSize: 13,
+            borderBottom: "1px solid #333",
+          }}
+        >
+          <thead>
+            <tr style={{ background: "#5cb85c", color: "#fff" }}>
+              <th style={{ textAlign: "left", padding: "8px 10px", fontWeight: 600 }}>
+                #
+              </th>
+              <th style={{ textAlign: "left", padding: "8px 10px", fontWeight: 600 }}>
+                Date
+              </th>
+              <th style={{ textAlign: "left", padding: "8px 10px", fontWeight: 600 }}>
+                Reference No
+              </th>
+              <th style={{ textAlign: "left", padding: "8px 10px", fontWeight: 600 }}>
+                Amount
+              </th>
+              <th style={{ textAlign: "left", padding: "8px 10px", fontWeight: 600 }}>
+                Payment mode
+              </th>
+              <th style={{ textAlign: "left", padding: "8px 10px", fontWeight: 600 }}>
+                Payment note
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr style={{ background: "#f5f5f5" }}>
+              <td style={{ padding: "8px 10px" }}>1</td>
+              <td style={{ padding: "8px 10px", whiteSpace: "nowrap" }}>
+                {payslipDate(paymentDate)}
+              </td>
+              <td style={{ padding: "8px 10px" }}>{paymentRef}</td>
+              <td style={{ padding: "8px 10px", whiteSpace: "nowrap" }}>
+                {money(payroll.netPay)}
+              </td>
+              <td style={{ padding: "8px 10px" }}>
+                {extras?.paymentMode ?? "Bank Transfer"}
+              </td>
+              <td style={{ padding: "8px 10px" }}>
+                {extras?.paymentNote?.trim() ? extras.paymentNote : "--"}
+              </td>
+            </tr>
+          </tbody>
+        </table>
       ) : null}
 
-      <div className="px-5 py-4 text-[13px] text-neutral-900">
-        <p>
-          <span className="font-semibold">Note:</span> {noteText || "—"}
-        </p>
-        <p className="mt-1 text-xs text-neutral-600">
-          Created {formatDate(payroll.createdAt)}
-        </p>
+      {/* Note */}
+      <div style={{ padding: "14px 20px 48px", fontSize: 13, minHeight: 72 }}>
+        <strong>Note:</strong>
+        {noteText ? (
+          <div style={{ marginTop: 6, whiteSpace: "pre-wrap" }}>{noteText}</div>
+        ) : null}
       </div>
     </article>
   );

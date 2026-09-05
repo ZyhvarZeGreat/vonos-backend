@@ -14,6 +14,8 @@ import { InvoiceHubService } from '../invoices/invoice-hub.service';
 import {
   assertCanAdvance,
   coerceJobStatus,
+  getApplicableStages,
+  isJobStage,
 } from '../../common/utils/jobStages';
 import { buildCompositeCursorQuery } from '../../common/utils/pagination';
 import {
@@ -501,6 +503,68 @@ export class JobsService {
         previousStatus: existing.status,
         coercedFrom: coerced !== existing.status ? coerced : undefined,
         status: next,
+      },
+    });
+    void invalidateTenantDashboardCache(this.cache, tenantId);
+    return this.serializeJob(row);
+  }
+
+  /**
+   * Set job stage explicitly (sales Action → Update job status modal).
+   * Optional notes append to qcNotes with a timestamp line.
+   */
+  async setStatus(
+    id: string,
+    body: { status?: string; notes?: string | null },
+  ): Promise<Job> {
+    const tenantId = this.tenantDb.requireTenantId();
+    const existing = await this.tenantDb.db.job.findFirst({
+      where: { id, tenantId, deletedAt: null },
+    });
+    if (!existing) throw new NotFoundException('Job not found');
+
+    const applicable = getApplicableStages(existing.hasQuote);
+    let nextStatus = coerceJobStatus(existing.status, existing.hasQuote);
+    if (body.status?.trim()) {
+      const requested = body.status.trim();
+      if (!isJobStage(requested) || !applicable.includes(requested)) {
+        throw new BadRequestException(
+          `Invalid status “${requested}”. Allowed: ${applicable.join(', ')}`,
+        );
+      }
+      nextStatus = requested;
+    }
+
+    const noteTrim = body.notes?.trim() ?? '';
+    let qcNotes = existing.qcNotes ?? null;
+    if (noteTrim || nextStatus !== existing.status) {
+      const stamp = new Date().toISOString().slice(0, 16).replace('T', ' ');
+      const line =
+        nextStatus !== existing.status
+          ? `[${stamp}] Status → ${nextStatus}${noteTrim ? `: ${noteTrim}` : ''}`
+          : `[${stamp}] ${noteTrim}`;
+      qcNotes = qcNotes?.trim() ? `${qcNotes.trim()}\n${line}` : line;
+    }
+
+    const row = await this.tenantDb.db.job.update({
+      where: { id },
+      data: {
+        status: nextStatus,
+        ...(qcNotes !== existing.qcNotes ? { qcNotes } : {}),
+      },
+    });
+    await this.auditService.log({
+      action: 'updated',
+      entityType: 'job',
+      entityId: id,
+      summary:
+        nextStatus !== existing.status
+          ? `Status → ${nextStatus}`
+          : 'Job notes updated',
+      metadata: {
+        previousStatus: existing.status,
+        status: nextStatus,
+        notesAdded: Boolean(noteTrim),
       },
     });
     void invalidateTenantDashboardCache(this.cache, tenantId);

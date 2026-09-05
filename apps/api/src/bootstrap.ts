@@ -41,8 +41,63 @@ function loadLocalEnvFile(): void {
 
 loadLocalEnvFile();
 
+/**
+ * Some macOS/router DNS setups make Node `dns.lookup` (getaddrinfo) fail for
+ * Neon CNAME hosts while dig/resolve4 still work — Prisma then reports P1001.
+ * Rewrite DATABASE_URL to the resolved IPv4 + Neon `endpoint=` option.
+ */
+async function ensureNeonHostnameResolvable(): Promise<void> {
+  const raw = process.env.DATABASE_URL;
+  if (!raw) return;
+
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    return;
+  }
+
+  const hostname = url.hostname;
+  if (!hostname.includes('neon.tech')) return;
+
+  const dns = await import('dns/promises');
+  try {
+    await dns.lookup(hostname);
+    return;
+  } catch {
+    /* fall through */
+  }
+
+  try {
+    const addresses = await dns.resolve4(
+      hostname.endsWith('neon.tech') ? hostname : hostname,
+    ).catch(async () => dns.resolve4('eu-west-2.aws.neon.tech'));
+    const ip = addresses[0];
+    if (!ip) return;
+
+    const endpoint = hostname.split('.')[0]?.replace(/-pooler$/, '') ?? '';
+    url.hostname = ip;
+    if (endpoint) {
+      url.searchParams.set('options', `endpoint=${endpoint}`);
+    }
+    url.searchParams.set('sslmode', url.searchParams.get('sslmode') ?? 'require');
+    process.env.DATABASE_URL = url.toString();
+    console.warn(
+      `[dns] Neon host ${hostname} failed getaddrinfo; using ${ip} (endpoint=${endpoint})`,
+    );
+  } catch (error) {
+    console.warn(
+      `[dns] Could not resolve Neon host ${hostname}:`,
+      error instanceof Error ? error.message : error,
+    );
+  }
+}
+
 async function createNestApp(): Promise<INestApplication> {
-  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  await ensureNeonHostnameResolvable();
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+    rawBody: true,
+  });
   app.useBodyParser('json', { limit: BODY_LIMIT });
   app.useBodyParser('urlencoded', { limit: BODY_LIMIT, extended: true });
   app.enableShutdownHooks();

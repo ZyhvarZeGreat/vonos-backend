@@ -15,6 +15,7 @@ import {
 import { Hq6ListAmountFooter } from "@/components/hq6/Hq6ListAmountFooter";
 import { Hq6Modal, Hq6ModalSaveClose } from "@/components/hq6/Hq6Modal";
 import { Hq6ConfirmModal } from "@/components/hq6/Hq6ConfirmModal";
+import { Hq6PayExpenseModal } from "@/components/hq6/Hq6PayExpenseModal";
 import {
   Hq6StandardListShell,
   useHq6ListChrome,
@@ -71,7 +72,10 @@ import { entitySaleLocations } from "@/lib/hooks/useBusinessLocationOptions";
 import { expenseListCursor } from "@/lib/utils/pagination";
 import { cn } from "@/lib/utils/cn";
 import { toast } from "@/stores/toastStore";
-import { hq6PaymentBadgeClass } from "@/lib/utils/hq6PaymentBadge";
+import {
+  canAddPaymentForStatus,
+  hq6PaymentBadgeClass,
+} from "@/lib/utils/hq6PaymentBadge";
 import { HQ6_PAYMENT_METHOD_OPTIONS } from "@/lib/utils/hq6PaymentMethods";
 import { tenantBasePath } from "@/lib/utils/tenantMount";
 
@@ -116,6 +120,7 @@ export function Hq6ExpensesListView() {
   const [viewExpense, setViewExpense] = useState<Expense | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Expense | null>(null);
   const [paymentsExpense, setPaymentsExpense] = useState<Expense | null>(null);
+  const [payExpense, setPayExpense] = useState<Expense | null>(null);
   const { data: paymentsDetail } = useQuery({
     queryKey: modalKeys.expense(tenantId, paymentsExpense?.id ?? null),
     queryFn: () => getExpense(tenantId!, paymentsExpense!.id),
@@ -348,7 +353,12 @@ export function Hq6ExpensesListView() {
         key: "actions",
         header: "Action",
         sortable: false,
-        render: (row) => (
+        render: (row) => {
+          const canPay = canAddPaymentForStatus(
+            row.paymentStatus,
+            row.paymentDue,
+          );
+          return (
           <Hq6ActionsMenu
             items={[
               { id: "view", label: "View", onClick: () => setViewExpense(row) },
@@ -362,22 +372,28 @@ export function Hq6ExpensesListView() {
                   );
                 },
               },
-              {
-                id: "add_payment",
-                label: "Add Payment",
-                dividerBefore: true,
-                onClick: () => {
-                  if (!tenantCode) return;
-                  router.push(
-                    `${expensePageRoute(tenantCode, "add-expense")}?edit=${row.id}`,
-                  );
-                },
-              },
-              {
-                id: "view_payments",
-                label: "View Payments",
-                onClick: () => setPaymentsExpense(row),
-              },
+              ...(canPay
+                ? [
+                    {
+                      id: "add_payment",
+                      label: "Add Payment",
+                      dividerBefore: true as const,
+                      onClick: () => setPayExpense(row),
+                    },
+                    {
+                      id: "view_payments",
+                      label: "View Payments",
+                      onClick: () => setPaymentsExpense(row),
+                    },
+                  ]
+                : [
+                    {
+                      id: "view_payments",
+                      label: "View Payments",
+                      dividerBefore: true as const,
+                      onClick: () => setPaymentsExpense(row),
+                    },
+                  ]),
               {
                 id: "delete",
                 label: "Delete",
@@ -386,7 +402,8 @@ export function Hq6ExpensesListView() {
               },
             ]}
           />
-        ),
+          );
+        },
       },
       {
         key: "expenseDate",
@@ -710,6 +727,23 @@ export function Hq6ExpensesListView() {
                 : undefined
             }
           />
+          <Hq6PayExpenseModal
+            open={Boolean(payExpense)}
+            expense={payExpense}
+            tenantId={tenantId}
+            onClose={() => setPayExpense(null)}
+            onPaid={(expenseId) => {
+              void queryClient.invalidateQueries({
+                queryKey: ["expenses", tenantId],
+              });
+              void queryClient.invalidateQueries({
+                queryKey: modalKeys.expense(tenantId, expenseId),
+              });
+              void queryClient.invalidateQueries({
+                queryKey: ["payments", tenantId],
+              });
+            }}
+          />
           <Hq6ConfirmModal
             open={Boolean(deleteTarget)}
             onClose={() => setDeleteTarget(null)}
@@ -745,6 +779,20 @@ export function Hq6ExpensesListView() {
               <Hq6ModalSaveClose
                 onClose={() => setPaymentsExpense(null)}
                 closeLabel="Close"
+                {...(paymentsView &&
+                canAddPaymentForStatus(
+                  paymentsView.paymentStatus,
+                  paymentsView.paymentDue,
+                )
+                  ? {
+                      onSave: () => {
+                        const row = paymentsView;
+                        setPaymentsExpense(null);
+                        setPayExpense(row);
+                      },
+                      saveLabel: "Add Payment",
+                    }
+                  : {})}
               />
             }
           >

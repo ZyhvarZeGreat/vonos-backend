@@ -24,6 +24,7 @@ import type {
   CreateExpenseCategoryRequest,
   UpdateExpenseCategoryRequest,
   UpdateExpenseRequest,
+  PayContactDueRequest,
 } from '@vonos/types';
 
 @Controller('expenses')
@@ -102,6 +103,27 @@ export class ExpensesController {
   @Get(':id')
   getById(@Param('id') id: string) {
     return this.service.getExpenseById(id);
+  }
+
+  @Post(':id/pay')
+  @Roles('admin', 'manager', 'staff', 'super_admin')
+  pay(
+    @Param('id') id: string,
+    @Body() dto: PayContactDueRequest,
+    @Req()
+    req: {
+      user: AuthenticatedUser;
+    },
+  ) {
+    const perms = req.user.tenantRolePermissions ?? [];
+    const canEdit =
+      req.user.role === 'admin' ||
+      req.user.role === 'super_admin' ||
+      perms.includes('*') ||
+      perms.includes('expense.edit') ||
+      perms.includes('expense.create');
+    if (!canEdit) throw new ForbiddenException('Missing expense.edit');
+    return this.service.payExpense(id, dto);
   }
 
   @Patch(':id')

@@ -31,6 +31,7 @@ import type {
   UpdateDesignationRequest,
   UpdatePayrollGroupRequest,
   PayPayrollsRequest,
+  PayrollFilters,
 } from '@vonos/types';
 
 type AuthedRequest = Request & { user: AuthenticatedUser };
@@ -149,6 +150,8 @@ export class HrmController {
 
   @Get('payroll')
   listPayrolls(
+    @Req() request: AuthedRequest,
+    @Query('allTenants') allTenants?: string,
     @Query('cursor') cursor?: string,
     @Query('limit') limit?: string,
     @Query('search') search?: string,
@@ -156,6 +159,7 @@ export class HrmController {
     @Query('employeeRecordId') employeeRecordId?: string,
     @Query('locationCode') locationCode?: string,
     @Query('designationId') designationId?: string,
+    @Query('tenantCode') tenantCode?: string,
     @Query('month') month?: string,
     @Query('year') year?: string,
     @Query('status') status?: string,
@@ -164,7 +168,9 @@ export class HrmController {
     @Query('sortBy') sortBy?: string,
     @Query('sortDir') sortDir?: string,
   ) {
-    return this.service.listPayrolls({
+    const resolvedSortDir: PayrollFilters['sortDir'] =
+      sortDir === 'asc' || sortDir === 'desc' ? sortDir : undefined;
+    const filters: PayrollFilters & { includeSummary?: boolean } = {
       cursor,
       limit: limit ? Number(limit) : undefined,
       search,
@@ -172,14 +178,19 @@ export class HrmController {
       employeeRecordId,
       locationCode,
       designationId,
+      tenantCode,
       month: month ? Number(month) : undefined,
       year: year ? Number(year) : undefined,
       status,
       paymentStatus,
       includeSummary: includeSummary !== '0' && includeSummary !== 'false',
       sortBy,
-      sortDir: sortDir === 'asc' || sortDir === 'desc' ? sortDir : undefined,
-    });
+      sortDir: resolvedSortDir,
+    };
+    if (allTenants === 'true') {
+      return this.service.listPayrollsAllTenants(request.user.role, filters);
+    }
+    return this.service.listPayrolls(filters);
   }
 
   @Post('payroll')

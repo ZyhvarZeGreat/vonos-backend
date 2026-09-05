@@ -6,7 +6,11 @@ import { useRouter } from "next/navigation";
 import { useServerListPage, withListSort, hq6ListPaginationProps } from "@/lib/hooks/useServerListPage";
 import { HQ6_TABLE_PAGE_SIZE } from "@/lib/api/fetchAllPages";
 import { getCatalogPage, getCatalogListSummary, getAllCatalog } from "@/lib/api/catalog";
-import { deleteItem as deleteItemApi, updateItem } from "@/lib/api/items";
+import {
+  deleteItem as deleteItemApi,
+  getPeerStockBySkus,
+  saveItemOpeningStock,
+} from "@/lib/api/items";
 import { getAllCatalogMeta } from "@/lib/api/catalogMeta";
 import { useListExport } from "@/lib/hooks/useListExport";
 import type { Brand, Item, ProductCategory, ProductUnit, StockStatus } from "@vonos/types";
@@ -14,6 +18,7 @@ import {
   BUSINESS_LOCATION_PRESETS,
   PRODUCT_STOCK_BUSINESS_LOCATIONS,
   isPriceCatalogOnlyTenant,
+  isProductStockTenant,
   productHomeLocationsForTenant,
 } from "@vonos/types";
 import { useRecordNavigation } from "@/lib/hooks/useRecordNavigation";
@@ -22,6 +27,7 @@ import { useListPageFilters } from "@/lib/hooks/useListPageFilters";
 import { useHq6Permissions } from "@/lib/hooks/useHq6Permissions";
 import { ItemLocationCell } from "@/components/molecules/ItemLocationCell";
 import { InlinePriceCell } from "@/components/molecules/InlinePriceCell";
+import { GroupPeerStockReadout } from "@/components/molecules/GroupPeerStockReadout";
 import { ProductThumbnail } from "@/components/atoms/ProductThumbnail";
 import { productStockLocationFilterOptions } from "@/lib/utils/locationLabels";
 import { toast } from "@/stores/toastStore";
@@ -104,6 +110,7 @@ const PRODUCT_COLUMNS = [
   { key: "costPrice", label: "Unit Purchase Price" },
   { key: "sellPrice", label: "Selling Price" },
   { key: "quantity", label: "Current stock" },
+  { key: "groupStock", label: "Group stock (VW/VISP/VSP)" },
   { key: "productType", label: "Product Type" },
   { key: "category", label: "Category" },
   { key: "brandName", label: "Brand" },
@@ -130,6 +137,7 @@ export function Hq6ProductsListView({
     tenantCode,
     config?.archetype,
   );
+  const showGroupPeerStock = isProductStockTenant(tenantCode);
   const router = useRouter();
   const queryClient = useQueryClient();
   const exportList = useListExport();
@@ -328,14 +336,21 @@ export function Hq6ProductsListView({
         .map((name) => ({ value: name, label: name })),
     [brandsQuery.data],
   );
-  const unitOptions = useMemo(
-    () =>
-      (unitsQuery.data ?? []).map((u) => ({
-        value: u.shortName || u.name,
-        label: u.shortName ? `${u.name} (${u.shortName})` : u.name,
-      })),
-    [unitsQuery.data],
-  );
+  const unitOptions = useMemo(() => {
+    // De-dupe by filter value — legacy units often share shortName (e.g. "u").
+    const byValue = new Map<string, { value: string; label: string }>();
+    for (const unit of unitsQuery.data ?? []) {
+      const value = (unit.shortName || unit.name).trim();
+      if (!value || byValue.has(value)) continue;
+      byValue.set(value, {
+        value,
+        label: unit.shortName ? `${unit.name} (${unit.shortName})` : unit.name,
+      });
+    }
+    return [...byValue.values()].sort((a, b) =>
+      a.label.localeCompare(b.label),
+    );
+  }, [unitsQuery.data]);
   const taxOptions = useMemo(
     () => taxFilterOptionsForTenant(tenantId ?? null),
     [tenantId],
@@ -351,6 +366,36 @@ export function Hq6ProductsListView({
       return true;
     });
   }, [items, typeFilter]);
+
+  const peerSkuKey = useMemo(
+    () =>
+      showGroupPeerStock
+        ? visibleItems
+            .map((r) => r.sku.trim())
+            .filter(Boolean)
+            .join("|")
+        : "",
+    [showGroupPeerStock, visibleItems],
+  );
+
+  const peerStockQuery = useQuery({
+    queryKey: ["peer-stock-page", tenantId, peerSkuKey],
+    enabled: Boolean(showGroupPeerStock && peerSkuKey),
+    queryFn: () =>
+      getPeerStockBySkus(visibleItems.map((r) => r.sku).filter(Boolean)),
+    staleTime: 60_000,
+  });
+
+  const peerStockBySku = useMemo(() => {
+    const map = new Map<
+      string,
+      NonNullable<typeof peerStockQuery.data>["rows"][number]["entities"]
+    >();
+    for (const row of peerStockQuery.data?.rows ?? []) {
+      map.set(row.sku.trim().toUpperCase(), row.entities);
+    }
+    return map;
+  }, [peerStockQuery.data]);
 
   const handleExport = useCallback(
     (format: "csv" | "excel" | "pdf" | "print") => {
@@ -390,24 +435,33 @@ export function Hq6ProductsListView({
     () =>
       PRODUCT_COLUMNS.filter((c) => {
         if ("always" in c && c.always) return false;
-        if (priceCatalogOnly && c.key === "quantity") return false;
+        if (priceCatalogOnly && (c.key === "quantity" || c.key === "groupStock"))
+          return false;
+        if (!showGroupPeerStock && c.key === "groupStock") return false;
         return true;
       }).map((c) => ({
         key: c.key,
         label: c.label,
       })),
-    [priceCatalogOnly],
+    [priceCatalogOnly, showGroupPeerStock],
   );
 
   const isColVisible = useCallback(
     (key: ProductColKey) => {
-      if (priceCatalogOnly && key === "quantity") return false;
+      if (priceCatalogOnly && (key === "quantity" || key === "groupStock"))
+        return false;
+      if (!showGroupPeerStock && key === "groupStock") return false;
       const def = PRODUCT_COLUMNS.find((c) => c.key === key);
       if (def && "always" in def && def.always) return true;
       if (!chrome.visibleColumnKeys) return true;
+      if (key === "groupStock" && showGroupPeerStock) {
+        // New column: default on when Current stock is shown, until user toggles it.
+        if (chrome.visibleColumnKeys.includes("groupStock")) return true;
+        return chrome.visibleColumnKeys.includes("quantity");
+      }
       return chrome.visibleColumnKeys.includes(key);
     },
-    [chrome.visibleColumnKeys, priceCatalogOnly],
+    [chrome.visibleColumnKeys, priceCatalogOnly, showGroupPeerStock],
   );
 
   const allSelected =
@@ -844,6 +898,17 @@ export function Hq6ProductsListView({
                               Current stock
                             </th>
                           ) : null}
+                          {isColVisible("groupStock") ? (
+                            <th className="sorting_disabled">
+                              Group stock
+                              <i
+                                className="fa fa-info-circle text-info hover-q no-print"
+                                aria-hidden
+                                title="VW / VISP / VSP on-hand — view only; edit only your entity"
+                                style={{ marginLeft: 4 }}
+                              />
+                            </th>
+                          ) : null}
                           {isColVisible("productType") ? (
                             <th className="sorting_disabled">Product Type</th>
                           ) : null}
@@ -1157,6 +1222,16 @@ export function Hq6ProductsListView({
                                   {row.unit?.trim() || "Single"}
                                 </td>
                               ) : null}
+                              {isColVisible("groupStock") ? (
+                                <td>
+                                  <GroupPeerStockReadout
+                                    entities={peerStockBySku.get(
+                                      row.sku.trim().toUpperCase(),
+                                    )}
+                                    highlightCode={tenantCode}
+                                  />
+                                </td>
+                              ) : null}
                               {isColVisible("productType") ? <td>Single</td> : null}
                               {isColVisible("category") ? (
                                 <td>{row.category ?? ""} </td>
@@ -1200,54 +1275,30 @@ export function Hq6ProductsListView({
             open={Boolean(stockItem)}
             onClose={() => setStockItem(null)}
             item={stockItem}
-        onSave={async (nextQty, locationCode, unitCost) => {
+        onSave={async (rows, locationCode, unitCost) => {
           if (!tenantId || !stockItem) return;
-          const loc =
-            locationCode.trim() ||
-            stockItem.locationCode?.trim() ||
-            "";
+          const loc = locationCode.trim();
           if (!loc) throw new Error("Select a location");
 
-          // Preserve existing location rows (so editing one location doesn't wipe others).
-          const existingRows =
-            stockItem.locationStock && stockItem.locationStock.length > 0
-              ? stockItem.locationStock
-              : stockItem.locationCode
-                ? [
-                    {
-                      locationCode: stockItem.locationCode,
-                      binLocation: stockItem.binLocation,
-                      quantity: stockItem.quantity,
-                    },
-                  ]
-                : [];
-
-          const chosenBin =
-            existingRows.find((r) => r.locationCode === loc)?.binLocation ??
-            stockItem.binLocation ??
-            null;
-
-          const others = existingRows.filter((r) => r.locationCode !== loc);
-          const chosenRow = {
-            locationCode: loc,
-            binLocation: chosenBin,
-            quantity: nextQty,
-          };
-
-          // Put the chosen location first so it becomes the primary location.
-          const nextLocationStock = [chosenRow, ...others];
-
-          await updateItem(
+          await saveItemOpeningStock(
             stockItem.id,
             {
-              locationStock: nextLocationStock,
+              locationCode: loc,
               costPrice: unitCost,
+              rows,
             },
             tenantId,
+            stockItem,
           );
 
           void queryClient.invalidateQueries({ queryKey: ["catalog"] });
           void queryClient.invalidateQueries({ queryKey: ["items"] });
+          void queryClient.invalidateQueries({
+            queryKey: ["item-stock-history"],
+          });
+          void queryClient.invalidateQueries({
+            queryKey: ["item-opening-stock"],
+          });
         }}
       />
       <Hq6MoveProductModal

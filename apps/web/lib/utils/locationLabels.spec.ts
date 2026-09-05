@@ -74,6 +74,23 @@ describe("product stock location labels", () => {
     ).toBe("Vonos SP Marketplace");
   });
 
+  it("shows VISP home when legacy stock still says BL005 painting materials", () => {
+    expect(
+      formatProductStockLocations(
+        {
+          locationCode: "VISP",
+          binLocation: null,
+          quantity: 0,
+          locationStock: [
+            { locationCode: "BL005", binLocation: null, quantity: 0 },
+          ],
+        },
+        [{ code: "VISP", name: "Vonos Institute Spare Parts" }],
+        "VISP",
+      ),
+    ).toBe("Vonos Institute Spare Parts");
+  });
+
   it("shows VA/VP catalog home and fallback when row has no location", () => {
     expect(
       formatProductStockLocations(

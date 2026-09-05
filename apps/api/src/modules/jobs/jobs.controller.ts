@@ -85,7 +85,21 @@ export class JobsController {
 
   @Patch(':id/status')
   @Roles('staff', 'manager', 'admin', 'super_admin')
-  advanceStatus(@Param('id') id: string) {
+  updateStatus(
+    @Param('id') id: string,
+    @Body()
+    body?: {
+      /** When set, jump to this stage (any applicable). Omit to advance one step. */
+      status?: string;
+      notes?: string;
+    },
+  ) {
+    if (body?.status?.trim() || body?.notes !== undefined) {
+      return this.jobsService.setStatus(id, {
+        status: body.status,
+        notes: body.notes,
+      });
+    }
     return this.jobsService.advanceStatus(id);
   }
 

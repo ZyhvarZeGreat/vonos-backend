@@ -1,16 +1,7 @@
-import type { Metadata } from "next";
-import Link from "next/link";
 import { plusJakartaSans } from "@/lib/fonts";
 
-export const metadata: Metadata = {
-  title: "Vonos Group",
-  description: "Vonos Group — enter Vonos Operations",
-};
-
-/**
- * Apex landing for vonosgroup.com — brand first, then enter operations.
- */
-export default function VonosGroupLandingPage() {
+/** Customer-facing apex maintenance notice (not used on /operations). */
+export function VonosMaintenanceLanding() {
   return (
     <main
       className={`${plusJakartaSans.className} relative flex min-h-screen flex-col items-center justify-center overflow-hidden px-6 text-center`}
@@ -37,16 +28,15 @@ export default function VonosGroupLandingPage() {
           Vonos Group
         </p>
 
-        <p className="max-w-md text-base font-normal text-sky-100/90 sm:text-lg">
-          Multi-entity operations for the Vonos Autos Group.
-        </p>
-
-        <Link
-          href="/operations"
-          className="inline-flex items-center justify-center rounded-md bg-white px-8 py-3.5 text-base font-semibold text-[#1e3a8a] shadow-lg transition hover:bg-sky-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
-        >
-          Click to enter Vonos Operations
-        </Link>
+        <div className="max-w-lg space-y-3">
+          <p className="text-sm font-semibold uppercase tracking-[0.18em] text-sky-200/90">
+            Under maintenance
+          </p>
+          <p className="text-base font-normal text-sky-100/95 sm:text-lg sm:leading-relaxed">
+            We are working on a new and improved experience for our customers.
+            Thank you for your patience.
+          </p>
+        </div>
       </div>
     </main>
   );

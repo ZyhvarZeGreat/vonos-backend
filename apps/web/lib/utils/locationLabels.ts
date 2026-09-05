@@ -173,17 +173,14 @@ export function formatProductStockLocations(
     locations.length > 0 ? locations : PRODUCT_STOCK_BUSINESS_LOCATIONS;
   const home = fallbackLocationCode?.trim().toUpperCase() || null;
 
-  /** Map mislabeled sister-entity codes onto this tenant's product home. */
+  /** Map mislabeled sister-entity / Ultimate POS codes onto this tenant's product home. */
   const coerceCode = (raw: string): string => {
     const code = raw.trim().toUpperCase();
-    if (
-      home &&
-      isProductOwnScopeTenant(home) &&
-      isProductOwnScopeTenant(code) &&
-      code !== home
-    ) {
-      return home;
-    }
+    const knownHere = stockLocs.some(
+      (loc) => loc.code.trim().toUpperCase() === code,
+    );
+    if (knownHere) return code;
+    if (home && isProductOwnScopeTenant(home)) return home;
     return code;
   };
 

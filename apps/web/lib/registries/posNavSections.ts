@@ -1,5 +1,5 @@
 import type { NavItem, TenantConfig } from "@vonos/types";
-import { reportsForArchetype } from "@vonos/types";
+import { isProductStockLocationCode, reportsForArchetype } from "@vonos/types";
 import type { NavSection } from "@/components/organisms/Sidebar";
 import { isHq6Tenant } from "@/lib/utils/isHq6Tenant";
 import { REPORT_SLUG_TO_HQ6_PATH } from "@/lib/registries/hq6ReportRoutes";
@@ -168,6 +168,16 @@ function productsItems(code: string, config: TenantConfig): NavItem[] {
     [
       { label: "List Products", icon: "package", route: r(code, listSlug), pageType: "list" },
       { label: "Add Product", icon: "plus-circle", route: r(code, "add-product"), pageType: "list" },
+      ...(isProductStockLocationCode(code)
+        ? [
+            {
+              label: "Group Stock",
+              icon: "layers" as const,
+              route: r(code, "group-stock"),
+              pageType: "list" as const,
+            },
+          ]
+        : []),
       { label: "Update Price", icon: "badge-dollar-sign", route: r(code, "update-price"), pageType: "list" },
       { label: "Print Labels", icon: "printer", route: r(code, "print-labels"), pageType: "list" },
       { label: "Variations", icon: "layers", route: r(code, "variations"), pageType: "list" },

@@ -105,14 +105,28 @@ export function purchaseRowActions(opts: {
   return items;
 }
 
-export function expenseRowActions(): Hq6RowActionSpec[] {
-  return [
+export function expenseRowActions(opts?: {
+  canAddPayment?: boolean;
+}): Hq6RowActionSpec[] {
+  const canPay = opts?.canAddPayment !== false;
+  const items: Hq6RowActionSpec[] = [
     { id: "view", label: "View" },
     { id: "edit", label: "Edit" },
-    { id: "add_payment", label: "Add Payment", dividerBefore: true },
-    { id: "view_payments", label: "View Payments" },
-    { id: "delete", label: "Delete", danger: true },
   ];
+  if (canPay) {
+    items.push(
+      { id: "add_payment", label: "Add Payment", dividerBefore: true },
+      { id: "view_payments", label: "View Payments" },
+    );
+  } else {
+    items.push({
+      id: "view_payments",
+      label: "View Payments",
+      dividerBefore: true,
+    });
+  }
+  items.push({ id: "delete", label: "Delete", danger: true });
+  return items;
 }
 
 export function productRowActions(opts: {

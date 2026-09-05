@@ -10,6 +10,7 @@ import type {
   CreateExpenseRequest,
   CreateExpenseCategoryRequest,
   UpdateExpenseRequest,
+  PayContactDueRequest,
 } from '@vonos/types';
 import { TenantDbService } from '../../common/prisma/tenant-db.service';
 import { CacheService } from '../../common/cache/cache.service';
@@ -665,6 +666,104 @@ export class ExpensesService {
       },
     });
     return this.serializeExpense(row, createdByName, nextPaymentMethod);
+  }
+
+  /**
+   * Apply an incremental payment toward remaining expense due — same UX as
+   * sales/purchases Add Payment (does not reopen the expense create form).
+   */
+  async payExpense(
+    id: string,
+    dto: PayContactDueRequest,
+  ): Promise<{
+    expenseId: string;
+    amountApplied: number;
+    currency: string;
+    remainingDue: number;
+    paymentStatus: string;
+  }> {
+    const tenantId = this.tenantDb.requireTenantId();
+    const amount = Number(dto.amount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      throw new BadRequestException('Payment amount must be greater than zero');
+    }
+    const accountId = dto.accountId?.trim() || null;
+    if (!accountId) {
+      throw new BadRequestException(
+        'Select a Payment Account so this expense payment posts to the account book',
+      );
+    }
+
+    const existing = await this.tenantDb.db.expense.findFirst({
+      where: { id, tenantId, deletedAt: null },
+      include: expenseInclude,
+    });
+    if (!existing) throw new NotFoundException('Expense not found');
+
+    const total = toNumber(existing.totalAmount);
+    const priorDue = Math.max(0, toNumber(existing.paymentDue));
+    const priorPaid = Math.max(0, total - priorDue);
+    if (priorDue <= 1e-6 || existing.paymentStatus === 'paid') {
+      throw new BadRequestException('Expense is already paid');
+    }
+
+    const apply = Math.min(amount, priorDue);
+    const nextPaid = priorPaid + apply;
+    const paymentDue = Math.max(0, total - nextPaid);
+    const paymentStatus = paymentStatusFromAmounts(
+      total,
+      nextPaid,
+      existing.paymentStatus,
+    );
+    const method = dto.method?.trim() || 'cash';
+    const paidOn = dto.paidOn ? new Date(dto.paidOn) : new Date();
+    const note =
+      dto.note?.trim() ||
+      existing.note ||
+      `Expense payment — ${existing.refNo ?? existing.id}`;
+
+    await this.tenantDb.db.$transaction(async (tx) => {
+      await tx.expense.update({
+        where: { id },
+        data: {
+          paymentStatus,
+          paymentDue,
+          accountId,
+        },
+      });
+
+      await syncExpenseAccountDebit(tx, {
+        tenantId,
+        expenseId: id,
+        accountId,
+        amount: nextPaid,
+        operationDate: paidOn,
+        refNo: existing.refNo,
+        note,
+        paymentMethod: method,
+      });
+    });
+
+    this.invalidateCaches();
+    void this.auditService.log({
+      action: 'updated',
+      entityType: 'expense',
+      entityId: id,
+      summary: `Paid ${apply.toFixed(2)} on expense ${existing.refNo?.trim() || id.slice(-8)}`,
+      metadata: {
+        amountApplied: apply,
+        remainingDue: paymentDue,
+        paymentStatus,
+      },
+    });
+
+    return {
+      expenseId: id,
+      amountApplied: apply,
+      currency: 'NGN',
+      remainingDue: paymentDue,
+      paymentStatus,
+    };
   }
 
   async deleteExpense(id: string): Promise<void> {

@@ -58,6 +58,7 @@ import {
   ServicesListView,
   SettingsView,
   ShipmentsListView,
+  StockAvailabilityView,
   StylistScheduleView,
   TableManagementView,
   TaxRatesListView,
@@ -210,6 +211,10 @@ function posSellPages(addSaleView: ComponentType): SlugMap {
 
 const posProductPages: SlugMap = {
   "add-product": { title: "Add Product", View: AddProductView },
+  "group-stock": {
+    title: "Group Stock",
+    View: () => <StockAvailabilityView stockHomesOnly />,
+  },
   "update-price": { title: "Update Price", View: UpdatePriceView },
   "print-labels": { title: "Print Labels", View: PrintLabelsView },
   variations: { title: "Variations", View: VariationsListView },

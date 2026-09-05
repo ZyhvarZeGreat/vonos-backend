@@ -5,10 +5,17 @@ import type {
   ItemFilters,
   ItemLocationStockInput,
   KpiSummary,
+  PeerStockBySkuResult,
   StockAvailabilityResult,
   StockStatus,
 } from '@vonos/types';
-import { AUTOS_GROUP_CODES, isAutosGroupCode, isGroupStockConsumerTenant, PRODUCT_STOCK_LOCATION_CODES } from '@vonos/types';
+import {
+  AUTOS_GROUP_CODES,
+  isAutosGroupCode,
+  isGroupStockConsumerTenant,
+  isProductStockLocationCode,
+  PRODUCT_STOCK_LOCATION_CODES,
+} from '@vonos/types';
 import { Prisma } from '@prisma/client';
 import { TenantDbService } from '../../common/prisma/tenant-db.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
@@ -424,6 +431,7 @@ export class ItemsService {
       newQuantity: number;
       unitCost: number | null;
       customerSupplierInfo: string | null;
+      createdByName: string | null;
     }>
   > {
     const { row: item, homeTenantId } = await this.findItemForRequest(id);
@@ -442,6 +450,7 @@ export class ItemsService {
         status: true,
         lines: true,
         notes: true,
+        createdByName: true,
         supplier: { select: { name: true } },
       },
     });
@@ -457,6 +466,7 @@ export class ItemsService {
       newQuantity: number;
       unitCost: number | null;
       customerSupplierInfo: string | null;
+      createdByName: string | null;
     }> = [];
 
     let runningQty = item.quantity;
@@ -479,29 +489,290 @@ export class ItemsService {
         const newQty = runningQty;
         runningQty -= change;
 
-        const info =
-          movement.supplier?.name ??
-          movement.notes ??
-          null;
+        const isOpening = movement.reference.startsWith('OS/');
+        const infoParts = [
+          isOpening ? 'Opening stock' : null,
+          movement.supplier?.name ?? null,
+          movement.notes?.trim() || null,
+          movement.createdByName ? `by ${movement.createdByName}` : null,
+        ].filter(Boolean);
 
         history.push({
           id: movement.id,
           date: movement.date.toISOString(),
           reference: movement.reference,
-          type: movement.type,
+          type: isOpening ? 'opening_stock' : movement.type,
           status: movement.status,
           quantity: qty,
           quantityChange: change,
           newQuantity: newQty,
           unitCost:
             line.unitCost != null ? toNumber(line.unitCost) : null,
-          customerSupplierInfo: info,
+          customerSupplierInfo:
+            infoParts.length > 0 ? infoParts.join(' · ') : null,
+          createdByName: movement.createdByName ?? null,
         });
       }
       if (history.length >= 100) break;
     }
 
     return history;
+  }
+
+  /** Former opening-stock rows for the add/edit opening stock table. */
+  async listOpeningStock(id: string): Promise<
+    Array<{
+      id: string;
+      quantity: number;
+      unitCost: number | null;
+      date: string;
+      note: string | null;
+      createdByName: string | null;
+      createdAt: string;
+      locationCode: string | null;
+    }>
+  > {
+    const { row: item, homeTenantId } = await this.findItemForRequest(id);
+    const tenantId = homeTenantId;
+    const db = this.prisma.forTenant(homeTenantId);
+
+    const movements = await db.stockMovement.findMany({
+      where: {
+        tenantId,
+        deletedAt: null,
+        type: 'inbound',
+        reference: { startsWith: 'OS/' },
+      },
+      orderBy: [{ date: 'asc' }, { createdAt: 'asc' }],
+      take: 200,
+      select: {
+        id: true,
+        date: true,
+        createdAt: true,
+        lines: true,
+        notes: true,
+        createdByName: true,
+        locationCode: true,
+      },
+    });
+
+    const rows: Array<{
+      id: string;
+      quantity: number;
+      unitCost: number | null;
+      date: string;
+      note: string | null;
+      createdByName: string | null;
+      createdAt: string;
+      locationCode: string | null;
+    }> = [];
+
+    for (const movement of movements) {
+      const lines = Array.isArray(movement.lines)
+        ? (movement.lines as Array<{
+            itemId?: string;
+            sku?: string;
+            quantity?: number;
+            unitCost?: number;
+          }>)
+        : [];
+      for (const line of lines) {
+        if (line.itemId !== item.id && line.sku !== item.sku) continue;
+        const y = movement.date.getFullYear();
+        const m = String(movement.date.getMonth() + 1).padStart(2, '0');
+        const d = String(movement.date.getDate()).padStart(2, '0');
+        rows.push({
+          id: movement.id,
+          quantity: Number(line.quantity ?? 0),
+          unitCost:
+            line.unitCost != null ? toNumber(line.unitCost) : null,
+          date: `${y}-${m}-${d}`,
+          note: movement.notes ?? null,
+          createdByName: movement.createdByName ?? null,
+          createdAt: movement.createdAt.toISOString(),
+          locationCode: movement.locationCode ?? null,
+        });
+      }
+    }
+
+    return rows;
+  }
+
+  /**
+   * Save opening-stock table rows: keep dated records, set on-hand qty to the
+   * sum of rows, and stamp who/when on each StockMovement (OS/…).
+   */
+  async saveOpeningStock(
+    id: string,
+    body: {
+      locationCode: string;
+      costPrice?: number;
+      rows: Array<{
+        id?: string;
+        quantity: number;
+        unitCost: number;
+        date: string;
+        note?: string;
+      }>;
+    },
+  ): Promise<Item> {
+    const requestTenantId = this.tenantDb.requireTenantId();
+    const { row: existing, homeTenantId } = await this.findItemForRequest(id, {
+      brand: true,
+    });
+    const tenantId = homeTenantId;
+    const db = this.prisma.forTenant(homeTenantId);
+
+    const validate = await this.tenantDb.businessLocationValidator();
+    const locationCode = validate(body.locationCode);
+    if (!locationCode) {
+      throw new BadRequestException('Business location is required');
+    }
+
+    const incoming = (body.rows ?? []).map((row) => ({
+      id: row.id?.trim() || undefined,
+      quantity: Number.isFinite(row.quantity) ? Math.trunc(row.quantity) : 0,
+      unitCost: Number.isFinite(row.unitCost) ? row.unitCost : 0,
+      date: row.date?.trim() || new Date().toISOString().slice(0, 10),
+      note: row.note?.trim() || null,
+    }));
+
+    if (incoming.length === 0) {
+      throw new BadRequestException('Add at least one opening stock row');
+    }
+
+    const existingOs = await this.listOpeningStock(id);
+    const keepIds = new Set(
+      incoming.map((r) => r.id).filter((v): v is string => Boolean(v)),
+    );
+    const toRemove = existingOs.filter((r) => !keepIds.has(r.id));
+
+    const createdBy = await this.auditService.createdByFields();
+    const nextQty = incoming.reduce((sum, r) => sum + r.quantity, 0);
+    const lastCost =
+      body.costPrice != null && Number.isFinite(body.costPrice)
+        ? body.costPrice
+        : (incoming[incoming.length - 1]?.unitCost ??
+          toNumber(existing.costPrice));
+    const homeCode = await this.cachedTenantCode(tenantId);
+    const catalogOnly = isGroupStockConsumerTenant(homeCode ?? undefined);
+
+    await db.$transaction(async (tx) => {
+      if (toRemove.length > 0) {
+        await tx.stockMovement.updateMany({
+          where: {
+            tenantId,
+            id: { in: toRemove.map((r) => r.id) },
+            deletedAt: null,
+          },
+          data: { deletedAt: new Date() },
+        });
+      }
+
+      for (const row of incoming) {
+        const line = [
+          {
+            itemId: existing.id,
+            sku: existing.sku,
+            name: existing.name,
+            quantity: row.quantity,
+            unitCost: row.unitCost,
+          },
+        ];
+        const grandTotal = row.quantity * row.unitCost;
+        const date = new Date(`${row.date}T12:00:00.000Z`);
+        const notes = row.note || 'Opening stock';
+
+        if (row.id) {
+          const owned = existingOs.some((r) => r.id === row.id);
+          if (!owned) {
+            throw new BadRequestException('Unknown opening stock row');
+          }
+          // Prior OS rows are append-only history — do not mutate qty/cost/date.
+          continue;
+        } else {
+          await tx.stockMovement.create({
+            data: {
+              tenantId,
+              type: 'inbound',
+              reference: `OS/${existing.sku}/${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`,
+              status: 'Received',
+              lines: line as unknown as Prisma.InputJsonValue,
+              itemCount: 1,
+              grandTotal,
+              notes,
+              locationCode,
+              date,
+              ...createdBy,
+            },
+          });
+        }
+      }
+
+      const existingLoc = await tx.itemLocationStock.findFirst({
+        where: { itemId: existing.id, locationCode },
+      });
+      if (existingLoc) {
+        await tx.itemLocationStock.update({
+          where: { id: existingLoc.id },
+          data: { quantity: nextQty },
+        });
+      } else {
+        await tx.itemLocationStock.create({
+          data: {
+            tenantId,
+            itemId: existing.id,
+            locationCode,
+            binLocation: existing.binLocation ?? '',
+            quantity: nextQty,
+          },
+        });
+      }
+
+      const otherSum = await tx.itemLocationStock.aggregate({
+        where: {
+          itemId: existing.id,
+          NOT: { locationCode },
+        },
+        _sum: { quantity: true },
+      });
+      const headerQty = nextQty + (otherSum._sum.quantity ?? 0);
+      const nextStatus = catalogOnly
+        ? existing.status === 'out_of_stock'
+          ? 'in_stock'
+          : existing.status
+        : deriveStatus(headerQty, existing.reorderPoint);
+
+      await tx.item.update({
+        where: { id: existing.id },
+        data: {
+          quantity: headerQty,
+          locationCode,
+          costPrice: lastCost,
+          status: nextStatus,
+        },
+      });
+    });
+
+    void this.auditService.log({
+      action: 'updated',
+      entityType: 'item',
+      entityId: id,
+      summary: `Opening stock set to ${nextQty} for ${existing.sku}`,
+      metadata: {
+        locationCode,
+        rowCount: incoming.length,
+        quantity: nextQty,
+        unitCost: lastCost,
+      },
+    });
+    void this.invalidateItemCaches(
+      homeTenantId !== requestTenantId ? [homeTenantId] : [],
+      { stockChanged: true },
+    );
+
+    const { row } = await this.findItemForRequest(id, { detail: true });
+    return serializeItem(row);
   }
 
   async kpiSummary(): Promise<KpiSummary> {
@@ -682,7 +953,26 @@ export class ItemsService {
     return serializeItem(row);
   }
 
-  async update(id: string, dto: UpdateItemDto): Promise<Item> {
+  async update(
+    id: string,
+    dto: UpdateItemDto & {
+      openingStock?: {
+        locationCode: string;
+        costPrice?: number;
+        rows: Array<{
+          id?: string;
+          quantity: number;
+          unitCost: number;
+          date: string;
+          note?: string;
+        }>;
+      };
+    },
+  ): Promise<Item> {
+    if (dto.openingStock) {
+      return this.saveOpeningStock(id, dto.openingStock);
+    }
+
     const requestTenantId = this.tenantDb.requireTenantId();
     const { row: existing, homeTenantId } = await this.findItemForRequest(id, {
       brand: true,
@@ -997,7 +1287,9 @@ export class ItemsService {
     const term = search?.trim();
     const stockHomesOnly =
       options?.stockHomesOnly === true ||
-      (!entityFilter && isGroupStockConsumerTenant(requesterCode));
+      (!entityFilter &&
+        (isGroupStockConsumerTenant(requesterCode) ||
+          isProductStockLocationCode(requesterCode)));
     const tenantCodes = entityFilter
       ? [entityFilter]
       : stockHomesOnly
@@ -1133,6 +1425,132 @@ export class ItemsService {
     const payload = { query: term ?? '', groups: result.slice(0, limit) };
     await this.cache.set(cacheKey, payload, 900);
     return payload;
+  }
+
+  /**
+   * Read-only VW / VISP / VSP quantities for a batch of SKUs.
+   * Used on product list/view so stock-home staff can see sister levels
+   * without editing another tenant’s catalog.
+   */
+  async peerStockBySkus(skusRaw: string[]): Promise<PeerStockBySkuResult> {
+    const requesterTenantId = this.tenantDb.resolveTenantId();
+    if (requesterTenantId !== null) {
+      const requester = await this.prisma.tenant.findUnique({
+        where: { id: requesterTenantId },
+        select: { code: true },
+      });
+      if (!requester || !isAutosGroupCode(requester.code)) {
+        throw new ForbiddenException(
+          'Cross-entity stock is limited to the Autos Group',
+        );
+      }
+    }
+
+    const skus = [
+      ...new Set(
+        skusRaw
+          .map((s) => s?.trim())
+          .filter((s): s is string => Boolean(s))
+          .slice(0, 100),
+      ),
+    ];
+    if (skus.length === 0) {
+      return { rows: [] };
+    }
+
+    const tenants = await this.prisma.tenant.findMany({
+      where: {
+        deletedAt: null,
+        code: { in: [...PRODUCT_STOCK_LOCATION_CODES] },
+      },
+      select: { id: true, code: true, name: true },
+    });
+    const tenantById = new Map(tenants.map((t) => [t.id, t]));
+    const skuKey = (s: string) => s.trim().toUpperCase();
+
+    const items = await this.prisma.item.findMany({
+      where: {
+        deletedAt: null,
+        tenantId: { in: tenants.map((t) => t.id) },
+        OR: skus.map((sku) => ({
+          sku: { equals: sku, mode: 'insensitive' as const },
+        })),
+      },
+      select: {
+        id: true,
+        tenantId: true,
+        sku: true,
+        quantity: true,
+        locationStock: { select: { quantity: true } },
+      },
+    });
+
+    const matchedSkus = [...new Set(items.map((item) => skuKey(item.sku)))];
+    const reservedByTenant = new Map<string, Map<string, number>>();
+    await Promise.all(
+      tenants.map(async (tenant) => {
+        reservedByTenant.set(
+          tenant.id,
+          matchedSkus.length === 0
+            ? new Map()
+            : await reservedQtyBySku(this.prisma, tenant.id, matchedSkus),
+        );
+      }),
+    );
+
+    type Cell = {
+      itemId: string;
+      quantity: number;
+      available: number;
+    };
+    const bySkuCode = new Map<string, Map<string, Cell>>();
+    for (const item of items) {
+      const tenant = tenantById.get(item.tenantId);
+      if (!tenant) continue;
+      const locSum = item.locationStock.reduce(
+        (sum, loc) => sum + loc.quantity,
+        0,
+      );
+      const onHand = Math.max(item.quantity, locSum);
+      const reserved =
+        reservedByTenant.get(item.tenantId)?.get(skuKey(item.sku)) ?? 0;
+      const { available } = breakdownFromOnHand(onHand, reserved);
+      const skuMap =
+        bySkuCode.get(skuKey(item.sku)) ?? new Map<string, Cell>();
+      skuMap.set(tenant.code, {
+        itemId: item.id,
+        quantity: onHand,
+        available,
+      });
+      bySkuCode.set(skuKey(item.sku), skuMap);
+    }
+
+    const orderedTenants = PRODUCT_STOCK_LOCATION_CODES.map((code) => {
+      const tenant = tenants.find((t) => t.code === code);
+      return {
+        code,
+        name: tenant?.name ?? code,
+      };
+    });
+
+    return {
+      rows: skus.map((sku) => {
+        const cells = bySkuCode.get(skuKey(sku));
+        return {
+          sku,
+          entities: orderedTenants.map((t) => {
+            const cell = cells?.get(t.code);
+            return {
+              tenantCode: t.code,
+              tenantName: t.name,
+              itemId: cell?.itemId ?? null,
+              quantity: cell?.quantity ?? 0,
+              available: cell?.available ?? 0,
+            };
+          }),
+        };
+      }),
+    };
   }
 
   async importCsv(csv: string): Promise<CsvImportResult> {

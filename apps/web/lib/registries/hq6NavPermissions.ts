@@ -23,6 +23,7 @@ export const HQ6_NAV_VIEW_PERMISSIONS: Record<string, string[]> = {
   variations: ["product.view"],
   "import-products": ["product.create"],
   "import-opening-stock": ["product.opening_stock"],
+  "group-stock": ["product.view", "stock_report.view"],
   "price-groups": ["product.view"],
   units: ["product.view"],
   categories: ["product.view"],

@@ -248,7 +248,7 @@ async function linkUserToPayroll(args: {
     designationId,
     locationCodes: args.locationCodes,
     locationCode: args.locationCodes[0],
-    isServiceStaff: false,
+    // Omit isServiceStaff — API derives from designation (salon/cafe/auto roles).
     ...hrProfilePayload(args),
   });
 

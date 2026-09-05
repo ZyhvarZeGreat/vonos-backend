@@ -1,0 +1,10 @@
+// AUTO-GENERATED from standalone scrape — do not edit by hand
+// Regenerate: npm run prepare:subpages
+
+import ScrapedSection from "@/components/marketing/ScrapedSection";
+
+const SECTION_HTML = `<section data-scroll="load" class="section-spacing-bottom"><div class="container"><div class="client-content"><div scroll-item=""><div class="pre-title w-variant-7e8276b8-3fa3-b83e-411c-2eeab6ce4110">Trusted by Thousands of Customers</div></div><div scroll-item="" class="w-layout-grid grid-client-list"><div class="client-item"><img loading="lazy" src="/images/clients/client-01.svg" alt="Client Logo" class="client-logo"></div><div class="client-item"><img loading="lazy" src="/images/clients/client-11.svg" alt="Client Logo" class="client-logo"></div><div class="client-item"><img loading="lazy" src="/images/clients/client-03.svg" alt="Client Logo" class="client-logo"></div><div class="client-item"><img loading="lazy" src="/images/clients/client-04.svg" alt="Client Logo" class="client-logo"></div><div class="client-item w-variant-7eaa23ff-8673-433c-36e7-cff0bc93f275"><img loading="lazy" src="/images/clients/client-05.svg" alt="Client Logo" class="client-logo"></div><div class="client-item w-variant-ef59906b-d353-669f-334a-d9aa0bdbef60"><img loading="lazy" src="/images/clients/client-10.svg" alt="Client Logo" class="client-logo"></div><div class="client-item w-variant-ef59906b-d353-669f-334a-d9aa0bdbef60"><img loading="lazy" src="/images/clients/client-07.svg" alt="Client Logo" class="client-logo"></div><div class="client-item w-variant-ef59906b-d353-669f-334a-d9aa0bdbef60"><img loading="lazy" src="/images/clients/client-08.svg" alt="Client Logo" class="client-logo"></div><div class="client-item w-variant-ef59906b-d353-669f-334a-d9aa0bdbef60"><img loading="lazy" src="/images/clients/client-09.svg" alt="Client Logo" class="client-logo"></div><div class="client-more-item">+ Many more</div></div></div></div></section>`;
+
+export default function ClientsSection() {
+  return <ScrapedSection html={SECTION_HTML} qa="06-clients" />;
+}
