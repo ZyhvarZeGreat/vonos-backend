@@ -108,19 +108,29 @@ async function resolveDesignationId(
 ): Promise<string> {
   const designations = await getDesignations(tenantId);
   const desired = designationName.trim();
-  const matched =
-    desired.length > 0
-      ? designations.find(
-          (d) => d.name.trim().toLowerCase() === desired.toLowerCase(),
-        )?.id
-      : undefined;
-  if (matched) return matched;
-  const fallbackId = designations[0]?.id;
-  if (fallbackId) return fallbackId;
-  const createdDes = await createDesignation(tenantId, {
-    name: desired || "Staff",
-  });
-  return createdDes.id;
+  if (desired.length > 0) {
+    const matched = designations.find(
+      (d) => d.name.trim().toLowerCase() === desired.toLowerCase(),
+    )?.id;
+    if (matched) return matched;
+    const createdDes = await createDesignation(tenantId, { name: desired });
+    return createdDes.id;
+  }
+
+  // Never fall back to designations[0] (often "Academy" alphabetically).
+  const staff = designations.find(
+    (d) => d.name.trim().toLowerCase() === "staff",
+  );
+  if (staff) return staff.id;
+  const createdStaff = await createDesignation(tenantId, { name: "Staff" });
+  return createdStaff.id;
+}
+
+/** Parse Naira amounts; commas are thousand separators (parseFloat("100,000") === 100). */
+function parseMoneyInput(raw: string): number {
+  const cleaned = raw.replace(/,/g, "").replace(/\s/g, "").trim();
+  if (!cleaned) return Number.NaN;
+  return Number.parseFloat(cleaned);
 }
 
 type UserHrProfileInput = {
@@ -252,7 +262,7 @@ async function linkUserToPayroll(args: {
     ...hrProfilePayload(args),
   });
 
-  const basic = Number.parseFloat(args.basicSalary);
+  const basic = parseMoneyInput(args.basicSalary);
   const base = Number.isFinite(basic) ? basic : 0;
   const grossPay =
     args.salaryPeriod === "week"
@@ -295,7 +305,7 @@ async function syncUserHrFields(args: {
     ...hrProfilePayload(args),
   });
 
-  const basic = Number.parseFloat(args.basicSalary);
+  const basic = parseMoneyInput(args.basicSalary);
   if (!Number.isFinite(basic) || basic <= 0 || !employee) return;
 
   const grossPay =
@@ -408,6 +418,13 @@ export function Hq6UserDetailView({
     enabled: Boolean(rolesTenantId),
     staleTime: 5 * 60_000,
     placeholderData: (previous) => previous,
+  });
+
+  const { data: designationOptions = [] } = useQuery({
+    queryKey: ["designations", tenantId, "user-form"],
+    queryFn: () => getDesignations(tenantId!),
+    enabled: Boolean(tenantId),
+    staleTime: 5 * 60_000,
   });
 
   const { data: linkedHr } = useQuery({
@@ -1553,12 +1570,18 @@ export function Hq6UserDetailView({
                               <input
                                 id="designation"
                                 className="form-control"
-                                placeholder="Designation"
+                                list="hq6-designation-options"
+                                placeholder="Select or type a designation"
                                 value={form.designation}
                                 onChange={(e) =>
                                   patch("designation", e.target.value)
                                 }
                               />
+                              <datalist id="hq6-designation-options">
+                                {designationOptions.map((d) => (
+                                  <option key={d.id} value={d.name} />
+                                ))}
+                              </datalist>
                             </div>
                           </div>
                         </div>

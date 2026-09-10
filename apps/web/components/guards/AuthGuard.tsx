@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { refreshAccessToken } from "@/lib/api/auth";
+import { getSessionProfile, refreshAccessToken } from "@/lib/api/auth";
 import { useAuthStore } from "@/stores/authStore";
 import { decodeAccessToken } from "@/lib/utils/jwt";
 import { getPostLoginPath } from "@/lib/utils/authRedirect";
@@ -22,36 +22,49 @@ const PUBLIC_PREFIXES = [
   "/maintenance",
 ];
 const skipAuth = isAuthSkipped();
-/** Re-pull TenantRole permissions often enough that role matrix edits apply without a full re-login. */
-const PERMISSIONS_REFRESH_MS = 45_000;
-let lastPermissionsRefreshAt = 0;
+/** Pull TenantRole permissions via /auth/me (no refresh-cookie touch). */
+const PERMISSIONS_SYNC_MS = 15 * 60_000;
+/** Only hit /auth/refresh when access JWT is this close to expiring. */
+const ACCESS_REFRESH_SKEW_MS = 5 * 60_000;
+let lastPermissionsSyncAt = 0;
+let lastAccessRefreshAt = 0;
 
-function applyRefreshResult(
-  result: NonNullable<Awaited<ReturnType<typeof refreshAccessToken>>>,
+function applySessionUser(
+  user: Awaited<ReturnType<typeof getSessionProfile>>,
+  accessToken?: string,
 ): void {
+  const state = useAuthStore.getState();
   useAuthStore.getState().setAuth({
-    userId: result.user.id,
-    email: result.user.email,
-    name: result.user.name,
-    tenantId: result.user.tenantId,
-    role: result.user.role,
-    token: result.accessToken,
-    tenantRoleId: result.user.tenantRoleId ?? null,
-    tenantRoleName: result.user.tenantRoleName ?? null,
-    tenantRolePermissions: result.user.tenantRolePermissions ?? [],
-    tenantRoleLocked: result.user.tenantRoleLocked ?? false,
-    allowedTenantCodes: result.user.allowedTenantCodes ?? [],
+    userId: user.id,
+    email: user.email,
+    name: user.name,
+    tenantId: user.tenantId,
+    role: user.role,
+    token: accessToken ?? state.token ?? "",
+    tenantRoleId: user.tenantRoleId ?? null,
+    tenantRoleName: user.tenantRoleName ?? null,
+    tenantRolePermissions: user.tenantRolePermissions ?? [],
+    tenantRoleLocked: user.tenantRoleLocked ?? false,
+    allowedTenantCodes: user.allowedTenantCodes ?? [],
   });
 }
 
-function softRefreshSession(force = false): void {
+/** Refresh access JWT only when near expiry — does not run on every navigation. */
+function refreshAccessIfNeeded(force = false): void {
   const state = useAuthStore.getState();
   if (!state.token || !state.isAuthenticated) return;
+
+  const decoded = decodeAccessToken(state.token);
+  const expiresSoon =
+    !decoded ||
+    (decoded.exp != null && decoded.exp * 1000 < Date.now() + ACCESS_REFRESH_SKEW_MS);
+
+  if (!force && !expiresSoon) return;
+
   const now = Date.now();
-  if (!force && now - lastPermissionsRefreshAt < PERMISSIONS_REFRESH_MS) {
-    return;
-  }
-  lastPermissionsRefreshAt = now;
+  if (!force && now - lastAccessRefreshAt < 30_000) return;
+  lastAccessRefreshAt = now;
+
   void refreshAccessToken()
     .then((result) => {
       if (!result) {
@@ -60,12 +73,29 @@ function softRefreshSession(force = false): void {
         }
         return;
       }
-      applyRefreshResult(result);
+      applySessionUser(result.user, result.accessToken);
     })
     .catch(() => {
       if (!decodeAccessToken(useAuthStore.getState().token ?? "")) {
         useAuthStore.getState().clearAuth();
       }
+    });
+}
+
+/** Sync permissions without touching the refresh cookie. */
+function syncPermissionsIfNeeded(force = false): void {
+  const state = useAuthStore.getState();
+  if (!state.token || !state.isAuthenticated) return;
+  if (!decodeAccessToken(state.token)) return;
+
+  const now = Date.now();
+  if (!force && now - lastPermissionsSyncAt < PERMISSIONS_SYNC_MS) return;
+  lastPermissionsSyncAt = now;
+
+  void getSessionProfile()
+    .then((user) => applySessionUser(user))
+    .catch(() => {
+      /* ignore — access refresh / apiFetch 401 path handles real expiry */
     });
 }
 
@@ -90,14 +120,9 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
 
     const state = useAuthStore.getState();
     if (state.token) {
-      const decoded = decodeAccessToken(state.token);
-      const expiresSoon =
-        decoded?.exp != null && decoded.exp * 1000 < Date.now() + 2 * 60 * 1000;
-      if (!decoded || expiresSoon) {
-        softRefreshSession(true);
-      } else if (state.isAuthenticated && !isPublicPath(pathname)) {
-        // Keep permission keys in sync after Roles page edits.
-        softRefreshSession(false);
+      refreshAccessIfNeeded(false);
+      if (state.isAuthenticated && !isPublicPath(pathname)) {
+        syncPermissionsIfNeeded(false);
       }
     }
 
@@ -120,7 +145,10 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (skipAuth || !hydrated || !isAuthenticated) return;
-    const onFocus = () => softRefreshSession(false);
+    const onFocus = () => {
+      refreshAccessIfNeeded(false);
+      syncPermissionsIfNeeded(false);
+    };
     window.addEventListener("focus", onFocus);
     return () => window.removeEventListener("focus", onFocus);
   }, [hydrated, isAuthenticated]);

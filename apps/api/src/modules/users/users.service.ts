@@ -602,6 +602,12 @@ export class UsersService {
       },
     });
     this.invalidateUserCaches(row.tenantId);
+    if (data.name) {
+      await this.prisma.employee.updateMany({
+        where: { userId: updated.id, deletedAt: null },
+        data: { name: data.name },
+      });
+    }
     if (
       body.tenantRoleId !== undefined ||
       body.role !== undefined ||

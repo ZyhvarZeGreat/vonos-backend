@@ -76,7 +76,7 @@ function CheckRow({
   );
 }
 
-export function HrmSettingsView() {
+export function HrmSettingsView({ embedded = false }: { embedded?: boolean }) {
   const { tenantId } = useRouteTenant();
   const config = useTenantStore((s) => s.tenantConfig);
   const setTenantConfig = useTenantStore((s) => s.setTenantConfig);
@@ -108,10 +108,12 @@ export function HrmSettingsView() {
   const essentials = draft.essentials ?? defaultHrmSettings().essentials!;
 
   return (
-    <div className="hq6-page space-y-3">
-      <section className="hq6-content-header">
-        <h1>Essentials and HRM Settings</h1>
-      </section>
+    <div className={embedded ? "space-y-3" : "hq6-page space-y-3"}>
+      {embedded ? null : (
+        <section className="hq6-content-header">
+          <h1>Essentials and HRM Settings</h1>
+        </section>
+      )}
 
       <div className="hq6-biz-settings-shell overflow-hidden rounded border border-[#d2d6de] bg-white">
         <div className="hq6-biz-settings-body flex min-h-[28rem] flex-col md:flex-row">

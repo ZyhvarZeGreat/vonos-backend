@@ -3,12 +3,20 @@ import type {
   InviteDetails,
   LoginResponse,
   LoginSuccessResponse,
+  LoginUser,
+  SessionDebugResponse,
   TwoFactorSetupResponse,
 } from "@vonos/types";
 import { apiUrl } from "@/lib/api/client";
 import { throwApiError } from "@/lib/api/parseApiError";
 
-export type { InviteDetails, LoginResponse, LoginSuccessResponse };
+export type {
+  InviteDetails,
+  LoginResponse,
+  LoginSuccessResponse,
+  LoginUser,
+  SessionDebugResponse,
+};
 
 const jsonHeaders = { "Content-Type": "application/json" };
 
@@ -58,14 +66,45 @@ export async function verifyTwoFactor(
 }
 
 export async function refreshAccessToken(): Promise<LoginSuccessResponse | null> {
+  // Share single-flight with apiFetch so soft-refresh + 401 retry cannot
+  // race against each other.
+  const { refreshSessionOnce } = await import("@/lib/api/client");
+  return refreshSessionOnce();
+}
+
+/** Sync LoginUser / permissions via Bearer — does not touch refresh cookie. */
+export async function getSessionProfile(): Promise<LoginUser> {
+  const { apiFetch } = await import("@/lib/api/client");
   const { useAuthStore } = await import("@/stores/authStore");
-  const preferredTenantId = useAuthStore.getState().tenantId;
-  const response = await authFetch("/auth/refresh", {
-    method: "POST",
-    body: JSON.stringify({ tenantId: preferredTenantId }),
+  const tenantId = useAuthStore.getState().tenantId;
+  const path = tenantId
+    ? `/auth/me?tenantId=${encodeURIComponent(tenantId)}`
+    : "/auth/me";
+  const response = await apiFetch(path);
+  if (!response.ok) {
+    return throwApiError(response, "Unable to load session");
+  }
+  return response.json() as Promise<LoginUser>;
+}
+
+/** Read-only session probe — does not rotate tokens. Use while logged in. */
+export async function getSessionDebug(): Promise<SessionDebugResponse> {
+  const { apiUrl } = await import("@/lib/api/client");
+  const { useAuthStore } = await import("@/stores/authStore");
+  const token = useAuthStore.getState().token;
+  const headers: Record<string, string> = {
+    Accept: "application/json",
+  };
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const response = await fetch(apiUrl("/auth/session-debug"), {
+    method: "GET",
+    credentials: "include",
+    headers,
   });
-  if (!response.ok) return null;
-  return response.json() as Promise<LoginSuccessResponse>;
+  if (!response.ok) {
+    return throwApiError(response, "Unable to load session debug");
+  }
+  return response.json() as Promise<SessionDebugResponse>;
 }
 
 export async function switchWorkingTenant(

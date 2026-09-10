@@ -125,6 +125,11 @@ export class HrmController {
     });
   }
 
+  @Get('payroll-candidates')
+  listPayrollCandidates() {
+    return this.service.listPayrollCandidates();
+  }
+
   @Post('employees')
   @Roles('admin', 'manager', 'super_admin')
   createEmployee(@Body() dto: CreateEmployeeRequest) {
@@ -203,6 +208,12 @@ export class HrmController {
   @Roles('admin', 'manager', 'super_admin')
   payPayrolls(@Body() dto: PayPayrollsRequest) {
     return this.service.payPayrolls(dto);
+  }
+
+  @Delete('payroll/:id')
+  @Roles('admin', 'manager', 'super_admin')
+  deletePayroll(@Param('id') id: string) {
+    return this.service.deletePayroll(id);
   }
 
   @Patch('payroll/:id/deduction')

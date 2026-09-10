@@ -92,6 +92,35 @@ export interface Employee {
   createdAt: string;
 }
 
+/** Staff group for Add Payroll filters. */
+export type PayrollStaffBucket =
+  | "management"
+  | "technical"
+  | "service"
+  | "other";
+
+/**
+ * User-backed payroll pick row for a tenant (home users + peer Employee copies).
+ * `name` is always the linked User's display name.
+ */
+export interface PayrollCandidate {
+  id: string;
+  tenantId: string;
+  userId: string;
+  name: string;
+  employeeCode: string | null;
+  locationCode: string | null;
+  locationCodes: string[];
+  payrollGroupId: string | null;
+  payrollGroupName: string | null;
+  designationId: string;
+  designationName: string;
+  department: string | null;
+  isServiceStaff: boolean;
+  staffBucket: PayrollStaffBucket;
+  tenantRoleName: string | null;
+}
+
 export interface PayComponent {
   id: string;
   tenantId: string;

@@ -25,6 +25,10 @@ import {
 import { toIso, toNumber } from '../../common/utils/serializers';
 import { computeStockStatus, movementLineRollups } from '../../common/utils/stockQuantity';
 import { jobTextSearchWhere } from '../../common/utils/listSearch';
+import {
+  WhatsAppNotifyService,
+  type WhatsAppSendResult,
+} from '../../common/whatsapp/whatsapp-notify.service';
 
 export interface JobDetail extends Job {
   customer?: {
@@ -45,6 +49,10 @@ export interface JobDetail extends Job {
   labourEntries: JobLabour[];
 }
 
+export type JobWithWhatsApp = Job & {
+  whatsappNotify?: WhatsAppSendResult;
+};
+
 @Injectable()
 export class JobsService {
   constructor(
@@ -53,6 +61,7 @@ export class JobsService {
     private readonly auditService: AuditService,
     private readonly invoiceHub: InvoiceHubService,
     private readonly cache: CacheService,
+    private readonly whatsapp: WhatsAppNotifyService,
   ) {}
 
   async list(filters: {
@@ -459,7 +468,7 @@ export class JobsService {
     return this.getById(jobId);
   }
 
-  async advanceStatus(id: string): Promise<Job> {
+  async advanceStatus(id: string): Promise<JobWithWhatsApp> {
     const tenantId = this.tenantDb.requireTenantId();
     const existing = await this.tenantDb.db.job.findFirst({
       where: { id, tenantId, deletedAt: null },
@@ -506,17 +515,28 @@ export class JobsService {
       },
     });
     void invalidateTenantDashboardCache(this.cache, tenantId);
-    return this.serializeJob(row);
+    const job = this.serializeJob(row);
+    const auto =
+      process.env.WHATSAPP_AUTO_NOTIFY?.trim().toLowerCase() !== 'false';
+    const whatsappNotify = auto
+      ? await this.notifyJobStatusWhatsApp(id, next)
+      : undefined;
+    return whatsappNotify ? { ...job, whatsappNotify } : job;
   }
 
   /**
    * Set job stage explicitly (sales Action → Update job status modal).
    * Optional notes append to qcNotes with a timestamp line.
+   * When `notifyWhatsApp` is true (default), send/open WhatsApp to the owner.
    */
   async setStatus(
     id: string,
-    body: { status?: string; notes?: string | null },
-  ): Promise<Job> {
+    body: {
+      status?: string;
+      notes?: string | null;
+      notifyWhatsApp?: boolean;
+    },
+  ): Promise<JobWithWhatsApp> {
     const tenantId = this.tenantDb.requireTenantId();
     const existing = await this.tenantDb.db.job.findFirst({
       where: { id, tenantId, deletedAt: null },
@@ -546,6 +566,7 @@ export class JobsService {
       qcNotes = qcNotes?.trim() ? `${qcNotes.trim()}\n${line}` : line;
     }
 
+    const statusChanged = nextStatus !== existing.status;
     const row = await this.tenantDb.db.job.update({
       where: { id },
       data: {
@@ -557,10 +578,9 @@ export class JobsService {
       action: 'updated',
       entityType: 'job',
       entityId: id,
-      summary:
-        nextStatus !== existing.status
-          ? `Status → ${nextStatus}`
-          : 'Job notes updated',
+      summary: statusChanged
+        ? `Status → ${nextStatus}`
+        : 'Job notes updated',
       metadata: {
         previousStatus: existing.status,
         status: nextStatus,
@@ -568,7 +588,77 @@ export class JobsService {
       },
     });
     void invalidateTenantDashboardCache(this.cache, tenantId);
-    return this.serializeJob(row);
+    const job = this.serializeJob(row);
+    const shouldNotify =
+      statusChanged && body.notifyWhatsApp !== false;
+    const whatsappNotify = shouldNotify
+      ? await this.notifyJobStatusWhatsApp(id, nextStatus)
+      : undefined;
+    return whatsappNotify ? { ...job, whatsappNotify } : job;
+  }
+
+  /** Resolve owner phone + send WhatsApp status update with /track link. */
+  async notifyJobStatusWhatsApp(
+    jobId: string,
+    statusLabel: string,
+  ): Promise<WhatsAppSendResult> {
+    const tenantId = this.tenantDb.requireTenantId();
+    const job = await this.tenantDb.db.job.findFirst({
+      where: { id: jobId, tenantId, deletedAt: null },
+      include: {
+        customer: { select: { name: true, phone: true } },
+        tenant: { select: { name: true } },
+      },
+    });
+    if (!job) {
+      return {
+        sent: false,
+        channel: 'skipped',
+        waMeUrl: null,
+        toE164: null,
+        error: 'Job not found',
+      };
+    }
+
+    const vehicle = job.vehicleId
+      ? await this.tenantDb.db.vehicle.findFirst({
+          where: { id: job.vehicleId, deletedAt: null },
+          select: {
+            plateNumber: true,
+            ownerName: true,
+            ownerPhone: true,
+          },
+        })
+      : null;
+
+    const phone = vehicle?.ownerPhone || job.customer?.phone || null;
+    const ownerName =
+      vehicle?.ownerName?.trim() ||
+      job.customer?.name?.trim() ||
+      job.customerName?.trim() ||
+      'Customer';
+    const plate = vehicle?.plateNumber?.trim() || 'vehicle';
+    const trackUrl = this.whatsapp.publicTrackUrl({
+      name: ownerName,
+      registration: plate,
+    });
+    const message = this.whatsapp.composeStatusMessage({
+      ownerName,
+      plate,
+      statusLabel,
+      trackUrl,
+      shopName: job.tenant?.name,
+    });
+    return this.whatsapp.notifyCustomer({
+      phone,
+      message,
+      templateParams: {
+        ownerName,
+        plate,
+        statusLabel,
+        trackUrl,
+      },
+    });
   }
 
   async updateBilling(

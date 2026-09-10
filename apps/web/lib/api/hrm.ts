@@ -5,6 +5,7 @@ import type {
   PayrollFilters,
   Designation,
   Employee,
+  PayrollCandidate,
   WorkforceMember,
   CreatePayrollRequest,
   CreatePayrollGroupRequest,
@@ -579,6 +580,17 @@ export async function getAllEmployees(
   );
 }
 
+/** User-backed Add Payroll candidates (canonical names + staffBucket). */
+export async function getPayrollCandidates(
+  tenantId: string,
+): Promise<PayrollCandidate[]> {
+  const res = await apiFetch(
+    withTenantQuery("/hrm/payroll-candidates", tenantId),
+  );
+  if (!res.ok) throw new Error("Failed to fetch payroll candidates");
+  return asArray<PayrollCandidate>(await res.json());
+}
+
 export async function createEmployee(
   tenantId: string,
   dto: CreateEmployeeRequest,
@@ -744,6 +756,17 @@ export async function payPayrolls(
     return throwApiError(res, "Failed to pay payrolls");
   }
   return res.json();
+}
+
+export async function deletePayroll(
+  tenantId: string,
+  id: string,
+): Promise<void> {
+  const res = await apiFetch(
+    withTenantQuery(`${PAYROLL_PATH}/${id}`, tenantId),
+    { method: "DELETE" },
+  );
+  if (!res.ok) return throwApiError(res, "Failed to delete payroll");
 }
 
 /** Typeahead options — never dumps the full catalog. */

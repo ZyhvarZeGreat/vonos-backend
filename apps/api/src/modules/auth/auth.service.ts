@@ -12,6 +12,9 @@ import type {
   InviteDetails,
   LoginSuccessResponse,
   LoginUser,
+  SessionDebugAccessStatus,
+  SessionDebugRefreshStatus,
+  SessionDebugResponse,
   TwoFactorChallengeResponse,
   TwoFactorSetupResponse,
 } from '@vonos/types';
@@ -36,7 +39,10 @@ import {
   STRONG_PASSWORD_HINT,
   verifyPassword,
 } from '../../common/utils/password';
-import { resolvePrimaryWebOrigin } from '../../common/utils/webOrigin';
+import {
+  resolvePrimaryWebOrigin,
+  resolveWebOrigins,
+} from '../../common/utils/webOrigin';
 import {
   buildOtpauthUrl,
   generateTotpSecret,
@@ -47,11 +53,15 @@ import {
   uniqueTenantCodesFromWorkLocations,
 } from '../../common/utils/workLocationTenantCodes';
 import {
+  ACCESS_TOKEN_TTL,
   PASSWORD_RESET_HOURS,
+  REFRESH_COOKIE_NAME,
   REFRESH_TOKEN_DAYS,
   ROLES_REQUIRING_2FA,
 } from './auth.constants';
 import { AuthMailService } from './auth-mail.service';
+
+const REFRESH_REUSE_GRACE_MS = 30_000;
 
 type SessionUser = User & {
   tenantRole?: {
@@ -86,7 +96,8 @@ interface LoginDto {
 const ACCESS_TOKEN_VERSION_CACHE_TTL_S = 60;
 
 export interface SessionResult extends LoginSuccessResponse {
-  refreshTokenRaw: string;
+  /** Present only when the refresh cookie should be replaced. */
+  refreshTokenRaw?: string;
 }
 
 @Injectable()
@@ -157,6 +168,11 @@ export class AuthService {
     return this.issueSession(user);
   }
 
+  /**
+   * Mint a new access JWT from a valid refresh cookie.
+   * Does NOT rotate the refresh token — rotating every soft-refresh broke
+   * cross-origin sessions when Set-Cookie failed to stick (Chrome 3P cookies).
+   */
   async refreshSession(
     refreshTokenRaw: string,
     preferredTenantId?: string | null,
@@ -166,7 +182,6 @@ export class AuthService {
       where: {
         tokenHash,
         type: 'refresh',
-        usedAt: null,
         expiresAt: { gt: new Date() },
       },
       include: { user: true },
@@ -180,16 +195,67 @@ export class AuthService {
       throw new UnauthorizedException('Invalid refresh token');
     }
 
-    await this.prisma.authToken.update({
-      where: { id: stored.id },
-      data: { usedAt: new Date() },
-    });
+    // Older builds marked refresh tokens used on every soft-refresh. Treat
+    // usedAt as informational only here so those cookies recover. Logout /
+    // password-reset still mark tokens used; clients clear the cookie too.
+    if (stored.usedAt) {
+      await this.prisma.authToken.update({
+        where: { id: stored.id },
+        data: { usedAt: null },
+      });
+    }
 
     const activeTenantId = await this.resolveActiveTenantIdForSession(
       stored.user,
       preferredTenantId,
     );
-    return this.issueSession(stored.user, { activeTenantId });
+    const allowedTenantCodes = await this.resolveAllowedTenantCodes(
+      stored.user,
+    );
+    const loginUser = await this.buildLoginUser(stored.user, {
+      activeTenantId,
+      allowedTenantCodes,
+    });
+
+    return {
+      accessToken: this.signAccessToken({
+        id: stored.user.id,
+        tenantId: loginUser.tenantId,
+        role: stored.user.role,
+        tokenVersion: stored.user.tokenVersion,
+      }),
+      user: loginUser,
+      // Same cookie value — controller slides maxAge without rotating.
+      refreshTokenRaw,
+    };
+  }
+
+  /** Fresh LoginUser (permissions) for a valid access token — no cookie touch. */
+  async getSessionProfile(
+    userId: string,
+    preferredTenantId?: string | null,
+  ): Promise<LoginUser> {
+    const user = await this.prisma.user.findFirst({
+      where: { id: userId, deletedAt: null, status: 'active' },
+      include: {
+        tenantRole: {
+          select: {
+            id: true,
+            name: true,
+            permissions: true,
+            locked: true,
+          },
+        },
+      },
+    });
+    if (!user) throw new UnauthorizedException('User not found');
+
+    const activeTenantId = await this.resolveActiveTenantIdForSession(
+      user,
+      preferredTenantId,
+    );
+    const allowedTenantCodes = await this.resolveAllowedTenantCodes(user);
+    return this.buildLoginUser(user, { activeTenantId, allowedTenantCodes });
   }
 
   /**
@@ -829,6 +895,287 @@ export class AuthService {
     });
     // Drop cached access-token version checks for this user.
     await this.cache.invalidatePrefix(`auth:tv:${userId}:`);
+  }
+
+  /**
+   * Read-only session probe for early-logout debugging.
+   * Does not rotate tokens or mutate auth state.
+   */
+  async inspectSessionDebug(input: {
+    refreshTokenRaw?: string;
+    accessTokenRaw?: string;
+    requestOrigin?: string | null;
+    cookieSameSite: 'none' | 'lax';
+    cookieSecure: boolean;
+  }): Promise<SessionDebugResponse> {
+    const now = Date.now();
+    const webOrigins = resolveWebOrigins();
+    const requestOrigin = input.requestOrigin?.trim()
+      ? input.requestOrigin.trim().replace(/\/$/, '')
+      : null;
+    const requestOriginAllowed = requestOrigin
+      ? webOrigins.includes(requestOrigin)
+      : null;
+
+    const refresh = await this.inspectRefreshForDebug(input.refreshTokenRaw);
+    const access = await this.inspectAccessForDebug(input.accessTokenRaw);
+
+    const config: SessionDebugResponse['config'] = {
+      nodeEnv: process.env.NODE_ENV ?? null,
+      jwtAccessExpires: process.env.JWT_ACCESS_EXPIRES ?? ACCESS_TOKEN_TTL,
+      jwtSecretConfigured: Boolean(
+        process.env.JWT_SECRET &&
+          process.env.JWT_SECRET !== 'dev-secret-change-me' &&
+          process.env.JWT_SECRET !== 'change-me-in-production',
+      ),
+      cookieSameSite: input.cookieSameSite,
+      cookieSecure: input.cookieSecure,
+      refreshTokenDays: REFRESH_TOKEN_DAYS,
+      webOrigins,
+      requestOrigin,
+      requestOriginAllowed,
+    };
+
+    return {
+      ok: true,
+      at: new Date(now).toISOString(),
+      refresh: {
+        cookiePresent: Boolean(input.refreshTokenRaw),
+        cookieName: REFRESH_COOKIE_NAME,
+        ...refresh,
+      },
+      access: {
+        headerPresent: Boolean(input.accessTokenRaw),
+        ...access,
+      },
+      config,
+      verdict: this.sessionDebugVerdict({
+        cookiePresent: Boolean(input.refreshTokenRaw),
+        refreshStatus: refresh.status,
+        accessStatus: access.status,
+        accessExpiresInSec: access.expiresInSec,
+        requestOriginAllowed,
+        cookieSameSite: input.cookieSameSite,
+      }),
+    };
+  }
+
+  private async inspectRefreshForDebug(refreshTokenRaw?: string): Promise<{
+    status: SessionDebugRefreshStatus;
+    expiresInSec: number | null;
+    usedAtAgeSec: number | null;
+    userId: string | null;
+  }> {
+    if (!refreshTokenRaw) {
+      return {
+        status: 'missing',
+        expiresInSec: null,
+        usedAtAgeSec: null,
+        userId: null,
+      };
+    }
+
+    const tokenHash = hashOpaqueToken(refreshTokenRaw);
+    const stored = await this.prisma.authToken.findFirst({
+      where: { tokenHash, type: 'refresh' },
+      include: {
+        user: { select: { id: true, status: true, deletedAt: true } },
+      },
+    });
+
+    if (!stored) {
+      return {
+        status: 'not_found',
+        expiresInSec: null,
+        usedAtAgeSec: null,
+        userId: null,
+      };
+    }
+
+    const expiresInSec = Math.floor(
+      (stored.expiresAt.getTime() - Date.now()) / 1000,
+    );
+    const usedAtAgeSec = stored.usedAt
+      ? Math.floor((Date.now() - stored.usedAt.getTime()) / 1000)
+      : null;
+    const userId = stored.userId;
+
+    if (
+      !stored.user ||
+      stored.user.deletedAt ||
+      stored.user.status !== 'active'
+    ) {
+      return {
+        status: 'user_inactive',
+        expiresInSec,
+        usedAtAgeSec,
+        userId,
+      };
+    }
+
+    if (stored.expiresAt.getTime() <= Date.now()) {
+      return {
+        status: 'expired',
+        expiresInSec,
+        usedAtAgeSec,
+        userId,
+      };
+    }
+
+    if (stored.usedAt) {
+      const ageMs = Date.now() - stored.usedAt.getTime();
+      return {
+        status:
+          ageMs <= REFRESH_REUSE_GRACE_MS ? 'used_within_grace' : 'used',
+        expiresInSec,
+        usedAtAgeSec,
+        userId,
+      };
+    }
+
+    return {
+      status: 'valid',
+      expiresInSec,
+      usedAtAgeSec,
+      userId,
+    };
+  }
+
+  private async inspectAccessForDebug(accessTokenRaw?: string): Promise<{
+    status: SessionDebugAccessStatus;
+    expiresInSec: number | null;
+    userId: string | null;
+    role: string | null;
+    tokenVersion: number | null;
+  }> {
+    if (!accessTokenRaw) {
+      return {
+        status: 'missing',
+        expiresInSec: null,
+        userId: null,
+        role: null,
+        tokenVersion: null,
+      };
+    }
+
+    let payload: AccessTokenPayload;
+    try {
+      payload = this.jwtService.verify<AccessTokenPayload>(accessTokenRaw);
+    } catch (error) {
+      const name =
+        error && typeof error === 'object' && 'name' in error
+          ? String((error as { name?: string }).name)
+          : '';
+      return {
+        status: name === 'TokenExpiredError' ? 'expired' : 'invalid_signature',
+        expiresInSec: null,
+        userId: null,
+        role: null,
+        tokenVersion: null,
+      };
+    }
+
+    if (payload.type && payload.type !== 'access') {
+      return {
+        status: 'wrong_type',
+        expiresInSec: null,
+        userId: payload.sub ?? null,
+        role: payload.role ?? null,
+        tokenVersion: payload.tokenVersion ?? null,
+      };
+    }
+
+    const decoded = this.jwtService.decode(accessTokenRaw) as {
+      exp?: number;
+    } | null;
+    const expiresInSec =
+      decoded?.exp != null
+        ? Math.floor(decoded.exp - Date.now() / 1000)
+        : null;
+
+    const user = await this.prisma.user.findFirst({
+      where: { id: payload.sub },
+      select: { status: true, deletedAt: true, tokenVersion: true },
+    });
+
+    if (!user || user.deletedAt || user.status !== 'active') {
+      return {
+        status: 'user_inactive',
+        expiresInSec,
+        userId: payload.sub,
+        role: payload.role,
+        tokenVersion: payload.tokenVersion,
+      };
+    }
+
+    if (user.tokenVersion !== payload.tokenVersion) {
+      return {
+        status: 'version_mismatch',
+        expiresInSec,
+        userId: payload.sub,
+        role: payload.role,
+        tokenVersion: payload.tokenVersion,
+      };
+    }
+
+    return {
+      status: 'valid',
+      expiresInSec,
+      userId: payload.sub,
+      role: payload.role,
+      tokenVersion: payload.tokenVersion,
+    };
+  }
+
+  private sessionDebugVerdict(input: {
+    cookiePresent: boolean;
+    refreshStatus: SessionDebugRefreshStatus;
+    accessStatus: SessionDebugAccessStatus;
+    accessExpiresInSec: number | null;
+    requestOriginAllowed: boolean | null;
+    cookieSameSite: 'none' | 'lax';
+  }): string {
+    if (input.requestOriginAllowed === false) {
+      return 'Request Origin is not in WEB_ORIGIN — browser will block credentialed refresh (CORS).';
+    }
+    if (!input.cookiePresent) {
+      return input.cookieSameSite === 'lax'
+        ? 'No refresh cookie received. Cross-origin apps need COOKIE_SAMESITE=none (Secure).'
+        : 'No refresh cookie received. User will be logged out when the access token expires.';
+    }
+    if (
+      input.refreshStatus === 'used' ||
+      input.refreshStatus === 'expired' ||
+      input.refreshStatus === 'not_found' ||
+      input.refreshStatus === 'user_inactive'
+    ) {
+      return `Refresh cookie is dead (${input.refreshStatus}). Next access expiry will force login.`;
+    }
+    if (
+      input.accessStatus === 'invalid_signature' ||
+      input.accessStatus === 'version_mismatch'
+    ) {
+      return `Access token rejected (${input.accessStatus}). If JWT_SECRET changed, refresh should recover — check refresh status.`;
+    }
+    if (
+      input.accessStatus === 'expired' ||
+      input.accessStatus === 'missing'
+    ) {
+      return input.refreshStatus === 'valid' ||
+        input.refreshStatus === 'used_within_grace'
+        ? 'Access expired/missing but refresh looks OK — soft refresh should keep the session.'
+        : 'Access expired/missing and refresh is not usable — user is effectively logged out.';
+    }
+    if (input.accessStatus === 'valid') {
+      const mins =
+        input.accessExpiresInSec != null
+          ? Math.max(0, Math.round(input.accessExpiresInSec / 60))
+          : null;
+      return mins != null
+        ? `Session healthy. Access token ~${mins}m left; refresh cookie present.`
+        : 'Session healthy. Access + refresh look valid.';
+    }
+    return 'Inspect refresh/access statuses above.';
   }
 
   private async requireAdminUser(userId: string) {

@@ -26,6 +26,7 @@ import {
   listPageFilterKey,
   withListPageCache,
 } from '../../common/utils/listPageCache';
+import { applySaleJobStatusNotes } from '../../common/utils/saleJobStatusNotes';
 import {
   HQ6_LIST_WARM_LIMITS,
   hq6WarmSorts,
@@ -546,20 +547,45 @@ export class SalesService {
     });
 
     const searchWhere = saleTextSearchWhere(search);
+    const andClauses: Prisma.SaleWhereInput[] = [
+      ...(searchWhere?.AND ?? []),
+    ];
+    if (filters.paymentMethod?.trim()) {
+      const method = filters.paymentMethod.trim();
+      andClauses.push({
+        OR: [
+          {
+            paymentMethod: { equals: method, mode: 'insensitive' },
+          },
+          {
+            payments: {
+              some: {
+                deletedAt: null,
+                method: { equals: method, mode: 'insensitive' },
+              },
+            },
+          },
+        ],
+      });
+    }
 
-    const baseWhere = {
+    const baseWhere: Prisma.SaleWhereInput = {
       tenantId,
       deletedAt: null,
       ...saleStatusWhereClause(filters),
       ...dateFilter,
-      ...(filters.locationCode ? { locationCode: filters.locationCode } : {}),
+      ...(filters.locationCode
+        ? {
+            locationCode: {
+              equals: filters.locationCode,
+              mode: 'insensitive',
+            },
+          }
+        : {}),
       ...(filters.customerId ? { customerId: filters.customerId } : {}),
       ...(filters.jobId ? { jobId: filters.jobId } : {}),
       ...(filters.paymentStatus
         ? { paymentStatus: filters.paymentStatus }
-        : {}),
-      ...(filters.paymentMethod
-        ? { paymentMethod: filters.paymentMethod }
         : {}),
       ...(filters.cleanerUserId
         ? { cleanerUserId: filters.cleanerUserId }
@@ -570,7 +596,7 @@ export class SalesService {
       ...(filters.createdByUserId
         ? { createdByUserId: filters.createdByUserId }
         : {}),
-      ...(searchWhere ?? {}),
+      ...(andClauses.length > 0 ? { AND: andClauses } : {}),
     };
 
     const [rows, totalCount, saleAmountAgg] = await Promise.all([
@@ -599,6 +625,7 @@ export class SalesService {
           cleanerUserId: true,
           cleanerName: true,
           serviceStaffEmployeeId: true,
+          serviceStaffEmployee: { select: { name: true } },
           locationCode: true,
           shippingStatus: true,
           shippingAddress: true,
@@ -633,7 +660,6 @@ export class SalesService {
       this.toSale(
         {
           ...row,
-          serviceStaffEmployee: null,
           _count: { lines: lineCounts.get(row.id) ?? 0 },
         },
         paymentMeta.paid.get(row.id) ?? 0,
@@ -717,6 +743,7 @@ export class SalesService {
         cleanerUserId: string | null;
         cleanerName: string | null;
         serviceStaffEmployeeId: string | null;
+        service_staff_name: string | null;
         locationCode: string | null;
         shippingStatus: string | null;
         shippingAddress: string | null;
@@ -740,6 +767,7 @@ export class SalesService {
         s.notes, s."originalSaleId", s.currency, s.status::text AS status,
         s."paymentStatus"::text AS "paymentStatus", s."paymentMethod",
         s."cleanerUserId", s."cleanerName", s."serviceStaffEmployeeId",
+        e.name AS service_staff_name,
         s."locationCode", s."shippingStatus", s."shippingAddress", s."trackingNumber",
         s.date, s."createdByUserId", s."createdByName", s."createdAt", s."updatedAt",
         COALESCE(s."totalPaid", 0)::float AS "totalPaid",
@@ -747,15 +775,25 @@ export class SalesService {
       FROM "Sale" s
       LEFT JOIN "Customer" c ON c.id = s."customerId"
       LEFT JOIN "Job" j ON j.id = s."jobId"
+      LEFT JOIN "Employee" e ON e.id = s."serviceStaffEmployeeId"
       WHERE s."tenantId" = ${tenantId}
         AND s."deletedAt" IS NULL
         AND (${filters.from ?? null}::timestamptz IS NULL OR s.date >= ${filters.from ? new Date(filters.from) : null}::timestamptz)
         AND (${filters.to ?? null}::timestamptz IS NULL OR s.date <= ${filters.to ? new Date(filters.to) : null}::timestamptz)
-        AND (${filters.locationCode ?? null}::text IS NULL OR s."locationCode" = ${filters.locationCode ?? null})
+        AND (${filters.locationCode ?? null}::text IS NULL OR lower(coalesce(s."locationCode", '')) = lower(${filters.locationCode ?? null}))
         AND (${filters.customerId ?? null}::text IS NULL OR s."customerId" = ${filters.customerId ?? null})
         AND (${filters.jobId ?? null}::text IS NULL OR s."jobId" = ${filters.jobId ?? null})
         AND (${filters.paymentStatus ?? null}::text IS NULL OR s."paymentStatus"::text = ${filters.paymentStatus ?? null})
-        AND (${filters.paymentMethod ?? null}::text IS NULL OR s."paymentMethod" = ${filters.paymentMethod ?? null})
+        AND (
+          ${filters.paymentMethod ?? null}::text IS NULL
+          OR lower(coalesce(s."paymentMethod", '')) = lower(${filters.paymentMethod ?? null})
+          OR EXISTS (
+            SELECT 1 FROM "Payment" p
+            WHERE p."saleId" = s.id
+              AND p."deletedAt" IS NULL
+              AND lower(coalesce(p.method, '')) = lower(${filters.paymentMethod ?? null})
+          )
+        )
         AND (${filters.cleanerUserId ?? null}::text IS NULL OR s."cleanerUserId" = ${filters.cleanerUserId ?? null})
         AND (${filters.serviceStaffEmployeeId ?? null}::text IS NULL OR s."serviceStaffEmployeeId" = ${filters.serviceStaffEmployeeId ?? null})
         AND (${filters.createdByUserId ?? null}::text IS NULL OR s."createdByUserId" = ${filters.createdByUserId ?? null})
@@ -828,7 +866,8 @@ export class SalesService {
         cleanerUserId: row.cleanerUserId,
         cleanerName: row.cleanerName,
         serviceStaffEmployeeId: row.serviceStaffEmployeeId,
-        serviceStaffEmployeeName: row.cleanerName,
+        serviceStaffEmployeeName:
+          row.service_staff_name?.trim() || row.cleanerName || null,
         locationCode: row.locationCode,
         shippingStatus: row.shippingStatus as Sale['shippingStatus'],
         shippingAddress: row.shippingAddress,
@@ -883,11 +922,20 @@ export class SalesService {
             AND s."deletedAt" IS NULL
             AND (${filters.from ?? null}::timestamptz IS NULL OR s.date >= ${filters.from ? new Date(filters.from) : null}::timestamptz)
             AND (${filters.to ?? null}::timestamptz IS NULL OR s.date <= ${filters.to ? new Date(filters.to) : null}::timestamptz)
-            AND (${filters.locationCode ?? null}::text IS NULL OR s."locationCode" = ${filters.locationCode ?? null})
+            AND (${filters.locationCode ?? null}::text IS NULL OR lower(coalesce(s."locationCode", '')) = lower(${filters.locationCode ?? null}))
             AND (${filters.customerId ?? null}::text IS NULL OR s."customerId" = ${filters.customerId ?? null})
             AND (${filters.jobId ?? null}::text IS NULL OR s."jobId" = ${filters.jobId ?? null})
             AND (${filters.paymentStatus ?? null}::text IS NULL OR s."paymentStatus"::text = ${filters.paymentStatus ?? null})
-            AND (${filters.paymentMethod ?? null}::text IS NULL OR s."paymentMethod" = ${filters.paymentMethod ?? null})
+            AND (
+              ${filters.paymentMethod ?? null}::text IS NULL
+              OR lower(coalesce(s."paymentMethod", '')) = lower(${filters.paymentMethod ?? null})
+              OR EXISTS (
+                SELECT 1 FROM "Payment" p
+                WHERE p."saleId" = s.id
+                  AND p."deletedAt" IS NULL
+                  AND lower(coalesce(p.method, '')) = lower(${filters.paymentMethod ?? null})
+              )
+            )
             AND (${filters.cleanerUserId ?? null}::text IS NULL OR s."cleanerUserId" = ${filters.cleanerUserId ?? null})
             AND (${filters.serviceStaffEmployeeId ?? null}::text IS NULL OR s."serviceStaffEmployeeId" = ${filters.serviceStaffEmployeeId ?? null})
             AND (${filters.createdByUserId ?? null}::text IS NULL OR s."createdByUserId" = ${filters.createdByUserId ?? null})
@@ -1934,6 +1982,14 @@ export class SalesService {
       where: { id },
       data: { notes: applied.notes },
       include: {
+        customer: {
+          select: {
+            name: true,
+            email: true,
+            phone: true,
+            totalSellDue: true,
+          },
+        },
         lines: true,
         payments: { where: { deletedAt: null }, orderBy: { paidOn: 'asc' } },
         job: { select: { id: true, reference: true } },
@@ -1943,22 +1999,18 @@ export class SalesService {
 
     if (existing.jobId) {
       try {
+        const stamp = new Date()
+          .toISOString()
+          .slice(0, 16)
+          .replace('T', ' ');
+        const staffNote = body.notes?.trim();
         await this.tenantDb.db.job.update({
           where: { id: existing.jobId },
           data: {
             status: applied.status,
-            ...(body.notes?.trim()
+            ...(staffNote
               ? {
-                  qcNotes: (() => {
-                    const stamp = new Date()
-                      .toISOString()
-                      .slice(0, 16)
-                      .replace('T', ' ');
-                    const line = `[${stamp}] Status → ${applied.status}: ${body.notes.trim()}`;
-                    return existing.job
-                      ? line
-                      : line;
-                  })(),
+                  qcNotes: `[${stamp}] Status → ${applied.status}: ${staffNote}`,
                 }
               : {}),
           },
@@ -3988,6 +4040,7 @@ export async function warmDefaultSalesListPages(
                   cleanerUserId: true,
                   cleanerName: true,
                   serviceStaffEmployeeId: true,
+                  serviceStaffEmployee: { select: { name: true } },
                   locationCode: true,
                   shippingStatus: true,
                   shippingAddress: true,
@@ -4048,7 +4101,10 @@ export async function warmDefaultSalesListPages(
                 cleanerUserId: row.cleanerUserId ?? null,
                 cleanerName: row.cleanerName ?? null,
                 serviceStaffEmployeeId: row.serviceStaffEmployeeId ?? null,
-                serviceStaffEmployeeName: row.cleanerName ?? null,
+                serviceStaffEmployeeName:
+                  row.serviceStaffEmployee?.name?.trim() ||
+                  row.cleanerName ||
+                  null,
                 locationCode: row.locationCode,
                 shippingStatus: row.shippingStatus,
                 shippingAddress: row.shippingAddress,

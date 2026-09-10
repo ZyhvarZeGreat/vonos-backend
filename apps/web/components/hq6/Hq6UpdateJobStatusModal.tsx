@@ -28,6 +28,7 @@ type Props = {
 
 /**
  * VA / VP sales Action → update linked job stage + notes (feeds public track).
+ * Optionally WhatsApp the vehicle owner with a /track link.
  */
 export function Hq6UpdateJobStatusModal({
   open,
@@ -39,6 +40,7 @@ export function Hq6UpdateJobStatusModal({
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState<string>("Received");
   const [notes, setNotes] = useState("");
+  const [notifyWhatsApp, setNotifyWhatsApp] = useState(true);
   const [saving, setSaving] = useState(false);
   const [loadError, setLoadError] = useState("");
 
@@ -56,6 +58,7 @@ export function Hq6UpdateJobStatusModal({
       setJob(null);
       setLoadError("");
       setNotes("");
+      setNotifyWhatsApp(true);
       return;
     }
     let cancelled = false;
@@ -67,6 +70,7 @@ export function Hq6UpdateJobStatusModal({
         setJob(detail);
         setStatus(detail.status || "Received");
         setNotes("");
+        setNotifyWhatsApp(true);
       })
       .catch((err) => {
         if (cancelled) return;
@@ -92,15 +96,25 @@ export function Hq6UpdateJobStatusModal({
     }
     setSaving(true);
     try {
-      await updateJobStatus(jobId, {
+      const result = await updateJobStatus(jobId, {
         status,
         ...(trimmedNotes ? { notes: trimmedNotes } : {}),
+        notifyWhatsApp: status !== job.status ? notifyWhatsApp : false,
       });
       toast.success(
         status !== job.status
           ? `Job ${job.reference}: status → ${status}`
           : `Job ${job.reference}: notes saved`,
       );
+      const wa = result.whatsappNotify;
+      if (wa?.sent) {
+        toast.success("WhatsApp update sent to customer");
+      } else if (wa?.channel === "wa_me" && wa.waMeUrl) {
+        toast.success("Opening WhatsApp…");
+        window.open(wa.waMeUrl, "_blank", "noopener,noreferrer");
+      } else if (wa?.error && notifyWhatsApp && status !== job.status) {
+        toast.error(wa.error);
+      }
       onUpdated?.();
       onClose();
     } catch (err) {
@@ -178,6 +192,24 @@ export function Hq6UpdateJobStatusModal({
               rows={4}
             />
           </Hq6Field>
+
+          {status !== job.status ? (
+            <label className="flex items-start gap-2 text-sm text-[#374151]">
+              <input
+                type="checkbox"
+                className="mt-0.5 size-4 accent-[#3c8dbc]"
+                checked={notifyWhatsApp}
+                onChange={(e) => setNotifyWhatsApp(e.target.checked)}
+              />
+              <span>
+                Notify customer on WhatsApp with track link
+                <span className="mt-0.5 block text-xs text-[#6b7280]">
+                  Uses vehicle owner phone, or customer phone. Needs Meta Cloud
+                  API env vars for automatic send; otherwise opens WhatsApp Web.
+                </span>
+              </span>
+            </label>
+          ) : null}
 
           {job.qcNotes?.trim() ? (
             <div>

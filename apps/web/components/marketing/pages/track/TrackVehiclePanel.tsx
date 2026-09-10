@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { type FormEvent, useEffect, useState } from "react";
 import {
   lookupVehicleTrack,
+  subscribeTrackWhatsApp,
   type PublicTrackResult,
 } from "@/lib/marketing/track-api";
 
@@ -12,8 +13,10 @@ export default function TrackVehiclePanel() {
   const searchParams = useSearchParams();
   const [name, setName] = useState("");
   const [registration, setRegistration] = useState("");
+  const [whatsapp, setWhatsapp] = useState("");
   const [result, setResult] = useState<PublicTrackResult | null>(null);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -26,10 +29,12 @@ export default function TrackVehiclePanel() {
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");
+    setNotice("");
     setResult(null);
 
     const customerName = name.trim();
     const plate = registration.trim();
+    const wa = whatsapp.trim();
 
     if (!customerName || !plate) {
       setError("Enter your name and registration plate.");
@@ -48,6 +53,25 @@ export default function TrackVehiclePanel() {
         registration: plate,
       });
       setResult(track);
+
+      if (wa) {
+        try {
+          const saved = await subscribeTrackWhatsApp({
+            name: customerName,
+            registration: plate,
+            whatsapp: wa,
+          });
+          setNotice(
+            `WhatsApp updates will go to ${saved.phone}. We’ll message this number when your car’s status changes.`,
+          );
+        } catch (subErr) {
+          setNotice(
+            subErr instanceof Error
+              ? subErr.message
+              : "Status loaded, but WhatsApp number could not be saved.",
+          );
+        }
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Lookup failed.");
     } finally {
@@ -58,8 +82,10 @@ export default function TrackVehiclePanel() {
   function handleReset() {
     setName("");
     setRegistration("");
+    setWhatsapp("");
     setResult(null);
     setError("");
+    setNotice("");
   }
 
   return (
@@ -76,8 +102,9 @@ export default function TrackVehiclePanel() {
             </div>
             <h1 className="no-margin-bottom">Track my vehicle</h1>
             <p className="hero-contact-description">
-              Enter your name and registration plate to see live repair status across
-              Vonos Mechanic and Vonos Painting — no costs or quotes shown here.
+              Enter your name, registration plate, and WhatsApp number to see live
+              repair status and get status updates on WhatsApp — no costs or quotes
+              shown here.
             </p>
           </div>
 
@@ -88,7 +115,11 @@ export default function TrackVehiclePanel() {
                   <div className="text-sm-uppercase text-gray-3">Look up a job</div>
                   <h2 className="heading-h4 no-margin-bottom">Find your repair status</h2>
 
-                  <form className="contact-form track-form" onSubmit={(e) => void handleSubmit(e)} noValidate>
+                  <form
+                    className="contact-form track-form"
+                    onSubmit={(e) => void handleSubmit(e)}
+                    noValidate
+                  >
                     <div className="w-layout-grid grid-contact-input">
                       <div className="contact-label">
                         <label htmlFor="track-name" className="field-title">
@@ -117,7 +148,24 @@ export default function TrackVehiclePanel() {
                           type="text"
                           autoComplete="off"
                           value={registration}
-                          onChange={(event) => setRegistration(event.target.value)}
+                          onChange={(event) =>
+                            setRegistration(event.target.value)
+                          }
+                        />
+                      </div>
+                      <div className="contact-label">
+                        <label htmlFor="track-whatsapp" className="field-title">
+                          WhatsApp number
+                        </label>
+                        <input
+                          id="track-whatsapp"
+                          className="form-input contact-input w-input"
+                          name="whatsapp"
+                          placeholder="e.g. 0803 123 4567"
+                          type="tel"
+                          autoComplete="tel"
+                          value={whatsapp}
+                          onChange={(event) => setWhatsapp(event.target.value)}
                         />
                       </div>
                     </div>
@@ -133,8 +181,9 @@ export default function TrackVehiclePanel() {
                         {loading ? "Looking up…" : "Track my car"}
                       </button>
                       <div className="contact-cta-text">
-                        Use the name on the booking and the plate on your vehicle — no booking
-                        reference needed.
+                        Use the name on the booking and the plate on your vehicle.
+                        Add WhatsApp so we can message that number when your status
+                        changes.
                       </div>
                     </div>
                   </form>
@@ -143,16 +192,48 @@ export default function TrackVehiclePanel() {
                 <div className="track-result">
                   <div className="track-result-header">
                     <div>
-                      <div className="text-sm-uppercase text-gray-3">Live status</div>
-                      <h2 className="heading-h4 no-margin-bottom">{result.registration}</h2>
+                      <div className="text-sm-uppercase text-gray-3">
+                        {result.phase === "completed"
+                          ? "Completed repair"
+                          : "Live status"}
+                      </div>
+                      <h2 className="heading-h4 no-margin-bottom">
+                        {result.registration}
+                      </h2>
                       <p className="track-result-meta no-margin-bottom">
                         {result.name} · {result.vehicle}
                       </p>
                     </div>
-                    <button type="button" className="track-reset-link" onClick={handleReset}>
+                    <button
+                      type="button"
+                      className="track-reset-link"
+                      onClick={handleReset}
+                    >
                       Look up another
                     </button>
                   </div>
+
+                  {notice ? (
+                    <p
+                      className="track-form-error"
+                      role="status"
+                      style={{ color: "inherit" }}
+                    >
+                      {notice}
+                    </p>
+                  ) : null}
+
+                  {result.phase === "completed" ? (
+                    <p
+                      className="track-form-error"
+                      role="status"
+                      style={{ color: "inherit" }}
+                    >
+                      This job is marked complete on the workshop board. Tracking
+                      here does not show payment — contact the workshop if you still
+                      need collection or a receipt.
+                    </p>
+                  ) : null}
 
                   <div className="track-summary-grid">
                     <div className="track-summary-card">
@@ -160,86 +241,64 @@ export default function TrackVehiclePanel() {
                       <div className="track-summary-value">{result.service}</div>
                     </div>
                     <div className="track-summary-card">
-                      <div className="track-summary-label">Where your car is</div>
+                      <div className="track-summary-label">
+                        {result.phase === "completed"
+                          ? "Workshop"
+                          : "Where your car is"}
+                      </div>
                       <div className="track-summary-value">{result.location}</div>
                     </div>
                     <div className="track-summary-card">
-                      <div className="track-summary-label">Current stage</div>
-                      <div className="track-summary-value">{result.statusLabel}</div>
-                    </div>
-                    <div className="track-summary-card">
-                      <div className="track-summary-label">
-                        {result.eta ? "Estimated ready" : "Job ref"}
-                      </div>
+                      <div className="track-summary-label">Status</div>
                       <div className="track-summary-value">
-                        {result.eta ?? result.reference}
+                        {result.statusLabel}
                       </div>
                     </div>
+                    {result.eta ? (
+                      <div className="track-summary-card">
+                        <div className="track-summary-label">ETA</div>
+                        <div className="track-summary-value">{result.eta}</div>
+                      </div>
+                    ) : null}
                   </div>
 
-                  <div className="track-progress-label">Repair progress</div>
-                  <ol className="track-timeline">
-                    {result.steps.map((step, index) => (
+                  <ol className="track-steps">
+                    {result.steps.map((step) => (
                       <li
                         key={step.id}
-                        className={`track-timeline-item track-timeline-item--${step.status}${index === result.steps.length - 1 ? " track-timeline-item--last" : ""}`}
+                        className={`track-step track-step-${step.status}`}
+                        data-status={step.status}
                       >
-                        <div className="track-timeline-marker" aria-hidden="true" />
-                        <div className="track-timeline-body">
-                          <div className="track-timeline-top">
-                            <h3 className="track-timeline-title">{step.label}</h3>
+                        <div className="track-step-marker" aria-hidden />
+                        <div className="track-step-body">
+                          <div className="track-step-title">
+                            {step.label}
                             {step.timestamp ? (
-                              <span className="track-timeline-time">{step.timestamp}</span>
+                              <span className="track-step-time">
+                                {step.timestamp}
+                              </span>
                             ) : null}
                           </div>
-                          <p className="track-timeline-detail">{step.detail}</p>
+                          <p className="track-step-detail no-margin-bottom">
+                            {step.detail}
+                          </p>
                         </div>
                       </li>
                     ))}
                   </ol>
+
+                  {result.advisor ? (
+                    <p className="track-advisor no-margin-bottom">
+                      Advisor: {result.advisor}
+                      {result.reference ? ` · Ref ${result.reference}` : null}
+                    </p>
+                  ) : result.reference ? (
+                    <p className="track-advisor no-margin-bottom">
+                      Ref {result.reference}
+                    </p>
+                  ) : null}
                 </div>
               )}
-            </div>
-
-            <div className="hero-contact-right">
-              <div className="contact-support-info">
-                <div className="contact-support-item">
-                  <div className="text-sm-uppercase">Need an update?</div>
-                  <a href="tel:+2340000000000" className="contact-support-link">
-                    Call the workshop
-                  </a>
-                </div>
-                <p className="contact-support-description">
-                  Quote your name and plate and we will pull up the job card. Costs and
-                  quotes stay in the workshop — this page only shows progress.
-                </p>
-              </div>
-
-              <div className="contact-details track-help-card">
-                <div className="text-sm-uppercase text-gray-3">What you will see</div>
-                <ul className="track-help-list">
-                  <li>Whether the car is at Mechanic (VA) or Painting (VP)</li>
-                  <li>Current workshop stage</li>
-                  <li>Estimated collection time when set</li>
-                  <li>No prices, parts costs, or payment details</li>
-                </ul>
-              </div>
-
-              <div className="contact-schedule">
-                <div className="contact-schedule-text">Workshop hours</div>
-                <div className="contact-schedule-item">
-                  <div className="text-black">Mon – Fri</div>
-                  <div className="contact-schedule-time">08:00 – 18:00</div>
-                </div>
-                <div className="contact-schedule-item">
-                  <div className="text-black">Saturday</div>
-                  <div className="contact-schedule-time">09:00 – 13:00</div>
-                </div>
-                <div className="contact-schedule-item bottom">
-                  <div className="text-black">Sunday</div>
-                  <div className="contact-schedule-time">Closed</div>
-                </div>
-              </div>
             </div>
           </div>
         </div>

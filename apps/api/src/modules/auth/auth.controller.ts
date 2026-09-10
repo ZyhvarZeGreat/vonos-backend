@@ -11,7 +11,11 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
-import type { LoginResponse, LoginSuccessResponse } from '@vonos/types';
+import type {
+  LoginResponse,
+  LoginSuccessResponse,
+  SessionDebugResponse,
+} from '@vonos/types';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '../../common/decorators/roles.decorator';
 import { JwtAuthGuard } from '../../common/guards/auth.guards';
@@ -63,6 +67,9 @@ export class AuthController {
     if ('requiresTwoFactor' in result) {
       return result;
     }
+    if (!result.refreshTokenRaw) {
+      throw new UnauthorizedException('Missing refresh token');
+    }
     this.setRefreshCookie(res, result.refreshTokenRaw);
     return stripRefreshToken(result);
   }
@@ -76,6 +83,9 @@ export class AuthController {
       body.challengeToken,
       body.code,
     );
+    if (!result.refreshTokenRaw) {
+      throw new UnauthorizedException('Missing refresh token');
+    }
     this.setRefreshCookie(res, result.refreshTokenRaw);
     return stripRefreshToken(result);
   }
@@ -97,8 +107,49 @@ export class AuthController {
       refreshToken,
       body?.tenantId,
     );
-    this.setRefreshCookie(res, result.refreshTokenRaw);
+    // Slide cookie maxAge with the same value — do not mint a new opaque token.
+    if (result.refreshTokenRaw) {
+      this.setRefreshCookie(res, result.refreshTokenRaw);
+    }
     return stripRefreshToken(result);
+  }
+
+  /** Permissions / profile sync without touching the refresh cookie. */
+  @UseGuards(JwtAuthGuard)
+  @Get('me')
+  me(
+    @CurrentUser() user: AuthenticatedUser,
+    @Req() req: Request,
+  ): Promise<import('@vonos/types').LoginUser> {
+    const preferred =
+      typeof req.query?.tenantId === 'string' ? req.query.tenantId : null;
+    return this.authService.getSessionProfile(user.sub, preferred);
+  }
+
+  /**
+   * Read-only probe for early-logout debugging.
+   * Call from the browser while logged in (credentials included) so the
+   * refresh cookie is sent. Does not rotate or clear the session.
+   */
+  @Get('session-debug')
+  sessionDebug(@Req() req: Request): Promise<SessionDebugResponse> {
+    const refreshToken = req.cookies?.[REFRESH_COOKIE_NAME] as
+      | string
+      | undefined;
+    const authHeader = req.headers.authorization;
+    const accessToken =
+      typeof authHeader === 'string' && authHeader.startsWith('Bearer ')
+        ? authHeader.slice('Bearer '.length).trim()
+        : undefined;
+    const cookie = this.refreshCookieBase();
+    return this.authService.inspectSessionDebug({
+      refreshTokenRaw: refreshToken,
+      accessTokenRaw: accessToken || undefined,
+      requestOrigin:
+        typeof req.headers.origin === 'string' ? req.headers.origin : null,
+      cookieSameSite: cookie.sameSite,
+      cookieSecure: cookie.secure,
+    });
   }
 
   @UseGuards(JwtAuthGuard)
@@ -155,6 +206,9 @@ export class AuthController {
       body.password,
       body.name,
     );
+    if (!result.refreshTokenRaw) {
+      throw new UnauthorizedException('Missing refresh token');
+    }
     this.setRefreshCookie(res, result.refreshTokenRaw);
     return stripRefreshToken(result);
   }

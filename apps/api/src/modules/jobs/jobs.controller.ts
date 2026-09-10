@@ -92,15 +92,30 @@ export class JobsController {
       /** When set, jump to this stage (any applicable). Omit to advance one step. */
       status?: string;
       notes?: string;
+      /** Send WhatsApp status update to vehicle owner / customer (default true). */
+      notifyWhatsApp?: boolean;
     },
   ) {
     if (body?.status?.trim() || body?.notes !== undefined) {
       return this.jobsService.setStatus(id, {
         status: body.status,
         notes: body.notes,
+        notifyWhatsApp: body.notifyWhatsApp,
       });
     }
     return this.jobsService.advanceStatus(id);
+  }
+
+  @Post(':id/notify-whatsapp')
+  @Roles('staff', 'manager', 'admin', 'super_admin')
+  notifyWhatsApp(
+    @Param('id') id: string,
+    @Body() body?: { statusLabel?: string },
+  ) {
+    return this.jobsService.notifyJobStatusWhatsApp(
+      id,
+      body?.statusLabel?.trim() || 'updated',
+    );
   }
 
   @Patch(':id/vehicle')

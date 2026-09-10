@@ -269,8 +269,13 @@ export async function advanceJobStatus(id: string): Promise<Job> {
 /** Set job stage + optional notes (VA/VP sales Action modal). */
 export async function updateJobStatus(
   id: string,
-  body: { status: string; notes?: string },
-): Promise<Job> {
+  body: {
+    status: string;
+    notes?: string;
+    /** Default true — WhatsApp status ping to vehicle owner / customer. */
+    notifyWhatsApp?: boolean;
+  },
+): Promise<Job & { whatsappNotify?: WhatsAppNotifyResult }> {
   const response = await apiFetch(`/jobs/${id}/status`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
@@ -280,6 +285,30 @@ export async function updateJobStatus(
     return throwApiError(response, "Failed to update job status");
   }
   clearJobOptionCache();
+  return response.json();
+}
+
+export type WhatsAppNotifyResult = {
+  sent: boolean;
+  channel: "cloud_api" | "wa_me" | "skipped";
+  waMeUrl: string | null;
+  toE164: string | null;
+  error?: string;
+  providerMessageId?: string;
+};
+
+export async function notifyJobWhatsApp(
+  id: string,
+  statusLabel?: string,
+): Promise<WhatsAppNotifyResult> {
+  const response = await apiFetch(`/jobs/${id}/notify-whatsapp`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ statusLabel }),
+  });
+  if (!response.ok) {
+    return throwApiError(response, "Failed to prepare WhatsApp notify");
+  }
   return response.json();
 }
 

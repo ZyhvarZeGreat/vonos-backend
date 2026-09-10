@@ -5869,6 +5869,91 @@ html.upos-shell [data-hq6="true"] .hq6-orders-module {
 [data-hq6="true"] .hq6-hrm-module-nav .navbar-brand.is-active {
   color: #3c8dbc;
 }
+
+/* HQ6 HRM dashboard — match Ultimate POS /hrm/dashboard card grid */
+[data-hq6="true"] .hq6-hrm-page .row-custom {
+  display: flex;
+  flex-wrap: wrap;
+  margin-left: -0.5rem;
+  margin-right: -0.5rem;
+}
+[data-hq6="true"] .hq6-hrm-page .row-custom > [class*="col-"] {
+  padding-left: 0.5rem;
+  padding-right: 0.5rem;
+  box-sizing: border-box;
+}
+[data-hq6="true"] .hq6-hrm-page .col-custom {
+  margin-bottom: 0.5rem;
+}
+@media (min-width: 992px) {
+  [data-hq6="true"] .hq6-hrm-page .col-md-4 {
+    width: 33.333%;
+  }
+  [data-hq6="true"] .hq6-hrm-page .col-md-6 {
+    width: 50%;
+  }
+}
+@media (min-width: 768px) and (max-width: 991px) {
+  [data-hq6="true"] .hq6-hrm-page .col-sm-6 {
+    width: 50%;
+  }
+  [data-hq6="true"] .hq6-hrm-page .col-sm-12 {
+    width: 100%;
+  }
+}
+[data-hq6="true"] .hq6-hrm-page .info-box.info-box-new-style {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+  min-height: 0;
+  box-shadow: none;
+  background: transparent;
+}
+[data-hq6="true"] .hq6-hrm-page .info-box-icon.bg-aqua {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 3rem;
+  height: 3rem;
+  border-radius: 9999px;
+  background: #00c0ef !important;
+  color: #fff;
+  font-size: 1.15rem;
+}
+[data-hq6="true"] .hq6-hrm-page .info-box-content {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.25;
+}
+[data-hq6="true"] .hq6-hrm-page .info-box-text {
+  text-transform: uppercase;
+  font-size: 0.75rem;
+  color: #6b7280;
+}
+[data-hq6="true"] .hq6-hrm-page .info-box-number {
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: #111827;
+}
+[data-hq6="true"] .hq6-hrm-page .bg-light-gray {
+  background: #f3f4f6 !important;
+}
+[data-hq6="true"] .hq6-hrm-page .box.box-solid > .box-header .fas,
+[data-hq6="true"] .hq6-hrm-page .box.box-solid > .box-header .fa {
+  margin-right: 0.4rem;
+  color: #6b7280;
+}
+[data-hq6="true"] .hq6-hrm-page .btn.btn-success {
+  background: #00a65a;
+  border-color: #008d4c;
+  color: #fff;
+}
+[data-hq6="true"] .hq6-hrm-page .btn.btn-lg {
+  padding: 0.65rem 1.25rem;
+  font-size: 1.05rem;
+}
+
 [data-hq6="true"] .hq6-essentials-todo > .hq6-page {
   /* nested shell already provides page chrome */
 }

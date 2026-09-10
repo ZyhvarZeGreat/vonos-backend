@@ -295,6 +295,7 @@ export function Hq6ReturnsListView() {
         label="Business Location"
         value={locationFilter}
         onChange={setLocationFilter}
+        emptyLabel="All locations"
         options={entitySaleLocations(config).map((loc) => ({
           value: loc.code,
           label: loc.name,

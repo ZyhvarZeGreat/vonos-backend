@@ -7,8 +7,8 @@ PUBLISH_DIR="${ROOT}/.publish"
 BACKEND_DIR="${PUBLISH_DIR}/vonos-backend"
 FRONTEND_DIR="${PUBLISH_DIR}/vonos-frontend"
 
-BACKEND_REMOTE="${BACKEND_REMOTE:-https://github.com/ZyhvarZeGreat/vonos-backend.git}"
-FRONTEND_REMOTE="${FRONTEND_REMOTE:-https://github.com/ZyhvarZeGreat/vonos.git}"
+BACKEND_REMOTE="${BACKEND_REMOTE:-https://github.com/gooberrandall-cloud/vonos-backend.git}"
+FRONTEND_REMOTE="${FRONTEND_REMOTE:-https://github.com/gooberrandall-cloud/vonos.git}"
 
 rsync_repo() {
   local src="$1"

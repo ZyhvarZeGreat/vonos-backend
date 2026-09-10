@@ -62,6 +62,59 @@ export interface ForgotPasswordResponse {
   devResetUrl?: string;
 }
 
+/** Safe diagnostics for early-logout / refresh-cookie investigations. */
+export type SessionDebugRefreshStatus =
+  | "missing"
+  | "valid"
+  | "used_within_grace"
+  | "used"
+  | "expired"
+  | "user_inactive"
+  | "not_found";
+
+export type SessionDebugAccessStatus =
+  | "missing"
+  | "valid"
+  | "expired"
+  | "invalid_signature"
+  | "version_mismatch"
+  | "user_inactive"
+  | "wrong_type";
+
+export interface SessionDebugResponse {
+  ok: true;
+  at: string;
+  refresh: {
+    cookiePresent: boolean;
+    cookieName: string;
+    status: SessionDebugRefreshStatus;
+    expiresInSec: number | null;
+    usedAtAgeSec: number | null;
+    userId: string | null;
+  };
+  access: {
+    headerPresent: boolean;
+    status: SessionDebugAccessStatus;
+    expiresInSec: number | null;
+    userId: string | null;
+    role: string | null;
+    tokenVersion: number | null;
+  };
+  config: {
+    nodeEnv: string | null;
+    jwtAccessExpires: string;
+    jwtSecretConfigured: boolean;
+    cookieSameSite: "none" | "lax";
+    cookieSecure: boolean;
+    refreshTokenDays: number;
+    webOrigins: string[];
+    requestOrigin: string | null;
+    requestOriginAllowed: boolean | null;
+  };
+  /** One-line interpretation for support / Network-tab checks. */
+  verdict: string;
+}
+
 export interface InviteDetails {
   email: string;
   name: string;

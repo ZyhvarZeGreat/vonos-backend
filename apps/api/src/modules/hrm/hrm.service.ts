@@ -9,6 +9,7 @@ import type {
   PayrollGroup,
   Designation,
   Employee,
+  PayrollCandidate,
   WorkforceMember,
   CreatePayrollRequest,
   CreatePayrollGroupRequest,
@@ -27,7 +28,12 @@ import { buildCompositeCursorQuery } from '../../common/utils/pagination';
 import { resolveListSort } from '../../common/utils/listSort';
 import { toIso, toNumber } from '../../common/utils/serializers';
 import { isServiceStaffEligible } from '../../common/utils/serviceStaffDesignations';
-import { recordPaymentAccountTxn } from '../../common/utils/recordPaymentAccountTxn';
+import { resolvePayrollStaffBucket } from '../../common/utils/payrollStaffBuckets';
+import {
+  recordPaymentAccountTxn,
+  softDeleteExpenseAccountTxns,
+  softDeletePaymentAccountTxns,
+} from '../../common/utils/recordPaymentAccountTxn';
 import { applyDailyFinanceDelta } from '../../common/utils/dailyFinanceRollup';
 import { InvoiceHubService } from '../invoices/invoice-hub.service';
 import { CacheService } from '../../common/cache/cache.service';
@@ -619,6 +625,11 @@ export class HrmService {
     serviceStaffOnly?: boolean;
   } = {}): Promise<Employee[]> {
     const tenantId = this.tenantDb.requireTenantId();
+    // Repair before list cache so an empty cached picker cannot block sync
+    // (VS: role isServiceStaff true, Employee flags still false).
+    if (filters.serviceStaffOnly) {
+      await this.ensureServiceStaffFlagsSynced(tenantId);
+    }
     const filterKey = listPageFilterKey({
       search: filters.search,
       designationId: filters.designationId,
@@ -636,6 +647,19 @@ export class HrmService {
     );
   }
 
+  /** When no employees are flagged, force a full user→employee sync. */
+  private async ensureServiceStaffFlagsSynced(tenantId: string): Promise<void> {
+    const flaggedCount = await this.tenantDb.db.employee.count({
+      where: { tenantId, deletedAt: null, isServiceStaff: true },
+    });
+    if (flaggedCount === 0) {
+      await this.cache.del(`hrm:service-staff-user-sync:${tenantId}`);
+      await this.syncServiceStaffFromUsers(tenantId).catch(() => undefined);
+      return;
+    }
+    await this.syncServiceStaffFromUsersThrottled(tenantId);
+  }
+
   private async listEmployeesUncached(
     filters: {
       cursor?: string;
@@ -647,9 +671,6 @@ export class HrmService {
     },
     tenantId: string,
   ): Promise<Employee[]> {
-    if (filters.serviceStaffOnly) {
-      await this.syncServiceStaffFromUsersThrottled(tenantId);
-    }
     const pagination = buildCompositeCursorQuery({
       sortField: 'name',
       sortDir: 'asc',
@@ -696,6 +717,226 @@ export class HrmService {
       take: pagination.take,
     });
     return rows.map((row) => this.serializeEmployee(row));
+  }
+
+  /**
+   * Add Payroll roster: Users for this tenant ∪ Users with a peer Employee
+   * here (multi-entity). Names always come from User; orphans without userId
+   * are excluded. Ensures a local Employee row exists for each candidate.
+   */
+  async listPayrollCandidates(): Promise<PayrollCandidate[]> {
+    const tenantId = this.tenantDb.requireTenantId();
+
+    const [homeUsers, peerEmployees] = await Promise.all([
+      this.prisma.user.findMany({
+        where: {
+          tenantId,
+          deletedAt: null,
+          status: { in: ['active', 'invited', 'suspended'] },
+        },
+        select: {
+          id: true,
+          name: true,
+          tenantRole: {
+            select: { name: true, isServiceStaff: true },
+          },
+        },
+        orderBy: { name: 'asc' },
+      }),
+      this.prisma.employee.findMany({
+        where: {
+          tenantId,
+          deletedAt: null,
+          userId: { not: null },
+        },
+        select: {
+          id: true,
+          userId: true,
+          name: true,
+          employeeCode: true,
+          locationCode: true,
+          locationCodes: true,
+          payrollGroupId: true,
+          designationId: true,
+          department: true,
+          isServiceStaff: true,
+          designation: { select: { name: true } },
+          payrollGroup: { select: { name: true } },
+          user: {
+            select: {
+              id: true,
+              name: true,
+              deletedAt: true,
+              status: true,
+              tenantRole: {
+                select: { name: true, isServiceStaff: true },
+              },
+            },
+          },
+        },
+      }),
+    ]);
+
+    const userIds = new Set<string>(homeUsers.map((u) => u.id));
+    for (const emp of peerEmployees) {
+      if (
+        emp.userId &&
+        emp.user &&
+        !emp.user.deletedAt &&
+        (emp.user.status === 'active' ||
+          emp.user.status === 'invited' ||
+          emp.user.status === 'suspended')
+      ) {
+        userIds.add(emp.userId);
+      }
+    }
+
+    if (userIds.size === 0) return [];
+
+    const employeeByUserId = new Map(
+      peerEmployees
+        .filter((e): e is typeof e & { userId: string } => Boolean(e.userId))
+        .map((e) => [e.userId, e]),
+    );
+
+    const usersById = new Map(homeUsers.map((u) => [u.id, u]));
+    for (const emp of peerEmployees) {
+      if (emp.user && !usersById.has(emp.user.id)) {
+        usersById.set(emp.user.id, {
+          id: emp.user.id,
+          name: emp.user.name,
+          tenantRole: emp.user.tenantRole,
+        });
+      }
+    }
+
+    let defaultDesignationId =
+      (
+        await this.prisma.designation.findFirst({
+          where: {
+            tenantId,
+            deletedAt: null,
+            name: { equals: 'Staff', mode: 'insensitive' },
+          },
+          select: { id: true },
+        })
+      )?.id ?? null;
+    if (!defaultDesignationId) {
+      const created = await this.prisma.designation.create({
+        data: { tenantId, name: 'Staff' },
+        select: { id: true },
+      });
+      defaultDesignationId = created.id;
+    }
+
+    const candidates: PayrollCandidate[] = [];
+
+    for (const userId of userIds) {
+      const user = usersById.get(userId);
+      if (!user) continue;
+      const userName = user.name.trim() || 'Staff';
+      let emp = employeeByUserId.get(userId);
+
+      if (!emp) {
+        const roleName = user.tenantRole?.name?.trim();
+        let designationId = defaultDesignationId;
+        if (roleName) {
+          const found = await this.prisma.designation.findFirst({
+            where: {
+              tenantId,
+              deletedAt: null,
+              name: { equals: roleName, mode: 'insensitive' },
+            },
+            select: { id: true },
+          });
+          if (found) designationId = found.id;
+        }
+        const isServiceStaff = isServiceStaffEligible({
+          roleIsServiceStaff: user.tenantRole?.isServiceStaff,
+          designation: roleName,
+        });
+        const created = await this.prisma.employee.create({
+          data: {
+            tenantId,
+            name: userName,
+            userId,
+            designationId,
+            isServiceStaff,
+            locationCodes: [],
+          },
+          include: {
+            designation: { select: { name: true } },
+            payrollGroup: { select: { name: true } },
+          },
+        });
+        emp = {
+          id: created.id,
+          userId,
+          name: created.name,
+          employeeCode: created.employeeCode,
+          locationCode: created.locationCode,
+          locationCodes: created.locationCodes,
+          payrollGroupId: created.payrollGroupId,
+          designationId: created.designationId,
+          department: created.department,
+          isServiceStaff: created.isServiceStaff,
+          designation: created.designation,
+          payrollGroup: created.payrollGroup,
+          user: {
+            id: user.id,
+            name: user.name,
+            deletedAt: null,
+            status: 'active',
+            tenantRole: user.tenantRole,
+          },
+        };
+        employeeByUserId.set(userId, emp);
+      } else if (emp.name.trim() !== userName) {
+        await this.prisma.employee.update({
+          where: { id: emp.id },
+          data: { name: userName },
+        });
+        emp = { ...emp, name: userName };
+      }
+
+      const designationName = emp.designation?.name ?? 'Staff';
+      const roleName = user.tenantRole?.name ?? null;
+      const staffBucket = resolvePayrollStaffBucket({
+        roleName,
+        designation: designationName,
+        department: emp.department,
+        isServiceStaff: emp.isServiceStaff,
+        roleIsServiceStaff: user.tenantRole?.isServiceStaff,
+      });
+
+      const locationCodes =
+        emp.locationCodes?.length > 0
+          ? emp.locationCodes
+          : emp.locationCode
+            ? [emp.locationCode]
+            : [];
+
+      candidates.push({
+        id: emp.id,
+        tenantId,
+        userId,
+        name: userName,
+        employeeCode: emp.employeeCode,
+        locationCode: locationCodes[0] ?? emp.locationCode,
+        locationCodes,
+        payrollGroupId: emp.payrollGroupId,
+        payrollGroupName: emp.payrollGroup?.name ?? null,
+        designationId: emp.designationId,
+        designationName,
+        department: emp.department,
+        isServiceStaff: emp.isServiceStaff,
+        staffBucket,
+        tenantRoleName: roleName,
+      });
+    }
+
+    candidates.sort((a, b) => a.name.localeCompare(b.name));
+    return candidates;
   }
 
   /**
@@ -1005,15 +1246,18 @@ export class HrmService {
     updated: number;
     created: number;
   }> {
+    // Include invited/suspended — login status must not hide staff who still
+    // appear on sales / the roster (VS stylists were all suspended).
     const users = await this.prisma.user.findMany({
       where: {
         tenantId,
         deletedAt: null,
-        status: 'active',
+        status: { in: ['active', 'invited', 'suspended'] },
       },
       select: {
         id: true,
         name: true,
+        status: true,
         tenantRole: {
           select: { name: true, isServiceStaff: true },
         },
@@ -1084,7 +1328,8 @@ export class HrmService {
         continue;
       }
 
-      if (!should) continue;
+      // Only auto-create roster rows for people who can still log in.
+      if (!should || user.status === 'suspended') continue;
 
       const roleName = user.tenantRole?.name?.trim();
       let designationId = defaultDesignationId;
@@ -1119,6 +1364,36 @@ export class HrmService {
         },
       });
       created += 1;
+    }
+
+    // Also flag unlinked / leftover employees via department / designation.
+    const orphanEmployees = await this.prisma.employee.findMany({
+      where: {
+        tenantId,
+        deletedAt: null,
+        isServiceStaff: false,
+        OR: [
+          { userId: null },
+          { userId: { notIn: users.map((u) => u.id) } },
+        ],
+      },
+      select: {
+        id: true,
+        department: true,
+        designation: { select: { name: true } },
+      },
+    });
+    for (const emp of orphanEmployees) {
+      const should = isServiceStaffEligible({
+        designation: emp.designation?.name,
+        department: emp.department,
+      });
+      if (!should) continue;
+      await this.prisma.employee.update({
+        where: { id: emp.id },
+        data: { isServiceStaff: true },
+      });
+      updated += 1;
     }
 
     if (updated > 0 || created > 0) {
@@ -1799,6 +2074,140 @@ export class HrmService {
       accountName: account.name,
       payrolls: result.updated.map((row) => this.serializePayroll(row)),
     };
+  }
+
+  /**
+   * Soft-delete a payroll row. Paid runs also reverse the linked payment,
+   * payment-account debit, wage expense, ledger line, and invoice so Finance
+   * and till balances stay consistent.
+   */
+  async deletePayroll(id: string): Promise<{ ok: true }> {
+    const tenantId = this.tenantDb.requireTenantId();
+    const existing = await this.tenantDb.db.payroll.findFirst({
+      where: { id, tenantId, deletedAt: null },
+      include: {
+        invoice: { select: { id: true, reference: true } },
+      },
+    });
+    if (!existing) {
+      throw new BadRequestException('Payroll not found');
+    }
+
+    const wasPaid =
+      existing.paymentStatus === 'paid' || existing.status === 'paid';
+    let financeDate: Date | null = null;
+    let financeAmount = 0;
+
+    await this.tenantDb.db.$transaction(async (tx) => {
+      const ledger = await tx.ledgerEntry.findFirst({
+        where: {
+          tenantId,
+          linkedRecordType: 'payroll',
+          linkedRecordId: id,
+          deletedAt: null,
+        },
+        select: { date: true, amount: true },
+      });
+      if (ledger) {
+        financeDate = ledger.date;
+        financeAmount = toNumber(ledger.amount);
+      }
+
+      if (existing.invoice) {
+        const invoiceId = existing.invoice.id;
+        const payments = await tx.payment.findMany({
+          where: { tenantId, invoiceId, deletedAt: null },
+          select: { id: true, paidOn: true, amount: true },
+        });
+        for (const payment of payments) {
+          await softDeletePaymentAccountTxns(tx, {
+            tenantId,
+            paymentId: payment.id,
+          });
+          if (!financeDate && payment.paidOn) {
+            financeDate = payment.paidOn;
+          }
+          if (financeAmount <= 0) {
+            financeAmount += toNumber(payment.amount);
+          }
+        }
+        await tx.payment.updateMany({
+          where: { tenantId, invoiceId, deletedAt: null },
+          data: { deletedAt: new Date() },
+        });
+        await tx.accountTransaction.updateMany({
+          where: { tenantId, invoiceId, deletedAt: null },
+          data: { deletedAt: new Date() },
+        });
+
+        const expenses = await tx.expense.findMany({
+          where: {
+            tenantId,
+            deletedAt: null,
+            note: { contains: `payrollId:${id}` },
+          },
+          select: { id: true, refNo: true, totalAmount: true, expenseDate: true },
+        });
+        for (const expense of expenses) {
+          await softDeleteExpenseAccountTxns(tx, {
+            tenantId,
+            expenseId: expense.id,
+          });
+          if (!financeDate) financeDate = expense.expenseDate;
+          if (financeAmount <= 0) {
+            financeAmount = toNumber(expense.totalAmount);
+          }
+          await tx.expense.update({
+            where: { id: expense.id },
+            data: {
+              deletedAt: new Date(),
+              refNo: expense.refNo
+                ? `${expense.refNo}__del_${expense.id.slice(-8)}`
+                : expense.refNo,
+            },
+          });
+        }
+
+        const archivedRef = `${existing.invoice.reference}__del_${id.slice(-8)}`;
+        await tx.invoice.update({
+          where: { id: invoiceId },
+          data: {
+            deletedAt: new Date(),
+            reference: archivedRef,
+          },
+        });
+      }
+
+      await tx.ledgerEntry.updateMany({
+        where: {
+          tenantId,
+          linkedRecordType: 'payroll',
+          linkedRecordId: id,
+          deletedAt: null,
+        },
+        data: { deletedAt: new Date() },
+      });
+
+      await tx.payroll.update({
+        where: { id },
+        data: { deletedAt: new Date() },
+      });
+    });
+
+    if (wasPaid && financeAmount > 0) {
+      void applyDailyFinanceDelta(
+        this.tenantDb.db,
+        tenantId,
+        financeDate ?? existing.updatedAt,
+        'expense',
+        -financeAmount,
+      );
+    }
+
+    void invalidateTenantDashboardCache(this.cache, tenantId);
+    void this.cache.bumpListVersion(tenantId, 'hrm-payrolls');
+    void this.cache.bumpListVersion(tenantId, 'hrm-payrolls-all');
+    return { ok: true };
   }
 
   async addPayrollDeduction(

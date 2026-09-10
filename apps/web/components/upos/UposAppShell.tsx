@@ -156,6 +156,8 @@ export function UposAppShell({
       ) : null}
       <div
         className="tw-flex thetop"
+        data-hq6="true"
+        data-tenant={tenantCode || undefined}
         style={{
           minHeight: "100vh",
           visibility: stylesReady ? "visible" : "hidden",

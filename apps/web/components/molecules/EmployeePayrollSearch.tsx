@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useId, useMemo, useRef, useState } from "react";
-import { Search } from "lucide-react";
+import { Check, Search } from "lucide-react";
 import { matchSorter, rankings } from "match-sorter";
 import { cn } from "@/lib/utils/cn";
 
@@ -16,6 +16,7 @@ export interface PayrollEmployeePick {
   department: string | null;
   payrollGroupId: string | null;
   payrollGroupName: string | null;
+  staffBucket?: "management" | "technical" | "service" | "other";
 }
 
 export interface EmployeePayrollSearchProps {
@@ -29,6 +30,30 @@ export interface EmployeePayrollSearchProps {
 }
 
 const BROWSE_PREVIEW_LIMIT = 14;
+
+/** HQ6-safe check control — avoids native checkbox appearance clashes. */
+export function PayrollSelectCheck({
+  checked,
+  className,
+}: {
+  checked: boolean;
+  className?: string;
+}) {
+  return (
+    <span
+      aria-hidden
+      className={cn(
+        "mt-0.5 inline-flex size-4 shrink-0 items-center justify-center rounded border",
+        checked
+          ? "border-[#2563eb] bg-[#2563eb] text-white"
+          : "border-border bg-card",
+        className,
+      )}
+    >
+      {checked ? <Check className="size-3 stroke-[3]" /> : null}
+    </span>
+  );
+}
 
 /**
  * ProductItemSearch-style typeahead for Add Payroll.
@@ -143,34 +168,32 @@ export function EmployeePayrollSearch({
                   <button
                     type="button"
                     className={cn(
-                      "hq6-product-search-option flex w-full flex-col gap-0.5 px-3 py-2 text-left text-sm hover:bg-[var(--color-surface-muted)]",
+                      "hq6-product-search-option flex w-full items-start gap-2 px-3 py-2 text-left text-sm hover:bg-[var(--color-surface-muted)]",
                       checked && "bg-[var(--color-surface-muted)]",
                     )}
                     onClick={() => onToggle(employee)}
                   >
-                    <span className="hq6-product-search-option-row flex items-start justify-between gap-2">
-                      <span className="hq6-product-search-option-name font-medium text-foreground">
-                        {employee.employeeName}
-                        {checked ? (
-                          <span className="ml-2 text-xs font-semibold text-emerald-700">
-                            Selected
-                          </span>
-                        ) : null}
+                    <PayrollSelectCheck checked={checked} />
+                    <span className="min-w-0 flex-1">
+                      <span className="hq6-product-search-option-row flex items-start justify-between gap-2">
+                        <span className="hq6-product-search-option-name font-medium text-foreground">
+                          {employee.employeeName}
+                        </span>
+                        <span className="hq6-product-search-option-meta shrink-0 text-xs font-semibold text-[#2563eb]">
+                          {department}
+                        </span>
                       </span>
-                      <span className="hq6-product-search-option-meta shrink-0 text-xs font-semibold text-[#2563eb]">
-                        {department}
+                      <span className="hq6-product-search-option-source text-xs text-muted">
+                        {[
+                          employee.employeeId,
+                          employee.designationName
+                            ? `Designation: ${employee.designationName}`
+                            : null,
+                          employee.locationCode,
+                        ]
+                          .filter(Boolean)
+                          .join(" · ") || "—"}
                       </span>
-                    </span>
-                    <span className="hq6-product-search-option-source text-xs text-muted">
-                      {[
-                        employee.employeeId,
-                        employee.designationName
-                          ? `Designation: ${employee.designationName}`
-                          : null,
-                        employee.locationCode,
-                      ]
-                        .filter(Boolean)
-                        .join(" · ") || "—"}
                     </span>
                   </button>
                 </li>

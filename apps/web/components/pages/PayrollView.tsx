@@ -6,11 +6,12 @@ import { useQuery } from "@tanstack/react-query";
 import { Minus, Plus } from "lucide-react";
 import { useAppMutation } from "@/lib/hooks/useAppMutation";
 import type {
-  Employee,
   InvoiceListRow,
   PayComponent,
   Payroll,
+  PayrollCandidate,
   PayrollGroup,
+  PayrollStaffBucket,
 } from "@vonos/types";
 import { Button } from "@/components/atoms/Button";
 import { Input } from "@/components/atoms/Input";
@@ -20,10 +21,12 @@ import { StatusPill } from "@/components/atoms/StatusPill";
 import { EntityContextBanner } from "@/components/molecules/EntityContextBanner";
 import {
   EmployeePayrollSearch,
+  PayrollSelectCheck,
   type PayrollEmployeePick,
 } from "@/components/molecules/EmployeePayrollSearch";
 import { Hq6ActionsMenu } from "@/components/hq6/Hq6ActionsMenu";
 import { Hq6BusyButton } from "@/components/hq6/Hq6BusyButton";
+import { Hq6ConfirmModal } from "@/components/hq6/Hq6ConfirmModal";
 import { Hq6Field, Hq6Modal, Hq6ModalSaveClose } from "@/components/hq6/Hq6Modal";
 import { type ColumnConfig } from "@/components/organisms/DataTable";
 import { DocumentPreviewModal } from "@/components/organisms/DocumentPreviewModal";
@@ -40,7 +43,7 @@ import {
   createPayroll,
   createPayrollGroup,
   getAllPayComponents,
-  getAllEmployees,
+  getPayrollCandidates,
   getAllTenantsPayrollsPage,
   getPayComponentsPage,
   getPayrollGroups,
@@ -48,10 +51,14 @@ import {
   getPayrollsPage,
   getDesignations,
   getUnpaidPayrollsForGroup,
+  deletePayroll,
   payPayrolls,
 } from "@/lib/api/hrm";
 import { findInvoiceForPayroll } from "@/lib/api/invoices";
-import { mapQueriesByPrefix } from "@/lib/query/optimistic";
+import {
+  mapQueriesByPrefix,
+  removeEntityFromQueries,
+} from "@/lib/query/optimistic";
 import { PaymentAccountSelect } from "@/components/hq6/PaymentAccountSelect";
 import { Hq6DateTimeInput } from "@/components/hq6/Hq6DateTimeInput";
 import { HQ6_PAYMENT_METHOD_OPTIONS } from "@/lib/utils/hq6PaymentMethods";
@@ -59,6 +66,7 @@ import { ENTITY_LIST, getTenantCodeFromId } from "@/lib/registries/tenants";
 import { getTenantConfigById } from "@/lib/registries/tenantConfigs";
 import { toast } from "@/stores/toastStore";
 import { formatHq6Currency } from "@/lib/utils/hq6Format";
+import { useHq6Permissions } from "@/lib/hooks/useHq6Permissions";
 import { useServerListPage } from "@/lib/hooks/useServerListPage";
 import { useRouteTenant, useTenantId } from "@/lib/hooks/useRouteTenant";
 import { formatCurrency } from "@/lib/utils/formatCurrency";
@@ -69,8 +77,9 @@ import {
 } from "@/lib/utils/pagination";
 import { tenantListPath } from "@/lib/utils/tenantRoutes";
 import { HQ6_TABLE_PAGE_SIZE } from "@/lib/api/fetchAllPages";
+import { cn } from "@/lib/utils/cn";
 
-function employeeToPayrollPick(row: Employee): PayrollEmployeePick {
+function candidateToPayrollPick(row: PayrollCandidate): PayrollEmployeePick {
   return {
     id: row.id,
     employeeName: row.name,
@@ -81,8 +90,19 @@ function employeeToPayrollPick(row: Employee): PayrollEmployeePick {
     department: row.department,
     payrollGroupId: row.payrollGroupId,
     payrollGroupName: row.payrollGroupName,
+    staffBucket: row.staffBucket,
   };
 }
+
+const STAFF_BUCKET_FILTERS: Array<{
+  value: "" | PayrollStaffBucket;
+  label: string;
+}> = [
+  { value: "", label: "All staff" },
+  { value: "management", label: "Management" },
+  { value: "service", label: "Service staff" },
+  { value: "technical", label: "Technical staff" },
+];
 
 function nowPaidOnLocal(): string {
   const d = new Date();
@@ -201,8 +221,15 @@ function employeeDraftFromPayComponents(
   };
 }
 
+function parseMoneyInput(raw: string): number {
+  // Commas are thousand separators — Number.parseFloat("100,000") === 100.
+  const cleaned = raw.replace(/,/g, "").replace(/\s/g, "").trim();
+  if (!cleaned) return Number.NaN;
+  return Number.parseFloat(cleaned);
+}
+
 function lineAmountValue(line: PayLine, base: number): number {
-  const n = Number(line.amount);
+  const n = parseMoneyInput(line.amount);
   if (!Number.isFinite(n) || n <= 0) return 0;
   if (line.amountType === "percent") return (base * n) / 100;
   return n;
@@ -213,8 +240,8 @@ function sumPayLines(lines: PayLine[], base: number): number {
 }
 
 function basicSalaryTotal(draft: EmployeePayrollDraft): number {
-  const duration = Number(draft.workDuration);
-  const rate = Number(draft.amountPerUnit);
+  const duration = parseMoneyInput(draft.workDuration);
+  const rate = parseMoneyInput(draft.amountPerUnit);
   if (!Number.isFinite(duration) || !Number.isFinite(rate)) return 0;
   return duration * rate;
 }
@@ -399,6 +426,8 @@ export function PayrollView({
   const tenantId = useTenantId();
   const router = useRouter();
   const { tenantName, tenantCode, config } = useRouteTenant();
+  const { can } = useHq6Permissions();
+  const canDeletePayroll = can("essentials.delete_payroll");
   const currentYear = new Date().getFullYear();
   const [activeTab, setActiveTab] = useState<PayrollTab>(
     allTenants ? "payrolls" : defaultTab,
@@ -412,6 +441,7 @@ export function PayrollView({
   const [tenantCodeFilter, setTenantCodeFilter] = useState("");
   const [monthFilter, setMonthFilter] = useState("");
   const [selectedPayroll, setSelectedPayroll] = useState<Payroll | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Payroll | null>(null);
   const [deductionTarget, setDeductionTarget] = useState<Payroll | null>(null);
   const [payTargets, setPayTargets] = useState<Payroll[] | null>(null);
   /** Per-payroll payment fields for group pay screen. */
@@ -432,6 +462,9 @@ export function PayrollView({
   const [addPayrollTenantId, setAddPayrollTenantId] = useState("");
   const [addPayrollLocationCode, setAddPayrollLocationCode] = useState("");
   const [addPayrollEmployeeIds, setAddPayrollEmployeeIds] = useState<string[]>([]);
+  const [addPayrollStaffBucket, setAddPayrollStaffBucket] = useState<
+    "" | PayrollStaffBucket
+  >("");
   const [addPayrollMonth, setAddPayrollMonth] = useState(
     () => new Date().toISOString().slice(0, 7), // YYYY-MM
   );
@@ -451,6 +484,7 @@ export function PayrollView({
     setAddPayrollStep("select");
     setAddPayrollTenantId("");
     setAddPayrollEmployeeIds([]);
+    setAddPayrollStaffBucket("");
     setEmployeeDrafts({});
     setPayrollGroupName("");
     setAddPayrollLocationCode("");
@@ -618,16 +652,23 @@ export function PayrollView({
   });
 
   const addEmployeesQuery = useQuery({
-    queryKey: ["employees-for-add-payroll", writeTenantId, "all"],
+    queryKey: ["payroll-candidates", writeTenantId],
     enabled: Boolean(writeTenantId) && addFlowActive,
-    queryFn: () => getAllEmployees(writeTenantId!),
+    queryFn: () => getPayrollCandidates(writeTenantId!),
     staleTime: 5 * 60_000,
   });
 
   const addPayrollEmployeePicks = useMemo(
-    () => (addEmployeesQuery.data ?? []).map(employeeToPayrollPick),
+    () => (addEmployeesQuery.data ?? []).map(candidateToPayrollPick),
     [addEmployeesQuery.data],
   );
+
+  const employeesForPayrollModal = useMemo(() => {
+    if (!addPayrollStaffBucket) return addPayrollEmployeePicks;
+    return addPayrollEmployeePicks.filter(
+      (e) => e.staffBucket === addPayrollStaffBucket,
+    );
+  }, [addPayrollEmployeePicks, addPayrollStaffBucket]);
 
   /** Department values on employee HR records (informational — does not filter the list). */
   const departmentSummary = useMemo(() => {
@@ -684,8 +725,6 @@ export function PayrollView({
       return defaultBusinessLocationCode(locationOptions);
     });
   }, [addPayrollOpen, locationOptions]);
-
-  const employeesForPayrollModal = addPayrollEmployeePicks;
 
   const selectedEmployeesForPayroll = useMemo(() => {
     const selected = new Set(addPayrollEmployeeIds);
@@ -795,7 +834,7 @@ export function PayrollView({
       return createPayComponent(groupsTenantId, {
         name: newComponent.name,
         type: newComponent.type,
-        amount: Number(newComponent.amount),
+        amount: parseMoneyInput(newComponent.amount),
       });
     },
     invalidateKeys: [["pay-components", groupsTenantId]],
@@ -836,6 +875,22 @@ export function PayrollView({
     onError: (err: Error) => {
       setDeductionError(err.message);
       toast.error(err.message);
+    },
+  });
+
+  const deletePayrollMutation = useAppMutation({
+    mutationFn: (row: Payroll) => deletePayroll(row.tenantId, row.id),
+    successMessage: "Payroll deleted",
+    progressLabel: "Deleting payroll",
+    optimistic: {
+      keys: [["payrolls"]],
+      update: (qc, row) => {
+        removeEntityFromQueries(qc, ["payrolls"], row.id);
+      },
+    },
+    onSuccess: (_data, row) => {
+      if (selectedPayroll?.id === row.id) setSelectedPayroll(null);
+      setDeleteTarget(null);
     },
   });
 
@@ -1188,6 +1243,15 @@ export function PayrollView({
                 },
               ]
             : []),
+          ...(canDeletePayroll
+            ? [
+                {
+                  id: "delete",
+                  label: "Delete",
+                  onClick: () => setDeleteTarget(r),
+                },
+              ]
+            : []),
         ]}
       />
     ),
@@ -1364,7 +1428,9 @@ export function PayrollView({
                 }
                 disabled={employeesForPayrollModal.length === 0}
               >
-                Select all matching
+                {addPayrollStaffBucket
+                  ? "Select this group"
+                  : "Select all matching"}
               </button>
               <button
                 type="button"
@@ -1383,14 +1449,13 @@ export function PayrollView({
             </p>
           ) : addEmployeesQuery.isLoading ? (
             <p className="hq6-modal-input py-3 text-sm text-muted">
-              Loading all employees…
+              Loading staff from users…
             </p>
           ) : addPayrollEmployeePicks.length === 0 ? (
             <div className="hq6-modal-input min-h-[10rem] space-y-3 py-3 text-sm">
               <p className="text-muted">
-                No employees found. Add people under Users first (that creates
-                their HR / payroll employee record), then return here to run
-                payroll.
+                No users found for this entity. Add people under Users first,
+                then return here to run payroll.
               </p>
               {addUserHref ? (
                 <button
@@ -1407,8 +1472,46 @@ export function PayrollView({
             </div>
           ) : (
             <div className="space-y-3">
+              <div
+                className="flex flex-wrap gap-1.5"
+                role="group"
+                aria-label="Staff group filter"
+              >
+                {STAFF_BUCKET_FILTERS.map((opt) => {
+                  const active = addPayrollStaffBucket === opt.value;
+                  const count =
+                    opt.value === ""
+                      ? addPayrollEmployeePicks.length
+                      : addPayrollEmployeePicks.filter(
+                          (e) => e.staffBucket === opt.value,
+                        ).length;
+                  return (
+                    <button
+                      key={opt.value || "all"}
+                      type="button"
+                      className={cn(
+                        "rounded-md border px-2.5 py-1 text-xs font-semibold transition-colors",
+                        active
+                          ? "border-[#2563eb] bg-[#2563eb] text-white"
+                          : "border-border bg-card text-[#111827] hover:bg-[var(--color-surface-muted)]",
+                      )}
+                      onClick={() => setAddPayrollStaffBucket(opt.value)}
+                    >
+                      {opt.label}
+                      <span
+                        className={cn(
+                          "ml-1 tabular-nums",
+                          active ? "text-white/80" : "text-muted",
+                        )}
+                      >
+                        ({count})
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
               <EmployeePayrollSearch
-                employees={addPayrollEmployeePicks}
+                employees={employeesForPayrollModal}
                 selectedIds={addPayrollEmployeeIds}
                 onToggle={toggleAddPayrollPick}
                 isLoading={addEmployeesQuery.isLoading}
@@ -1419,15 +1522,17 @@ export function PayrollView({
                     const checked = addPayrollEmployeeIds.includes(employee.id);
                     return (
                       <li key={employee.id}>
-                        <label className="flex cursor-pointer items-start gap-3 px-3 py-2 hover:bg-surface">
-                          <input
-                            type="checkbox"
-                            className="mt-1"
-                            checked={checked}
-                            onChange={() =>
-                              toggleAddPayrollEmployee(employee.id)
-                            }
-                          />
+                        <button
+                          type="button"
+                          className={cn(
+                            "flex w-full cursor-pointer items-start gap-3 px-3 py-2 text-left hover:bg-surface",
+                            checked && "bg-[var(--color-surface-muted)]",
+                          )}
+                          onClick={() =>
+                            toggleAddPayrollEmployee(employee.id)
+                          }
+                        >
+                          <PayrollSelectCheck checked={checked} />
                           <span className="min-w-0 flex-1">
                             <span className="block font-medium text-[#111827]">
                               {employee.employeeName}
@@ -1447,20 +1552,20 @@ export function PayrollView({
                                 .join(" · ")}
                             </span>
                           </span>
-                        </label>
+                        </button>
                       </li>
                     );
                   })}
                 </ul>
                 {employeesForPayrollModal.length === 0 ? (
                   <p className="px-3 py-4 text-sm text-muted">
-                    No employees loaded.
+                    No staff in this group.
                   </p>
                 ) : null}
               </div>
               <p className="text-xs text-muted">
                 Showing {employeesForPayrollModal.length} of{" "}
-                {addPayrollEmployeePicks.length} employees
+                {addPayrollEmployeePicks.length} users
                 {addPayrollEmployeeIds.length > 0
                   ? ` · ${addPayrollEmployeeIds.length} selected`
                   : ""}
@@ -1598,9 +1703,9 @@ export function PayrollView({
                         <span className="text-red-600">*</span>:
                       </label>
                       <input
-                        type="number"
-                        min={0}
-                        step="0.01"
+                        type="text"
+                        inputMode="decimal"
+                        autoComplete="off"
                         className="form-control hq6-modal-input w-full"
                         value={draft.workDuration}
                         onChange={(e) =>
@@ -1636,9 +1741,10 @@ export function PayrollView({
                         <span className="text-red-600">*</span>:
                       </label>
                       <input
-                        type="number"
-                        min={0}
-                        step="0.01"
+                        type="text"
+                        inputMode="decimal"
+                        autoComplete="off"
+                        placeholder="e.g. 100000"
                         className="form-control hq6-modal-input w-full"
                         value={draft.amountPerUnit}
                         onChange={(e) =>
@@ -1719,9 +1825,9 @@ export function PayrollView({
                             <option value="percent">Percent</option>
                           </select>
                           <input
-                            type="number"
-                            min={0}
-                            step="0.01"
+                            type="text"
+                            inputMode="decimal"
+                            autoComplete="off"
                             className="form-control hq6-modal-input w-full text-right"
                             value={line.amount}
                             onChange={(e) =>
@@ -1823,9 +1929,9 @@ export function PayrollView({
                             <option value="percent">Percent</option>
                           </select>
                           <input
-                            type="number"
-                            min={0}
-                            step="0.01"
+                            type="text"
+                            inputMode="decimal"
+                            autoComplete="off"
                             className="form-control hq6-modal-input w-full text-right"
                             value={line.amount}
                             onChange={(e) =>
@@ -1927,10 +2033,40 @@ export function PayrollView({
                   Add deduction
                 </Button>
               ) : null}
+              {canDeletePayroll ? (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setDeleteTarget(selectedPayroll)}
+                >
+                  Delete
+                </Button>
+              ) : null}
             </div>
           </>
         ) : null}
       </DocumentPreviewModal>
+
+      <Hq6ConfirmModal
+        open={Boolean(deleteTarget)}
+        onClose={() => setDeleteTarget(null)}
+        title="Delete payroll?"
+        message={
+          deleteTarget
+            ? deleteTarget.paymentStatus === "paid" ||
+              deleteTarget.status === "paid"
+              ? `Delete paid payroll for ${deleteTarget.employeeName}? This reverses the wage expense and payment-account debit.`
+              : `Delete payroll for ${deleteTarget.employeeName}?`
+            : "Are you sure?"
+        }
+        confirmLabel="Delete"
+        danger
+        onConfirm={() => {
+          if (!deleteTarget) return;
+          deletePayrollMutation.mutate(deleteTarget);
+        }}
+      />
 
       <Modal
         open={Boolean(deductionTarget)}
@@ -1949,9 +2085,9 @@ export function PayrollView({
           </p>
           <Input
             label="Amount"
-            type="number"
-            min={0}
-            step="0.01"
+            type="text"
+            inputMode="decimal"
+            autoComplete="off"
             value={deductionForm.amount}
             onChange={(e) =>
               setDeductionForm((prev) => ({ ...prev, amount: e.target.value }))
@@ -1987,13 +2123,14 @@ export function PayrollView({
             isLoading={addDeductionMutation.isPending}
             disabled={
               !deductionForm.amount ||
-              Number(deductionForm.amount) <= 0 ||
-              Number(deductionForm.amount) > maxDeduction ||
+              !Number.isFinite(parseMoneyInput(deductionForm.amount)) ||
+              parseMoneyInput(deductionForm.amount) <= 0 ||
+              parseMoneyInput(deductionForm.amount) > maxDeduction ||
               addDeductionMutation.isPending
             }
             onClick={() => {
               if (!deductionTarget) return;
-              const amount = Number(deductionForm.amount);
+              const amount = parseMoneyInput(deductionForm.amount);
               if (!Number.isFinite(amount) || amount <= 0 || amount > maxDeduction) {
                 return;
               }
@@ -2155,7 +2292,9 @@ export function PayrollView({
             <div className="w-32">
               <label className="mb-1 block text-xs font-medium text-muted">Amount</label>
               <input
-                type="number"
+                type="text"
+                inputMode="decimal"
+                autoComplete="off"
                 className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm"
                 value={newComponent.amount}
                 onChange={(e) => setNewComponent({ ...newComponent, amount: e.target.value })}

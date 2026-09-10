@@ -70,10 +70,14 @@ function redirectToLogin(): void {
   window.location.replace(withBasePath(`/login?redirect=${redirect}`));
 }
 
-/** Single-flight refresh so parallel 401s share one /auth/refresh. */
-let refreshInFlight: Promise<boolean> | null = null;
+/** Single-flight refresh so parallel 401s + AuthGuard soft-refresh share one call. */
+let refreshInFlight: Promise<LoginSuccessResponse | null> | null = null;
 
-async function tryRefreshSession(): Promise<boolean> {
+/**
+ * Rotates the session via httpOnly refresh cookie. Shared by apiFetch and
+ * AuthGuard — concurrent callers await the same in-flight request.
+ */
+export async function refreshSessionOnce(): Promise<LoginSuccessResponse | null> {
   if (refreshInFlight) return refreshInFlight;
 
   refreshInFlight = (async () => {
@@ -85,13 +89,13 @@ async function tryRefreshSession(): Promise<boolean> {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ tenantId: preferredTenantId }),
       });
-      if (!response.ok) return false;
+      if (!response.ok) return null;
       const result = (await response.json()) as LoginSuccessResponse;
-      if (!result?.accessToken || !result?.user) return false;
+      if (!result?.accessToken || !result?.user) return null;
       applySession(result);
-      return true;
+      return result;
     } catch {
-      return false;
+      return null;
     } finally {
       refreshInFlight = null;
     }
@@ -100,10 +104,16 @@ async function tryRefreshSession(): Promise<boolean> {
   return refreshInFlight;
 }
 
+async function tryRefreshSession(): Promise<boolean> {
+  const result = await refreshSessionOnce();
+  return result != null;
+}
+
 function isAuthPath(path: string): boolean {
   const normalized = path.startsWith("/") ? path : `/${path}`;
   return (
     normalized === "/auth/refresh" ||
+    normalized === "/auth/session-debug" ||
     normalized.startsWith("/auth/login") ||
     normalized.startsWith("/auth/logout") ||
     normalized.startsWith("/auth/verify-2fa") ||

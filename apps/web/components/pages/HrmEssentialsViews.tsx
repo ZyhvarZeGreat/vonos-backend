@@ -112,20 +112,27 @@ function ListCard({
 }) {
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h2 className="text-lg font-semibold text-[#111827]">{title}</h2>
-          {subtitle ? (
-            <p className="text-sm text-[#6b7280]">{subtitle}</p>
+      {filters}
+      <div className="box-primary tw-mb-4 tw-transition-all tw-duration-200 tw-bg-white tw-shadow-sm tw-rounded-xl tw-ring-1 hover:tw-shadow-md tw-ring-gray-200">
+        <div className="box-header with-border tw-flex tw-flex-wrap tw-items-center tw-justify-between tw-gap-2 tw-px-3 tw-py-2 sm:tw-px-4">
+          <div>
+            <h3 className="box-title tw-m-0 tw-text-base tw-font-semibold tw-text-[#111827]">
+              {title}
+            </h3>
+            {subtitle ? (
+              <p className="tw-mb-0 tw-mt-0.5 tw-text-sm tw-text-[#6b7280]">
+                {subtitle}
+              </p>
+            ) : null}
+          </div>
+          {onAdd ? (
+            <UposGradientActionButton
+              label={addLabel.replace(/^\+\s*/, "")}
+              onClick={onAdd}
+            />
           ) : null}
         </div>
-        {onAdd ? (
-          <UposGradientActionButton label={addLabel.replace(/^\+\s*/, "")} onClick={onAdd} />
-        ) : null}
-      </div>
-      {filters}
-      <div className="overflow-hidden rounded border border-[#d2d6de] bg-white">
-        {children}
+        <div className="tw-overflow-hidden">{children}</div>
       </div>
     </div>
   );

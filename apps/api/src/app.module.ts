@@ -41,6 +41,7 @@ import { TenantRolesModule } from './modules/tenant-roles/tenant-roles.module';
 import { MediaModule } from './modules/media/media.module';
 import { StoreModule } from './modules/store/store.module';
 import { PublicTrackModule } from './modules/public-track/public-track.module';
+import { WhatsAppNotifyModule } from './common/whatsapp/whatsapp-notify.module';
 
 @Module({
   imports: [
@@ -53,6 +54,7 @@ import { PublicTrackModule } from './modules/public-track/public-track.module';
     ]),
     PrismaModule,
     CacheModule,
+    WhatsAppNotifyModule,
     AuthModule,
     AuditModule,
     TenantsModule,

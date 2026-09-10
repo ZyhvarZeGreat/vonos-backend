@@ -59,6 +59,7 @@ export const HR_ROLE_DEFAULT_PERMISSIONS: readonly string[] = [
   "essentials.view_all_payroll",
   "essentials.create_payroll",
   "essentials.update_payroll",
+  "essentials.delete_payroll",
 ];
 
 /** True when the role name looks like an HR / people-ops role. */
