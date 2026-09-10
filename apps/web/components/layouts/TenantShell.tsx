@@ -25,6 +25,7 @@ export function TenantShell({ children }: { children: React.ReactNode }) {
   const hydrated = useAuthStore((state) => state.hydrated);
   const role = useAuthStore((state) => state.role);
   const userTenantId = useAuthStore((state) => state.tenantId);
+  const allowedTenantCodes = useAuthStore((state) => state.allowedTenantCodes);
   const tenantRoleName = useAuthStore((state) => state.tenantRoleName);
   const setTenantConfig = useTenantStore((state) => state.setTenantConfig);
   const clearTenant = useTenantStore((state) => state.clearTenant);
@@ -103,6 +104,7 @@ export function TenantShell({ children }: { children: React.ReactNode }) {
         userTenantId,
         registryEntry.tenantId,
         tenantRoleName,
+        allowedTenantCodes,
       )
     ) {
       router.replace("/admin/overview");
@@ -114,6 +116,7 @@ export function TenantShell({ children }: { children: React.ReactNode }) {
     role,
     userTenantId,
     tenantRoleName,
+    allowedTenantCodes,
     router,
   ]);
 

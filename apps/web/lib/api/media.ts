@@ -1,11 +1,10 @@
 import { apiUrl, withTenantQuery } from "./client";
 import { useAuthStore } from "@/stores/authStore";
-import { resolveViewingTenantId } from "./viewingTenant";
+import { applyViewingTenantHeader } from "./viewingTenant";
 import {
   compressProductImage,
   PRODUCT_IMAGE_MAX_BYTES,
 } from "@/lib/utils/compressProductImage";
-import { canAccessVagPortal } from "@vonos/types";
 
 export type ProductImageUploadResult = {
   url: string;
@@ -19,12 +18,9 @@ export type ProductImageUploadOptions = {
 
 function authHeaders(): Record<string, string> {
   const headers: Record<string, string> = {};
-  const { token, role, tenantRoleName } = useAuthStore.getState();
+  const { token } = useAuthStore.getState();
   if (token) headers.Authorization = `Bearer ${token}`;
-  if (canAccessVagPortal({ role, tenantRoleName })) {
-    const viewingTenant = resolveViewingTenantId();
-    if (viewingTenant) headers["X-Viewing-Tenant"] = viewingTenant;
-  }
+  applyViewingTenantHeader(headers);
   return headers;
 }
 

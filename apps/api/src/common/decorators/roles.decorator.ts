@@ -15,4 +15,6 @@ export interface AuthenticatedUser {
   tenantRolePermissions?: string[] | null;
   /** Assigned TenantRole display name (e.g. HR & OPERATIONS MANAGER). */
   tenantRoleName?: string | null;
+  /** Cleared work-location entity codes (multi-tab URL scoping). */
+  allowedTenantCodes?: string[];
 }

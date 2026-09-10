@@ -52,4 +52,25 @@ describe("canAccessTenant", () => {
       ),
     ).toBe(true);
   });
+
+  it("allows multi-location staff into cleared entities without JWT swap", () => {
+    expect(
+      canAccessTenant(
+        "staff",
+        "tenant_va_001",
+        "tenant_visp_001",
+        null,
+        ["VA", "VISP"],
+      ),
+    ).toBe(true);
+    expect(
+      canAccessTenant(
+        "staff",
+        "tenant_va_001",
+        "tenant_vw_001",
+        null,
+        ["VA", "VISP"],
+      ),
+    ).toBe(false);
+  });
 });

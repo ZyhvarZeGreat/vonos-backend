@@ -8,6 +8,7 @@ import { Reflector } from '@nestjs/core';
 import type { AuthenticatedUser } from '../decorators/roles.decorator';
 import { ROLES_KEY } from '../decorators/roles.decorator';
 import { AuthService } from '../../modules/auth/auth.service';
+import { isClearanceTenantId } from '../tenants/tenantIds';
 import { userCanAccessVagPortal } from '../utils/vagPortalAccess';
 
 @Injectable()
@@ -27,16 +28,24 @@ export class JwtAuthGuard implements CanActivate {
     const token = authHeader.slice(7);
     try {
       const payload = await this.authService.validateAccessToken(token);
-      const tenantRole = await this.authService.resolveTenantRoleContext(
-        payload.sub,
-        payload.tokenVersion,
-      );
+      const [tenantRole, allowedTenantCodes] = await Promise.all([
+        this.authService.resolveTenantRoleContext(
+          payload.sub,
+          payload.tokenVersion,
+        ),
+        this.authService.resolveAllowedTenantCodesForSession({
+          id: payload.sub,
+          tenantId: payload.tenantId,
+          role: payload.role,
+        }),
+      ]);
       request.user = {
         sub: payload.sub,
         tenantId: payload.tenantId,
         role: payload.role,
         tenantRolePermissions: tenantRole.permissions,
         tenantRoleName: tenantRole.name,
+        allowedTenantCodes,
       };
       return true;
     } catch {
@@ -54,7 +63,7 @@ export class TenantGuard implements CanActivate {
       headers: Record<string, string | string[] | undefined>;
       query: Record<string, string | string[] | undefined>;
     }>();
-    const { tenantId } = request.user;
+    const { tenantId, allowedTenantCodes = [] } = request.user;
     const viewingHeader = request.headers['x-viewing-tenant'];
     const viewingTenant = Array.isArray(viewingHeader)
       ? viewingHeader[0]
@@ -63,13 +72,23 @@ export class TenantGuard implements CanActivate {
     const queryTenant = Array.isArray(queryTenantRaw)
       ? queryTenantRaw[0]
       : queryTenantRaw;
+    const requestedScope = viewingTenant?.trim() || queryTenant?.trim() || null;
 
     if (userCanAccessVagPortal(request.user)) {
-      request.tenantScope =
-        viewingTenant?.trim() || queryTenant?.trim() || null;
-    } else {
-      request.tenantScope = tenantId;
+      request.tenantScope = requestedScope;
+      return true;
     }
+
+    if (
+      requestedScope &&
+      allowedTenantCodes.length > 1 &&
+      isClearanceTenantId(requestedScope, allowedTenantCodes)
+    ) {
+      request.tenantScope = requestedScope;
+      return true;
+    }
+
+    request.tenantScope = tenantId;
     return true;
   }
 }

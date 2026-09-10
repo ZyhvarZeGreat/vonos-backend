@@ -21,8 +21,17 @@ export function canAccessTenant(
   userTenantId: string | null,
   targetTenantId: string,
   tenantRoleName?: string | null,
+  allowedTenantCodes?: string[],
 ): boolean {
   if (!role) return false;
   if (canAccessVagPortal({ role, tenantRoleName })) return true;
+  const targetCode = getTenantCodeFromId(targetTenantId);
+  if (
+    targetCode &&
+    allowedTenantCodes?.length &&
+    allowedTenantCodes.includes(targetCode)
+  ) {
+    return true;
+  }
   return userTenantId === targetTenantId;
 }

@@ -1,9 +1,8 @@
 import type { LoginSuccessResponse } from "@vonos/types";
-import { canAccessVagPortal } from "@vonos/types";
 import { useAuthStore } from "@/stores/authStore";
 import { stripBasePath, withBasePath } from "@/lib/utils/basePath";
 import { applyIdempotencyHeaders } from "@/lib/utils/idempotency";
-import { resolveViewingTenantId } from "./viewingTenant";
+import { applyViewingTenantHeader } from "./viewingTenant";
 
 const API_BASE = (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001").replace(
   /\/+$/,
@@ -17,16 +16,11 @@ export function apiUrl(path: string): string {
 
 function buildAuthHeaders(): Record<string, string> {
   const headers: Record<string, string> = {};
-  const { token, role, tenantRoleName } = useAuthStore.getState();
+  const { token } = useAuthStore.getState();
   if (token) {
     headers.Authorization = `Bearer ${token}`;
   }
-  if (canAccessVagPortal({ role, tenantRoleName })) {
-    const viewingTenant = resolveViewingTenantId();
-    if (viewingTenant) {
-      headers["X-Viewing-Tenant"] = viewingTenant;
-    }
-  }
+  applyViewingTenantHeader(headers);
   return headers;
 }
 

@@ -28,6 +28,7 @@ import type {
   CreateEmployeeRequest,
   SyncEmployeeByUserRequest,
   UpdatePayrollDeductionRequest,
+  UpdatePayrollStatusRequest,
   UpdateDesignationRequest,
   UpdatePayrollGroupRequest,
   PayPayrollsRequest,
@@ -223,6 +224,15 @@ export class HrmController {
     @Body() dto: UpdatePayrollDeductionRequest,
   ) {
     return this.service.addPayrollDeduction(id, dto);
+  }
+
+  @Patch('payroll/:id/status')
+  @Roles('admin', 'manager', 'super_admin')
+  updatePayrollStatus(
+    @Param('id') id: string,
+    @Body() dto: UpdatePayrollStatusRequest,
+  ) {
+    return this.service.updatePayrollStatus(id, dto);
   }
 
   @Get('payroll-groups')

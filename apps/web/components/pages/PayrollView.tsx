@@ -42,6 +42,7 @@ import {
   createPayComponent,
   createPayroll,
   createPayrollGroup,
+  updatePayrollStatus,
   getAllPayComponents,
   getPayrollCandidates,
   getAllTenantsPayrollsPage,
@@ -67,6 +68,7 @@ import { getTenantConfigById } from "@/lib/registries/tenantConfigs";
 import { toast } from "@/stores/toastStore";
 import { formatHq6Currency } from "@/lib/utils/hq6Format";
 import { useHq6Permissions } from "@/lib/hooks/useHq6Permissions";
+import { useIsVaHq6 } from "@/lib/hooks/useIsVaHq6";
 import { useServerListPage } from "@/lib/hooks/useServerListPage";
 import { useRouteTenant, useTenantId } from "@/lib/hooks/useRouteTenant";
 import { formatCurrency } from "@/lib/utils/formatCurrency";
@@ -307,6 +309,11 @@ const PAYROLL_STATUS_OPTIONS = [
   { value: "paid", label: "Paid" },
 ];
 
+const PAYROLL_ROW_STATUS_OPTIONS = [
+  { value: "draft", label: "Draft" },
+  { value: "final", label: "Final" },
+] as const;
+
 const PAYMENT_STATUS_OPTIONS = [
   { value: "due", label: "Due" },
   { value: "partial", label: "Partial" },
@@ -359,11 +366,6 @@ const payrollColumns: ColumnConfig<Payroll>[] = [
     header: "Net Pay",
     sortValue: (r) => r.netPay,
     render: (r) => formatCurrency(r.netPay, "NGN"),
-  },
-  {
-    key: "status",
-    header: "Status",
-    render: (r) => <StatusPill status={r.status} vocabulary="movementStatus" />,
   },
   {
     key: "paymentStatus",
@@ -425,9 +427,11 @@ export function PayrollView({
 }) {
   const tenantId = useTenantId();
   const router = useRouter();
+  const isHq6 = useIsVaHq6();
   const { tenantName, tenantCode, config } = useRouteTenant();
   const { can } = useHq6Permissions();
   const canDeletePayroll = can("essentials.delete_payroll");
+  const [statusUpdatingId, setStatusUpdatingId] = useState<string | null>(null);
   const currentYear = new Date().getFullYear();
   const [activeTab, setActiveTab] = useState<PayrollTab>(
     allTenants ? "payrolls" : defaultTab,
@@ -878,6 +882,57 @@ export function PayrollView({
     },
   });
 
+  const updateStatusMutation = useAppMutation({
+    mutationFn: (vars: { tenantId: string; payrollId: string; status: "draft" | "final" }) =>
+      updatePayrollStatus(vars.tenantId, vars.payrollId, vars.status),
+    invalidateKeys: [["payrolls"]],
+    optimistic: {
+      keys: [["payrolls"]],
+      update: (qc, vars) => {
+        mapQueriesByPrefix<{ id: string; status?: string }>(
+          qc,
+          ["payrolls"],
+          (rows) =>
+            rows.map((row) =>
+              row.id === vars.payrollId ? { ...row, status: vars.status } : row,
+            ),
+        );
+      },
+    },
+    onMutate: (vars) => {
+      setStatusUpdatingId(vars.payrollId);
+    },
+    onSettled: () => {
+      setStatusUpdatingId(null);
+    },
+    onSuccess: (updated) => {
+      if (selectedPayroll?.id === updated.id) {
+        setSelectedPayroll(updated);
+      }
+      toast.success(
+        updated.status === "final"
+          ? "Payroll marked final — ready to pay"
+          : "Payroll moved back to draft",
+      );
+    },
+    onError: (err: Error) => {
+      toast.error(err.message);
+    },
+  });
+
+  function handlePayrollStatusChange(row: Payroll, next: "draft" | "final") {
+    if (row.status === next) return;
+    if (row.paymentStatus === "paid" || row.status === "paid") {
+      toast.error("Cannot change status after payroll is paid");
+      return;
+    }
+    updateStatusMutation.mutate({
+      tenantId: row.tenantId,
+      payrollId: row.id,
+      status: next,
+    });
+  }
+
   const deletePayrollMutation = useAppMutation({
     mutationFn: (row: Payroll) => deletePayroll(row.tenantId, row.id),
     successMessage: "Payroll deleted",
@@ -1256,6 +1311,48 @@ export function PayrollView({
       />
     ),
   };
+
+  const payrollStatusColumn: ColumnConfig<Payroll> = {
+    key: "status",
+    header: "Status",
+    sortable: false,
+    render: (row) => {
+      if (row.status === "paid" || row.paymentStatus === "paid") {
+        return <StatusPill status="paid" vocabulary="movementStatus" />;
+      }
+      const busy = statusUpdatingId === row.id;
+      return (
+        <select
+          className={cn(
+            "form-control select2 hq6-table-inline-select min-w-[7.5rem]",
+            busy && "opacity-60",
+          )}
+          value={row.status === "final" ? "final" : "draft"}
+          disabled={busy || updateStatusMutation.isPending}
+          aria-label={`Payroll status for ${row.employeeName}`}
+          onClick={(e) => e.stopPropagation()}
+          onChange={(e) =>
+            handlePayrollStatusChange(
+              row,
+              e.target.value as "draft" | "final",
+            )
+          }
+        >
+          {PAYROLL_ROW_STATUS_OPTIONS.map((opt) => (
+            <option key={opt.value} value={opt.value}>
+              {opt.label}
+            </option>
+          ))}
+        </select>
+      );
+    },
+  };
+
+  const payrollListColumns: ColumnConfig<Payroll>[] = [
+    payrollActionColumn,
+    ...(allTenants ? groupPayrollColumns : payrollColumns),
+    payrollStatusColumn,
+  ];
 
   const groupActionColumn: ColumnConfig<PayrollGroup> = {
     key: "actions",
@@ -2197,10 +2294,7 @@ export function PayrollView({
       ) : activeTab === "payrolls" ? (
         <ServerPaginatedTable
           items={payrollsPage.items}
-          columns={[
-            payrollActionColumn,
-            ...(allTenants ? groupPayrollColumns : payrollColumns),
-          ]}
+          columns={payrollListColumns}
           pageIndex={payrollsPage.pageIndex}
           pageSize={payrollsPage.pageSize}
           hasMore={payrollsPage.hasMore}
@@ -2520,10 +2614,10 @@ export function PayrollView({
               ? groupsPage.setPageSize
               : componentsPage.setPageSize
       }
-      className={embedded ? "border-0 shadow-none" : undefined}
+      className={embedded && isHq6 ? "border-0 shadow-none bg-transparent" : embedded ? "border-0 shadow-none" : undefined}
       hq6Title="HRM"
       hq6Subtitle={allTenants ? "Payroll — all businesses" : "Payroll"}
-      hq6PageChrome={!embedded}
+      hq6PageChrome={isHq6}
     >
       {panelBody}
     </ListPageShell>

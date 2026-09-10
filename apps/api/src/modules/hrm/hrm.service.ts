@@ -18,6 +18,7 @@ import type {
   CreateEmployeeRequest,
   SyncEmployeeByUserRequest,
   UpdatePayrollDeductionRequest,
+  UpdatePayrollStatusRequest,
   PayPayrollsRequest,
   PayPayrollsResult,
   PayrollFilters,
@@ -2208,6 +2209,72 @@ export class HrmService {
     void this.cache.bumpListVersion(tenantId, 'hrm-payrolls');
     void this.cache.bumpListVersion(tenantId, 'hrm-payrolls-all');
     return { ok: true };
+  }
+
+  async updatePayrollStatus(
+    id: string,
+    dto: UpdatePayrollStatusRequest,
+  ): Promise<Payroll> {
+    const tenantId = this.tenantDb.requireTenantId();
+    const nextStatus = dto.status;
+    if (nextStatus !== 'draft' && nextStatus !== 'final') {
+      throw new BadRequestException('status must be draft or final');
+    }
+
+    const existing = await this.tenantDb.db.payroll.findFirst({
+      where: { id, tenantId, deletedAt: null },
+    });
+    if (!existing) {
+      throw new BadRequestException('Payroll not found');
+    }
+    if (existing.paymentStatus === 'paid' || existing.status === 'paid') {
+      throw new BadRequestException('Cannot change status after payroll is paid');
+    }
+    if (existing.status === nextStatus) {
+      return this.serializePayroll(
+        await this.tenantDb.db.payroll.findFirstOrThrow({
+          where: { id, tenantId },
+          include: {
+            payrollGroup: true,
+            designation: { select: { name: true } },
+            employeeRecord: {
+              select: {
+                accountHolderName: true,
+                bankName: true,
+                bankBranch: true,
+                bankCode: true,
+                bankAccountNo: true,
+                taxPayerId: true,
+              },
+            },
+          },
+        }),
+      );
+    }
+
+    const row = await this.tenantDb.db.payroll.update({
+      where: { id },
+      data: { status: nextStatus },
+      include: {
+        payrollGroup: true,
+        designation: { select: { name: true } },
+        employeeRecord: {
+          select: {
+            accountHolderName: true,
+            bankName: true,
+            bankBranch: true,
+            bankCode: true,
+            bankAccountNo: true,
+            taxPayerId: true,
+          },
+        },
+      },
+    });
+    await this.invoiceHub.ensurePayrollInvoice(this.tenantDb.db, row);
+    void invalidateTenantDashboardCache(this.cache, tenantId);
+    void this.cache.bumpListVersion(tenantId, 'hrm-payrolls');
+    void this.cache.bumpListVersion(tenantId, 'hrm-payrolls-all');
+    return this.serializePayroll(row);
   }
 
   async addPayrollDeduction(

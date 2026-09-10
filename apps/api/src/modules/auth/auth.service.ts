@@ -717,6 +717,21 @@ export class AuthService {
     };
   }
 
+  /** Cached per request burst — work-location clearances change rarely. */
+  async resolveAllowedTenantCodesForSession(
+    user: Pick<User, 'id' | 'tenantId' | 'role'>,
+  ): Promise<string[]> {
+    if (user.role === 'super_admin') return [];
+
+    const cacheKey = `auth:allowedTenantCodes:${user.id}`;
+    const cached = await this.cache.get<string[]>(cacheKey);
+    if (cached) return cached;
+
+    const codes = await this.resolveAllowedTenantCodes(user);
+    await this.cache.set(cacheKey, codes, 300);
+    return codes;
+  }
+
   /** Entity codes from linked employee work locations + home tenant. */
   private async resolveAllowedTenantCodes(
     user: Pick<User, 'id' | 'tenantId' | 'role'>,

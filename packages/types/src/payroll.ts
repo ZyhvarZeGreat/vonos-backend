@@ -148,6 +148,11 @@ export interface CreatePayrollRequest {
   note?: string;
 }
 
+/** Change payroll lifecycle status (draft ↔ final). Payment sets `paid`. */
+export interface UpdatePayrollStatusRequest {
+  status: Extract<PayrollStatus, "draft" | "final">;
+}
+
 /** Add (or set) deduction on an existing payroll run. */
 export interface UpdatePayrollDeductionRequest {
   /** Absolute deduction total. Prefer `addAmount` for incremental adds. */

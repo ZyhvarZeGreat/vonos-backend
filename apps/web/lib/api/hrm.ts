@@ -721,6 +721,24 @@ export async function createPayroll(
   return res.json();
 }
 
+export async function updatePayrollStatus(
+  tenantId: string,
+  payrollId: string,
+  status: "draft" | "final",
+): Promise<Payroll> {
+  const res = await apiFetch(
+    withTenantQuery(`${PAYROLL_PATH}/${payrollId}/status`, tenantId),
+    {
+      method: "PATCH",
+      body: JSON.stringify({ status }),
+    },
+  );
+  if (!res.ok) {
+    return throwApiError(res, "Failed to update payroll status");
+  }
+  return res.json();
+}
+
 export async function addPayrollDeduction(
   tenantId: string,
   payrollId: string,

@@ -23,6 +23,7 @@ import { prefetchAdminEntity } from "@/lib/admin/prefetchAdminEntity";
 import { prefetchRoute } from "@/lib/prefetch/routePrefetchRegistry";
 import { dateRangePresetToApiBounds } from "@/lib/utils/dateRange";
 import { useUiStore } from "@/stores/uiStore";
+import { hasMultiEntityClearance } from "@/lib/api/viewingTenant";
 import { switchWorkingTenant } from "@/lib/api/auth";
 import { formatApiError } from "@/lib/utils/formatApiError";
 import { toast } from "@/stores/toastStore";
@@ -183,9 +184,19 @@ export function TenantSwitcher({
     const href = resolveEntitySwitchPath(entry.code, pathname);
 
     if (!isSuperAdmin) {
+      // Multi-location clearance: URL + X-Viewing-Tenant per tab — no JWT swap.
+      if (hasMultiEntityClearance(allowedTenantCodes)) {
+        queryClient.removeQueries({
+          predicate: (query) => query.queryKey[0] !== "tenantConfig",
+        });
+        startSwitch(entry.code, entry.name, href);
+        announceSwitch(entry.code, entry.name);
+        router.push(href);
+        return;
+      }
+
       if (switching) return;
       setSwitching(true);
-      // Show progress immediately while JWT is re-scoped.
       startSwitch(entry.code, entry.name, href);
       toast.info(`Switching to ${entry.name}…`);
       try {
