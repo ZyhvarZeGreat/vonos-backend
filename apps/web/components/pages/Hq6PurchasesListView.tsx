@@ -193,7 +193,7 @@ export function Hq6PurchasesListView() {
     sort,
     setSort,
   } = useServerListPage<StockMovementListRow>({
-    queryKey: ["stock-movements", tenantId, "inbound", "hq6"],
+    queryKey: ["stock-movements", tenantId, "inbound", "hq6", "v3"],
     enabled: Boolean(tenantId),
     filters: apiFilters,
     search: search,

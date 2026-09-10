@@ -39,6 +39,7 @@ import {
   parseProductCsvRow,
 } from '../../common/utils/productCsvImport';
 import { parseOpeningStockCsvRow } from '../../common/utils/openingStockCsvImport';
+import { excludeOpeningStockPurchasesWhere } from '../../common/utils/openingStockMovement';
 import { adjustItemLocationStock } from '../../common/utils/itemLocationStock';
 import { toNumber } from '../../common/utils/serializers';
 import { applyLastPurchasePrices } from '../../common/utils/lastPurchasePrices';
@@ -703,6 +704,8 @@ export class ItemsService {
               notes,
               locationCode,
               date,
+              // Stock history only — never a supplier bill (Purchases list excludes OS/).
+              paymentStatus: null,
               ...createdBy,
             },
           });
@@ -808,6 +811,7 @@ export class ItemsService {
             tenantId,
             deletedAt: null,
             type: 'inbound',
+            ...excludeOpeningStockPurchasesWhere(),
             date: { gte: startOfDay, lte: endOfDay },
           },
         }),

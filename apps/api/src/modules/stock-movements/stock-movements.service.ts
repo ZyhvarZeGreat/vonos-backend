@@ -64,6 +64,7 @@ import {
   stockMovementTextSearchWhere,
   transferTextSearchWhere,
 } from '../../common/utils/listSearch';
+import { excludeOpeningStockPurchasesWhere } from '../../common/utils/openingStockMovement';
 import {
   serializeMovement,
   toMovementListRow,
@@ -204,7 +205,7 @@ export class StockMovementsService {
     return withListPageCache(
       this.cache,
       tenantId,
-      'stock-movements:v2',
+      'stock-movements:v3',
       filterKey,
       async () => {
         const dateFilter =
@@ -248,6 +249,7 @@ export class StockMovementsService {
           tenantId,
           deletedAt: null as null,
           ...(filters.type ? { type: filters.type } : {}),
+          ...excludeOpeningStockPurchasesWhere(),
           ...movementStatusWhere(filters.status),
           ...(filters.source ? { source: filters.source } : {}),
           ...(filters.locationCode
@@ -971,6 +973,7 @@ export class StockMovementsService {
     // can hit a stale purchases page and flip Paid → Due.
     await invalidateTenantDashboardCache(this.cache, tenantId);
     await invalidateTenantListCache(this.cache, tenantId, [
+      'stock-movements:v3',
       'stock-movements:v2',
       'stock-movements',
     ]);
@@ -986,7 +989,12 @@ export class StockMovementsService {
   }> {
     const tenantId = this.tenantDb.requireTenantId();
     const moves = await this.tenantDb.db.stockMovement.findMany({
-      where: { tenantId, deletedAt: null, type: 'inbound' },
+      where: {
+        tenantId,
+        deletedAt: null,
+        type: 'inbound',
+        ...excludeOpeningStockPurchasesWhere(),
+      },
       select: {
         id: true,
         reference: true,
@@ -1660,13 +1668,14 @@ export async function warmDefaultStockMovementListPages(
         await withListPageCache(
           cache,
           tenantId,
-          'stock-movements:v2',
+          'stock-movements:v3',
           filterKey,
           async () => {
             const baseWhere = {
               tenantId,
               deletedAt: null as null,
               type: 'inbound' as const,
+              ...excludeOpeningStockPurchasesWhere(),
             };
             const [rows, totalCount] = await Promise.all([
               prisma.stockMovement.findMany({

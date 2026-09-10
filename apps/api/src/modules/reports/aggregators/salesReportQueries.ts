@@ -11,6 +11,7 @@ import { toNumber } from '../../../common/utils/serializers';
 import { bucketLabel, type DateWindow } from './date-utils';
 import type { AggregatedProductSale } from './productSales';
 import { computeJobRevenueTotal } from './jobSalesData';
+import { excludeOpeningStockPurchasesSql, excludeOpeningStockPurchasesWhere } from '../../../common/utils/openingStockMovement';
 
 const NEON_QUERY_CONCURRENCY = 2;
 
@@ -424,6 +425,7 @@ export async function purchaseRevenueByBucket(
         WHERE sm."tenantId" = ${tenantId}
           AND sm."deletedAt" IS NULL
           AND sm.type::text = 'inbound'
+          ${excludeOpeningStockPurchasesSql()}
           AND sm.date >= ${window.from}
           AND sm.date <= ${window.to}
         GROUP BY 1 ORDER BY 1 ASC
@@ -441,6 +443,7 @@ export async function purchaseRevenueByBucket(
         WHERE sm."tenantId" = ${tenantId}
           AND sm."deletedAt" IS NULL
           AND sm.type::text = 'inbound'
+          ${excludeOpeningStockPurchasesSql()}
           AND sm.date >= ${window.from}
           AND sm.date <= ${window.to}
         GROUP BY 1 ORDER BY 1 ASC
@@ -774,6 +777,7 @@ export async function taxReportSummaryAggregates(
       WHERE sm."tenantId" = ${tenantId}
         AND sm."deletedAt" IS NULL
         AND sm.type::text = 'inbound'
+        ${excludeOpeningStockPurchasesSql()}
         AND sm.date >= ${window.from}
         AND sm.date <= ${window.to}
     `,
@@ -1142,6 +1146,7 @@ export async function periodPurchaseRefsPage(
         tenantId,
         deletedAt: null,
         type: 'inbound',
+        ...excludeOpeningStockPurchasesWhere(),
         date: { gte: window.from, lte: window.to },
         invoice: null,
         ...(movementCursor as object | undefined),
@@ -1361,6 +1366,7 @@ export async function inboundPurchaseLines(
     WHERE sm."tenantId" = ${tenantId}
       AND sm."deletedAt" IS NULL
       AND sm.type::text = 'inbound'
+      ${excludeOpeningStockPurchasesSql()}
       AND sm.date >= ${window.from}
       AND sm.date <= ${window.to}
     ORDER BY sm.date DESC
@@ -1385,6 +1391,7 @@ export async function inboundDocCount(
       tenantId,
       deletedAt: null,
       type: 'inbound',
+      ...excludeOpeningStockPurchasesWhere(),
       date: { gte: window.from, lte: window.to },
     },
   });

@@ -42,6 +42,7 @@ import {
   supplierActivityStatus,
 } from '../../common/utils/supplierRollups';
 import { recordPaymentAccountTxn } from '../../common/utils/recordPaymentAccountTxn';
+import { excludeOpeningStockPurchasesWhere } from '../../common/utils/openingStockMovement';
 
 export interface SupplierKpiSummary {
   totalSuppliers: number;
@@ -560,6 +561,7 @@ export class SuppliersService {
         deletedAt: null,
         type: 'inbound',
         source: { not: 'purchase_return' },
+        ...excludeOpeningStockPurchasesWhere(),
         OR: [
           { paymentStatus: { in: ['due', 'partial'] } },
           { paymentStatus: null },
@@ -687,6 +689,7 @@ export class SuppliersService {
         deletedAt: null,
         type: 'inbound',
         source: { not: 'purchase_return' },
+        ...excludeOpeningStockPurchasesWhere(),
       },
       select: { lines: true },
     });

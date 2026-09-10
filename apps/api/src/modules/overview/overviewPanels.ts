@@ -1,6 +1,7 @@
 import type { OverviewPanel } from '@vonos/types';
 import type { TenantScopedPrisma } from '../../common/prisma/prisma.service';
 import { parseMovementLines, toNumber } from '../../common/utils/serializers';
+import { excludeOpeningStockPurchasesWhere } from '../../common/utils/openingStockMovement';
 
 const PANEL_LIMIT = 10;
 
@@ -59,6 +60,7 @@ export async function buildPurchasePaymentDuesPanel(
       deletedAt: null,
       type: 'inbound',
       status: { in: ['Pending', 'Approved', 'Received'] },
+      ...excludeOpeningStockPurchasesWhere(),
     },
     include: { supplier: { select: { name: true } } },
     orderBy: { date: 'desc' },

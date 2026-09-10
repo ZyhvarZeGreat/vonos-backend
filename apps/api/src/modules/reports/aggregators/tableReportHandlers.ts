@@ -12,6 +12,7 @@ import {
   nextCompositeCursor,
 } from '../../../common/utils/pagination';
 import { toNumber } from '../../../common/utils/serializers';
+import { excludeOpeningStockPurchasesSql, excludeOpeningStockPurchasesWhere } from '../../../common/utils/openingStockMovement';
 import { resolveDateWindow } from './date-utils';
 
 const DEFAULT_PAGE = 10;
@@ -660,6 +661,7 @@ async function buildProductSellDetailed(
           WHERE sm."tenantId" = ${tenantId}
             AND sm."deletedAt" IS NULL
             AND sm.type::text = 'inbound'
+            ${excludeOpeningStockPurchasesSql()}
             AND COALESCE(elem->>'sku', '') = ANY(${skus})
           ORDER BY COALESCE(elem->>'sku', ''), sm.date DESC
         `
@@ -1001,6 +1003,7 @@ export async function buildProductPurchaseReport(
     WHERE sm."tenantId" = ${tenantId}
       AND sm."deletedAt" IS NULL
       AND sm.type::text = 'inbound'
+      ${excludeOpeningStockPurchasesSql()}
       AND sm.date >= ${window.from}
       AND sm.date <= ${window.to}
       ${
@@ -1055,6 +1058,7 @@ export async function buildProductPurchaseReport(
         tenantId,
         deletedAt: null,
         type: 'inbound',
+        ...excludeOpeningStockPurchasesWhere(),
         date: { gte: window.from, lte: window.to },
       },
     }),
@@ -1078,6 +1082,7 @@ export async function buildProductPurchaseReport(
       WHERE sm."tenantId" = ${tenantId}
         AND sm."deletedAt" IS NULL
         AND sm.type::text = 'inbound'
+        ${excludeOpeningStockPurchasesSql()}
         AND sm.date >= ${window.from}
         AND sm.date <= ${window.to}
     `,
@@ -1217,6 +1222,7 @@ export async function buildItemsReport(
           WHERE sm."tenantId" = ${tenantId}
             AND sm."deletedAt" IS NULL
             AND sm.type::text = 'inbound'
+            ${excludeOpeningStockPurchasesSql()}
             AND COALESCE(elem->>'sku', '') = ANY(${skus})
           ORDER BY COALESCE(elem->>'sku', ''), sm.date DESC
         `

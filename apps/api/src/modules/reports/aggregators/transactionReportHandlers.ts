@@ -10,6 +10,7 @@ import { Prisma } from '@prisma/client';
 import type { TenantScopedPrisma } from '../../../common/prisma/prisma.service';
 import { ledgerDateFilter } from '../../../common/utils/ledgerAggregates';
 import { parseMovementLines } from '../../../common/utils/stockQuantity';
+import { excludeOpeningStockPurchasesSql, excludeOpeningStockPurchasesWhere } from '../../../common/utils/openingStockMovement';
 import { runPool } from '../../../common/utils/mapPool';
 import { toNumber } from '../../../common/utils/serializers';
 import {
@@ -1366,6 +1367,7 @@ export async function buildStockExpiryReport(
       WHERE sm."tenantId" = ${tenantId}
         AND sm."deletedAt" IS NULL
         AND sm.type::text = 'inbound'
+        ${excludeOpeningStockPurchasesSql()}
         AND sm.status::text = 'Received'
       ORDER BY sm.date DESC
       LIMIT 200
@@ -1412,6 +1414,7 @@ export async function buildStockExpiryReport(
       deletedAt: null,
       type: 'inbound',
       status: 'Received',
+      ...excludeOpeningStockPurchasesWhere(),
     },
     select: {
       id: true,

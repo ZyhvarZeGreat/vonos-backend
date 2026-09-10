@@ -1,6 +1,7 @@
 import type { Item } from '@vonos/types';
 import type { Prisma } from '@prisma/client';
 import { toNumber } from '../utils/serializers';
+import { excludeOpeningStockPurchasesWhere } from './openingStockMovement';
 
 type Db = {
   stockMovement: {
@@ -43,7 +44,12 @@ export async function applyLastPurchasePrices(
   const idSet = new Set(needsOverlay.map((row) => row.id));
 
   const movements = await db.stockMovement.findMany({
-    where: { tenantId, type: 'inbound', deletedAt: null },
+    where: {
+      tenantId,
+      type: 'inbound',
+      deletedAt: null,
+      ...excludeOpeningStockPurchasesWhere(),
+    },
     orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
     select: { lines: true },
     take: 120,
