@@ -6,11 +6,12 @@
 
 [data-hq6="true"] {
   /*
-   * Layout/chrome tokens. Entity color is injected by TenantShell
-   * (tenantAccentStyle → --hq6-header / --color-brand-accent).
-   * Fallback = VA green when accent is missing.
+   * Layout/chrome tokens. Entity color is injected by TenantShell /
+   * UposAppShell (tenantAccentStyle → --hq6-header on html + shell root).
+   * Do NOT set --hq6-header here — nested [data-hq6] nodes would override
+   * the per-entity accent and leave Home stuck on VA green.
    */
-  --hq6-header: #16a34a;
+  --hq6-header: var(--theme-700, #16a34a);
   --hq6-header-hover: color-mix(in srgb, var(--hq6-header) 82%, #000);
   --hq6-blue: var(--hq6-header);
   --hq6-blue-deep: var(--hq6-header-hover);
@@ -5184,10 +5185,10 @@ textarea.hq6-form-input {
 [data-hq6="true"] .hq6-home .theme-header-bg {
   background-image: linear-gradient(
     to right,
-    color-mix(in srgb, var(--hq6-header) 92%, #000),
-    color-mix(in srgb, var(--hq6-header) 78%, #000)
+    color-mix(in srgb, var(--theme-700, var(--hq6-header, #16a34a)) 92%, #000),
+    color-mix(in srgb, var(--theme-700, var(--hq6-header, #16a34a)) 78%, #000)
   );
-  background-color: var(--hq6-header);
+  background-color: var(--theme-700, var(--hq6-header, #16a34a));
 }
 
 /* Blade: second absolute row fades to gray-100 from xl */

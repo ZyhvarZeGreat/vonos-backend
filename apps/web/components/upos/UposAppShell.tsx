@@ -30,6 +30,7 @@ import { useUiStore } from "@/stores/uiStore";
 import { useAuthStore } from "@/stores/authStore";
 import { useTenantId } from "@/lib/hooks/useRouteTenant";
 import { isTenantCode } from "@/lib/registries/tenants";
+import { tenantAccentStyle } from "@/lib/registries/tenantAccents";
 import { cn } from "@/lib/utils/cn";
 
 const BODY_BASE =
@@ -159,6 +160,7 @@ export function UposAppShell({
         data-hq6="true"
         data-tenant={tenantCode || undefined}
         style={{
+          ...tenantAccentStyle(tenantCode),
           minHeight: "100vh",
           visibility: stylesReady ? "visible" : "hidden",
         }}
