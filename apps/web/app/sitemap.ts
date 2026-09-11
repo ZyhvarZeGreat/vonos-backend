@@ -1,5 +1,6 @@
 import type { MetadataRoute } from "next";
 
+import { BLOG_POSTS } from "@/lib/marketing/blog-posts";
 import { fetchAllStoreProductsForSitemap } from "@/lib/marketing/store-api";
 import { absoluteUrl, shopProductPath } from "@/lib/seo/site";
 
@@ -8,6 +9,7 @@ const STATIC_PATHS = [
   "/services",
   "/about",
   "/contact",
+  "/blog",
   "/shop",
   "/track",
 ] as const;
@@ -19,6 +21,13 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     lastModified: now,
     changeFrequency: path === "/" || path === "/shop" ? "daily" : "weekly",
     priority: path === "/" ? 1 : path === "/shop" ? 0.9 : 0.7,
+  }));
+
+  const blogEntries: MetadataRoute.Sitemap = BLOG_POSTS.map((post) => ({
+    url: absoluteUrl(`/blog/${post.slug}`),
+    lastModified: new Date(post.publishedAt),
+    changeFrequency: "monthly",
+    priority: 0.6,
   }));
 
   let productEntries: MetadataRoute.Sitemap = [];
@@ -36,5 +45,5 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     productEntries = [];
   }
 
-  return [...staticEntries, ...productEntries];
+  return [...staticEntries, ...blogEntries, ...productEntries];
 }

@@ -6,6 +6,7 @@ import {
   Param,
   Patch,
   Post,
+  Put,
   Query,
   Req,
   UseGuards,
@@ -31,6 +32,9 @@ import type {
   UpdatePayrollStatusRequest,
   UpdateDesignationRequest,
   UpdatePayrollGroupRequest,
+  UpdatePayrollGroupPayrollsRequest,
+  UpdatePayrollGroupStatusRequest,
+  UpdatePayComponentRequest,
   PayPayrollsRequest,
   PayrollFilters,
 } from '@vonos/types';
@@ -165,6 +169,7 @@ export class HrmController {
     @Query('employeeRecordId') employeeRecordId?: string,
     @Query('locationCode') locationCode?: string,
     @Query('designationId') designationId?: string,
+    @Query('department') department?: string,
     @Query('tenantCode') tenantCode?: string,
     @Query('month') month?: string,
     @Query('year') year?: string,
@@ -184,6 +189,7 @@ export class HrmController {
       employeeRecordId,
       locationCode,
       designationId,
+      department,
       tenantCode,
       month: month ? Number(month) : undefined,
       year: year ? Number(year) : undefined,
@@ -235,6 +241,11 @@ export class HrmController {
     return this.service.updatePayrollStatus(id, dto);
   }
 
+  @Get('payroll/:id/payments')
+  getPayrollPayments(@Param('id') id: string) {
+    return this.service.getPayrollPayments(id);
+  }
+
   @Get('payroll-groups')
   listPayrollGroups(
     @Query('cursor') cursor?: string,
@@ -250,10 +261,33 @@ export class HrmController {
     });
   }
 
+  @Get('payroll-groups/:id')
+  getPayrollGroup(@Param('id') id: string) {
+    return this.service.getPayrollGroupById(id);
+  }
+
   @Post('payroll-groups')
   @Roles('admin', 'manager', 'super_admin')
   createPayrollGroup(@Body() dto: CreatePayrollGroupRequest) {
     return this.service.createPayrollGroup(dto);
+  }
+
+  @Put('payroll-groups/:id/payrolls')
+  @Roles('admin', 'manager', 'super_admin')
+  updatePayrollGroupPayrolls(
+    @Param('id') id: string,
+    @Body() dto: UpdatePayrollGroupPayrollsRequest,
+  ) {
+    return this.service.updatePayrollGroupPayrolls(id, dto);
+  }
+
+  @Patch('payroll-groups/:id/status')
+  @Roles('admin', 'manager', 'super_admin')
+  updatePayrollGroupStatus(
+    @Param('id') id: string,
+    @Body() dto: UpdatePayrollGroupStatusRequest,
+  ) {
+    return this.service.updatePayrollGroupStatus(id, dto.status);
   }
 
   @Patch('payroll-groups/:id')
@@ -290,6 +324,21 @@ export class HrmController {
   @Roles('admin', 'manager', 'super_admin')
   createPayComponent(@Body() dto: CreatePayComponentRequest) {
     return this.service.createPayComponent(dto);
+  }
+
+  @Patch('pay-components/:id')
+  @Roles('admin', 'manager', 'super_admin')
+  updatePayComponent(
+    @Param('id') id: string,
+    @Body() dto: UpdatePayComponentRequest,
+  ) {
+    return this.service.updatePayComponent(id, dto);
+  }
+
+  @Delete('pay-components/:id')
+  @Roles('admin', 'manager', 'super_admin')
+  deletePayComponent(@Param('id') id: string) {
+    return this.service.deletePayComponent(id);
   }
 
   /* —— Essentials / HQ6 HRM screens —— */

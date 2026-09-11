@@ -74,6 +74,22 @@ function supplierColumns(
     },
     { key: "contactId", header: "Contact ID", render: (r) => r.contactId ?? "—" },
     { key: "businessName", header: "Business Name", render: (r) => <span className="font-medium">{r.businessName ?? r.name}</span> },
+    { key: "phone", header: "Mobile", render: (r) => r.phone ?? "—" },
+    {
+      key: "accountHolderName",
+      header: "Account Name",
+      render: (r) => r.accountHolderName?.trim() || "—",
+    },
+    {
+      key: "bankAccountNo",
+      header: "Account Number",
+      render: (r) => r.bankAccountNo?.trim() || "—",
+    },
+    {
+      key: "bankName",
+      header: "Bank Name",
+      render: (r) => r.bankName?.trim() || "—",
+    },
     {
       key: "contactName",
       header: "Name",
@@ -85,7 +101,6 @@ function supplierColumns(
       },
     },
     { key: "email", header: "Email", render: (r) => r.email ?? "—" },
-    { key: "phone", header: "Mobile", render: (r) => r.phone ?? "—" },
     { key: "payTerm", header: "Pay term", render: (r) => r.payTerm ?? "—" },
     {
       key: "openingBalance",

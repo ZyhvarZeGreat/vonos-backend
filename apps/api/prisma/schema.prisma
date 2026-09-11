@@ -224,6 +224,7 @@ model User {
   salesAsCleaner       Sale[]          @relation("SaleCleaner")
   employeesLinked      Employee[]      @relation("EmployeeUser")
   auditLogsActed       AuditLog[]      @relation("AuditLogActor")
+  payrollGroupsCreated PayrollGroup[]  @relation("PayrollGroupCreatedBy")
 
   @@index([tenantId])
   @@index([tenantId, role])
@@ -301,6 +302,9 @@ model Item {
   createdAt          DateTime    @default(now())
   updatedAt          DateTime    @updatedAt
   deletedAt          DateTime?
+
+  /// Generated FTS — migration `20260812190000_list_search_tsvector` (do not write via Prisma).
+  searchVector       Unsupported("tsvector")? @default(dbgenerated("(((setweight(to_tsvector('simple'::regconfig, COALESCE(name, ''::text)), 'A'::\"char\") || setweight(to_tsvector('simple'::regconfig, COALESCE(sku, ''::text)), 'A'::\"char\")) || setweight(to_tsvector('simple'::regconfig, COALESCE(\"carModel\", ''::text)), 'B'::\"char\")) || setweight(to_tsvector('simple'::regconfig, COALESCE(category, ''::text)), 'C'::\"char\"))"))
 
   locationStock      ItemLocationStock[]
 
@@ -567,6 +571,9 @@ model Customer {
   updatedAt DateTime @updatedAt
   deletedAt DateTime?
 
+  /// Generated FTS — migration `20260812190000_list_search_tsvector` (do not write via Prisma).
+  searchVector    Unsupported("tsvector")? @default(dbgenerated("((setweight(to_tsvector('simple'::regconfig, COALESCE(name, ''::text)), 'A'::\"char\") || setweight(to_tsvector('simple'::regconfig, COALESCE(COALESCE(email, ''::text), ''::text)), 'B'::\"char\")) || setweight(to_tsvector('simple'::regconfig, COALESCE(phone, ''::text)), 'B'::\"char\"))"))
+
   sales        Sale[]
   appointments Appointment[]
   jobs         Job[]
@@ -669,7 +676,7 @@ model Sale {
   storeOrderLinks StoreOrderSale[]
 
   @@unique([tenantId, reference])
-  @@unique([tenantId, jobId])
+  /// Partial unique (jobId IS NOT NULL) lives in migration `20260717180000_sale_job_link`.
   @@index([tenantId])
   @@index([tenantId, date])
   @@index([tenantId, status, date])
@@ -1223,6 +1230,12 @@ model PayrollGroup {
   /** HQ6 department short code (e.g. MC, BWP). */
   code        String?
   description String?
+  /** draft | final — HQ6 payroll group approval status. */
+  status      String    @default("draft")
+  locationCode String?
+  createdByUserId String?
+  createdByUser   User? @relation("PayrollGroupCreatedBy", fields: [createdByUserId], references: [id])
+  createdByName   String?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   deletedAt   DateTime?
@@ -1232,6 +1245,7 @@ model PayrollGroup {
   invoice   Invoice?
 
   @@index([tenantId])
+  @@index([tenantId, status])
 }
 
 model Designation {
@@ -1411,17 +1425,22 @@ model Employee {
 }
 
 model PayComponent {
-  id        String    @id @default(cuid())
-  tenantId  String
-  tenant    Tenant    @relation(fields: [tenantId], references: [id])
-  name      String
-  type      String    @default("allowance")
-  amount    Decimal   @default(0)
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  deletedAt DateTime?
+  id               String    @id @default(cuid())
+  tenantId         String
+  tenant           Tenant    @relation(fields: [tenantId], references: [id])
+  name             String
+  type             String    @default("allowance")
+  /** fixed | percent */
+  amountType       String    @default("fixed")
+  amount           Decimal   @default(0)
+  applicableDate   DateTime? @db.Date
+  employeeRecordId String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  deletedAt        DateTime?
 
   @@index([tenantId])
+  @@index([tenantId, employeeRecordId])
 }
 
 model Payroll {

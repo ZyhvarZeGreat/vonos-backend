@@ -31,7 +31,12 @@ export interface Payroll {
   bankCode?: string | null;
   bankAccountNo?: string | null;
   taxPayerId?: string | null;
+  /** HQ6 payslip reference (VPR-YYYY/nnn). */
+  referenceNo?: string | null;
+  department?: string | null;
 }
+
+export type PayrollGroupStatus = "draft" | "final";
 
 export interface PayrollGroup {
   id: string;
@@ -40,8 +45,44 @@ export interface PayrollGroup {
   /** Department ID / short code (HQ6 Manage Departments). */
   code?: string | null;
   description?: string | null;
+  status: PayrollGroupStatus;
+  paymentStatus: "due" | "partial" | "paid";
+  totalGross: number;
+  locationCode: string | null;
+  createdByName: string | null;
   payrollCount: number;
   createdAt: string;
+}
+
+/** Full group detail for View/Edit pages. */
+export interface PayrollGroupDetail extends PayrollGroup {
+  payrolls: Payroll[];
+}
+
+export interface PayrollGroupEmployeeUpdate {
+  payrollId: string;
+  grossPay: number;
+  totalAllowance?: number;
+  totalDeduction?: number;
+  note?: string;
+}
+
+export interface UpdatePayrollGroupPayrollsRequest {
+  name?: string;
+  status?: PayrollGroupStatus;
+  locationCode?: string;
+  sendNotification?: boolean;
+  employees: PayrollGroupEmployeeUpdate[];
+}
+
+export interface PayrollPaymentRow {
+  id: string;
+  paidOn: string | null;
+  paymentRefNo: string | null;
+  amount: number;
+  method: string | null;
+  note: string | null;
+  accountName: string | null;
 }
 
 export interface Designation {
@@ -121,12 +162,18 @@ export interface PayrollCandidate {
   tenantRoleName: string | null;
 }
 
+export type PayComponentAmountType = "fixed" | "percent";
+
 export interface PayComponent {
   id: string;
   tenantId: string;
   name: string;
   type: PayComponentType;
+  amountType: PayComponentAmountType;
   amount: number;
+  applicableDate: string | null;
+  employeeRecordId: string | null;
+  employeeName?: string | null;
   createdAt: string;
 }
 
@@ -187,12 +234,20 @@ export interface CreatePayrollGroupRequest {
   name: string;
   code?: string;
   description?: string;
+  locationCode?: string;
+  status?: PayrollGroupStatus;
 }
 
 export interface UpdatePayrollGroupRequest {
   name?: string;
   code?: string | null;
   description?: string | null;
+  locationCode?: string | null;
+  status?: PayrollGroupStatus;
+}
+
+export interface UpdatePayrollGroupStatusRequest {
+  status: PayrollGroupStatus;
 }
 
 export interface CreateDesignationRequest {
@@ -273,6 +328,18 @@ export interface CreatePayComponentRequest {
   name: string;
   type: PayComponentType;
   amount: number;
+  amountType?: PayComponentAmountType;
+  applicableDate?: string;
+  employeeRecordId?: string;
+}
+
+export interface UpdatePayComponentRequest {
+  name?: string;
+  type?: PayComponentType;
+  amount?: number;
+  amountType?: PayComponentAmountType;
+  applicableDate?: string | null;
+  employeeRecordId?: string | null;
 }
 
 export interface PayrollFilters {
@@ -283,6 +350,7 @@ export interface PayrollFilters {
   employeeRecordId?: string;
   locationCode?: string;
   designationId?: string;
+  department?: string;
   /** Filter all-tenants lists to one entity code (e.g. VA). */
   tenantCode?: string;
   month?: number;

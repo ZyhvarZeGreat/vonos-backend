@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 
+import BlogSection from "@/components/marketing/BlogSection";
 import CaseStudiesSection from "@/components/marketing/CaseStudiesSection";
 import ClientsSection from "@/components/marketing/ClientsSection";
 import FaqSection from "@/components/marketing/FaqSection";
@@ -39,6 +40,7 @@ export default function HomePage() {
         <ClientsSection />
         <CaseStudiesSection />
         <ReviewsSection />
+        <BlogSection />
         <TeamSection />
         <PricingSection />
         <GuaranteeSection />

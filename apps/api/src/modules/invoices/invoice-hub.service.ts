@@ -353,6 +353,56 @@ export class InvoiceHubService {
     );
   }
 
+  /** HQ6-style VPR-2026/1686 sequence per tenant + year. */
+  async nextPayrollInvoiceReference(
+    db: DbClient,
+    tenantId: string,
+    year: number,
+  ): Promise<string> {
+    const prefix = `VPR-${year}/`;
+    const latest = await db.invoice.findFirst({
+      where: {
+        tenantId,
+        deletedAt: null,
+        reference: { startsWith: prefix },
+      },
+      orderBy: { reference: 'desc' },
+      select: { reference: true },
+    });
+    let seq = 1;
+    if (latest?.reference) {
+      const tail = latest.reference.slice(prefix.length);
+      const parsed = Number.parseInt(tail, 10);
+      if (Number.isFinite(parsed)) seq = parsed + 1;
+    }
+    return `${prefix}${seq}`;
+  }
+
+  /** HQ6-style PP2026/13606 payment reference per tenant + year. */
+  async nextPayrollPaymentReference(
+    db: DbClient,
+    tenantId: string,
+    year: number,
+  ): Promise<string> {
+    const prefix = `PP${year}/`;
+    const latest = await db.payment.findFirst({
+      where: {
+        tenantId,
+        deletedAt: null,
+        paymentRefNo: { startsWith: prefix },
+      },
+      orderBy: { paymentRefNo: 'desc' },
+      select: { paymentRefNo: true },
+    });
+    let seq = 1;
+    if (latest?.paymentRefNo) {
+      const tail = latest.paymentRefNo.slice(prefix.length);
+      const parsed = Number.parseInt(tail, 10);
+      if (Number.isFinite(parsed)) seq = parsed + 1;
+    }
+    return `${prefix}${seq}`;
+  }
+
   async ensurePayrollInvoice(
     db: DbClient,
     payroll: {
@@ -392,8 +442,12 @@ export class InvoiceHubService {
       });
     }
 
-    const month = payroll.payrollMonth.toISOString().slice(0, 7);
-    const reference = `PAY-${month}-${payroll.employeeName.replace(/\s+/g, '-').slice(0, 24)}-${payroll.id.slice(-6)}`;
+    const year = payroll.payrollMonth.getUTCFullYear();
+    const reference = await this.nextPayrollInvoiceReference(
+      db,
+      payroll.tenantId,
+      year,
+    );
 
     return this.createInvoice(
       db,

@@ -7,6 +7,9 @@ import type {
   PayComponent,
   Payroll,
   PayrollGroup,
+  PayrollGroupDetail,
+  PayrollGroupStatus,
+  PayrollPaymentRow,
   Designation,
   Employee,
   PayrollCandidate,
@@ -19,6 +22,8 @@ import type {
   SyncEmployeeByUserRequest,
   UpdatePayrollDeductionRequest,
   UpdatePayrollStatusRequest,
+  UpdatePayrollGroupPayrollsRequest,
+  UpdatePayComponentRequest,
   PayPayrollsRequest,
   PayPayrollsResult,
   PayrollFilters,
@@ -37,6 +42,7 @@ import {
 } from '../../common/utils/recordPaymentAccountTxn';
 import { applyDailyFinanceDelta } from '../../common/utils/dailyFinanceRollup';
 import { InvoiceHubService } from '../invoices/invoice-hub.service';
+import { AuditService } from '../audit/audit.service';
 import { CacheService } from '../../common/cache/cache.service';
 import { invalidateTenantDashboardCache } from '../../common/cache/cacheInvalidation';
 import {
@@ -135,12 +141,41 @@ function employeeProfilePatchData(args: SyncEmployeeByUserRequest) {
   return patch;
 }
 
+const PAYROLL_INCLUDE = {
+  payrollGroup: true,
+  designation: { select: { name: true } },
+  employeeRecord: {
+    select: {
+      accountHolderName: true,
+      bankName: true,
+      bankBranch: true,
+      bankCode: true,
+      bankAccountNo: true,
+      taxPayerId: true,
+      department: true,
+    },
+  },
+  invoice: { select: { reference: true } },
+  tenant: { select: { code: true, name: true } },
+} as const;
+
+function aggregateGroupPaymentStatus(
+  payrolls: { paymentStatus: string }[],
+): 'due' | 'partial' | 'paid' {
+  if (payrolls.length === 0) return 'due';
+  const paidCount = payrolls.filter((p) => p.paymentStatus === 'paid').length;
+  if (paidCount === payrolls.length) return 'paid';
+  if (paidCount === 0) return 'due';
+  return 'partial';
+}
+
 @Injectable()
 export class HrmService {
   constructor(
     private readonly tenantDb: TenantDbService,
     private readonly prisma: PrismaService,
     private readonly invoiceHub: InvoiceHubService,
+    private readonly auditService: AuditService,
     private readonly cache: CacheService,
   ) {}
 
@@ -1478,6 +1513,7 @@ export class HrmService {
       employeeRecordId: filters.employeeRecordId,
       locationCode: filters.locationCode,
       designationId: filters.designationId,
+      department: filters.department,
       tenantCode: filters.tenantCode,
       status: filters.status,
       paymentStatus: filters.paymentStatus,
@@ -1558,6 +1594,16 @@ export class HrmService {
       ...(filters.designationId
         ? { designationId: filters.designationId }
         : {}),
+      ...(filters.department
+        ? {
+            employeeRecord: {
+              department: {
+                equals: filters.department.trim(),
+                mode: 'insensitive' as const,
+              },
+            },
+          }
+        : {}),
       ...(tenantCode
         ? { tenant: { code: tenantCode } }
         : {}),
@@ -1631,18 +1677,7 @@ export class HrmService {
         ...(pagination.where ?? {}),
       },
       include: {
-        payrollGroup: true,
-        designation: { select: { name: true } },
-        employeeRecord: {
-          select: {
-            accountHolderName: true,
-            bankName: true,
-            bankBranch: true,
-            bankCode: true,
-            bankAccountNo: true,
-            taxPayerId: true,
-          },
-        },
+        ...PAYROLL_INCLUDE,
         ...(tenantId
           ? {}
           : { tenant: { select: { code: true, name: true } } }),
@@ -1921,6 +1956,22 @@ export class HrmService {
             continue;
           }
 
+          if (row.payrollGroupId) {
+            const groupStatus =
+              row.payrollGroup?.status ??
+              (
+                await tx.payrollGroup.findFirst({
+                  where: { id: row.payrollGroupId, tenantId, deletedAt: null },
+                  select: { status: true },
+                })
+              )?.status;
+            if (groupStatus !== 'final') {
+              throw new BadRequestException(
+                'Payroll group must be marked final before payment',
+              );
+            }
+          }
+
           const netPay = toNumber(row.netPay);
           if (netPay <= 0) {
             skipped += 1;
@@ -1933,6 +1984,13 @@ export class HrmService {
             invoice = await this.invoiceHub.ensurePayrollInvoice(tx, row);
           }
 
+          const paymentRefNo =
+            await this.invoiceHub.nextPayrollPaymentReference(
+              tx,
+              tenantId,
+              paidOn.getUTCFullYear(),
+            );
+
           const payment = await tx.payment.create({
             data: {
               tenantId,
@@ -1943,6 +2001,7 @@ export class HrmService {
               paymentFor: 'payroll',
               accountId: account.id,
               invoiceId: invoice.id,
+              paymentRefNo,
               note:
                 note ||
                 `Payroll — ${row.employeeName} (${toIso(row.payrollMonth).slice(0, 7)})`,
@@ -1987,7 +2046,7 @@ export class HrmService {
           await tx.expense.create({
             data: {
               tenantId,
-              refNo: invoice.reference,
+              refNo: paymentRefNo,
               categoryId: payrollCategory.id,
               subCategory: 'Wages',
               totalAmount: netPay,
@@ -2092,6 +2151,11 @@ export class HrmService {
     });
     if (!existing) {
       throw new BadRequestException('Payroll not found');
+    }
+    if (existing.status === 'final') {
+      throw new BadRequestException(
+        'Cannot delete a payroll that is marked final',
+      );
     }
 
     const wasPaid =
@@ -2374,11 +2438,11 @@ export class HrmService {
     const tenantId = this.tenantDb.requireTenantId();
     const pageLimit = filters.limit ?? 10;
     const pagination = buildCompositeCursorQuery({
-      sortField: 'name',
-      sortDir: 'asc',
+      sortField: 'createdAt',
+      sortDir: 'desc',
       cursor: filters.cursor,
       limit: pageLimit,
-      sortValueType: 'string',
+      sortValueType: 'date',
     });
     const baseWhere = {
       tenantId,
@@ -2392,19 +2456,21 @@ export class HrmService {
         ...baseWhere,
         ...(pagination.where ?? {}),
       },
-      include: { _count: { select: { payrolls: true } } },
-      orderBy: [{ name: 'asc' }, { id: 'asc' }],
+      include: {
+        _count: {
+          select: {
+            payrolls: { where: { deletedAt: null } },
+          },
+        },
+        payrolls: {
+          where: { deletedAt: null },
+          select: { netPay: true, paymentStatus: true },
+        },
+      },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       take: pagination.take,
     });
-    const items = rows.map((row) => ({
-      id: row.id,
-      tenantId: row.tenantId,
-      name: row.name,
-      code: row.code ?? null,
-      description: row.description ?? null,
-      payrollCount: row._count.payrolls,
-      createdAt: toIso(row.createdAt),
-    }));
+    const items = rows.map((row) => this.serializePayrollGroup(row));
     if (filters.includeSummary === false) {
       return { items, hasMore: items.length >= pageLimit };
     }
@@ -2414,40 +2480,92 @@ export class HrmService {
     return { items, totalCount, hasMore: items.length >= pageLimit };
   }
 
+  async getPayrollGroupById(id: string): Promise<PayrollGroupDetail> {
+    const tenantId = this.tenantDb.requireTenantId();
+    const row = await this.tenantDb.db.payrollGroup.findFirst({
+      where: { id, tenantId, deletedAt: null },
+      include: {
+        _count: {
+          select: {
+            payrolls: { where: { deletedAt: null } },
+          },
+        },
+        payrolls: {
+          where: { deletedAt: null },
+          select: { netPay: true, paymentStatus: true },
+        },
+      },
+    });
+    if (!row) {
+      throw new BadRequestException('Payroll group not found');
+    }
+    const payrollRows = await this.tenantDb.db.payroll.findMany({
+      where: { tenantId, payrollGroupId: id, deletedAt: null },
+      include: PAYROLL_INCLUDE,
+      orderBy: [{ employeeName: 'asc' }, { id: 'asc' }],
+    });
+    const header = this.serializePayrollGroup({
+      ...row,
+      payrolls: payrollRows.map((p) => ({
+        netPay: p.netPay,
+        paymentStatus: p.paymentStatus,
+      })),
+    });
+    return {
+      ...header,
+      payrolls: payrollRows.map((r) => this.serializePayroll(r)),
+    };
+  }
+
   async createPayrollGroup(dto: CreatePayrollGroupRequest): Promise<PayrollGroup> {
     const tenantId = this.tenantDb.requireTenantId();
     const name = dto.name?.trim();
     if (!name) {
       throw new BadRequestException('Department name is required');
     }
+    const createdBy = await this.auditService.createdByFields();
+    const status =
+      dto.status === 'final' || dto.status === 'draft' ? dto.status : 'draft';
     const row = await this.tenantDb.db.payrollGroup.create({
       data: {
         tenantId,
         name,
         code: dto.code?.trim() || null,
         description: dto.description?.trim() || null,
+        locationCode: dto.locationCode?.trim() || null,
+        status,
+        createdByUserId: createdBy.createdByUserId ?? null,
+        createdByName: createdBy.createdByName ?? null,
       },
-      include: { _count: { select: { payrolls: true } } },
+      include: {
+        _count: {
+          select: {
+            payrolls: { where: { deletedAt: null } },
+          },
+        },
+        payrolls: {
+          where: { deletedAt: null },
+          select: { netPay: true, paymentStatus: true },
+        },
+      },
     });
     try {
       await this.invoiceHub.ensurePayrollGroupInvoice(this.tenantDb.db, row);
     } catch {
       // Department create should succeed even if invoice materialization fails.
     }
-    return {
-      id: row.id,
-      tenantId: row.tenantId,
-      name: row.name,
-      code: row.code ?? null,
-      description: row.description ?? null,
-      payrollCount: row._count.payrolls,
-      createdAt: toIso(row.createdAt),
-    };
+    return this.serializePayrollGroup(row);
   }
 
   async updatePayrollGroup(
     id: string,
-    dto: { name?: string; code?: string | null; description?: string | null },
+    dto: {
+      name?: string;
+      code?: string | null;
+      description?: string | null;
+      locationCode?: string | null;
+      status?: PayrollGroupStatus;
+    },
   ): Promise<PayrollGroup> {
     const tenantId = this.tenantDb.requireTenantId();
     const existing = await this.tenantDb.db.payrollGroup.findFirst({
@@ -2455,6 +2573,21 @@ export class HrmService {
     });
     if (!existing) {
       throw new BadRequestException('Department not found');
+    }
+    if (existing.status === 'final' && dto.status === 'draft') {
+      const paidCount = await this.tenantDb.db.payroll.count({
+        where: {
+          tenantId,
+          payrollGroupId: id,
+          deletedAt: null,
+          paymentStatus: 'paid',
+        },
+      });
+      if (paidCount > 0) {
+        throw new BadRequestException(
+          'Cannot revert to draft when payrolls are paid',
+        );
+      }
     }
     const row = await this.tenantDb.db.payrollGroup.update({
       where: { id },
@@ -2464,18 +2597,184 @@ export class HrmService {
         ...(dto.description !== undefined
           ? { description: dto.description?.trim() || null }
           : {}),
+        ...(dto.locationCode !== undefined
+          ? { locationCode: dto.locationCode?.trim() || null }
+          : {}),
+        ...(dto.status !== undefined ? { status: dto.status } : {}),
       },
-      include: { _count: { select: { payrolls: true } } },
+      include: {
+        _count: {
+          select: {
+            payrolls: { where: { deletedAt: null } },
+          },
+        },
+        payrolls: {
+          where: { deletedAt: null },
+          select: { netPay: true, paymentStatus: true },
+        },
+      },
     });
-    return {
-      id: row.id,
-      tenantId: row.tenantId,
-      name: row.name,
-      code: row.code ?? null,
-      description: row.description ?? null,
-      payrollCount: row._count.payrolls,
-      createdAt: toIso(row.createdAt),
-    };
+    if (dto.status === 'final') {
+      await this.tenantDb.db.payroll.updateMany({
+        where: {
+          tenantId,
+          payrollGroupId: id,
+          deletedAt: null,
+          paymentStatus: { not: 'paid' },
+        },
+        data: { status: 'final' },
+      });
+    }
+    return this.serializePayrollGroup(row);
+  }
+
+  async updatePayrollGroupStatus(
+    id: string,
+    status: PayrollGroupStatus,
+  ): Promise<PayrollGroup> {
+    return this.updatePayrollGroup(id, { status });
+  }
+
+  async updatePayrollGroupPayrolls(
+    id: string,
+    dto: UpdatePayrollGroupPayrollsRequest,
+  ): Promise<PayrollGroupDetail> {
+    const tenantId = this.tenantDb.requireTenantId();
+    const group = await this.tenantDb.db.payrollGroup.findFirst({
+      where: { id, tenantId, deletedAt: null },
+    });
+    if (!group) {
+      throw new BadRequestException('Payroll group not found');
+    }
+    if (group.status === 'final' && dto.status !== 'draft') {
+      const paidCount = await this.tenantDb.db.payroll.count({
+        where: {
+          tenantId,
+          payrollGroupId: id,
+          deletedAt: null,
+          paymentStatus: 'paid',
+        },
+      });
+      if (paidCount > 0 && dto.employees.length > 0) {
+        throw new BadRequestException(
+          'Cannot edit payroll amounts after payment',
+        );
+      }
+    }
+
+    await this.tenantDb.db.$transaction(async (tx) => {
+      if (dto.name !== undefined || dto.locationCode !== undefined || dto.status !== undefined) {
+        await tx.payrollGroup.update({
+          where: { id },
+          data: {
+            ...(dto.name !== undefined ? { name: dto.name.trim() } : {}),
+            ...(dto.locationCode !== undefined
+              ? { locationCode: dto.locationCode?.trim() || null }
+              : {}),
+            ...(dto.status !== undefined ? { status: dto.status } : {}),
+          },
+        });
+      }
+
+      for (const emp of dto.employees) {
+        const payrollId = emp.payrollId?.trim();
+        if (!payrollId) continue;
+        const existing = await tx.payroll.findFirst({
+          where: {
+            id: payrollId,
+            tenantId,
+            payrollGroupId: id,
+            deletedAt: null,
+          },
+        });
+        if (!existing) {
+          throw new BadRequestException(`Payroll ${payrollId} not found in group`);
+        }
+        if (
+          existing.paymentStatus === 'paid' ||
+          existing.status === 'paid'
+        ) {
+          throw new BadRequestException(
+            `Cannot edit paid payroll for ${existing.employeeName}`,
+          );
+        }
+
+        const allowance = emp.totalAllowance ?? toNumber(existing.totalAllowance);
+        const deduction = emp.totalDeduction ?? toNumber(existing.totalDeduction);
+        const grossPay = emp.grossPay ?? toNumber(existing.grossPay);
+        const netPay = grossPay + allowance - deduction;
+        if (netPay < 0) {
+          throw new BadRequestException(
+            `Net pay cannot be negative for ${existing.employeeName}`,
+          );
+        }
+
+        const row = await tx.payroll.update({
+          where: { id: payrollId },
+          data: {
+            grossPay,
+            totalAllowance: allowance,
+            totalDeduction: deduction,
+            netPay,
+            ...(emp.note !== undefined ? { note: emp.note?.trim() || null } : {}),
+            ...(dto.status === 'final' ? { status: 'final' } : {}),
+          },
+          include: PAYROLL_INCLUDE,
+        });
+        await this.invoiceHub.ensurePayrollInvoice(tx, row);
+      }
+
+      if (dto.status === 'final') {
+        await tx.payroll.updateMany({
+          where: {
+            tenantId,
+            payrollGroupId: id,
+            deletedAt: null,
+            paymentStatus: { not: 'paid' },
+          },
+          data: { status: 'final' },
+        });
+      }
+    });
+
+    void invalidateTenantDashboardCache(this.cache, tenantId);
+    void this.cache.bumpListVersion(tenantId, 'hrm-payrolls');
+    void this.cache.bumpListVersion(tenantId, 'hrm-payroll-groups');
+    return this.getPayrollGroupById(id);
+  }
+
+  async getPayrollPayments(id: string): Promise<PayrollPaymentRow[]> {
+    const tenantId = this.tenantDb.requireTenantId();
+    const payroll = await this.tenantDb.db.payroll.findFirst({
+      where: { id, tenantId, deletedAt: null },
+      include: { invoice: { select: { id: true } } },
+    });
+    if (!payroll) {
+      throw new BadRequestException('Payroll not found');
+    }
+    if (!payroll.invoice) {
+      return [];
+    }
+
+    const payments = await this.tenantDb.db.payment.findMany({
+      where: {
+        tenantId,
+        invoiceId: payroll.invoice.id,
+        deletedAt: null,
+      },
+      include: { account: { select: { name: true } } },
+      orderBy: [{ paidOn: 'desc' }, { id: 'desc' }],
+    });
+
+    return payments.map((p) => ({
+      id: p.id,
+      paidOn: p.paidOn ? toIso(p.paidOn) : null,
+      paymentRefNo: p.paymentRefNo ?? null,
+      amount: toNumber(p.amount),
+      method: p.method ?? null,
+      note: p.note ?? null,
+      accountName: p.account?.name ?? null,
+    }));
   }
 
   async deletePayrollGroup(id: string): Promise<{ ok: true }> {
@@ -2485,6 +2784,24 @@ export class HrmService {
     });
     if (!existing) {
       throw new BadRequestException('Department not found');
+    }
+    if (existing.status === 'final') {
+      throw new BadRequestException(
+        'Cannot delete a payroll group marked final',
+      );
+    }
+    const paidCount = await this.tenantDb.db.payroll.count({
+      where: {
+        tenantId,
+        payrollGroupId: id,
+        deletedAt: null,
+        paymentStatus: 'paid',
+      },
+    });
+    if (paidCount > 0) {
+      throw new BadRequestException(
+        'Cannot delete a payroll group with paid payrolls',
+      );
     }
     await this.tenantDb.db.payrollGroup.update({
       where: { id },
@@ -2527,14 +2844,34 @@ export class HrmService {
       orderBy: [{ name: 'asc' }, { id: 'asc' }],
       take: pagination.take,
     });
-    const items = rows.map((row) => ({
-      id: row.id,
-      tenantId: row.tenantId,
-      name: row.name,
-      type: row.type as PayComponent['type'],
-      amount: toNumber(row.amount),
-      createdAt: toIso(row.createdAt),
-    }));
+    const employeeIds = [
+      ...new Set(
+        rows
+          .map((r) => r.employeeRecordId)
+          .filter((id): id is string => Boolean(id)),
+      ),
+    ];
+    const employees =
+      employeeIds.length > 0
+        ? await this.tenantDb.db.employee.findMany({
+            where: { tenantId, id: { in: employeeIds }, deletedAt: null },
+            select: { id: true, name: true },
+          })
+        : [];
+    const employeeNameById = new Map(
+      employees.map((e) => [e.id, e.name] as const),
+    );
+    const items = rows.map((row) =>
+      this.serializePayComponent({
+        ...row,
+        employeeRecord: row.employeeRecordId
+          ? {
+              name:
+                employeeNameById.get(row.employeeRecordId) ?? 'Unknown',
+            }
+          : null,
+      }),
+    );
     if (filters.includeSummary === false) {
       return { items, hasMore: items.length >= pageLimit };
     }
@@ -2546,22 +2883,91 @@ export class HrmService {
 
   async createPayComponent(dto: CreatePayComponentRequest): Promise<PayComponent> {
     const tenantId = this.tenantDb.requireTenantId();
+    const amountType =
+      dto.amountType === 'percent' || dto.amountType === 'fixed'
+        ? dto.amountType
+        : 'fixed';
+    const applicableDate = dto.applicableDate
+      ? parseOptionalDate(dto.applicableDate)
+      : null;
     const row = await this.tenantDb.db.payComponent.create({
       data: {
         tenantId,
-        name: dto.name,
+        name: dto.name.trim(),
         type: dto.type,
+        amountType,
         amount: dto.amount,
+        applicableDate: applicableDate ?? null,
+        employeeRecordId: dto.employeeRecordId?.trim() || null,
       },
     });
-    return {
-      id: row.id,
-      tenantId: row.tenantId,
-      name: row.name,
-      type: row.type as PayComponent['type'],
-      amount: toNumber(row.amount),
-      createdAt: toIso(row.createdAt),
-    };
+    let employeeRecord: { name: string } | null = null;
+    if (row.employeeRecordId) {
+      const emp = await this.tenantDb.db.employee.findFirst({
+        where: { id: row.employeeRecordId, tenantId, deletedAt: null },
+        select: { name: true },
+      });
+      employeeRecord = emp ? { name: emp.name } : null;
+    }
+    return this.serializePayComponent({ ...row, employeeRecord });
+  }
+
+  async updatePayComponent(
+    id: string,
+    dto: UpdatePayComponentRequest,
+  ): Promise<PayComponent> {
+    const tenantId = this.tenantDb.requireTenantId();
+    const existing = await this.tenantDb.db.payComponent.findFirst({
+      where: { id, tenantId, deletedAt: null },
+    });
+    if (!existing) {
+      throw new BadRequestException('Pay component not found');
+    }
+    const applicableDate =
+      dto.applicableDate !== undefined
+        ? dto.applicableDate === null
+          ? null
+          : parseOptionalDate(dto.applicableDate)
+        : undefined;
+    const row = await this.tenantDb.db.payComponent.update({
+      where: { id },
+      data: {
+        ...(dto.name !== undefined ? { name: dto.name.trim() } : {}),
+        ...(dto.type !== undefined ? { type: dto.type } : {}),
+        ...(dto.amount !== undefined ? { amount: dto.amount } : {}),
+        ...(dto.amountType !== undefined ? { amountType: dto.amountType } : {}),
+        ...(applicableDate !== undefined
+          ? { applicableDate: applicableDate ?? null }
+          : {}),
+        ...(dto.employeeRecordId !== undefined
+          ? { employeeRecordId: dto.employeeRecordId?.trim() || null }
+          : {}),
+      },
+    });
+    let employeeRecord: { name: string } | null = null;
+    if (row.employeeRecordId) {
+      const emp = await this.tenantDb.db.employee.findFirst({
+        where: { id: row.employeeRecordId, tenantId, deletedAt: null },
+        select: { name: true },
+      });
+      employeeRecord = emp ? { name: emp.name } : null;
+    }
+    return this.serializePayComponent({ ...row, employeeRecord });
+  }
+
+  async deletePayComponent(id: string): Promise<{ ok: true }> {
+    const tenantId = this.tenantDb.requireTenantId();
+    const existing = await this.tenantDb.db.payComponent.findFirst({
+      where: { id, tenantId, deletedAt: null },
+    });
+    if (!existing) {
+      throw new BadRequestException('Pay component not found');
+    }
+    await this.tenantDb.db.payComponent.update({
+      where: { id },
+      data: { deletedAt: new Date() },
+    });
+    return { ok: true };
   }
 
   private serializeEmployee(row: {
@@ -2650,6 +3056,43 @@ export class HrmService {
     };
   }
 
+  private serializePayrollGroup(row: {
+    id: string;
+    tenantId: string;
+    name: string;
+    code?: string | null;
+    description?: string | null;
+    status: string;
+    locationCode: string | null;
+    createdByName: string | null;
+    createdAt: Date;
+    _count?: { payrolls: number };
+    payrolls?: Array<{
+      netPay: { toString(): string };
+      paymentStatus: string;
+    }>;
+  }): PayrollGroup {
+    const payrolls = row.payrolls ?? [];
+    const totalGross = payrolls.reduce(
+      (sum, p) => sum + toNumber(p.netPay),
+      0,
+    );
+    return {
+      id: row.id,
+      tenantId: row.tenantId,
+      name: row.name,
+      code: row.code ?? null,
+      description: row.description ?? null,
+      status: row.status === 'final' ? 'final' : 'draft',
+      paymentStatus: aggregateGroupPaymentStatus(payrolls),
+      totalGross,
+      locationCode: row.locationCode ?? null,
+      createdByName: row.createdByName ?? null,
+      payrollCount: row._count?.payrolls ?? payrolls.length,
+      createdAt: toIso(row.createdAt),
+    };
+  }
+
   private serializePayroll(row: {
     id: string;
     tenantId: string;
@@ -2671,6 +3114,7 @@ export class HrmService {
     payrollGroup: { name: string } | null;
     designation?: { name: string } | null;
     tenant?: { code: string; name: string } | null;
+    invoice?: { reference: string } | null;
     employeeRecord?: {
       accountHolderName: string | null;
       bankName: string | null;
@@ -2678,6 +3122,7 @@ export class HrmService {
       bankCode: string | null;
       bankAccountNo: string | null;
       taxPayerId: string | null;
+      department?: string | null;
     } | null;
   }): Payroll {
     const bank = row.employeeRecord;
@@ -2703,12 +3148,43 @@ export class HrmService {
       payrollMonth: toIso(row.payrollMonth),
       note: row.note,
       createdAt: toIso(row.createdAt),
+      referenceNo: row.invoice?.reference ?? null,
+      department: bank?.department ?? null,
       accountHolderName: bank?.accountHolderName ?? null,
       bankName: bank?.bankName ?? null,
       bankBranch: bank?.bankBranch ?? null,
       bankCode: bank?.bankCode ?? null,
       bankAccountNo: bank?.bankAccountNo ?? null,
       taxPayerId: bank?.taxPayerId ?? null,
+    };
+  }
+
+  private serializePayComponent(row: {
+    id: string;
+    tenantId: string;
+    name: string;
+    type: string;
+    amountType: string;
+    amount: { toString(): string };
+    applicableDate: Date | null;
+    employeeRecordId: string | null;
+    createdAt: Date;
+    employeeRecord?: { name: string } | null;
+  }): PayComponent {
+    return {
+      id: row.id,
+      tenantId: row.tenantId,
+      name: row.name,
+      type: row.type as PayComponent['type'],
+      amountType:
+        row.amountType === 'percent' ? 'percent' : ('fixed' as const),
+      amount: toNumber(row.amount),
+      applicableDate: row.applicableDate
+        ? toIso(row.applicableDate).slice(0, 10)
+        : null,
+      employeeRecordId: row.employeeRecordId ?? null,
+      employeeName: row.employeeRecord?.name ?? null,
+      createdAt: toIso(row.createdAt),
     };
   }
 }

@@ -3,19 +3,17 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { Minus, Plus } from "lucide-react";
 import { useAppMutation } from "@/lib/hooks/useAppMutation";
 import type {
   InvoiceListRow,
   PayComponent,
+  PayComponentAmountType,
   Payroll,
   PayrollCandidate,
   PayrollGroup,
   PayrollStaffBucket,
 } from "@vonos/types";
 import { Button } from "@/components/atoms/Button";
-import { Input } from "@/components/atoms/Input";
-import { Modal, ModalFooter, ModalHeader } from "@/components/atoms/Modal";
 import { EntityColorBadge } from "@/components/atoms/EntityColorBadge";
 import { StatusPill } from "@/components/atoms/StatusPill";
 import { EntityContextBanner } from "@/components/molecules/EntityContextBanner";
@@ -25,7 +23,6 @@ import {
   type PayrollEmployeePick,
 } from "@/components/molecules/EmployeePayrollSearch";
 import { Hq6ActionsMenu } from "@/components/hq6/Hq6ActionsMenu";
-import { Hq6BusyButton } from "@/components/hq6/Hq6BusyButton";
 import { Hq6ConfirmModal } from "@/components/hq6/Hq6ConfirmModal";
 import { Hq6Field, Hq6Modal, Hq6ModalSaveClose } from "@/components/hq6/Hq6Modal";
 import { type ColumnConfig } from "@/components/organisms/DataTable";
@@ -37,37 +34,27 @@ import {
 } from "@/components/organisms/PayrollPayslipDocument";
 import { ServerPaginatedTable } from "@/components/organisms/ServerPaginatedTable";
 import { UposGradientActionButton } from "@/components/upos/UposNavTabs";
+import { savePayrollCreateSession } from "@/components/pages/payroll/payrollCreateSession";
+import { PayrollViewPaymentsModal } from "@/components/pages/payroll/PayrollViewPaymentsModal";
 import {
-  addPayrollDeduction,
   createPayComponent,
-  createPayroll,
   createPayrollGroup,
-  updatePayrollStatus,
-  getAllPayComponents,
-  getPayrollCandidates,
+  deletePayComponent,
   getAllTenantsPayrollsPage,
+  getEmployees,
   getPayComponentsPage,
+  getPayrollCandidates,
   getPayrollGroups,
   getPayrollGroupsPage,
+  getPayrollPayments,
   getPayrollsPage,
   getDesignations,
-  getUnpaidPayrollsForGroup,
-  deletePayroll,
-  payPayrolls,
+  updatePayComponent,
 } from "@/lib/api/hrm";
 import { findInvoiceForPayroll } from "@/lib/api/invoices";
-import {
-  mapQueriesByPrefix,
-  removeEntityFromQueries,
-} from "@/lib/query/optimistic";
-import { PaymentAccountSelect } from "@/components/hq6/PaymentAccountSelect";
-import { Hq6DateTimeInput } from "@/components/hq6/Hq6DateTimeInput";
-import { HQ6_PAYMENT_METHOD_OPTIONS } from "@/lib/utils/hq6PaymentMethods";
 import { ENTITY_LIST, getTenantCodeFromId } from "@/lib/registries/tenants";
 import { getTenantConfigById } from "@/lib/registries/tenantConfigs";
 import { toast } from "@/stores/toastStore";
-import { formatHq6Currency } from "@/lib/utils/hq6Format";
-import { useHq6Permissions } from "@/lib/hooks/useHq6Permissions";
 import { useIsVaHq6 } from "@/lib/hooks/useIsVaHq6";
 import { useServerListPage } from "@/lib/hooks/useServerListPage";
 import { useRouteTenant, useTenantId } from "@/lib/hooks/useRouteTenant";
@@ -106,180 +93,12 @@ const STAFF_BUCKET_FILTERS: Array<{
   { value: "technical", label: "Technical staff" },
 ];
 
-function nowPaidOnLocal(): string {
-  const d = new Date();
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-
-function paidOnToIso(value: string): string {
-  if (!value) return new Date().toISOString();
-  const d = new Date(value);
-  return Number.isNaN(d.getTime()) ? new Date().toISOString() : d.toISOString();
-}
-
-type PayRowForm = {
-  paidOn: string;
-  accountId: string;
-  method: string;
-};
-
-function emptyPayRowForm(): PayRowForm {
-  return {
-    paidOn: nowPaidOnLocal(),
-    accountId: "",
-    method: "",
-  };
-}
-
-function payrollBankDetailLines(row: Payroll): Array<{ label: string; value: string }> {
-  return [
-    { label: "Bank Name", value: row.bankName?.trim() || "" },
-    {
-      label: "Account Holder's Name",
-      value: row.accountHolderName?.trim() || "",
-    },
-    { label: "Branch Name", value: row.bankBranch?.trim() || "" },
-    {
-      label: "Bank Identifier Code",
-      value: row.bankCode?.trim() || "",
-    },
-    { label: "Bank Account No.", value: row.bankAccountNo?.trim() || "" },
-    { label: "Tax Payer ID", value: row.taxPayerId?.trim() || "" },
-  ];
-}
-
-type AmountType = "fixed" | "percent";
-
-type PayLine = {
-  id: string;
-  name: string;
-  amountType: AmountType;
-  amount: string;
-};
-
-type EmployeePayrollDraft = {
-  workDuration: string;
-  durationUnit: string;
-  amountPerUnit: string;
-  allowances: PayLine[];
-  deductions: PayLine[];
-  note: string;
-};
-
-const DURATION_UNIT_OPTIONS = [
-  { value: "Month", label: "Month" },
-  { value: "Day", label: "Day" },
-  { value: "Hour", label: "Hour" },
-] as const;
-
-function newPayLine(): PayLine {
-  return {
-    id: `line-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    name: "",
-    amountType: "fixed",
-    amount: "0",
-  };
-}
-
-function emptyEmployeeDraft(): EmployeePayrollDraft {
-  return {
-    workDuration: "1",
-    durationUnit: "Month",
-    amountPerUnit: "0",
-    allowances: [newPayLine()],
-    deductions: [newPayLine()],
-    note: "",
-  };
-}
-
-/** Prefill allowance / deduction rows from the Pay Components catalog. */
-function employeeDraftFromPayComponents(
-  components: PayComponent[],
-): EmployeePayrollDraft {
-  const allowances = components
-    .filter((c) => c.type === "allowance" && Number(c.amount) > 0)
-    .map((c) => ({
-      id: `line-${c.id}`,
-      name: c.name,
-      amountType: "fixed" as const,
-      amount: String(c.amount),
-    }));
-  const deductions = components
-    .filter((c) => c.type === "deduction" && Number(c.amount) > 0)
-    .map((c) => ({
-      id: `line-${c.id}`,
-      name: c.name,
-      amountType: "fixed" as const,
-      amount: String(c.amount),
-    }));
-  return {
-    workDuration: "1",
-    durationUnit: "Month",
-    amountPerUnit: "0",
-    allowances: allowances.length > 0 ? allowances : [newPayLine()],
-    deductions: deductions.length > 0 ? deductions : [newPayLine()],
-    note: "",
-  };
-}
-
 function parseMoneyInput(raw: string): number {
-  // Commas are thousand separators — Number.parseFloat("100,000") === 100.
   const cleaned = raw.replace(/,/g, "").replace(/\s/g, "").trim();
   if (!cleaned) return Number.NaN;
   return Number.parseFloat(cleaned);
 }
 
-function lineAmountValue(line: PayLine, base: number): number {
-  const n = parseMoneyInput(line.amount);
-  if (!Number.isFinite(n) || n <= 0) return 0;
-  if (line.amountType === "percent") return (base * n) / 100;
-  return n;
-}
-
-function sumPayLines(lines: PayLine[], base: number): number {
-  return lines.reduce((sum, line) => sum + lineAmountValue(line, base), 0);
-}
-
-function basicSalaryTotal(draft: EmployeePayrollDraft): number {
-  const duration = parseMoneyInput(draft.workDuration);
-  const rate = parseMoneyInput(draft.amountPerUnit);
-  if (!Number.isFinite(duration) || !Number.isFinite(rate)) return 0;
-  return duration * rate;
-}
-
-function formatPayLinesNote(
-  allowances: PayLine[],
-  deductions: PayLine[],
-  base: number,
-): string | undefined {
-  const parts: string[] = [];
-  for (const line of allowances) {
-    const amt = lineAmountValue(line, base);
-    if (!line.name.trim() || amt <= 0) continue;
-    const suffix =
-      line.amountType === "percent" ? ` (${line.amount}% of basic)` : "";
-    parts.push(`+ ${line.name.trim()}: ${amt}${suffix}`);
-  }
-  for (const line of deductions) {
-    const amt = lineAmountValue(line, base);
-    if (!line.name.trim() || amt <= 0) continue;
-    const suffix =
-      line.amountType === "percent" ? ` (${line.amount}% of basic)` : "";
-    parts.push(`- ${line.name.trim()}: ${amt}${suffix}`);
-  }
-  return parts.length > 0 ? parts.join("; ") : undefined;
-}
-
-function updatePayLine(
-  lines: PayLine[],
-  id: string,
-  patch: Partial<PayLine>,
-): PayLine[] {
-  return lines.map((row) => (row.id === id ? { ...row, ...patch } : row));
-}
-
-/** First configured business location, or empty when none. */
 function defaultBusinessLocationCode(
   options: Array<{ value: string; label: string }>,
 ): string {
@@ -295,6 +114,26 @@ function listLoadError(error: unknown, fallback: string): string | null {
   return fallback;
 }
 
+function payrollGroupHref(
+  group: PayrollGroup,
+  allTenants: boolean,
+  tenantCode: string | null,
+  action?: "edit" | "pay",
+): string {
+  const tenantCodeForLink = allTenants
+    ? getTenantCodeFromId(group.tenantId)
+    : tenantCode;
+  if (allTenants && !tenantCodeForLink) {
+    const q = `?tenantId=${encodeURIComponent(group.tenantId)}`;
+    const base = `/admin/hrm/payroll-groups/${group.id}${q}`;
+    return action ? `${base}/${action}` : base;
+  }
+  const base = tenantCodeForLink
+    ? tenantListPath(tenantCodeForLink, `hrm/payroll-groups/${group.id}`)
+    : "#";
+  return action ? `${base}/${action}` : base;
+}
+
 const PAYROLL_TABS = [
   { id: "payrolls", label: "All Payrolls" },
   { id: "groups", label: "Payroll Groups" },
@@ -308,11 +147,6 @@ const PAYROLL_STATUS_OPTIONS = [
   { value: "final", label: "Final" },
   { value: "paid", label: "Paid" },
 ];
-
-const PAYROLL_ROW_STATUS_OPTIONS = [
-  { value: "draft", label: "Draft" },
-  { value: "final", label: "Final" },
-] as const;
 
 const PAYMENT_STATUS_OPTIONS = [
   { value: "due", label: "Due" },
@@ -335,57 +169,9 @@ const MONTH_OPTIONS = [
   { value: "12", label: "December" },
 ];
 
-const payrollColumns: ColumnConfig<Payroll>[] = [
-  {
-    key: "employeeName",
-    header: "Employee",
-    render: (r) => <span className="font-medium">{r.employeeName}</span>,
-  },
-  {
-    key: "payrollMonth",
-    header: "Month",
-    sortValue: (r) => new Date(r.payrollMonth).getTime(),
-    render: (r) => formatDate(r.payrollMonth),
-  },
-  { key: "payrollGroupName", header: "Group", render: (r) => r.payrollGroupName ?? "—" },
-  { key: "locationCode", header: "Location", render: (r) => r.locationCode ?? "—" },
-  {
-    key: "grossPay",
-    header: "Gross",
-    sortValue: (r) => r.grossPay,
-    render: (r) => formatCurrency(r.grossPay, "NGN"),
-  },
-  {
-    key: "totalDeduction",
-    header: "Deductions",
-    sortValue: (r) => r.totalDeduction,
-    render: (r) => formatCurrency(r.totalDeduction, "NGN"),
-  },
-  {
-    key: "netPay",
-    header: "Net Pay",
-    sortValue: (r) => r.netPay,
-    render: (r) => formatCurrency(r.netPay, "NGN"),
-  },
-  {
-    key: "paymentStatus",
-    header: "Payment",
-    render: (r) => <StatusPill status={r.paymentStatus} vocabulary="movementStatus" />,
-  },
-];
-
-const groupPayrollColumns: ColumnConfig<Payroll>[] = [
-  {
-    key: "tenantCode",
-    header: "Entity",
-    render: (r) =>
-      r.tenantCode ? (
-        <EntityColorBadge code={r.tenantCode} size="sm" />
-      ) : (
-        <span className="text-sm text-muted">—</span>
-      ),
-  },
-  ...payrollColumns,
+const AMOUNT_TYPE_OPTIONS: Array<{ value: PayComponentAmountType; label: string }> = [
+  { value: "fixed", label: "Fixed" },
+  { value: "percent", label: "Percent" },
 ];
 
 const ENTITY_FILTER_OPTIONS = ENTITY_LIST.map((e) => ({
@@ -393,27 +179,14 @@ const ENTITY_FILTER_OPTIONS = ENTITY_LIST.map((e) => ({
   label: `${e.code} — ${e.name}`,
 }));
 
-const groupColumnsBase: ColumnConfig<PayrollGroup>[] = [
-  { key: "name", header: "Group Name", render: (r) => <span className="font-medium">{r.name}</span> },
-  { key: "payrollCount", header: "Payrolls", sortValue: (r) => r.payrollCount },
-  {
-    key: "createdAt",
-    header: "Created",
-    sortValue: (r) => new Date(r.createdAt).getTime(),
-    render: (r) => formatDate(r.createdAt),
-  },
-];
-
-const componentColumns: ColumnConfig<PayComponent>[] = [
-  { key: "name", header: "Name", render: (r) => <span className="font-medium">{r.name}</span> },
-  { key: "type", header: "Type", render: (r) => (r.type === "allowance" ? "Allowance" : "Deduction") },
-  {
-    key: "amount",
-    header: "Amount",
-    sortValue: (r) => r.amount,
-    render: (r) => formatCurrency(r.amount, "NGN"),
-  },
-];
+const emptyComponentForm = () => ({
+  name: "",
+  type: "allowance" as PayComponent["type"],
+  amount: "",
+  amountType: "fixed" as PayComponentAmountType,
+  applicableDate: "",
+  employeeRecordId: "",
+});
 
 export function PayrollView({
   defaultTab = "payrolls",
@@ -429,9 +202,6 @@ export function PayrollView({
   const router = useRouter();
   const isHq6 = useIsVaHq6();
   const { tenantName, tenantCode, config } = useRouteTenant();
-  const { can } = useHq6Permissions();
-  const canDeletePayroll = can("essentials.delete_payroll");
-  const [statusUpdatingId, setStatusUpdatingId] = useState<string | null>(null);
   const currentYear = new Date().getFullYear();
   const [activeTab, setActiveTab] = useState<PayrollTab>(
     allTenants ? "payrolls" : defaultTab,
@@ -439,30 +209,18 @@ export function PayrollView({
   const [search, setSearch] = useState("");
   const [groupFilter, setGroupFilter] = useState("");
   const [designationFilter, setDesignationFilter] = useState("");
+  const [departmentFilter, setDepartmentFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [paymentStatusFilter, setPaymentStatusFilter] = useState("");
   const [locationFilter, setLocationFilter] = useState("");
   const [tenantCodeFilter, setTenantCodeFilter] = useState("");
   const [monthFilter, setMonthFilter] = useState("");
   const [selectedPayroll, setSelectedPayroll] = useState<Payroll | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<Payroll | null>(null);
-  const [deductionTarget, setDeductionTarget] = useState<Payroll | null>(null);
-  const [payTargets, setPayTargets] = useState<Payroll[] | null>(null);
-  /** Per-payroll payment fields for group pay screen. */
-  const [payRowForms, setPayRowForms] = useState<Record<string, PayRowForm>>(
-    {},
+  const [paymentsModalPayroll, setPaymentsModalPayroll] = useState<Payroll | null>(
+    null,
   );
-  const [payingGroupId, setPayingGroupId] = useState<string | null>(null);
-  const [deductionForm, setDeductionForm] = useState({
-    amount: "",
-    note: "",
-    reason: "",
-  });
-  const [deductionError, setDeductionError] = useState<string | null>(null);
 
   const [addPayrollOpen, setAddPayrollOpen] = useState(false);
-  const [addPayrollStep, setAddPayrollStep] = useState<"select" | "details">("select");
-  /** Target business when creating payroll from VAG all-tenants view. */
   const [addPayrollTenantId, setAddPayrollTenantId] = useState("");
   const [addPayrollLocationCode, setAddPayrollLocationCode] = useState("");
   const [addPayrollEmployeeIds, setAddPayrollEmployeeIds] = useState<string[]>([]);
@@ -470,27 +228,20 @@ export function PayrollView({
     "" | PayrollStaffBucket
   >("");
   const [addPayrollMonth, setAddPayrollMonth] = useState(
-    () => new Date().toISOString().slice(0, 7), // YYYY-MM
+    () => new Date().toISOString().slice(0, 7),
   );
-  const [payrollGroupName, setPayrollGroupName] = useState("");
-  const [employeeDrafts, setEmployeeDrafts] = useState<
-    Record<string, EmployeePayrollDraft>
-  >({});
   const [newGroupName, setNewGroupName] = useState("");
-  const [newComponent, setNewComponent] = useState({
-    name: "",
-    type: "allowance" as PayComponent["type"],
-    amount: "",
-  });
+  const [newComponent, setNewComponent] = useState(emptyComponentForm);
+  const [editComponent, setEditComponent] = useState<PayComponent | null>(null);
+  const [editComponentForm, setEditComponentForm] = useState(emptyComponentForm);
+  const [deleteComponentTarget, setDeleteComponentTarget] =
+    useState<PayComponent | null>(null);
 
   function resetAddPayrollFlow() {
     setAddPayrollOpen(false);
-    setAddPayrollStep("select");
     setAddPayrollTenantId("");
     setAddPayrollEmployeeIds([]);
     setAddPayrollStaffBucket("");
-    setEmployeeDrafts({});
-    setPayrollGroupName("");
     setAddPayrollLocationCode("");
   }
 
@@ -500,22 +251,32 @@ export function PayrollView({
       ? ENTITY_LIST.find((e) => e.code === prefillCode)?.tenantId ?? ""
       : "";
     setAddPayrollTenantId(allTenants ? prefillId : "");
-    setAddPayrollStep("select");
     setAddPayrollLocationCode("");
     setAddPayrollEmployeeIds([]);
-    setEmployeeDrafts({});
-    setPayrollGroupName("");
     setAddPayrollOpen(true);
   }
 
-  function patchEmployeeDraft(
-    employeeId: string,
-    patch: Partial<EmployeePayrollDraft>,
-  ) {
-    setEmployeeDrafts((prev) => {
-      const current = prev[employeeId] ?? emptyEmployeeDraft();
-      return { ...prev, [employeeId]: { ...current, ...patch } };
+  function proceedToCreatePayroll() {
+    if (!writeTenantId) {
+      toast.error("Select a business first");
+      return;
+    }
+    if (selectedEmployeesForPayroll.length === 0) {
+      toast.error("Select at least one employee");
+      return;
+    }
+    savePayrollCreateSession({
+      tenantId: writeTenantId,
+      locationCode: addPayrollLocationCode,
+      month: addPayrollMonth,
+      employees: selectedEmployeesForPayroll,
     });
+    resetAddPayrollFlow();
+    if (allTenants) {
+      router.push("/admin/hrm/payroll/create");
+    } else if (tenantCode) {
+      router.push(tenantListPath(tenantCode, "hrm/payroll/create"));
+    }
   }
 
   useEffect(() => {
@@ -527,6 +288,7 @@ export function PayrollView({
       year: currentYear,
       payrollGroupId: groupFilter || undefined,
       designationId: designationFilter || undefined,
+      department: departmentFilter || undefined,
       status: statusFilter || undefined,
       paymentStatus: paymentStatusFilter || undefined,
       locationCode: locationFilter || undefined,
@@ -536,6 +298,7 @@ export function PayrollView({
     [
       allTenants,
       currentYear,
+      departmentFilter,
       designationFilter,
       groupFilter,
       locationFilter,
@@ -547,7 +310,6 @@ export function PayrollView({
   );
 
   const canLoadPayrolls = allTenants || Boolean(tenantId);
-  /** Tenant for list filters / pay-by-group (VAG: requires Business filter). */
   const filterTenantId = useMemo(() => {
     if (!allTenants) return tenantId ?? null;
     if (!tenantCodeFilter) return null;
@@ -555,10 +317,8 @@ export function PayrollView({
       ENTITY_LIST.find((e) => e.code === tenantCodeFilter)?.tenantId ?? null
     );
   }, [allTenants, tenantCodeFilter, tenantId]);
-  /** Groups / components lists use entity tenant, or VAG business filter. */
   const groupsTenantId = allTenants ? filterTenantId : tenantId ?? null;
   const canLoadTenantScoped = Boolean(groupsTenantId);
-  /** Tenant used for create-payroll API calls (VAG picks a business). */
   const writeTenantId = allTenants
     ? addPayrollTenantId || null
     : tenantId ?? null;
@@ -568,7 +328,7 @@ export function PayrollView({
   const writeTenantConfig = writeTenantId
     ? getTenantConfigById(writeTenantId)
     : null;
-  const addFlowActive = addPayrollOpen || addPayrollStep === "details";
+  const addFlowActive = addPayrollOpen;
 
   const groupsForFilterQuery = useQuery({
     queryKey: ["payroll-groups", filterTenantId, "filter-options"],
@@ -581,6 +341,20 @@ export function PayrollView({
     queryKey: ["designations", filterTenantId, "filter-options"],
     enabled: Boolean(filterTenantId) && activeTab === "payrolls",
     queryFn: () => getDesignations(filterTenantId!),
+    staleTime: 5 * 60_000,
+  });
+
+  const employeesForDeptFilterQuery = useQuery({
+    queryKey: ["employees", filterTenantId, "dept-filter"],
+    enabled: Boolean(filterTenantId) && activeTab === "payrolls",
+    queryFn: () => getEmployees(filterTenantId!),
+    staleTime: 5 * 60_000,
+  });
+
+  const employeesForComponentQuery = useQuery({
+    queryKey: ["employees", groupsTenantId, "component-form"],
+    enabled: Boolean(groupsTenantId) && activeTab === "components",
+    queryFn: () => getEmployees(groupsTenantId!),
     staleTime: 5 * 60_000,
   });
 
@@ -600,6 +374,26 @@ export function PayrollView({
         label: d.name,
       })),
     [designationsForFilterQuery.data],
+  );
+
+  const departmentFilterOptions = useMemo(() => {
+    const depts = new Set<string>();
+    for (const e of employeesForDeptFilterQuery.data ?? []) {
+      const name = e.department?.trim();
+      if (name) depts.add(name);
+    }
+    return Array.from(depts)
+      .sort((a, b) => a.localeCompare(b))
+      .map((name) => ({ value: name, label: name }));
+  }, [employeesForDeptFilterQuery.data]);
+
+  const componentEmployeeOptions = useMemo(
+    () =>
+      (employeesForComponentQuery.data ?? []).map((e) => ({
+        value: e.id,
+        label: e.name,
+      })),
+    [employeesForComponentQuery.data],
   );
 
   const payrollsPage = useServerListPage<Payroll>({
@@ -674,7 +468,6 @@ export function PayrollView({
     );
   }, [addPayrollEmployeePicks, addPayrollStaffBucket]);
 
-  /** Department values on employee HR records (informational — does not filter the list). */
   const departmentSummary = useMemo(() => {
     const counts = new Map<string, number>();
     let unassigned = 0;
@@ -693,13 +486,6 @@ export function PayrollView({
       total: addPayrollEmployeePicks.length,
     };
   }, [addPayrollEmployeePicks]);
-
-  const payComponentsForDraftQuery = useQuery({
-    queryKey: ["pay-components", writeTenantId, "for-add-payroll"],
-    enabled: Boolean(writeTenantId) && addFlowActive,
-    queryFn: () => getAllPayComponents(writeTenantId!),
-    staleTime: 5 * 60_000,
-  });
 
   const addUserHref = allTenants
     ? "/admin/hrm/users/new/edit"
@@ -745,81 +531,17 @@ export function PayrollView({
     toggleAddPayrollEmployee(employee.id);
   }
 
-  const createPayrollsMutation = useAppMutation({
-    mutationFn: async (): Promise<Payroll[]> => {
-      if (!writeTenantId) throw new Error("Select a business first");
-      if (selectedEmployeesForPayroll.length === 0) {
-        throw new Error("Select at least one employee");
-      }
-      const created: Payroll[] = [];
-      const payrollMonth = `${addPayrollMonth}-01`;
-
-      const groupName = payrollGroupName.trim();
-      if (!groupName) {
-        throw new Error("Payroll group name is required");
-      }
-      const group = await createPayrollGroup(writeTenantId, { name: groupName });
-      const payrollGroupId = group.id;
-
-      for (const employee of selectedEmployeesForPayroll) {
-        const draft = employeeDrafts[employee.id] ?? emptyEmployeeDraft();
-        const basic = basicSalaryTotal(draft);
-        if (!Number.isFinite(basic) || basic <= 0) {
-          throw new Error(
-            `Enter work duration and amount per unit for ${employee.employeeName}`,
-          );
-        }
-        const totalAllowance = sumPayLines(draft.allowances, basic);
-        const totalDeduction = sumPayLines(draft.deductions, basic);
-        const lineNote = formatPayLinesNote(
-          draft.allowances,
-          draft.deductions,
-          basic,
-        );
-        const noteParts = [
-          `Basic: ${draft.workDuration} ${draft.durationUnit} × ${draft.amountPerUnit}`,
-          lineNote,
-          draft.note.trim() || undefined,
-        ].filter(Boolean);
-
-        const row = await createPayroll(writeTenantId, {
-          employeeRecordId: employee.id,
-          payrollGroupId,
-          locationCode:
-            employee.locationCode || addPayrollLocationCode || undefined,
-          grossPay: basic,
-          totalAllowance,
-          totalDeduction,
-          status: "draft",
-          payrollMonth,
-          note: noteParts.join(" · ") || undefined,
-        });
-        created.push(row);
-      }
-
-      return created;
-    },
-    invalidateKeys: [
-      ["payrolls"],
-      ["payroll-groups", writeTenantId],
-    ],
-    onSuccess: (created) => {
-      const first = created[0] ?? null;
-      const businessCode = writeTenantCode;
-      const groupId = first?.payrollGroupId ?? "";
-      resetAddPayrollFlow();
-      if (allTenants && businessCode) {
-        setTenantCodeFilter(businessCode);
-      }
-      if (groupId) setGroupFilter(groupId);
-      setActiveTab("groups");
-      toast.success(
-        created.length === 1
-          ? "Draft payroll saved — open Payroll Groups to pay"
-          : `Draft payroll group saved (${created.length} employees) — pay from Payroll Groups`,
-      );
-    },
-  });
+  function openEditComponent(row: PayComponent) {
+    setEditComponent(row);
+    setEditComponentForm({
+      name: row.name,
+      type: row.type,
+      amount: String(row.amount),
+      amountType: row.amountType,
+      applicableDate: row.applicableDate?.slice(0, 10) ?? "",
+      employeeRecordId: row.employeeRecordId ?? "",
+    });
+  }
 
   const createGroupMutation = useAppMutation({
     mutationFn: () => {
@@ -839,329 +561,47 @@ export function PayrollView({
         name: newComponent.name,
         type: newComponent.type,
         amount: parseMoneyInput(newComponent.amount),
+        amountType: newComponent.amountType,
+        applicableDate: newComponent.applicableDate || undefined,
+        employeeRecordId: newComponent.employeeRecordId || undefined,
       });
     },
     invalidateKeys: [["pay-components", groupsTenantId]],
     onSuccess: () => {
-      setNewComponent({ name: "", type: "allowance", amount: "" });
+      setNewComponent(emptyComponentForm());
     },
   });
 
-  const maxDeduction = deductionTarget
-    ? deductionTarget.grossPay +
-      deductionTarget.totalAllowance -
-      deductionTarget.totalDeduction
-    : 0;
-
-  const addDeductionMutation = useAppMutation({
-    mutationFn: (vars: {
-      tenantId: string;
-      payrollId: string;
-      addAmount: number;
-      note?: string;
-      reason?: string;
-    }) => {
-      return addPayrollDeduction(vars.tenantId, vars.payrollId, {
-        addAmount: vars.addAmount,
-        note: vars.note,
-        reason: vars.reason,
+  const updateComponentMutation = useAppMutation({
+    mutationFn: () => {
+      if (!groupsTenantId || !editComponent) {
+        throw new Error("Select a component to edit");
+      }
+      return updatePayComponent(groupsTenantId, editComponent.id, {
+        name: editComponentForm.name,
+        type: editComponentForm.type,
+        amount: parseMoneyInput(editComponentForm.amount),
+        amountType: editComponentForm.amountType,
+        applicableDate: editComponentForm.applicableDate || null,
+        employeeRecordId: editComponentForm.employeeRecordId || null,
       });
     },
-    successMessage: "Deduction applied",
-    progressLabel: "Applying deduction",
-    invalidateKeys: [["payrolls"]],
-    onSuccess: (updated) => {
-      setSelectedPayroll(updated);
-      setDeductionTarget(null);
-      setDeductionForm({ amount: "", note: "", reason: "" });
-      setDeductionError(null);
-    },
-    onError: (err: Error) => {
-      setDeductionError(err.message);
-      toast.error(err.message);
-    },
-  });
-
-  const updateStatusMutation = useAppMutation({
-    mutationFn: (vars: { tenantId: string; payrollId: string; status: "draft" | "final" }) =>
-      updatePayrollStatus(vars.tenantId, vars.payrollId, vars.status),
-    invalidateKeys: [["payrolls"]],
-    optimistic: {
-      keys: [["payrolls"]],
-      update: (qc, vars) => {
-        mapQueriesByPrefix<{ id: string; status?: string }>(
-          qc,
-          ["payrolls"],
-          (rows) =>
-            rows.map((row) =>
-              row.id === vars.payrollId ? { ...row, status: vars.status } : row,
-            ),
-        );
-      },
-    },
-    onMutate: (vars) => {
-      setStatusUpdatingId(vars.payrollId);
-    },
-    onSettled: () => {
-      setStatusUpdatingId(null);
-    },
-    onSuccess: (updated) => {
-      if (selectedPayroll?.id === updated.id) {
-        setSelectedPayroll(updated);
-      }
-      toast.success(
-        updated.status === "final"
-          ? "Payroll marked final — ready to pay"
-          : "Payroll moved back to draft",
-      );
-    },
-    onError: (err: Error) => {
-      toast.error(err.message);
-    },
-  });
-
-  function handlePayrollStatusChange(row: Payroll, next: "draft" | "final") {
-    if (row.status === next) return;
-    if (row.paymentStatus === "paid" || row.status === "paid") {
-      toast.error("Cannot change status after payroll is paid");
-      return;
-    }
-    updateStatusMutation.mutate({
-      tenantId: row.tenantId,
-      payrollId: row.id,
-      status: next,
-    });
-  }
-
-  const deletePayrollMutation = useAppMutation({
-    mutationFn: (row: Payroll) => deletePayroll(row.tenantId, row.id),
-    successMessage: "Payroll deleted",
-    progressLabel: "Deleting payroll",
-    optimistic: {
-      keys: [["payrolls"]],
-      update: (qc, row) => {
-        removeEntityFromQueries(qc, ["payrolls"], row.id);
-      },
-    },
-    onSuccess: (_data, row) => {
-      if (selectedPayroll?.id === row.id) setSelectedPayroll(null);
-      setDeleteTarget(null);
-    },
-  });
-
-  function openDeductionModal(payroll: Payroll) {
-    if (payroll.paymentStatus === "paid" || payroll.status === "paid") {
-      toast.error("Cannot add a deduction after payroll is paid");
-      return;
-    }
-    setDeductionTarget(payroll);
-    setDeductionForm({ amount: "", note: "", reason: "" });
-    setDeductionError(null);
-  }
-
-  function closeDeductionModal() {
-    setDeductionTarget(null);
-    setDeductionError(null);
-  }
-  const payModalRows = payTargets ?? [];
-  const payTotal = useMemo(
-    () => payModalRows.reduce((sum, row) => sum + (row.netPay || 0), 0),
-    [payModalRows],
-  );
-  const payGroupRowsReady = payModalRows.every((row) => {
-    const form = payRowForms[row.id];
-    return Boolean(form?.accountId?.trim() && form?.method?.trim());
-  });
-
-  function patchPayRowForm(payrollId: string, patch: Partial<PayRowForm>) {
-    setPayRowForms((prev) => {
-      const current = prev[payrollId] ?? emptyPayRowForm();
-      return { ...prev, [payrollId]: { ...current, ...patch } };
-    });
-  }
-
-  function openGroupPayModal(unpaid: Payroll[]) {
-    const rows = unpaid.filter(
-      (row) => row.paymentStatus !== "paid" && row.netPay > 0,
-    );
-    if (rows.length === 0) {
-      toast.error("No unpaid payrolls to pay");
-      return;
-    }
-    setPayTargets(rows);
-    const forms: Record<string, PayRowForm> = {};
-    for (const row of rows) {
-      forms[row.id] = emptyPayRowForm();
-    }
-    setPayRowForms(forms);
-  }
-
-  async function openPayGroup(groupId: string, groupName?: string) {
-    const payTenantId = filterTenantId;
-    if (!payTenantId || !groupId) {
-      if (allTenants) {
-        toast.error("Select a business first, then a group to pay");
-      }
-      return;
-    }
-    setPayingGroupId(groupId);
-    try {
-      const unpaid = await getUnpaidPayrollsForGroup(payTenantId, groupId, {
-        month: monthFilter ? Number(monthFilter) : undefined,
-        year: currentYear,
-        locationCode: locationFilter || undefined,
-        designationId: designationFilter || undefined,
-      });
-      if (unpaid.length === 0) {
-        toast.error(
-          groupName
-            ? `No unpaid payrolls in ${groupName}`
-            : "No unpaid payrolls in this group",
-        );
-        return;
-      }
-      openGroupPayModal(unpaid);
-    } catch (err) {
-      toast.error(
-        err instanceof Error ? err.message : "Failed to load group payrolls",
-      );
-    } finally {
-      setPayingGroupId(null);
-    }
-  }
-
-  function closePayModal() {
-    setPayTargets(null);
-    setPayRowForms({});
-  }
-
-  const payMutation = useAppMutation({
-    mutationFn: async (vars: {
-      batches: Array<{
-        tenantId: string;
-        payrollIds: string[];
-        accountId: string;
-        method: string;
-        paidOn: string;
-        note?: string;
-      }>;
-    }) => {
-      if (!vars.batches.length) {
-        throw new Error("No payroll selected");
-      }
-      let paid = 0;
-      let skipped = 0;
-      let totalDebited = 0;
-      const accountNames: string[] = [];
-      for (const batch of vars.batches) {
-        if (!batch.accountId.trim()) {
-          throw new Error("Select a payment account for each payroll");
-        }
-        if (!batch.method.trim()) {
-          throw new Error("Select a payment method for each payroll");
-        }
-        const result = await payPayrolls(batch.tenantId, {
-          payrollIds: batch.payrollIds,
-          accountId: batch.accountId,
-          method: batch.method,
-          paidOn: batch.paidOn,
-          note: batch.note,
-        });
-        paid += result.paid;
-        skipped += result.skipped;
-        totalDebited += result.totalDebited;
-        if (result.accountName) accountNames.push(result.accountName);
-      }
-      return {
-        paid,
-        skipped,
-        totalDebited,
-        accountName: [...new Set(accountNames)].join(", "),
-      };
-    },
-    progressLabel: "Paying payroll",
-    successMessage: (result) =>
-      `Paid ${result.paid} payroll${result.paid === 1 ? "" : "s"} — ${formatHq6Currency(result.totalDebited)}${result.accountName ? ` from ${result.accountName}` : ""}`,
-    optimistic: {
-      keys: [["payrolls"], ["payment-accounts"]],
-      update: (qc, vars) => {
-        const ids = new Set(vars.batches.flatMap((b) => b.payrollIds));
-        if (ids.size === 0) return;
-        mapQueriesByPrefix<{ id: string; paymentStatus?: string }>(
-          qc,
-          ["payrolls"],
-          (items) =>
-            items.map((row) =>
-              ids.has(row.id) ? { ...row, paymentStatus: "paid" } : row,
-            ),
-        );
-      },
-    },
+    invalidateKeys: [["pay-components", groupsTenantId]],
     onSuccess: () => {
-      closePayModal();
+      setEditComponent(null);
     },
   });
 
-  function submitPayModal() {
-    if (!payGroupRowsReady) {
-      toast.error("Select payment account and method for each employee");
-      return;
-    }
-    if (!payModalRows.length) {
-      toast.error("No payroll selected");
-      return;
-    }
-    const batchMap = new Map<
-      string,
-      {
-        tenantId: string;
-        payrollIds: string[];
-        accountId: string;
-        method: string;
-        paidOn: string;
-      }
-    >();
-    for (const row of payModalRows) {
-      const form = payRowForms[row.id] ?? emptyPayRowForm();
-      const paidOnIso = paidOnToIso(form.paidOn);
-      const key = `${row.tenantId}|${form.accountId}|${form.method}|${paidOnIso}`;
-      const existing = batchMap.get(key);
-      if (existing) {
-        existing.payrollIds.push(row.id);
-        continue;
-      }
-      batchMap.set(key, {
-        tenantId: row.tenantId,
-        payrollIds: [row.id],
-        accountId: form.accountId,
-        method: form.method,
-        paidOn: paidOnIso,
-      });
-    }
-    const batches = [...batchMap.values()];
-    closePayModal();
-    payMutation.mutate({ batches });
-  }
-
-  const payGroupHeader = useMemo(() => {
-    const first = payModalRows[0];
-    if (!first) return null;
-    const cfg = getTenantConfigById(first.tenantId);
-    const biz = cfg?.businessSettings?.business;
-    const addressParts = [
-      biz?.landmark,
-      biz?.city,
-      biz?.state,
-      biz?.zipCode,
-      biz?.country,
-    ].filter(Boolean);
-    return {
-      groupName: first.payrollGroupName || "Payroll group",
-      companyName: first.tenantName || cfg?.name || tenantName || "Business",
-      address: addressParts.join(", "),
-      status: first.status,
-    };
-  }, [payModalRows, tenantName]);
+  const deleteComponentMutation = useAppMutation({
+    mutationFn: (row: PayComponent) => {
+      if (!groupsTenantId) throw new Error("Select a business first");
+      return deletePayComponent(groupsTenantId, row.id);
+    },
+    invalidateKeys: [["pay-components", groupsTenantId]],
+    onSuccess: () => {
+      setDeleteComponentTarget(null);
+    },
+  });
 
   const payslipTenantId = selectedPayroll?.tenantId ?? tenantId;
   const payslipInvoiceQuery = useQuery({
@@ -1173,6 +613,18 @@ export function PayrollView({
   });
   const payslipInvoice: InvoiceListRow | null = payslipInvoiceQuery.data ?? null;
 
+  const payslipPaymentsQuery = useQuery({
+    queryKey: ["payroll-payments", payslipTenantId, selectedPayroll?.id],
+    enabled: Boolean(
+      payslipTenantId &&
+        selectedPayroll?.id &&
+        selectedPayroll.paymentStatus === "paid",
+    ),
+    queryFn: () =>
+      getPayrollPayments(payslipTenantId!, selectedPayroll!.id),
+    staleTime: 60_000,
+  });
+
   const payslipAddress = useMemo(() => {
     const tid = selectedPayroll?.tenantId ?? tenantId;
     const cfg = tid
@@ -1183,7 +635,6 @@ export function PayrollView({
     const parts = [biz.landmark, biz.city, biz.state, biz.country, biz.zipCode]
       .map((v) => (typeof v === "string" ? v.trim() : ""))
       .filter(Boolean);
-    // Ultimate POS prints address on separate lines
     if (parts.length === 0) return null;
     const line1 = [biz.landmark, biz.city, biz.state]
       .map((v) => (typeof v === "string" ? v.trim() : ""))
@@ -1218,6 +669,7 @@ export function PayrollView({
                     setTenantCodeFilter(value);
                     setGroupFilter("");
                     setDesignationFilter("");
+                    setDepartmentFilter("");
                   },
                   options: ENTITY_FILTER_OPTIONS,
                 },
@@ -1238,6 +690,13 @@ export function PayrollView({
                   value: designationFilter,
                   onChange: setDesignationFilter,
                   options: designationFilterOptions,
+                },
+                {
+                  id: "department",
+                  label: "Department",
+                  value: departmentFilter,
+                  onChange: setDepartmentFilter,
+                  options: departmentFilterOptions,
                 },
               ]
             : []),
@@ -1286,72 +745,82 @@ export function PayrollView({
         items={[
           {
             id: "view",
-            label: "View payslip",
+            label: "View",
             onClick: () => setSelectedPayroll(r),
           },
-          ...(r.paymentStatus !== "paid"
-            ? [
-                {
-                  id: "edit",
-                  label: "Add deduction",
-                  onClick: () => openDeductionModal(r),
-                },
-              ]
-            : []),
-          ...(canDeletePayroll
-            ? [
-                {
-                  id: "delete",
-                  label: "Delete",
-                  onClick: () => setDeleteTarget(r),
-                },
-              ]
-            : []),
         ]}
       />
     ),
   };
 
-  const payrollStatusColumn: ColumnConfig<Payroll> = {
-    key: "status",
-    header: "Status",
-    sortable: false,
-    render: (row) => {
-      if (row.status === "paid" || row.paymentStatus === "paid") {
-        return <StatusPill status="paid" vocabulary="movementStatus" />;
-      }
-      const busy = statusUpdatingId === row.id;
-      return (
-        <select
-          className={cn(
-            "form-control select2 hq6-table-inline-select min-w-[7.5rem]",
-            busy && "opacity-60",
-          )}
-          value={row.status === "final" ? "final" : "draft"}
-          disabled={busy || updateStatusMutation.isPending}
-          aria-label={`Payroll status for ${row.employeeName}`}
-          onClick={(e) => e.stopPropagation()}
-          onChange={(e) =>
-            handlePayrollStatusChange(
-              row,
-              e.target.value as "draft" | "final",
-            )
-          }
-        >
-          {PAYROLL_ROW_STATUS_OPTIONS.map((opt) => (
-            <option key={opt.value} value={opt.value}>
-              {opt.label}
-            </option>
-          ))}
-        </select>
-      );
+  const hq6PayrollColumns: ColumnConfig<Payroll>[] = [
+    {
+      key: "employeeName",
+      header: "Employee",
+      render: (r) => <span className="font-medium">{r.employeeName}</span>,
     },
+    {
+      key: "department",
+      header: "Department",
+      render: (r) => r.department?.trim() || "—",
+    },
+    {
+      key: "designationName",
+      header: "Designation",
+      render: (r) => r.designationName?.trim() || "—",
+    },
+    {
+      key: "payrollMonth",
+      header: "Month/Year",
+      sortValue: (r) => new Date(r.payrollMonth).getTime(),
+      render: (r) => formatDate(r.payrollMonth),
+    },
+    {
+      key: "referenceNo",
+      header: "Reference No",
+      render: (r) => r.referenceNo?.trim() || "—",
+    },
+    {
+      key: "netPay",
+      header: "Total amount",
+      sortValue: (r) => r.netPay,
+      render: (r) => formatCurrency(r.netPay, "NGN"),
+    },
+    {
+      key: "paymentStatus",
+      header: "Payment Status",
+      render: (r) =>
+        r.paymentStatus === "paid" ? (
+          <button
+            type="button"
+            className="inline-flex cursor-pointer"
+            onClick={(e) => {
+              e.stopPropagation();
+              setPaymentsModalPayroll(r);
+            }}
+          >
+            <StatusPill status={r.paymentStatus} vocabulary="movementStatus" />
+          </button>
+        ) : (
+          <StatusPill status={r.paymentStatus} vocabulary="movementStatus" />
+        ),
+    },
+  ];
+
+  const entityColumn: ColumnConfig<Payroll> = {
+    key: "tenantCode",
+    header: "Entity",
+    render: (r) =>
+      r.tenantCode ? (
+        <EntityColorBadge code={r.tenantCode} size="sm" />
+      ) : (
+        <span className="text-sm text-muted">—</span>
+      ),
   };
 
   const payrollListColumns: ColumnConfig<Payroll>[] = [
     payrollActionColumn,
-    ...(allTenants ? groupPayrollColumns : payrollColumns),
-    payrollStatusColumn,
+    ...(allTenants ? [entityColumn, ...hq6PayrollColumns] : hq6PayrollColumns),
   ];
 
   const groupActionColumn: ColumnConfig<PayrollGroup> = {
@@ -1363,37 +832,234 @@ export function PayrollView({
         label="Actions"
         items={[
           {
-            id: "pay-unpaid",
-            label:
-              payingGroupId === r.id ? "Loading…" : "Pay unpaid payrolls",
-            onClick: () => {
-              void openPayGroup(r.id, r.name);
-            },
+            id: "view",
+            label: "View",
+            onClick: () =>
+              router.push(payrollGroupHref(r, allTenants, tenantCode)),
           },
           {
-            id: "view-payrolls",
-            label: "View payrolls",
-            onClick: () => {
-              setGroupFilter(r.id);
-              setActiveTab("payrolls");
-            },
+            id: "edit",
+            label: "Edit",
+            onClick: () =>
+              router.push(payrollGroupHref(r, allTenants, tenantCode, "edit")),
           },
+          ...(r.status === "final" && r.paymentStatus !== "paid"
+            ? [
+                {
+                  id: "pay",
+                  label: "Add payment",
+                  onClick: () =>
+                    router.push(
+                      payrollGroupHref(r, allTenants, tenantCode, "pay"),
+                    ),
+                },
+              ]
+            : []),
         ]}
       />
     ),
   };
+
+  const groupColumnsBase: ColumnConfig<PayrollGroup>[] = [
+    {
+      key: "name",
+      header: "Name",
+      render: (r) => <span className="font-medium">{r.name}</span>,
+    },
+    {
+      key: "status",
+      header: "Status",
+      render: (r) => (
+        <StatusPill status={r.status} vocabulary="jobStatus" />
+      ),
+    },
+    {
+      key: "paymentStatus",
+      header: "Payment Status",
+      render: (r) => (
+        <StatusPill status={r.paymentStatus} vocabulary="movementStatus" />
+      ),
+    },
+    {
+      key: "totalGross",
+      header: "Total gross",
+      sortValue: (r) => r.totalGross,
+      render: (r) => formatCurrency(r.totalGross, "NGN"),
+    },
+    {
+      key: "createdByName",
+      header: "Added By",
+      render: (r) => r.createdByName?.trim() || "—",
+    },
+    {
+      key: "locationCode",
+      header: "Location",
+      render: (r) => r.locationCode ?? "—",
+    },
+    {
+      key: "createdAt",
+      header: "Created At",
+      sortValue: (r) => new Date(r.createdAt).getTime(),
+      render: (r) => formatDate(r.createdAt),
+    },
+  ];
 
   const groupColumns: ColumnConfig<PayrollGroup>[] = [
     groupActionColumn,
     ...groupColumnsBase,
   ];
 
-  const addPayrollMonthLabel = useMemo(() => {
-    const iso = `${addPayrollMonth}-01`;
-    const d = new Date(iso);
-    if (Number.isNaN(d.getTime())) return addPayrollMonth;
-    return d.toLocaleString("en", { month: "long", year: "numeric" });
-  }, [addPayrollMonth]);
+  const componentActionColumn: ColumnConfig<PayComponent> = {
+    key: "actions",
+    header: "Action",
+    sortable: false,
+    render: (r) => (
+      <Hq6ActionsMenu
+        label="Actions"
+        items={[
+          {
+            id: "edit",
+            label: "Edit",
+            onClick: () => openEditComponent(r),
+          },
+          {
+            id: "delete",
+            label: "Delete",
+            danger: true,
+            onClick: () => setDeleteComponentTarget(r),
+          },
+        ]}
+      />
+    ),
+  };
+
+  const componentColumns: ColumnConfig<PayComponent>[] = [
+    componentActionColumn,
+    {
+      key: "name",
+      header: "Name",
+      render: (r) => <span className="font-medium">{r.name}</span>,
+    },
+    { key: "type", header: "Type", render: (r) => (r.type === "allowance" ? "Allowance" : "Deduction") },
+    {
+      key: "amountType",
+      header: "Amount Type",
+      render: (r) =>
+        r.amountType === "percent" ? "Percent" : "Fixed",
+    },
+    {
+      key: "amount",
+      header: "Amount",
+      sortValue: (r) => r.amount,
+      render: (r) =>
+        r.amountType === "percent"
+          ? `${r.amount}%`
+          : formatCurrency(r.amount, "NGN"),
+    },
+    {
+      key: "applicableDate",
+      header: "Applicable Date",
+      sortValue: (r) =>
+        r.applicableDate ? new Date(r.applicableDate).getTime() : 0,
+      render: (r) =>
+        r.applicableDate ? formatDate(r.applicableDate) : "—",
+    },
+    {
+      key: "employeeName",
+      header: "Employee",
+      render: (r) => r.employeeName?.trim() || "All employees",
+    },
+  ];
+
+  const componentFormFields = (
+    form: ReturnType<typeof emptyComponentForm>,
+    onChange: (next: ReturnType<typeof emptyComponentForm>) => void,
+  ) => (
+    <>
+      <div className="min-w-[10rem] flex-1">
+        <label className="mb-1 block text-xs font-medium text-muted">Name</label>
+        <input
+          className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm"
+          value={form.name}
+          onChange={(e) => onChange({ ...form, name: e.target.value })}
+        />
+      </div>
+      <div className="w-36">
+        <label className="mb-1 block text-xs font-medium text-muted">Type</label>
+        <select
+          className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm"
+          value={form.type}
+          onChange={(e) =>
+            onChange({
+              ...form,
+              type: e.target.value as PayComponent["type"],
+            })
+          }
+        >
+          <option value="allowance">Allowance</option>
+          <option value="deduction">Deduction</option>
+        </select>
+      </div>
+      <div className="w-32">
+        <label className="mb-1 block text-xs font-medium text-muted">Amount Type</label>
+        <select
+          className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm"
+          value={form.amountType}
+          onChange={(e) =>
+            onChange({
+              ...form,
+              amountType: e.target.value as PayComponentAmountType,
+            })
+          }
+        >
+          {AMOUNT_TYPE_OPTIONS.map((opt) => (
+            <option key={opt.value} value={opt.value}>
+              {opt.label}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div className="w-32">
+        <label className="mb-1 block text-xs font-medium text-muted">Amount</label>
+        <input
+          type="text"
+          inputMode="decimal"
+          autoComplete="off"
+          className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm"
+          value={form.amount}
+          onChange={(e) => onChange({ ...form, amount: e.target.value })}
+        />
+      </div>
+      <div className="w-40">
+        <label className="mb-1 block text-xs font-medium text-muted">Applicable Date</label>
+        <input
+          type="date"
+          className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm"
+          value={form.applicableDate}
+          onChange={(e) =>
+            onChange({ ...form, applicableDate: e.target.value })
+          }
+        />
+      </div>
+      <div className="min-w-[10rem] flex-1">
+        <label className="mb-1 block text-xs font-medium text-muted">Employee (optional)</label>
+        <select
+          className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm"
+          value={form.employeeRecordId}
+          onChange={(e) =>
+            onChange({ ...form, employeeRecordId: e.target.value })
+          }
+        >
+          <option value="">All employees</option>
+          {componentEmployeeOptions.map((opt) => (
+            <option key={opt.value} value={opt.value}>
+              {opt.label}
+            </option>
+          ))}
+        </select>
+      </div>
+    </>
+  );
 
   const addPayrollSelectModal = (
     <Hq6Modal
@@ -1403,28 +1069,7 @@ export function PayrollView({
       size="2xl"
       footer={
         <Hq6ModalSaveClose
-          onSave={() => {
-            const catalog = payComponentsForDraftQuery.data ?? [];
-            const baseDraft = employeeDraftFromPayComponents(catalog);
-            const drafts: Record<string, EmployeePayrollDraft> = {};
-            for (const employee of selectedEmployeesForPayroll) {
-              drafts[employee.id] = {
-                ...baseDraft,
-                allowances: baseDraft.allowances.map((line) => ({
-                  ...line,
-                  id: `line-${employee.id}-a-${line.id}`,
-                })),
-                deductions: baseDraft.deductions.map((line) => ({
-                  ...line,
-                  id: `line-${employee.id}-d-${line.id}`,
-                })),
-              };
-            }
-            setEmployeeDrafts(drafts);
-            setPayrollGroupName(`Payroll for ${addPayrollMonthLabel}`);
-            setAddPayrollOpen(false);
-            setAddPayrollStep("details");
-          }}
+          onSave={proceedToCreatePayroll}
           onClose={resetAddPayrollFlow}
           saveLabel="Proceed"
           saving={false}
@@ -1683,605 +1328,30 @@ export function PayrollView({
     </Hq6Modal>
   );
 
-  const addPayrollDetailsPage =
-    addPayrollStep === "details" ? (
-      <div className="space-y-5 p-1">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <h2 className="text-lg font-semibold text-[#111827]">Add Payroll</h2>
-            <p className="mt-1 text-base font-semibold text-[#111827]">
-              Payroll for {addPayrollMonthLabel}
-            </p>
-            {allTenants && writeTenantCode ? (
-              <p className="text-sm text-muted">
-                Business: {writeTenantCode}
-                {writeTenantConfig?.name ? ` — ${writeTenantConfig.name}` : ""}
-              </p>
-            ) : null}
-            <p className="text-sm text-muted">
-              Location:{" "}
-              {locationOptions.find((l) => l.value === addPayrollLocationCode)
-                ?.label ??
-                addPayrollLocationCode ??
-                "—"}
-            </p>
-          </div>
-          <div className="grid min-w-[16rem] flex-1 gap-3 sm:max-w-md sm:grid-cols-2">
-            <div>
-              <label className="mb-1 block text-xs font-semibold text-[#555]">
-                Payroll group name<span className="text-red-600">*</span>:
-              </label>
-              <input
-                className="form-control hq6-modal-input w-full"
-                value={payrollGroupName}
-                onChange={(e) => setPayrollGroupName(e.target.value)}
-                placeholder={`Payroll for ${addPayrollMonthLabel}`}
-                required
-              />
-            </div>
-            <div>
-              <label className="mb-1 flex items-center gap-1 text-xs font-semibold text-[#555]">
-                Status<span className="text-red-600">*</span>:
-                <span
-                  className="inline-flex size-4 items-center justify-center rounded-full bg-[#3b82f6] text-[10px] font-bold text-white"
-                  title="Draft groups are paid from the Payroll Groups tab"
-                >
-                  i
-                </span>
-              </label>
-              <select
-                className="form-control select2 hq6-modal-input w-full"
-                value="draft"
-                disabled
-              >
-                <option value="draft">Draft</option>
-              </select>
-              <p className="mt-1 text-xs text-[#b45309]">
-                Saves as draft — then pay from the Payroll Groups tab
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {createPayrollsMutation.isError ? (
-          <p className="text-sm text-[var(--color-error-text)]">
-            {createPayrollsMutation.error instanceof Error
-              ? createPayrollsMutation.error.message
-              : "Failed to create payroll"}
-          </p>
-        ) : null}
-
-        <div className="space-y-4">
-          {selectedEmployeesForPayroll.map((employee) => {
-            const draft = employeeDrafts[employee.id] ?? emptyEmployeeDraft();
-            const basic = basicSalaryTotal(draft);
-            const allowanceTotal = sumPayLines(draft.allowances, basic);
-            const deductionTotal = sumPayLines(draft.deductions, basic);
-            const grossAmount = basic + allowanceTotal - deductionTotal;
-
-            return (
-              <div
-                key={employee.id}
-                className="overflow-hidden rounded border border-[#e5e7eb] bg-white"
-              >
-                <div className="grid gap-4 p-4 md:grid-cols-2 xl:grid-cols-[minmax(9rem,11rem)_minmax(11rem,14rem)_minmax(0,1fr)_minmax(0,1fr)_minmax(7rem,9rem)]">
-                  <div>
-                    <p className="text-sm font-semibold text-[#111827]">
-                      {employee.employeeName}
-                    </p>
-                    <p className="mt-1 text-xs text-muted">
-                      {[
-                        employee.department
-                          ? `Dept: ${employee.department}`
-                          : null,
-                        employee.designationName
-                          ? `Designation: ${employee.designationName}`
-                          : null,
-                      ]
-                        .filter(Boolean)
-                        .join(" · ") || "—"}
-                    </p>
-                    <p className="mt-2 text-xs leading-5 text-muted">
-                      Leaves : 0 days
-                      <br />
-                      Work Duration : 0.00 hour
-                      <br />
-                      Attendance: 0 Days
-                    </p>
-                  </div>
-
-                  <div className="space-y-2">
-                    <p className="text-sm font-semibold text-[#111827]">
-                      Basic salary
-                    </p>
-                    <div>
-                      <label className="mb-0.5 block text-xs text-[#555]">
-                        Total work duration
-                        <span className="text-red-600">*</span>:
-                      </label>
-                      <input
-                        type="text"
-                        inputMode="decimal"
-                        autoComplete="off"
-                        className="form-control hq6-modal-input w-full"
-                        value={draft.workDuration}
-                        onChange={(e) =>
-                          patchEmployeeDraft(employee.id, {
-                            workDuration: e.target.value,
-                          })
-                        }
-                      />
-                    </div>
-                    <div>
-                      <label className="mb-0.5 block text-xs text-[#555]">
-                        Duration Unit:
-                      </label>
-                      <select
-                        className="form-control select2 hq6-modal-input w-full"
-                        value={draft.durationUnit}
-                        onChange={(e) =>
-                          patchEmployeeDraft(employee.id, {
-                            durationUnit: e.target.value,
-                          })
-                        }
-                      >
-                        {DURATION_UNIT_OPTIONS.map((opt) => (
-                          <option key={opt.value} value={opt.value}>
-                            {opt.label}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="mb-0.5 block text-xs text-[#555]">
-                        Amount per unit duration
-                        <span className="text-red-600">*</span>:
-                      </label>
-                      <input
-                        type="text"
-                        inputMode="decimal"
-                        autoComplete="off"
-                        placeholder="e.g. 100000"
-                        className="form-control hq6-modal-input w-full"
-                        value={draft.amountPerUnit}
-                        onChange={(e) =>
-                          patchEmployeeDraft(employee.id, {
-                            amountPerUnit: e.target.value,
-                          })
-                        }
-                      />
-                    </div>
-                    <p className="text-sm text-[#111827]">
-                      Total:{" "}
-                      <span className="font-semibold tabular-nums">
-                        {formatCurrency(basic, "NGN")}
-                      </span>
-                    </p>
-                  </div>
-
-                  <div className="rounded border border-[#e5e7eb] bg-[#fafafa] p-3">
-                    <div className="mb-2 flex items-center justify-between">
-                      <p className="text-sm font-semibold text-[#111827]">
-                        Earnings
-                      </p>
-                      <button
-                        type="button"
-                        className="inline-flex size-7 items-center justify-center rounded bg-[#3b82f6] text-white"
-                        aria-label="Add earning"
-                        onClick={() =>
-                          patchEmployeeDraft(employee.id, {
-                            allowances: [...draft.allowances, newPayLine()],
-                          })
-                        }
-                      >
-                        <Plus className="size-3.5" />
-                      </button>
-                    </div>
-                    <div className="mb-1 grid grid-cols-[minmax(0,1fr)_minmax(5rem,6.5rem)_minmax(4.5rem,5.5rem)_1.75rem] gap-1.5 text-[11px] text-muted">
-                      <span>Description</span>
-                      <span>Amount Type</span>
-                      <span className="text-right">Amount</span>
-                      <span />
-                    </div>
-                    <div className="space-y-1.5">
-                      {draft.allowances.map((line, index) => (
-                        <div
-                          key={line.id}
-                          className="grid grid-cols-[minmax(0,1fr)_minmax(5rem,6.5rem)_minmax(4.5rem,5.5rem)_1.75rem] items-center gap-1.5"
-                        >
-                          <input
-                            className="form-control hq6-modal-input w-full"
-                            placeholder="Description"
-                            value={line.name}
-                            onChange={(e) =>
-                              patchEmployeeDraft(employee.id, {
-                                allowances: updatePayLine(
-                                  draft.allowances,
-                                  line.id,
-                                  { name: e.target.value },
-                                ),
-                              })
-                            }
-                          />
-                          <select
-                            className="form-control select2 hq6-modal-input w-full"
-                            value={line.amountType}
-                            onChange={(e) =>
-                              patchEmployeeDraft(employee.id, {
-                                allowances: updatePayLine(
-                                  draft.allowances,
-                                  line.id,
-                                  {
-                                    amountType: e.target.value as AmountType,
-                                  },
-                                ),
-                              })
-                            }
-                          >
-                            <option value="fixed">Fixed</option>
-                            <option value="percent">Percent</option>
-                          </select>
-                          <input
-                            type="text"
-                            inputMode="decimal"
-                            autoComplete="off"
-                            className="form-control hq6-modal-input w-full text-right"
-                            value={line.amount}
-                            onChange={(e) =>
-                              patchEmployeeDraft(employee.id, {
-                                allowances: updatePayLine(
-                                  draft.allowances,
-                                  line.id,
-                                  { amount: e.target.value },
-                                ),
-                              })
-                            }
-                          />
-                          {index === 0 ? (
-                            <span className="size-7" />
-                          ) : (
-                            <button
-                              type="button"
-                              className="inline-flex size-7 items-center justify-center rounded bg-[#ef4444] text-white"
-                              aria-label="Remove earning"
-                              onClick={() =>
-                                patchEmployeeDraft(employee.id, {
-                                  allowances: draft.allowances.filter(
-                                    (row) => row.id !== line.id,
-                                  ),
-                                })
-                              }
-                            >
-                              <Minus className="size-3.5" />
-                            </button>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                    <p className="mt-2 text-right text-xs text-muted">
-                      Total: {formatCurrency(allowanceTotal, "NGN")}
-                    </p>
-                  </div>
-
-                  <div className="rounded border border-[#e5e7eb] bg-[#fafafa] p-3">
-                    <div className="mb-2 flex items-center justify-between">
-                      <p className="text-sm font-semibold text-[#111827]">
-                        Deductions
-                      </p>
-                      <button
-                        type="button"
-                        className="inline-flex size-7 items-center justify-center rounded bg-[#3b82f6] text-white"
-                        aria-label="Add deduction"
-                        onClick={() =>
-                          patchEmployeeDraft(employee.id, {
-                            deductions: [...draft.deductions, newPayLine()],
-                          })
-                        }
-                      >
-                        <Plus className="size-3.5" />
-                      </button>
-                    </div>
-                    <div className="mb-1 grid grid-cols-[minmax(0,1fr)_minmax(5rem,6.5rem)_minmax(4.5rem,5.5rem)_1.75rem] gap-1.5 text-[11px] text-muted">
-                      <span>Description</span>
-                      <span>Amount Type</span>
-                      <span className="text-right">Amount</span>
-                      <span />
-                    </div>
-                    <div className="space-y-1.5">
-                      {draft.deductions.map((line, index) => (
-                        <div
-                          key={line.id}
-                          className="grid grid-cols-[minmax(0,1fr)_minmax(5rem,6.5rem)_minmax(4.5rem,5.5rem)_1.75rem] items-center gap-1.5"
-                        >
-                          <input
-                            className="form-control hq6-modal-input w-full"
-                            placeholder="Description"
-                            value={line.name}
-                            onChange={(e) =>
-                              patchEmployeeDraft(employee.id, {
-                                deductions: updatePayLine(
-                                  draft.deductions,
-                                  line.id,
-                                  { name: e.target.value },
-                                ),
-                              })
-                            }
-                          />
-                          <select
-                            className="form-control select2 hq6-modal-input w-full"
-                            value={line.amountType}
-                            onChange={(e) =>
-                              patchEmployeeDraft(employee.id, {
-                                deductions: updatePayLine(
-                                  draft.deductions,
-                                  line.id,
-                                  {
-                                    amountType: e.target.value as AmountType,
-                                  },
-                                ),
-                              })
-                            }
-                          >
-                            <option value="fixed">Fixed</option>
-                            <option value="percent">Percent</option>
-                          </select>
-                          <input
-                            type="text"
-                            inputMode="decimal"
-                            autoComplete="off"
-                            className="form-control hq6-modal-input w-full text-right"
-                            value={line.amount}
-                            onChange={(e) =>
-                              patchEmployeeDraft(employee.id, {
-                                deductions: updatePayLine(
-                                  draft.deductions,
-                                  line.id,
-                                  { amount: e.target.value },
-                                ),
-                              })
-                            }
-                          />
-                          {index === 0 ? (
-                            <span className="size-7" />
-                          ) : (
-                            <button
-                              type="button"
-                              className="inline-flex size-7 items-center justify-center rounded bg-[#ef4444] text-white"
-                              aria-label="Remove deduction"
-                              onClick={() =>
-                                patchEmployeeDraft(employee.id, {
-                                  deductions: draft.deductions.filter(
-                                    (row) => row.id !== line.id,
-                                  ),
-                                })
-                              }
-                            >
-                              <Minus className="size-3.5" />
-                            </button>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                    <p className="mt-2 text-right text-xs text-muted">
-                      Total: {formatCurrency(deductionTotal, "NGN")}
-                    </p>
-                  </div>
-
-                  <div className="flex flex-col justify-start xl:items-end">
-                    <p className="text-sm font-semibold text-[#111827]">
-                      Gross Amount
-                    </p>
-                    <p className="mt-1 text-lg font-bold tabular-nums text-[#111827]">
-                      {formatCurrency(grossAmount, "NGN")}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="border-t border-[#e5e7eb] px-4 py-3">
-                  <label className="mb-1 block text-xs font-semibold text-[#555]">
-                    Note:
-                  </label>
-                  <textarea
-                    className="form-control hq6-modal-input min-h-[4.5rem] w-full"
-                    value={draft.note}
-                    placeholder="Total"
-                    onChange={(e) =>
-                      patchEmployeeDraft(employee.id, { note: e.target.value })
-                    }
-                  />
-                </div>
-              </div>
-            );
-          })}
-          {selectedEmployeesForPayroll.length === 0 ? (
-            <p className="text-sm text-muted">No employees selected.</p>
-          ) : null}
-        </div>
-      </div>
-    ) : null;
-
-  const deductionModals = (
-    <>
-      <DocumentPreviewModal
-        open={Boolean(selectedPayroll)}
-        title={selectedPayroll ? payrollPayslipTitle(selectedPayroll) : "Payslip"}
-        onClose={() => setSelectedPayroll(null)}
-        printLabel="Print"
-      >
-        {selectedPayroll ? (
-          <>
-            <PayrollPayslipDocument
-              payroll={selectedPayroll}
-              tenantName={
-                selectedPayroll.tenantName ?? tenantName ?? "Vonos"
-              }
-              tenantAddress={payslipAddress}
-              locationLabel={selectedPayroll.locationCode}
-              invoice={payslipInvoice}
-            />
-            <div className="no-print mt-4 flex flex-wrap items-center justify-end gap-2 border-t border-border pt-4">
-              {selectedPayroll.paymentStatus !== "paid" ? (
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => openDeductionModal(selectedPayroll)}
-                >
-                  Add deduction
-                </Button>
-              ) : null}
-              {canDeletePayroll ? (
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => setDeleteTarget(selectedPayroll)}
-                >
-                  Delete
-                </Button>
-              ) : null}
-            </div>
-          </>
-        ) : null}
-      </DocumentPreviewModal>
-
-      <Hq6ConfirmModal
-        open={Boolean(deleteTarget)}
-        onClose={() => setDeleteTarget(null)}
-        title="Delete payroll?"
-        message={
-          deleteTarget
-            ? deleteTarget.paymentStatus === "paid" ||
-              deleteTarget.status === "paid"
-              ? `Delete paid payroll for ${deleteTarget.employeeName}? This reverses the wage expense and payment-account debit.`
-              : `Delete payroll for ${deleteTarget.employeeName}?`
-            : "Are you sure?"
-        }
-        confirmLabel="Delete"
-        danger
-        onConfirm={() => {
-          if (!deleteTarget) return;
-          deletePayrollMutation.mutate(deleteTarget);
-        }}
-      />
-
-      <Modal
-        open={Boolean(deductionTarget)}
-        onClose={closeDeductionModal}
-        className="z-[60]"
-      >
-        <ModalHeader
-          title="Add payroll deduction"
-          onClose={closeDeductionModal}
+  const payslipModal = (
+    <DocumentPreviewModal
+      open={Boolean(selectedPayroll)}
+      title={selectedPayroll ? payrollPayslipTitle(selectedPayroll) : "Payslip"}
+      onClose={() => setSelectedPayroll(null)}
+      printLabel="Print"
+    >
+      {selectedPayroll ? (
+        <PayrollPayslipDocument
+          payroll={selectedPayroll}
+          tenantName={
+            selectedPayroll.tenantName ?? tenantName ?? "Vonos"
+          }
+          tenantAddress={payslipAddress}
+          locationLabel={selectedPayroll.locationCode}
+          invoice={payslipInvoice}
+          payments={payslipPaymentsQuery.data ?? null}
         />
-        <div className="space-y-3 px-1 py-2">
-          <p className="text-sm text-muted">
-            {deductionTarget
-              ? `${deductionTarget.employeeName} · remaining take-home ${formatCurrency(maxDeduction, "NGN")}`
-              : null}
-          </p>
-          <Input
-            label="Amount"
-            type="text"
-            inputMode="decimal"
-            autoComplete="off"
-            value={deductionForm.amount}
-            onChange={(e) =>
-              setDeductionForm((prev) => ({ ...prev, amount: e.target.value }))
-            }
-            placeholder="0.00"
-          />
-          <Input
-            label="Label (optional)"
-            value={deductionForm.note}
-            onChange={(e) =>
-              setDeductionForm((prev) => ({ ...prev, note: e.target.value }))
-            }
-            placeholder="e.g. PAYE, Loan"
-          />
-          <Input
-            label="Reason (optional)"
-            value={deductionForm.reason}
-            onChange={(e) =>
-              setDeductionForm((prev) => ({ ...prev, reason: e.target.value }))
-            }
-            placeholder="Shown on payslip"
-          />
-          {deductionError ? (
-            <p className="text-sm text-[var(--color-error-text)]">{deductionError}</p>
-          ) : null}
-        </div>
-        <ModalFooter>
-          <Button type="button" variant="secondary" onClick={closeDeductionModal}>
-            Cancel
-          </Button>
-          <Button
-            type="button"
-            isLoading={addDeductionMutation.isPending}
-            disabled={
-              !deductionForm.amount ||
-              !Number.isFinite(parseMoneyInput(deductionForm.amount)) ||
-              parseMoneyInput(deductionForm.amount) <= 0 ||
-              parseMoneyInput(deductionForm.amount) > maxDeduction ||
-              addDeductionMutation.isPending
-            }
-            onClick={() => {
-              if (!deductionTarget) return;
-              const amount = parseMoneyInput(deductionForm.amount);
-              if (!Number.isFinite(amount) || amount <= 0 || amount > maxDeduction) {
-                return;
-              }
-              const vars = {
-                tenantId: deductionTarget.tenantId,
-                payrollId: deductionTarget.id,
-                addAmount: amount,
-                note: deductionForm.note.trim() || undefined,
-                reason: deductionForm.reason.trim() || undefined,
-              };
-              // Capture ids then close — do not reset() the mutation (that
-              // cancelled in-flight applies and hid errors).
-              setDeductionTarget(null);
-              setDeductionError(null);
-              addDeductionMutation.mutate(vars);
-            }}
-          >
-            Apply deduction
-          </Button>
-        </ModalFooter>
-      </Modal>
-    </>
+      ) : null}
+    </DocumentPreviewModal>
   );
 
   const payrollPrimaryAction =
-    addPayrollStep === "details" ? (
-      <div className="flex flex-wrap items-center gap-2">
-        <button
-          type="button"
-          className="hq6-btn hq6-btn-outline"
-          onClick={resetAddPayrollFlow}
-          disabled={createPayrollsMutation.isPending}
-        >
-          Cancel
-        </button>
-        <Hq6BusyButton
-          type="button"
-          className="hq6-btn hq6-btn-blue"
-          busy={createPayrollsMutation.isPending}
-          busyLabel="Saving…"
-          onClick={() => createPayrollsMutation.mutate()}
-          disabled={
-            !payrollGroupName.trim() ||
-            selectedEmployeesForPayroll.length === 0 ||
-            selectedEmployeesForPayroll.some((employee) => {
-              const draft = employeeDrafts[employee.id] ?? emptyEmployeeDraft();
-              return basicSalaryTotal(draft) <= 0;
-            })
-          }
-        >
-          Save as draft
-        </Hq6BusyButton>
-      </div>
-    ) : activeTab === "payrolls" ? (
+    activeTab === "payrolls" ? (
       <div className="flex flex-wrap items-center gap-2">
         <UposGradientActionButton label="Add Payroll" onClick={openAddPayroll} />
       </div>
@@ -2289,9 +1359,7 @@ export function PayrollView({
 
   const panelBody = (
     <>
-      {addPayrollStep === "details" ? (
-        addPayrollDetailsPage
-      ) : activeTab === "payrolls" ? (
+      {activeTab === "payrolls" ? (
         <ServerPaginatedTable
           items={payrollsPage.items}
           columns={payrollListColumns}
@@ -2317,7 +1385,7 @@ export function PayrollView({
         />
       ) : null}
 
-      {addPayrollStep !== "details" && activeTab === "groups" ? (
+      {activeTab === "groups" ? (
         <>
           <div className="mb-4 flex flex-wrap items-end gap-2 rounded-lg border border-border bg-card p-4">
             <div className="min-w-[12rem] flex-1">
@@ -2356,44 +1424,10 @@ export function PayrollView({
         </>
       ) : null}
 
-      {addPayrollStep !== "details" && activeTab === "components" ? (
+      {activeTab === "components" ? (
         <>
           <div className="mb-4 flex flex-wrap items-end gap-2 rounded-lg border border-border bg-card p-4">
-            <div className="min-w-[10rem] flex-1">
-              <label className="mb-1 block text-xs font-medium text-muted">Name</label>
-              <input
-                className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm"
-                value={newComponent.name}
-                onChange={(e) => setNewComponent({ ...newComponent, name: e.target.value })}
-              />
-            </div>
-            <div className="w-36">
-              <label className="mb-1 block text-xs font-medium text-muted">Type</label>
-              <select
-                className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm"
-                value={newComponent.type}
-                onChange={(e) =>
-                  setNewComponent({
-                    ...newComponent,
-                    type: e.target.value as PayComponent["type"],
-                  })
-                }
-              >
-                <option value="allowance">Allowance</option>
-                <option value="deduction">Deduction</option>
-              </select>
-            </div>
-            <div className="w-32">
-              <label className="mb-1 block text-xs font-medium text-muted">Amount</label>
-              <input
-                type="text"
-                inputMode="decimal"
-                autoComplete="off"
-                className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm"
-                value={newComponent.amount}
-                onChange={(e) => setNewComponent({ ...newComponent, amount: e.target.value })}
-              />
-            </div>
+            {componentFormFields(newComponent, setNewComponent)}
             <Button
               onClick={() => createComponentMutation.mutate()}
               disabled={
@@ -2429,158 +1463,68 @@ export function PayrollView({
       {addPayrollSelectModal}
 
       <Hq6Modal
-        open={Boolean(payTargets)}
-        onClose={closePayModal}
-        title={`Add payment for payroll group${
-          payGroupHeader?.groupName ? ` (${payGroupHeader.groupName})` : ""
-        }`}
-        size="2xl"
+        open={Boolean(editComponent)}
+        onClose={() => setEditComponent(null)}
+        title="Edit pay component"
+        size="lg"
         footer={
           <Hq6ModalSaveClose
-            onSave={submitPayModal}
-            onClose={closePayModal}
-            saving={false}
-            saveLabel={
-              payModalRows.length > 1
-                ? `Pay ${payModalRows.length} · ${formatCurrency(payTotal, "NGN")}`
-                : `Pay ${formatCurrency(payTotal, "NGN")}`
+            onSave={() => updateComponentMutation.mutate()}
+            onClose={() => setEditComponent(null)}
+            saving={updateComponentMutation.isPending}
+            saveDisabled={
+              !editComponentForm.name ||
+              !editComponentForm.amount ||
+              updateComponentMutation.isPending
             }
-            saveDisabled={payModalRows.length === 0 || !payGroupRowsReady}
           />
         }
       >
-        <div className="space-y-4">
-          {payGroupHeader ? (
-            <div className="flex flex-wrap items-start justify-between gap-4 border-b border-border pb-3 text-sm">
-              <div>
-                <p className="font-semibold text-foreground">
-                  {payGroupHeader.companyName}
-                </p>
-                {payGroupHeader.address ? (
-                  <p className="mt-0.5 max-w-md text-muted">
-                    {payGroupHeader.address}
-                  </p>
-                ) : null}
-              </div>
-              <div className="text-right text-sm">
-                <p>
-                  <span className="text-muted">Payroll group: </span>
-                  <span className="font-medium">
-                    {payGroupHeader.groupName}
-                  </span>
-                </p>
-                <p className="mt-1">
-                  <span className="text-muted">Status: </span>
-                  <span className="font-medium capitalize">
-                    {payGroupHeader.status}
-                  </span>
-                </p>
-              </div>
-            </div>
-          ) : null}
-          <div className="overflow-x-auto rounded border border-border">
-            <table className="w-full min-w-[52rem] border-collapse text-sm">
-              <thead>
-                <tr className="border-b border-border bg-surface text-left">
-                  <th className="px-3 py-2 font-semibold">Employee</th>
-                  <th className="px-3 py-2 font-semibold">Gross Amount</th>
-                  <th className="px-3 py-2 font-semibold">Bank Details</th>
-                  <th className="px-3 py-2 font-semibold">Add payment</th>
-                </tr>
-              </thead>
-              <tbody>
-                {payModalRows.map((row) => {
-                  const form = payRowForms[row.id] ?? emptyPayRowForm();
-                  return (
-                    <tr
-                      key={row.id}
-                      className="border-b border-border/80 align-top last:border-0"
-                    >
-                      <td className="px-3 py-3 font-medium">
-                        {row.employeeName}
-                      </td>
-                      <td className="px-3 py-3 tabular-nums whitespace-nowrap">
-                        {formatHq6Currency(row.grossPay)}
-                      </td>
-                      <td className="px-3 py-3 text-xs leading-5 text-muted">
-                        {payrollBankDetailLines(row).map((line) => (
-                          <div key={line.label}>
-                            {line.label}: {line.value}
-                          </div>
-                        ))}
-                      </td>
-                      <td className="px-3 py-3">
-                        <div className="min-w-[14rem] space-y-2">
-                          <Hq6Field label="Paid on" required>
-                            <Hq6DateTimeInput
-                              value={form.paidOn}
-                              onChange={(value) =>
-                                patchPayRowForm(row.id, { paidOn: value })
-                              }
-                            />
-                          </Hq6Field>
-                          <Hq6Field label="Payment Account">
-                            <PaymentAccountSelect
-                              tenantId={row.tenantId}
-                              value={form.accountId}
-                              onChange={(accountId) =>
-                                patchPayRowForm(row.id, { accountId })
-                              }
-                              emptyLabel="None"
-                            />
-                          </Hq6Field>
-                          <Hq6Field label="Payment Method" required>
-                            <select
-                              className="form-control"
-                              value={form.method}
-                              onChange={(e) =>
-                                patchPayRowForm(row.id, {
-                                  method: e.target.value,
-                                })
-                              }
-                            >
-                              <option value="">Please Select</option>
-                              {HQ6_PAYMENT_METHOD_OPTIONS.map((opt) => (
-                                <option key={opt.value} value={opt.value}>
-                                  {opt.label}
-                                </option>
-                              ))}
-                            </select>
-                          </Hq6Field>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+        <div className="flex flex-wrap items-end gap-2">
+          {componentFormFields(editComponentForm, setEditComponentForm)}
         </div>
       </Hq6Modal>
-      {deductionModals}
+
+      <Hq6ConfirmModal
+        open={Boolean(deleteComponentTarget)}
+        onClose={() => setDeleteComponentTarget(null)}
+        title="Delete pay component?"
+        message={
+          deleteComponentTarget
+            ? `Delete "${deleteComponentTarget.name}"? This cannot be undone.`
+            : "Are you sure?"
+        }
+        confirmLabel="Delete"
+        danger
+        onConfirm={() => {
+          if (!deleteComponentTarget) return;
+          deleteComponentMutation.mutate(deleteComponentTarget);
+        }}
+      />
+
+      {payslipModal}
+
+      <PayrollViewPaymentsModal
+        open={Boolean(paymentsModalPayroll)}
+        onClose={() => setPaymentsModalPayroll(null)}
+        tenantId={paymentsModalPayroll?.tenantId ?? tenantId ?? null}
+        payroll={paymentsModalPayroll}
+      />
     </>
   );
 
   const shell = (
     <ListPageShell
       tabs={
-        addPayrollStep === "details"
-          ? [{ id: "payrolls", label: "Add Payroll" }]
-          : embedded
-            ? PAYROLL_TABS.filter((t) => t.id === activeTab).map((t) => ({
-                id: t.id,
-                label: t.label,
-              }))
-            : allTenants && !filterTenantId
-              ? PAYROLL_TABS.filter((t) => t.id === "payrolls").map((t) => ({
-                  id: t.id,
-                  label: t.label,
-                }))
-              : PAYROLL_TABS.map((t) => ({ id: t.id, label: t.label }))
+        allTenants && !filterTenantId
+          ? PAYROLL_TABS.filter((t) => t.id === "payrolls").map((t) => ({
+              id: t.id,
+              label: t.label,
+            }))
+          : PAYROLL_TABS.map((t) => ({ id: t.id, label: t.label }))
       }
-      activeTab={addPayrollStep === "details" ? "payrolls" : activeTab}
+      activeTab={activeTab}
       onTabChange={(id) => {
-        if (addPayrollStep === "details") return;
         if (allTenants && !filterTenantId && id !== "payrolls") {
           toast.error("Select a business first to open Payroll Groups");
           return;
@@ -2592,11 +1536,7 @@ export function PayrollView({
       searchPlaceholder={searchPlaceholder}
       showImport={false}
       showDateRange={false}
-      filterDropdowns={
-        addPayrollStep === "details" ? undefined : payrollFilterDropdowns
-      }
-      showSearch={addPayrollStep !== "details"}
-      showExport={addPayrollStep !== "details"}
+      filterDropdowns={payrollFilterDropdowns}
       primaryAction={payrollPrimaryAction}
       pageSize={
         activeTab === "payrolls"
@@ -2606,13 +1546,11 @@ export function PayrollView({
             : componentsPage.pageSize
       }
       onPageSizeChange={
-        addPayrollStep === "details"
-          ? undefined
-          : activeTab === "payrolls"
-            ? payrollsPage.setPageSize
-            : activeTab === "groups"
-              ? groupsPage.setPageSize
-              : componentsPage.setPageSize
+        activeTab === "payrolls"
+          ? payrollsPage.setPageSize
+          : activeTab === "groups"
+            ? groupsPage.setPageSize
+            : componentsPage.setPageSize
       }
       className={embedded && isHq6 ? "border-0 shadow-none bg-transparent" : embedded ? "border-0 shadow-none" : undefined}
       hq6Title="HRM"
@@ -2633,8 +1571,8 @@ export function PayrollView({
         module="HRM — Payroll"
         description={
           allTenants
-            ? "Select a business, add employees to a draft payroll group, then pay from Payroll Groups."
-            : "Add multiple employees to a draft payroll group, then pay everyone from the Payroll Groups tab."
+            ? "Select employees to start a payroll group, then finalize and pay from Payroll Groups."
+            : "Add employees to a payroll group, finalize it, then pay from Payroll Groups."
         }
       />
       {shell}

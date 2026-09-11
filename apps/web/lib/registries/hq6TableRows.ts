@@ -92,6 +92,10 @@ export const HQ6_CUSTOMER_ROW_ACTIONS: Hq6RowActionSpec[] = [
 export const HQ6_SUPPLIER_COLUMNS: Hq6ColumnSpec[] = [
   { key: "contactId", header: "Contact ID", defaultVisible: true },
   { key: "businessName", header: "Business Name", defaultVisible: true },
+  { key: "phone", header: "Mobile", defaultVisible: true },
+  { key: "accountHolderName", header: "Account Name", defaultVisible: true },
+  { key: "bankAccountNo", header: "Account Number", defaultVisible: true },
+  { key: "bankName", header: "Bank Name", defaultVisible: true },
   { key: "contactName", header: "Name", defaultVisible: true },
   { key: "email", header: "Email", defaultVisible: true },
   { key: "taxNumber", header: "Tax number", defaultVisible: true },
@@ -100,7 +104,6 @@ export const HQ6_SUPPLIER_COLUMNS: Hq6ColumnSpec[] = [
   { key: "advanceBalance", header: "Advance Balance", defaultVisible: true },
   { key: "createdAt", header: "Added On", defaultVisible: true },
   { key: "address", header: "Address", defaultVisible: true },
-  { key: "phone", header: "Mobile", defaultVisible: true },
   { key: "totalPurchaseDue", header: "Total Purchase Due", defaultVisible: true },
   { key: "totalPurchaseReturn", header: "Total Purchase Return Due", defaultVisible: true },
 ];

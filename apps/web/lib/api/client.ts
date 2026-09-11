@@ -56,6 +56,7 @@ function redirectToLogin(): void {
     path.startsWith("/shop") ||
     path.startsWith("/track") ||
     path.startsWith("/contact") ||
+    path.startsWith("/blog") ||
     path.startsWith("/maintenance")
   ) {
     return;

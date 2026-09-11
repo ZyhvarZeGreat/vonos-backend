@@ -230,9 +230,12 @@ export function Hq6SuppliersListView() {
       [
         { key: "contactId", header: "Contact ID" },
         { key: "businessName", header: "Business Name" },
+        { key: "mobile", header: "Mobile" },
+        { key: "accountHolderName", header: "Account Name" },
+        { key: "bankAccountNo", header: "Account Number" },
+        { key: "bankName", header: "Bank Name" },
         { key: "name", header: "Name" },
         { key: "email", header: "Email" },
-        { key: "mobile", header: "Mobile" },
         { key: "totalPurchaseDue", header: "Total purchase due" },
         { key: "status", header: "Status" },
       ],
@@ -242,6 +245,9 @@ export function Hq6SuppliersListView() {
         name: row.name,
         email: row.email ?? "",
         mobile: row.phone ?? "",
+        accountHolderName: row.accountHolderName ?? "",
+        bankAccountNo: row.bankAccountNo ?? "",
+        bankName: row.bankName ?? "",
         totalPurchaseDue: row.totalPurchaseDue ?? 0,
         status: row.status ?? "active",
       })),
@@ -535,6 +541,16 @@ export function Hq6SuppliersListView() {
                               {showCol("businessName") ? (
                                 <th>Business Name</th>
                               ) : null}
+                              {showCol("phone") ? <th>Mobile</th> : null}
+                              {showCol("accountHolderName") ? (
+                                <th>Account Name</th>
+                              ) : null}
+                              {showCol("bankAccountNo") ? (
+                                <th>Account Number</th>
+                              ) : null}
+                              {showCol("bankName") ? (
+                                <th>Bank Name</th>
+                              ) : null}
                               {showCol("contactName") ? <th>Name</th> : null}
                               {showCol("email") ? <th>Email</th> : null}
                               {showCol("taxNumber") ? (
@@ -553,7 +569,6 @@ export function Hq6SuppliersListView() {
                               {showCol("address") ? (
                                 <th className="sorting_disabled">Address</th>
                               ) : null}
-                              {showCol("phone") ? <th>Mobile</th> : null}
                               {showCol("totalPurchaseDue") ? (
                                 <th className="sorting_disabled">
                                   Total Purchase Due
@@ -570,7 +585,7 @@ export function Hq6SuppliersListView() {
                             {error ? (
                               <tr className="odd">
                                 <td
-                                  colSpan={14}
+                                  colSpan={17}
                                   className="dataTables_empty"
                                 >
                                   Failed to load suppliers.
@@ -598,7 +613,7 @@ export function Hq6SuppliersListView() {
                             ) : suppliers.length === 0 ? (
                               <tr className="odd">
                                 <td
-                                  colSpan={14}
+                                  colSpan={17}
                                   className="dataTables_empty"
                                   valign="top"
                                 >
@@ -743,6 +758,18 @@ export function Hq6SuppliersListView() {
                                       {hq6Cell(row.businessName ?? row.name)}
                                     </td>
                                   ) : null}
+                                  {showCol("phone") ? (
+                                    <td>{hq6Cell(row.phone)}</td>
+                                  ) : null}
+                                  {showCol("accountHolderName") ? (
+                                    <td>{hq6Cell(row.accountHolderName)}</td>
+                                  ) : null}
+                                  {showCol("bankAccountNo") ? (
+                                    <td>{hq6Cell(row.bankAccountNo)}</td>
+                                  ) : null}
+                                  {showCol("bankName") ? (
+                                    <td>{hq6Cell(row.bankName)}</td>
+                                  ) : null}
                                   {showCol("contactName") ? (
                                     <td>
                                       {hq6Cell(
@@ -793,9 +820,6 @@ export function Hq6SuppliersListView() {
                                   ) : null}
                                   {showCol("address") ? (
                                     <td>{hq6Cell(row.address)}</td>
-                                  ) : null}
-                                  {showCol("phone") ? (
-                                    <td>{hq6Cell(row.phone)}</td>
                                   ) : null}
                                   {showCol("totalPurchaseDue") ? (
                                     <td>

@@ -1,5 +1,9 @@
 import MarketingFooter from "@/components/marketing/MarketingFooter";
 
-export default function SiteFooter() {
-  return <MarketingFooter id="contact" />;
+type SiteFooterProps = {
+  showCta?: boolean;
+};
+
+export default function SiteFooter({ showCta }: SiteFooterProps = {}) {
+  return <MarketingFooter id="contact" showCta={showCta} />;
 }

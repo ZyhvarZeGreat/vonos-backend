@@ -65,6 +65,7 @@ export default function SiteNav() {
           { label: "Home", href: "/", ariaLabel: "Vonos home" },
           { label: "Services", href: "/services", ariaLabel: "Our services" },
           { label: "About", href: "/about", ariaLabel: "About Vonos" },
+          { label: "Blog", href: "/blog", ariaLabel: "Workshop blog" },
         ],
       },
       {

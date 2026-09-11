@@ -1,6 +1,8 @@
 import type {
   Payroll,
   PayrollGroup,
+  PayrollGroupDetail,
+  PayrollPaymentRow,
   PayComponent,
   PayrollFilters,
   Designation,
@@ -15,6 +17,8 @@ import type {
   SyncEmployeeByUserRequest,
   UpdateDesignationRequest,
   UpdatePayrollGroupRequest,
+  UpdatePayrollGroupPayrollsRequest,
+  UpdatePayComponentRequest,
   PayPayrollsRequest,
   PayPayrollsResult,
   LeaveTypeRow,
@@ -273,6 +277,7 @@ export async function getPayrollsPage(
     employeeRecordId: filters.employeeRecordId,
     locationCode: filters.locationCode,
     designationId: filters.designationId,
+    department: filters.department,
     tenantCode: filters.tenantCode,
     month: filters.month != null ? String(filters.month) : undefined,
     year: filters.year != null ? String(filters.year) : undefined,
@@ -297,6 +302,7 @@ export async function getAllTenantsPayrollsPage(
     employeeRecordId: filters.employeeRecordId,
     locationCode: filters.locationCode,
     designationId: filters.designationId,
+    department: filters.department,
     tenantCode: filters.tenantCode,
     month: filters.month != null ? String(filters.month) : undefined,
     year: filters.year != null ? String(filters.year) : undefined,
@@ -841,6 +847,30 @@ export async function createPayComponent(
   return res.json();
 }
 
+export async function updatePayComponent(
+  tenantId: string,
+  id: string,
+  dto: UpdatePayComponentRequest,
+): Promise<PayComponent> {
+  const res = await apiFetch(
+    withTenantQuery(`${PAY_COMPONENTS_PATH}/${id}`, tenantId),
+    { method: "PATCH", body: JSON.stringify(dto) },
+  );
+  if (!res.ok) throw new Error("Failed to update pay component");
+  return res.json();
+}
+
+export async function deletePayComponent(
+  tenantId: string,
+  id: string,
+): Promise<void> {
+  const res = await apiFetch(
+    withTenantQuery(`${PAY_COMPONENTS_PATH}/${id}`, tenantId),
+    { method: "DELETE" },
+  );
+  if (!res.ok) throw new Error("Failed to delete pay component");
+}
+
 export async function updateDesignation(
   tenantId: string,
   id: string,
@@ -869,6 +899,17 @@ export async function deleteDesignation(
   clearEmployeeOptionCache();
 }
 
+export async function getPayrollGroup(
+  tenantId: string,
+  id: string,
+): Promise<PayrollGroupDetail> {
+  const res = await apiFetch(
+    withTenantQuery(`${PAYROLL_GROUPS_PATH}/${id}`, tenantId),
+  );
+  if (!res.ok) return throwApiError(res, "Failed to load payroll group");
+  return res.json();
+}
+
 export async function updatePayrollGroup(
   tenantId: string,
   id: string,
@@ -880,6 +921,44 @@ export async function updatePayrollGroup(
   );
   if (!res.ok) throw new Error("Failed to update department");
   return res.json();
+}
+
+export async function updatePayrollGroupPayrolls(
+  tenantId: string,
+  id: string,
+  dto: UpdatePayrollGroupPayrollsRequest,
+): Promise<PayrollGroupDetail> {
+  const res = await apiFetch(
+    withTenantQuery(`${PAYROLL_GROUPS_PATH}/${id}/payrolls`, tenantId),
+    { method: "PUT", body: JSON.stringify(dto) },
+  );
+  if (!res.ok) return throwApiError(res, "Failed to update payroll group");
+  return res.json();
+}
+
+export async function updatePayrollGroupStatus(
+  tenantId: string,
+  id: string,
+  status: "draft" | "final",
+): Promise<PayrollGroup> {
+  const res = await apiFetch(
+    withTenantQuery(`${PAYROLL_GROUPS_PATH}/${id}/status`, tenantId),
+    { method: "PATCH", body: JSON.stringify({ status }) },
+  );
+  if (!res.ok) return throwApiError(res, "Failed to update group status");
+  return res.json();
+}
+
+export async function getPayrollPayments(
+  tenantId: string,
+  payrollId: string,
+): Promise<PayrollPaymentRow[]> {
+  const res = await apiFetch(
+    withTenantQuery(`${PAYROLL_PATH}/${payrollId}/payments`, tenantId),
+  );
+  if (!res.ok) return throwApiError(res, "Failed to load payments");
+  const body = await res.json();
+  return Array.isArray(body) ? body : [];
 }
 
 export async function deletePayrollGroup(

@@ -19,6 +19,7 @@ const PUBLIC_PREFIXES = [
   "/shop",
   "/track",
   "/contact",
+  "/blog",
   "/maintenance",
 ];
 const skipAuth = isAuthSkipped();

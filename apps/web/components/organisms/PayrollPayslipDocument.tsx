@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import type { InvoiceListRow, Payroll } from "@vonos/types";
+import type { InvoiceListRow, Payroll, PayrollPaymentRow } from "@vonos/types";
 import { formatHq6Currency } from "@/lib/utils/hq6Format";
 import { publicAssetPath } from "@/lib/utils/basePath";
 import { cn } from "@/lib/utils/cn";
@@ -36,6 +36,8 @@ export interface PayrollPayslipDocumentProps {
     InvoiceListRow,
     "documentDate" | "reference" | "paymentStatus"
   > | null;
+  /** HQ6 payment history rows (PP refs). Falls back to invoice row when empty. */
+  payments?: PayrollPaymentRow[] | null;
   extras?: PayslipExtraDetails | null;
   className?: string;
 }
@@ -282,6 +284,7 @@ export function PayrollPayslipDocument({
   locationLabel,
   currency = "NGN",
   invoice,
+  payments,
   extras,
   className,
 }: PayrollPayslipDocumentProps) {
@@ -800,22 +803,44 @@ export function PayrollPayslipDocument({
             </tr>
           </thead>
           <tbody>
-            <tr style={{ background: "#f5f5f5" }}>
-              <td style={{ padding: "8px 10px" }}>1</td>
-              <td style={{ padding: "8px 10px", whiteSpace: "nowrap" }}>
-                {payslipDate(paymentDate)}
-              </td>
-              <td style={{ padding: "8px 10px" }}>{paymentRef}</td>
-              <td style={{ padding: "8px 10px", whiteSpace: "nowrap" }}>
-                {money(payroll.netPay)}
-              </td>
-              <td style={{ padding: "8px 10px" }}>
-                {extras?.paymentMode ?? "Bank Transfer"}
-              </td>
-              <td style={{ padding: "8px 10px" }}>
-                {extras?.paymentNote?.trim() ? extras.paymentNote : "--"}
-              </td>
-            </tr>
+            {(payments && payments.length > 0
+              ? payments
+              : [
+                  {
+                    id: "fallback",
+                    paidOn: paymentDate,
+                    paymentRefNo: paymentRef,
+                    amount: payroll.netPay,
+                    method: extras?.paymentMode ?? "Bank Transfer",
+                    note: extras?.paymentNote ?? null,
+                    accountName: null,
+                  },
+                ]
+            ).map((row, index) => (
+              <tr
+                key={row.id}
+                style={{
+                  background: index % 2 === 0 ? "#f5f5f5" : "#fff",
+                }}
+              >
+                <td style={{ padding: "8px 10px" }}>{index + 1}</td>
+                <td style={{ padding: "8px 10px", whiteSpace: "nowrap" }}>
+                  {payslipDate(row.paidOn ?? paymentDate)}
+                </td>
+                <td style={{ padding: "8px 10px" }}>
+                  {row.paymentRefNo ?? paymentRef}
+                </td>
+                <td style={{ padding: "8px 10px", whiteSpace: "nowrap" }}>
+                  {money(row.amount)}
+                </td>
+                <td style={{ padding: "8px 10px" }}>
+                  {row.method ?? extras?.paymentMode ?? "Bank Transfer"}
+                </td>
+                <td style={{ padding: "8px 10px" }}>
+                  {row.note?.trim() ? row.note : "--"}
+                </td>
+              </tr>
+            ))}
           </tbody>
         </table>
       ) : null}
