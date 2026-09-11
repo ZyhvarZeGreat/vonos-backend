@@ -41,6 +41,7 @@ import { TenantRolesModule } from './modules/tenant-roles/tenant-roles.module';
 import { MediaModule } from './modules/media/media.module';
 import { StoreModule } from './modules/store/store.module';
 import { PublicTrackModule } from './modules/public-track/public-track.module';
+import { CmsModule } from './modules/cms/cms.module';
 import { WhatsAppNotifyModule } from './common/whatsapp/whatsapp-notify.module';
 
 @Module({
@@ -89,6 +90,7 @@ import { WhatsAppNotifyModule } from './common/whatsapp/whatsapp-notify.module';
     MediaModule,
     StoreModule,
     PublicTrackModule,
+    CmsModule,
   ],
   controllers: [AppController, HealthController],
   providers: [

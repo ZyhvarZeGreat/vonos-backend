@@ -39,3 +39,4 @@ export * from "./retailCatalog";
 export * from "./discount";
 export * from "./variation";
 export * from "./bulkPrice";
+export * from "./cms";

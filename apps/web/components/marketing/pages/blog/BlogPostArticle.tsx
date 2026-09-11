@@ -1,16 +1,18 @@
 import Image from "next/image";
 import Link from "next/link";
 
-import {
-  formatBlogDate,
-  type BlogPost,
-} from "@/lib/marketing/blog-posts";
+import type { CmsPost } from "@vonos/types";
+import { formatBlogDate } from "@/lib/marketing/blog-posts";
 
 type BlogPostArticleProps = {
-  post: BlogPost;
+  post: CmsPost;
 };
 
 export default function BlogPostArticle({ post }: BlogPostArticleProps) {
+  const publishedLabel = post.publishedAt
+    ? formatBlogDate(post.publishedAt)
+    : formatBlogDate(post.createdAt);
+
   return (
     <>
       <section className="hero-section vonos-blog-post-hero">
@@ -29,7 +31,7 @@ export default function BlogPostArticle({ post }: BlogPostArticleProps) {
           <div className="vonos-blog-post-header" data-show="show">
             <div className="vonos-blog-post-meta">
               <span className="vonos-blog-card-category">{post.category}</span>
-              <span>{formatBlogDate(post.publishedAt)}</span>
+              <span>{publishedLabel}</span>
               <span>{post.readMinutes} min read</span>
             </div>
             <h1 className="no-margin-bottom">{post.title}</h1>
@@ -44,7 +46,7 @@ export default function BlogPostArticle({ post }: BlogPostArticleProps) {
           <article className="vonos-blog-article">
             <div className="vonos-blog-article-image-wrap">
               <Image
-                src={post.image}
+                src={post.coverImageUrl}
                 alt=""
                 width={1200}
                 height={675}
@@ -58,8 +60,11 @@ export default function BlogPostArticle({ post }: BlogPostArticleProps) {
               <p className="vonos-blog-toc-label">In this article</p>
               <ol className="vonos-blog-toc-list">
                 {post.sections.map((section) => (
-                  <li key={section.id}>
-                    <a href={`#${section.id}`} className="vonos-blog-toc-link">
+                  <li key={section.sectionId}>
+                    <a
+                      href={`#${section.sectionId}`}
+                      className="vonos-blog-toc-link"
+                    >
                       {section.title}
                     </a>
                   </li>
@@ -76,8 +81,8 @@ export default function BlogPostArticle({ post }: BlogPostArticleProps) {
 
               {post.sections.map((section) => (
                 <section
-                  key={section.id}
-                  id={section.id}
+                  key={section.sectionId}
+                  id={section.sectionId}
                   className="vonos-blog-section"
                 >
                   <h2 className="vonos-blog-section-title">{section.title}</h2>

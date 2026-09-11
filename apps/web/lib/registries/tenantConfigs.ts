@@ -43,7 +43,7 @@ export const kidsWearTenantConfig: TenantConfig = withCatalog({
     { label: "Stock Value", icon: "calculator", metricKey: "stockValue", color: "#e11d48" },
   ],
   terminology: { item: "Variant", inventory: "Inventory", supplier: "Supplier", collection: "Collection" },
-  enabledModules: [...HQ6_POS_ENABLED_MODULES, "variants"],
+  enabledModules: [...HQ6_POS_ENABLED_MODULES, "variants", "cms"],
 });
 
 const transactionNavItems = (code: string) => [
@@ -103,7 +103,7 @@ export const cafeTenantConfig: TenantConfig = withCatalog({
     { label: "Revenue", icon: "wallet", metricKey: "revenue", color: "#e11d48" },
   ],
   terminology: { order: "Order", menuItem: "Menu Item", table: "Table", supplier: "Supplier" },
-  enabledModules: [...HQ6_POS_ENABLED_MODULES, "orders", "tables"],
+  enabledModules: [...HQ6_POS_ENABLED_MODULES, "orders", "tables", "cms"],
 });
 
 export const automotiveTenantConfig: TenantConfig = withCatalog({
@@ -242,7 +242,7 @@ export const saloonTenantConfig: TenantConfig = withCatalog({
     { label: "Revenue", icon: "wallet", metricKey: "revenue", color: "#e11d48" },
   ],
   terminology: { appointment: "Appointment", customer: "Customer", service: "Service", stylist: "Stylist" },
-  enabledModules: [...HQ6_POS_ENABLED_MODULES, "appointments", "services"],
+  enabledModules: [...HQ6_POS_ENABLED_MODULES, "appointments", "services", "cms"],
 });
 
 export const TENANT_CONFIGS: Record<string, TenantConfig> = {

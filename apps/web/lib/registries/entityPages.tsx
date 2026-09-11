@@ -62,6 +62,7 @@ import {
   StylistScheduleView,
   TableManagementView,
   TaxRatesListView,
+  TenantCmsView,
   UpdatePriceView,
   UsersView,
   VariationsListView,
@@ -92,6 +93,7 @@ const sharedHr: EntityPageConfig = { title: "HR & People", View: HrView };
 const sharedUsers: EntityPageConfig = { title: "HR & People", View: UsersView };
 const sharedLocations: EntityPageConfig = { title: "Locations", View: LocationsView };
 const sharedSettings: EntityPageConfig = { title: "Settings", View: SettingsView };
+const sharedContent: EntityPageConfig = { title: "Content", View: TenantCmsView };
 const sharedFinance: EntityPageConfig = { title: "Finance", View: FinanceView };
 const sharedCustomers: EntityPageConfig = {
   title: "Customers",
@@ -432,6 +434,7 @@ const ENTITY_PAGES: Record<TenantCode, SlugMap> = {
     ...hrmPages,
     // Business Settings must win over any HRM slug collision on `settings`.
     settings: sharedSettings,
+    content: sharedContent,
     ...settingsPages,
     ...legacyReportPages,
     ...hq6SharedShellPages,
@@ -475,6 +478,7 @@ const ENTITY_PAGES: Record<TenantCode, SlugMap> = {
     ...hrmPages,
     // Business Settings must win over any HRM slug collision on `settings`.
     settings: sharedSettings,
+    content: sharedContent,
     ...settingsPages,
     ...legacyReportPages,
     ...hq6SharedShellPages,
@@ -628,6 +632,7 @@ const ENTITY_PAGES: Record<TenantCode, SlugMap> = {
     ...hrmPages,
     // Business Settings must win over any HRM slug collision on `settings`.
     settings: sharedSettings,
+    content: sharedContent,
     ...settingsPages,
     ...legacyReportPages,
     ...hq6SharedShellPages,

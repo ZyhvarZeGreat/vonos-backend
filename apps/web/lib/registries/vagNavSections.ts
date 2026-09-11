@@ -101,6 +101,18 @@ export const VAG_NAV_SECTIONS: NavSection[] = [
       },
     ],
   },
+  {
+    label: "Content",
+    icon: "file-text",
+    items: [
+      {
+        label: "CMS",
+        icon: "file-text",
+        route: "/admin/cms/posts",
+        pageType: "list",
+      },
+    ],
+  },
 ];
 
 /** Route → permission keys required to see the VAG nav link (any match grants). */
@@ -129,6 +141,7 @@ export const VAG_NAV_VIEW_PERMISSIONS: Record<string, string[]> = {
     "expense_report.view",
   ],
   "/admin/security": ["business_settings.access"],
+  "/admin/cms/posts": ["cms.manage", "business_settings.access"],
 };
 
 /**
@@ -179,6 +192,12 @@ export function isAdminNavActive(pathname: string, route: string): boolean {
     return (
       pathname === "/admin/hrm/payroll" ||
       pathname.startsWith("/admin/hrm/payroll/")
+    );
+  }
+  if (route === "/admin/cms/posts") {
+    return (
+      pathname === "/admin/cms/posts" ||
+      pathname.startsWith("/admin/cms/posts/")
     );
   }
   return pathname === route || pathname.startsWith(`${route}/`);

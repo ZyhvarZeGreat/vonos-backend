@@ -1,10 +1,10 @@
 import Link from "next/link";
 
 import BlogCard from "@/components/marketing/pages/blog/BlogCard";
-import { getLatestBlogPosts } from "@/lib/marketing/blog-posts";
+import { fetchLatestPublicCmsPosts } from "@/lib/marketing/cms-api";
 
-export default function BlogSection() {
-  const posts = getLatestBlogPosts(3);
+export default async function BlogSection() {
+  const posts = await fetchLatestPublicCmsPosts(3);
 
   return (
     <section
@@ -33,7 +33,7 @@ export default function BlogSection() {
         </div>
         <div className="vonos-blog-grid">
           {posts.map((post) => (
-            <BlogCard key={post.slug} post={post} />
+            <BlogCard key={post.id} post={post} />
           ))}
         </div>
       </div>

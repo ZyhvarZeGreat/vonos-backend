@@ -6,21 +6,27 @@ import BlogPostArticle from "@/components/marketing/pages/blog/BlogPostArticle";
 import SiteFooter from "@/components/marketing/SiteFooter";
 import SiteNav from "@/components/marketing/SiteNav";
 import WebflowClientEffects from "@/components/marketing/WebflowClientEffects";
-import { BLOG_POSTS, getBlogPost } from "@/lib/marketing/blog-posts";
+import {
+  fetchAllPublicCmsSlugs,
+  fetchPublicCmsPost,
+} from "@/lib/marketing/cms-api";
 
 type BlogPostPageProps = {
   params: Promise<{ slug: string }>;
 };
 
-export function generateStaticParams() {
-  return BLOG_POSTS.map((post) => ({ slug: post.slug }));
+export const revalidate = 60;
+
+export async function generateStaticParams() {
+  const slugs = await fetchAllPublicCmsSlugs();
+  return slugs.map((slug) => ({ slug }));
 }
 
 export async function generateMetadata({
   params,
 }: BlogPostPageProps): Promise<Metadata> {
   const { slug } = await params;
-  const post = getBlogPost(slug);
+  const post = await fetchPublicCmsPost(slug);
   if (!post) return { title: "Article not found | Vonos" };
 
   return {
@@ -32,7 +38,7 @@ export async function generateMetadata({
 
 export default async function BlogPostPage({ params }: BlogPostPageProps) {
   const { slug } = await params;
-  const post = getBlogPost(slug);
+  const post = await fetchPublicCmsPost(slug);
   if (!post) notFound();
 
   return (

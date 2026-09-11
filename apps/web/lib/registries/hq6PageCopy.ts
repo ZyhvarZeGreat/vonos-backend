@@ -236,6 +236,11 @@ const HQ6_PAGE_COPY: Record<
     title: "Notification Templates",
     subtitle: "",
   },
+  "cms-posts": {
+    title: "Content",
+    subtitle: "Manage blog posts for the public marketing site",
+    searchPlaceholder: "Search by title, slug, or category…",
+  },
 };
 
 /** HQ6 tab-row primary action rules per ui-audit screenshots. */
@@ -303,6 +308,7 @@ const HQ6_LIST_ACTION_RULES: Record<string, Hq6ListActionRule> = {
   jobs: { addVariant: "blue", showDownloadExcel: true, titleOnly: false },
   vehicles: { addVariant: "blue", showDownloadExcel: true, titleOnly: false },
   requisitions: { addVariant: "blue", showDownloadExcel: true, titleOnly: false },
+  "cms-posts": { addVariant: "blue", showDownloadExcel: false, titleOnly: false },
 };
 
 export function hq6CopyForSlug(slug: string | null | undefined): {

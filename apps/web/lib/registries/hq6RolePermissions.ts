@@ -273,6 +273,13 @@ export const HQ6_ROLE_PERMISSION_MODULES: Hq6RolePermissionModule[] = [
     ],
   },
   {
+    id: "cms",
+    label: "Content",
+    permissions: [
+      { key: "cms.manage", label: "Manage CMS posts and public content", type: "checkbox" },
+    ],
+  },
+  {
     id: "settings",
     label: "Settings",
     permissions: [

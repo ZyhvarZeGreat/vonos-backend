@@ -339,5 +339,9 @@ export const AdminEntityReportsHub = lazyNamed(
   () => import("@/components/pages/AdminEntityReportsHub"),
   "AdminEntityReportsHub",
 );
+export const TenantCmsView = lazyNamed(
+  () => import("@/components/pages/cms/TenantCmsView"),
+  "TenantCmsView",
+);
 
 export { PageChunkFallback };

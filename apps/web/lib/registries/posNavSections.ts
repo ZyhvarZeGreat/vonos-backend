@@ -471,6 +471,22 @@ export function posNavSectionsForConfig(config: TenantConfig): NavSection[] {
     });
   }
 
+  // 11b. Content CMS (optional per-tenant public pages)
+  if (has(config, "cms")) {
+    sections.push({
+      label: "Content",
+      icon: "file-text",
+      items: [
+        {
+          label: "Content",
+          icon: "file-text",
+          route: r(code, "content"),
+          pageType: "list",
+        },
+      ],
+    });
+  }
+
   // 12. Settings (before HRM/Essentials — HQ6 order)
   sections.push({ label: "Settings", icon: "settings", collapsible: true, items: settingsItems(code) });
 

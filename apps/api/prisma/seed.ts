@@ -1,6 +1,7 @@
 import { PrismaClient } from '@prisma/client';
 import { purgeDemoStaffAndAudit } from './seed/audit-data';
 import { purgeDemoBusinessData } from './seed/business-data';
+import { seedCmsPosts } from './seed/cms-posts';
 import { seedHrmDemo } from './seed/hrm';
 import { seedTenantsAndUsers } from './seed/tenants';
 
@@ -11,6 +12,7 @@ async function main() {
   await purgeDemoBusinessData(prisma);
   await purgeDemoStaffAndAudit(prisma);
   await seedHrmDemo(prisma);
+  await seedCmsPosts(prisma);
 }
 
 main()

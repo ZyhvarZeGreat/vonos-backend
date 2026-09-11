@@ -165,6 +165,7 @@ model Tenant {
   tenantRoles         TenantRole[]
   storeOrderLines     StoreOrderLine[]
   storeOrderSales     StoreOrderSale[]
+  cmsPosts            CmsPost[]
 }
 
 model Appointment {
@@ -1568,4 +1569,52 @@ model StoreOrderSale {
 
   @@unique([orderId, tenantId])
   @@index([saleId])
+}
+
+enum CmsPostStatus {
+  draft
+  published
+}
+
+/// Public marketing / tenant-scoped CMS posts (blog articles).
+model CmsPost {
+  id            String        @id @default(cuid())
+  /// "group" for VAG marketing site; tenant cuid for per-entity content.
+  scopeKey      String        @default("group")
+  tenantId      String?
+  tenant        Tenant?       @relation(fields: [tenantId], references: [id])
+  slug          String
+  title         String
+  excerpt       String
+  category      String
+  coverImageUrl String
+  author        String        @default("Vonos Workshop")
+  status        CmsPostStatus @default(draft)
+  publishedAt   DateTime?
+  readMinutes   Int           @default(5)
+  intro         Json
+  sortOrder     Int           @default(0)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  deletedAt     DateTime?
+
+  sections CmsPostSection[]
+
+  @@unique([scopeKey, slug])
+  @@index([scopeKey, status, publishedAt])
+  @@index([tenantId, status])
+}
+
+model CmsPostSection {
+  id         String   @id @default(cuid())
+  postId     String
+  post       CmsPost  @relation(fields: [postId], references: [id], onDelete: Cascade)
+  sectionId  String
+  sortOrder  Int
+  title      String
+  paragraphs Json
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([postId, sortOrder])
 }
