@@ -4,10 +4,10 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft } from "lucide-react";
 import type { Payroll, PayrollGroupStatus } from "@vonos/types";
 import type { PayrollEmployeePick } from "@/components/molecules/EmployeePayrollSearch";
 import { Hq6BusyButton } from "@/components/hq6/Hq6BusyButton";
+import { Hq6FormShell } from "@/components/hq6/Hq6Chrome";
 import { useAppMutation } from "@/lib/hooks/useAppMutation";
 import { useTenantId } from "@/lib/hooks/useRouteTenant";
 import { getPayrollGroup, updatePayrollGroupPayrolls } from "@/lib/api/hrm";
@@ -17,7 +17,6 @@ import {
   basicSalaryTotal,
   buildPayrollNoteFromDraft,
   employeeDraftFromPayroll,
-  emptyEmployeeDraft,
   payrollAmountsFromDraft,
   type EmployeePayrollDraft,
 } from "./payrollDraftUtils";
@@ -26,6 +25,7 @@ type EditRow = {
   payrollId: string;
   employee: PayrollEmployeePick;
   draft: EmployeePayrollDraft;
+  paid: boolean;
 };
 
 export type PayrollGroupEditPageProps = {
@@ -47,6 +47,10 @@ function payrollToEmployeePick(row: Payroll): PayrollEmployeePick {
     payrollGroupId: row.payrollGroupId,
     payrollGroupName: row.payrollGroupName,
   };
+}
+
+function isPayrollPaid(row: Payroll): boolean {
+  return row.paymentStatus === "paid" || row.status === "paid";
 }
 
 export function PayrollGroupEditPage({
@@ -80,14 +84,20 @@ export function PayrollGroupEditPage({
         payrollId: payroll.id,
         employee: payrollToEmployeePick(payroll),
         draft: employeeDraftFromPayroll(payroll),
+        paid: isPayrollPaid(payroll),
       })),
     );
   }, [group]);
 
+  const paidCount = useMemo(() => rows.filter((row) => row.paid).length, [rows]);
+  const editableRows = useMemo(() => rows.filter((row) => !row.paid), [rows]);
+  const hasPaidRows = paidCount > 0;
+
   const canSave = useMemo(() => {
     if (!groupName.trim()) return false;
-    return rows.every((row) => basicSalaryTotal(row.draft) > 0);
-  }, [groupName, rows]);
+    if (editableRows.length === 0) return true;
+    return editableRows.every((row) => basicSalaryTotal(row.draft) > 0);
+  }, [groupName, editableRows]);
 
   const updateMutation = useAppMutation({
     mutationFn: async () => {
@@ -96,7 +106,7 @@ export function PayrollGroupEditPage({
         name: groupName.trim(),
         status: groupStatus,
         sendNotification,
-        employees: rows.map((row) => {
+        employees: editableRows.map((row) => {
           const { grossPay, totalAllowance, totalDeduction } =
             payrollAmountsFromDraft(row.draft);
           return {
@@ -126,113 +136,141 @@ export function PayrollGroupEditPage({
   function patchRowDraft(payrollId: string, patch: Partial<EmployeePayrollDraft>) {
     setRows((prev) =>
       prev.map((row) =>
-        row.payrollId === payrollId
+        row.payrollId === payrollId && !row.paid
           ? { ...row, draft: { ...row.draft, ...patch } }
           : row,
       ),
     );
   }
 
-  return (
-    <div className="space-y-6">
-      <Link
-        href={backHref}
-        className="inline-flex items-center gap-1.5 text-sm text-muted hover:text-foreground"
-      >
-        <ArrowLeft className="size-4" />
-        Back
-      </Link>
+  if (groupQuery.isLoading) {
+    return (
+      <Hq6FormShell title="Edit payroll group">
+        <p className="text-sm text-[#64748b]">Loading…</p>
+      </Hq6FormShell>
+    );
+  }
 
-      <div>
-        <h1 className="text-xl font-semibold text-[#111827]">
-          Edit payroll group
-        </h1>
-        {group ? (
-          <p className="mt-1 text-sm text-muted">
-            {group.payrollCount} payroll{group.payrollCount === 1 ? "" : "s"}
-          </p>
-        ) : null}
-      </div>
-
-      {groupQuery.isLoading ? (
-        <p className="text-sm text-muted">Loading…</p>
-      ) : groupQuery.isError ? (
+  if (groupQuery.isError) {
+    return (
+      <Hq6FormShell title="Edit payroll group">
         <p className="text-sm text-[var(--color-error-text)]">
           {groupQuery.error instanceof Error
             ? groupQuery.error.message
             : "Failed to load payroll group"}
         </p>
-      ) : (
-        <>
-          <div className="grid gap-3 sm:max-w-lg sm:grid-cols-2">
-            <div className="sm:col-span-2">
-              <label className="mb-1 block text-xs font-semibold text-[#555]">
-                Payroll group name<span className="text-red-600">*</span>:
-              </label>
-              <input
-                className="form-control hq6-modal-input w-full"
-                value={groupName}
-                onChange={(e) => setGroupName(e.target.value)}
-              />
-            </div>
-            <div>
-              <label className="mb-1 block text-xs font-semibold text-[#555]">
-                Status<span className="text-red-600">*</span>:
-              </label>
-              <select
-                className="form-control select2 hq6-modal-input w-full"
-                value={groupStatus}
-                onChange={(e) =>
-                  setGroupStatus(e.target.value as PayrollGroupStatus)
-                }
-              >
-                <option value="draft">Draft</option>
-                <option value="final">Final</option>
-              </select>
-            </div>
-            <div className="flex items-end pb-1">
-              <label className="inline-flex items-center gap-2 text-sm text-[#555]">
-                <input
-                  type="checkbox"
-                  checked={sendNotification}
-                  onChange={(e) => setSendNotification(e.target.checked)}
-                />
-                Send notification
-              </label>
-            </div>
-          </div>
+        <div className="mt-4">
+          <Link href={backHref} className="btn btn-default">
+            Back
+          </Link>
+        </div>
+      </Hq6FormShell>
+    );
+  }
 
-          <div className="space-y-4">
-            {rows.map((row) => (
-              <PayrollGroupEmployeeForm
-                key={row.payrollId}
-                employee={row.employee}
-                draft={row.draft}
-                onChange={(patch) => patchRowDraft(row.payrollId, patch)}
-              />
-            ))}
-            {rows.length === 0 ? (
-              <p className="text-sm text-muted">No payroll rows to edit.</p>
-            ) : null}
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2 border-t border-border pt-4">
-            <Link href={backHref} className="hq6-btn hq6-btn-outline">
-              Cancel
-            </Link>
-            <Hq6BusyButton
-              type="button"
-              className="hq6-btn hq6-btn-blue"
-              busy={updateMutation.isPending}
-              busyLabel="Updating…"
-              disabled={!canSave}
-              onClick={() => updateMutation.mutate()}
+  return (
+    <Hq6FormShell
+      multiCard
+      title="Edit payroll group"
+      subtitle={
+        group
+          ? `${group.payrollCount} payroll${group.payrollCount === 1 ? "" : "s"}`
+          : undefined
+      }
+    >
+      <section className="hq6-form-card">
+        <h2 className="hq6-form-card-title">Group details</h2>
+        <div className="grid gap-4 md:grid-cols-2">
+          <label className="hq6-form-label md:col-span-2">
+            <span>
+              Payroll group name<span className="req">*</span>
+            </span>
+            <input
+              className="form-control"
+              value={groupName}
+              onChange={(e) => setGroupName(e.target.value)}
+            />
+          </label>
+          <label className="hq6-form-label">
+            <span>
+              Status<span className="req">*</span>
+            </span>
+            <select
+              className="form-control"
+              value={groupStatus}
+              onChange={(e) =>
+                setGroupStatus(e.target.value as PayrollGroupStatus)
+              }
             >
-              Update
-            </Hq6BusyButton>
+              <option value="draft" disabled={hasPaidRows}>
+                Draft
+              </option>
+              <option value="final">Final</option>
+            </select>
+            {hasPaidRows ? (
+              <p className="mt-1 text-xs text-[#b45309]">
+                Paid employees stay locked. You can still update the group name and
+                any unpaid rows.
+              </p>
+            ) : groupStatus === "final" ? (
+              <p className="mt-1 text-xs text-[#b45309]">
+                Final payrolls can be paid from the Payroll Groups tab.
+              </p>
+            ) : (
+              <p className="mt-1 text-xs text-[#64748b]">
+                Draft — switch to Final when amounts are confirmed.
+              </p>
+            )}
+          </label>
+          <div className="flex items-end pb-1">
+            <label className="inline-flex items-center gap-2 text-sm text-[#374151]">
+              <input
+                type="checkbox"
+                checked={sendNotification}
+                onChange={(e) => setSendNotification(e.target.checked)}
+              />
+              Send notification
+            </label>
           </div>
-        </>
+        </div>
+      </section>
+
+      {rows.length === 0 ? (
+        <section className="hq6-form-card">
+          <p className="text-sm text-[#64748b]">No payroll rows to edit.</p>
+        </section>
+      ) : (
+        rows.map((row, index) => (
+          <section key={row.payrollId} className="hq6-form-card">
+            <h2 className="hq6-form-card-title">
+              Employee {index + 1}
+              {row.paid ? " · Paid (read-only)" : ""}
+            </h2>
+            <PayrollGroupEmployeeForm
+              employee={row.employee}
+              draft={row.draft}
+              readOnly={row.paid}
+              onChange={(patch) => patchRowDraft(row.payrollId, patch)}
+            />
+          </section>
+        ))
       )}
-    </div>
+
+      <div className="flex flex-wrap gap-2">
+        <Hq6BusyButton
+          type="button"
+          className="hq6-btn-purple"
+          busy={updateMutation.isPending}
+          busyLabel="Updating…"
+          disabled={!canSave}
+          onClick={() => updateMutation.mutate()}
+        >
+          Update
+        </Hq6BusyButton>
+        <Link href={backHref} className="btn btn-default">
+          Cancel
+        </Link>
+      </div>
+    </Hq6FormShell>
   );
 }

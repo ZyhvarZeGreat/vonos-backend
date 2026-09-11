@@ -74,35 +74,143 @@ export function employeeDraftFromPayComponents(
   };
 }
 
-/** Approximate draft from an existing payroll row (edit flow). */
-export function employeeDraftFromPayroll(row: Payroll): EmployeePayrollDraft {
+type ParsedPayrollNote = {
+  workDuration: string;
+  durationUnit: string;
+  amountPerUnit: string;
+  allowances: PayLine[];
+  deductions: PayLine[];
+  userNote: string;
+};
+
+function parsePayLineSegment(
+  segment: string,
+  sign: "+" | "-",
+  payrollId: string,
+  index: number,
+): PayLine | null {
+  const trimmed = segment.trim();
+  const match = trimmed.match(
+    new RegExp(
+      `^\\${sign}\\s+(.+?):\\s*([\\d.]+)(?:\\s*\\(([\\d.]+)% of basic\\))?$`,
+    ),
+  );
+  if (!match) return null;
+  const [, name, amount, percent] = match;
+  const prefix = sign === "+" ? "allow" : "ded";
   return {
+    id: `${prefix}-${payrollId}-${index}`,
+    name: name!.trim(),
+    amountType: percent ? "percent" : "fixed",
+    amount: percent ?? amount!,
+  };
+}
+
+/** Restore basic, earnings, deductions, and free-text note from stored payroll note. */
+export function parsePayrollNote(
+  note: string | null | undefined,
+  payrollId: string,
+  fallbackGrossPay: number,
+): ParsedPayrollNote {
+  const fallback: ParsedPayrollNote = {
     workDuration: "1",
     durationUnit: "Month",
-    amountPerUnit: String(row.grossPay || 0),
-    allowances:
-      row.totalAllowance > 0
-        ? [
-            {
-              id: `allow-${row.id}`,
-              name: "Allowances",
-              amountType: "fixed",
-              amount: String(row.totalAllowance),
-            },
-          ]
-        : [newPayLine()],
-    deductions:
-      row.totalDeduction > 0
-        ? [
-            {
-              id: `ded-${row.id}`,
-              name: "Deductions",
-              amountType: "fixed",
-              amount: String(row.totalDeduction),
-            },
-          ]
-        : [newPayLine()],
-    note: row.note ?? "",
+    amountPerUnit: String(fallbackGrossPay || 0),
+    allowances: [newPayLine()],
+    deductions: [newPayLine()],
+    userNote: "",
+  };
+  if (!note?.trim()) return fallback;
+
+  let workDuration = fallback.workDuration;
+  let durationUnit = fallback.durationUnit;
+  let amountPerUnit = fallback.amountPerUnit;
+  const allowances: PayLine[] = [];
+  const deductions: PayLine[] = [];
+  const userNoteParts: string[] = [];
+
+  for (const part of note.split(" · ").map((segment) => segment.trim())) {
+    if (!part) continue;
+
+    const basicMatch = part.match(
+      /^Basic:\s*([\d.]+)\s+(\S+)\s+×\s*([\d.]+)$/,
+    );
+    if (basicMatch) {
+      workDuration = basicMatch[1]!;
+      durationUnit = basicMatch[2]!;
+      amountPerUnit = basicMatch[3]!;
+      continue;
+    }
+
+    let matchedLine = false;
+    for (const segment of part.split(";").map((row) => row.trim())) {
+      if (!segment) continue;
+      const allowance = parsePayLineSegment(segment, "+", payrollId, allowances.length);
+      if (allowance) {
+        allowances.push(allowance);
+        matchedLine = true;
+        continue;
+      }
+      const deduction = parsePayLineSegment(segment, "-", payrollId, deductions.length);
+      if (deduction) {
+        deductions.push(deduction);
+        matchedLine = true;
+      }
+    }
+    if (!matchedLine) userNoteParts.push(part);
+  }
+
+  return {
+    workDuration,
+    durationUnit,
+    amountPerUnit,
+    allowances: allowances.length > 0 ? allowances : [newPayLine()],
+    deductions: deductions.length > 0 ? deductions : [newPayLine()],
+    userNote: userNoteParts.join(" · "),
+  };
+}
+
+/** Approximate draft from an existing payroll row (edit flow). */
+export function employeeDraftFromPayroll(row: Payroll): EmployeePayrollDraft {
+  const parsed = parsePayrollNote(row.note, row.id, row.grossPay || 0);
+
+  if (
+    parsed.allowances.length === 1 &&
+    !parsed.allowances[0]!.name.trim() &&
+    row.totalAllowance > 0
+  ) {
+    parsed.allowances = [
+      {
+        id: `allow-${row.id}`,
+        name: "Allowances",
+        amountType: "fixed",
+        amount: String(row.totalAllowance),
+      },
+    ];
+  }
+
+  if (
+    parsed.deductions.length === 1 &&
+    !parsed.deductions[0]!.name.trim() &&
+    row.totalDeduction > 0
+  ) {
+    parsed.deductions = [
+      {
+        id: `ded-${row.id}`,
+        name: "Deductions",
+        amountType: "fixed",
+        amount: String(row.totalDeduction),
+      },
+    ];
+  }
+
+  return {
+    workDuration: parsed.workDuration,
+    durationUnit: parsed.durationUnit,
+    amountPerUnit: parsed.amountPerUnit,
+    allowances: parsed.allowances,
+    deductions: parsed.deductions,
+    note: parsed.userNote,
   };
 }
 
