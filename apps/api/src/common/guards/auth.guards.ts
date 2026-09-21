@@ -5,11 +5,21 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
+import { VAG_OVERVIEW_CODES } from '@vonos/types';
 import type { AuthenticatedUser } from '../decorators/roles.decorator';
 import { ROLES_KEY } from '../decorators/roles.decorator';
 import { AuthService } from '../../modules/auth/auth.service';
 import { isClearanceTenantId } from '../tenants/tenantIds';
 import { userCanAccessVagPortal } from '../utils/vagPortalAccess';
+
+const CAFE_TENANT_ID = 'tenant_vc_001';
+
+function isCafeAdminCrossSite(user: AuthenticatedUser): boolean {
+  if (user.role !== 'admin') return false;
+  const codes = user.allowedTenantCodes ?? [];
+  if (codes.includes('VC')) return true;
+  return user.tenantId === CAFE_TENANT_ID;
+}
 
 @Injectable()
 export class JwtAuthGuard implements CanActivate {
@@ -75,6 +85,15 @@ export class TenantGuard implements CanActivate {
     const requestedScope = viewingTenant?.trim() || queryTenant?.trim() || null;
 
     if (userCanAccessVagPortal(request.user)) {
+      request.tenantScope = requestedScope;
+      return true;
+    }
+
+    if (
+      requestedScope &&
+      isCafeAdminCrossSite(request.user) &&
+      isClearanceTenantId(requestedScope, VAG_OVERVIEW_CODES)
+    ) {
       request.tenantScope = requestedScope;
       return true;
     }

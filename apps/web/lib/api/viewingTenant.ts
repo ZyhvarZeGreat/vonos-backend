@@ -21,12 +21,28 @@ export function hasMultiEntityClearance(
   return (allowedTenantCodes?.length ?? 0) > 1;
 }
 
+/**
+ * Cafe entity admins may switch across VAG overview entities (Autos + Cafe).
+ * Home tenant or an explicit VC work-location clearance unlocks the set.
+ */
+export function isCafeAdminCrossSite(
+  role: string | null | undefined,
+  allowedTenantCodes: string[] | undefined,
+  homeTenantId?: string | null,
+): boolean {
+  if (role !== "admin") return false;
+  if ((allowedTenantCodes ?? []).includes("VC")) return true;
+  return getTenantCodeFromId(homeTenantId ?? null) === "VC";
+}
+
 /** Send X-Viewing-Tenant (VAG portal or multi-location staff). */
 export function usesViewingTenantHeader(): boolean {
-  const { role, tenantRoleName, allowedTenantCodes } = useAuthStore.getState();
+  const { role, tenantRoleName, allowedTenantCodes, tenantId } =
+    useAuthStore.getState();
   return (
     canAccessVagPortal({ role, tenantRoleName }) ||
-    hasMultiEntityClearance(allowedTenantCodes)
+    hasMultiEntityClearance(allowedTenantCodes) ||
+    isCafeAdminCrossSite(role, allowedTenantCodes, tenantId)
   );
 }
 
@@ -46,7 +62,7 @@ function tenantIdFromUrlPath(pathname: string): string | null {
  * VAG portal users (super_admin or HR) on /admin/* use the admin viewing
  * entity (never a leaked activeTenantId from a previous entity visit).
  * On /{code}/* (or /operations/{VC|VS|VKW}/*) use the URL segment.
- * Multi-location staff: URL segment when cleared for that entity.
+ * Multi-location staff / Cafe admins: URL segment when cleared for that entity.
  * Everyone else: JWT tenant only.
  */
 export function resolveViewingTenantId(): string | null {
@@ -59,8 +75,13 @@ export function resolveViewingTenantId(): string | null {
 
   const isPortal = canAccessVagPortal({ role, tenantRoleName });
   const multiEntity = hasMultiEntityClearance(allowedTenantCodes);
+  const cafeAdmin = isCafeAdminCrossSite(
+    role,
+    allowedTenantCodes,
+    authTenantId,
+  );
 
-  if (!isPortal && !multiEntity) {
+  if (!isPortal && !multiEntity && !cafeAdmin) {
     return authTenantId;
   }
 
@@ -90,7 +111,7 @@ export function resolveViewingTenantId(): string | null {
 
     const fromUrl = tenantIdFromUrlPath(pathname);
     if (fromUrl) {
-      if (isPortal) {
+      if (isPortal || cafeAdmin) {
         return fromUrl;
       }
       const code = getTenantCodeFromId(fromUrl);

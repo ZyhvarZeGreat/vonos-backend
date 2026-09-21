@@ -22,6 +22,7 @@ import { isFullAccessTenantRole } from '@vonos/types';
 import {
   FINANCE_ROLE_DEFAULT_PERMISSIONS,
   HR_ROLE_DEFAULT_PERMISSIONS,
+  VAG_OVERVIEW_CODES,
   isFinanceAuthorizedRoleName,
   isHrRoleName,
 } from '@vonos/types';
@@ -758,10 +759,20 @@ export class AuthService {
       ...(employee.locationCode ? [employee.locationCode] : []),
     ]);
 
-    return uniqueTenantCodesFromWorkLocations(
+    const codes = uniqueTenantCodesFromWorkLocations(
       workLocations,
       homeTenant?.code ?? null,
     );
+
+    // Cafe entity admins switch across Autos + Cafe (same set as VAG overview).
+    if (user.role === 'admin' && codes.includes('VC')) {
+      return uniqueTenantCodesFromWorkLocations(
+        [...codes, ...VAG_OVERVIEW_CODES],
+        null,
+      );
+    }
+
+    return codes;
   }
 
   private async resolveActiveTenantIdForSession(

@@ -1,5 +1,5 @@
 import type { Role } from "@vonos/types";
-import { canAccessVagPortal } from "@vonos/types";
+import { canAccessVagPortal, isVagOverviewCode } from "@vonos/types";
 import { getTenantCodeFromId } from "@/lib/registries/tenants";
 import { tenantOverviewPath } from "@/lib/utils/tenantRoutes";
 
@@ -30,6 +30,16 @@ export function canAccessTenant(
     targetCode &&
     allowedTenantCodes?.length &&
     allowedTenantCodes.includes(targetCode)
+  ) {
+    return true;
+  }
+  // Cafe entity admins may enter any VAG overview entity (Autos + Cafe).
+  if (
+    role === "admin" &&
+    targetCode &&
+    isVagOverviewCode(targetCode) &&
+    ((allowedTenantCodes ?? []).includes("VC") ||
+      getTenantCodeFromId(userTenantId) === "VC")
   ) {
     return true;
   }

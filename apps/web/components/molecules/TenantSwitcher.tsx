@@ -23,11 +23,15 @@ import { prefetchAdminEntity } from "@/lib/admin/prefetchAdminEntity";
 import { prefetchRoute } from "@/lib/prefetch/routePrefetchRegistry";
 import { dateRangePresetToApiBounds } from "@/lib/utils/dateRange";
 import { useUiStore } from "@/stores/uiStore";
-import { hasMultiEntityClearance } from "@/lib/api/viewingTenant";
+import {
+  hasMultiEntityClearance,
+  isCafeAdminCrossSite,
+} from "@/lib/api/viewingTenant";
 import { switchWorkingTenant } from "@/lib/api/auth";
 import { formatApiError } from "@/lib/utils/formatApiError";
 import { toast } from "@/stores/toastStore";
 import { completeNavigationProgress } from "@/stores/navigationBusyStore";
+import { canAccessVagPortal } from "@vonos/types";
 
 export interface TenantSwitcherProps {
   tenantCode: string;
@@ -38,10 +42,10 @@ export interface TenantSwitcherProps {
 
 /**
  * Entity / work-location switcher.
- * - `super_admin`: Autos Group entities + VAG overview
- * - Staff with multiple work-location clearances: only those Autos entities
- * - Cafe / Saloon / Kids Wear (operations mounts) are isolated — never listed,
- *   and the dropdown is hidden while viewing one of them.
+ * - VAG portal (`super_admin` / HR): Autos Group + Cafe + Group overview
+ * - Cafe entity admins: same Autos + Cafe set
+ * - Staff with multiple work-location clearances: those cleared entities
+ * - Saloon / Kids Wear stay isolated ops mounts (not listed; switcher hidden there)
  */
 export function TenantSwitcher({
   tenantCode,
@@ -52,6 +56,8 @@ export function TenantSwitcher({
   const pathname = usePathname();
   const router = useRouter();
   const role = useAuthStore((state) => state.role);
+  const tenantRoleName = useAuthStore((state) => state.tenantRoleName);
+  const homeTenantId = useAuthStore((state) => state.tenantId);
   const setAuth = useAuthStore((state) => state.setAuth);
   const allowedTenantCodes = useAuthStore((state) => state.allowedTenantCodes);
   const setAdminViewing = useAdminEntityStore((s) => s.setViewingCode);
@@ -60,8 +66,16 @@ export function TenantSwitcher({
   const customDateRange = useUiStore((s) => s.customDateRange);
   const beginEntitySwitch = useUiStore((s) => s.beginEntitySwitch);
   const clearEntitySwitch = useUiStore((s) => s.clearEntitySwitch);
-  const isSuperAdmin = role === "super_admin";
-  const onOpsMount = isOperationsGroupEntity(tenantCode);
+  const isPortalUser = canAccessVagPortal({ role, tenantRoleName });
+  const cafeAdminCrossSite = isCafeAdminCrossSite(
+    role,
+    allowedTenantCodes,
+    homeTenantId,
+  );
+  const useGroupEntityList = isPortalUser || cafeAdminCrossSite;
+  /** Saloon / Kids Wear only — Cafe participates in cross-site switching. */
+  const onIsolatedOpsMount =
+    isOperationsGroupEntity(tenantCode) && tenantCode !== "VC";
   const onAdmin = pathname.startsWith("/admin");
   const [open, setOpen] = useState(false);
   const [switching, setSwitching] = useState(false);
@@ -74,20 +88,23 @@ export function TenantSwitcher({
   );
 
   const switchableEntities = useMemo(() => {
-    const base = !isSuperAdmin
-      ? (allowedTenantCodes ?? [])
+    const base = useGroupEntityList
+      ? [...AUTOS_GROUP_ORDER, "VC" as const]
           .map((code) => getTenantByCode(code))
           .filter((e): e is NonNullable<typeof e> => Boolean(e))
-      : AUTOS_GROUP_ORDER.map((code) => getTenantByCode(code)).filter(
-          (e): e is NonNullable<typeof e> => Boolean(e),
-        );
-    // VC / VS / VKW are separate /operations mounts — not switch targets.
-    return base.filter((e) => !isOperationsGroupEntity(e.code));
-  }, [allowedTenantCodes, isSuperAdmin]);
+      : (allowedTenantCodes ?? [])
+          .map((code) => getTenantByCode(code))
+          .filter((e): e is NonNullable<typeof e> => Boolean(e));
+    // VS / VKW stay on their own /operations mounts — not switch targets.
+    // Cafe (VC) is switchable with Autos entities when the user has clearance.
+    return base.filter(
+      (e) => !(isOperationsGroupEntity(e.code) && e.code !== "VC"),
+    );
+  }, [allowedTenantCodes, useGroupEntityList]);
 
   const canSwitchEntities =
-    !onOpsMount &&
-    (isSuperAdmin
+    !onIsolatedOpsMount &&
+    (useGroupEntityList
       ? switchableEntities.length > 0
       : switchableEntities.length > 1);
 
@@ -100,7 +117,7 @@ export function TenantSwitcher({
       tenantId: target?.tenantId,
       dateBounds,
     });
-    if (!onAdmin || !isSuperAdmin) return;
+    if (!onAdmin || !isPortalUser) return;
     const key = `${pathname}:${code}`;
     if (warmedRef.current.has(key)) return;
     warmedRef.current.add(key);
@@ -164,7 +181,7 @@ export function TenantSwitcher({
 
   async function navigateToEntity(code: string) {
     if (code === "VAG") {
-      if (!isSuperAdmin) return;
+      if (!isPortalUser) return;
       if (pathname.startsWith("/admin/overview")) {
         toast.info("Already on Group overview");
         return;
@@ -183,12 +200,18 @@ export function TenantSwitcher({
     }
     const href = resolveEntitySwitchPath(entry.code, pathname);
 
-    if (!isSuperAdmin) {
-      // Multi-location clearance: URL + X-Viewing-Tenant per tab — no JWT swap.
-      if (hasMultiEntityClearance(allowedTenantCodes)) {
+    if (!isPortalUser) {
+      // Cafe admins and multi-location staff: URL + X-Viewing-Tenant — no JWT swap.
+      if (
+        cafeAdminCrossSite ||
+        hasMultiEntityClearance(allowedTenantCodes)
+      ) {
         queryClient.removeQueries({
           predicate: (query) => query.queryKey[0] !== "tenantConfig",
         });
+        if (entry.tenantId) {
+          useTenantStore.getState().setActiveTenant(entry.tenantId);
+        }
         startSwitch(entry.code, entry.name, href);
         announceSwitch(entry.code, entry.name);
         router.push(href);
@@ -249,15 +272,15 @@ export function TenantSwitcher({
     return (
       <div ref={rootRef} className={cn("relative min-w-0", className)}>
         <label htmlFor="upos-entity-switcher" className="sr-only">
-          {isSuperAdmin ? "Switch entity" : "Switch location"}
+          {useGroupEntityList ? "Switch entity" : "Switch location"}
         </label>
         <select
           id="upos-entity-switcher"
           className="form-control select2 upos-header-entity-select"
-          value={onAdmin && isSuperAdmin ? "VAG" : tenantCode}
+          value={onAdmin && isPortalUser ? "VAG" : tenantCode}
           disabled={switching}
           aria-label={
-            isSuperAdmin
+            useGroupEntityList
               ? `Current entity: ${displayName}. Switch entity.`
               : `Current location: ${displayName}. Switch location.`
           }
@@ -275,7 +298,7 @@ export function TenantSwitcher({
               {entity.code} — {entity.name.replace(/^Vonos\s+/i, "")}
             </option>
           ))}
-          {isSuperAdmin ? (
+          {isPortalUser ? (
             <option value="VAG">VAG — Group overview</option>
           ) : null}
         </select>
@@ -315,7 +338,7 @@ export function TenantSwitcher({
           aria-expanded={open}
           aria-haspopup="listbox"
           aria-label={
-            isSuperAdmin
+            useGroupEntityList
               ? `Current entity: ${displayName}. Switch entity.`
               : `Current location: ${displayName}. Switch location.`
           }
@@ -338,7 +361,7 @@ export function TenantSwitcher({
         <div className="absolute left-0 right-0 top-full z-50 mt-1.5 overflow-hidden rounded-xl border border-border bg-card text-foreground shadow-lg">
           <div className="border-b border-border px-3 py-2">
             <p className={typographyRoles.caption}>
-              {isSuperAdmin ? "Switch entity" : "Switch location"}
+              {useGroupEntityList ? "Switch entity" : "Switch location"}
             </p>
           </div>
           <div className="max-h-80 overflow-y-auto p-1">
@@ -386,7 +409,7 @@ export function TenantSwitcher({
                 </Link>
               );
             })}
-            {isSuperAdmin ? (
+            {isPortalUser ? (
               <Link
                 href="/admin/overview"
                 onClick={(event) => {
