@@ -83,6 +83,8 @@ export interface PayrollPaymentRow {
   method: string | null;
   note: string | null;
   accountName: string | null;
+  /** User who authorized / recorded the payment. */
+  authorizedByName: string | null;
 }
 
 export interface Designation {

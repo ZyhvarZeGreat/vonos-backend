@@ -192,7 +192,7 @@ Defined mainly in `public/styles/vonos-theme.css`:
 
 | Endpoint | Purpose |
 |----------|---------|
-| `GET /public/store/catalog` | Retail items from **VSP only** (`availableForRetail`, sell price set) |
+| `GET /public/store/catalog` | Retail items from **VISP + VSP** (same SKU consolidated; sell from VISP stock first) |
 | `GET /public/store/catalog/:sku` | Single SKU (prefers VSP if duplicate) |
 | `POST /public/store/checkout` | Create `StoreOrder` + Paystack initialize → `authorizationUrl` |
 | `GET /public/store/orders/:reference` | Order status / lines |

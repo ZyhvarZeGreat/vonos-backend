@@ -28,6 +28,7 @@ import {
   finalizeSale,
   getSale,
   getSaleInvoiceUrl,
+  getSaleTrackUrl,
   getSalesPage,
 } from "@/lib/api/sales";
 import { getCustomersForPicker, loadMoreCustomersForPicker, customersPickerHasMore } from "@/lib/api/customers";
@@ -56,6 +57,7 @@ import { businessLocationName } from "@/lib/utils/locationLabels";
 import { isJobCentricTenant } from "@/lib/utils/isHq6Tenant";
 import { HQ6_PAYMENT_METHOD_OPTIONS } from "@/lib/utils/hq6PaymentMethods";
 import { Hq6UpdateJobStatusModal } from "@/components/hq6/Hq6UpdateJobStatusModal";
+import { Hq6JobTrackUrlModal } from "@/components/hq6/Hq6JobTrackUrlModal";
 import { entitySaleLocations } from "@/lib/hooks/useBusinessLocationOptions";
 import { hq6PaymentBadgeClass, canAddPaymentForStatus } from "@/lib/utils/hq6PaymentBadge";
 import type { Sale, SaleReturnStatus, SaleStatus } from "@vonos/types";
@@ -64,6 +66,7 @@ import { removeEntityFromQueries } from "@/lib/query/optimistic";
 import { dismissFirstWrite } from "@/lib/utils/dismissFirstWrite";
 import { announceRedirect } from "@/lib/utils/announceRedirect";
 import { tenantBasePath } from "@/lib/utils/tenantMount";
+import { copyTextToClipboard } from "@/lib/utils/copyTextToClipboard";
 
 function SaleCustomerCell({
   row,
@@ -161,6 +164,7 @@ export function Hq6SalesListView({
   const chrome = useHq6ListChrome(slug);
   const [deleteTarget, setDeleteTarget] = useState<Sale | null>(null);
   const [jobStatusSale, setJobStatusSale] = useState<Sale | null>(null);
+  const [trackSale, setTrackSale] = useState<Sale | null>(null);
   const [invoiceUrlSale, setInvoiceUrlSale] = useState<Sale | null>(null);
   const [paymentsSale, setPaymentsSale] = useState<Sale | null>(null);
   const [paySale, setPaySale] = useState<Sale | null>(null);
@@ -464,6 +468,35 @@ export function Hq6SalesListView({
     );
   };
 
+  const copySaleTrackingLink = useCallback(
+    async (row: Sale) => {
+      if (!tenantId) return;
+      try {
+        const res = await getSaleTrackUrl(tenantId, row.id);
+        const origin =
+          typeof window !== "undefined" ? window.location.origin : "";
+        const url = (res.url?.trim() || `${origin}${res.path}`).trim();
+        if (!url) {
+          throw new Error("Track URL was empty");
+        }
+        const copied = await copyTextToClipboard(url);
+        if (!copied) {
+          setTrackSale(row);
+          toast.error("Could not copy automatically — use Copy in the dialog");
+          return;
+        }
+        toast.success("Tracking link copied");
+      } catch (err) {
+        toast.error(
+          err instanceof Error ? err.message : "Could not copy tracking link",
+        );
+        // Still open the share dialog so staff can View / Copy manually.
+        setTrackSale(row);
+      }
+    },
+    [tenantId],
+  );
+
   const actionColumn: ColumnConfig<Sale> = useMemo(
     () => ({
       key: "actions",
@@ -504,6 +537,21 @@ export function Hq6SalesListView({
             label: "Edit",
             onClick: () => router.push(editPath),
           },
+          ...(isJobCentricTenant(tenantCode)
+            ? [
+                {
+                  id: "track_job_url",
+                  label: "Copy tracking link",
+                  dividerBefore: true,
+                  onClick: () => void copySaleTrackingLink(row),
+                },
+                {
+                  id: "update_job_status",
+                  label: "Update sale status",
+                  onClick: () => setJobStatusSale(row),
+                },
+              ]
+            : []),
           // Add Payment for open balances (due / partial / overdue).
           ...(!isProvisional &&
           canAddPaymentForStatus(row.paymentStatus, row.sellDue)
@@ -549,16 +597,6 @@ export function Hq6SalesListView({
                   id: "convert",
                   label: "Convert to Proforma Invoice",
                   onClick: () => setConvertTarget(row),
-                },
-              ]
-            : []),
-          ...(isJobCentricTenant(tenantCode) && row.jobId
-            ? [
-                {
-                  id: "update_job_status",
-                  label: "Update job status",
-                  dividerBefore: true,
-                  onClick: () => setJobStatusSale(row),
                 },
               ]
             : []),
@@ -672,6 +710,7 @@ export function Hq6SalesListView({
       },
     }),
     [
+      copySaleTrackingLink,
       openRecord,
       queryClient,
       requireCreateSale,
@@ -688,11 +727,12 @@ export function Hq6SalesListView({
   const columns: ColumnConfig<Sale>[] = useMemo(() => {
     const loc = (row: Sale) =>
       businessLocationName(row.locationCode, config?.businessLocations) ?? "—";
+    const leading = [actionColumn];
 
     // Match All sales: Action first so Sales ↔ Quotations does not jump layout.
     if (saleStatus === "draft" || saleStatus === "quotation") {
       return [
-        actionColumn,
+        ...leading,
         {
           key: "date",
           header: "Date",
@@ -745,7 +785,7 @@ export function Hq6SalesListView({
     // UPOS sell/shipments
     if (shipmentsOnly) {
       return [
-        actionColumn,
+        ...leading,
         {
           key: "date",
           header: "Date",
@@ -1002,7 +1042,15 @@ export function Hq6SalesListView({
         render: (row) => row.shippingAddress ?? "",
       },
     ];
-  }, [actionColumn, config?.businessLocations, saleStatus, shipmentsOnly]);
+  }, [
+    actionColumn,
+    config?.businessLocations,
+    queryClient,
+    saleStatus,
+    shipmentsOnly,
+    showVehicleMeta,
+    tenantId,
+  ]);
 
   const columnOptions = useMemo(
     () =>
@@ -1032,7 +1080,7 @@ export function Hq6SalesListView({
 
   const effectiveColumns = useMemo(() => {
     if (!chrome.visibleColumnKeys) return columns;
-    const allowed = new Set(["actions", ...chrome.visibleColumnKeys]);
+    const allowed = new Set(["actions", "track", ...chrome.visibleColumnKeys]);
     return columns.filter((c) => allowed.has(c.key));
   }, [chrome.visibleColumnKeys, columns]);
 
@@ -1321,6 +1369,13 @@ export function Hq6SalesListView({
                 void queryClient.invalidateQueries({ queryKey: ["jobs"] });
                 void queryClient.invalidateQueries({ queryKey: ["sales"] });
               }}
+            />
+            <Hq6JobTrackUrlModal
+              open={Boolean(trackSale)}
+              tenantId={tenantId}
+              saleId={trackSale?.id}
+              jobReference={trackSale?.reference}
+              onClose={() => setTrackSale(null)}
             />
             <Hq6ConfirmModal
               open={Boolean(deleteTarget)}

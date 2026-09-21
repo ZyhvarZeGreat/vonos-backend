@@ -618,11 +618,16 @@ html.vonos-reduced-motion [data-show] {
 /* FAQ accordion — client toggles .accordion-active-item */
 .track-section {
   padding-top: 6.25rem;
-  padding-bottom: 3rem;
+  padding-bottom: 4rem;
 }
 
 .track-panel {
   min-height: 100%;
+  width: 100%;
+}
+
+.track-shell {
+  max-width: 40rem;
 }
 
 .track-form-error {
@@ -632,16 +637,31 @@ html.vonos-reduced-motion [data-show] {
   line-height: 1.5;
 }
 
+.track-result {
+  background: #fff;
+  border: 1px solid rgb(0 0 0 / 8%);
+  border-radius: 1rem;
+  padding: 1.5rem 1.35rem 1.25rem;
+}
+
 .track-result-header {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 1rem;
-  margin-bottom: 1.5rem;
+  margin-bottom: 1.25rem;
+}
+
+.track-plate {
+  font-size: clamp(1.75rem, 4vw, 2.25rem);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  line-height: 1.15;
+  margin: 0.15rem 0 0;
 }
 
 .track-result-meta {
-  margin-top: 0.375rem;
+  margin-top: 0.4rem;
   color: var(--color--gray-4, #8e8d8d);
   font-size: 0.9375rem;
 }
@@ -660,55 +680,174 @@ html.vonos-reduced-motion [data-show] {
   white-space: nowrap;
 }
 
-.track-summary-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.75rem;
-  margin-bottom: 1.75rem;
+.track-status-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1.25rem;
+  margin-bottom: 1.25rem;
+  padding: 0.875rem 1rem;
+  background: var(--color--gray-6, #f8fafc);
+  border: 1px solid rgb(0 0 0 / 6%);
+  border-radius: 0.75rem;
 }
 
-.track-summary-card {
-  background: var(--color--gray-6, #f8fafc);
-  border: 1px solid rgb(0 0 0 / 8%);
-  border-radius: 0.75rem;
-  padding: 0.875rem 1rem;
+.track-status-strip-item {
+  display: grid;
+  gap: 0.2rem;
+  min-width: 5.5rem;
+}
+
+.track-status-strip-value {
+  color: var(--color--black, #000);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  line-height: 1.3;
 }
 
 .track-summary-label {
   color: var(--color--gray-4, #8e8d8d);
-  font-size: 0.75rem;
-  letter-spacing: 0.04em;
-  margin-bottom: 0.25rem;
+  font-size: 0.6875rem;
+  letter-spacing: 0.05em;
   text-transform: uppercase;
 }
 
-.track-summary-value {
-  color: var(--color--black, #000);
+.track-phase-row {
+  margin-bottom: 0.35rem;
+}
+
+.track-phase-badge {
+  background: rgb(37 99 235 / 10%);
+  border-radius: 999px;
+  color: var(--vonos-blue, #2563eb);
+  display: inline-block;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  padding: 0.25rem 0.625rem;
+  text-transform: uppercase;
+}
+
+.track-phase-badge--done {
+  background: rgb(22 163 74 / 12%);
+  color: #15803d;
+}
+
+.track-result-notice,
+.track-completed-note {
+  background: var(--color--gray-6, #f8fafc);
+  border: 1px solid rgb(0 0 0 / 8%);
+  border-radius: 0.75rem;
+  color: var(--color--gray-3, #4a4a4a);
   font-size: 0.9375rem;
-  font-weight: 500;
-  line-height: 1.4;
+  line-height: 1.5;
+  margin: 0 0 1.25rem;
+  padding: 0.875rem 1rem;
+}
+
+.track-progress-block {
+  margin-bottom: 1.5rem;
+}
+
+.track-progress-meta {
+  align-items: baseline;
+  display: flex;
+  gap: 0.75rem;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
 }
 
 .track-progress-label {
   color: var(--color--gray-4, #8e8d8d);
   font-size: 0.75rem;
   letter-spacing: 0.05em;
-  margin-bottom: 1rem;
+  margin: 0;
   text-transform: uppercase;
+}
+
+.track-progress-count {
+  color: var(--color--black, #000);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.track-progress-bar {
+  background: rgb(37 99 235 / 12%);
+  border-radius: 999px;
+  height: 0.375rem;
+  margin-bottom: 1rem;
+  overflow: hidden;
+}
+
+.track-progress-bar-fill {
+  background: var(--vonos-blue, #2563eb);
+  border-radius: inherit;
+  height: 100%;
+  max-width: 100%;
+  transition: width 0.35s ease;
+}
+
+.track-current-callout {
+  background: rgb(37 99 235 / 6%);
+  border: 1px solid rgb(37 99 235 / 18%);
+  border-radius: 0.75rem;
+  padding: 0.875rem 1rem;
+}
+
+.track-current-callout--done {
+  background: rgb(22 163 74 / 8%);
+  border-color: rgb(22 163 74 / 22%);
+}
+
+.track-current-callout-label {
+  color: var(--vonos-blue, #2563eb);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  margin-bottom: 0.25rem;
+  text-transform: uppercase;
+}
+
+.track-current-callout--done .track-current-callout-label {
+  color: #15803d;
+}
+
+.track-current-callout-title {
+  color: var(--color--black, #000);
+  font-size: 1.0625rem;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.track-current-callout-detail {
+  color: var(--color--gray-3, #4a4a4a);
+  font-size: 0.9375rem;
+  line-height: 1.5;
+  margin-top: 0.35rem;
+}
+
+.track-current-callout-time {
+  color: var(--color--gray-4, #8e8d8d);
+  font-size: 0.8125rem;
+  margin-top: 0.5rem;
 }
 
 .track-timeline {
   list-style: none;
   margin: 0;
-  padding: 0;
+  padding: 0.25rem 0 0;
 }
 
 .track-timeline-item {
   display: grid;
   grid-template-columns: 1.5rem 1fr;
   gap: 0 1rem;
-  padding-bottom: 1.25rem;
+  padding-bottom: 1.35rem;
   position: relative;
+}
+
+.track-timeline-item--last {
+  padding-bottom: 0;
 }
 
 .track-timeline-item:not(.track-timeline-item--last)::after {
@@ -759,6 +898,47 @@ html.vonos-reduced-motion [data-show] {
   box-shadow: 0 0 0 4px rgb(37 99 235 / 15%);
 }
 
+.track-timeline-item--upcoming .track-timeline-marker {
+  background: #fff;
+  border-color: rgb(0 0 0 / 12%);
+}
+
+.track-timeline-item--upcoming:not(.track-timeline-item--last)::after {
+  background: rgb(0 0 0 / 8%);
+}
+
+.track-timeline-heading {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.track-timeline-chip {
+  border-radius: 999px;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  padding: 0.15rem 0.45rem;
+  text-transform: uppercase;
+}
+
+.track-timeline-chip--complete {
+  background: rgb(37 99 235 / 12%);
+  color: var(--vonos-blue, #2563eb);
+}
+
+.track-timeline-chip--current {
+  background: var(--vonos-blue, #2563eb);
+  color: #fff;
+}
+
+.track-timeline-chip--upcoming {
+  background: rgb(0 0 0 / 6%);
+  color: var(--color--gray-4, #8e8d8d);
+}
+
 .track-timeline-top {
   align-items: baseline;
   display: flex;
@@ -775,6 +955,7 @@ html.vonos-reduced-motion [data-show] {
 
 .track-timeline-time {
   color: var(--color--gray-4, #8e8d8d);
+  flex-shrink: 0;
   font-size: 0.8125rem;
   white-space: nowrap;
 }
@@ -788,6 +969,27 @@ html.vonos-reduced-motion [data-show] {
 
 .track-timeline-item--current .track-timeline-title {
   color: var(--vonos-blue, #2563eb);
+}
+
+.track-timeline-item--upcoming .track-timeline-title {
+  color: var(--color--gray-4, #8e8d8d);
+  font-weight: 500;
+}
+
+.track-timeline-item--upcoming .track-timeline-detail {
+  color: rgb(142 141 141 / 90%);
+}
+
+.track-result-footer {
+  border-top: 1px solid rgb(0 0 0 / 8%);
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+}
+
+.track-footer-note {
+  color: var(--color--gray-4, #8e8d8d);
+  font-size: 0.8125rem;
+  line-height: 1.45;
 }
 
 .track-help-card {
@@ -820,12 +1022,18 @@ html.vonos-reduced-motion [data-show] {
 }
 
 @media (max-width: 767px) {
-  .track-summary-grid {
-    grid-template-columns: 1fr;
+  .track-result {
+    padding: 1.25rem 1rem 1.1rem;
   }
 
   .track-result-header {
     flex-direction: column;
+  }
+
+  .track-timeline-top {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 0.25rem;
   }
 }
 

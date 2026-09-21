@@ -1,95 +1,84 @@
 "use client";
 
-import { Printer } from "lucide-react";
-import type { PayrollGroupDetail } from "@vonos/types";
-import { StatusPill } from "@/components/atoms/StatusPill";
+import type { Payroll, PayrollGroupDetail } from "@vonos/types";
+import { Hq6BoldStatusBadge } from "@/components/hq6/Hq6BoldStatusBadge";
+import { Hq6AddPaymentWellsRow } from "@/components/hq6/Hq6AddPaymentForm";
 import { formatCurrency } from "@/lib/utils/formatCurrency";
 import { payrollBankDetailLines } from "./payrollDraftUtils";
 
 export type PayrollGroupViewSummaryProps = {
   group: PayrollGroupDetail;
-  onPrint?: () => void;
 };
 
-export function PayrollGroupViewSummary({
-  group,
-  onPrint,
-}: PayrollGroupViewSummaryProps) {
-  return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h2 className="text-lg font-semibold text-[#111827]">{group.name}</h2>
-          <p className="mt-1 text-sm text-muted">
-            Status:{" "}
-            <StatusPill status={group.status} vocabulary="payrollStatus" />{" "}
-            · Payment:{" "}
-            <StatusPill
-              status={group.paymentStatus}
-              vocabulary="payrollStatus"
-            />
-          </p>
-        </div>
-        {onPrint ? (
-          <button
-            type="button"
-            className="hq6-btn hq6-btn-outline inline-flex items-center gap-1.5"
-            onClick={onPrint}
-          >
-            <Printer className="size-4" />
-            Print
-          </button>
-        ) : null}
-      </div>
+function bankDetailsSummary(row: Payroll): string {
+  const lines = payrollBankDetailLines(row)
+    .filter((line) => line.value.trim())
+    .map((line) => `${line.label}: ${line.value}`);
+  return lines.length > 0 ? lines.join(" · ") : "—";
+}
 
-      <div className="overflow-x-auto rounded border border-[#e5e7eb]">
-        <table className="w-full min-w-[48rem] border-collapse text-sm">
-          <thead>
-            <tr className="border-b border-[#e5e7eb] bg-[#fafafa] text-left">
-              <th className="px-3 py-2 font-semibold">Employee</th>
-              <th className="px-3 py-2 font-semibold">Gross</th>
-              <th className="px-3 py-2 font-semibold">Bank details</th>
-              <th className="px-3 py-2 font-semibold">Payment</th>
-            </tr>
-          </thead>
-          <tbody>
-            {group.payrolls.map((row) => (
-              <tr
-                key={row.id}
-                className="border-b border-[#e5e7eb]/80 align-top last:border-0"
-              >
-                <td className="px-3 py-3 font-medium">{row.employeeName}</td>
-                <td className="px-3 py-3 tabular-nums whitespace-nowrap">
-                  {formatCurrency(row.netPay, "NGN")}
-                </td>
-                <td className="px-3 py-3 text-xs leading-5 text-muted">
-                  {payrollBankDetailLines(row).map((line) => (
-                    <div key={line.label}>
-                      {line.label}: {line.value || "—"}
-                    </div>
-                  ))}
-                </td>
-                <td className="px-3 py-3">
-                  <StatusPill
-                    status={row.paymentStatus}
-                    vocabulary="payrollStatus"
-                  />
-                </td>
-              </tr>
-            ))}
-            {group.payrolls.length === 0 ? (
-              <tr>
-                <td
-                  colSpan={4}
-                  className="px-3 py-6 text-center text-sm text-muted"
-                >
-                  No payroll rows in this group.
-                </td>
-              </tr>
-            ) : null}
-          </tbody>
-        </table>
-      </div>
+function employeeWells(row: Payroll) {
+  return {
+    partyLabel: "Employee",
+    partyName: row.employeeName,
+    partyExtra: [
+      row.designationName?.trim()
+        ? `Designation: ${row.designationName}`
+        : null,
+      row.department?.trim() ? `Department: ${row.department}` : null,
+    ]
+      .filter(Boolean)
+      .join(" · ") || null,
+    docLabel: "Bank details",
+    docRef: bankDetailsSummary(row),
+    locationName: row.locationCode?.trim() || null,
+    totalAmount: formatCurrency(row.netPay, "NGN"),
+    paymentDue: formatCurrency(row.netPay, "NGN"),
+  };
+}
+
+export function PayrollGroupViewSummary({ group }: PayrollGroupViewSummaryProps) {
+  return (
+    <div className="hq6-add-payment-body space-y-4">
+      {group.payrolls.length === 0 ? (
+        <section className="hq6-form-card">
+          <p className="text-sm text-[#64748b]">No payroll rows in this group.</p>
+        </section>
+      ) : (
+        group.payrolls.map((row, index) => (
+          <section key={row.id} className="hq6-form-card">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <h2 className="hq6-form-card-title mb-0">
+                Employee {index + 1} · {row.employeeName}
+              </h2>
+              <Hq6BoldStatusBadge status={row.paymentStatus} kind="payment" />
+            </div>
+
+            <Hq6AddPaymentWellsRow wells={employeeWells(row)} />
+
+            <div className="mt-3 grid gap-2 border-t border-[#e5e7eb] pt-3 text-sm md:grid-cols-3">
+              <div>
+                <span className="text-[#64748b]">Gross pay: </span>
+                <span className="font-medium tabular-nums">
+                  {formatCurrency(row.grossPay, "NGN")}
+                </span>
+              </div>
+              <div>
+                <span className="text-[#64748b]">Allowances: </span>
+                <span className="font-medium tabular-nums">
+                  {formatCurrency(row.totalAllowance, "NGN")}
+                </span>
+              </div>
+              <div>
+                <span className="text-[#64748b]">Deductions: </span>
+                <span className="font-medium tabular-nums">
+                  {formatCurrency(row.totalDeduction, "NGN")}
+                </span>
+              </div>
+            </div>
+          </section>
+        ))
+      )}
     </div>
   );
 }

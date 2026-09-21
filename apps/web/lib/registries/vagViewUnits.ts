@@ -1,7 +1,7 @@
 /**
- * VAG admin viewing units — what the entity switcher / overview cards show.
- * Autos Group only (VW, VA, VP, VISP, VSP). Cafe / Saloon / Kids Wear live
- * under Operations and are not VAG picker targets.
+ * VAG admin viewing units — entity switcher, “Show info for”, Reports / Finance / HRM scope.
+ * Autos Group (VA, VP, VW, VISP, VSP) plus Cafe (VC). Saloon / Kids Wear stay
+ * operations-only until added here.
  */
 import {
   getTenantByCode,
@@ -13,7 +13,8 @@ export type VagViewUnitId =
   | "VP"
   | "VW"
   | "VISP"
-  | "VSP";
+  | "VSP"
+  | "VC";
 
 /** @deprecated Combined SP was split into VISP + VSP — kept for persisted-store migration. */
 export const VAG_COMBINED_SP_ID = "SP" as const;
@@ -68,6 +69,13 @@ export const VAG_VIEW_UNITS: readonly VagViewUnit[] = [
     tenantCodes: ["VSP"],
     enterCode: "VSP",
   },
+  {
+    id: "VC",
+    badge: "VC",
+    name: "Vonos Cafe",
+    tenantCodes: ["VC"],
+    enterCode: "VC",
+  },
 ] as const;
 
 export function isVagViewUnitId(value: string | null | undefined): value is VagViewUnitId {
@@ -76,7 +84,8 @@ export function isVagViewUnitId(value: string | null | undefined): value is VagV
     value === "VP" ||
     value === "VW" ||
     value === "VISP" ||
-    value === "VSP"
+    value === "VSP" ||
+    value === "VC"
   );
 }
 
@@ -93,7 +102,8 @@ export function vagViewUnitIdForTenantCode(code: string): VagViewUnitId | null {
     code === "VP" ||
     code === "VW" ||
     code === "VISP" ||
-    code === "VSP"
+    code === "VSP" ||
+    code === "VC"
   ) {
     return code;
   }

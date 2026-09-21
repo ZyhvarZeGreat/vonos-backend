@@ -44,6 +44,7 @@ export { Hq6PurchaseViewModal } from "./Hq6PurchaseViewModal";
 export { Hq6SaleViewModal } from "./Hq6SaleViewModal";
 export { Hq6ViewPaymentsModal } from "./Hq6ViewPaymentsModal";
 export { Hq6InvoiceUrlModal } from "./Hq6InvoiceUrlModal";
+export { Hq6JobTrackUrlModal } from "./Hq6JobTrackUrlModal";
 export { Hq6StackCell } from "./Hq6StackCell";
 export { Hq6GlobalChromeModals } from "./Hq6GlobalChromeModals";
 export {

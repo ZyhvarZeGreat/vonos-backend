@@ -57,10 +57,13 @@ const shopCartStorage = {
 interface ShopCartState {
   lines: CartLine[];
   hydrated: boolean;
+  cartDrawerOpen: boolean;
   addProduct: (product: ShopProduct, qty?: number) => void;
   updateQty: (productId: string, qty: number) => void;
   removeLine: (productId: string) => void;
   clearCart: () => void;
+  openCartDrawer: () => void;
+  closeCartDrawer: () => void;
   setHydrated: (hydrated: boolean) => void;
 }
 
@@ -69,18 +72,17 @@ export const useShopCartStore = create<ShopCartState>()(
     (set) => ({
       lines: [],
       hydrated: false,
+      cartDrawerOpen: false,
       addProduct: (product, qty = 1) =>
         set((state) => {
           const existing = state.lines.find((line) => line.productId === product.id);
-          const next = existing
-            ? {
-                lines: state.lines.map((line) =>
-                  line.productId === product.id
-                    ? { ...line, qty: line.qty + qty, product }
-                    : line,
-                ),
-              }
-            : { lines: [...state.lines, { productId: product.id, qty, product }] };
+          const nextLines = existing
+            ? state.lines.map((line) =>
+                line.productId === product.id
+                  ? { ...line, qty: line.qty + qty, product }
+                  : line,
+              )
+            : [...state.lines, { productId: product.id, qty, product }];
 
           if (typeof window !== "undefined") {
             window.dispatchEvent(
@@ -90,8 +92,10 @@ export const useShopCartStore = create<ShopCartState>()(
             );
           }
 
-          return next;
+          return { lines: nextLines, cartDrawerOpen: true };
         }),
+      openCartDrawer: () => set({ cartDrawerOpen: true }),
+      closeCartDrawer: () => set({ cartDrawerOpen: false }),
       updateQty: (productId, qty) =>
         set((state) => {
           if (qty <= 0) {
@@ -146,10 +150,13 @@ export function resolveCartLine(line: CartLine): {
 export function useShopCart() {
   const lines = useShopCartStore((s) => s.lines);
   const hydrated = useShopCartStore((s) => s.hydrated);
+  const cartDrawerOpen = useShopCartStore((s) => s.cartDrawerOpen);
   const addProduct = useShopCartStore((s) => s.addProduct);
   const updateQty = useShopCartStore((s) => s.updateQty);
   const removeLine = useShopCartStore((s) => s.removeLine);
   const clearCart = useShopCartStore((s) => s.clearCart);
+  const openCartDrawer = useShopCartStore((s) => s.openCartDrawer);
+  const closeCartDrawer = useShopCartStore((s) => s.closeCartDrawer);
 
   return useMemo(
     () => ({
@@ -157,12 +164,25 @@ export function useShopCart() {
       count: cartCount(lines),
       total: cartTotal(lines),
       hydrated,
+      cartDrawerOpen,
       addProduct,
       updateQty,
       removeLine,
       clearCart,
+      openCartDrawer,
+      closeCartDrawer,
       resolveLine: resolveCartLine,
     }),
-    [lines, hydrated, addProduct, updateQty, removeLine, clearCart],
+    [
+      lines,
+      hydrated,
+      cartDrawerOpen,
+      addProduct,
+      updateQty,
+      removeLine,
+      clearCart,
+      openCartDrawer,
+      closeCartDrawer,
+    ],
   );
 }

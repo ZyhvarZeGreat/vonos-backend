@@ -6,6 +6,8 @@ import { StatusPill } from "@/components/atoms/StatusPill";
 import { DataTable, type ColumnConfig } from "@/components/organisms/DataTable";
 import { ServerPaginatedTable } from "@/components/organisms/ServerPaginatedTable";
 import { ListPageShell } from "@/components/organisms/ListPageShell";
+import { Hq6ActionsMenu } from "@/components/hq6/Hq6ActionsMenu";
+import { Hq6JobTrackUrlModal } from "@/components/hq6/Hq6JobTrackUrlModal";
 import {
   Hq6StandardListShell,
   useHq6ListChrome,
@@ -57,6 +59,7 @@ export function JobsListView() {
   });
   const [activeTab, setActiveTab] = useState("all");
   const [statusFilter, setStatusFilter] = useState("");
+  const [trackJob, setTrackJob] = useState<Job | null>(null);
 
   const apiFilters = useMemo(() => {
     const next: {
@@ -145,6 +148,56 @@ export function JobsListView() {
       header: "Due",
       sortValue: (r) => (r.dueDate ? new Date(r.dueDate).getTime() : 0),
     },
+    {
+      key: "track",
+      header: "Track",
+      sortable: false,
+      hideable: false,
+      render: (row) => (
+        <div
+          onClick={(e) => e.stopPropagation()}
+          onPointerDown={(e) => e.stopPropagation()}
+        >
+          <button
+            type="button"
+            className="tw-dw-btn tw-dw-btn-xs tw-dw-btn-outline tw-dw-btn-info"
+            onClick={() => setTrackJob(row)}
+          >
+            Track URL
+          </button>
+        </div>
+      ),
+    },
+    {
+      key: "actions",
+      header: "Action",
+      sortable: false,
+      render: (row) => (
+        <div
+          onClick={(e) => e.stopPropagation()}
+          onPointerDown={(e) => e.stopPropagation()}
+        >
+          <Hq6ActionsMenu
+            items={[
+              {
+                id: "view",
+                label: "View",
+                onClick: () => {
+                  warmJob(row);
+                  goToDetail(row.id);
+                },
+              },
+              {
+                id: "track_job_url",
+                label: "Track job URL",
+                dividerBefore: true,
+                onClick: () => setTrackJob(row),
+              },
+            ]}
+          />
+        </div>
+      ),
+    },
   ];
 
   const columnOptions = columns.map((c) => ({
@@ -154,77 +207,85 @@ export function JobsListView() {
 
   const effectiveColumns = useMemo(() => {
     if (!chrome.visibleColumnKeys) return columns;
-    const allowed = new Set(chrome.visibleColumnKeys);
+    const allowed = new Set(["actions", "track", ...chrome.visibleColumnKeys]);
     return columns.filter((c) => allowed.has(c.key));
   }, [chrome.visibleColumnKeys, columns]);
 
   if (isHq6) {
     return (
-      <Hq6StandardListShell
-        slug="jobs"
-        tabLabel="All Jobs"
-        pageSize={pageSize}
-        onPageSizeChange={setPageSize}
-        searchValue={search}
-        onSearchChange={setSearch}
-        
-        columnOptions={columnOptions}
-        chrome={chrome}
-        tabs={JOB_TABS.map((tab) => ({
-          ...tab,
-          active: activeTab === tab.id,
-          onClick: () => setActiveTab(tab.id),
-        }))}
-        filters={
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <label className="hq6-field">
-              <span>Status:</span>
-              <select
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
-              >
-                <option value="">All</option>
-                {JOB_STATUS_OPTIONS.map((opt) => (
-                  <option key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
-        }
-        pagination={{
-          pageIndex,
-          pageSize,
-          itemCount: jobs.length,
-          hasMore,
-          canGoPrev,
-          onPrev: goPrev,
-          onNext: goNext,
-          onPageSizeChange: setPageSize,
-          onPageSelect: goToPage,
-          canSelectPage,
-          totalItems: totalCount,
-          isBusy: isFetching && !isLoading,
-        }}
-      >
-        <DataTable
-          data={jobs}
-          columns={effectiveColumns}
-          displayMode="table"
-          embedded
-          disablePagination
-          isLoading={isLoading}
-          isFetching={isFetching && !isLoading}
-          error={error ? "Failed to load jobs" : null}
-          emptyState={{ message: "No jobs found." }}
-          onRowPointerEnter={warmJob}
-          onRowClick={(row) => {
-            warmJob(row);
-            goToDetail(row.id);
+      <>
+        <Hq6StandardListShell
+          slug="jobs"
+          tabLabel="All Jobs"
+          pageSize={pageSize}
+          onPageSizeChange={setPageSize}
+          searchValue={search}
+          onSearchChange={setSearch}
+          columnOptions={columnOptions}
+          chrome={chrome}
+          tabs={JOB_TABS.map((tab) => ({
+            ...tab,
+            active: activeTab === tab.id,
+            onClick: () => setActiveTab(tab.id),
+          }))}
+          filters={
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <label className="hq6-field">
+                <span>Status:</span>
+                <select
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value)}
+                >
+                  <option value="">All</option>
+                  {JOB_STATUS_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+          }
+          pagination={{
+            pageIndex,
+            pageSize,
+            itemCount: jobs.length,
+            hasMore,
+            canGoPrev,
+            onPrev: goPrev,
+            onNext: goNext,
+            onPageSizeChange: setPageSize,
+            onPageSelect: goToPage,
+            canSelectPage,
+            totalItems: totalCount,
+            isBusy: isFetching && !isLoading,
           }}
+        >
+          <DataTable
+            data={jobs}
+            columns={effectiveColumns}
+            displayMode="table"
+            embedded
+            disablePagination
+            isLoading={isLoading}
+            isFetching={isFetching && !isLoading}
+            error={error ? "Failed to load jobs" : null}
+            emptyState={{ message: "No jobs found." }}
+            onRowPointerEnter={warmJob}
+            onRowClick={(row) => {
+              warmJob(row);
+              goToDetail(row.id);
+            }}
+          />
+        </Hq6StandardListShell>
+        <Hq6JobTrackUrlModal
+          open={Boolean(trackJob)}
+          tenantId={tenantId}
+          jobId={trackJob?.id ?? null}
+          jobReference={trackJob?.reference}
+          onClose={() => setTrackJob(null)}
         />
-      </Hq6StandardListShell>
+      </>
     );
   }
 

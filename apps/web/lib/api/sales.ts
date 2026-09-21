@@ -1,6 +1,7 @@
 import type { CreateSaleRequest, CreateSaleReturnRequest, Sale, SaleDetail, SaleFilters, SaleViewBundle, CsvImportResult, UpdateSaleShippingRequest } from "@vonos/types";
 import { apiFetch, withTenantQuery } from "@/lib/api/client";
 import { throwApiError } from "@/lib/api/parseApiError";
+import type { WhatsAppNotifyResult } from "@/lib/api/jobs";
 import {
   DEFAULT_TABLE_PAGE_SIZE,
   EXPORT_PAGE_SIZE,
@@ -353,5 +354,69 @@ export async function getSaleInvoiceUrl(
     withTenantQuery(`/sales/${saleId}/invoice-url`, tenantId),
   );
   if (!response.ok) throw new Error("Failed to fetch invoice URL");
+  return response.json();
+}
+
+export async function getSaleTrackUrl(
+  tenantId: string,
+  saleId: string,
+): Promise<{
+  token: string;
+  path: string;
+  url: string;
+  jobId: string | null;
+  saleId: string;
+  subject: "job" | "sale";
+}> {
+  const response = await apiFetch(
+    withTenantQuery(`/sales/${saleId}/track-url`, tenantId),
+  );
+  if (!response.ok) {
+    return throwApiError(response, "Failed to load track URL");
+  }
+  return response.json();
+}
+
+export async function updateSaleWorkshopStatus(
+  tenantId: string,
+  saleId: string,
+  body: {
+    status: string;
+    notes?: string;
+    notifyWhatsApp?: boolean;
+  },
+): Promise<SaleDetail & { whatsappNotify?: WhatsAppNotifyResult }> {
+  const response = await apiFetch(
+    withTenantQuery(`/sales/${saleId}/workshop-status`, tenantId),
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    },
+  );
+  if (!response.ok) {
+    return throwApiError(response, "Failed to update sale status");
+  }
+  return response.json();
+}
+
+export async function notifySaleWhatsApp(
+  tenantId: string,
+  saleId: string,
+  statusLabel?: string,
+): Promise<WhatsAppNotifyResult> {
+  const response = await apiFetch(
+    withTenantQuery(`/sales/${saleId}/notify-whatsapp`, tenantId),
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(
+        statusLabel ? { statusLabel } : {},
+      ),
+    },
+  );
+  if (!response.ok) {
+    return throwApiError(response, "Failed to send WhatsApp");
+  }
   return response.json();
 }

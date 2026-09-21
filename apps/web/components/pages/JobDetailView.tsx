@@ -11,6 +11,7 @@ import { DetailPanelSection } from "@/components/organisms/DetailPanelSection";
 import { buildAdaptiveJobStages, coerceJobStatusForStepper } from "@/components/organisms/StatusStepper";
 import type { JobDetail } from "@/lib/api/jobs";
 import { advanceJobStatus, updateJobQc } from "@/lib/api/jobs";
+import { Hq6JobTrackUrlModal } from "@/components/hq6/Hq6JobTrackUrlModal";
 import { formatDate } from "@/lib/utils/formatDate";
 import type { SectionInstance } from "@/lib/registries/sectionTypes";
 import { useAuditHistoryFeed, createdByField } from "@/lib/hooks/useAuditHistoryFeed";
@@ -122,6 +123,7 @@ export function JobDetailView({ job, listPath, onJobChange }: JobDetailViewProps
   const params = useParams<{ tenant: string }>();
   const tenantId = useTenantId();
   const isMechanics = isJobCentricTenant(params.tenant);
+  const [trackUrlOpen, setTrackUrlOpen] = useState(false);
 
   const stages = buildAdaptiveJobStages(job.hasQuote);
   const currentStage = coerceJobStatusForStepper(job.status, job.hasQuote);
@@ -147,6 +149,10 @@ export function JobDetailView({ job, listPath, onJobChange }: JobDetailViewProps
     },
     onSuccess: (updated) => {
       onJobChange({ ...job, status: updated.status });
+      const wa = updated.whatsappNotify;
+      if (wa?.channel === "wa_me" && wa.waMeUrl) {
+        window.open(wa.waMeUrl, "_blank", "noopener,noreferrer");
+      }
     },
   });
 
@@ -175,6 +181,7 @@ export function JobDetailView({ job, listPath, onJobChange }: JobDetailViewProps
   };
 
   return (
+    <>
     <DetailPageShell
       backHref={listPath}
       backLabel="Back to jobs"
@@ -185,6 +192,18 @@ export function JobDetailView({ job, listPath, onJobChange }: JobDetailViewProps
       stepper={stepper}
       onAdvance={nextStage ? advance : undefined}
       headerAction={getStepperHeaderAction(stepper, nextStage ? advance : undefined)}
+      actions={
+        isMechanics ? (
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            onClick={() => setTrackUrlOpen(true)}
+          >
+            Track URL
+          </Button>
+        ) : null
+      }
       layout="default"
       sections={[]}
       footer={
@@ -237,5 +256,13 @@ export function JobDetailView({ job, listPath, onJobChange }: JobDetailViewProps
         </div>
       }
     />
+    <Hq6JobTrackUrlModal
+      open={trackUrlOpen}
+      tenantId={tenantId}
+      jobId={job.id}
+      jobReference={job.reference}
+      onClose={() => setTrackUrlOpen(false)}
+    />
+    </>
   );
 }

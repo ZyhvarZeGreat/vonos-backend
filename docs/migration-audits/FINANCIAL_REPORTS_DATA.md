@@ -101,10 +101,10 @@ No legacy import. Financial reports (`profit-loss`, `expense`) work on live `Led
 
 | Endpoint | Handler | Scope | Tables |
 |---|---|---|---|
-| `GET /reports/group` | `buildGroupReports` | `AUTOS_GROUP_CODES`: VW, VA, VISP, VSP | cross-tenant `LedgerEntry`, `Job`, `Sale` |
+| `GET /reports/group` | `buildGroupReports` | `VAG_OVERVIEW_CODES`: VW, VA, VP, VISP, VSP, VC | cross-tenant `LedgerEntry`, `Job`, `Sale` |
 | `GET /reports/group/run?reportId=` | group runner | per-report `byEntity` breakdown | same |
 
-**Excluded today:** VC, VS, VKW — not in [`AUTOS_GROUP_CODES`](../../apps/api/src/modules/reports/aggregators/groupReports.ts).
+**Excluded today:** VS, VKW — not in [`VAG_OVERVIEW_CODES`](../../packages/types/src/group.ts). Cafe (VC) is included for admin overview / group finance.
 
 Group queries: [`groupReportQueries.ts`](../../apps/api/src/modules/reports/aggregators/groupReportQueries.ts).
 

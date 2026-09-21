@@ -26,7 +26,10 @@ import {
   listPageFilterKey,
   withListPageCache,
 } from '../../common/utils/listPageCache';
-import { applySaleJobStatusNotes } from '../../common/utils/saleJobStatusNotes';
+import {
+  applySaleJobStatusNotes,
+  readSaleJobStatus,
+} from '../../common/utils/saleJobStatusNotes';
 import {
   HQ6_LIST_WARM_LIMITS,
   hq6WarmSorts,
@@ -55,12 +58,17 @@ import {
 } from '../../common/utils/serializers';
 import { paymentStatusFromAmounts } from '../../common/utils/paymentStatus';
 import { encodePublicInvoiceToken } from '../../common/utils/publicInvoiceToken';
+import { encodePublicJobTrackToken } from '../../common/utils/publicJobTrackToken';
 import {
   recordPaymentAccountTxn,
   softDeletePaymentAccountTxns,
   syncSalePaymentAccountCredit,
 } from '../../common/utils/recordPaymentAccountTxn';
 import { allocateNextInvoiceNumber } from '../../common/utils/allocateInvoiceNumber';
+import {
+  WhatsAppNotifyService,
+  type WhatsAppSendResult,
+} from '../../common/whatsapp/whatsapp-notify.service';
 
 function normalizeCreateStatus(
   status?: SaleStatus | 'final',
@@ -71,6 +79,19 @@ function normalizeCreateStatus(
 
 function isProvisionalSaleStatus(status: SaleStatus): boolean {
   return status === 'draft' || status === 'quotation';
+}
+
+function readSaleNoteLine(
+  notes: string | null | undefined,
+  label: string,
+): string | null {
+  if (!notes?.trim()) return null;
+  const re = new RegExp(
+    `^${label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}:\\s*(.+)$`,
+    'im',
+  );
+  const match = notes.match(re);
+  return match?.[1]?.trim() || null;
 }
 
 type SaleLineInput = {
@@ -133,6 +154,7 @@ export class SalesService {
     private readonly auditService: AuditService,
     private readonly cache: CacheService,
     private readonly invoiceHub: InvoiceHubService,
+    private readonly whatsapp: WhatsAppNotifyService,
   ) {}
 
   private refreshSaleSideEffects(options: {
@@ -1951,8 +1973,12 @@ export class SalesService {
    */
   async updateJobWorkshopStatus(
     id: string,
-    body: { status: string; notes?: string | null },
-  ): Promise<SaleDetail> {
+    body: {
+      status: string;
+      notes?: string | null;
+      notifyWhatsApp?: boolean;
+    },
+  ): Promise<SaleDetail & { whatsappNotify?: WhatsAppSendResult }> {
     const tenantId = this.tenantDb.requireTenantId();
     const existing = await this.tenantDb.db.sale.findFirst({
       where: { id, tenantId, deletedAt: null },
@@ -1964,6 +1990,7 @@ export class SalesService {
     });
     if (!existing) throw new NotFoundException('Sale not found');
 
+    const previousStatus = readSaleJobStatus(existing.notes);
     let applied;
     try {
       applied = applySaleJobStatusNotes({
@@ -2031,7 +2058,81 @@ export class SalesService {
       },
     });
     void invalidateTenantDashboardCache(this.cache, tenantId);
-    return this.toSaleDetail(row);
+
+    const detail = this.toSaleDetail(row);
+    const statusChanged = previousStatus !== applied.status;
+    const shouldNotify = statusChanged && body.notifyWhatsApp !== false;
+    const whatsappNotify = shouldNotify
+      ? await this.notifySaleWorkshopWhatsApp(id, applied.status)
+      : undefined;
+    return whatsappNotify ? { ...detail, whatsappNotify } : detail;
+  }
+
+  /** Resolve owner phone + WhatsApp status update with /job/:token link (sale or linked job). */
+  async notifySaleWorkshopWhatsApp(
+    saleId: string,
+    statusLabel?: string,
+  ): Promise<WhatsAppSendResult> {
+    const tenantId = this.tenantDb.requireTenantId();
+    const sale = await this.tenantDb.db.sale.findFirst({
+      where: { id: saleId, tenantId, deletedAt: null },
+      include: {
+        customer: { select: { name: true, phone: true } },
+        tenant: { select: { name: true } },
+        job: { select: { id: true, vehicleId: true, customerName: true } },
+      },
+    });
+    if (!sale) {
+      return {
+        sent: false,
+        channel: 'skipped',
+        waMeUrl: null,
+        toE164: null,
+        error: 'Sale not found',
+      };
+    }
+
+    const vehicle = sale.job?.vehicleId
+      ? await this.tenantDb.db.vehicle.findFirst({
+          where: { id: sale.job.vehicleId, deletedAt: null },
+          select: {
+            plateNumber: true,
+            ownerName: true,
+            ownerPhone: true,
+          },
+        })
+      : null;
+
+    const plateFromNotes = readSaleNoteLine(sale.notes, 'Plate number');
+    const phone = vehicle?.ownerPhone || sale.customer?.phone || null;
+    const ownerName =
+      vehicle?.ownerName?.trim() ||
+      sale.customer?.name?.trim() ||
+      sale.job?.customerName?.trim() ||
+      'Customer';
+    const plate =
+      vehicle?.plateNumber?.trim() || plateFromNotes?.trim() || 'vehicle';
+    const stage = statusLabel?.trim() || readSaleJobStatus(sale.notes);
+    const subjectId = sale.jobId ?? sale.id;
+    const token = encodePublicJobTrackToken(subjectId);
+    const trackUrl = this.whatsapp.publicJobTrackUrl(token);
+    const message = this.whatsapp.composeStatusMessage({
+      ownerName,
+      plate,
+      statusLabel: stage,
+      trackUrl,
+      shopName: sale.tenant?.name,
+    });
+    return this.whatsapp.notifyCustomer({
+      phone,
+      message,
+      templateParams: {
+        ownerName,
+        plate,
+        statusLabel: stage,
+        trackUrl,
+      },
+    });
   }
 
   /** In-place sale edit — same id; sync invoice; net stock; keep existing payments. */
@@ -3658,6 +3759,48 @@ export class SalesService {
     if (!sale) throw new NotFoundException('Sale not found');
     const token = encodePublicInvoiceToken(sale.id);
     return { token, path: `/invoice/${token}` };
+  }
+
+  /**
+   * Public workshop track link for this sale (VA/VP: sales act as jobs).
+   * Prefers linked Job when present; otherwise signs the sale id itself.
+   */
+  async getTrackShareUrl(id: string): Promise<{
+    token: string;
+    path: string;
+    url: string;
+    jobId: string | null;
+    saleId: string;
+    subject: 'job' | 'sale';
+  }> {
+    const tenantId = this.tenantDb.requireTenantId();
+    const sale = await this.tenantDb.db.sale.findFirst({
+      where: { id, tenantId, deletedAt: null },
+      select: { id: true, jobId: true },
+    });
+    if (!sale) throw new NotFoundException('Sale not found');
+
+    const subject: 'job' | 'sale' = sale.jobId ? 'job' : 'sale';
+    const subjectId = sale.jobId ?? sale.id;
+    const token = encodePublicJobTrackToken(subjectId);
+    const path = `/job/${token}`;
+    // Prefer PUBLIC_SITE_URL so staff copy the customer-facing host, not the API host.
+    const base = (
+      process.env.PUBLIC_SITE_URL ||
+      process.env.WEB_ORIGIN?.split(',')[0] ||
+      this.whatsapp.publicSiteBase()
+    )
+      .trim()
+      .replace(/\/$/, '');
+    const url = `${base}${path}`;
+    return {
+      token,
+      path,
+      url,
+      jobId: sale.jobId,
+      saleId: sale.id,
+      subject,
+    };
   }
 
   async importCsv(csv: string): Promise<CsvImportResult> {

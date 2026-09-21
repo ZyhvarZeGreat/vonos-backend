@@ -19,6 +19,29 @@ export function hq6PaymentBadgeProps(
   };
 }
 
+/** Payroll run status (draft / final) — UPOS label colors, white text. */
+export function hq6PayrollStatusBadgeClass(
+  status: string | null | undefined,
+): string {
+  const key = (status ?? "").toLowerCase();
+  if (key === "final") return "hq6-pay-info";
+  if (key === "paid") return "hq6-pay-paid";
+  if (key === "draft") return "hq6-pay-due";
+  return "hq6-pay-due";
+}
+
+export function hq6BoldStatusBadgeClass(
+  status: string | null | undefined,
+  kind: "payment" | "payroll" = "payment",
+): string {
+  return cn(
+    "hq6-pay-badge",
+    kind === "payroll"
+      ? hq6PayrollStatusBadgeClass(status)
+      : hq6PaymentBadgeClass(status),
+  );
+}
+
 /**
  * UPOS rule: Add Payment when the invoice/PO still has an open balance.
  * Prefer remainingDue > 0. Status due/partial/overdue also shows the button

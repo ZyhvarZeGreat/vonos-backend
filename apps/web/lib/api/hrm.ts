@@ -969,7 +969,7 @@ export async function deletePayrollGroup(
     withTenantQuery(`${PAYROLL_GROUPS_PATH}/${id}`, tenantId),
     { method: "DELETE" },
   );
-  if (!res.ok) throw new Error("Failed to delete department");
+  if (!res.ok) return throwApiError(res, "Failed to delete payroll group");
 }
 
 export async function getLeaveTypesPage(

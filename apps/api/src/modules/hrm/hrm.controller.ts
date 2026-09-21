@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Delete,
+  ForbiddenException,
   Get,
   Param,
   Patch,
@@ -19,6 +20,7 @@ import {
   RolesGuard,
   TenantGuard,
 } from '../../common/guards/auth.guards';
+import { userCanHrmPayrollWrite } from '../../common/utils/userPermissions';
 import { HrmService } from './hrm.service';
 import { HrmEssentialsService } from './hrm-essentials.service';
 import type {
@@ -40,6 +42,15 @@ import type {
 } from '@vonos/types';
 
 type AuthedRequest = Request & { user: AuthenticatedUser };
+
+function requirePayrollPermission(
+  req: AuthedRequest,
+  permissionKey: string,
+): void {
+  if (!userCanHrmPayrollWrite(req.user, permissionKey)) {
+    throw new ForbiddenException(`Missing ${permissionKey}`);
+  }
+}
 
 @Controller('hrm')
 @UseGuards(JwtAuthGuard, TenantGuard, RolesGuard)
@@ -206,38 +217,48 @@ export class HrmController {
   }
 
   @Post('payroll')
-  @Roles('admin', 'manager', 'super_admin')
-  createPayroll(@Body() dto: CreatePayrollRequest) {
+  @Roles('admin', 'manager', 'staff', 'super_admin')
+  createPayroll(
+    @Req() req: AuthedRequest,
+    @Body() dto: CreatePayrollRequest,
+  ) {
+    requirePayrollPermission(req, 'essentials.create_payroll');
     return this.service.createPayroll(dto);
   }
 
   @Post('payroll/pay')
-  @Roles('admin', 'manager', 'super_admin')
-  payPayrolls(@Body() dto: PayPayrollsRequest) {
+  @Roles('admin', 'manager', 'staff', 'super_admin')
+  payPayrolls(@Req() req: AuthedRequest, @Body() dto: PayPayrollsRequest) {
+    requirePayrollPermission(req, 'essentials.update_payroll');
     return this.service.payPayrolls(dto);
   }
 
   @Delete('payroll/:id')
-  @Roles('admin', 'manager', 'super_admin')
-  deletePayroll(@Param('id') id: string) {
+  @Roles('admin', 'manager', 'staff', 'super_admin')
+  deletePayroll(@Req() req: AuthedRequest, @Param('id') id: string) {
+    requirePayrollPermission(req, 'essentials.delete_payroll');
     return this.service.deletePayroll(id);
   }
 
   @Patch('payroll/:id/deduction')
-  @Roles('admin', 'manager', 'super_admin')
+  @Roles('admin', 'manager', 'staff', 'super_admin')
   addPayrollDeduction(
+    @Req() req: AuthedRequest,
     @Param('id') id: string,
     @Body() dto: UpdatePayrollDeductionRequest,
   ) {
+    requirePayrollPermission(req, 'essentials.update_payroll');
     return this.service.addPayrollDeduction(id, dto);
   }
 
   @Patch('payroll/:id/status')
-  @Roles('admin', 'manager', 'super_admin')
+  @Roles('admin', 'manager', 'staff', 'super_admin')
   updatePayrollStatus(
+    @Req() req: AuthedRequest,
     @Param('id') id: string,
     @Body() dto: UpdatePayrollStatusRequest,
   ) {
+    requirePayrollPermission(req, 'essentials.update_payroll');
     return this.service.updatePayrollStatus(id, dto);
   }
 
@@ -267,41 +288,52 @@ export class HrmController {
   }
 
   @Post('payroll-groups')
-  @Roles('admin', 'manager', 'super_admin')
-  createPayrollGroup(@Body() dto: CreatePayrollGroupRequest) {
+  @Roles('admin', 'manager', 'staff', 'super_admin')
+  createPayrollGroup(
+    @Req() req: AuthedRequest,
+    @Body() dto: CreatePayrollGroupRequest,
+  ) {
+    requirePayrollPermission(req, 'essentials.create_payroll');
     return this.service.createPayrollGroup(dto);
   }
 
   @Put('payroll-groups/:id/payrolls')
-  @Roles('admin', 'manager', 'super_admin')
+  @Roles('admin', 'manager', 'staff', 'super_admin')
   updatePayrollGroupPayrolls(
+    @Req() req: AuthedRequest,
     @Param('id') id: string,
     @Body() dto: UpdatePayrollGroupPayrollsRequest,
   ) {
+    requirePayrollPermission(req, 'essentials.update_payroll');
     return this.service.updatePayrollGroupPayrolls(id, dto);
   }
 
   @Patch('payroll-groups/:id/status')
-  @Roles('admin', 'manager', 'super_admin')
+  @Roles('admin', 'manager', 'staff', 'super_admin')
   updatePayrollGroupStatus(
+    @Req() req: AuthedRequest,
     @Param('id') id: string,
     @Body() dto: UpdatePayrollGroupStatusRequest,
   ) {
+    requirePayrollPermission(req, 'essentials.update_payroll');
     return this.service.updatePayrollGroupStatus(id, dto.status);
   }
 
   @Patch('payroll-groups/:id')
-  @Roles('admin', 'manager', 'super_admin')
+  @Roles('admin', 'manager', 'staff', 'super_admin')
   updatePayrollGroup(
+    @Req() req: AuthedRequest,
     @Param('id') id: string,
     @Body() dto: UpdatePayrollGroupRequest,
   ) {
+    requirePayrollPermission(req, 'essentials.update_payroll');
     return this.service.updatePayrollGroup(id, dto);
   }
 
   @Delete('payroll-groups/:id')
-  @Roles('admin', 'manager', 'super_admin')
-  deletePayrollGroup(@Param('id') id: string) {
+  @Roles('admin', 'manager', 'staff', 'super_admin')
+  deletePayrollGroup(@Req() req: AuthedRequest, @Param('id') id: string) {
+    requirePayrollPermission(req, 'essentials.delete_payroll');
     return this.service.deletePayrollGroup(id);
   }
 

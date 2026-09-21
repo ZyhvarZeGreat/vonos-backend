@@ -13,15 +13,21 @@ import {
 } from '@prisma/client';
 import { isOutsideOrServiceCatalogItem } from '@vonos/types';
 import { CacheService } from '../../common/cache/cache.service';
-import { invalidateTenantDashboardCache } from '../../common/cache/cacheInvalidation';
+import {
+  invalidateTenantDashboardCache,
+  invalidateTenantListCache,
+} from '../../common/cache/cacheInvalidation';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { allocateNextInvoiceNumber } from '../../common/utils/allocateInvoiceNumber';
 import { applyDailyFinanceDelta } from '../../common/utils/dailyFinanceRollup';
+import { refreshCustomerFinancialRollups } from '../../common/utils/customerRollups';
 import {
   adjustItemLocationStock,
   effectiveItemOnHand,
 } from '../../common/utils/itemLocationStock';
+import { recordPaymentAccountTxn } from '../../common/utils/recordPaymentAccountTxn';
 import { computeStockStatus } from '../../common/utils/stockQuantity';
+import { InvoiceHubService } from '../invoices/invoice-hub.service';
 import { PaystackService } from './paystack.service';
 import { StoreCatalogService } from './store-catalog.service';
 
@@ -38,6 +44,13 @@ type CheckoutInput = {
   callbackUrl: string;
 };
 
+type PendingFinanceDelta = {
+  tenantId: string;
+  amount: number;
+  currency: string;
+  date: Date;
+};
+
 /**
  * When false, paid store orders still create Sale + ledger/revenue for the
  * dashboard, but skip on-hand deduction (local testing). Default true so
@@ -49,6 +62,12 @@ function shouldDeductStoreStock(): boolean {
   return true;
 }
 
+function shippingAddressFromNotes(notes: string | null | undefined): string | null {
+  if (!notes?.trim()) return null;
+  const match = notes.match(/Delivery address:\s*(.+?)(?:\n|$)/i);
+  return match?.[1]?.trim() || notes.trim().slice(0, 500) || null;
+}
+
 @Injectable()
 export class StoreCheckoutService {
   private readonly logger = new Logger(StoreCheckoutService.name);
@@ -58,6 +77,7 @@ export class StoreCheckoutService {
     private readonly catalog: StoreCatalogService,
     private readonly paystack: PaystackService,
     private readonly cache: CacheService,
+    private readonly invoiceHub: InvoiceHubService,
   ) {}
 
   private generateReference(): string {
@@ -97,6 +117,7 @@ export class StoreCheckoutService {
         total,
         paystackReference,
         lines: {
+          // VISP slices first (resolveCartLines already sorts VISP → VSP).
           create: resolved.map((line) => ({
             tenantId: line.tenantId,
             itemId: line.itemId,
@@ -112,12 +133,16 @@ export class StoreCheckoutService {
     });
 
     const amountKobo = Math.round(total * 100);
-    const separator = input.callbackUrl.includes('?') ? '&' : '?';
+    // Absolute confirmation URL with our order ref. Paystack appends
+    // reference/trxref on return; OrderConfirmationPanel accepts both.
+    const baseCallback = input.callbackUrl.trim();
+    const separator = baseCallback.includes('?') ? '&' : '?';
+    const callbackUrl = `${baseCallback}${separator}ref=${encodeURIComponent(reference)}`;
     const paystack = await this.paystack.initializeTransaction({
       email: order.customerEmail,
       amountKobo,
       reference: paystackReference,
-      callbackUrl: `${input.callbackUrl}${separator}ref=${encodeURIComponent(reference)}`,
+      callbackUrl,
       metadata: {
         storeOrderId: order.id,
         storeReference: order.reference,
@@ -142,7 +167,7 @@ export class StoreCheckoutService {
 
   async getOrder(reference: string) {
     const order = await this.prisma.storeOrder.findUnique({
-      where: { reference },
+      where: { reference: this.normalizeStoreReference(reference) },
       include: {
         lines: true,
         sales: {
@@ -154,6 +179,12 @@ export class StoreCheckoutService {
     });
     if (!order) throw new NotFoundException('Order not found');
     return order;
+  }
+
+  /** Accept VON-… or Paystack’s store_VON-… from callbacks. */
+  private normalizeStoreReference(reference: string): string {
+    const trimmed = reference.trim();
+    return trimmed.startsWith('store_') ? trimmed.slice('store_'.length) : trimmed;
   }
 
   async handlePaystackWebhook(payload: {
@@ -191,8 +222,9 @@ export class StoreCheckoutService {
 
   /** Confirm payment after browser return (idempotent). */
   async confirmPaid(reference: string) {
+    const normalized = this.normalizeStoreReference(reference);
     const order = await this.prisma.storeOrder.findUnique({
-      where: { reference },
+      where: { reference: normalized },
       include: { lines: true, sales: true },
     });
     if (!order) throw new NotFoundException('Order not found');
@@ -210,12 +242,14 @@ export class StoreCheckoutService {
     }
 
     await this.markPaidAndCreateSales(order.id);
-    return this.getOrder(reference);
+    return this.getOrder(normalized);
   }
 
   private async markPaidAndCreateSales(orderId: string) {
     const deductStock = shouldDeductStoreStock();
     const touchedTenants = new Set<string>();
+    const customerIdsToRefresh = new Set<string>();
+    const pendingFinance: PendingFinanceDelta[] = [];
 
     await this.prisma.$transaction(
       async (tx) => {
@@ -224,6 +258,40 @@ export class StoreCheckoutService {
           include: { lines: true, sales: true },
         });
         if (!order || order.status === StoreOrderStatus.paid) return;
+
+        // Re-verify stock at pay time (race with other sales).
+        if (deductStock) {
+          for (const line of order.lines) {
+            if (
+              isOutsideOrServiceCatalogItem({
+                name: line.name,
+                sku: line.sku,
+              })
+            ) {
+              continue;
+            }
+            const item = await tx.item.findFirst({
+              where: {
+                id: line.itemId,
+                tenantId: line.tenantId,
+                deletedAt: null,
+              },
+            });
+            if (!item) {
+              throw new BadRequestException(`Item not found: ${line.sku}`);
+            }
+            const onHand = await effectiveItemOnHand(
+              tx,
+              item.id,
+              Number(item.quantity),
+            );
+            if (onHand < line.qty) {
+              throw new BadRequestException(
+                `Insufficient stock for ${line.sku} (need ${line.qty}, have ${onHand})`,
+              );
+            }
+          }
+        }
 
         await tx.storeOrder.update({
           where: { id: order.id },
@@ -240,24 +308,25 @@ export class StoreCheckoutService {
           byTenant.set(line.tenantId, list);
         }
 
+        // Process VISP before VSP when both appear (stable Map iteration is
+        // insertion order from order.lines, which is VISP-first).
+        const shippingAddress = shippingAddressFromNotes(order.notes);
+        const saleDate = new Date();
+
         for (const [tenantId, lines] of byTenant) {
           if (order.sales.some((link) => link.tenantId === tenantId)) continue;
           touchedTenants.add(tenantId);
 
-          const customer = await tx.customer.create({
-            data: {
-              tenantId,
-              name: order.customerName,
-              email: order.customerEmail,
-              phone: order.customerPhone,
-              details: {
-                source: 'public_store',
-                registration: order.registration,
-                fulfillment: order.fulfillment,
-                storeOrderReference: order.reference,
-              },
-            },
+          const customer = await this.findOrCreateStoreCustomer(tx, {
+            tenantId,
+            name: order.customerName,
+            email: order.customerEmail,
+            phone: order.customerPhone,
+            registration: order.registration,
+            fulfillment: order.fulfillment,
+            storeOrderReference: order.reference,
           });
+          customerIdsToRefresh.add(customer.id);
 
           const saleReference = await allocateNextInvoiceNumber(tx, tenantId);
           const total = lines.reduce(
@@ -268,6 +337,19 @@ export class StoreCheckoutService {
           if (deductStock) {
             await this.deductStoreLines(tx, tenantId, lines);
           }
+
+          const paystackAccount = await tx.paymentAccount.findFirst({
+            where: {
+              tenantId,
+              deletedAt: null,
+              isClosed: false,
+              OR: [
+                { name: { contains: 'paystack', mode: 'insensitive' } },
+                { name: { contains: 'online', mode: 'insensitive' } },
+              ],
+            },
+            select: { id: true },
+          });
 
           const sale = await tx.sale.create({
             data: {
@@ -281,6 +363,11 @@ export class StoreCheckoutService {
               totalPaid: total,
               itemCount: lines.length,
               paymentMethod: 'paystack',
+              shippingAddress,
+              shippingStatus:
+                order.fulfillment === StoreFulfillmentType.delivery
+                  ? 'pending'
+                  : null,
               notes: [
                 `Online store order ${order.reference}`,
                 order.notes,
@@ -289,7 +376,7 @@ export class StoreCheckoutService {
               ]
                 .filter(Boolean)
                 .join(' · '),
-              date: new Date(),
+              date: saleDate,
               lines: {
                 create: lines.map((line) => ({
                   itemId: line.itemId,
@@ -307,13 +394,21 @@ export class StoreCheckoutService {
                   currency: order.currency,
                   method: 'paystack',
                   paymentRefNo: order.paystackReference,
-                  paidOn: new Date(),
+                  paidOn: saleDate,
                   paymentFor: 'sale',
                   note: `Store checkout ${order.reference}`,
+                  accountId: paystackAccount?.id ?? null,
                 },
               },
             },
+            include: {
+              lines: true,
+              payments: true,
+              customer: { select: { name: true } },
+            },
           });
+
+          const invoice = await this.invoiceHub.ensureSaleInvoice(tx, sale, sale.lines);
 
           await tx.ledgerEntry.create({
             data: {
@@ -325,9 +420,27 @@ export class StoreCheckoutService {
               description: `Online store ${order.reference} (${saleReference})`,
               linkedRecordType: 'sale',
               linkedRecordId: sale.id,
-              date: new Date(),
+              invoiceId: invoice?.id ?? null,
+              date: saleDate,
             },
           });
+
+          const payment = sale.payments[0];
+          if (payment?.accountId) {
+            await recordPaymentAccountTxn(tx, {
+              tenantId,
+              accountId: payment.accountId,
+              type: 'credit',
+              subType: 'sale_payment',
+              amount: total,
+              operationDate: saleDate,
+              refNo: order.paystackReference,
+              note: `Store checkout ${order.reference}`,
+              paymentMethod: 'paystack',
+              saleId: sale.id,
+              paymentId: payment.id,
+            });
+          }
 
           const movementLines = lines
             .filter(
@@ -356,7 +469,7 @@ export class StoreCheckoutService {
                 itemCount: movementLines.length,
                 grandTotal: 0,
                 notes: `saleId:${sale.id}|store ${order.reference}`,
-                date: new Date(),
+                date: saleDate,
               },
             });
           }
@@ -369,22 +482,99 @@ export class StoreCheckoutService {
             },
           });
 
-          void applyDailyFinanceDelta(
-            this.prisma,
+          pendingFinance.push({
             tenantId,
-            new Date(),
-            'revenue',
-            total,
-            order.currency,
-          );
+            amount: total,
+            currency: order.currency,
+            date: saleDate,
+          });
         }
       },
       { maxWait: 15_000, timeout: 60_000 },
     );
 
+    for (const delta of pendingFinance) {
+      void applyDailyFinanceDelta(
+        this.prisma,
+        delta.tenantId,
+        delta.date,
+        'revenue',
+        delta.amount,
+        delta.currency,
+      );
+    }
+
     for (const tenantId of touchedTenants) {
       void invalidateTenantDashboardCache(this.cache, tenantId);
+      void invalidateTenantListCache(this.cache, tenantId, [
+        'sales:v2',
+        'sales',
+        'items',
+        'catalog',
+      ]);
     }
+
+    for (const customerId of customerIdsToRefresh) {
+      void refreshCustomerFinancialRollups(this.prisma, customerId);
+    }
+  }
+
+  private async findOrCreateStoreCustomer(
+    tx: Prisma.TransactionClient,
+    args: {
+      tenantId: string;
+      name: string;
+      email: string;
+      phone: string;
+      registration: string | null;
+      fulfillment: StoreFulfillmentType;
+      storeOrderReference: string;
+    },
+  ) {
+    const email = args.email.trim().toLowerCase();
+    const existing = email
+      ? await tx.customer.findFirst({
+          where: {
+            tenantId: args.tenantId,
+            deletedAt: null,
+            email: { equals: email, mode: 'insensitive' },
+          },
+        })
+      : null;
+
+    if (existing) {
+      return tx.customer.update({
+        where: { id: existing.id },
+        data: {
+          name: args.name.trim() || existing.name,
+          phone: args.phone.trim() || existing.phone,
+          details: {
+            ...(typeof existing.details === 'object' && existing.details
+              ? (existing.details as Record<string, unknown>)
+              : {}),
+            source: 'public_store',
+            registration: args.registration,
+            fulfillment: args.fulfillment,
+            storeOrderReference: args.storeOrderReference,
+          },
+        },
+      });
+    }
+
+    return tx.customer.create({
+      data: {
+        tenantId: args.tenantId,
+        name: args.name.trim(),
+        email: args.email.trim(),
+        phone: args.phone.trim(),
+        details: {
+          source: 'public_store',
+          registration: args.registration,
+          fulfillment: args.fulfillment,
+          storeOrderReference: args.storeOrderReference,
+        },
+      },
+    });
   }
 
   private async deductStoreLines(

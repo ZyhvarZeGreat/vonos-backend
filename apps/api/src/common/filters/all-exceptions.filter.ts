@@ -15,6 +15,11 @@ type ErrorBody = {
   error: string;
 };
 
+const DB_UNAVAILABLE_MESSAGE =
+  'We can’t reach the database right now — please try again in a moment.';
+
+const DB_CONNECTIVITY_CODES = new Set(['P1001', 'P1017', 'P2024']);
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
@@ -42,11 +47,74 @@ function prismaTargetLabel(meta: unknown): string | null {
   return null;
 }
 
-function mapPrismaError(error: Prisma.PrismaClientKnownRequestError): {
+/** Duck-type Prisma codes — `instanceof` fails when duplicate @prisma/client copies load. */
+function prismaErrorCode(error: unknown): string | null {
+  if (error instanceof Prisma.PrismaClientKnownRequestError) return error.code;
+  if (isRecord(error) && typeof error.code === 'string' && /^P\d{4}$/.test(error.code)) {
+    return error.code;
+  }
+  return null;
+}
+
+function errorMessageText(error: unknown): string {
+  if (error instanceof Error) return error.message?.trim() ?? '';
+  return String(error ?? '').trim();
+}
+
+/** Neon / pooler / network outages — never expose hostnames or Prisma dumps to clients. */
+function isDatabaseConnectivityFailure(error: unknown): boolean {
+  if (error instanceof Prisma.PrismaClientInitializationError) return true;
+  const code = prismaErrorCode(error);
+  if (code && DB_CONNECTIVITY_CODES.has(code)) return true;
+
+  const lower = errorMessageText(error).toLowerCase();
+  return (
+    lower.includes("can't reach database") ||
+    lower.includes('cannot reach database') ||
+    lower.includes('database server is running') ||
+    lower.includes('timed out fetching a new connection') ||
+    lower.includes('connection terminated unexpectedly') ||
+    lower.includes('connection refused') ||
+    lower.includes('econnrefused') ||
+    lower.includes('enotfound') ||
+    lower.includes('server has closed the connection') ||
+    lower.includes('error in postgresql connection') ||
+    /neon\.tech:\d+/.test(lower) ||
+    lower.includes('invalid `prisma.') ||
+    lower.includes('invalid `this.prisma.')
+  );
+}
+
+function looksLikeInternalDatabaseDump(message: string): boolean {
+  const lower = message.toLowerCase();
+  return (
+    lower.includes("can't reach database") ||
+    lower.includes('cannot reach database') ||
+    lower.includes('database server is running') ||
+    lower.includes('invalid `prisma') ||
+    lower.includes('invalid `this.prisma') ||
+    lower.includes('invocation in') ||
+    /neon\.tech/.test(lower) ||
+    /ep-[a-z0-9-]+\./.test(lower)
+  );
+}
+
+function mapPrismaError(error: {
+  code: string;
+  meta?: unknown;
+}): {
   status: number;
   message: string;
   error: string;
 } {
+  if (DB_CONNECTIVITY_CODES.has(error.code)) {
+    return {
+      status: HttpStatus.SERVICE_UNAVAILABLE,
+      message: DB_UNAVAILABLE_MESSAGE,
+      error: 'Service Unavailable',
+    };
+  }
+
   switch (error.code) {
     case 'P2002': {
       const fields = prismaTargetLabel(error.meta);
@@ -80,14 +148,6 @@ function mapPrismaError(error: Prisma.PrismaClientKnownRequestError): {
         message: 'The operation timed out — please try again',
         error: 'Bad Request',
       };
-    case 'P1001':
-    case 'P1017':
-    case 'P2024':
-      return {
-        status: HttpStatus.SERVICE_UNAVAILABLE,
-        message: 'Database is temporarily unavailable — try again shortly',
-        error: 'Service Unavailable',
-      };
     case 'P2021':
       return {
         status: HttpStatus.SERVICE_UNAVAILABLE,
@@ -98,7 +158,7 @@ function mapPrismaError(error: Prisma.PrismaClientKnownRequestError): {
     default:
       return {
         status: HttpStatus.BAD_REQUEST,
-        message: error.message?.split('\n')[0]?.trim() || 'Database request failed',
+        message: 'Database request failed',
         error: 'Bad Request',
       };
   }
@@ -120,7 +180,14 @@ export class AllExceptionsFilter implements ExceptionFilter {
     let message: string | string[] = 'Something went wrong — please try again';
     let errorName = 'Error';
 
-    if (exception instanceof HttpException) {
+    if (isDatabaseConnectivityFailure(exception)) {
+      status = HttpStatus.SERVICE_UNAVAILABLE;
+      message = DB_UNAVAILABLE_MESSAGE;
+      errorName = 'Service Unavailable';
+      this.logger.error(
+        `Database unavailable: ${errorMessageText(exception) || '(no message)'}`,
+      );
+    } else if (exception instanceof HttpException) {
       status = exception.getStatus();
       const payload = exception.getResponse();
       message = flattenHttpMessage(payload);
@@ -128,12 +195,22 @@ export class AllExceptionsFilter implements ExceptionFilter {
         isRecord(payload) && typeof payload.error === 'string'
           ? payload.error
           : exception.name.replace(/Exception$/, '') || 'Error';
-    } else if (exception instanceof Prisma.PrismaClientKnownRequestError) {
-      const mapped = mapPrismaError(exception);
+    } else if (
+      exception instanceof Prisma.PrismaClientKnownRequestError ||
+      prismaErrorCode(exception)
+    ) {
+      const code = prismaErrorCode(exception)!;
+      const meta =
+        exception instanceof Prisma.PrismaClientKnownRequestError
+          ? exception.meta
+          : isRecord(exception)
+            ? exception.meta
+            : undefined;
+      const mapped = mapPrismaError({ code, meta });
       status = mapped.status;
       message = mapped.message;
       errorName = mapped.error;
-      this.logger.warn(`Prisma ${exception.code}: ${mapped.message}`);
+      this.logger.warn(`Prisma ${code}: ${mapped.message}`);
     } else if (exception instanceof Prisma.PrismaClientValidationError) {
       status = HttpStatus.BAD_REQUEST;
       message = 'Invalid data sent to the database';
@@ -141,7 +218,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
       this.logger.warn(`Prisma validation: ${exception.message}`);
     } else if (exception instanceof Prisma.PrismaClientInitializationError) {
       status = HttpStatus.SERVICE_UNAVAILABLE;
-      message = 'Database is temporarily unavailable — try again shortly';
+      message = DB_UNAVAILABLE_MESSAGE;
       errorName = 'Service Unavailable';
       this.logger.error(`Prisma init: ${exception.message}`);
     } else if (exception instanceof Error) {
@@ -171,7 +248,8 @@ export class AllExceptionsFilter implements ExceptionFilter {
       } else if (
         raw &&
         lower !== 'internal server error' &&
-        !lower.includes('internal server error')
+        !lower.includes('internal server error') &&
+        !looksLikeInternalDatabaseDump(raw)
       ) {
         // Prefer the real message over Nest's opaque "Internal server error"
         message = raw;
@@ -184,12 +262,16 @@ export class AllExceptionsFilter implements ExceptionFilter {
       this.logger.error(`Unhandled non-Error: ${String(exception)}`);
     }
 
-    // Never send Nest's default opaque copy to clients.
-    if (
-      typeof message === 'string' &&
-      message.trim().toLowerCase() === 'internal server error'
-    ) {
-      message = 'Something went wrong — please try again';
+    // Never send Nest's default opaque copy or Prisma dumps to clients.
+    if (typeof message === 'string') {
+      const trimmed = message.trim();
+      if (trimmed.toLowerCase() === 'internal server error') {
+        message = 'Something went wrong — please try again';
+      } else if (looksLikeInternalDatabaseDump(trimmed)) {
+        message = DB_UNAVAILABLE_MESSAGE;
+        status = HttpStatus.SERVICE_UNAVAILABLE;
+        errorName = 'Service Unavailable';
+      }
     }
 
     const body: ErrorBody = {

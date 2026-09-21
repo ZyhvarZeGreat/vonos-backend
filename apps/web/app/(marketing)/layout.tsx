@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
-import { Archivo } from "next/font/google";
+import { Archivo, DM_Sans } from "next/font/google";
 
 import MarketingShell from "@/components/marketing/MarketingShell";
 import { hostGrotesk } from "@/lib/fonts";
@@ -8,11 +8,19 @@ import { SITE_NAME, absoluteUrl } from "@/lib/seo/site";
 
 import "@/styles/marketing.css";
 import "@/styles/shop-ecommerce.css";
+import "@/styles/vonos-ecommerce.css";
 
 const archivo = Archivo({
   variable: "--font-archivo",
   subsets: ["latin"],
   weight: ["400", "500", "600", "700", "800"],
+});
+
+/** Storefront typeface from the Figma e-commerce file. */
+const dmSans = DM_Sans({
+  variable: "--font-dm-sans",
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
 });
 
 export const metadata: Metadata = {
@@ -27,7 +35,7 @@ export default function MarketingLayout({ children }: { children: ReactNode }) {
     <>
       <link rel="stylesheet" href="/styles/motocare-scraped.css" />
       <link rel="stylesheet" href="/styles/vonos-theme.css" />
-      <div className={`${archivo.variable} ${hostGrotesk.variable} marketing-root`}>
+      <div className={`${archivo.variable} ${dmSans.variable} ${hostGrotesk.variable} marketing-root`}>
         <MarketingShell>{children}</MarketingShell>
       </div>
     </>

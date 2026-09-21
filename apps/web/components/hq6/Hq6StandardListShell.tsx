@@ -45,6 +45,8 @@ export function useHq6ListChrome(pageSlug?: string): Hq6ListChromeState {
 export interface Hq6StandardListShellProps {
   slug: string;
   title?: string;
+  /** Override hq6PageCopy subtitle for this list. */
+  subtitle?: string;
   tabLabel: string;
   filters?: ReactNode;
   onAdd?: () => void;
@@ -106,6 +108,7 @@ export interface Hq6StandardListShellProps {
 export function Hq6StandardListShell({
   slug,
   title,
+  subtitle,
   tabLabel,
   filters,
   onAdd,
@@ -138,6 +141,7 @@ export function Hq6StandardListShell({
   const rules = hq6ListActionRule(slug);
   const copy = hq6CopyForSlug(slug);
   const resolvedTitle = title ?? copy.title;
+  const resolvedSubtitle = subtitle ?? copy.subtitle;
   const resolvedSearchPlaceholder =
     searchPlaceholder ?? copy.searchPlaceholder;
 
@@ -186,8 +190,8 @@ export function Hq6StandardListShell({
   return (
     <Hq6DataListPage
       title={resolvedTitle}
-      subtitle={copy.subtitle}
-      showSubtitle={!rules.titleOnly && Boolean(copy.subtitle)}
+      subtitle={resolvedSubtitle}
+      showSubtitle={!rules.titleOnly && Boolean(resolvedSubtitle)}
       boxTitle={resolvedBoxTitle}
       filters={filters}
       tabs={[...listTabs]}

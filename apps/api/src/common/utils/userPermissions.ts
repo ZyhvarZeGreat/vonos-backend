@@ -15,3 +15,18 @@ export function userHasPermission(
   const perms = user.tenantRolePermissions ?? [];
   return perms.includes('*') || perms.includes(key);
 }
+
+/** Payroll writes: JWT manager+ or TenantRole essentials.* keys (HR staff). */
+export function userCanHrmPayrollWrite(
+  user: AuthenticatedUser,
+  permissionKey: string,
+): boolean {
+  if (
+    user.role === 'admin' ||
+    user.role === 'super_admin' ||
+    user.role === 'manager'
+  ) {
+    return true;
+  }
+  return userHasPermission(user, permissionKey);
+}

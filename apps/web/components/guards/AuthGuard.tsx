@@ -13,6 +13,7 @@ const PUBLIC_PREFIXES = [
   "/reset-password",
   "/invite",
   "/invoice",
+  "/job",
   // Customer marketing site (apex)
   "/about",
   "/services",

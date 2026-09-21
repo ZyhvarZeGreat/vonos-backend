@@ -102,7 +102,7 @@ export const AUTOS_GROUP_ORDER = [
   Extract<(typeof TENANT_REGISTRY)[TenantCode]["code"], TenantCode>
 >;
 
-/** Cafe / Saloon / Kids Wear — not in VAG roll-ups. */
+/** Cafe / Saloon / Kids Wear — operations mounts. Cafe (VC) is also in VAG overview. */
 export const OPERATIONS_GROUP_ORDER = [
   "VC",
   "VS",

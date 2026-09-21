@@ -1,6 +1,6 @@
 import type { PrismaClient } from '@prisma/client';
 import type { InvoiceSettings, OverviewDashboard, ReportsDashboard } from '@vonos/types';
-import { AUTOS_GROUP_CODES } from '@vonos/types';
+import { VAG_OVERVIEW_CODES } from '@vonos/types';
 import type { CacheService } from '../cache/cache.service';
 import { defaultVagOverviewApiBounds } from '../../modules/reports/aggregators/date-utils';
 import {
@@ -54,7 +54,7 @@ export async function warmGroupFinanceCache(
 ): Promise<void> {
   const { from: warmFrom, to: warmTo } = warmBounds(from, to);
   const tenants = await prisma.tenant.findMany({
-    where: { code: { in: [...AUTOS_GROUP_CODES] }, deletedAt: null },
+    where: { code: { in: [...VAG_OVERVIEW_CODES] }, deletedAt: null },
     select: { id: true },
   });
   const tenantIds = tenants.map((t) => t.id);

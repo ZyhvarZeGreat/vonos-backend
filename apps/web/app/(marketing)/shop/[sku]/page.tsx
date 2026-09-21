@@ -2,26 +2,46 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import ProductDetailView from "@/components/marketing/ecommerce/ProductDetailView";
+import SimilarProducts from "@/components/marketing/ecommerce/SimilarProducts";
 import MotocareMotion from "@/components/marketing/MotocareMotion";
-import ShopProductDetail from "@/components/marketing/shop/ShopProductDetail";
 import SiteFooter from "@/components/marketing/SiteFooter";
 import SiteNav from "@/components/marketing/SiteNav";
 import WebflowClientEffects from "@/components/marketing/WebflowClientEffects";
 import { fetchStoreProduct } from "@/lib/marketing/store-api";
 import { absoluteUrl, shopProductPath, SITE_NAME, siteUrl } from "@/lib/seo/site";
+import type { ShopProduct } from "@/lib/marketing/shop-catalog";
 
 type ProductPageProps = {
   params: Promise<{ sku: string }>;
 };
 
+type ProductLoadResult =
+  | { status: "ok"; product: ShopProduct }
+  | { status: "not_found" }
+  | { status: "unavailable" };
+
+async function loadProduct(sku: string): Promise<ProductLoadResult> {
+  try {
+    const product = await fetchStoreProduct(sku);
+    return product ? { status: "ok", product } : { status: "not_found" };
+  } catch {
+    return { status: "unavailable" };
+  }
+}
+
 export async function generateMetadata({ params }: ProductPageProps): Promise<Metadata> {
   const { sku } = await params;
   const decoded = decodeURIComponent(sku);
-  const product = await fetchStoreProduct(decoded);
-  if (!product) {
-    return { title: "Part not found", robots: { index: false, follow: false } };
+  const result = await loadProduct(decoded);
+  if (result.status !== "ok") {
+    return {
+      title: result.status === "unavailable" ? "Shop temporarily unavailable" : "Part not found",
+      robots: { index: false, follow: false },
+    };
   }
 
+  const product = result.product;
   const path = shopProductPath(product.sku ?? decoded);
   const description =
     product.description ||
@@ -51,8 +71,41 @@ export async function generateMetadata({ params }: ProductPageProps): Promise<Me
 export default async function ShopProductPage({ params }: ProductPageProps) {
   const { sku } = await params;
   const decoded = decodeURIComponent(sku);
-  const product = await fetchStoreProduct(decoded);
-  if (!product) notFound();
+  const result = await loadProduct(decoded);
+
+  if (result.status === "unavailable") {
+    return (
+      <>
+        <MotocareMotion />
+        <WebflowClientEffects />
+        <main className="main main--subpage vg-page">
+          <SiteNav />
+          <section className="vg-pdp" data-qa-section="shop-product-unavailable">
+            <div className="vg-container">
+              <nav className="vg-crumbs" aria-label="Breadcrumb">
+                <Link href="/">Home</Link>
+                <span aria-hidden>/</span>
+                <Link href="/shop">Shop</Link>
+              </nav>
+              <div className="vg-error" role="alert">
+                <p>We can’t reach the database right now — please try again in a moment.</p>
+                <Link href={`/shop/${encodeURIComponent(decoded)}`} className="vg-btn">
+                  Try again
+                </Link>
+                <Link href="/shop" className="vg-textlink">
+                  Back to shop
+                </Link>
+              </div>
+            </div>
+          </section>
+          <SiteFooter />
+        </main>
+      </>
+    );
+  }
+
+  if (result.status === "not_found") notFound();
+  const product = result.product;
 
   const path = shopProductPath(product.sku ?? decoded);
   const image = product.icon.startsWith("http") ? product.icon : absoluteUrl(product.icon);
@@ -86,25 +139,22 @@ export default async function ShopProductPage({ params }: ProductPageProps) {
       />
       <MotocareMotion />
       <WebflowClientEffects />
-      <main className="main main--subpage">
+      <main className="main main--subpage vg-page">
         <SiteNav />
-        <section className="ve-shop ve-shop-page" data-qa-section="shop-product">
-          <div className="container-full">
-            <div className="breadcrumb-item">
-              <Link href="/" className="breadcrumb-link text-black">
-                Home
-              </Link>
-              <div className="breadcrumb-text text-black">/</div>
-              <Link href="/shop" className="breadcrumb-link text-black">
-                Shop
-              </Link>
-              <div className="breadcrumb-text text-black">/</div>
-              <div className="breadcrumb-text text-gray-3">{product.name}</div>
-            </div>
+        <section className="vg-pdp" data-qa-section="shop-product">
+          <div className="vg-container">
+            <nav className="vg-crumbs" aria-label="Breadcrumb">
+              <Link href="/">Home</Link>
+              <span aria-hidden>/</span>
+              <Link href="/shop">Shop</Link>
+              <span aria-hidden>/</span>
+              <span className="vg-crumbs__current">{product.name}</span>
+            </nav>
 
-            <ShopProductDetail product={product} />
+            <ProductDetailView product={product} />
           </div>
         </section>
+        <SimilarProducts product={product} />
         <SiteFooter />
       </main>
     </>

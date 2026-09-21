@@ -28,7 +28,7 @@ type CheckoutBody = {
   callbackUrl: string;
 };
 
-/** Public storefront — no JWT. Catalog from VSP retail items only. */
+/** Public storefront — no JWT. Catalog from VISP + VSP retail items. */
 @Controller('public/store')
 export class PublicStoreController {
   constructor(

@@ -1,13 +1,17 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import type { Job, Sale } from "@vonos/types";
+import type { Sale, SaleDetail } from "@vonos/types";
 import {
   Hq6Field,
   Hq6Modal,
   Hq6ModalSaveClose,
 } from "@/components/hq6/Hq6Modal";
-import { getJob, updateJobStatus } from "@/lib/api/jobs";
+import {
+  getSale,
+  updateSaleWorkshopStatus,
+} from "@/lib/api/sales";
+import { useTenantId } from "@/lib/hooks/useRouteTenant";
 import { toast } from "@/stores/toastStore";
 
 const ALL_STAGES = [
@@ -19,6 +23,13 @@ const ALL_STAGES = [
   "Delivered",
 ] as const;
 
+function readSaleJobStatus(notes: string | null | undefined): string {
+  if (!notes?.trim()) return "Received";
+  const match = notes.match(/^Job status:\s*(.+)$/im);
+  const raw = match?.[1]?.trim();
+  return raw || "Received";
+}
+
 type Props = {
   open: boolean;
   sale: Sale | null;
@@ -27,8 +38,8 @@ type Props = {
 };
 
 /**
- * VA / VP sales Action → update linked job stage + notes (feeds public track).
- * Optionally WhatsApp the vehicle owner with a /track link.
+ * VA / VP All Sales → update workshop stage on the sale itself
+ * (sales act as jobs — no Job row required).
  */
 export function Hq6UpdateJobStatusModal({
   open,
@@ -36,7 +47,8 @@ export function Hq6UpdateJobStatusModal({
   onClose,
   onUpdated,
 }: Props) {
-  const [job, setJob] = useState<Job | null>(null);
+  const tenantId = useTenantId();
+  const [detail, setDetail] = useState<SaleDetail | null>(null);
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState<string>("Received");
   const [notes, setNotes] = useState("");
@@ -44,18 +56,23 @@ export function Hq6UpdateJobStatusModal({
   const [saving, setSaving] = useState(false);
   const [loadError, setLoadError] = useState("");
 
-  const jobId = sale?.jobId?.trim() || null;
+  const currentStatus = detail
+    ? readSaleJobStatus(detail.notes)
+    : "Received";
 
   const statusOptions = useMemo(() => {
-    if (!job) return [...ALL_STAGES];
-    return job.hasQuote
-      ? [...ALL_STAGES]
-      : ALL_STAGES.filter((s) => s !== "Quoted");
-  }, [job]);
+    // Quoted only when a linked job has a quote; otherwise skip that stage.
+    if (detail?.jobId) {
+      // Keep Quoted available when a job is linked (job may or may not have quote;
+      // server validates against hasQuote).
+      return [...ALL_STAGES];
+    }
+    return ALL_STAGES.filter((s) => s !== "Quoted");
+  }, [detail?.jobId]);
 
   useEffect(() => {
-    if (!open || !jobId) {
-      setJob(null);
+    if (!open || !sale || !tenantId) {
+      setDetail(null);
       setLoadError("");
       setNotes("");
       setNotifyWhatsApp(true);
@@ -64,47 +81,49 @@ export function Hq6UpdateJobStatusModal({
     let cancelled = false;
     setLoading(true);
     setLoadError("");
-    void getJob(jobId)
-      .then((detail) => {
+    setNotes("");
+    setNotifyWhatsApp(true);
+
+    void (async () => {
+      try {
+        const loaded = await getSale(sale.id, tenantId);
         if (cancelled) return;
-        setJob(detail);
-        setStatus(detail.status || "Received");
-        setNotes("");
-        setNotifyWhatsApp(true);
-      })
-      .catch((err) => {
+        setDetail(loaded);
+        setStatus(readSaleJobStatus(loaded.notes));
+      } catch (err) {
         if (cancelled) return;
-        setJob(null);
+        setDetail(null);
         setLoadError(
-          err instanceof Error ? err.message : "Failed to load job",
+          err instanceof Error ? err.message : "Failed to load sale",
         );
-      })
-      .finally(() => {
+      } finally {
         if (!cancelled) setLoading(false);
-      });
+      }
+    })();
+
     return () => {
       cancelled = true;
     };
-  }, [open, jobId]);
+  }, [open, sale, tenantId]);
 
   const handleUpdate = async () => {
-    if (!jobId || !job) return;
+    if (!detail || !tenantId || !sale) return;
     const trimmedNotes = notes.trim();
-    if (status === job.status && !trimmedNotes) {
+    if (status === currentStatus && !trimmedNotes) {
       toast.error("Change the status or add a note");
       return;
     }
     setSaving(true);
     try {
-      const result = await updateJobStatus(jobId, {
+      const result = await updateSaleWorkshopStatus(tenantId, sale.id, {
         status,
         ...(trimmedNotes ? { notes: trimmedNotes } : {}),
-        notifyWhatsApp: status !== job.status ? notifyWhatsApp : false,
+        notifyWhatsApp: status !== currentStatus ? notifyWhatsApp : false,
       });
       toast.success(
-        status !== job.status
-          ? `Job ${job.reference}: status → ${status}`
-          : `Job ${job.reference}: notes saved`,
+        status !== currentStatus
+          ? `Sale ${sale.reference}: status → ${status}`
+          : `Sale ${sale.reference}: notes saved`,
       );
       const wa = result.whatsappNotify;
       if (wa?.sent) {
@@ -112,14 +131,14 @@ export function Hq6UpdateJobStatusModal({
       } else if (wa?.channel === "wa_me" && wa.waMeUrl) {
         toast.success("Opening WhatsApp…");
         window.open(wa.waMeUrl, "_blank", "noopener,noreferrer");
-      } else if (wa?.error && notifyWhatsApp && status !== job.status) {
+      } else if (wa?.error && notifyWhatsApp && status !== currentStatus) {
         toast.error(wa.error);
       }
       onUpdated?.();
       onClose();
     } catch (err) {
       toast.error(
-        err instanceof Error ? err.message : "Failed to update job status",
+        err instanceof Error ? err.message : "Failed to update sale status",
       );
     } finally {
       setSaving(false);
@@ -130,7 +149,7 @@ export function Hq6UpdateJobStatusModal({
     <Hq6Modal
       open={open && Boolean(sale)}
       onClose={onClose}
-      title="Update job status"
+      title="Update sale status"
       size="md"
       footer={
         <Hq6ModalSaveClose
@@ -138,38 +157,30 @@ export function Hq6UpdateJobStatusModal({
           onSave={() => void handleUpdate()}
           onClose={onClose}
           saving={saving}
-          saveDisabled={!job || loading || Boolean(loadError)}
+          saveDisabled={!detail || loading || Boolean(loadError)}
         />
       }
     >
-      {!jobId ? (
-        <p className="text-sm text-[#6b7280]">
-          This sale is not linked to a job. Open the job from Jobs, or link a
-          job when creating the sale.
-        </p>
-      ) : loading ? (
-        <p className="text-sm text-[#6b7280]">Loading job…</p>
+      {loading ? (
+        <p className="text-sm text-[#6b7280]">Loading sale status…</p>
       ) : loadError ? (
         <p className="text-sm text-[#b91c1c]">{loadError}</p>
-      ) : job ? (
+      ) : detail ? (
         <div className="space-y-3">
           <div className="rounded border border-[#e5e7eb] bg-[#f9fafb] px-3 py-2 text-sm">
             <div>
-              <span className="font-semibold text-[#374151]">Job:</span>{" "}
-              {job.reference}
-              {sale?.jobReference && sale.jobReference !== job.reference
-                ? ` (${sale.jobReference})`
-                : null}
+              <span className="font-semibold text-[#374151]">Sale:</span>{" "}
+              {sale?.reference ?? detail.reference}
             </div>
-            {job.customerName ? (
-              <div className="text-[#6b7280]">{job.customerName}</div>
+            {detail.customerName ? (
+              <div className="text-[#6b7280]">{detail.customerName}</div>
             ) : null}
             <div className="text-xs text-[#6b7280]">
-              Current: {job.status}
+              Current: {currentStatus}
             </div>
           </div>
 
-          <Hq6Field label="Job status" required>
+          <Hq6Field label="Sale status" required>
             <select
               className="hq6-form-input"
               value={status}
@@ -183,46 +194,29 @@ export function Hq6UpdateJobStatusModal({
             </select>
           </Hq6Field>
 
-          <Hq6Field label="Notes">
+          <Hq6Field label="Notes (optional)">
             <textarea
-              className="hq6-form-input min-h-[5rem]"
+              className="hq6-form-input min-h-[80px]"
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              placeholder="What changed? (shown on the job; customers only see stage, not this text)"
-              rows={4}
+              placeholder="Internal note for this status change"
             />
           </Hq6Field>
 
-          {status !== job.status ? (
-            <label className="flex items-start gap-2 text-sm text-[#374151]">
+          {status !== currentStatus ? (
+            <label className="flex items-center gap-2 text-sm text-[#374151]">
               <input
                 type="checkbox"
-                className="mt-0.5 size-4 accent-[#3c8dbc]"
                 checked={notifyWhatsApp}
                 onChange={(e) => setNotifyWhatsApp(e.target.checked)}
               />
-              <span>
-                Notify customer on WhatsApp with track link
-                <span className="mt-0.5 block text-xs text-[#6b7280]">
-                  Uses vehicle owner phone, or customer phone. Needs Meta Cloud
-                  API env vars for automatic send; otherwise opens WhatsApp Web.
-                </span>
-              </span>
+              Notify customer on WhatsApp with tracking link
             </label>
           ) : null}
-
-          {job.qcNotes?.trim() ? (
-            <div>
-              <div className="mb-1 text-xs font-semibold text-[#374151]">
-                Previous notes
-              </div>
-              <p className="hq6-purchase-note-well max-h-32 overflow-y-auto whitespace-pre-wrap text-xs">
-                {job.qcNotes}
-              </p>
-            </div>
-          ) : null}
         </div>
-      ) : null}
+      ) : (
+        <p className="text-sm text-[#6b7280]">Sale not found.</p>
+      )}
     </Hq6Modal>
   );
 }

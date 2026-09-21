@@ -29,6 +29,7 @@ import {
   WhatsAppNotifyService,
   type WhatsAppSendResult,
 } from '../../common/whatsapp/whatsapp-notify.service';
+import { encodePublicJobTrackToken } from '../../common/utils/publicJobTrackToken';
 
 export interface JobDetail extends Job {
   customer?: {
@@ -597,7 +598,28 @@ export class JobsService {
     return whatsappNotify ? { ...job, whatsappNotify } : job;
   }
 
-  /** Resolve owner phone + send WhatsApp status update with /track link. */
+  /** HQ6 “Track job URL” share link (public `/job/:token`, no login). */
+  async getTrackShareUrl(id: string): Promise<{
+    token: string;
+    path: string;
+    url: string;
+  }> {
+    const tenantId = this.tenantDb.requireTenantId();
+    const job = await this.tenantDb.db.job.findFirst({
+      where: { id, tenantId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!job) throw new NotFoundException('Job not found');
+    const token = encodePublicJobTrackToken(job.id);
+    const path = `/job/${token}`;
+    return {
+      token,
+      path,
+      url: this.whatsapp.publicJobTrackUrl(token),
+    };
+  }
+
+  /** Resolve owner phone + send WhatsApp status update with /job/:token link. */
   async notifyJobStatusWhatsApp(
     jobId: string,
     statusLabel: string,
@@ -638,10 +660,8 @@ export class JobsService {
       job.customerName?.trim() ||
       'Customer';
     const plate = vehicle?.plateNumber?.trim() || 'vehicle';
-    const trackUrl = this.whatsapp.publicTrackUrl({
-      name: ownerName,
-      registration: plate,
-    });
+    const token = encodePublicJobTrackToken(job.id);
+    const trackUrl = this.whatsapp.publicJobTrackUrl(token);
     const message = this.whatsapp.composeStatusMessage({
       ownerName,
       plate,

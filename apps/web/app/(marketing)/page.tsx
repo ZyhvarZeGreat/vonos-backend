@@ -39,7 +39,9 @@ export default function HomePage() {
         <ValuePropsSection />
         <ClientsSection />
         <CaseStudiesSection />
-        <ReviewsSection />
+        <div id="reviews">
+          <ReviewsSection />
+        </div>
         <BlogSection />
         <TeamSection />
         <PricingSection />

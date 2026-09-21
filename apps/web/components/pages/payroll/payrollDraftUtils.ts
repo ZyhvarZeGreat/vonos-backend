@@ -44,6 +44,17 @@ export function emptyEmployeeDraft(): EmployeePayrollDraft {
   };
 }
 
+/** Pay components that apply to this employee (global or employee-specific). */
+export function payComponentsForEmployee(
+  components: PayComponent[],
+  employeeRecordId: string,
+): PayComponent[] {
+  return components.filter(
+    (c) =>
+      !c.employeeRecordId || c.employeeRecordId === employeeRecordId,
+  );
+}
+
 /** Prefill allowance / deduction rows from the Pay Components catalog. */
 export function employeeDraftFromPayComponents(
   components: PayComponent[],
@@ -71,6 +82,80 @@ export function employeeDraftFromPayComponents(
     allowances: allowances.length > 0 ? allowances : [newPayLine()],
     deductions: deductions.length > 0 ? deductions : [newPayLine()],
     note: "",
+  };
+}
+
+function clonePayLinesForEmployee(
+  lines: PayLine[],
+  employeeId: string,
+  prefix: "a" | "d",
+): PayLine[] {
+  return lines.map((line) => ({
+    ...line,
+    id: `line-${employeeId}-${prefix}-${line.id}`,
+  }));
+}
+
+/** Skip E2E test rows and catalog noise when prefilling create payroll. */
+function isSkippedCreatePrefillLine(name: string): boolean {
+  const trimmed = name.trim();
+  if (!trimmed) return false;
+  if (/e2e/i.test(trimmed)) return true;
+  return false;
+}
+
+function namedPayLines(lines: PayLine[]): PayLine[] {
+  return lines.filter(
+    (line) => line.name.trim() && !isSkippedCreatePrefillLine(line.name),
+  );
+}
+
+/**
+ * Create flow: basic salary from latest payroll only.
+ * Earnings/deductions start blank unless the prior payroll note had explicit named lines
+ * (never auto-import Allowance & Deduction catalog entries like PAYE).
+ */
+export function buildEmployeeCreateDraft(
+  employeeRecordId: string,
+  latestPayroll: Payroll | null | undefined,
+): EmployeePayrollDraft {
+  const blankLines = (prefix: "a" | "d") =>
+    clonePayLinesForEmployee([newPayLine()], employeeRecordId, prefix);
+
+  if (!latestPayroll || latestPayroll.grossPay <= 0) {
+    return {
+      workDuration: "1",
+      durationUnit: "Month",
+      amountPerUnit: "0",
+      allowances: blankLines("a"),
+      deductions: blankLines("d"),
+      note: "",
+    };
+  }
+
+  const parsed = parsePayrollNote(
+    latestPayroll.note,
+    latestPayroll.id,
+    latestPayroll.grossPay,
+  );
+  const allowances = namedPayLines(parsed.allowances);
+  const deductions = namedPayLines(parsed.deductions);
+
+  return {
+    workDuration: parsed.workDuration,
+    durationUnit: parsed.durationUnit,
+    amountPerUnit: parsed.amountPerUnit,
+    allowances: clonePayLinesForEmployee(
+      allowances.length > 0 ? allowances : [newPayLine()],
+      employeeRecordId,
+      "a",
+    ),
+    deductions: clonePayLinesForEmployee(
+      deductions.length > 0 ? deductions : [newPayLine()],
+      employeeRecordId,
+      "d",
+    ),
+    note: parsed.userNote,
   };
 }
 

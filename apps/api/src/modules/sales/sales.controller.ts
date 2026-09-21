@@ -230,6 +230,39 @@ export class SalesController {
     return this.salesService.getInvoiceShareUrl(id);
   }
 
+  /** Public workshop track link for this sale (VA/VP — sale or linked job). */
+  @Get(':id/track-url')
+  getTrackUrl(@Param('id') id: string) {
+    return this.salesService.getTrackShareUrl(id);
+  }
+
+  /** VA/VP: workshop stage on the sale (sales act as jobs). */
+  @Patch(':id/workshop-status')
+  @Roles('staff', 'manager', 'admin', 'super_admin')
+  updateWorkshopStatus(
+    @Param('id') id: string,
+    @Body()
+    body: {
+      status: string;
+      notes?: string | null;
+      notifyWhatsApp?: boolean;
+    },
+  ) {
+    return this.salesService.updateJobWorkshopStatus(id, body);
+  }
+
+  @Post(':id/notify-whatsapp')
+  @Roles('staff', 'manager', 'admin', 'super_admin')
+  notifyWhatsApp(
+    @Param('id') id: string,
+    @Body() body?: { statusLabel?: string },
+  ) {
+    return this.salesService.notifySaleWorkshopWhatsApp(
+      id,
+      body?.statusLabel,
+    );
+  }
+
   @Get(':id')
   getById(@Param('id') id: string) {
     return this.salesService.getById(id);

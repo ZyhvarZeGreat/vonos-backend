@@ -18,7 +18,7 @@ export default function SiteNav() {
   const [shake, setShake] = useState(false);
   const [toast, setToast] = useState("");
   const pathname = usePathname();
-  const { count, hydrated } = useShopCart();
+  const { count, hydrated, openCartDrawer } = useShopCart();
   const cartCount = hydrated ? count : 0;
 
   useEffect(() => {
@@ -109,6 +109,7 @@ export default function SiteNav() {
         ctaLabel="Book your car in"
         cartCount={cartCount}
         cartHref="/shop/cart"
+        onCartClick={openCartDrawer}
         className="vonos-card-nav"
       />
       {toast ? (

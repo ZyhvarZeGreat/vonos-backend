@@ -38,7 +38,7 @@ function fallbackForStatus(status: number, fallback: string): string {
     case 500:
     case 502:
     case 503:
-      return "Something went wrong on the server. Try again shortly.";
+      return "We can’t reach the server right now — please try again in a moment.";
     default:
       return fallback;
   }
@@ -54,6 +54,21 @@ function sanitizeClientMessage(message: string, fallback: string): string {
     lower === "error"
   ) {
     return fallback || "Something went wrong — please try again.";
+  }
+  if (
+    lower.includes("can't reach database") ||
+    lower.includes("cannot reach database") ||
+    lower.includes("database server is running") ||
+    lower.includes("invalid `prisma") ||
+    lower.includes("invalid `this.prisma") ||
+    lower.includes("invocation in") ||
+    lower.includes("timed out fetching a new connection") ||
+    lower.includes("connection refused") ||
+    lower.includes("econnrefused") ||
+    /neon\.tech/.test(lower) ||
+    /ep-[a-z0-9-]+\./.test(lower)
+  ) {
+    return "We can’t reach the database right now — please try again in a moment.";
   }
   return trimmed;
 }

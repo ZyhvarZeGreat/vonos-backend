@@ -259,7 +259,9 @@ export async function createJob(
   return response.json();
 }
 
-export async function advanceJobStatus(id: string): Promise<Job> {
+export async function advanceJobStatus(
+  id: string,
+): Promise<Job & { whatsappNotify?: WhatsAppNotifyResult }> {
   const response = await apiFetch(`/jobs/${id}/status`, { method: "PATCH" });
   if (!response.ok) throw new Error("Failed to advance job status");
   clearJobOptionCache();
@@ -296,6 +298,19 @@ export type WhatsAppNotifyResult = {
   error?: string;
   providerMessageId?: string;
 };
+
+export async function getJobTrackUrl(
+  tenantId: string,
+  jobId: string,
+): Promise<{ token: string; path: string; url: string }> {
+  const response = await apiFetch(
+    withTenantQuery(`/jobs/${jobId}/track-url`, tenantId),
+  );
+  if (!response.ok) {
+    return throwApiError(response, "Failed to load track URL");
+  }
+  return response.json();
+}
 
 export async function notifyJobWhatsApp(
   id: string,

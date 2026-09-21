@@ -55,13 +55,7 @@ function shortName(name: string): string {
 }
 
 function parseScopeId(raw: string): AdminViewingCode {
-  return raw === "VA" ||
-    raw === "VP" ||
-    raw === "VW" ||
-    raw === "VISP" ||
-    raw === "VSP"
-    ? raw
-    : null;
+  return isVagViewUnitId(raw) ? raw : null;
 }
 
 /**

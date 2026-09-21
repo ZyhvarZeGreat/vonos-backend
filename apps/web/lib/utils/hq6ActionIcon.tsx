@@ -10,6 +10,7 @@ import {
   FileEdit,
   FileText,
   History,
+  Link2,
   ListOrdered,
   Mail,
   Package,
@@ -41,6 +42,14 @@ export function hq6ActionIcon(actionId: string): ReactNode | undefined {
     case "quote_url":
       return <Eye className={ICON_CLASS} strokeWidth={1.75} />;
     case "edit":
+      return <FileEdit className={ICON_CLASS} strokeWidth={1.75} />;
+    case "track_job_url":
+    case "copy_tracking_link":
+    case "track_url":
+      return <Link2 className={ICON_CLASS} strokeWidth={1.75} />;
+    case "update_job_status":
+    case "update_sale_status":
+      return <ListOrdered className={ICON_CLASS} strokeWidth={1.75} />;
     case "update_status":
     case "change_status":
     case "edit_expiry":

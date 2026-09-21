@@ -17,6 +17,20 @@ import {
   type StoreOrderResponse,
 } from "@/lib/marketing/store-api";
 
+/** Prefer our `ref=VON-…`; fall back to Paystack’s `reference` / `trxref` (`store_VON-…`). */
+function resolveStoreOrderReference(searchParams: URLSearchParams): string {
+  const direct = searchParams.get("ref")?.trim();
+  if (direct) return direct;
+
+  for (const key of ["reference", "trxref"] as const) {
+    const raw = searchParams.get(key)?.trim();
+    if (!raw) continue;
+    if (raw.startsWith("store_")) return raw.slice("store_".length);
+    if (raw.startsWith("VON-")) return raw;
+  }
+  return "";
+}
+
 function toShopOrder(api: StoreOrderResponse, fallback?: ShopOrder | null): ShopOrder {
   return {
     reference: api.reference,
@@ -43,7 +57,7 @@ function toShopOrder(api: StoreOrderResponse, fallback?: ShopOrder | null): Shop
 
 export default function OrderConfirmationPanel() {
   const searchParams = useSearchParams();
-  const reference = searchParams.get("ref") ?? "";
+  const reference = resolveStoreOrderReference(searchParams);
   const [order, setOrder] = useState<ShopOrder | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [statusNote, setStatusNote] = useState("Confirming payment…");

@@ -62,6 +62,7 @@ export function PayrollViewPaymentsModal({
                 <th className="px-3 py-2 font-semibold">Amount</th>
                 <th className="px-3 py-2 font-semibold">Method</th>
                 <th className="px-3 py-2 font-semibold">Account</th>
+                <th className="px-3 py-2 font-semibold">Authorized by</th>
               </tr>
             </thead>
             <tbody>
@@ -86,6 +87,9 @@ export function PayrollViewPaymentsModal({
                   </td>
                   <td className="px-3 py-2">
                     {payment.accountName?.trim() || "—"}
+                  </td>
+                  <td className="px-3 py-2">
+                    {payment.authorizedByName?.trim() || "—"}
                   </td>
                 </tr>
               ))}

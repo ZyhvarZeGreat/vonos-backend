@@ -1,6 +1,5 @@
 "use client";
 
-import { Minus, Plus } from "lucide-react";
 import type { PayrollEmployeePick } from "@/components/molecules/EmployeePayrollSearch";
 import { formatCurrency } from "@/lib/utils/formatCurrency";
 import {
@@ -49,7 +48,6 @@ function PayLineSection({
   }
 
   function removeLine(id: string) {
-    if (lines.length <= 1) return;
     onLinesChange(lines.filter((row) => row.id !== id));
   }
 
@@ -58,22 +56,15 @@ function PayLineSection({
   }
 
   return (
-    <div className="rounded border border-[#e5e7eb] bg-[#fafafa] p-3">
-      <p className="mb-2 text-sm font-semibold text-[#111827]">{title}</p>
+    <div className="hq6-payroll-lines-panel min-w-0">
+      <p className="hq6-payroll-lines-title">{title}</p>
 
-      <div className="mb-1 grid grid-cols-[minmax(0,1.35fr)_minmax(6rem,7rem)_minmax(5.5rem,6.5rem)_4.5rem] gap-2 text-[11px] font-medium uppercase tracking-wide text-[#64748b]">
-        <span>Description</span>
-        <span>Amount type</span>
-        <span className="text-right">Amount</span>
-        <span className="text-center">Action</span>
-      </div>
-
-      <div className="space-y-2">
+      <div className="hq6-payroll-lines-stack">
+        {lines.length === 0 ? (
+          <p className="hq6-payroll-lines-empty">No {title.toLowerCase()} added.</p>
+        ) : null}
         {lines.map((line, index) => (
-          <div
-            key={line.id}
-            className="grid grid-cols-[minmax(0,1.35fr)_minmax(6rem,7rem)_minmax(5.5rem,6.5rem)_4.5rem] items-center gap-2"
-          >
+          <div key={line.id} className="hq6-payroll-line-card">
             <input
               className="form-control hq6-modal-input w-full"
               placeholder="Description"
@@ -81,70 +72,69 @@ function PayLineSection({
               onChange={(e) => patchLine(line.id, { name: e.target.value })}
               {...fieldProps}
             />
-            <select
-              className="form-control select2 hq6-modal-input w-full"
-              value={line.amountType}
-              onChange={(e) =>
-                patchLine(line.id, { amountType: e.target.value as AmountType })
-              }
-              disabled={readOnly}
-            >
-              <option value="fixed">Fixed</option>
-              <option value="percent">Percent</option>
-            </select>
-            <input
-              type="text"
-              inputMode="decimal"
-              autoComplete="off"
-              className="form-control hq6-modal-input w-full text-right"
-              value={line.amount}
-              onChange={(e) => patchLine(line.id, { amount: e.target.value })}
-              {...fieldProps}
-            />
-            <div className="flex items-center justify-center gap-1">
-              <button
-                type="button"
-                className="inline-flex size-7 items-center justify-center rounded bg-[#3b82f6] text-white disabled:cursor-not-allowed disabled:opacity-40"
-                aria-label={addLabel}
-                title={addLabel}
+            <div className="hq6-payroll-line-meta">
+              <select
+                className="form-control select2 hq6-modal-input"
+                value={line.amountType}
+                onChange={(e) =>
+                  patchLine(line.id, {
+                    amountType: e.target.value as AmountType,
+                  })
+                }
                 disabled={readOnly}
-                onClick={() => insertLine(index)}
               >
-                <Plus className="size-3.5" />
-              </button>
-              {lines.length > 1 ? (
+                <option value="fixed">Fixed</option>
+                <option value="percent">Percent</option>
+              </select>
+              <input
+                type="text"
+                inputMode="decimal"
+                autoComplete="off"
+                className="form-control hq6-modal-input"
+                placeholder="Amount"
+                value={line.amount}
+                onChange={(e) => patchLine(line.id, { amount: e.target.value })}
+                {...fieldProps}
+              />
+              <div className="hq6-payroll-line-actions">
                 <button
                   type="button"
-                  className="inline-flex size-7 items-center justify-center rounded bg-[#ef4444] text-white disabled:cursor-not-allowed disabled:opacity-40"
+                  className="hq6-payroll-line-btn hq6-payroll-line-btn--add"
+                  aria-label={addLabel}
+                  title={addLabel}
+                  disabled={readOnly}
+                  onClick={() => insertLine(index)}
+                >
+                  +
+                </button>
+                <button
+                  type="button"
+                  className="hq6-payroll-line-btn hq6-payroll-line-btn--remove"
                   aria-label={`Remove ${title.toLowerCase()} row`}
+                  title={`Remove ${title.toLowerCase()} row`}
                   disabled={readOnly}
                   onClick={() => removeLine(line.id)}
                 >
-                  <Minus className="size-3.5" />
+                  −
                 </button>
-              ) : (
-                <span className="size-7" aria-hidden />
-              )}
+              </div>
             </div>
           </div>
         ))}
       </div>
 
-      <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+      <div className="hq6-payroll-lines-footer">
         <button
           type="button"
-          className="hq6-btn hq6-btn-sm hq6-btn-blue disabled:cursor-not-allowed disabled:opacity-40"
+          className="hq6-payroll-add-line-btn"
           disabled={readOnly}
           onClick={() => onLinesChange([...lines, newPayLine()])}
         >
-          <Plus className="size-3.5" />
-          {addLabel}
+          + {addLabel}
         </button>
-        <p className="text-xs text-[#64748b]">
+        <p className="hq6-payroll-lines-total">
           Total:{" "}
-          <span className="font-semibold tabular-nums text-[#111827]">
-            {formatCurrency(total, "NGN")}
-          </span>
+          <span>{formatCurrency(total, "NGN")}</span>
         </p>
       </div>
     </div>
@@ -157,6 +147,9 @@ export function PayrollGroupEmployeeForm({
   onChange,
   readOnly = false,
 }: PayrollGroupEmployeeFormProps) {
+  const readOnlyHint = readOnly
+    ? "This payroll is paid — earnings and deductions cannot be changed."
+    : null;
   const basic = basicSalaryTotal(draft);
   const allowanceTotal = sumPayLines(draft.allowances, basic);
   const deductionTotal = sumPayLines(draft.deductions, basic);
@@ -167,132 +160,128 @@ export function PayrollGroupEmployeeForm({
   return (
     <div
       className={
-        readOnly
-          ? "overflow-hidden rounded border border-[#e5e7eb] bg-[#f8fafc] opacity-95"
-          : "overflow-hidden rounded border border-[#e5e7eb] bg-white"
+        readOnly ? "hq6-payroll-employee-form is-readonly" : "hq6-payroll-employee-form"
       }
     >
-      <div className="grid gap-4 p-4 lg:grid-cols-[minmax(10rem,12rem)_minmax(11rem,14rem)_minmax(0,1fr)_minmax(0,1fr)_minmax(7rem,9rem)]">
-        <div>
-          <div className="flex flex-wrap items-center gap-2">
-            <p className="text-sm font-semibold text-[#111827]">
-              {employee.employeeName}
-            </p>
-            {readOnly ? (
-              <span className="hq6-pay-paid text-[11px] uppercase tracking-wide">
-                Paid
-              </span>
+      <div className="hq6-payroll-employee-row-wrap">
+        <div className="hq6-payroll-employee-row">
+          <div className="hq6-payroll-employee-col hq6-payroll-employee-col--info">
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="text-base font-semibold text-[#111827]">
+                {employee.employeeName}
+              </p>
+              {readOnly ? (
+                <span className="hq6-pay-paid text-[11px] uppercase tracking-wide">
+                  Paid
+                </span>
+              ) : null}
+            </div>
+            {readOnlyHint ? (
+              <p className="text-xs font-medium text-[#b45309]">{readOnlyHint}</p>
             ) : null}
+            <p className="text-xs leading-relaxed text-muted">
+              {[
+                employee.department ? `Dept: ${employee.department}` : null,
+                employee.designationName
+                  ? `Designation: ${employee.designationName}`
+                  : null,
+              ]
+                .filter(Boolean)
+                .join(" · ") || "—"}
+            </p>
+            <p className="text-xs leading-6 text-muted">
+              Leaves : 0 days
+              <br />
+              Work Duration : 0.00 hour
+              <br />
+              Attendance: 0 Days
+            </p>
           </div>
-          <p className="mt-1 text-xs text-muted">
-            {[
-              employee.department ? `Dept: ${employee.department}` : null,
-              employee.designationName
-                ? `Designation: ${employee.designationName}`
-                : null,
-            ]
-              .filter(Boolean)
-              .join(" · ") || "—"}
-          </p>
-          <p className="mt-2 text-xs leading-5 text-muted">
-            Leaves : 0 days
-            <br />
-            Work Duration : 0.00 hour
-            <br />
-            Attendance: 0 Days
-          </p>
-        </div>
 
-        <div className="space-y-2">
-          <p className="text-sm font-semibold text-[#111827]">Basic salary</p>
-          <div>
-            <label className="mb-0.5 block text-xs text-[#555]">
-              Total work duration
-              <span className="text-red-600">*</span>:
-            </label>
-            <input
-              type="text"
-              inputMode="decimal"
-              autoComplete="off"
-              className="form-control hq6-modal-input w-full"
-              value={draft.workDuration}
-              onChange={(e) => onChange({ workDuration: e.target.value })}
-              {...fieldProps}
+          <div className="hq6-payroll-employee-col hq6-payroll-employee-col--salary">
+            <p className="hq6-payroll-section-title">Basic salary</p>
+            <div className="hq6-payroll-field">
+              <label className="hq6-payroll-field-label">
+                Total work duration<span className="text-red-600">*</span>:
+              </label>
+              <input
+                type="text"
+                inputMode="decimal"
+                autoComplete="off"
+                className="form-control hq6-modal-input w-full"
+                value={draft.workDuration}
+                onChange={(e) => onChange({ workDuration: e.target.value })}
+                {...fieldProps}
+              />
+            </div>
+            <div className="hq6-payroll-field">
+              <label className="hq6-payroll-field-label">Duration Unit:</label>
+              <select
+                className="form-control select2 hq6-modal-input w-full"
+                value={draft.durationUnit}
+                onChange={(e) => onChange({ durationUnit: e.target.value })}
+                disabled={readOnly}
+              >
+                {DURATION_UNIT_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="hq6-payroll-field">
+              <label className="hq6-payroll-field-label">
+                Amount per unit duration<span className="text-red-600">*</span>:
+              </label>
+              <input
+                type="text"
+                inputMode="decimal"
+                autoComplete="off"
+                placeholder="e.g. 100000"
+                className="form-control hq6-modal-input w-full"
+                value={draft.amountPerUnit}
+                onChange={(e) => onChange({ amountPerUnit: e.target.value })}
+                {...fieldProps}
+              />
+            </div>
+            <p className="hq6-payroll-inline-total">
+              Total: <span>{formatCurrency(basic, "NGN")}</span>
+            </p>
+          </div>
+
+          <div className="hq6-payroll-employee-col hq6-payroll-employee-col--lines">
+            <PayLineSection
+              title="Earnings"
+              addLabel="Add earning"
+              lines={draft.allowances}
+              basic={basic}
+              readOnly={readOnly}
+              onLinesChange={(allowances) => onChange({ allowances })}
             />
           </div>
-          <div>
-            <label className="mb-0.5 block text-xs text-[#555]">
-              Duration Unit:
-            </label>
-            <select
-              className="form-control select2 hq6-modal-input w-full"
-              value={draft.durationUnit}
-              onChange={(e) => onChange({ durationUnit: e.target.value })}
-              disabled={readOnly}
-            >
-              {DURATION_UNIT_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="mb-0.5 block text-xs text-[#555]">
-              Amount per unit duration
-              <span className="text-red-600">*</span>:
-            </label>
-            <input
-              type="text"
-              inputMode="decimal"
-              autoComplete="off"
-              placeholder="e.g. 100000"
-              className="form-control hq6-modal-input w-full"
-              value={draft.amountPerUnit}
-              onChange={(e) => onChange({ amountPerUnit: e.target.value })}
-              {...fieldProps}
+
+          <div className="hq6-payroll-employee-col hq6-payroll-employee-col--lines">
+            <PayLineSection
+              title="Deductions"
+              addLabel="Add deduction"
+              lines={draft.deductions}
+              basic={basic}
+              readOnly={readOnly}
+              onLinesChange={(deductions) => onChange({ deductions })}
             />
           </div>
-          <p className="text-sm text-[#111827]">
-            Total:{" "}
-            <span className="font-semibold tabular-nums">
-              {formatCurrency(basic, "NGN")}
-            </span>
-          </p>
-        </div>
 
-        <PayLineSection
-          title="Earnings"
-          addLabel="Add earning"
-          lines={draft.allowances}
-          basic={basic}
-          readOnly={readOnly}
-          onLinesChange={(allowances) => onChange({ allowances })}
-        />
-
-        <PayLineSection
-          title="Deductions"
-          addLabel="Add deduction"
-          lines={draft.deductions}
-          basic={basic}
-          readOnly={readOnly}
-          onLinesChange={(deductions) => onChange({ deductions })}
-        />
-
-        <div className="flex flex-col justify-start lg:items-end">
-          <p className="text-sm font-semibold text-[#111827]">Gross Amount</p>
-          <p className="mt-1 text-lg font-bold tabular-nums text-[#111827]">
-            {formatCurrency(grossAmount, "NGN")}
-          </p>
+          <div className="hq6-payroll-employee-col hq6-payroll-employee-col--gross">
+            <p className="hq6-payroll-section-title">Gross Amount</p>
+            <p className="hq6-payroll-gross-value">{formatCurrency(grossAmount, "NGN")}</p>
+          </div>
         </div>
       </div>
 
-      <div className="border-t border-[#e5e7eb] px-4 py-3">
-        <label className="mb-1 block text-xs font-semibold text-[#555]">
-          Note:
-        </label>
+      <div className="hq6-payroll-note-wrap">
+        <label className="hq6-payroll-field-label">Note:</label>
         <textarea
-          className="form-control hq6-modal-input min-h-[4.5rem] w-full"
+          className="form-control hq6-modal-input min-h-[5rem] w-full"
           value={draft.note}
           placeholder="Total"
           onChange={(e) => onChange({ note: e.target.value })}

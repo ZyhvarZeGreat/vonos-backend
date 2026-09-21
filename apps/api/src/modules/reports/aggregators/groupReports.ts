@@ -1,5 +1,5 @@
 import type { ReportsDashboard } from '@vonos/types';
-import { AUTOS_GROUP_CODES } from '@vonos/types';
+import { VAG_OVERVIEW_CODES } from '@vonos/types';
 import type { PrismaClient } from '@prisma/client';
 import {
   resolveGroupFinanceSource,
@@ -36,7 +36,7 @@ export type GroupTenantRow = {
 
 async function loadGroupTenants(prisma: PrismaClient): Promise<GroupTenantRow[]> {
   return prisma.tenant.findMany({
-    where: { code: { in: [...AUTOS_GROUP_CODES] }, deletedAt: null },
+    where: { code: { in: [...VAG_OVERVIEW_CODES] }, deletedAt: null },
     select: { id: true, code: true, name: true },
   });
 }

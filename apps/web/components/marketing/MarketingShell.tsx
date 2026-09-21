@@ -2,6 +2,8 @@
 
 import { useEffect, type ReactNode } from "react";
 
+import CartDrawer from "@/components/marketing/ecommerce/CartDrawer";
+
 /**
  * Applies Motocare/Webflow document classes for the public site only,
  * without changing the ERP root layout fonts/providers.
@@ -22,5 +24,10 @@ export default function MarketingShell({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  return children;
+  return (
+    <>
+      {children}
+      <CartDrawer />
+    </>
+  );
 }

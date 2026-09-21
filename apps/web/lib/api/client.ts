@@ -51,6 +51,7 @@ function redirectToLogin(): void {
     path.startsWith("/invite") ||
     path.startsWith("/reset-password") ||
     path.startsWith("/invoice") ||
+    path.startsWith("/job") ||
     path.startsWith("/about") ||
     path.startsWith("/services") ||
     path.startsWith("/shop") ||

@@ -1,12 +1,11 @@
 "use client";
 
-import type { Payroll, PayrollGroupStatus } from "@vonos/types";
-import { Hq6Field } from "@/components/hq6/Hq6Modal";
+import { Fragment } from "react";
+import type { Payroll } from "@vonos/types";
 import { Hq6DateTimeInput } from "@/components/hq6/Hq6DateTimeInput";
 import { PaymentAccountSelect } from "@/components/hq6/PaymentAccountSelect";
-import { formatCurrency } from "@/lib/utils/formatCurrency";
+import { formatHq6Currency } from "@/lib/utils/hq6Format";
 import { HQ6_PAYMENT_METHOD_OPTIONS } from "@/lib/utils/hq6PaymentMethods";
-import { payrollBankDetailLines } from "./payrollDraftUtils";
 
 export type PayRowForm = {
   paidOn: string;
@@ -81,109 +80,164 @@ export type PayrollGroupPayFormProps = {
   rows: Payroll[];
   payRowForms: Record<string, PayRowForm>;
   onPatchPayRowForm: (payrollId: string, patch: Partial<PayRowForm>) => void;
-  groupStatus: PayrollGroupStatus;
 };
+
+function hq6BankDetailLines(row: Payroll): Array<{ label: string; value: string }> {
+  return [
+    { label: "Bank Name", value: row.bankName?.trim() || "" },
+    { label: "Branch", value: row.bankBranch?.trim() || "" },
+    {
+      label: "Bank Identifier Code",
+      value: row.bankCode?.trim() || "",
+    },
+    {
+      label: "Account Holder's Name",
+      value: row.accountHolderName?.trim() || "",
+    },
+    { label: "Bank Account No.", value: row.bankAccountNo?.trim() || "" },
+    { label: "Tax Payer ID", value: row.taxPayerId?.trim() || "" },
+  ];
+}
+
+function PayrollBankDetailsCell({ row }: { row: Payroll }) {
+  return (
+    <div className="hq6-payroll-pay-bank-details">
+      {hq6BankDetailLines(row).map((line) => (
+        <div key={line.label} className="hq6-payroll-pay-kv-row">
+          <span className="hq6-payroll-pay-kv-label">{line.label}:</span>
+          <span className="hq6-payroll-pay-kv-value">{line.value || "—"}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function PayrollPayEmployeeFields({
+  tenantId,
+  form,
+  onPatch,
+}: {
+  tenantId: string;
+  form: PayRowForm;
+  onPatch: (patch: Partial<PayRowForm>) => void;
+}) {
+  return (
+    <div className="hq6-payroll-pay-fields">
+      <div className="hq6-add-payment-field hq6-payroll-pay-kv-row">
+        <label className="hq6-add-payment-label hq6-payroll-pay-kv-label">
+          Paid on: <span className="req">*</span>
+        </label>
+        <div className="input-group hq6-add-payment-input-group hq6-payroll-pay-kv-control">
+          <span className="input-group-addon" aria-hidden>
+            <i className="fa fa-calendar" />
+          </span>
+          <Hq6DateTimeInput
+            className="form-control hq6-modal-input"
+            value={form.paidOn}
+            onChange={(value) => onPatch({ paidOn: value })}
+          />
+        </div>
+      </div>
+
+      <div className="hq6-add-payment-field hq6-payroll-pay-kv-row">
+        <label className="hq6-add-payment-label hq6-payroll-pay-kv-label">
+          Payment Account:
+        </label>
+        <div className="input-group hq6-add-payment-input-group hq6-payroll-pay-kv-control">
+          <span className="input-group-addon" aria-hidden>
+            <i className="fas fa-money-bill-alt" />
+          </span>
+          <PaymentAccountSelect
+            tenantId={tenantId}
+            value={form.accountId}
+            onChange={(accountId) => onPatch({ accountId })}
+            emptyLabel="None"
+          />
+        </div>
+      </div>
+
+      <div className="hq6-add-payment-field hq6-payroll-pay-kv-row">
+        <label className="hq6-add-payment-label hq6-payroll-pay-kv-label">
+          Payment Method: <span className="req">*</span>
+        </label>
+        <div className="input-group hq6-add-payment-input-group hq6-payroll-pay-kv-control">
+          <span className="input-group-addon" aria-hidden>
+            <i className="fas fa-money-bill-alt" />
+          </span>
+          <select
+            className="form-control hq6-modal-input"
+            value={form.method}
+            onChange={(e) => onPatch({ method: e.target.value })}
+            required
+          >
+            <option value="">Please Select</option>
+            {HQ6_PAYMENT_METHOD_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export function PayrollGroupPayForm({
   rows,
   payRowForms,
   onPatchPayRowForm,
-  groupStatus,
 }: PayrollGroupPayFormProps) {
-  return (
-    <div className="space-y-4">
-      {groupStatus !== "final" ? (
-        <p className="rounded border border-[#fcd34d] bg-[#fffbeb] px-3 py-2 text-sm text-[#b45309]">
-          This payroll group is still in draft status. Mark it final before
-          paying, or proceed at your own risk.
-        </p>
-      ) : null}
+  if (rows.length === 0) {
+    return (
+      <p className="text-sm text-[#64748b]">No unpaid payrolls in this group.</p>
+    );
+  }
 
-      <div className="overflow-x-auto rounded border border-border">
-        <table className="w-full min-w-[52rem] border-collapse text-sm">
-          <thead>
-            <tr className="border-b border-border bg-surface text-left">
-              <th className="px-3 py-2 font-semibold">Employee</th>
-              <th className="px-3 py-2 font-semibold">Net pay</th>
-              <th className="px-3 py-2 font-semibold">Bank details</th>
-              <th className="px-3 py-2 font-semibold">Add payment</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row) => {
-              const form = payRowForms[row.id] ?? emptyPayRowForm();
-              return (
-                <tr
-                  key={row.id}
-                  className="border-b border-border/80 align-top last:border-0"
-                >
-                  <td className="px-3 py-3 font-medium">{row.employeeName}</td>
-                  <td className="px-3 py-3 tabular-nums whitespace-nowrap">
-                    {formatCurrency(row.netPay, "NGN")}
+  return (
+    <div className="table-responsive hq6-payroll-group-pay-table-wrap">
+      <table className="table table-bordered hq6-payroll-group-pay-table">
+        <thead>
+          <tr>
+            <th>Employee</th>
+            <th>Gross Amount</th>
+            <th>Bank Details</th>
+            <th>Add payment</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, index) => {
+            const form = payRowForms[row.id] ?? emptyPayRowForm();
+            return (
+              <Fragment key={row.id}>
+                {index > 0 ? (
+                  <tr className="hq6-payroll-pay-divider-row" aria-hidden>
+                    <td colSpan={4}>
+                      <div className="hq6-payroll-pay-divider" role="presentation" />
+                    </td>
+                  </tr>
+                ) : null}
+                <tr className="hq6-payroll-pay-row">
+                  <td className="hq6-payroll-pay-employee">{row.employeeName}</td>
+                  <td className="hq6-payroll-pay-gross tabular-nums">
+                    {formatHq6Currency(row.grossPay, "NGN")}
                   </td>
-                  <td className="px-3 py-3 text-xs leading-5 text-muted">
-                    {payrollBankDetailLines(row).map((line) => (
-                      <div key={line.label}>
-                        {line.label}: {line.value || "—"}
-                      </div>
-                    ))}
+                  <td className="hq6-payroll-pay-bank-cell">
+                    <PayrollBankDetailsCell row={row} />
                   </td>
-                  <td className="px-3 py-3">
-                    <div className="min-w-[14rem] space-y-2">
-                      <Hq6Field label="Paid on" required>
-                        <Hq6DateTimeInput
-                          value={form.paidOn}
-                          onChange={(value) =>
-                            onPatchPayRowForm(row.id, { paidOn: value })
-                          }
-                        />
-                      </Hq6Field>
-                      <Hq6Field label="Payment Account">
-                        <PaymentAccountSelect
-                          tenantId={row.tenantId}
-                          value={form.accountId}
-                          onChange={(accountId) =>
-                            onPatchPayRowForm(row.id, { accountId })
-                          }
-                          emptyLabel="None"
-                        />
-                      </Hq6Field>
-                      <Hq6Field label="Payment Method" required>
-                        <select
-                          className="form-control"
-                          value={form.method}
-                          onChange={(e) =>
-                            onPatchPayRowForm(row.id, {
-                              method: e.target.value,
-                            })
-                          }
-                        >
-                          <option value="">Please Select</option>
-                          {HQ6_PAYMENT_METHOD_OPTIONS.map((opt) => (
-                            <option key={opt.value} value={opt.value}>
-                              {opt.label}
-                            </option>
-                          ))}
-                        </select>
-                      </Hq6Field>
-                    </div>
+                  <td className="hq6-payroll-pay-form-cell">
+                    <PayrollPayEmployeeFields
+                      tenantId={row.tenantId}
+                      form={form}
+                      onPatch={(patch) => onPatchPayRowForm(row.id, patch)}
+                    />
                   </td>
                 </tr>
-              );
-            })}
-            {rows.length === 0 ? (
-              <tr>
-                <td
-                  colSpan={4}
-                  className="px-3 py-6 text-center text-sm text-muted"
-                >
-                  No unpaid payrolls.
-                </td>
-              </tr>
-            ) : null}
-          </tbody>
-        </table>
-      </div>
+              </Fragment>
+            );
+          })}
+        </tbody>
+      </table>
     </div>
   );
 }

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAppMutation } from "@/lib/hooks/useAppMutation";
 import type {
   InvoiceListRow,
@@ -16,6 +16,7 @@ import type {
 import { Button } from "@/components/atoms/Button";
 import { EntityColorBadge } from "@/components/atoms/EntityColorBadge";
 import { StatusPill } from "@/components/atoms/StatusPill";
+import { Hq6BoldStatusBadge } from "@/components/hq6/Hq6BoldStatusBadge";
 import { EntityContextBanner } from "@/components/molecules/EntityContextBanner";
 import {
   EmployeePayrollSearch,
@@ -40,6 +41,7 @@ import {
   createPayComponent,
   createPayrollGroup,
   deletePayComponent,
+  deletePayrollGroup,
   getAllTenantsPayrollsPage,
   getEmployees,
   getPayComponentsPage,
@@ -55,6 +57,7 @@ import { findInvoiceForPayroll } from "@/lib/api/invoices";
 import { ENTITY_LIST, getTenantCodeFromId } from "@/lib/registries/tenants";
 import { getTenantConfigById } from "@/lib/registries/tenantConfigs";
 import { toast } from "@/stores/toastStore";
+import { useAppPermissions } from "@/lib/hooks/useHq6Permissions";
 import { useIsVaHq6 } from "@/lib/hooks/useIsVaHq6";
 import { useServerListPage } from "@/lib/hooks/useServerListPage";
 import { useRouteTenant, useTenantId } from "@/lib/hooks/useRouteTenant";
@@ -64,6 +67,7 @@ import {
   nameListCursor,
   payrollListCursor,
 } from "@/lib/utils/pagination";
+import { prefetchPaymentAccountsRef } from "@/lib/query/prefetchListModals";
 import { tenantListPath } from "@/lib/utils/tenantRoutes";
 import { HQ6_TABLE_PAGE_SIZE } from "@/lib/api/fetchAllPages";
 import { cn } from "@/lib/utils/cn";
@@ -120,17 +124,18 @@ function payrollGroupHref(
   tenantCode: string | null,
   action?: "edit" | "pay",
 ): string {
-  const tenantCodeForLink = allTenants
-    ? getTenantCodeFromId(group.tenantId)
-    : tenantCode;
-  if (allTenants && !tenantCodeForLink) {
+  const tenantCodeForLink =
+    getTenantCodeFromId(group.tenantId) ?? tenantCode ?? null;
+  if (allTenants) {
     const q = `?tenantId=${encodeURIComponent(group.tenantId)}`;
     const base = `/admin/hrm/payroll-groups/${group.id}${q}`;
     return action ? `${base}/${action}` : base;
   }
-  const base = tenantCodeForLink
-    ? tenantListPath(tenantCodeForLink, `hrm/payroll-groups/${group.id}`)
-    : "#";
+  if (!tenantCodeForLink) return "#";
+  const base = tenantListPath(
+    tenantCodeForLink,
+    `hrm/payroll-groups/${group.id}`,
+  );
   return action ? `${base}/${action}` : base;
 }
 
@@ -200,6 +205,11 @@ export function PayrollView({
 }) {
   const tenantId = useTenantId();
   const router = useRouter();
+  const queryClient = useQueryClient();
+  const { can, requireCan } = useAppPermissions();
+  const canCreatePayroll = can("essentials.create_payroll");
+  const canUpdatePayroll = can("essentials.update_payroll");
+  const canDeletePayroll = can("essentials.delete_payroll");
   const isHq6 = useIsVaHq6();
   const { tenantName, tenantCode, config } = useRouteTenant();
   const currentYear = new Date().getFullYear();
@@ -236,6 +246,8 @@ export function PayrollView({
   const [editComponentForm, setEditComponentForm] = useState(emptyComponentForm);
   const [deleteComponentTarget, setDeleteComponentTarget] =
     useState<PayComponent | null>(null);
+  const [deleteGroupTarget, setDeleteGroupTarget] =
+    useState<PayrollGroup | null>(null);
 
   function resetAddPayrollFlow() {
     setAddPayrollOpen(false);
@@ -246,6 +258,7 @@ export function PayrollView({
   }
 
   function openAddPayroll() {
+    if (!requireCan("essentials.create_payroll", "action")) return;
     const prefillCode = allTenants ? tenantCodeFilter : undefined;
     const prefillId = prefillCode
       ? ENTITY_LIST.find((e) => e.code === prefillCode)?.tenantId ?? ""
@@ -554,6 +567,26 @@ export function PayrollView({
     },
   });
 
+  const deleteGroupMutation = useAppMutation({
+    mutationFn: (group: PayrollGroup) => {
+      const tid = allTenants ? group.tenantId : groupsTenantId;
+      if (!tid) throw new Error("Select a business first");
+      return deletePayrollGroup(tid, group.id);
+    },
+    invalidateKeys: [
+      ["payroll-groups", groupsTenantId],
+      ["payroll-groups"],
+      ["payrolls"],
+    ],
+    onSuccess: () => {
+      toast.success("Payroll group deleted");
+      setDeleteGroupTarget(null);
+    },
+    onError: (err: Error) => {
+      toast.error(err.message);
+    },
+  });
+
   const createComponentMutation = useAppMutation({
     mutationFn: () => {
       if (!groupsTenantId) throw new Error("Select a business first");
@@ -827,37 +860,68 @@ export function PayrollView({
     key: "actions",
     header: "Action",
     sortable: false,
-    render: (r) => (
-      <Hq6ActionsMenu
-        label="Actions"
-        items={[
-          {
-            id: "view",
-            label: "View",
-            onClick: () =>
-              router.push(payrollGroupHref(r, allTenants, tenantCode)),
-          },
-          {
-            id: "edit",
-            label: "Edit",
-            onClick: () =>
-              router.push(payrollGroupHref(r, allTenants, tenantCode, "edit")),
-          },
-          ...(r.status === "final" && r.paymentStatus !== "paid"
-            ? [
-                {
-                  id: "pay",
-                  label: "Add payment",
-                  onClick: () =>
-                    router.push(
-                      payrollGroupHref(r, allTenants, tenantCode, "pay"),
-                    ),
-                },
-              ]
-            : []),
-        ]}
-      />
-    ),
+    render: (r) => {
+      const payTenantId = allTenants ? r.tenantId : tenantId;
+      return (
+        <Hq6ActionsMenu
+          label="Actions"
+          onOpenChange={(open) => {
+            if (open && payTenantId) {
+              prefetchPaymentAccountsRef(queryClient, payTenantId);
+            }
+          }}
+          items={[
+            {
+              id: "view",
+              label: "View",
+              onClick: () =>
+                router.push(payrollGroupHref(r, allTenants, tenantCode)),
+            },
+            ...(canUpdatePayroll
+              ? [
+                  {
+                    id: "edit",
+                    label: "Edit",
+                    onClick: () =>
+                      router.push(
+                        payrollGroupHref(r, allTenants, tenantCode, "edit"),
+                      ),
+                  },
+                  {
+                    id: "add_payment",
+                    label: "Add payment",
+                    dividerBefore: true,
+                    onClick: () => {
+                      const href = payrollGroupHref(
+                        r,
+                        allTenants,
+                        tenantCode,
+                        "pay",
+                      );
+                      if (href === "#") {
+                        toast.error("Could not open add payment page");
+                        return;
+                      }
+                      router.push(href);
+                    },
+                  },
+                ]
+              : []),
+            ...(canDeletePayroll
+              ? [
+                  {
+                    id: "delete",
+                    label: "Delete",
+                    danger: true,
+                    dividerBefore: true,
+                    onClick: () => setDeleteGroupTarget(r),
+                  },
+                ]
+              : []),
+          ]}
+        />
+      );
+    },
   };
 
   const groupColumnsBase: ColumnConfig<PayrollGroup>[] = [
@@ -870,14 +934,14 @@ export function PayrollView({
       key: "status",
       header: "Status",
       render: (r) => (
-        <StatusPill status={r.status} vocabulary="jobStatus" />
+        <Hq6BoldStatusBadge status={r.status} kind="payroll" />
       ),
     },
     {
       key: "paymentStatus",
       header: "Payment Status",
       render: (r) => (
-        <StatusPill status={r.paymentStatus} vocabulary="movementStatus" />
+        <Hq6BoldStatusBadge status={r.paymentStatus} kind="payment" />
       ),
     },
     {
@@ -1350,12 +1414,11 @@ export function PayrollView({
     </DocumentPreviewModal>
   );
 
-  const payrollPrimaryAction =
-    activeTab === "payrolls" ? (
-      <div className="flex flex-wrap items-center gap-2">
-        <UposGradientActionButton label="Add Payroll" onClick={openAddPayroll} />
-      </div>
-    ) : null;
+  const payrollPrimaryAction = canCreatePayroll ? (
+    <div className="flex flex-wrap items-center gap-2">
+      <UposGradientActionButton label="Add Payroll" onClick={openAddPayroll} />
+    </div>
+  ) : null;
 
   const panelBody = (
     <>
@@ -1397,8 +1460,15 @@ export function PayrollView({
               />
             </div>
             <Button
-              onClick={() => createGroupMutation.mutate()}
-              disabled={!newGroupName || createGroupMutation.isPending}
+              onClick={() => {
+                if (!requireCan("essentials.create_payroll", "action")) return;
+                createGroupMutation.mutate();
+              }}
+              disabled={
+                !canCreatePayroll ||
+                !newGroupName ||
+                createGroupMutation.isPending
+              }
             >
               Add Group
             </Button>
@@ -1499,6 +1569,24 @@ export function PayrollView({
         onConfirm={() => {
           if (!deleteComponentTarget) return;
           deleteComponentMutation.mutate(deleteComponentTarget);
+        }}
+      />
+
+      <Hq6ConfirmModal
+        open={Boolean(deleteGroupTarget)}
+        onClose={() => setDeleteGroupTarget(null)}
+        title="Delete payroll group?"
+        message={
+          deleteGroupTarget
+            ? `Delete “${deleteGroupTarget.name}” and all payroll rows in this group?`
+            : "Are you sure?"
+        }
+        confirmLabel="Delete"
+        danger
+        confirming={deleteGroupMutation.isPending}
+        onConfirm={() => {
+          if (!deleteGroupTarget) return;
+          deleteGroupMutation.mutate(deleteGroupTarget);
         }}
       />
 

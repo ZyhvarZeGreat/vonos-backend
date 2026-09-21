@@ -5,7 +5,7 @@ import type {
   GroupOverviewDetails,
   GroupOverviewSummary,
 } from '@vonos/types';
-import { AUTOS_GROUP_CODES } from '@vonos/types';
+import { VAG_OVERVIEW_CODES } from '@vonos/types';
 import { Prisma, type PrismaClient } from '@prisma/client';
 import { resolveGroupFinanceSource } from '../../common/utils/dailyFinanceRollup';
 import { runPool } from '../../common/utils/mapPool';
@@ -92,7 +92,7 @@ async function loadAutosGroupTenants(
     return cachedAutosGroupTenants.rows;
   }
   const rows = await prisma.tenant.findMany({
-    where: { code: { in: [...AUTOS_GROUP_CODES] }, deletedAt: null },
+    where: { code: { in: [...VAG_OVERVIEW_CODES] }, deletedAt: null },
     select: { id: true, code: true, archetype: true },
     orderBy: { code: 'asc' },
   });

@@ -3,6 +3,7 @@ import {
   Body,
   Controller,
   Get,
+  Param,
   Post,
   Query,
 } from '@nestjs/common';
@@ -12,6 +13,15 @@ import { PublicTrackService } from './public-track.service';
 @Controller('public/track')
 export class PublicTrackController {
   constructor(private readonly track: PublicTrackService) {}
+
+  @Get('jobs/:token')
+  lookupByToken(@Param('token') token: string) {
+    const value = token?.trim() ?? '';
+    if (!value) {
+      throw new BadRequestException('token is required');
+    }
+    return this.track.lookupByToken(value);
+  }
 
   @Get()
   lookup(

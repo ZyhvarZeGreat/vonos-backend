@@ -43,22 +43,30 @@ export class WhatsAppNotifyService {
     );
   }
 
-  publicTrackUrl(args: {
-    name: string;
-    registration: string;
-  }): string {
-    const base = (
+  publicSiteBase(): string {
+    return (
       process.env.PUBLIC_SITE_URL ||
       process.env.WEB_ORIGIN?.split(',')[0] ||
       'http://localhost:3000'
     )
       .trim()
       .replace(/\/$/, '');
+  }
+
+  publicTrackUrl(args: {
+    name: string;
+    registration: string;
+  }): string {
     const params = new URLSearchParams({
       name: args.name.trim(),
       reg: args.registration.trim(),
     });
-    return `${base}/track?${params.toString()}`;
+    return `${this.publicSiteBase()}/track?${params.toString()}`;
+  }
+
+  /** Signed per-job track link (preferred for WhatsApp / staff share). */
+  publicJobTrackUrl(token: string): string {
+    return `${this.publicSiteBase()}/job/${token}`;
   }
 
   composeStatusMessage(args: {

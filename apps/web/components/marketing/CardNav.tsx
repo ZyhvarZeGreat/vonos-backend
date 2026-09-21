@@ -36,6 +36,7 @@ type CardNavProps = {
   resetKey?: string;
   cartCount?: number;
   cartHref?: string;
+  onCartClick?: () => void;
 };
 
 const BAR_COMPACT_H = 60;
@@ -102,6 +103,7 @@ export default function CardNav({
   resetKey,
   cartCount = 0,
   cartHref = "/shop/cart",
+  onCartClick,
 }: CardNavProps) {
   const [isHamburgerOpen, setIsHamburgerOpen] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
@@ -324,15 +326,30 @@ export default function CardNav({
 
   const ctaButton: ReactNode = (
     <div className="card-nav-actions">
-      <Link
-        href={cartHref}
-        className={`card-nav-cart${cartCount > 0 ? " has-items" : ""}`}
-        aria-label={cartCount > 0 ? `Basket, ${cartCount} items` : "Basket"}
-        onClick={closeMenu}
-      >
-        <ShoppingBag size={18} aria-hidden="true" />
-        {cartCount > 0 ? <span className="card-nav-cart-badge">{cartCount > 99 ? "99+" : cartCount}</span> : null}
-      </Link>
+      {onCartClick ? (
+        <button
+          type="button"
+          className={`card-nav-cart${cartCount > 0 ? " has-items" : ""}`}
+          aria-label={cartCount > 0 ? `Basket, ${cartCount} items` : "Basket"}
+          onClick={() => {
+            closeMenu();
+            onCartClick();
+          }}
+        >
+          <ShoppingBag size={18} aria-hidden="true" />
+          {cartCount > 0 ? <span className="card-nav-cart-badge">{cartCount > 99 ? "99+" : cartCount}</span> : null}
+        </button>
+      ) : (
+        <Link
+          href={cartHref}
+          className={`card-nav-cart${cartCount > 0 ? " has-items" : ""}`}
+          aria-label={cartCount > 0 ? `Basket, ${cartCount} items` : "Basket"}
+          onClick={closeMenu}
+        >
+          <ShoppingBag size={18} aria-hidden="true" />
+          {cartCount > 0 ? <span className="card-nav-cart-badge">{cartCount > 99 ? "99+" : cartCount}</span> : null}
+        </Link>
+      )}
       <Link
         href={ctaHref}
         className="card-nav-cta-button"

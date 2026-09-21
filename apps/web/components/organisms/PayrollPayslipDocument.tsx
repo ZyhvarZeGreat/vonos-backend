@@ -814,6 +814,7 @@ export function PayrollPayslipDocument({
                     method: extras?.paymentMode ?? "Bank Transfer",
                     note: extras?.paymentNote ?? null,
                     accountName: null,
+                    authorizedByName: null,
                   },
                 ]
             ).map((row, index) => (

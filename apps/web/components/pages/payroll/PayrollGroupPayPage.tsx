@@ -4,15 +4,11 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft } from "lucide-react";
 import { Hq6BusyButton } from "@/components/hq6/Hq6BusyButton";
+import { Hq6FormShell } from "@/components/hq6/Hq6Chrome";
 import { useAppMutation } from "@/lib/hooks/useAppMutation";
 import { useRouteTenant, useTenantId } from "@/lib/hooks/useRouteTenant";
-import {
-  getPayrollGroup,
-  getUnpaidPayrollsForGroup,
-  payPayrolls,
-} from "@/lib/api/hrm";
+import { getPayrollGroup, payPayrolls } from "@/lib/api/hrm";
 import { getTenantConfigById } from "@/lib/registries/tenantConfigs";
 import { toast } from "@/stores/toastStore";
 import { formatCurrency } from "@/lib/utils/formatCurrency";
@@ -25,6 +21,7 @@ import {
   PayrollGroupPayForm,
   type PayRowForm,
 } from "./PayrollGroupPayForm";
+import { PayrollGroupPayHeader } from "./PayrollGroupPayHeader";
 
 export type PayrollGroupPayPageProps = {
   groupId: string;
@@ -50,18 +47,15 @@ export function PayrollGroupPayPage({
     queryFn: () => getPayrollGroup(tenantId!, groupId),
   });
 
-  const unpaidQuery = useQuery({
-    queryKey: ["payroll-group-unpaid", tenantId, groupId],
-    enabled: Boolean(tenantId && groupId),
-    queryFn: () => getUnpaidPayrollsForGroup(tenantId!, groupId),
-  });
+  const group = groupQuery.data;
 
   const unpaidRows = useMemo(
     () =>
-      (unpaidQuery.data ?? []).filter(
-        (row) => row.paymentStatus !== "paid" && row.netPay > 0,
-      ),
-    [unpaidQuery.data],
+      (group?.payrolls ?? []).filter((row) => {
+        const payment = row.paymentStatus?.toLowerCase();
+        return payment !== "paid" && row.netPay > 0;
+      }),
+    [group?.payrolls],
   );
 
   const [payRowForms, setPayRowForms] = useState<Record<string, PayRowForm>>(
@@ -171,110 +165,88 @@ export function PayrollGroupPayPage({
     payMutation.mutate(batches);
   }
 
-  const group = groupQuery.data;
-  const header = useMemo(() => {
+  const letterhead = useMemo(() => {
     const first = unpaidRows[0] ?? group?.payrolls[0];
-    if (!first) return null;
-    const cfg = getTenantConfigById(first.tenantId);
-    const biz = cfg?.businessSettings?.business;
-    const addressParts = [
-      biz?.landmark,
-      biz?.city,
-      biz?.state,
-      biz?.zipCode,
-      biz?.country,
-    ].filter(Boolean);
+    if (!first && !group) return null;
+    const cfg = getTenantConfigById(first?.tenantId ?? group?.tenantId ?? "");
+    const biz = cfg?.businessSettings?.business as
+      | Record<string, string | undefined>
+      | undefined;
     return {
-      groupName: group?.name ?? first.payrollGroupName ?? "Payroll group",
-      companyName: first.tenantName || cfg?.name || tenantName || "Business",
-      address: addressParts.join(", "),
-      status: group?.status ?? first.status,
+      groupName: group?.name ?? first?.payrollGroupName ?? "Payroll group",
+      entityName: first?.tenantName || cfg?.name || tenantName || "Business",
+      entityCode: cfg?.code ?? first?.tenantCode ?? null,
+      locationCode: group?.locationCode ?? first?.locationCode ?? null,
+      businessLocations: cfg?.businessLocations,
+      businessAddress: biz
+        ? {
+            landmark: biz.landmark,
+            city: biz.city,
+            state: biz.state,
+            zipCode: biz.zipCode,
+            country: biz.country,
+          }
+        : undefined,
+      status: group?.status ?? first?.status ?? "draft",
     };
   }, [unpaidRows, group, tenantName]);
 
-  const loading = groupQuery.isLoading || unpaidQuery.isLoading;
-  const error = groupQuery.error ?? unpaidQuery.error;
+  const pageTitle = letterhead?.groupName ?? group?.name ?? "Payroll group";
+  const loading = groupQuery.isLoading;
+  const error = groupQuery.error;
 
-  return (
-    <div className="space-y-6">
-      <Link
-        href={backHref}
-        className="inline-flex items-center gap-1.5 text-sm text-muted hover:text-foreground"
-      >
-        <ArrowLeft className="size-4" />
-        Back
-      </Link>
+  if (loading) {
+    return (
+      <Hq6FormShell title={pageTitle}>
+        <p className="text-sm text-[#64748b]">Loading unpaid payrolls…</p>
+      </Hq6FormShell>
+    );
+  }
 
-      <div>
-        <h1 className="text-xl font-semibold text-[#111827]">
-          Pay payroll group
-        </h1>
-        {header ? (
-          <p className="mt-1 text-sm text-muted">{header.groupName}</p>
-        ) : null}
-      </div>
-
-      {loading ? (
-        <p className="text-sm text-muted">Loading unpaid payrolls…</p>
-      ) : error ? (
+  if (error) {
+    return (
+      <Hq6FormShell title={pageTitle}>
         <p className="text-sm text-[var(--color-error-text)]">
           {error instanceof Error ? error.message : "Failed to load payrolls"}
         </p>
-      ) : (
-        <>
-          {header ? (
-            <div className="flex flex-wrap items-start justify-between gap-4 border-b border-border pb-3 text-sm">
-              <div>
-                <p className="font-semibold text-foreground">
-                  {header.companyName}
-                </p>
-                {header.address ? (
-                  <p className="mt-0.5 max-w-md text-muted">{header.address}</p>
-                ) : null}
-              </div>
-              <div className="text-right text-sm">
-                <p>
-                  <span className="text-muted">Payroll group: </span>
-                  <span className="font-medium">{header.groupName}</span>
-                </p>
-                <p className="mt-1">
-                  <span className="text-muted">Status: </span>
-                  <span className="font-medium capitalize">{header.status}</span>
-                </p>
-              </div>
-            </div>
-          ) : null}
+        <div className="mt-4">
+          <Link href={backHref} className="btn btn-default">
+            Back
+          </Link>
+        </div>
+      </Hq6FormShell>
+    );
+  }
 
-          <PayrollGroupPayForm
-            rows={unpaidRows}
-            payRowForms={payRowForms}
-            onPatchPayRowForm={patchPayRowForm}
-            groupStatus={group?.status ?? "draft"}
-          />
+  return (
+    <Hq6FormShell title="Add payment">
+      <section className="hq6-form-card hq6-payroll-group-pay">
+        {letterhead ? <PayrollGroupPayHeader {...letterhead} /> : null}
 
-          <div className="flex flex-wrap items-center gap-2 border-t border-border pt-4">
-            <Link href={backHref} className="hq6-btn hq6-btn-outline">
-              Cancel
-            </Link>
-            <Hq6BusyButton
-              type="button"
-              className="hq6-btn hq6-btn-blue"
-              busy={payMutation.isPending}
-              busyLabel="Paying…"
-              disabled={
-                unpaidRows.length === 0 ||
-                !payRowsReady ||
-                group?.status !== "final"
-              }
-              onClick={submitPay}
-            >
-              {unpaidRows.length > 1
-                ? `Pay ${unpaidRows.length} · ${formatCurrency(payTotal, "NGN")}`
-                : `Pay ${formatCurrency(payTotal, "NGN")}`}
-            </Hq6BusyButton>
-          </div>
-        </>
-      )}
-    </div>
+        <PayrollGroupPayForm
+          rows={unpaidRows}
+          payRowForms={payRowForms}
+          onPatchPayRowForm={patchPayRowForm}
+        />
+
+        <div className="mt-4 flex flex-wrap gap-2">
+          <Hq6BusyButton
+            type="button"
+            className="hq6-btn-purple"
+            busy={payMutation.isPending}
+            busyLabel="Paying…"
+            disabled={unpaidRows.length === 0 || !payRowsReady}
+            onClick={submitPay}
+          >
+            {unpaidRows.length > 1
+              ? `Pay ${unpaidRows.length} · ${formatCurrency(payTotal, "NGN")}`
+              : `Pay ${formatCurrency(payTotal, "NGN")}`}
+          </Hq6BusyButton>
+          <Link href={backHref} className="btn btn-default">
+            Cancel
+          </Link>
+        </div>
+      </section>
+    </Hq6FormShell>
   );
 }

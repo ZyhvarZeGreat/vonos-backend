@@ -3,7 +3,7 @@ import type {
   LedgerListRow,
   LedgerSummary,
 } from '@vonos/types';
-import { AUTOS_GROUP_CODES } from '@vonos/types';
+import { VAG_OVERVIEW_CODES } from '@vonos/types';
 import type { PrismaClient } from '@prisma/client';
 import { Prisma } from '@prisma/client';
 import { buildCompositeCursorQuery } from '../../common/utils/pagination';
@@ -31,7 +31,7 @@ import {
 
 async function nonVagTenants(prisma: PrismaClient) {
   return prisma.tenant.findMany({
-    where: { code: { in: [...AUTOS_GROUP_CODES] }, deletedAt: null },
+    where: { code: { in: [...VAG_OVERVIEW_CODES] }, deletedAt: null },
     select: { id: true, code: true, name: true },
   });
 }

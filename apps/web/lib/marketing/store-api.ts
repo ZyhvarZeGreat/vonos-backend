@@ -1,4 +1,5 @@
 import { apiUrl } from "@/lib/api/client";
+import { throwApiError } from "@/lib/api/parseApiError";
 import { mapApiProduct, type FulfillmentType, type ShopProduct } from "@/lib/marketing/shop-catalog";
 
 export type StoreCatalogResponse = {
@@ -60,25 +61,27 @@ export type StoreOrderResponse = {
 };
 
 async function publicJson<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(apiUrl(path), {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...(init?.headers ?? {}),
-    },
-    credentials: "omit",
-  });
+  let response: Response;
+  try {
+    response = await fetch(apiUrl(path), {
+      ...init,
+      headers: {
+        "Content-Type": "application/json",
+        ...(init?.headers ?? {}),
+      },
+      credentials: "omit",
+    });
+  } catch {
+    throw new Error(
+      "We can’t reach the server right now — please try again in a moment.",
+    );
+  }
 
   if (!response.ok) {
-    let message = `Request failed (${response.status})`;
-    try {
-      const body = (await response.json()) as { message?: string | string[] };
-      if (typeof body.message === "string") message = body.message;
-      else if (Array.isArray(body.message)) message = body.message.join(", ");
-    } catch {
-      /* ignore */
-    }
-    throw new Error(message);
+    await throwApiError(
+      response,
+      "We couldn’t load that right now — please try again in a moment.",
+    );
   }
 
   return (await response.json()) as T;
@@ -120,11 +123,23 @@ export async function fetchStoreCatalog(args?: {
 }
 
 export async function fetchStoreProduct(sku: string): Promise<ShopProduct | null> {
-  const response = await fetch(apiUrl(`/public/store/catalog/${encodeURIComponent(sku)}`), {
-    next: { revalidate: 3600, tags: ["store-catalog"] },
-  });
+  let response: Response;
+  try {
+    response = await fetch(apiUrl(`/public/store/catalog/${encodeURIComponent(sku)}`), {
+      next: { revalidate: 3600, tags: ["store-catalog"] },
+    });
+  } catch {
+    throw new Error(
+      "We can’t reach the server right now — please try again in a moment.",
+    );
+  }
   if (response.status === 404) return null;
-  if (!response.ok) return null;
+  if (!response.ok) {
+    await throwApiError(
+      response,
+      "We couldn’t load that part right now — please try again in a moment.",
+    );
+  }
   const row = (await response.json()) as ApiCatalogPage["items"][number] | null;
   if (!row?.id) return null;
   return mapApiProduct(row);

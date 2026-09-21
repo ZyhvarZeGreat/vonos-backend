@@ -78,6 +78,11 @@ export class JobsController {
     return this.jobsService.getCosts(id);
   }
 
+  @Get(':id/track-url')
+  getTrackUrl(@Param('id') id: string) {
+    return this.jobsService.getTrackShareUrl(id);
+  }
+
   @Get(':id')
   getById(@Param('id') id: string) {
     return this.jobsService.getById(id);

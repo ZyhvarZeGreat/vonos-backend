@@ -1917,6 +1917,8 @@ export class HrmService {
     }
     const method = dto.method?.trim() || 'cash';
     const note = dto.note?.trim() || null;
+    const authorizedBy = await this.auditService.createdByFields();
+    const authorizedByName = authorizedBy.createdByName?.trim() || null;
 
     const result = await this.tenantDb.db.$transaction(
       async (tx) => {
@@ -1956,22 +1958,6 @@ export class HrmService {
             continue;
           }
 
-          if (row.payrollGroupId) {
-            const groupStatus =
-              row.payrollGroup?.status ??
-              (
-                await tx.payrollGroup.findFirst({
-                  where: { id: row.payrollGroupId, tenantId, deletedAt: null },
-                  select: { status: true },
-                })
-              )?.status;
-            if (groupStatus !== 'final') {
-              throw new BadRequestException(
-                'Payroll group must be marked final before payment',
-              );
-            }
-          }
-
           const netPay = toNumber(row.netPay);
           if (netPay <= 0) {
             skipped += 1;
@@ -2002,6 +1988,7 @@ export class HrmService {
               accountId: account.id,
               invoiceId: invoice.id,
               paymentRefNo,
+              createdByName: authorizedByName,
               note:
                 note ||
                 `Payroll — ${row.employeeName} (${toIso(row.payrollMonth).slice(0, 7)})`,
@@ -2055,7 +2042,7 @@ export class HrmService {
               accountId: account.id,
               note: `${payrollDescription} · payrollId:${row.id}`,
               expenseDate: paidOn,
-              createdByName: 'HR / Payroll',
+              createdByName: authorizedByName ?? 'HR / Payroll',
             },
           });
 
@@ -2646,22 +2633,6 @@ export class HrmService {
     if (!group) {
       throw new BadRequestException('Payroll group not found');
     }
-    if (group.status === 'final' && dto.status !== 'draft') {
-      const paidCount = await this.tenantDb.db.payroll.count({
-        where: {
-          tenantId,
-          payrollGroupId: id,
-          deletedAt: null,
-          paymentStatus: 'paid',
-        },
-      });
-      if (paidCount > 0 && dto.employees.length > 0) {
-        throw new BadRequestException(
-          'Cannot edit payroll amounts after payment',
-        );
-      }
-    }
-
     await this.tenantDb.db.$transaction(async (tx) => {
       if (dto.name !== undefined || dto.locationCode !== undefined || dto.status !== undefined) {
         await tx.payrollGroup.update({
@@ -2694,9 +2665,7 @@ export class HrmService {
           existing.paymentStatus === 'paid' ||
           existing.status === 'paid'
         ) {
-          throw new BadRequestException(
-            `Cannot edit paid payroll for ${existing.employeeName}`,
-          );
+          continue;
         }
 
         const allowance = emp.totalAllowance ?? toNumber(existing.totalAllowance);
@@ -2774,6 +2743,7 @@ export class HrmService {
       method: p.method ?? null,
       note: p.note ?? null,
       accountName: p.account?.name ?? null,
+      authorizedByName: p.createdByName?.trim() || null,
     }));
   }
 
@@ -2783,30 +2753,22 @@ export class HrmService {
       where: { id, tenantId, deletedAt: null },
     });
     if (!existing) {
-      throw new BadRequestException('Department not found');
+      throw new BadRequestException('Payroll group not found');
     }
-    if (existing.status === 'final') {
-      throw new BadRequestException(
-        'Cannot delete a payroll group marked final',
-      );
-    }
-    const paidCount = await this.tenantDb.db.payroll.count({
-      where: {
-        tenantId,
-        payrollGroupId: id,
-        deletedAt: null,
-        paymentStatus: 'paid',
-      },
+    const deletedAt = new Date();
+    await this.tenantDb.db.$transaction(async (tx) => {
+      await tx.payroll.updateMany({
+        where: { tenantId, payrollGroupId: id, deletedAt: null },
+        data: { deletedAt },
+      });
+      await tx.payrollGroup.update({
+        where: { id },
+        data: { deletedAt },
+      });
     });
-    if (paidCount > 0) {
-      throw new BadRequestException(
-        'Cannot delete a payroll group with paid payrolls',
-      );
-    }
-    await this.tenantDb.db.payrollGroup.update({
-      where: { id },
-      data: { deletedAt: new Date() },
-    });
+    void invalidateTenantDashboardCache(this.cache, tenantId);
+    void this.cache.bumpListVersion(tenantId, 'hrm-payrolls');
+    void this.cache.bumpListVersion(tenantId, 'hrm-payroll-groups');
     return { ok: true };
   }
 

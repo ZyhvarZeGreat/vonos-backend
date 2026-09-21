@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 
+import BlogIndex from "@/components/marketing/ecommerce/BlogIndex";
+import FaqSection from "@/components/marketing/ecommerce/FaqSection";
 import MotocareMotion from "@/components/marketing/MotocareMotion";
-import BlogPageHero from "@/components/marketing/pages/blog/BlogPageHero";
-import BlogPageList from "@/components/marketing/pages/blog/BlogPageList";
 import SiteFooter from "@/components/marketing/SiteFooter";
 import SiteNav from "@/components/marketing/SiteNav";
 import WebflowClientEffects from "@/components/marketing/WebflowClientEffects";
@@ -24,10 +24,10 @@ export default async function BlogPage() {
     <>
       <MotocareMotion />
       <WebflowClientEffects />
-      <main className="main main--subpage">
+      <main className="main main--subpage vg-page">
         <SiteNav />
-        <BlogPageHero />
-        <BlogPageList posts={items} />
+        <BlogIndex posts={items} />
+        <FaqSection />
         <SiteFooter showCta={false} />
       </main>
     </>

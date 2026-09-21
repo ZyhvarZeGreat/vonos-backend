@@ -1,14 +1,15 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
+import ArticleView from "@/components/marketing/ecommerce/ArticleView";
 import MotocareMotion from "@/components/marketing/MotocareMotion";
-import BlogPostArticle from "@/components/marketing/pages/blog/BlogPostArticle";
 import SiteFooter from "@/components/marketing/SiteFooter";
 import SiteNav from "@/components/marketing/SiteNav";
 import WebflowClientEffects from "@/components/marketing/WebflowClientEffects";
 import {
   fetchAllPublicCmsSlugs,
   fetchPublicCmsPost,
+  fetchPublicCmsPosts,
 } from "@/lib/marketing/cms-api";
 
 type BlogPostPageProps = {
@@ -41,13 +42,16 @@ export default async function BlogPostPage({ params }: BlogPostPageProps) {
   const post = await fetchPublicCmsPost(slug);
   if (!post) notFound();
 
+  const catalog = await fetchPublicCmsPosts(12).catch(() => ({ items: [] }));
+  const related = catalog.items.filter((item) => item.slug !== post.slug).slice(0, 3);
+
   return (
     <>
       <MotocareMotion />
       <WebflowClientEffects />
-      <main className="main main--subpage">
+      <main className="main main--subpage vg-page">
         <SiteNav />
-        <BlogPostArticle post={post} />
+        <ArticleView post={post} related={related} />
         <SiteFooter showCta={false} />
       </main>
     </>

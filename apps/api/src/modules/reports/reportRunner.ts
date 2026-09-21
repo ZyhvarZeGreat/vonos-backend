@@ -1,5 +1,5 @@
 import type { ReportsDashboard, ReportRunOptions } from '@vonos/types';
-import { AUTOS_GROUP_CODES, reportEntryById } from '@vonos/types';
+import { VAG_OVERVIEW_CODES, reportEntryById } from '@vonos/types';
 import type { PrismaClient } from '@prisma/client';
 import type { TenantDbService } from '../../common/prisma/tenant-db.service';
 import { AuditService } from '../audit/audit.service';
@@ -207,7 +207,7 @@ export async function runGroupReport(
   }
 
   const tenants = await prisma.tenant.findMany({
-    where: { code: { in: [...AUTOS_GROUP_CODES] }, deletedAt: null },
+    where: { code: { in: [...VAG_OVERVIEW_CODES] }, deletedAt: null },
     select: { id: true, code: true, archetype: true },
     orderBy: { code: 'asc' },
   });

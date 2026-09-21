@@ -12,7 +12,9 @@ export type PublicTrackResult = {
   name: string;
   registration: string;
   vehicle: string;
+  /** Intentionally empty on public track — no parts / job description. */
   service: string;
+  /** Intentionally empty — do not reveal which entity holds the car. */
   location: string;
   locationCode: "VA" | "VP";
   status: string;
@@ -40,6 +42,30 @@ export async function lookupVehicleTrack(args: {
 
   if (!response.ok) {
     let message = "Could not find that vehicle.";
+    try {
+      const body = (await response.json()) as { message?: string | string[] };
+      if (typeof body.message === "string") message = body.message;
+      else if (Array.isArray(body.message)) message = body.message.join(", ");
+    } catch {
+      /* ignore */
+    }
+    throw new Error(message);
+  }
+
+  return response.json() as Promise<PublicTrackResult>;
+}
+
+export async function lookupJobTrack(token: string): Promise<PublicTrackResult> {
+  const response = await fetch(
+    apiUrl(`/public/track/jobs/${encodeURIComponent(token.trim())}`),
+    {
+      credentials: "omit",
+      headers: { Accept: "application/json" },
+    },
+  );
+
+  if (!response.ok) {
+    let message = "Could not find that job.";
     try {
       const body = (await response.json()) as { message?: string | string[] };
       if (typeof body.message === "string") message = body.message;

@@ -5,7 +5,7 @@ import type {
   LedgerListRow,
   LedgerSummary,
 } from '@vonos/types';
-import { AUTOS_GROUP_CODES } from '@vonos/types';
+import { VAG_OVERVIEW_CODES } from '@vonos/types';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { TenantDbService } from '../../common/prisma/tenant-db.service';
 import { AuditService } from '../audit/audit.service';
@@ -299,7 +299,7 @@ export class LedgerService {
 
     const tenants = await this.prisma.tenant.findMany({
       where: {
-        code: { in: [...AUTOS_GROUP_CODES] },
+        code: { in: [...VAG_OVERVIEW_CODES] },
         deletedAt: null,
       },
       select: { id: true },

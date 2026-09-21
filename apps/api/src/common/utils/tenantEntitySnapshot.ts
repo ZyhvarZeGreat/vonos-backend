@@ -1,5 +1,5 @@
 import type { GroupEntityStat } from '@vonos/types';
-import { AUTOS_GROUP_CODES } from '@vonos/types';
+import { VAG_OVERVIEW_CODES } from '@vonos/types';
 import { Prisma, type PrismaClient } from '@prisma/client';
 import { runPool } from './mapPool';
 import { toNumber } from './serializers';
@@ -523,7 +523,7 @@ export async function refreshTenantEntitySnapshots(
   const groupTenants =
     tenants ??
     (await prisma.tenant.findMany({
-      where: { code: { in: [...AUTOS_GROUP_CODES] }, deletedAt: null },
+      where: { code: { in: [...VAG_OVERVIEW_CODES] }, deletedAt: null },
       select: { id: true, code: true, archetype: true },
       orderBy: { code: 'asc' },
     }));
