@@ -6,6 +6,7 @@
  */
 import { useEffect, useMemo, useState } from "react";
 import { Hq6PageHeader } from "@/components/hq6/Hq6Chrome";
+import { WhatsAppConnectPanel } from "@/components/pages/WhatsAppConnectPanel";
 import { useRouteTenant } from "@/lib/hooks/useRouteTenant";
 import { cn } from "@/lib/utils/cn";
 import { toast } from "@/stores/toastStore";
@@ -320,6 +321,7 @@ export function Hq6NotificationTemplatesView() {
     <div className="hq6-page hq6-notification-templates">
       <Hq6PageHeader title="Notification Templates" />
       <section className="content">
+        <WhatsAppConnectPanel />
         <TemplateBox
           title="Notifications:"
           tabs={NOTIFICATION_TABS}
