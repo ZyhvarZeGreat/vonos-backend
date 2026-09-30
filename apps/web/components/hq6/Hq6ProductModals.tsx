@@ -19,7 +19,11 @@ import {
   locationsForTenantConfig,
 } from "@/lib/hooks/useBusinessLocationOptions";
 import { useRouteTenant } from "@/lib/hooks/useRouteTenant";
-import { getItemOpeningStock, getPeerStockBySkus } from "@/lib/api/items";
+import {
+  getItemOpeningStock,
+  getPeerStockBySkus,
+  type StockAdjustmentDirection,
+} from "@/lib/api/items";
 import { formatHq6Currency } from "@/lib/utils/hq6Format";
 import { parseForm } from "@/lib/validation/parseForm";
 import { openingStockSchema } from "@/lib/validation/schemas";
@@ -902,6 +906,190 @@ export function Hq6OpeningStockModal({
               Total Amount (Exc. Tax): {totalAmount.toFixed(2)}
             </span>
           </div>
+        </div>
+      )}
+    </Hq6Modal>
+  );
+}
+
+export function Hq6AdjustStockModal({
+  open,
+  onClose,
+  item,
+  onSave,
+}: {
+  open: boolean;
+  onClose: () => void;
+  item: Item | null;
+  onSave?: (body: {
+    direction: StockAdjustmentDirection;
+    quantity: number;
+    locationCode: string;
+    reason: string;
+    date: string;
+  }) => Promise<void>;
+}) {
+  const { config } = useRouteTenant();
+  const stockLocations = useMemo(
+    () => stockLocationsForOpening(config?.code, config),
+    [config],
+  );
+  const [direction, setDirection] =
+    useState<StockAdjustmentDirection>("decrease");
+  const [quantity, setQuantity] = useState("");
+  const [reason, setReason] = useState("");
+  const [date, setDate] = useState(localTodayDate());
+  const [location, setLocation] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!open || !item) return;
+    setDirection("decrease");
+    setQuantity("");
+    setReason("");
+    setDate(localTodayDate());
+    setLocation(openingStockLocationForItem(item, stockLocations, config?.code));
+  }, [open, item, stockLocations, config?.code]);
+
+  const currentQty = Number(item?.quantity ?? 0);
+  const amount = Math.trunc(Number(quantity) || 0);
+  const projected =
+    direction === "increase" ? currentQty + amount : currentQty - amount;
+
+  return (
+    <Hq6Modal
+      open={open}
+      onClose={onClose}
+      title="Adjust Stock"
+      size="md"
+      footer={
+        <Hq6ModalSaveClose
+          onClose={onClose}
+          saving={saving}
+          onSave={() => {
+            void (async () => {
+              if (!item || !onSave) return;
+              if (!Number.isFinite(amount) || amount <= 0) {
+                toast.error("Enter a quantity greater than 0");
+                return;
+              }
+              if (projected < 0) {
+                toast.error(
+                  `Only ${currentQty} on hand — cannot reduce by ${amount}`,
+                );
+                return;
+              }
+              const loc = location.trim();
+              if (!loc) {
+                toast.error("Select a business location");
+                return;
+              }
+              setSaving(true);
+              try {
+                await onSave({
+                  direction,
+                  quantity: amount,
+                  locationCode: loc,
+                  reason: reason.trim(),
+                  date,
+                });
+                toast.success(
+                  direction === "increase"
+                    ? `Added ${amount} to stock`
+                    : `Removed ${amount} from stock`,
+                );
+                onClose();
+              } catch (err) {
+                toast.error(
+                  err instanceof Error ? err.message : "Failed to adjust stock",
+                );
+              } finally {
+                setSaving(false);
+              }
+            })();
+          }}
+        />
+      }
+    >
+      {!item ? (
+        <p className="text-sm text-muted">No product selected.</p>
+      ) : (
+        <div className="space-y-4">
+          <div className="text-sm text-[#6b7280]">
+            <span className="font-semibold text-[#111827]">{item.name}</span>
+            {item.sku?.trim() ? (
+              <span className="ml-2 text-xs">SKU {item.sku}</span>
+            ) : null}
+            <span className="mt-1 block text-xs">
+              On hand now:{" "}
+              <span className="font-semibold text-[#111827]">{currentQty}</span>
+              {" → "}
+              <span className="font-semibold text-[#111827]">{projected}</span>
+              {item.unit ? ` ${item.unit}` : ""}
+              {" · "}
+              Logged to Product Stock History as an ADJ reference.
+            </span>
+          </div>
+
+          <Hq6Field label="Direction" required>
+            <select
+              className="hq6-modal-input"
+              value={direction}
+              onChange={(e) =>
+                setDirection(e.target.value as StockAdjustmentDirection)
+              }
+            >
+              <option value="decrease">Decrease (stock out / correction)</option>
+              <option value="increase">Increase (stock in / correction)</option>
+            </select>
+          </Hq6Field>
+
+          <Hq6Field label="Quantity" required>
+            <input
+              type="number"
+              min={1}
+              step={1}
+              className="hq6-modal-input"
+              value={quantity}
+              onChange={(e) => setQuantity(e.target.value)}
+              placeholder="e.g. 5"
+            />
+          </Hq6Field>
+
+          {stockLocations.length > 1 && (
+            <Hq6Field label="Business Location" required>
+              <select
+                className="hq6-modal-input"
+                value={location}
+                onChange={(e) => setLocation(e.target.value)}
+              >
+                {stockLocations.map((loc) => (
+                  <option key={loc.code} value={loc.code}>
+                    {loc.name}
+                  </option>
+                ))}
+              </select>
+            </Hq6Field>
+          )}
+
+          <Hq6Field label="Date">
+            <input
+              type="date"
+              className="hq6-modal-input"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+            />
+          </Hq6Field>
+
+          <Hq6Field label="Reason">
+            <textarea
+              className="hq6-modal-input"
+              rows={2}
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              placeholder="e.g. Corrected count after stocktake"
+            />
+          </Hq6Field>
         </div>
       )}
     </Hq6Modal>

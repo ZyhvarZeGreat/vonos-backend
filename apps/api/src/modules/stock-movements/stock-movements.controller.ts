@@ -2,11 +2,13 @@ import {
   Body,
   Controller,
   Delete,
+  ForbiddenException,
   Get,
   Param,
   Patch,
   Post,
   Query,
+  Req,
   UseGuards,
 } from '@nestjs/common';
 import type {
@@ -15,12 +17,16 @@ import type {
   MovementType,
   PayContactDueRequest,
 } from '@vonos/types';
-import { Roles } from '../../common/decorators/roles.decorator';
+import {
+  Roles,
+  type AuthenticatedUser,
+} from '../../common/decorators/roles.decorator';
 import {
   JwtAuthGuard,
   RolesGuard,
   TenantGuard,
 } from '../../common/guards/auth.guards';
+import { userHasPermission } from '../../common/utils/userPermissions';
 import { StockMovementsService } from './stock-movements.service';
 
 @Controller('stock-movements')
@@ -196,9 +202,21 @@ export class StockMovementsController {
     return this.movementsService.updateStatus(id, body.status);
   }
 
+  /**
+   * Purchases and purchase orders are both stock movements behind one
+   * endpoint, so either delete key unlocks it. The list UIs also gate the
+   * button — keying off the JWT role alone would 403 managers and staff,
+   * since `mapTenantRoleToJwtRole` never consults these permission keys.
+   */
   @Delete(':id')
-  @Roles('admin', 'super_admin')
-  remove(@Param('id') id: string) {
+  @Roles('staff', 'manager', 'admin', 'super_admin')
+  remove(@Param('id') id: string, @Req() req: { user: AuthenticatedUser }) {
+    if (
+      !userHasPermission(req.user, 'purchase.delete') &&
+      !userHasPermission(req.user, 'purchase_order.delete')
+    ) {
+      throw new ForbiddenException('Missing purchase.delete');
+    }
     return this.movementsService.remove(id);
   }
 }

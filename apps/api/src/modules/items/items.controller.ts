@@ -2,11 +2,13 @@ import {
   Body,
   Controller,
   Delete,
+  ForbiddenException,
   Get,
   Param,
   Patch,
   Post,
   Query,
+  Req,
   UseGuards,
 } from '@nestjs/common';
 import type {
@@ -15,12 +17,16 @@ import type {
   StockStatus,
   CsvImportResult,
 } from '@vonos/types';
-import { Roles } from '../../common/decorators/roles.decorator';
+import {
+  Roles,
+  type AuthenticatedUser,
+} from '../../common/decorators/roles.decorator';
 import {
   JwtAuthGuard,
   RolesGuard,
   TenantGuard,
 } from '../../common/guards/auth.guards';
+import { userHasPermission } from '../../common/utils/userPermissions';
 import { ItemsService } from './items.service';
 
 @Controller('items')
@@ -120,19 +126,31 @@ export class ItemsController {
   }
 
   @Post('import')
-  @Roles('manager', 'admin', 'super_admin')
-  import(@Body() body: { csv: string }) {
+  @Roles('staff', 'manager', 'admin', 'super_admin')
+  import(
+    @Body() body: { csv: string },
+    @Req() req: { user: AuthenticatedUser },
+  ) {
+    if (!userHasPermission(req.user, 'product.create')) {
+      throw new ForbiddenException('Missing product.create');
+    }
     return this.itemsService.importCsv(body.csv ?? '');
   }
 
   @Post('import-opening-stock')
-  @Roles('manager', 'admin', 'super_admin')
-  importOpeningStock(@Body() body: { csv: string }) {
+  @Roles('staff', 'manager', 'admin', 'super_admin')
+  importOpeningStock(
+    @Body() body: { csv: string },
+    @Req() req: { user: AuthenticatedUser },
+  ) {
+    if (!userHasPermission(req.user, 'product.opening_stock')) {
+      throw new ForbiddenException('Missing product.opening_stock');
+    }
     return this.itemsService.importOpeningStockCsv(body.csv ?? '');
   }
 
   @Post('bulk-price')
-  @Roles('manager', 'admin', 'super_admin')
+  @Roles('staff', 'manager', 'admin', 'super_admin')
   bulkUpdatePrice(
     @Body()
     body: {
@@ -141,7 +159,11 @@ export class ItemsController {
       adjustmentType: 'fixed' | 'percentage';
       adjustmentValue: number;
     },
+    @Req() req: { user: AuthenticatedUser },
   ) {
+    if (!userHasPermission(req.user, 'product.update')) {
+      throw new ForbiddenException('Missing product.update');
+    }
     return this.itemsService.bulkUpdatePrice(body);
   }
 
@@ -180,7 +202,11 @@ export class ItemsController {
         note?: string;
       }>;
     },
+    @Req() req: { user: AuthenticatedUser },
   ) {
+    if (!userHasPermission(req.user, 'product.opening_stock')) {
+      throw new ForbiddenException('Missing product.opening_stock');
+    }
     return this.itemsService.saveOpeningStock(id, body);
   }
 
@@ -200,8 +226,37 @@ export class ItemsController {
         note?: string;
       }>;
     },
+    @Req() req: { user: AuthenticatedUser },
   ) {
+    if (!userHasPermission(req.user, 'product.opening_stock')) {
+      throw new ForbiddenException('Missing product.opening_stock');
+    }
     return this.itemsService.saveOpeningStock(id, body);
+  }
+
+  /**
+   * Manual stock correction — raises or lowers on-hand qty and writes an
+   * `ADJ/…` movement so the change shows in Product Stock History.
+   * Counterpart to opening stock, which is append-only and can only add.
+   */
+  @Post(':id/adjust-stock')
+  @Roles('staff', 'manager', 'admin', 'super_admin')
+  adjustStock(
+    @Param('id') id: string,
+    @Body()
+    body: {
+      direction: 'increase' | 'decrease';
+      quantity: number;
+      locationCode?: string;
+      reason?: string;
+      date?: string;
+    },
+    @Req() req: { user: AuthenticatedUser },
+  ) {
+    if (!userHasPermission(req.user, 'product.opening_stock')) {
+      throw new ForbiddenException('Missing product.opening_stock');
+    }
+    return this.itemsService.adjustStock(id, body);
   }
 
   @Get(':id')
@@ -289,9 +344,19 @@ export class ItemsController {
     return this.itemsService.update(id, body);
   }
 
+  /**
+   * Gated by the TenantRole `product.delete` key, not the JWT role: the
+   * products list offers Delete to anyone with that checkbox, but the JWT
+   * role is derived from the role name and user-management keys only
+   * (`mapTenantRoleToJwtRole`), so a PARTS AUDITOR or Manager1 would
+   * otherwise see the button and get 403 here.
+   */
   @Delete(':id')
-  @Roles('admin', 'super_admin')
-  remove(@Param('id') id: string) {
+  @Roles('staff', 'manager', 'admin', 'super_admin')
+  remove(@Param('id') id: string, @Req() req: { user: AuthenticatedUser }) {
+    if (!userHasPermission(req.user, 'product.delete')) {
+      throw new ForbiddenException('Missing product.delete');
+    }
     return this.itemsService.remove(id);
   }
 }

@@ -213,6 +213,21 @@ export function AddProductForm({
     setLocationDetails(locationDetailsFromItem(undefined, locations));
   }, [locations, editFrom, duplicateFrom]);
 
+  /**
+   * Per-location qty as persisted, so plain Save can tell a changed
+   * "Opening qty" apart from an untouched one (see buildProductSavePayload).
+   */
+  const sourceQuantities = useMemo(() => {
+    if (!editFrom) return undefined;
+    const codes = selectedLocationCodesFromItem(editFrom, locations);
+    const map: Record<string, number> = {};
+    for (const row of locationDetailsFromItem(editFrom, locations)) {
+      if (!codes.includes(row.locationCode)) continue;
+      map[row.locationCode] = Number(row.quantity) || 0;
+    }
+    return map;
+  }, [editFrom, locations]);
+
   const metaStaleMs = 10 * 60_000;
 
   const { data: categories = [] } = useQuery({
@@ -373,6 +388,7 @@ export function AddProductForm({
           itemHasForeignLocation(editFrom, locations),
         selectedLocationCodes,
         locationDetails,
+        sourceQuantities,
         ...(editFrom
           ? { imageUrl }
           : imageUrl

@@ -205,4 +205,35 @@ describe("buildProductSavePayload smoke — create / edit writes", () => {
 
     expect(payload.imageUrl).toBeNull();
   });
+
+  it("edit save leaves stock alone when opening qty is unchanged", () => {
+    const payload = buildProductSavePayload({
+      form: baseForm,
+      mode: "save",
+      isEdit: true,
+      selectedLocationCodes: ["VISP"],
+      locationDetails: [vispLocation],
+      sourceQuantities: { VISP: 12 },
+    });
+
+    expect(payload.locationStock).toBeUndefined();
+    expect(payload).not.toHaveProperty("quantity");
+  });
+
+  it("edit save sends the edited opening qty instead of dropping it", () => {
+    const payload = buildProductSavePayload({
+      form: baseForm,
+      mode: "save",
+      isEdit: true,
+      selectedLocationCodes: ["VISP"],
+      locationDetails: [vispLocation],
+      sourceQuantities: { VISP: 40 },
+    });
+
+    expect(payload.locationStock).toEqual([
+      { locationCode: "VISP", binLocation: undefined, quantity: 12 },
+    ]);
+    expect(payload.locationCode).toBe("VISP");
+    expect(payload).not.toHaveProperty("quantity");
+  });
 });

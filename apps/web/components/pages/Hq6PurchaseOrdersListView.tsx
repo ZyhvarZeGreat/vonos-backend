@@ -28,6 +28,7 @@ import { HQ6_TABLE_PAGE_SIZE } from "@/lib/api/fetchAllPages";
 import { useListExport } from "@/lib/hooks/useListExport";
 import { useListPageFilters } from "@/lib/hooks/useListPageFilters";
 import { useListRecordModal } from "@/lib/hooks/useListRecordModal";
+import { useHq6Permissions } from "@/lib/hooks/useHq6Permissions";
 import { useServerListPage, withListSort } from "@/lib/hooks/useServerListPage";
 import { chronoListCursor } from "@/lib/utils/pagination";
 
@@ -43,6 +44,7 @@ export function Hq6PurchaseOrdersListView() {
   const tenantId = useTenantId();
   const router = useRouter();
   const queryClient = useQueryClient();
+  const { requireCanAny } = useHq6Permissions();
   const { tenantCode, config } = useRouteTenant();
   const chrome = useHq6ListChrome("purchase-orders");
   const exportList = useListExport();
@@ -197,7 +199,16 @@ export function Hq6PurchaseOrdersListView() {
                 label: "Delete",
                 danger: true,
                 icon: <Trash2 size={15} strokeWidth={1.75} />,
-                onClick: () => setDeleteTarget(row),
+                onClick: () => {
+                  if (
+                    !requireCanAny([
+                      "purchase.delete",
+                      "purchase_order.delete",
+                    ])
+                  )
+                    return;
+                  setDeleteTarget(row);
+                },
               },
             ]}
           />
@@ -253,7 +264,7 @@ export function Hq6PurchaseOrdersListView() {
         render: (row) => row.createdByName ?? "—",
       },
     ],
-    [config?.businessLocations, router, tenantCode],
+    [config?.businessLocations, requireCanAny, router, tenantCode],
   );
 
   const columnOptions = columns

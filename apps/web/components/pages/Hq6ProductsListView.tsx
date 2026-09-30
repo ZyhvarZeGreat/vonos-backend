@@ -7,6 +7,7 @@ import { useServerListPage, withListSort, hq6ListPaginationProps } from "@/lib/h
 import { HQ6_TABLE_PAGE_SIZE } from "@/lib/api/fetchAllPages";
 import { getCatalogPage, getCatalogListSummary, getAllCatalog } from "@/lib/api/catalog";
 import {
+  adjustItemStock,
   deleteItem as deleteItemApi,
   getPeerStockBySkus,
   saveItemOpeningStock,
@@ -37,6 +38,7 @@ import { Hq6ActionsMenu } from "@/components/hq6/Hq6ActionsMenu";
 import {
   Hq6ViewProductModal,
   Hq6OpeningStockModal,
+  Hq6AdjustStockModal,
   Hq6AddLocationModal,
 } from "@/components/hq6/Hq6ProductModals";
 import { Hq6MoveProductModal } from "@/components/hq6/Hq6MoveProductModal";
@@ -156,6 +158,7 @@ export function Hq6ProductsListView({
   const [notForSelling, setNotForSelling] = useState(false);
   const [viewItem, setViewItem] = useState<Item | null>(null);
   const [stockItem, setStockItem] = useState<Item | null>(null);
+  const [adjustItem, setAdjustItem] = useState<Item | null>(null);
   const [moveItem, setMoveItem] = useState<Item | null>(null);
   const [locationModalOpen, setLocationModalOpen] = useState(false);
   const [deleteItem, setDeleteItem] = useState<Item | null>(null);
@@ -1108,6 +1111,19 @@ export function Hq6ProductsListView({
                                                 },
                                               },
                                               {
+                                                id: "adjust_stock",
+                                                label: "Adjust stock",
+                                                onClick: () => {
+                                                  if (
+                                                    !requireCan(
+                                                      "product.opening_stock",
+                                                    )
+                                                  )
+                                                    return;
+                                                  setAdjustItem(row);
+                                                },
+                                              },
+                                              {
                                                 id: "move_product",
                                                 label: "Move product",
                                                 onClick: () => setMoveItem(row),
@@ -1289,6 +1305,29 @@ export function Hq6ProductsListView({
             },
             tenantId,
             stockItem,
+          );
+
+          void queryClient.invalidateQueries({ queryKey: ["catalog"] });
+          void queryClient.invalidateQueries({ queryKey: ["items"] });
+          void queryClient.invalidateQueries({
+            queryKey: ["item-stock-history"],
+          });
+          void queryClient.invalidateQueries({
+            queryKey: ["item-opening-stock"],
+          });
+        }}
+      />
+      <Hq6AdjustStockModal
+        open={Boolean(adjustItem)}
+        onClose={() => setAdjustItem(null)}
+        item={adjustItem}
+        onSave={async ({ direction, quantity, locationCode, reason, date }) => {
+          if (!tenantId || !adjustItem) return;
+
+          await adjustItemStock(
+            adjustItem.id,
+            { direction, quantity, locationCode, reason, date },
+            tenantId,
           );
 
           void queryClient.invalidateQueries({ queryKey: ["catalog"] });

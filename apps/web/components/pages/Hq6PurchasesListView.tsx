@@ -38,6 +38,7 @@ import {
 } from "@/lib/api/stockMovements";
 import { getSuppliersForPicker, loadMoreSuppliersForPicker, suppliersPickerHasMore } from "@/lib/api/suppliers";
 import { useServerListPage, serverSortProps, withListSort } from "@/lib/hooks/useServerListPage";
+import { useHq6Permissions } from "@/lib/hooks/useHq6Permissions";
 import { HQ6_TABLE_PAGE_SIZE } from "@/lib/api/fetchAllPages";
 import { useListExport } from "@/lib/hooks/useListExport";
 import { useListRecordModal } from "@/lib/hooks/useListRecordModal";
@@ -77,6 +78,7 @@ export function Hq6PurchasesListView() {
   const queryClient = useQueryClient();
   const { tenantCode, config } = useRouteTenant();
   const chrome = useHq6ListChrome("purchases");
+  const { requireCan } = useHq6Permissions();
 
   // Warm payment-account dropdown while the purchases list loads.
   useEffect(() => {
@@ -339,7 +341,10 @@ export function Hq6PurchasesListView() {
                 label: "Delete",
                 danger: true,
                 icon: <Trash2 className="h-3.5 w-3.5" />,
-                onClick: () => setDeleteTarget(row),
+                onClick: () => {
+                  if (!requireCan("purchase.delete")) return;
+                  setDeleteTarget(row);
+                },
               },
               {
                 id: "labels",
@@ -474,7 +479,7 @@ export function Hq6PurchasesListView() {
         render: (row) => row.createdByName ?? "—",
       },
     ],
-    [config?.businessLocations, openRecord, queryClient, router, tenantCode],
+    [config?.businessLocations, openRecord, queryClient, requireCan, router, tenantCode],
   );
 
   const columnOptions = useMemo(

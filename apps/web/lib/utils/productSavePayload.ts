@@ -85,6 +85,12 @@ export function buildProductSavePayload(input: {
   rehomeForeignLocation?: boolean;
   selectedLocationCodes: string[];
   locationDetails: ProductLocationDetailSlice[];
+  /**
+   * Edit path only: per-location quantity currently persisted, so a changed
+   * "Opening qty" can be sent on plain Save instead of being silently dropped.
+   * Keyed by location code; omit to leave stock untouched (create / legacy).
+   */
+  sourceQuantities?: Record<string, number>;
   skuFallback?: string;
   imageUrl?: string | null;
 }): ProductSavePayload {
@@ -98,6 +104,7 @@ export function buildProductSavePayload(input: {
     rehomeForeignLocation = false,
     selectedLocationCodes,
     locationDetails,
+    sourceQuantities,
     skuFallback,
     imageUrl,
   } = input;
@@ -117,16 +124,27 @@ export function buildProductSavePayload(input: {
         selectedLocationCodes.includes(row.locationCode),
       );
 
+  // Plain Save used to drop an edited "Opening qty" while toasting
+  // "Product updated" — include stock whenever the qty actually changed.
+  const qtyChanged =
+    sourceQuantities != null &&
+    activeLocations.some(
+      (row) =>
+        (Number(row.quantity) || 0) !==
+        (sourceQuantities[row.locationCode] ?? 0),
+    );
+
   const touchStock =
     !priceCatalogOnly &&
     (mode === "saveOpeningStock" ||
       !isEdit ||
+      qtyChanged ||
       (rehomeForeignLocation && activeLocations.length > 0));
   let locationStock: ItemLocationStockInput[] | undefined;
   if (touchStock && activeLocations.length > 0) {
     locationStock = activeLocations.map((row) => {
       const qty =
-        mode === "saveOpeningStock" || rehomeForeignLocation
+        mode === "saveOpeningStock" || rehomeForeignLocation || qtyChanged
           ? Number(row.quantity) || 0
           : 0;
       return {

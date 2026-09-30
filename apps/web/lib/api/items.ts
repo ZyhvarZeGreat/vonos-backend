@@ -391,6 +391,37 @@ export async function saveItemOpeningStock(
   );
 }
 
+export type StockAdjustmentDirection = "increase" | "decrease";
+
+/**
+ * Raise or lower on-hand qty. Server writes an `ADJ/…` movement so the change
+ * appears in Product Stock History — the correction path opening stock can't
+ * provide (its rows are append-only and can only add).
+ */
+export async function adjustItemStock(
+  id: string,
+  body: {
+    direction: StockAdjustmentDirection;
+    quantity: number;
+    locationCode?: string;
+    reason?: string;
+    date?: string;
+  },
+  tenantId?: string,
+): Promise<Item> {
+  const path = tenantId
+    ? withTenantQuery(`/items/${id}/adjust-stock`, tenantId)
+    : `/items/${id}/adjust-stock`;
+  const response = await apiFetch(path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) return throwApiError(response, "Failed to adjust stock");
+  clearItemOptionCache();
+  return response.json();
+}
+
 export async function deleteItem(tenantId: string, id: string): Promise<void> {
   const response = await apiFetch(withTenantQuery(`/items/${id}`, tenantId), {
     method: "DELETE",

@@ -15,6 +15,7 @@ import {
   isGroupStockConsumerTenant,
   isProductStockLocationCode,
   PRODUCT_STOCK_LOCATION_CODES,
+  shouldAdjustLocalItemStock,
 } from '@vonos/types';
 import { Prisma } from '@prisma/client';
 import { TenantDbService } from '../../common/prisma/tenant-db.service';
@@ -39,7 +40,11 @@ import {
   parseProductCsvRow,
 } from '../../common/utils/productCsvImport';
 import { parseOpeningStockCsvRow } from '../../common/utils/openingStockCsvImport';
-import { excludeOpeningStockPurchasesWhere } from '../../common/utils/openingStockMovement';
+import {
+  excludeOpeningStockPurchasesWhere,
+  isOpeningStockReference,
+  isStockAdjustmentReference,
+} from '../../common/utils/openingStockMovement';
 import { adjustItemLocationStock } from '../../common/utils/itemLocationStock';
 import { toNumber } from '../../common/utils/serializers';
 import { applyLastPurchasePrices } from '../../common/utils/lastPurchasePrices';
@@ -490,8 +495,10 @@ export class ItemsService {
         const newQty = runningQty;
         runningQty -= change;
 
-        const isOpening = movement.reference.startsWith('OS/');
+        const isOpening = isOpeningStockReference(movement.reference);
+        const isAdjustment = isStockAdjustmentReference(movement.reference);
         const infoParts = [
+          isAdjustment ? 'Stock adjustment' : null,
           isOpening ? 'Opening stock' : null,
           movement.supplier?.name ?? null,
           movement.notes?.trim() || null,
@@ -502,7 +509,11 @@ export class ItemsService {
           id: movement.id,
           date: movement.date.toISOString(),
           reference: movement.reference,
-          type: isOpening ? 'opening_stock' : movement.type,
+          type: isAdjustment
+            ? 'adjustment'
+            : isOpening
+              ? 'opening_stock'
+              : movement.type,
           status: movement.status,
           quantity: qty,
           quantityChange: change,
@@ -768,6 +779,138 @@ export class ItemsService {
         quantity: nextQty,
         unitCost: lastCost,
       },
+    });
+    void this.invalidateItemCaches(
+      homeTenantId !== requestTenantId ? [homeTenantId] : [],
+      { stockChanged: true },
+    );
+
+    const { row } = await this.findItemForRequest(id, { detail: true });
+    return serializeItem(row);
+  }
+
+  /**
+   * Manual stock correction — raise or lower on-hand qty.
+   *
+   * Opening stock is append-only and can only add, so a quantity that was
+   * imported too high has no other fix. This applies the delta and writes an
+   * `ADJ/…` movement so the correction shows up in Product Stock History.
+   * Kept out of purchase/inbound lists by `excludeOpeningStockPurchasesWhere`.
+   */
+  async adjustStock(
+    id: string,
+    body: {
+      direction: 'increase' | 'decrease';
+      quantity: number;
+      locationCode?: string;
+      reason?: string;
+      date?: string;
+    },
+  ): Promise<Item> {
+    const requestTenantId = this.tenantDb.requireTenantId();
+    const { row: existing, homeTenantId } = await this.findItemForRequest(id, {
+      brand: true,
+    });
+    const tenantId = homeTenantId;
+
+    const quantity = Math.trunc(Number(body.quantity));
+    if (!Number.isFinite(quantity) || quantity <= 0) {
+      throw new BadRequestException('Quantity must be a positive number');
+    }
+
+    const tenantRow = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { code: true, config: true },
+    });
+    const cfg = tenantRow?.config as { archetype?: string | null } | null;
+    const tenantCtx = {
+      code: tenantRow?.code ?? null,
+      archetype: cfg?.archetype ?? null,
+    };
+    if (!shouldAdjustLocalItemStock(tenantCtx, existing)) {
+      throw new BadRequestException(
+        'Stock adjustments are not available for this entity',
+      );
+    }
+
+    const validate = await this.tenantDb.businessLocationValidator();
+    const locationCode =
+      (body.locationCode !== undefined ? validate(body.locationCode) : null) ??
+      existing.locationCode ??
+      null;
+
+    const direction: 'increase' | 'decrease' =
+      body.direction === 'decrease' ? 'decrease' : 'increase';
+    const delta = direction === 'increase' ? quantity : -quantity;
+    const nextQuantity = existing.quantity + delta;
+    if (nextQuantity < 0) {
+      throw new BadRequestException(
+        `Insufficient stock for ${existing.sku} (requested ${quantity}, have ${existing.quantity})`,
+      );
+    }
+
+    const rawDate = body.date?.trim();
+    const date = rawDate ? new Date(`${rawDate}T12:00:00.000Z`) : new Date();
+    if (Number.isNaN(date.getTime())) {
+      throw new BadRequestException('Invalid adjustment date');
+    }
+    const reason = body.reason?.trim() || `Stock ${direction} by ${quantity}`;
+    const reference = `ADJ/${existing.sku}/${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+    const unitCost = toNumber(existing.costPrice);
+    const createdBy = await this.auditService.createdByFields();
+    const db = this.prisma.forTenant(homeTenantId);
+
+    await db.$transaction(async (tx) => {
+      await tx.item.update({
+        where: { id: existing.id },
+        data: {
+          quantity: nextQuantity,
+          status: deriveStatus(nextQuantity, existing.reorderPoint),
+        },
+      });
+      if (locationCode) {
+        await adjustItemLocationStock(tx, {
+          tenantId,
+          itemId: existing.id,
+          locationCode,
+          binLocation: existing.binLocation,
+          delta,
+        });
+      }
+      await tx.stockMovement.create({
+        data: {
+          tenantId,
+          type: direction === 'increase' ? 'inbound' : 'outbound',
+          reference,
+          // Already-applied states, so a later status edit cannot re-apply qty.
+          status: direction === 'increase' ? 'Received' : 'Shipped',
+          lines: [
+            {
+              itemId: existing.id,
+              sku: existing.sku,
+              name: existing.name,
+              quantity,
+              unitCost,
+            },
+          ],
+          itemCount: 1,
+          grandTotal: quantity * unitCost,
+          notes: reason,
+          locationCode,
+          date,
+          // Stock history only — never a supplier bill.
+          paymentStatus: null,
+          ...createdBy,
+        },
+      });
+    });
+
+    void this.auditService.log({
+      action: 'updated',
+      entityType: 'item',
+      entityId: existing.id,
+      summary: `Stock ${direction} by ${quantity} for ${existing.sku}`,
+      metadata: { reference, quantity, delta, locationCode, reason },
     });
     void this.invalidateItemCaches(
       homeTenantId !== requestTenantId ? [homeTenantId] : [],
