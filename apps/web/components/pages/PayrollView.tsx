@@ -197,24 +197,27 @@ export function PayrollView({
   defaultTab = "payrolls",
   embedded = false,
   allTenants = false,
+  myOnly = false,
 }: {
   defaultTab?: PayrollTab;
   embedded?: boolean;
   /** VAG HRM: list and pay payrolls across all businesses. */
   allTenants?: boolean;
+  /** Non-HR user: own payslips only, read-only (no groups / components). */
+  myOnly?: boolean;
 }) {
   const tenantId = useTenantId();
   const router = useRouter();
   const queryClient = useQueryClient();
   const { can, requireCan } = useAppPermissions();
-  const canCreatePayroll = can("essentials.create_payroll");
-  const canUpdatePayroll = can("essentials.update_payroll");
-  const canDeletePayroll = can("essentials.delete_payroll");
+  const canCreatePayroll = !myOnly && can("essentials.create_payroll");
+  const canUpdatePayroll = !myOnly && can("essentials.update_payroll");
+  const canDeletePayroll = !myOnly && can("essentials.delete_payroll");
   const isHq6 = useIsVaHq6();
   const { tenantName, tenantCode, config } = useRouteTenant();
   const currentYear = new Date().getFullYear();
   const [activeTab, setActiveTab] = useState<PayrollTab>(
-    allTenants ? "payrolls" : defaultTab,
+    allTenants || myOnly ? "payrolls" : defaultTab,
   );
   const [search, setSearch] = useState("");
   const [groupFilter, setGroupFilter] = useState("");
@@ -293,8 +296,8 @@ export function PayrollView({
   }
 
   useEffect(() => {
-    setActiveTab(defaultTab);
-  }, [defaultTab]);
+    setActiveTab(myOnly || allTenants ? "payrolls" : defaultTab);
+  }, [defaultTab, myOnly, allTenants]);
 
   const payrollListFilters = useMemo(
     () => ({
@@ -345,28 +348,29 @@ export function PayrollView({
 
   const groupsForFilterQuery = useQuery({
     queryKey: ["payroll-groups", filterTenantId, "filter-options"],
-    enabled: Boolean(filterTenantId) && activeTab === "payrolls",
+    enabled: Boolean(filterTenantId) && activeTab === "payrolls" && !myOnly,
     queryFn: () => getPayrollGroups(filterTenantId!),
     staleTime: 5 * 60_000,
   });
 
   const designationsForFilterQuery = useQuery({
     queryKey: ["designations", filterTenantId, "filter-options"],
-    enabled: Boolean(filterTenantId) && activeTab === "payrolls",
+    enabled: Boolean(filterTenantId) && activeTab === "payrolls" && !myOnly,
     queryFn: () => getDesignations(filterTenantId!),
     staleTime: 5 * 60_000,
   });
 
   const employeesForDeptFilterQuery = useQuery({
     queryKey: ["employees", filterTenantId, "dept-filter"],
-    enabled: Boolean(filterTenantId) && activeTab === "payrolls",
+    enabled: Boolean(filterTenantId) && activeTab === "payrolls" && !myOnly,
     queryFn: () => getEmployees(filterTenantId!),
     staleTime: 5 * 60_000,
   });
 
   const employeesForComponentQuery = useQuery({
     queryKey: ["employees", groupsTenantId, "component-form"],
-    enabled: Boolean(groupsTenantId) && activeTab === "components",
+    enabled:
+      Boolean(groupsTenantId) && activeTab === "components" && !myOnly,
     queryFn: () => getEmployees(groupsTenantId!),
     staleTime: 5 * 60_000,
   });
@@ -415,6 +419,7 @@ export function PayrollView({
       allTenants ? "all" : tenantId,
       "ytd",
       currentYear,
+      myOnly ? "own" : "all",
     ],
     enabled: canLoadPayrolls && activeTab === "payrolls",
     search,
@@ -464,7 +469,7 @@ export function PayrollView({
 
   const addEmployeesQuery = useQuery({
     queryKey: ["payroll-candidates", writeTenantId],
-    enabled: Boolean(writeTenantId) && addFlowActive,
+    enabled: Boolean(writeTenantId) && addFlowActive && !myOnly,
     queryFn: () => getPayrollCandidates(writeTenantId!),
     staleTime: 5 * 60_000,
   });
@@ -708,7 +713,7 @@ export function PayrollView({
                 },
               ]
             : []),
-          ...((!allTenants || filterTenantId)
+          ...((!allTenants || filterTenantId) && !myOnly
             ? [
                 {
                   id: "group",
@@ -1442,7 +1447,9 @@ export function PayrollView({
           emptyState={{
             message: allTenants
               ? "No payroll records across businesses yet."
-              : "No payroll records yet.",
+              : myOnly
+                ? "You don't have any payroll records yet."
+                : "No payroll records yet.",
           }}
           stickyFirstColumn
         />
@@ -1604,12 +1611,14 @@ export function PayrollView({
   const shell = (
     <ListPageShell
       tabs={
-        allTenants && !filterTenantId
-          ? PAYROLL_TABS.filter((t) => t.id === "payrolls").map((t) => ({
-              id: t.id,
-              label: t.label,
-            }))
-          : PAYROLL_TABS.map((t) => ({ id: t.id, label: t.label }))
+        myOnly
+          ? [{ id: "payrolls", label: "My Payrolls" }]
+          : allTenants && !filterTenantId
+            ? PAYROLL_TABS.filter((t) => t.id === "payrolls").map((t) => ({
+                id: t.id,
+                label: t.label,
+              }))
+            : PAYROLL_TABS.map((t) => ({ id: t.id, label: t.label }))
       }
       activeTab={activeTab}
       onTabChange={(id) => {
@@ -1641,8 +1650,14 @@ export function PayrollView({
             : componentsPage.setPageSize
       }
       className={embedded && isHq6 ? "border-0 shadow-none bg-transparent" : embedded ? "border-0 shadow-none" : undefined}
-      hq6Title="HRM"
-      hq6Subtitle={allTenants ? "Payroll — all businesses" : "Payroll"}
+      hq6Title={myOnly ? "My Payrolls" : "HRM"}
+      hq6Subtitle={
+        myOnly
+          ? "Your payslips and payments"
+          : allTenants
+            ? "Payroll — all businesses"
+            : "Payroll"
+      }
       hq6PageChrome={isHq6}
     >
       {panelBody}
@@ -1656,11 +1671,13 @@ export function PayrollView({
   return (
     <div className="space-y-6">
       <EntityContextBanner
-        module="HRM — Payroll"
+        module={myOnly ? "HRM — My Payrolls" : "HRM — Payroll"}
         description={
-          allTenants
-            ? "Select employees to start a payroll group, then finalize and pay from Payroll Groups."
-            : "Add employees to a payroll group, finalize it, then pay from Payroll Groups."
+          myOnly
+            ? "Your payslips, payment history and printable statements."
+            : allTenants
+              ? "Select employees to start a payroll group, then finalize and pay from Payroll Groups."
+              : "Add employees to a payroll group, finalize it, then pay from Payroll Groups."
         }
       />
       {shell}

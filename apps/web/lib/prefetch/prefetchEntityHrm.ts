@@ -1,4 +1,5 @@
 import type { QueryClient } from "@tanstack/react-query";
+import { resolveHrmAccess } from "@vonos/types";
 import {
   getPayrollsPage,
   getWorkforcePage,
@@ -7,6 +8,7 @@ import {
 import { ADMIN_ENTITY_STALE_MS } from "@/lib/admin/prefetchAdminEntity";
 import { DEFAULT_TABLE_PAGE_SIZE } from "@/lib/api/fetchAllPages";
 import { stableListFilterKey } from "@/lib/utils/stableListFilterKey";
+import { useAuthStore } from "@/stores/authStore";
 
 /** Same filterKey shape useServerListPage builds for empty search + no sort. */
 function emptyListFilterKey(filters: Record<string, unknown> = {}): string {
@@ -29,38 +31,47 @@ export function prefetchEntityHrm(
   const payrollFilters = { year };
   const payrollFilterKey = emptyListFilterKey(payrollFilters);
 
-  void queryClient.prefetchQuery({
-    queryKey: ["workforce", tenantId, "stats"],
-    queryFn: () => getWorkforceStats(tenantId),
-    staleTime: ADMIN_ENTITY_STALE_MS,
-  });
+  // Workforce is HRM-private — don't fire 403s for own-payslip-only users.
+  const { role, tenantRoleName, tenantRolePermissions } =
+    useAuthStore.getState();
+  const canManageHrm =
+    resolveHrmAccess({ role, tenantRoleName, tenantRolePermissions }) ===
+    "full";
 
-  void queryClient.prefetchQuery({
-    queryKey: [
-      "workforce",
-      tenantId,
-      workforceFilterKey,
-      0,
-      null,
-      DEFAULT_TABLE_PAGE_SIZE,
-      null,
-      null,
-    ],
-    queryFn: () =>
-      getWorkforcePage(tenantId, undefined, DEFAULT_TABLE_PAGE_SIZE, undefined, {
-        includeSummary: false,
-      }),
-    staleTime: ADMIN_ENTITY_STALE_MS,
-  });
+  if (canManageHrm) {
+    void queryClient.prefetchQuery({
+      queryKey: ["workforce", tenantId, "stats"],
+      queryFn: () => getWorkforceStats(tenantId),
+      staleTime: ADMIN_ENTITY_STALE_MS,
+    });
 
-  void queryClient.prefetchQuery({
-    queryKey: ["workforce", tenantId, "summary", workforceFilterKey],
-    queryFn: () =>
-      getWorkforcePage(tenantId, undefined, 1, undefined, {
-        includeSummary: true,
-      }),
-    staleTime: ADMIN_ENTITY_STALE_MS,
-  });
+    void queryClient.prefetchQuery({
+      queryKey: [
+        "workforce",
+        tenantId,
+        workforceFilterKey,
+        0,
+        null,
+        DEFAULT_TABLE_PAGE_SIZE,
+        null,
+        null,
+      ],
+      queryFn: () =>
+        getWorkforcePage(tenantId, undefined, DEFAULT_TABLE_PAGE_SIZE, undefined, {
+          includeSummary: false,
+        }),
+      staleTime: ADMIN_ENTITY_STALE_MS,
+    });
+
+    void queryClient.prefetchQuery({
+      queryKey: ["workforce", tenantId, "summary", workforceFilterKey],
+      queryFn: () =>
+        getWorkforcePage(tenantId, undefined, 1, undefined, {
+          includeSummary: true,
+        }),
+      staleTime: ADMIN_ENTITY_STALE_MS,
+    });
+  }
 
   void queryClient.prefetchQuery({
     queryKey: [

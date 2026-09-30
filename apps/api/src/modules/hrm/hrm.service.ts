@@ -1018,6 +1018,29 @@ export class HrmService {
     });
   }
 
+  /**
+   * Employee records linked to a user — used to scope a non-HR caller of
+   * `GET /hrm/payroll` to their own payslips. Empty array means "match
+   * nothing" (the caller has no payslips yet).
+   */
+  async listEmployeeRecordIdsForUser(userId: string): Promise<string[]> {
+    const rows = await this.tenantDb.db.employee.findMany({
+      where: { userId, deletedAt: null },
+      select: { id: true },
+    });
+    return rows.map((row) => row.id);
+  }
+
+  /** Employee record a payroll row belongs to (ownership checks). */
+  async getPayrollEmployeeRecordId(id: string): Promise<string | null> {
+    const tenantId = this.tenantDb.requireTenantId();
+    const payroll = await this.tenantDb.db.payroll.findFirst({
+      where: { id, tenantId, deletedAt: null },
+      select: { employeeRecordId: true },
+    });
+    return payroll?.employeeRecordId ?? null;
+  }
+
   async createEmployee(dto: CreateEmployeeRequest): Promise<Employee> {
     const tenantId = this.tenantDb.requireTenantId();
     const name = dto.name?.trim();
@@ -1474,6 +1497,7 @@ export class HrmService {
       month: filters.month,
       payrollGroupId: filters.payrollGroupId,
       employeeRecordId: filters.employeeRecordId,
+      employeeRecordIds: filters.employeeRecordIds?.join(','),
       locationCode: filters.locationCode,
       designationId: filters.designationId,
       status: filters.status,
@@ -1587,6 +1611,10 @@ export class HrmService {
         : {}),
       ...(filters.employeeRecordId
         ? { employeeRecordId: filters.employeeRecordId }
+        : {}),
+      // Own-payslip scoping for non-HR callers (HRM access guard).
+      ...(filters.employeeRecordIds
+        ? { employeeRecordId: { in: filters.employeeRecordIds } }
         : {}),
       ...(filters.locationCode
         ? { locationCode: filters.locationCode }
@@ -1775,39 +1803,49 @@ export class HrmService {
         ? dto.status
         : 'draft';
 
-    const row = await this.tenantDb.db.payroll.create({
-      data: {
-        tenantId,
-        employeeRecordId,
-        employeeName,
-        employeeId,
-        designationId,
-        payrollGroupId,
-        locationCode,
-        grossPay: dto.grossPay,
-        totalAllowance: allowance,
-        totalDeduction: deduction,
-        netPay,
-        status,
-        payrollMonth: new Date(dto.payrollMonth),
-        note: dto.note ?? null,
-      },
-      include: {
-        payrollGroup: true,
-        designation: { select: { name: true } },
-        employeeRecord: {
-          select: {
-            accountHolderName: true,
-            bankName: true,
-            bankBranch: true,
-            bankCode: true,
-            bankAccountNo: true,
-            taxPayerId: true,
+    const payrollMonth = new Date(dto.payrollMonth);
+    if (Number.isNaN(payrollMonth.getTime())) {
+      throw new BadRequestException('payrollMonth must be a valid date');
+    }
+
+    // Payroll + payslip invoice in one transaction — a failed invoice must not
+    // leave an orphan payroll row behind (the UI then retries and duplicates).
+    const row = await this.tenantDb.db.$transaction(async (tx) => {
+      const created = await tx.payroll.create({
+        data: {
+          tenantId,
+          employeeRecordId,
+          employeeName,
+          employeeId,
+          designationId,
+          payrollGroupId,
+          locationCode,
+          grossPay: dto.grossPay,
+          totalAllowance: allowance,
+          totalDeduction: deduction,
+          netPay,
+          status,
+          payrollMonth,
+          note: dto.note ?? null,
+        },
+        include: {
+          payrollGroup: true,
+          designation: { select: { name: true } },
+          employeeRecord: {
+            select: {
+              accountHolderName: true,
+              bankName: true,
+              bankBranch: true,
+              bankCode: true,
+              bankAccountNo: true,
+              taxPayerId: true,
+            },
           },
         },
-      },
+      });
+      await this.invoiceHub.ensurePayrollInvoice(tx, created);
+      return created;
     });
-    await this.invoiceHub.ensurePayrollInvoice(this.tenantDb.db, row);
     void invalidateTenantDashboardCache(this.cache, tenantId);
     return this.serializePayroll(row);
   }
@@ -2757,6 +2795,36 @@ export class HrmService {
     }
     const deletedAt = new Date();
     await this.tenantDb.db.$transaction(async (tx) => {
+      const payrollIds = (
+        await tx.payroll.findMany({
+          where: { tenantId, payrollGroupId: id, deletedAt: null },
+          select: { id: true },
+        })
+      ).map((row) => row.id);
+
+      // Archive the group's invoices in the same pass as the payrolls —
+      // leaving them live produces invoices pointing at deleted payrolls.
+      const invoices = await tx.invoice.findMany({
+        where: {
+          tenantId,
+          deletedAt: null,
+          OR: [
+            { payrollGroupId: id },
+            ...(payrollIds.length ? [{ payrollId: { in: payrollIds } }] : []),
+          ],
+        },
+        select: { id: true, reference: true },
+      });
+      for (const invoice of invoices) {
+        await tx.invoice.update({
+          where: { id: invoice.id },
+          data: {
+            deletedAt,
+            reference: `${invoice.reference}__del_${invoice.id.slice(-8)}`,
+          },
+        });
+      }
+
       await tx.payroll.updateMany({
         where: { tenantId, payrollGroupId: id, deletedAt: null },
         data: { deletedAt },

@@ -350,6 +350,12 @@ export interface PayrollFilters {
   search?: string;
   payrollGroupId?: string;
   employeeRecordId?: string;
+  /**
+   * Server-only: restricts the list to a set of employee records (used to
+   * scope a non-HR user to their own payslips). Never populated from HTTP
+   * query params — the HRM controller sets it after resolving the caller.
+   */
+  employeeRecordIds?: string[];
   locationCode?: string;
   designationId?: string;
   department?: string;

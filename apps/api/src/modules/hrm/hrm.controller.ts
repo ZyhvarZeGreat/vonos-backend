@@ -15,12 +15,15 @@ import {
 import type { Request } from 'express';
 import type { AuthenticatedUser } from '../../common/decorators/roles.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { HrmAccess } from '../../common/decorators/hrmAccess.decorator';
 import {
   JwtAuthGuard,
   RolesGuard,
   TenantGuard,
 } from '../../common/guards/auth.guards';
+import { HrmAccessGuard } from '../../common/guards/hrm-access.guard';
 import { userCanHrmPayrollWrite } from '../../common/utils/userPermissions';
+import { resolveHrmAccess, type HrmAccessLevel } from '@vonos/types';
 import { HrmService } from './hrm.service';
 import { HrmEssentialsService } from './hrm-essentials.service';
 import type {
@@ -52,8 +55,18 @@ function requirePayrollPermission(
   }
 }
 
+/** HRM visibility for the caller: whole module vs own payslips only. */
+function hrmAccessOf(req: AuthedRequest): HrmAccessLevel {
+  return resolveHrmAccess({
+    role: req.user.role,
+    tenantRoleName: req.user.tenantRoleName,
+    tenantRolePermissions: req.user.tenantRolePermissions,
+  });
+}
+
 @Controller('hrm')
-@UseGuards(JwtAuthGuard, TenantGuard, RolesGuard)
+@HrmAccess('full')
+@UseGuards(JwtAuthGuard, TenantGuard, RolesGuard, HrmAccessGuard)
 export class HrmController {
   constructor(
     private readonly service: HrmService,
@@ -86,7 +99,9 @@ export class HrmController {
     return this.service.getWorkforceStats();
   }
 
+  /** Shared roster used by sales / contact pickers — not HRM-private. */
   @Get('designations')
+  @HrmAccess('any')
   listDesignations(
     @Query('cursor') cursor?: string,
     @Query('limit') limit?: string,
@@ -122,7 +137,9 @@ export class HrmController {
     return this.service.deleteDesignation(id);
   }
 
+  /** Shared roster used by sales / contact pickers — not HRM-private. */
   @Get('employees')
+  @HrmAccess('any')
   listEmployees(
     @Query('cursor') cursor?: string,
     @Query('limit') limit?: string,
@@ -153,7 +170,16 @@ export class HrmController {
   }
 
   @Get('employees/by-user/:userId')
-  getEmployeeByUser(@Param('userId') userId: string) {
+  @HrmAccess('any')
+  async getEmployeeByUser(
+    @Req() request: AuthedRequest,
+    @Param('userId') userId: string,
+  ) {
+    if (hrmAccessOf(request) === 'own-payroll' && userId !== request.user.sub) {
+      throw new ForbiddenException(
+        'You can only view your own employee record',
+      );
+    }
     return this.service.getEmployeeByUserId(userId);
   }
 
@@ -170,7 +196,8 @@ export class HrmController {
   }
 
   @Get('payroll')
-  listPayrolls(
+  @HrmAccess('any')
+  async listPayrolls(
     @Req() request: AuthedRequest,
     @Query('allTenants') allTenants?: string,
     @Query('cursor') cursor?: string,
@@ -212,6 +239,13 @@ export class HrmController {
     };
     if (allTenants === 'true') {
       return this.service.listPayrollsAllTenants(request.user.role, filters);
+    }
+    // Non-HR callers only ever see their own payslips — any client-supplied
+    // employee filter is discarded.
+    if (hrmAccessOf(request) !== 'full') {
+      delete filters.employeeRecordId;
+      filters.employeeRecordIds =
+        await this.service.listEmployeeRecordIdsForUser(request.user.sub);
     }
     return this.service.listPayrolls(filters);
   }
@@ -263,7 +297,20 @@ export class HrmController {
   }
 
   @Get('payroll/:id/payments')
-  getPayrollPayments(@Param('id') id: string) {
+  @HrmAccess('any')
+  async getPayrollPayments(
+    @Req() request: AuthedRequest,
+    @Param('id') id: string,
+  ) {
+    if (hrmAccessOf(request) !== 'full') {
+      const ownRecordIds = await this.service.listEmployeeRecordIdsForUser(
+        request.user.sub,
+      );
+      const payrollRecordId = await this.service.getPayrollEmployeeRecordId(id);
+      if (!payrollRecordId || !ownRecordIds.includes(payrollRecordId)) {
+        throw new ForbiddenException('You can only view your own payslip');
+      }
+    }
     return this.service.getPayrollPayments(id);
   }
 

@@ -35,6 +35,7 @@ export * from "./invoice";
 export * from "./invoiceDocument";
 export * from "./payroll";
 export * from "./hrmEssentials";
+export * from "./hrmAccess";
 export * from "./retailCatalog";
 export * from "./discount";
 export * from "./variation";

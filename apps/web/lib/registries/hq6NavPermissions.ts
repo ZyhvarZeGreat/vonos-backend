@@ -93,6 +93,23 @@ function routeSlug(route: string): string {
 }
 
 /**
+ * Users without full HRM access only ever see their own payslips, so the
+ * sidebar entry reads "My Payrolls" instead of "HRM".
+ */
+export function relabelHrmNavForOwnPayroll(
+  sections: NavSection[],
+): NavSection[] {
+  return sections.map((section) => ({
+    ...section,
+    items: section.items.map((item) =>
+      routeSlug(item.route) === "hrm"
+        ? { ...item, label: "My Payrolls" }
+        : item,
+    ),
+  }));
+}
+
+/**
  * Drop nav links the current user cannot view. Sections with no remaining
  * items are removed (except Home).
  */

@@ -12,7 +12,10 @@ import { useRouteTenant, useTenantId } from "@/lib/hooks/useRouteTenant";
 import {
   createPayroll,
   createPayrollGroup,
+  deletePayroll,
+  deletePayrollGroup,
   getLatestPayrollForEmployee,
+  updatePayrollStatus,
 } from "@/lib/api/hrm";
 import { toast } from "@/stores/toastStore";
 import { PayrollGroupEmployeeForm } from "./PayrollGroupEmployeeForm";
@@ -142,29 +145,45 @@ export function PayrollGroupCreatePage({
 
       const payrollMonth = `${session.month}-01`;
       const payrollStatus = groupStatus === "final" ? "final" : "draft";
-      for (const employee of session.employees) {
-        const draft = employeeDrafts[employee.id] ?? emptyEmployeeDraft();
-        const basic = basicSalaryTotal(draft);
-        if (!Number.isFinite(basic) || basic <= 0) {
-          throw new Error(
-            `Enter work duration and amount per unit for ${employee.employeeName}`,
-          );
-        }
-        const { grossPay, totalAllowance, totalDeduction } =
-          payrollAmountsFromDraft(draft);
+      const createdPayrollIds: string[] = [];
+      try {
+        for (const employee of session.employees) {
+          const draft = employeeDrafts[employee.id] ?? emptyEmployeeDraft();
+          const basic = basicSalaryTotal(draft);
+          if (!Number.isFinite(basic) || basic <= 0) {
+            throw new Error(
+              `Enter work duration and amount per unit for ${employee.employeeName}`,
+            );
+          }
+          const { grossPay, totalAllowance, totalDeduction } =
+            payrollAmountsFromDraft(draft);
 
-        await createPayroll(writeTenantId, {
-          employeeRecordId: employee.id,
-          payrollGroupId: group.id,
-          locationCode:
-            employee.locationCode || session.locationCode || undefined,
-          grossPay,
-          totalAllowance,
-          totalDeduction,
-          status: payrollStatus,
-          payrollMonth,
-          note: buildPayrollNoteFromDraft(draft),
-        });
+          const payroll = await createPayroll(writeTenantId, {
+            employeeRecordId: employee.id,
+            payrollGroupId: group.id,
+            locationCode:
+              employee.locationCode || session.locationCode || undefined,
+            grossPay,
+            totalAllowance,
+            totalDeduction,
+            status: payrollStatus,
+            payrollMonth,
+            note: buildPayrollNoteFromDraft(draft),
+          });
+          createdPayrollIds.push(payroll.id);
+        }
+      } catch (error) {
+        // All-or-nothing: a half-built group would otherwise survive and a
+        // retry (or the next click) would duplicate every saved payroll.
+        for (const payrollId of createdPayrollIds.reverse()) {
+          // deletePayroll refuses `final` rows — step back to draft first.
+          await updatePayrollStatus(writeTenantId, payrollId, "draft").catch(
+            () => undefined,
+          );
+          await deletePayroll(writeTenantId, payrollId).catch(() => undefined);
+        }
+        await deletePayrollGroup(writeTenantId, group.id).catch(() => undefined);
+        throw error;
       }
 
       return { group, status: groupStatus };

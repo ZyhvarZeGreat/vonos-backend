@@ -7,10 +7,14 @@ import { TopBar } from "@/components/organisms/TopBar";
 import { isNavRouteActive, parseTenantPath } from "@/lib/utils/tenantRoutes";
 import { getEntityPageMeta } from "@/lib/registries/entityPageMeta";
 import { navSectionsForTenant } from "@/lib/utils/navRoutes";
-import { filterNavSectionsByPermissions } from "@/lib/registries/hq6NavPermissions";
+import {
+  filterNavSectionsByPermissions,
+  relabelHrmNavForOwnPayroll,
+} from "@/lib/registries/hq6NavPermissions";
 import { useRouteTenant } from "@/lib/hooks/useRouteTenant";
 import { useRecordTitle } from "@/lib/hooks/useRecordTitle";
 import { useAppPermissions } from "@/lib/hooks/useHq6Permissions";
+import { useHrmAccess } from "@/lib/hooks/useHrmAccess";
 import { TenantShell } from "@/components/layouts/TenantShell";
 import { AdminViewingBanner } from "@/components/molecules/AdminViewingBanner";
 import { PageTransition } from "@/components/atoms/PageTransition";
@@ -42,11 +46,13 @@ function TenantLayoutInner({ children }: { children: React.ReactNode }) {
   const authEmail = useAuthStore((state) => state.email);
   const authRole = useAuthStore((state) => state.role);
   const { canAny, isFullAccess } = useAppPermissions();
+  const { canManageHrm } = useHrmAccess();
   const navSections = useMemo(() => {
-    const sections = navSectionsForTenant(params.tenant, config);
+    let sections = navSectionsForTenant(params.tenant, config);
+    if (!canManageHrm) sections = relabelHrmNavForOwnPayroll(sections);
     if (isFullAccess) return sections;
     return filterNavSectionsByPermissions(sections, canAny);
-  }, [params.tenant, config, canAny, isFullAccess]);
+  }, [params.tenant, config, canAny, isFullAccess, canManageHrm]);
   const useUposShell = isUposShellTenant(params.tenant);
 
   const { section, recordId } = parseTenantPath(pathname);

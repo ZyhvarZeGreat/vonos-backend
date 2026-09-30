@@ -20,6 +20,7 @@ import {
 } from "@/components/pages/HrmEssentialsViews";
 import { getWorkforceStats } from "@/lib/api/hrm";
 import { useIsVaHq6 } from "@/lib/hooks/useIsVaHq6";
+import { useHrmAccess } from "@/lib/hooks/useHrmAccess";
 import { useRouteTenant } from "@/lib/hooks/useRouteTenant";
 import { ADMIN_ENTITY_STALE_MS } from "@/lib/admin/prefetchAdminEntity";
 import {
@@ -469,6 +470,7 @@ export function HrmPageView({
   );
   const tenantConfig = useTenantStore((state) => state.tenantConfig);
   const isHq6 = useIsVaHq6();
+  const { canManageHrm } = useHrmAccess();
   const essentialsEnabled =
     tenantConfig?.enabledModules.includes("hrmEssentials") ?? false;
   const fullTabs = forceFullTabs || isHq6 || essentialsEnabled;
@@ -476,6 +478,8 @@ export function HrmPageView({
   const visibleTabs = useMemo(
     () =>
       HRM_TABS.filter((tab) => {
+        // Without full HRM access the module collapses to own payslips.
+        if (!canManageHrm) return tab.id === "payroll";
         if (summaryOnly) return tab.id === "dashboard";
         if (isHq6) {
           return !["pay-components", "hr-people"].includes(tab.id);
@@ -491,12 +495,22 @@ export function HrmPageView({
           "sales-targets",
           "settings",
         ].includes(tab.id);
-      }).map((tab) =>
-        (forceFullTabs || isHq6 || summaryOnly) && tab.id === "dashboard"
+      }).map((tab) => {
+        if (!canManageHrm && tab.id === "payroll") {
+          return { ...tab, label: "My Payrolls" };
+        }
+        return (forceFullTabs || isHq6 || summaryOnly) &&
+          tab.id === "dashboard"
           ? { ...tab, label: "HRM" }
-          : tab,
-      ),
-    [forceFullTabs, fullTabs, isHq6, summaryOnly],
+          : tab;
+      }),
+    [
+      canManageHrm,
+      forceFullTabs,
+      fullTabs,
+      isHq6,
+      summaryOnly,
+    ],
   );
 
   useEffect(() => {
@@ -505,9 +519,9 @@ export function HrmPageView({
 
   useEffect(() => {
     if (!visibleTabs.some((tab) => tab.id === activeTab)) {
-      setActiveTab("dashboard");
+      setActiveTab(canManageHrm ? "dashboard" : "payroll");
     }
-  }, [activeTab, visibleTabs]);
+  }, [activeTab, visibleTabs, canManageHrm]);
 
   const tabContent = (() => {
     switch (activeTab) {
@@ -527,7 +541,7 @@ export function HrmPageView({
       case "pay-components":
         return <PayrollView embedded defaultTab="components" />;
       case "payroll":
-        return <PayrollView embedded defaultTab="payrolls" />;
+        return <PayrollView embedded defaultTab="payrolls" myOnly={!canManageHrm} />;
       case "holiday":
         return <HrmHolidayView />;
       case "departments":
@@ -556,8 +570,11 @@ export function HrmPageView({
 
   /** UPOS: brand = HRM (dashboard); other sections live in the secondary navbar. */
   const hrmNavItems = useMemo(
-    () => visibleTabs.filter((tab) => tab.id !== "dashboard"),
-    [visibleTabs],
+    () =>
+      canManageHrm
+        ? visibleTabs.filter((tab) => tab.id !== "dashboard")
+        : [],
+    [canManageHrm, visibleTabs],
   );
 
   // VAG summaryOnly: parent Admin page already provides Hq6PageFrame.
@@ -568,6 +585,7 @@ export function HrmPageView({
   // HQ6 (all operating entities): Essentials-style module nav + content.
   // Matches hq6.vonosautomarket.com/hrm/dashboard — no extra content-header.
   if (isHq6) {
+    const homeTab: HrmTab = canManageHrm ? "dashboard" : "payroll";
     return (
       <div className="hq6-page hq6-hrm-page">
         <nav
@@ -579,13 +597,14 @@ export function HrmPageView({
               <button
                 type="button"
                 className={
-                  activeTab === "dashboard"
+                  activeTab === homeTab
                     ? "navbar-brand is-active"
                     : "navbar-brand"
                 }
-                onClick={() => setActiveTab("dashboard")}
+                onClick={() => setActiveTab(homeTab)}
               >
-                <i className="fa fas fa-users" aria-hidden /> HRM
+                <i className="fa fas fa-users" aria-hidden />{" "}
+                {canManageHrm ? "HRM" : "My Payrolls"}
               </button>
             </div>
             <ul className="nav navbar-nav">
@@ -616,8 +635,12 @@ export function HrmPageView({
       showExport={showToolbar}
       showDateRange={false}
       showSearch={false}
-      hq6Title="HRM"
-      hq6Subtitle="Human resource management"
+      hq6Title={canManageHrm ? "HRM" : "My Payrolls"}
+      hq6Subtitle={
+        canManageHrm
+          ? "Human resource management"
+          : "Your payslips and payments"
+      }
       hq6PageChrome
     >
       {tabContent}
