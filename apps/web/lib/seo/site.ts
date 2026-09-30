@@ -18,15 +18,15 @@ export function shopProductPath(sku: string): string {
   return `/shop/${encodeURIComponent(sku.trim())}`;
 }
 
-export const DEFAULT_OG_IMAGE = "/images/hero/hero.webp";
+export const DEFAULT_OG_IMAGE = "/images/vonos-photos/IMG_0437.jpg";
 
 export const DEFAULT_KEYWORDS = [
   "Vonos",
   "auto workshop Abuja",
-  "car servicing",
-  "MOT",
-  "genuine auto parts",
-  "brake pads",
-  "car diagnostics",
-  "Paystack auto parts",
+  "car servicing Kubwa",
+  "car repair Abuja",
+  "car diagnostics Abuja",
+  "genuine auto parts Nigeria",
+  "brake pads Abuja",
+  "Toyota servicing Abuja",
 ];

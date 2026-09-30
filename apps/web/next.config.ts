@@ -42,6 +42,16 @@ const nextConfig: NextConfig = {
         destination: "/VISP",
         permanent: true,
       },
+      {
+        source: "/institute",
+        destination: "/academy",
+        permanent: true,
+      },
+      {
+        source: "/institute/:path*",
+        destination: "/academy",
+        permanent: true,
+      },
     ];
 
     // Apex `/` is the customer marketing site (app/(marketing)/page.tsx).

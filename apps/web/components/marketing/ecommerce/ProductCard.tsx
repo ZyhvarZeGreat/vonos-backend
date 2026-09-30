@@ -5,10 +5,12 @@ import Link from "next/link";
 import { useState } from "react";
 
 import { formatShopLabel, formatShopPrice, type ShopProduct } from "@/lib/marketing/shop-catalog";
+import {
+  isShopPlaceholderIcon,
+  resolveShopProductImage,
+} from "@/lib/marketing/shop-stock-images";
 import { shopProductPath } from "@/lib/seo/site";
 import { useShopCart } from "@/stores/shopCartStore";
-
-const FALLBACK_ICON = "/images/icons/service-01.svg";
 
 type ProductCardProps = {
   product: ShopProduct;
@@ -21,18 +23,20 @@ export default function ProductCard({ product }: ProductCardProps) {
   const unpriced = product.price <= 0;
   const href = shopProductPath(product.sku ?? product.id);
   const name = formatShopLabel(product.name);
-  const placeholder = imageBroken || product.icon.startsWith("/images/icons/");
+  const stockFallback = resolveShopProductImage({
+    imageUrl: null,
+    name: product.name,
+    category: product.category,
+    sku: product.sku,
+  });
+  const placeholder = imageBroken || isShopPlaceholderIcon(product.icon);
+  const imageSrc = placeholder ? stockFallback : product.icon;
 
   return (
     <article className="vg-pcard" data-node-id="39:1465">
-      <div className="vg-pcard__frame" data-placeholder={placeholder}>
+      <div className="vg-pcard__frame" data-placeholder={placeholder ? "stock" : undefined}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={imageBroken ? FALLBACK_ICON : product.icon}
-          alt=""
-          loading="lazy"
-          onError={() => setImageBroken(true)}
-        />
+        <img src={imageSrc} alt="" loading="lazy" onError={() => setImageBroken(true)} />
         <Link href={href} className="vg-pcard__hit" aria-label={name} />
         {outOfStock ? (
           <span className="vg-pcard__flag">Out of stock</span>
@@ -47,7 +51,7 @@ export default function ProductCard({ product }: ProductCardProps) {
           </button>
         )}
       </div>
-      <div>
+      <div className="vg-pcard__meta">
         <h3 className="vg-pcard__name">
           <Link href={href}>{name}</Link>
         </h3>

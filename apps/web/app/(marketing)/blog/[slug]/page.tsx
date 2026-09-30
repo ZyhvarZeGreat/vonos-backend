@@ -7,6 +7,11 @@ import SiteFooter from "@/components/marketing/SiteFooter";
 import SiteNav from "@/components/marketing/SiteNav";
 import WebflowClientEffects from "@/components/marketing/WebflowClientEffects";
 import {
+  articleJsonLd,
+  breadcrumbJsonLd,
+  jsonLdScript,
+} from "@/lib/seo/schema";
+import {
   fetchAllPublicCmsSlugs,
   fetchPublicCmsPost,
   fetchPublicCmsPosts,
@@ -44,9 +49,38 @@ export default async function BlogPostPage({ params }: BlogPostPageProps) {
 
   const catalog = await fetchPublicCmsPosts(12).catch(() => ({ items: [] }));
   const related = catalog.items.filter((item) => item.slug !== post.slug).slice(0, 3);
+  const path = `/blog/${post.slug}`;
 
   return (
     <>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: jsonLdScript(
+            articleJsonLd({
+              headline: post.title,
+              description: post.excerpt,
+              path,
+              image: post.coverImageUrl,
+              datePublished: post.publishedAt ?? post.createdAt,
+              dateModified: post.updatedAt ?? post.createdAt,
+              authorName: post.author,
+            }),
+          ),
+        }}
+      />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: jsonLdScript(
+            breadcrumbJsonLd([
+              { name: "Home", path: "/" },
+              { name: "Blog", path: "/blog" },
+              { name: post.title, path },
+            ]),
+          ),
+        }}
+      />
       <MotocareMotion />
       <WebflowClientEffects />
       <main className="main main--subpage vg-page">

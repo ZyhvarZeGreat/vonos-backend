@@ -6,7 +6,7 @@ export default function FooterCtaScrollExpand() {
     <div className="footer-cta section-spacing-top vonos-footer-cta-band">
       <div className="footer-cta-item vonos-footer-cta-media">
         <Image
-          src="/images/contact/footer-cta-bg.webp"
+          src="/images/vonos-photos/IMG_0474.jpg"
           alt="Vonos workshop"
           fill
           className="footer-cta-image"

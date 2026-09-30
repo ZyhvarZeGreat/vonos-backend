@@ -9,19 +9,47 @@ import ProductCard from "@/components/marketing/ecommerce/ProductCard";
 import SectionHead from "@/components/marketing/ecommerce/SectionHead";
 import { refreshMarketingScroll } from "@/components/marketing/MotocareMotion";
 import { formatShopLabel, formatShopPrice, type ShopProduct } from "@/lib/marketing/shop-catalog";
+import { BROWSE_STOCK_IMAGES } from "@/lib/marketing/shop-stock-images";
 import { fetchStoreCatalog } from "@/lib/marketing/store-api";
+import { SHOP_FEATURE_IMAGE } from "@/lib/marketing/vonos-photos";
 import { shopProductPath } from "@/lib/seo/site";
 
 const CATALOG_PAGE_SIZE = 100;
-const CATALOG_MAX_ITEMS = 2000;
+/** Cover the full VISP+VSP catalogue so client search hits every SKU. */
+const CATALOG_MAX_ITEMS = 5000;
 
-/** Figma 59:175 — five browse tiles, each deep-links into the catalogue search. */
+/** Figma 59:175 — five browse tiles with stock-appropriate packshots. */
 const BROWSE = [
-  { title: "Interior Items", sub: "Save 15%", match: /interior|cabin|trim/i, query: "interior" },
-  { title: "Brakes System", sub: "Get 10% off", match: /brake|pad|disc/i, query: "brake" },
-  { title: "Body Parts", sub: "10% off only Today", match: /body|bumper|panel|mirror/i, query: "body" },
-  { title: "Suspension & Steering", sub: "Sale 32% off", match: /suspension|shock|steer|arm/i, query: "suspension" },
-  { title: "Electrical System", sub: "Save 25%", match: /electric|sensor|battery|plug/i, query: "electrical" },
+  {
+    title: "Interior Items",
+    sub: "Save 15%",
+    query: "interior",
+    image: BROWSE_STOCK_IMAGES.interior,
+  },
+  {
+    title: "Brakes System",
+    sub: "Get 10% off",
+    query: "brake",
+    image: BROWSE_STOCK_IMAGES.brake,
+  },
+  {
+    title: "Body Parts",
+    sub: "10% off only Today",
+    query: "body",
+    image: BROWSE_STOCK_IMAGES.body,
+  },
+  {
+    title: "Suspension & Steering",
+    sub: "Sale 32% off",
+    query: "suspension",
+    image: BROWSE_STOCK_IMAGES.suspension,
+  },
+  {
+    title: "Electrical System",
+    sub: "Save 25%",
+    query: "electrical",
+    image: BROWSE_STOCK_IMAGES.electrical,
+  },
 ] as const;
 
 /** Figma 56:4 — service promises band. */
@@ -31,12 +59,6 @@ const TRUST = [
   { icon: Truck, title: "Fast Delivery", desc: "Same-day dispatch across Abuja" },
   { icon: Headset, title: "Premium Support", desc: "Parts advisors on WhatsApp daily" },
 ] as const;
-
-const FALLBACK_IMAGE = "/images/services/service-01.webp";
-
-function pickByCategory(catalog: ShopProduct[], match: RegExp): ShopProduct | undefined {
-  return catalog.find((item) => match.test(`${item.category} ${item.name}`) && item.inStock !== false);
-}
 
 export default function ShopLanding() {
   const [catalog, setCatalog] = useState<ShopProduct[]>([]);
@@ -56,7 +78,7 @@ export default function ShopLanding() {
       setCategories(first.categories);
       setLoading(false);
 
-      // Warm the rest in the background so filters cover the whole catalogue.
+      // Warm the rest in the background so search/filters cover the whole catalogue.
       let cursor = first.nextCursor;
       if (!cursor) return;
       setWarming(true);
@@ -88,11 +110,10 @@ export default function ShopLanding() {
     if (!loading) refreshMarketingScroll();
   }, [loading, catalog.length]);
 
-  // Showcase rails only take priced, photographed, in-stock lines — service
-  // rows (₦0, placeholder icon) stay in the catalogue grid below.
+  // Showcase rails: priced + in-stock. Real product photos first; stock packshots fill gaps.
   const showcase = useMemo(() => {
     const sellable = catalog.filter((item) => item.inStock !== false && item.price > 0);
-    const photographed = sellable.filter((item) => !item.icon.startsWith("/images/icons/"));
+    const photographed = sellable.filter((item) => item.icon.includes("/shop/stock/") === false && !item.icon.startsWith("/images/icons/"));
     return photographed.length >= 15 ? photographed : sellable;
   }, [catalog]);
 
@@ -103,35 +124,26 @@ export default function ShopLanding() {
   const feature = showcase[14] ?? showcase[1];
   const moreProducts = useMemo(() => showcase.slice(15, 21), [showcase]);
 
-  const browse = useMemo(
-    () =>
-      BROWSE.map((entry) => ({
-        ...entry,
-        image: pickByCategory(catalog, entry.match)?.icon ?? FALLBACK_IMAGE,
-      })),
-    [catalog],
-  );
-
   return (
     <>
       <section className="vg-sec" data-node-id="59:170" data-qa-section="shop-categories">
         <div className="vg-container">
           <SectionHead title="Browse by Categories" viewAllHref="/shop#shop-catalog" />
           <div className="vg-cats">
-            {browse.map((entry) => (
+            {BROWSE.map((entry) => (
               <Link
                 key={entry.title}
                 href={`/shop?q=${encodeURIComponent(entry.query)}#shop-catalog`}
                 className="vg-cat-card"
               >
-                <div>
-                  <p className="vg-cat-card__title">{entry.title}</p>
-                  <p className="vg-cat-card__sub">{entry.sub}</p>
-                </div>
-                <span className="vg-cat-card__cta">Shop Now →</span>
                 <div className="vg-cat-card__media">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={entry.image} alt="" loading="lazy" />
+                </div>
+                <div className="vg-cat-card__body">
+                  <p className="vg-cat-card__title">{entry.title}</p>
+                  <p className="vg-cat-card__sub">{entry.sub}</p>
+                  <span className="vg-cat-card__cta">Shop Now →</span>
                 </div>
               </Link>
             ))}
@@ -225,7 +237,7 @@ export default function ShopLanding() {
                 Shop Now →
               </Link>
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/images/hero/hero-dashboard.webp" alt="" loading="lazy" />
+              <img src={SHOP_FEATURE_IMAGE} alt="" loading="lazy" />
             </div>
 
             {loading ? (

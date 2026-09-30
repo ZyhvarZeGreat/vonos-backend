@@ -12,6 +12,8 @@ type ArticleViewProps = {
 
 export default function ArticleView({ post, related = [] }: ArticleViewProps) {
   const published = formatBlogDate(post.publishedAt ?? post.createdAt);
+  const updated = formatBlogDate(post.updatedAt ?? post.createdAt);
+  const showUpdated = updated !== published;
   const sections = [...post.sections].sort((a, b) => a.sortOrder - b.sortOrder);
   const [firstSection, ...restSections] = sections;
 
@@ -22,16 +24,24 @@ export default function ArticleView({ post, related = [] }: ArticleViewProps) {
           <header className="vg-article__head">
             <h1 className="vg-article__title">{post.title}</h1>
             <p className="vg-article__meta">
+              By {post.author}
+              <span className="vg-dot" aria-hidden />
               {post.category}
               <span className="vg-dot" aria-hidden />
               {published}
+              {showUpdated ? (
+                <>
+                  <span className="vg-dot" aria-hidden />
+                  Updated {updated}
+                </>
+              ) : null}
             </p>
           </header>
 
           <div className="vg-article__hero">
             <Image
               src={post.coverImageUrl}
-              alt=""
+              alt={post.title}
               width={1200}
               height={600}
               priority

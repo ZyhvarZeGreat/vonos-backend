@@ -22,7 +22,14 @@
 .vg-page h1,
 .vg-page h2,
 .vg-page h3,
-.vg-page h4,
+.vg-page h4 {
+  margin: 0;
+  padding: 0;
+  font-family: var(--font-host-grotesk), "Plus Jakarta Sans", "Host Grotesk", sans-serif;
+  letter-spacing: -0.02em;
+  text-transform: none;
+}
+
 .vg-page p,
 .vg-page ul,
 .vg-page ol,
@@ -409,14 +416,15 @@ main.main.main--subpage.vg-page > section.vg-pdp {
   display: grid;
   grid-template-columns: repeat(5, 1fr);
   gap: 13px;
+  align-items: stretch;
 }
 
 .vg-cat-card {
   display: flex;
   flex-direction: column;
-  gap: 21px;
-  min-height: 350px;
-  padding: 21px;
+  height: 100%;
+  min-height: 320px;
+  padding: 16px;
   border-radius: 10px;
   background: var(--vg-tint);
   transition: transform 0.2s ease;
@@ -426,33 +434,46 @@ main.main.main--subpage.vg-page > section.vg-pdp {
   transform: translateY(-4px);
 }
 
-.vg-cat-card__title {
-  font-size: 18px;
-  font-weight: 500;
-  color: var(--vg-ink);
-}
-
-.vg-cat-card__sub {
-  margin-top: 8px;
-  font-size: 14px;
-  color: var(--vg-body);
-}
-
-.vg-cat-card__cta {
-  font-size: 14px;
-  color: var(--vg-muted);
-}
-
 .vg-cat-card__media {
   position: relative;
-  height: 182px;
-  margin-top: auto;
+  flex: 0 0 160px;
+  height: 160px;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #fff;
 }
 
 .vg-cat-card__media img {
   width: 100%;
   height: 100%;
   object-fit: contain;
+  background: #fff;
+}
+
+.vg-cat-card__body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: auto;
+  padding-top: 16px;
+}
+
+.vg-cat-card__title {
+  font-size: 18px;
+  font-weight: 500;
+  color: var(--vg-ink);
+  font-family: var(--font-host-grotesk), "Plus Jakarta Sans", "Host Grotesk", sans-serif;
+}
+
+.vg-cat-card__sub {
+  font-size: 14px;
+  color: var(--vg-body);
+}
+
+.vg-cat-card__cta {
+  margin-top: 4px;
+  font-size: 14px;
+  color: var(--vg-muted);
 }
 
 /* ── Product card + grids (74:314) ────────────────────────────── */
@@ -461,6 +482,7 @@ main.main.main--subpage.vg-page > section.vg-pdp {
   display: grid;
   gap: 44px 24px;
   grid-template-columns: repeat(var(--vg-cols, 5), minmax(0, 1fr));
+  align-items: stretch;
 }
 
 .vg-pcard {
@@ -468,14 +490,16 @@ main.main.main--subpage.vg-page > section.vg-pdp {
   flex-direction: column;
   gap: 14px;
   min-width: 0;
+  height: 100%;
 }
 
 .vg-pcard__frame {
   position: relative;
   display: grid;
   place-items: center;
-  height: 280px;
-  padding: 21px;
+  flex: 0 0 240px;
+  height: 240px;
+  padding: 16px;
   border: 0.4px solid var(--vg-ink);
   border-radius: 10px;
   background: #fff;
@@ -483,13 +507,22 @@ main.main.main--subpage.vg-page > section.vg-pdp {
 }
 
 .vg-pcard__frame img {
-  max-width: 100%;
-  max-height: 100%;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* Catalogue rows without a photo use a category packshot. */
+.vg-pcard__frame[data-placeholder="stock"],
+.vg-pcard__frame[data-placeholder="store"] {
+  background: #fff;
+}
+
+.vg-pcard__frame[data-placeholder="stock"] img,
+.vg-pcard__frame[data-placeholder="store"] img {
   object-fit: contain;
 }
 
-/* Catalogue rows without a photo fall back to a line icon — tint the
-   frame so the glyph is legible. */
 .vg-pcard__frame[data-placeholder="true"] {
   background: var(--vg-tint);
 }
@@ -497,6 +530,15 @@ main.main.main--subpage.vg-page > section.vg-pdp {
 .vg-pcard__frame[data-placeholder="true"] img {
   width: 96px;
   opacity: 0.45;
+  object-fit: contain;
+}
+
+.vg-pcard__meta {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: auto;
+  min-height: 4.5rem;
 }
 
 .vg-pcard__hit {
@@ -545,21 +587,21 @@ main.main.main--subpage.vg-page > section.vg-pdp {
 }
 
 .vg-pcard__name {
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 500;
-  line-height: 1.2;
+  line-height: 1.25;
   color: var(--vg-ink);
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+  font-family: var(--font-host-grotesk), "Plus Jakarta Sans", "Host Grotesk", sans-serif;
 }
 
 .vg-pcard__prices {
   display: flex;
   align-items: center;
   gap: 4px;
-  margin-top: 8px;
   font-size: 14px;
   color: var(--vg-body);
 }
@@ -933,6 +975,7 @@ main.main.main--subpage.vg-page > section.vg-pdp {
   left: 12px;
   bottom: 12px;
   color: var(--vg-faint);
+  pointer-events: none;
 }
 
 .vg-search .vg-input {

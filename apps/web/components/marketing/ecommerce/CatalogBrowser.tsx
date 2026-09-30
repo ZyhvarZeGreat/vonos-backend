@@ -7,9 +7,12 @@ import { useEffect, useMemo, useState } from "react";
 import ProductCard from "@/components/marketing/ecommerce/ProductCard";
 import SectionHead from "@/components/marketing/ecommerce/SectionHead";
 import { formatShopLabel, type ShopProduct } from "@/lib/marketing/shop-catalog";
+import { fetchStoreCatalog } from "@/lib/marketing/store-api";
 import { matchSearchRows } from "@/lib/utils/listClientSearch";
 
 const PAGE_SIZE = 12;
+const API_FALLBACK_LIMIT = 100;
+const API_FALLBACK_DEBOUNCE_MS = 250;
 const SEARCH_KEYS = ["name", "sku", "category", "description"] as const;
 
 const SORT_OPTIONS = [
@@ -61,6 +64,27 @@ function compare(a: ShopProduct, b: ShopProduct, sort: SortValue): number {
   }
 }
 
+function sortRows(rows: ShopProduct[], sort: SortValue): ShopProduct[] {
+  return [...rows].sort((a, b) => {
+    const stockDelta = Number(a.inStock !== false) - Number(b.inStock !== false);
+    if (stockDelta !== 0) return -stockDelta;
+    return compare(a, b, sort);
+  });
+}
+
+function CatalogSkeletons({ count = 8 }: { count?: number }) {
+  return (
+    <div className="vg-products vg-catalog__grid">
+      {Array.from({ length: count }, (_, index) => (
+        <div key={index}>
+          <div className="vg-skeleton vg-skeleton--card" />
+          <div className="vg-skeleton vg-skeleton--line" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function CatalogBrowser({
   products,
   categories,
@@ -79,6 +103,10 @@ export default function CatalogBrowser({
   const [inStockOnly, setInStockOnly] = useState(false);
   const [page, setPage] = useState(0);
 
+  const [apiItems, setApiItems] = useState<ShopProduct[] | null>(null);
+  const [apiLoading, setApiLoading] = useState(false);
+  const [apiError, setApiError] = useState("");
+
   useEffect(() => {
     if (!queryFromUrl) return;
     setSearch(queryFromUrl);
@@ -89,21 +117,13 @@ export default function CatalogBrowser({
 
   useEffect(() => {
     setPage(0);
-  }, [search, category, sort, minPrice, maxPrice, inStockOnly]);
+  }, [search, category, sort, minPrice, maxPrice, inStockOnly, apiItems]);
 
-  const categoryOptions = useMemo(() => {
-    const source = categories.length > 0 ? categories : products.map((item) => item.category);
-    const unique = Array.from(
-      new Map(source.map((name) => [name.trim().toLowerCase(), name.trim()])).values(),
-    )
-      .filter(Boolean)
-      .sort((a, b) => a.localeCompare(b));
-    return ["All", ...unique];
-  }, [categories, products]);
+  const min = parsePrice(minPrice);
+  const max = parsePrice(maxPrice);
+  const query = search.trim();
 
-  const filtered = useMemo(() => {
-    const min = parsePrice(minPrice);
-    const max = parsePrice(maxPrice);
+  const localFiltered = useMemo(() => {
     let rows = products;
 
     if (category !== "All") {
@@ -114,26 +134,102 @@ export default function CatalogBrowser({
     if (max != null) rows = rows.filter((item) => item.price <= max);
     if (inStockOnly) rows = rows.filter((item) => item.inStock !== false);
 
-    rows = matchSearchRows(rows, search, [...SEARCH_KEYS]);
+    rows = matchSearchRows(rows, query, [...SEARCH_KEYS]);
+    return sortRows(rows, sort);
+  }, [products, category, min, max, inStockOnly, query, sort]);
 
-    // In-stock parts always rank above back-order lines.
-    return [...rows].sort((a, b) => {
-      const stockDelta = Number(a.inStock !== false) - Number(b.inStock !== false);
-      if (stockDelta !== 0) return -stockDelta;
-      return compare(a, b, sort);
-    });
-  }, [products, category, minPrice, maxPrice, inStockOnly, search, sort]);
+  // Local miss on an active search → wait for warm, then one API page.
+  useEffect(() => {
+    if (!query) {
+      setApiItems(null);
+      setApiLoading(false);
+      setApiError("");
+      return;
+    }
+
+    if (localFiltered.length > 0) {
+      setApiItems(null);
+      setApiLoading(false);
+      setApiError("");
+      return;
+    }
+
+    // Still filling the in-memory catalogue — keep skeleton, don't spam the API.
+    if (loading || warming) {
+      setApiItems(null);
+      setApiLoading(true);
+      setApiError("");
+      return;
+    }
+
+    let cancelled = false;
+    const handle = window.setTimeout(() => {
+      void (async () => {
+        setApiLoading(true);
+        setApiError("");
+        try {
+          const page = await fetchStoreCatalog({
+            search: query,
+            category: category !== "All" ? category : undefined,
+            sort,
+            minPrice: min,
+            maxPrice: max,
+            limit: API_FALLBACK_LIMIT,
+          });
+          if (cancelled) return;
+          let rows = page.items;
+          if (inStockOnly) rows = rows.filter((item) => item.inStock !== false);
+          setApiItems(sortRows(rows, sort));
+        } catch (err) {
+          if (cancelled) return;
+          setApiItems([]);
+          setApiError(
+            err instanceof Error
+              ? err.message
+              : "We couldn’t search the parts catalogue — please try again.",
+          );
+        } finally {
+          if (!cancelled) setApiLoading(false);
+        }
+      })();
+    }, API_FALLBACK_DEBOUNCE_MS);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(handle);
+    };
+  }, [
+    query,
+    localFiltered.length,
+    loading,
+    warming,
+    category,
+    sort,
+    min,
+    max,
+    inStockOnly,
+  ]);
+
+  const filtered = apiItems ?? localFiltered;
+  const usingApiFallback = apiItems != null;
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const safePage = Math.min(page, totalPages - 1);
   const visible = filtered.slice(safePage * PAGE_SIZE, safePage * PAGE_SIZE + PAGE_SIZE);
   const filtersActive =
     category !== "All" ||
-    Boolean(search.trim()) ||
+    Boolean(query) ||
     inStockOnly ||
     sort !== "price_asc" ||
     Boolean(minPrice) ||
     Boolean(maxPrice);
+
+  // Searching with no local hits yet → skeleton (no “loading more…” copy).
+  const showSkeleton =
+    (loading && products.length === 0) ||
+    (Boolean(query) && localFiltered.length === 0 && (warming || loading || apiLoading));
+
+  const displayError = apiError || error;
 
   function goToPage(next: number) {
     setPage(next);
@@ -147,16 +243,28 @@ export default function CatalogBrowser({
     setMinPrice("");
     setMaxPrice("");
     setInStockOnly(false);
+    setApiItems(null);
+    setApiError("");
   }
+
+  const categoryOptions = useMemo(() => {
+    const source = categories.length > 0 ? categories : products.map((item) => item.category);
+    const unique = Array.from(
+      new Map(source.map((name) => [name.trim().toLowerCase(), name.trim()])).values(),
+    )
+      .filter(Boolean)
+      .sort((a, b) => a.localeCompare(b));
+    return ["All", ...unique];
+  }, [categories, products]);
 
   return (
     <section className="vg-sec" id="shop-catalog" data-qa-section="shop-catalog">
       <div className="vg-container">
         <SectionHead id="shop-catalog-heading" title="All Products" />
 
-        {error ? (
+        {displayError ? (
           <div className="vg-error" role="alert">
-            <p>{error}</p>
+            <p>{displayError}</p>
           </div>
         ) : null}
 
@@ -262,26 +370,20 @@ export default function CatalogBrowser({
 
           <div>
             <p className="vg-catalog__meta">
-              {loading
-                ? "Loading parts…"
+              {showSkeleton
+                ? query
+                  ? "Searching…"
+                  : "Loading parts…"
                 : `${filtered.length} part${filtered.length === 1 ? "" : "s"} · page ${safePage + 1} of ${totalPages}${
-                    warming ? " · loading more…" : ""
-                  }`}
+                    !query && warming ? " · loading more…" : ""
+                  }${usingApiFallback ? " · full catalogue" : ""}`}
             </p>
 
-            {loading && products.length === 0 ? (
-              <div className="vg-products vg-catalog__grid">
-                {Array.from({ length: 8 }, (_, index) => (
-                  <div key={index}>
-                    <div className="vg-skeleton vg-skeleton--card" />
-                    <div className="vg-skeleton vg-skeleton--line" />
-                  </div>
-                ))}
-              </div>
+            {showSkeleton ? (
+              <CatalogSkeletons />
             ) : visible.length === 0 ? (
               <p className="vg-empty">
-                No parts found{search.trim() ? ` for “${search.trim()}”` : ""}. Try another
-                search or category.
+                No parts found{query ? ` for “${query}”` : ""}. Try another search or category.
               </p>
             ) : (
               <div className="vg-products vg-catalog__grid">
@@ -291,7 +393,7 @@ export default function CatalogBrowser({
               </div>
             )}
 
-            {!loading && totalPages > 1 ? (
+            {!showSkeleton && totalPages > 1 ? (
               <nav className="vg-pager" aria-label="Catalogue pages">
                 <button
                   type="button"

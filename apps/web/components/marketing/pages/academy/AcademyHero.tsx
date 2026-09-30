@@ -1,21 +1,13 @@
 import Link from "next/link";
 
 import AboutHeroCarousel from "@/components/marketing/AboutHeroCarousel";
-import { ABOUT_HERO_SLIDES } from "@/lib/marketing/vonos-photos";
-
-const TICKER = [
-  "12-month warranty",
-  "Fixed-price quotes",
-  "Genuine parts only",
-  "Abuja · Kubwa",
-  "All makes welcome",
-  "Honest work",
-] as const;
+import { ACADEMY_TICKER } from "@/lib/marketing/academy-courses";
+import { ACADEMY_HERO_SLIDES } from "@/lib/marketing/vonos-photos";
 
 function MarqueeItem() {
   return (
     <div className="marquee-item">
-      {TICKER.flatMap((label) => [
+      {ACADEMY_TICKER.flatMap((label) => [
         <div key={`${label}-t`} className="text-sm-uppercase text-gray-3">
           {label}
         </div>,
@@ -32,9 +24,9 @@ function MarqueeItem() {
   );
 }
 
-export default function AboutPageHeroSection() {
+export default function AcademyHero() {
   return (
-    <section className="hero-section" data-qa-section="about-01-hero">
+    <section className="hero-section" data-qa-section="academy-hero">
       <div className="container-full">
         <div className="hero-about-content">
           <div className="w-layout-grid grid-about-top">
@@ -44,27 +36,27 @@ export default function AboutPageHeroSection() {
                   Home
                 </Link>
                 <div className="breadcrumb-text text-gray-3">/</div>
-                <div className="breadcrumb-text text-gray-3">About</div>
+                <div className="breadcrumb-text text-gray-3">Academy</div>
               </div>
               <h1 data-show="show" className="no-margin-bottom">
-                Honest work. Since 2009.
+                Train where the cars actually get fixed.
               </h1>
             </div>
             <div className="hero-about-info">
               <p data-show="show" className="no-margin-bottom">
-                From an MOT to a major engine job, we service and repair every make with
-                dealer-level kits, genuine parts, and a fixed price quoted before any work starts.
+                Vonos Academy — practical automotive programmes in Abuja. Manufacturer-minded
+                skills, supervised bay time, and a clear path from apprentice to technician.
               </p>
               <div data-show="show">
-                <Link href="/contact" className="button-primary w-inline-block">
-                  <div className="button-title">Book your car in</div>
+                <a href="#enrol" className="button-primary w-inline-block">
+                  <div className="button-title">Enquire to enrol</div>
                   <div className="button-hover-bg" />
-                </Link>
+                </a>
               </div>
             </div>
           </div>
           <div className="hero-about-bottom">
-            <AboutHeroCarousel images={ABOUT_HERO_SLIDES} />
+            <AboutHeroCarousel images={ACADEMY_HERO_SLIDES} />
             <div data-show="show" className="marquee-list">
               <MarqueeItem />
               <MarqueeItem />

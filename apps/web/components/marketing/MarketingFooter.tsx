@@ -6,6 +6,7 @@ import FooterCtaScrollExpand from "@/components/marketing/FooterCtaScrollExpand"
 const FOOTER_LINKS = [
   { href: "/", label: "Home" },
   { href: "/services", label: "Services" },
+  { href: "/academy", label: "Academy" },
   { href: "/about", label: "About" },
   { href: "/blog", label: "Blog" },
   { href: "/contact", label: "Contact" },

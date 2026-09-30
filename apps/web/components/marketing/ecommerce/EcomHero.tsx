@@ -1,6 +1,8 @@
 import { ArrowUpRight, BatteryCharging, CircleGauge, Disc3, Droplets, MonitorSmartphone, Cpu } from "lucide-react";
 import Link from "next/link";
 
+import { SHOP_HERO_IMAGE } from "@/lib/marketing/vonos-photos";
+
 const CATEGORIES = [
   { label: "Tyres", icon: Disc3, href: "/shop?q=tyre" },
   { label: "Engine", icon: Cpu, href: "/shop?q=engine" },
@@ -15,7 +17,7 @@ export default function EcomHero() {
     <section className="vg-hero" data-node-id="19:1300" data-qa-section="shop-hero">
       <div className="vg-hero__bg" aria-hidden>
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/images/hero/hero.webp" alt="" fetchPriority="high" />
+        <img src={SHOP_HERO_IMAGE} alt="" fetchPriority="high" />
       </div>
 
       <div className="vg-container">

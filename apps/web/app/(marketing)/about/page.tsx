@@ -12,9 +12,10 @@ import SiteNav from "@/components/marketing/SiteNav";
 import WebflowClientEffects from "@/components/marketing/WebflowClientEffects";
 
 export const metadata: Metadata = {
-  title: "About | Vonos",
+  title: "About Vonos | Independent Workshop in Kubwa, Abuja",
   description:
-    "Independent since 2009 — honest repairs, genuine parts, and clear communication from a team of manufacturer-trained technicians.",
+    "Independent since 2009 — honest repairs, genuine parts, and clear communication from a team of manufacturer-trained technicians in Kubwa, Abuja.",
+  alternates: { canonical: "/about" },
 };
 
 export default function AboutPage() {

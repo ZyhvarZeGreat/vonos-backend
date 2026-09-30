@@ -44,7 +44,7 @@ export default function FaqSection() {
         <div className="vg-faq__row">
           <div className="vg-faq__media">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/images/team/technician.webp" alt="" loading="lazy" />
+            <img src="/images/vonos-photos/IMG_4615.jpg" alt="" loading="lazy" />
           </div>
 
           <div>

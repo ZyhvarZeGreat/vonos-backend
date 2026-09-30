@@ -1,9 +1,17 @@
 import type { Metadata } from "next";
-import { helveticaNeue, hostGrotesk } from "@/lib/fonts";
+import { DM_Sans } from "next/font/google";
+
 import { AppProviders } from "@/components/providers/AppProviders";
 import { QueryProvider } from "@/components/providers/QueryProvider";
+import { helveticaNeue, hostGrotesk } from "@/lib/fonts";
 import { DEFAULT_KEYWORDS, DEFAULT_OG_IMAGE, SITE_NAME, absoluteUrl, siteUrl } from "@/lib/seo/site";
 import "@/styles/globals.css";
+
+const dmSans = DM_Sans({
+  variable: "--font-dm-sans",
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+});
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl()),
@@ -46,7 +54,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body
-        className={`${helveticaNeue.variable} ${hostGrotesk.variable} ${helveticaNeue.className} antialiased`}
+        className={`${dmSans.variable} ${hostGrotesk.variable} ${helveticaNeue.variable} ${dmSans.className} antialiased`}
       >
         <QueryProvider>
           <AppProviders>{children}</AppProviders>

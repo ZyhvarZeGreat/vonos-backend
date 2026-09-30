@@ -10,9 +10,10 @@ import SiteNav from "@/components/marketing/SiteNav";
 import WebflowClientEffects from "@/components/marketing/WebflowClientEffects";
 
 export const metadata: Metadata = {
-  title: "Contact | Vonos",
+  title: "Book a Repair in Kubwa, Abuja | Vonos",
   description:
     "Book your car in — tell us what's going on, pick a time, and we'll confirm by phone with a fixed-price quote before any work starts.",
+  alternates: { canonical: "/contact" },
 };
 
 export default function ContactPage() {

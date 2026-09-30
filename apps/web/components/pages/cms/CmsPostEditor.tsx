@@ -59,7 +59,7 @@ export function CmsPostEditor({
   const [slug, setSlug] = useState("");
   const [excerpt, setExcerpt] = useState("");
   const [category, setCategory] = useState("Maintenance");
-  const [coverImageUrl, setCoverImageUrl] = useState("/images/services/service-01.webp");
+  const [coverImageUrl, setCoverImageUrl] = useState("/images/vonos-photos/IMG_0435.jpg");
   const [author, setAuthor] = useState("Vonos Workshop");
   const [status, setStatus] = useState<CmsPostStatus>("draft");
   const [publishedAt, setPublishedAt] = useState("");

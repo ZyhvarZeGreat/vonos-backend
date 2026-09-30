@@ -64,6 +64,7 @@ export default function SiteNav() {
         links: [
           { label: "Home", href: "/", ariaLabel: "Vonos home" },
           { label: "Services", href: "/services", ariaLabel: "Our services" },
+          { label: "Academy", href: "/academy", ariaLabel: "Vonos Academy training" },
           { label: "About", href: "/about", ariaLabel: "About Vonos" },
           { label: "Blog", href: "/blog", ariaLabel: "Workshop blog" },
         ],

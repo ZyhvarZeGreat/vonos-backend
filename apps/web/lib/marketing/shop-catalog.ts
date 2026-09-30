@@ -100,6 +100,8 @@ export function loadOrderFromStorage(reference: string): ShopOrder | null {
   }
 }
 
+import { resolveShopProductImage } from "@/lib/marketing/shop-stock-images";
+
 export function mapApiProduct(row: {
   id: string;
   sku: string;
@@ -117,7 +119,12 @@ export function mapApiProduct(row: {
     category: row.category || "General",
     price: row.price,
     description: row.description?.trim() || "Genuine auto part from the Vonos SP marketplace.",
-    icon: row.imageUrl || "/images/icons/service-01.svg",
+    icon: resolveShopProductImage({
+      imageUrl: row.imageUrl,
+      name: row.name,
+      category: row.category,
+      sku: row.sku,
+    }),
     sku: row.sku,
     inStock: row.inStock,
     availableQuantity: row.availableQuantity,

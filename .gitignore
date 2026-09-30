@@ -49,3 +49,7 @@ vsp.vonosautomarket.com/
 
 # Fonts bundle (optional asset)
 helvetica-neue-5/
+
+# Local HEIC conversion scratch
+apps/web/public/images/vonos-photos/_preview/
+apps/web/public/images/vonos-photos/_preview2/
