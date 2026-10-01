@@ -7,6 +7,7 @@ import type { CmsPost, CmsPostStatus, CreateCmsPostInput } from "@vonos/types";
 import { Hq6BusyButton } from "@/components/hq6/Hq6BusyButton";
 import { Hq6FormShell } from "@/components/hq6/Hq6Chrome";
 import { createCmsPost, getCmsPost, updateCmsPost } from "@/lib/api/cms";
+import { cdn } from "@/lib/cdn";
 import { toast } from "@/stores/toastStore";
 
 type SectionDraft = {
@@ -59,7 +60,7 @@ export function CmsPostEditor({
   const [slug, setSlug] = useState("");
   const [excerpt, setExcerpt] = useState("");
   const [category, setCategory] = useState("Maintenance");
-  const [coverImageUrl, setCoverImageUrl] = useState("/images/vonos-photos/IMG_0435.jpg");
+  const [coverImageUrl, setCoverImageUrl] = useState(cdn("/images/vonos-photos/IMG_0435.jpg"));
   const [author, setAuthor] = useState("Vonos Workshop");
   const [status, setStatus] = useState<CmsPostStatus>("draft");
   const [publishedAt, setPublishedAt] = useState("");

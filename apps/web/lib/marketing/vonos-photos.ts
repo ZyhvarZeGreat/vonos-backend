@@ -6,10 +6,12 @@
  * STORE = parts / retail / catalogue surfaces (shop categories + product fallbacks).
  */
 
-const P = "/images/vonos-photos" as const;
+import { cdn } from "@/lib/cdn";
+
+const P = cdn("/images/vonos-photos");
 
 function photo(id: string) {
-  return `${P}/${id}.jpg` as const;
+  return `${P}/${id}.jpg`;
 }
 
 /** Workshop atmosphere — home, academy, about, services. */

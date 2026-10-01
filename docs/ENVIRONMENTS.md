@@ -124,6 +124,9 @@ Project → **Settings** → **Environment Variables**:
 |----------|---------------------|---------------|----------------|
 | `NEXT_PUBLIC_API_URL` | Prod Railway URL | Staging Railway URL (or skip previews) | Staging Railway URL |
 | `NEXT_PUBLIC_SKIP_AUTH` | `false` | `false` | `false` |
+| `NEXT_PUBLIC_CDN_URL` | `https://pub-<hash>.r2.dev/static` | same | same (or unset to fall back to `apps/web/public`) |
+
+`NEXT_PUBLIC_CDN_URL` points static imagery at Cloudflare R2 so Vercel never serves image bytes. It is **public** — the CDN base only, never R2 credentials. Refill the bucket with `npm run cdn:sync -w api` (reads `R2_*` from `apps/api/.env`).
 
 **Staging-only vars:** In Vercel, you can scope variables to a specific Git branch (`staging`) under **Environment Variables** → add variable → enable only for that branch, or use Vercel’s custom environment if on Pro.
 
@@ -160,6 +163,8 @@ Copy templates from the repo:
 | `JWT_SECRET` | Railway | prod secret | staging secret | dev secret |
 | `WEB_ORIGIN` | Railway | prod web URL | beta web URL | `http://localhost:3000` |
 | `NEXT_PUBLIC_API_URL` | Vercel / `.env.local` | prod API | staging API | `http://localhost:3001` |
+| `NEXT_PUBLIC_CDN_URL` | Vercel | `https://pub-<hash>.r2.dev/static` | same | unset → images from `apps/web/public` |
+| `R2_*` (5 vars) | Railway + `apps/api/.env` | R2 bucket + API token | same | same (`npm run cdn:sync -w api`) |
 | `NODE_ENV` | Railway / Vercel | `production` | `production` | `development` |
 
 ---

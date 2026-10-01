@@ -1,3 +1,7 @@
+// Relative import: apps/api/prisma/seed/cms-posts.ts compiles this file under
+// the API tsconfig, which has no "@/…" path alias.
+import { cdn } from "../cdn";
+
 export type BlogSection = {
   id: string;
   title: string;
@@ -25,7 +29,7 @@ export const BLOG_POSTS: BlogPost[] = [
       "Squealing, spongy pedal, or pulling to one side? Here is what each symptom usually means — and when to book a check.",
     category: "Safety",
     publishedAt: "2026-08-14",
-    image: "/images/vonos-photos/IMG_0438.jpg",
+    image: cdn("/images/vonos-photos/IMG_0438.jpg"),
     author: "Vonos Technical Team",
     readMinutes: 9,
     intro: [
@@ -105,7 +109,7 @@ export const BLOG_POSTS: BlogPost[] = [
       "Skipping a service to save cash often costs more later. Scheduled maintenance protects warranty, resale value, and major components.",
     category: "Maintenance",
     publishedAt: "2026-07-22",
-    image: "/images/vonos-photos/IMG_0435.jpg",
+    image: cdn("/images/vonos-photos/IMG_0435.jpg"),
     author: "Vonos Technical Team",
     readMinutes: 10,
     intro: [
@@ -185,7 +189,7 @@ export const BLOG_POSTS: BlogPost[] = [
       "Steady amber or flashing red? We explain the difference, what you can check yourself, and when to stop driving immediately.",
     category: "Diagnostics",
     publishedAt: "2026-06-03",
-    image: "/images/vonos-photos/IMG_3343.jpg",
+    image: cdn("/images/vonos-photos/IMG_3343.jpg"),
     author: "Vonos Technical Team",
     readMinutes: 11,
     intro: [
@@ -268,7 +272,7 @@ export const BLOG_POSTS: BlogPost[] = [
       "Standing water, humidity, and washed-out roads take a toll. A short seasonal checklist keeps you moving safely.",
     category: "Seasonal",
     publishedAt: "2026-05-18",
-    image: "/images/vonos-photos/IMG_0439.jpg",
+    image: cdn("/images/vonos-photos/IMG_0439.jpg"),
     author: "Vonos Technical Team",
     readMinutes: 9,
     intro: [
@@ -348,7 +352,7 @@ export const BLOG_POSTS: BlogPost[] = [
       "Not every component needs a dealer label. We break down where OEM quality matters — and where sensible alternatives are fine.",
     category: "Parts",
     publishedAt: "2026-04-02",
-    image: "/images/vonos-photos/IMG_0440.jpg",
+    image: cdn("/images/vonos-photos/IMG_0440.jpg"),
     author: "Vonos Technical Team",
     readMinutes: 10,
     intro: [

@@ -1,3 +1,4 @@
+import { cdn } from "@/lib/cdn";
 import { BUSINESS } from "@/lib/seo/business";
 import { absoluteUrl, siteUrl } from "@/lib/seo/site";
 
@@ -15,7 +16,7 @@ export function autoRepairJsonLd() {
     url: BUSINESS.url,
     telephone: BUSINESS.telephone,
     priceRange: BUSINESS.priceRange,
-    image: absoluteUrl("/images/vonos-photos/IMG_0437.jpg"),
+    image: absoluteUrl(cdn("/images/vonos-photos/IMG_0437.jpg")),
     address: { "@type": "PostalAddress", ...BUSINESS.address },
     geo: {
       "@type": "GeoCoordinates",

@@ -16,6 +16,7 @@ import {
   fetchStoreOrder,
   type StoreOrderResponse,
 } from "@/lib/marketing/store-api";
+import { cdn } from "@/lib/cdn";
 
 /** Prefer our `ref=VON-…`; fall back to Paystack’s `reference` / `trxref` (`store_VON-…`). */
 function resolveStoreOrderReference(searchParams: URLSearchParams): string {
@@ -161,7 +162,7 @@ export default function OrderConfirmationPanel() {
       <div className="ve-thanks">
         <div className="ve-thanks__art">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/images/shop/thanks-illustration.png" alt="" />
+          <img src={cdn("/images/shop/thanks-illustration.png")} alt="" />
         </div>
 
         <div>

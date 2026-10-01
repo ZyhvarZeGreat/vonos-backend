@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { cdn } from "@/lib/cdn";
 import { ACADEMY_CONTACT } from "@/lib/marketing/academy-courses";
 
 const scrollItem = { "scroll-item": "show" } as const;
@@ -83,7 +84,7 @@ export default function AcademyAbout() {
           <div {...scrollItem} className="story-right">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src="/images/vonos-photos/IMG_0491.jpg"
+              src={cdn("/images/vonos-photos/IMG_0491.jpg")}
               loading="lazy"
               sizes="(max-width: 479px) 48vw, 49vw"
               alt=""

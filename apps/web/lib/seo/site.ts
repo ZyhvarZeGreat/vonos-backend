@@ -1,3 +1,5 @@
+import { cdn, isAbsoluteUrl } from "@/lib/cdn";
+
 export const SITE_NAME = "Vonos";
 
 export function siteUrl(): string {
@@ -10,6 +12,7 @@ export function siteUrl(): string {
 }
 
 export function absoluteUrl(path = "/"): string {
+  if (isAbsoluteUrl(path)) return path;
   const normalized = path.startsWith("/") ? path : `/${path}`;
   return `${siteUrl()}${normalized}`;
 }
@@ -18,7 +21,7 @@ export function shopProductPath(sku: string): string {
   return `/shop/${encodeURIComponent(sku.trim())}`;
 }
 
-export const DEFAULT_OG_IMAGE = "/images/vonos-photos/IMG_0437.jpg";
+export const DEFAULT_OG_IMAGE = cdn("/images/vonos-photos/IMG_0437.jpg");
 
 export const DEFAULT_KEYWORDS = [
   "Vonos",

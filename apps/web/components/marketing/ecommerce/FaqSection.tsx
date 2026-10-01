@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useState } from "react";
 
 import SectionHead from "@/components/marketing/ecommerce/SectionHead";
+import { cdn } from "@/lib/cdn";
 
 const FAQS = [
   {
@@ -44,7 +45,7 @@ export default function FaqSection() {
         <div className="vg-faq__row">
           <div className="vg-faq__media">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/images/vonos-photos/IMG_4615.jpg" alt="" loading="lazy" />
+            <img src={cdn("/images/vonos-photos/IMG_4615.jpg")} alt="" loading="lazy" />
           </div>
 
           <div>

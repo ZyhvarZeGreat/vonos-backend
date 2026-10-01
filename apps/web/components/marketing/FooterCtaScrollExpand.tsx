@@ -1,12 +1,14 @@
 import Image from "next/image";
 import Link from "next/link";
 
+import { cdn } from "@/lib/cdn";
+
 export default function FooterCtaScrollExpand() {
   return (
     <div className="footer-cta section-spacing-top vonos-footer-cta-band">
       <div className="footer-cta-item vonos-footer-cta-media">
         <Image
-          src="/images/vonos-photos/IMG_0474.jpg"
+          src={cdn("/images/vonos-photos/IMG_0474.jpg")}
           alt="Vonos workshop"
           fill
           className="footer-cta-image"

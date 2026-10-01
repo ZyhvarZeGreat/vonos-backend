@@ -15,17 +15,19 @@ export type ShopStockKind =
   | "body"
   | "generic";
 
+import { cdn } from "@/lib/cdn";
+
 const STOCK: Record<ShopStockKind, string> = {
-  oil: "/images/shop/stock/oil.jpg",
-  brake: "/images/shop/stock/brake.jpg",
-  filter: "/images/shop/stock/filter.jpg",
-  battery: "/images/shop/stock/battery.jpg",
-  tyre: "/images/shop/stock/tyre.jpg",
-  suspension: "/images/shop/stock/suspension.jpg",
-  electrical: "/images/shop/stock/electrical.jpg",
-  interior: "/images/shop/stock/interior.jpg",
-  body: "/images/shop/stock/body.jpg",
-  generic: "/images/shop/stock/generic.jpg",
+  oil: cdn("/images/shop/stock/oil.jpg"),
+  brake: cdn("/images/shop/stock/brake.jpg"),
+  filter: cdn("/images/shop/stock/filter.jpg"),
+  battery: cdn("/images/shop/stock/battery.jpg"),
+  tyre: cdn("/images/shop/stock/tyre.jpg"),
+  suspension: cdn("/images/shop/stock/suspension.jpg"),
+  electrical: cdn("/images/shop/stock/electrical.jpg"),
+  interior: cdn("/images/shop/stock/interior.jpg"),
+  body: cdn("/images/shop/stock/body.jpg"),
+  generic: cdn("/images/shop/stock/generic.jpg"),
 };
 
 const RULES: Array<{ kind: ShopStockKind; test: RegExp }> = [
