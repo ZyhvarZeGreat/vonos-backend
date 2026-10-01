@@ -1,3 +1,5 @@
+import { cdn } from "@/lib/cdn";
+
 /**
  * App mount path (e.g. `/operations`). Empty string = site root.
  * Must match `basePath` in next.config.ts (build-time).
@@ -19,9 +21,10 @@ export function withBasePath(path: string): string {
 /**
  * Prefix a public-folder path for next/image / <img> when the app is mounted
  * under NEXT_PUBLIC_BASE_PATH (e.g. `/operations/brand/...`).
+ * Rewritten to the CDN first — withBasePath passes absolute URLs through.
  */
 export function publicAssetPath(path: string): string {
-  return withBasePath(path.startsWith("/") ? path : `/${path}`);
+  return withBasePath(cdn(path.startsWith("/") ? path : `/${path}`));
 }
 
 /** Strip basePath from `window.location.pathname` so route logic sees `/VA/...`. */

@@ -18,16 +18,16 @@ export type ShopStockKind =
 import { cdn } from "@/lib/cdn";
 
 const STOCK: Record<ShopStockKind, string> = {
-  oil: cdn("/images/shop/stock/oil.jpg"),
-  brake: cdn("/images/shop/stock/brake.jpg"),
-  filter: cdn("/images/shop/stock/filter.jpg"),
-  battery: cdn("/images/shop/stock/battery.jpg"),
-  tyre: cdn("/images/shop/stock/tyre.jpg"),
-  suspension: cdn("/images/shop/stock/suspension.jpg"),
-  electrical: cdn("/images/shop/stock/electrical.jpg"),
-  interior: cdn("/images/shop/stock/interior.jpg"),
-  body: cdn("/images/shop/stock/body.jpg"),
-  generic: cdn("/images/shop/stock/generic.jpg"),
+  oil: cdn("/images/vonos-photos/stock-oil.jpg"),
+  brake: cdn("/images/vonos-photos/stock-brake.jpg"),
+  filter: cdn("/images/vonos-photos/stock-filter.jpg"),
+  battery: cdn("/images/vonos-photos/stock-battery.jpg"),
+  tyre: cdn("/images/vonos-photos/stock-tyre.jpg"),
+  suspension: cdn("/images/vonos-photos/stock-suspension.jpg"),
+  electrical: cdn("/images/vonos-photos/stock-electrical.jpg"),
+  interior: cdn("/images/vonos-photos/stock-interior.jpg"),
+  body: cdn("/images/vonos-photos/stock-body.jpg"),
+  generic: cdn("/images/vonos-photos/stock-generic.jpg"),
 };
 
 const RULES: Array<{ kind: ShopStockKind; test: RegExp }> = [
@@ -89,6 +89,7 @@ export function shopStockImageForKind(kind: ShopStockKind): string {
 export function isShopPlaceholderIcon(src: string | null | undefined): boolean {
   if (!src) return true;
   if (src.startsWith("/images/icons/")) return true;
+  if (src.includes("/images/shop/stock/")) return true;
   if (src.includes("service-0")) return true;
   if (src.includes("/images/vonos-photos/")) return true;
   return false;

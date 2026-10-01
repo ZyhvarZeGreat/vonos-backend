@@ -113,7 +113,12 @@ export default function ShopLanding() {
   // Showcase rails: priced + in-stock. Real product photos first; stock packshots fill gaps.
   const showcase = useMemo(() => {
     const sellable = catalog.filter((item) => item.inStock !== false && item.price > 0);
-    const photographed = sellable.filter((item) => item.icon.includes("/shop/stock/") === false && !item.icon.startsWith("/images/icons/"));
+    const photographed = sellable.filter(
+      (item) =>
+        !item.icon.includes("/shop/stock/") &&
+        !item.icon.includes("/vonos-photos/stock-") &&
+        !item.icon.startsWith("/images/icons/"),
+    );
     return photographed.length >= 15 ? photographed : sellable;
   }, [catalog]);
 

@@ -2,6 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 
 import FooterCtaScrollExpand from "@/components/marketing/FooterCtaScrollExpand";
+import { cdn } from "@/lib/cdn";
 
 const FOOTER_LINKS = [
   { href: "/", label: "Home" },
@@ -65,7 +66,7 @@ export default function MarketingFooter({
                   <div className="footer-brand-item">
                     <Link href="/" className="footer-logo-link w-inline-block">
                       <Image
-                        src="/brand/vonos-autos-logo.png"
+                        src={cdn("/brand/vonos-autos-logo.png")}
                         alt="Vonos Logo"
                         width={160}
                         height={40}

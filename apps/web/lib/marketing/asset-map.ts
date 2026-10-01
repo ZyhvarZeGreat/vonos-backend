@@ -61,8 +61,8 @@ export const ASSETS = Object.fromEntries(
 ) as { readonly [K in keyof typeof RAW_ASSETS]: string };
 
 export const BRAND = {
-  logo: "/brand/vonos-autos-logo.png",
-  logoFooter: "/brand/vonos-autos-logo.png",
+  logo: cdn("/brand/vonos-autos-logo.png"),
+  logoFooter: cdn("/brand/vonos-autos-logo.png"),
 } as const;
 
 export const HERO_IMAGES = [ASSETS["asset-1"], ASSETS["asset-28"]] as const;
@@ -101,9 +101,9 @@ export const TEAM_IMAGES = [
 ] as const;
 
 export const REVIEW_AVATARS = [
-  ASSETS["asset-30"],
-  ASSETS["asset-31"],
-  ASSETS["asset-32"],
+  cdn("/images/vonos-photos/avatar-4.jpg"),
+  cdn("/images/vonos-photos/avatar-5.jpg"),
+  cdn("/images/vonos-photos/avatar-6.jpg"),
 ] as const;
 
 export const GUARANTEE_BG = ASSETS["asset-39"];

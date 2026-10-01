@@ -31,7 +31,7 @@ import sharp from "sharp";
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(HERE, "../../..");
 const PUBLIC_DIR = path.join(REPO, "apps/web/public");
-const SOURCES = ["images"];
+const SOURCES = ["images", "brand"];
 const PREFIX = "static/";
 const MAX_EDGE = 1600;
 const QUALITY = 82;

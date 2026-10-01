@@ -1,5 +1,6 @@
 "use client";
 
+import { cdn } from "@/lib/cdn";
 import { formatShopPrice, type ShopOrder } from "@/lib/marketing/shop-catalog";
 
 type ShopOrderReceiptProps = {
@@ -29,7 +30,7 @@ export default function ShopOrderReceipt({
     <article id={id} className="shop-receipt" aria-label={`Receipt ${order.reference}`}>
       <header className="shop-receipt-header">
         <img
-          src="/brand/vonos-autos-logo.png"
+          src={cdn("/brand/vonos-autos-logo.png")}
           alt="Vonos Autos"
           className="shop-receipt-logo"
         />
