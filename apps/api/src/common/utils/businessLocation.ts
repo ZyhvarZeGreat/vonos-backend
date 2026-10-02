@@ -108,6 +108,23 @@ export function assertBusinessLocation(
   return code;
 }
 
+/**
+ * Default branch for writers that receive no explicit location (e.g. the
+ * HQ6 "Add contact" modal, which has no location picker): prefers the
+ * entity-owned branch whose code matches the tenant code, else the first
+ * entity-owned branch. Null when the entity has no locations configured.
+ */
+export function defaultEntityOwnLocationCode(config: unknown): string | null {
+  const locations = entityOwnBusinessLocations(config);
+  if (locations.length === 0) return null;
+  const typed = config as TenantConfig | null | undefined;
+  const code = typed?.code?.trim().toUpperCase();
+  const match = code
+    ? locations.find((loc) => loc.code.trim().toUpperCase() === code)
+    : undefined;
+  return (match ?? locations[0]!).code;
+}
+
 function matchProductStockLocation(
   locations: BusinessLocation[],
   raw: string,

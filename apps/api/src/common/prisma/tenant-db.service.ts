@@ -5,6 +5,7 @@ import type { AuthenticatedUser } from '../decorators/roles.decorator';
 import {
   assertBusinessLocation,
   assertProductStockLocation,
+  defaultEntityOwnLocationCode,
 } from '../utils/businessLocation';
 import { PrismaService, type TenantScopedPrisma } from './prisma.service';
 
@@ -84,9 +85,14 @@ export class TenantDbService {
 
   async resolveBusinessLocation(
     locationCode?: string | null,
+    opts?: { defaultToFirstOwn?: boolean },
   ): Promise<string | null> {
     const tenant = await this.loadTenantConfig();
-    return assertBusinessLocation(tenant?.config ?? {}, locationCode);
+    const config = tenant?.config ?? {};
+    if (opts?.defaultToFirstOwn && !locationCode?.trim()) {
+      return defaultEntityOwnLocationCode(config);
+    }
+    return assertBusinessLocation(config, locationCode);
   }
 
   /**

@@ -1,6 +1,7 @@
 import {
   assertBusinessLocation,
   assertProductStockLocation,
+  defaultEntityOwnLocationCode,
 } from './businessLocation';
 
 const vispConfig = {
@@ -45,5 +46,47 @@ describe('product vs sale location validation', () => {
       /Business location is required/,
     );
     expect(assertBusinessLocation(vispConfig, 'VISP')).toBe('VISP');
+  });
+});
+
+describe('defaultEntityOwnLocationCode', () => {
+  it('returns null when the entity has no locations', () => {
+    expect(defaultEntityOwnLocationCode({ code: 'ZZ' })).toBeNull();
+    expect(defaultEntityOwnLocationCode({})).toBeNull();
+  });
+
+  it("falls back to the tenant's single branch (saloon BL0003)", () => {
+    expect(
+      defaultEntityOwnLocationCode({
+        code: 'VS',
+        businessLocations: [{ code: 'BL0003', name: 'Vonos saloon' }],
+      }),
+    ).toBe('BL0003');
+    // Preset fallback: saloon config without explicit businessLocations.
+    expect(defaultEntityOwnLocationCode({ code: 'VS' })).toBe('BL0003');
+  });
+
+  it('prefers the branch matching the tenant code over the first in the list', () => {
+    expect(
+      defaultEntityOwnLocationCode({
+        code: 'VW',
+        businessLocations: [
+          { code: 'BL0009', name: 'Annex' },
+          { code: 'VW', name: 'Vonos Warehouse' },
+        ],
+      }),
+    ).toBe('VW');
+  });
+
+  it('ignores sister-entity branches when picking the default', () => {
+    expect(
+      defaultEntityOwnLocationCode({
+        code: 'VA',
+        businessLocations: [
+          { code: 'VW', name: 'Vonos Warehouse' },
+          { code: 'VA', name: 'Vonos Mechanic' },
+        ],
+      }),
+    ).toBe('VA');
   });
 });

@@ -13,7 +13,9 @@ import { getCustomerGroups } from "@/lib/api/customerGroups";
 import { createSupplier, clearSupplierOptionCache } from "@/lib/api/suppliers";
 import { getEmployees, getDesignations } from "@/lib/api/hrm";
 import { getUsers } from "@/lib/api/users";
+import { describeWhatsAppNotify, type WhatsAppTestResult } from "@/lib/api/whatsapp";
 import { useRouteTenant } from "@/lib/hooks/useRouteTenant";
+import { useBusinessLocationOptions } from "@/lib/hooks/useBusinessLocationOptions";
 import { withOptimistic } from "@/lib/hooks/useAppMutation";
 import {
   MODAL_REF_STALE_MS,
@@ -239,7 +241,9 @@ export function Hq6AddContactModal({
   onSaved?: (result?: Hq6ContactSavedResult) => void;
 }) {
   const queryClient = useQueryClient();
-  const { tenantCode } = useRouteTenant();
+  const { config: tenantConfig, tenantCode } = useRouteTenant();
+  const { defaultCode: defaultLocationCode } =
+    useBusinessLocationOptions(tenantConfig);
   const [form, setForm] = useState(() => resetAddContactForm(defaultType));
   const [moreOpen, setMoreOpen] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -386,6 +390,7 @@ export function Hq6AddContactModal({
     setDismissed(true);
 
     let customerId: string | undefined;
+    let whatsappNotify: WhatsAppTestResult | undefined;
     let supplierId: string | undefined;
 
     try {
@@ -446,6 +451,7 @@ export function Hq6AddContactModal({
             details,
           });
           customerId = created.id;
+          whatsappNotify = created.whatsappNotify;
           opt.onSuccess(created, undefined);
         } catch (err) {
           opt.onError(err, undefined, ctx);
@@ -470,7 +476,7 @@ export function Hq6AddContactModal({
               email: form.email.trim() || null,
               phone: form.mobile.trim() || null,
               address: address || null,
-              locationCode: null,
+              locationCode: defaultLocationCode || null,
               notes,
               taxNumber: form.taxNumber.trim() || null,
               accountHolderName: form.accountHolderName.trim() || null,
@@ -502,6 +508,7 @@ export function Hq6AddContactModal({
             email: form.email.trim() || undefined,
             phone: form.mobile.trim() || undefined,
             address: address || undefined,
+            locationCode: defaultLocationCode || undefined,
             taxNumber: form.taxNumber.trim() || null,
             openingBalance: balance,
             assignedToUserId: form.assignedToUserId || undefined,
@@ -528,6 +535,11 @@ export function Hq6AddContactModal({
             ? "Supplier added"
             : "Customer added";
       toast.success(label);
+      if (whatsappNotify) {
+        const wa = describeWhatsAppNotify(whatsappNotify);
+        if (wa.ok) toast.success(wa.message);
+        else toast.error(wa.message);
+      }
       onSaved?.({
         contactType: form.contactType,
         customerId,

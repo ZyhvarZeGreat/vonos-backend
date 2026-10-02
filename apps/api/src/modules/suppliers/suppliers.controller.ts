@@ -115,6 +115,7 @@ export class SuppliersController {
       email?: string;
       phone?: string;
       address?: string;
+      locationCode?: string;
       notes?: string;
       taxNumber?: string | null;
       openingBalance?: number;

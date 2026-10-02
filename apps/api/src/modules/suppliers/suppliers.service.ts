@@ -327,7 +327,9 @@ export class SuppliersService {
     const tenantId = this.tenantDb.requireTenantId();
     const [createdBy, locationCode] = await Promise.all([
       this.auditService.createdByFields(),
-      this.tenantDb.resolveBusinessLocation(body.locationCode),
+      this.tenantDb.resolveBusinessLocation(body.locationCode, {
+        defaultToFirstOwn: true,
+      }),
     ]);
     const row = await this.tenantDb.db.supplier.create({
       data: {

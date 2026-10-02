@@ -1,6 +1,10 @@
 import { Archetype, PrismaClient, Role, UserStatus } from '@prisma/client';
 import { createHash } from 'node:crypto';
-import { catalogPresetsForCode, RETAIL_CATALOG_ENABLED_MODULES } from '@vonos/types';
+import {
+  catalogPresetsForCode,
+  HQ6_POS_ENABLED_MODULES,
+  RETAIL_CATALOG_ENABLED_MODULES,
+} from '@vonos/types';
 
 /** Dev-only password hasher; runtime auth upgrades to bcrypt on login. */
 export function devPasswordHash(password: string): string {
@@ -324,7 +328,7 @@ const saloonConfig = {
     { label: 'Revenue', icon: 'wallet', metricKey: 'revenue', color: '#e11d48' },
   ],
   terminology: { appointment: 'Appointment', customer: 'Customer', service: 'Service', stylist: 'Stylist' },
-  enabledModules: ['appointments', 'services', 'reports', 'finance', 'hrm'],
+  enabledModules: [...HQ6_POS_ENABLED_MODULES, 'appointments', 'services', 'cms'],
 };
 
 const tenants: Array<{
