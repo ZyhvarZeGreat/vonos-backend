@@ -635,10 +635,17 @@ export class UsersService {
   async deactivateUser(
     actor: AuthenticatedUser,
     id: string,
+    tenantId?: string,
   ): Promise<{ user: User }> {
-    const row = await this.findManagedUser(actor, id);
+    const row = await this.findManagedUser(actor, id, tenantId);
     if (row.id === actor.sub) {
       throw new BadRequestException('You cannot deactivate your own account');
+    }
+    if (tenantId && actor.role !== 'super_admin' && row.tenantId !== tenantId) {
+      const hasClearance = await this.userHasClearanceForTenant(id, tenantId);
+      if (!hasClearance) {
+        throw new ForbiddenException('Cannot deactivate users outside your entity');
+      }
     }
     const updated = await this.prisma.user.update({
       where: { id: row.id },
@@ -649,20 +656,30 @@ export class UsersService {
       },
     });
     this.invalidateUserCaches(row.tenantId);
+    if (tenantId && tenantId !== row.tenantId) {
+      this.invalidateUserCaches(tenantId);
+    }
     return { user: this.toUser(updated) };
   }
 
-  private async findManagedUser(actor: AuthenticatedUser, id: string) {
+  private async findManagedUser(
+    actor: AuthenticatedUser,
+    id: string,
+    tenantId?: string,
+  ) {
     const row = await this.prisma.user.findFirst({
       where: { id, deletedAt: null },
     });
     if (!row) {
       throw new NotFoundException('User not found');
     }
+    const effectiveTenantId = tenantId ?? this.tenantDb.requireTenantId();
     if (actor.role === 'admin') {
-      const tenantId = this.tenantDb.requireTenantId();
-      if (row.tenantId !== tenantId) {
-        const hasClearance = await this.userHasClearanceForTenant(id, tenantId);
+      if (row.tenantId !== effectiveTenantId) {
+        const hasClearance = await this.userHasClearanceForTenant(
+          id,
+          effectiveTenantId,
+        );
         if (!hasClearance) {
           throw new ForbiddenException(
             'Cannot manage users outside your entity',

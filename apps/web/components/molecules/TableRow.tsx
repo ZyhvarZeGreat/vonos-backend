@@ -17,7 +17,7 @@ export interface TableRowProps {
 export function TableRow({
   cells,
   cellClassNames,
-  density = "regular",
+  density = "condensed",
   onClick,
   onPointerEnter,
   selected = false,
@@ -45,8 +45,8 @@ export function TableRow({
           )}
           style={{
             height: rowHeight,
-            paddingTop: density === "condensed" ? 6 : density === "relaxed" ? 14 : 10,
-            paddingBottom: density === "condensed" ? 6 : density === "relaxed" ? 14 : 10,
+            paddingTop: density === "condensed" ? 2 : density === "relaxed" ? 10 : 6,
+            paddingBottom: density === "condensed" ? 2 : density === "relaxed" ? 10 : 6,
           }}
         >
           {cell}

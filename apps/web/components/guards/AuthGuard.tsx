@@ -17,6 +17,7 @@ const PUBLIC_PREFIXES = [
   // Customer marketing site (apex)
   "/about",
   "/services",
+  "/academy",
   "/shop",
   "/track",
   "/contact",

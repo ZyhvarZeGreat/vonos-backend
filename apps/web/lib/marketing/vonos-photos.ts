@@ -85,10 +85,18 @@ export const HOME_HERO_SLIDES = [
 export const ACADEMY_HERO_SLIDES = [
   photo("IMG_0445"),
   photo("IMG_0468"),
-  photo("IMG_0483"),
-  photo("IMG_4958"),
-  photo("IMG_0490"),
+  photo("IMG_0454"),
 ] as const;
+
+/** Course card imagery — one photo per programme on /academy. */
+export const ACADEMY_COURSE_PHOTOS = [
+  photo("IMG_0490"),
+  photo("IMG_0483"),
+  photo("IMG_5728"),
+] as const;
+
+/** Wide showcase band under the academy intro. */
+export const ACADEMY_SHOWCASE_PHOTO = photo("IMG_4615");
 
 /** About page hero */
 export const ABOUT_HERO_SLIDES = [
@@ -137,9 +145,9 @@ export const TEAM_PHOTOS = [
 ] as const;
 
 export const ACADEMY_INSTRUCTOR_PHOTOS = [
-  photo("IMG_4615"),
-  photo("IMG_4616"),
-  photo("IMG_5728"),
+  photo("IMG_5722"),
+  photo("IMG_5741"),
+  photo("IMG_4665"),
 ] as const;
 
 /** Blog / misc fallbacks */

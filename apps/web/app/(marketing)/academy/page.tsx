@@ -2,19 +2,23 @@ import type { Metadata } from "next";
 import { Suspense } from "react";
 
 import MotocareMotion from "@/components/marketing/MotocareMotion";
-import AcademyAbout from "@/components/marketing/pages/academy/AcademyAbout";
-import AcademyCourses from "@/components/marketing/pages/academy/AcademyCourses";
+import AcademyCta from "@/components/marketing/pages/academy/AcademyCta";
 import AcademyEnrolForm from "@/components/marketing/pages/academy/AcademyEnrolForm";
 import AcademyFaq from "@/components/marketing/pages/academy/AcademyFaq";
 import AcademyHero from "@/components/marketing/pages/academy/AcademyHero";
-import AcademyHowItWorks from "@/components/marketing/pages/academy/AcademyHowItWorks";
 import AcademyInstructors from "@/components/marketing/pages/academy/AcademyInstructors";
-import AcademyOutcomes from "@/components/marketing/pages/academy/AcademyOutcomes";
+import AcademyPhilosophy from "@/components/marketing/pages/academy/AcademyPhilosophy";
+import AcademyPosts from "@/components/marketing/pages/academy/AcademyPosts";
+import AcademyCourses from "@/components/marketing/pages/academy/AcademyCourses";
+import AcademyShowcase from "@/components/marketing/pages/academy/AcademyShowcase";
 import AcademyStats from "@/components/marketing/pages/academy/AcademyStats";
-import AcademyWhoFor from "@/components/marketing/pages/academy/AcademyWhoFor";
+import AcademySteps from "@/components/marketing/pages/academy/AcademySteps";
+import AcademyTestimonials from "@/components/marketing/pages/academy/AcademyTestimonials";
 import SiteFooter from "@/components/marketing/SiteFooter";
 import SiteNav from "@/components/marketing/SiteNav";
 import WebflowClientEffects from "@/components/marketing/WebflowClientEffects";
+
+import "@/styles/academy.css";
 
 export const metadata: Metadata = {
   title: "Vonos Academy | Automotive training · Abuja",
@@ -28,16 +32,18 @@ export default function AcademyPage() {
     <>
       <MotocareMotion />
       <WebflowClientEffects />
-      <main className="main main--subpage">
+      <main className="main main--subpage ac-page">
         <SiteNav />
         <AcademyHero />
-        <AcademyStats />
-        <AcademyAbout />
-        <AcademyWhoFor />
+        <AcademyPhilosophy />
+        <AcademyShowcase />
         <AcademyCourses />
-        <AcademyHowItWorks />
-        <AcademyOutcomes />
+        <AcademySteps />
         <AcademyInstructors />
+        <AcademyTestimonials />
+        <AcademyPosts />
+        <AcademyStats />
+        <AcademyCta />
         <AcademyFaq />
         <Suspense fallback={null}>
           <AcademyEnrolForm />

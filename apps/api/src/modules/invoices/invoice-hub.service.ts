@@ -353,29 +353,26 @@ export class InvoiceHubService {
     );
   }
 
-  /** HQ6-style VPR-2026/1686 sequence per tenant + year. */
+  /**
+   * HQ6-style VPR-2026/1686 sequence per tenant + year.
+   * The numeric suffix is parsed, never sorted as a string: `VPR-2026/10`
+   * sorts before `VPR-2026/9` lexicographically, so ordering by reference
+   * handed back an already-used number once the year hit 10 and every
+   * subsequent payroll create failed on the unique index.
+   * Archived references (`…__del_…`) keep their number and only raise the max.
+   */
   async nextPayrollInvoiceReference(
     db: DbClient,
     tenantId: string,
     year: number,
   ): Promise<string> {
     const prefix = `VPR-${year}/`;
-    const latest = await db.invoice.findFirst({
-      where: {
-        tenantId,
-        deletedAt: null,
-        reference: { startsWith: prefix },
-      },
-      orderBy: { reference: 'desc' },
+    const rows = await db.invoice.findMany({
+      where: { tenantId, reference: { startsWith: prefix } },
       select: { reference: true },
     });
-    let seq = 1;
-    if (latest?.reference) {
-      const tail = latest.reference.slice(prefix.length);
-      const parsed = Number.parseInt(tail, 10);
-      if (Number.isFinite(parsed)) seq = parsed + 1;
-    }
-    return `${prefix}${seq}`;
+    const seq = maxSequenceSuffix(rows.map((row) => row.reference), prefix);
+    return `${prefix}${seq + 1}`;
   }
 
   /** HQ6-style PP2026/13606 payment reference per tenant + year. */
@@ -385,22 +382,43 @@ export class InvoiceHubService {
     year: number,
   ): Promise<string> {
     const prefix = `PP${year}/`;
-    const latest = await db.payment.findFirst({
-      where: {
-        tenantId,
-        deletedAt: null,
-        paymentRefNo: { startsWith: prefix },
-      },
-      orderBy: { paymentRefNo: 'desc' },
+    const rows = await db.payment.findMany({
+      where: { tenantId, paymentRefNo: { startsWith: prefix } },
       select: { paymentRefNo: true },
     });
-    let seq = 1;
-    if (latest?.paymentRefNo) {
-      const tail = latest.paymentRefNo.slice(prefix.length);
-      const parsed = Number.parseInt(tail, 10);
-      if (Number.isFinite(parsed)) seq = parsed + 1;
+    const seq = maxSequenceSuffix(
+      rows.map((row) => row.paymentRefNo).filter((ref): ref is string => Boolean(ref)),
+      prefix,
+    );
+    return `${prefix}${seq + 1}`;
+  }
+
+  /**
+   * Sequence numbers are computed, not database-sequenced — two concurrent
+   * creates can still pick the same one. Re-read the max and retry on that
+   * specific unique clash; anything else rethrows untouched.
+   */
+  private async createInvoiceWithReferenceRetry(
+    db: DbClient,
+    tenantId: string,
+    nextReference: () => Promise<string>,
+    input: Omit<CreateInvoiceInput, 'reference'>,
+    attempts = 3,
+  ): Promise<Awaited<ReturnType<InvoiceHubService['createInvoice']>>> {
+    let lastError: unknown;
+    for (let attempt = 1; attempt <= attempts; attempt++) {
+      try {
+        return await this.createInvoice(
+          db,
+          { ...input, reference: await nextReference() },
+          tenantId,
+        );
+      } catch (error) {
+        lastError = error;
+        if (!isReferenceClash(error) || attempt === attempts) throw error;
+      }
     }
-    return `${prefix}${seq}`;
+    throw lastError;
   }
 
   async ensurePayrollInvoice(
@@ -443,16 +461,12 @@ export class InvoiceHubService {
     }
 
     const year = payroll.payrollMonth.getUTCFullYear();
-    const reference = await this.nextPayrollInvoiceReference(
+
+    return this.createInvoiceWithReferenceRetry(
       db,
       payroll.tenantId,
-      year,
-    );
-
-    return this.createInvoice(
-      db,
+      () => this.nextPayrollInvoiceReference(db, payroll.tenantId, year),
       {
-        reference,
         kind: 'payroll',
         status: payroll.status,
         paymentStatus: payroll.paymentStatus,
@@ -464,7 +478,6 @@ export class InvoiceHubService {
         contactName: payroll.employeeName,
         payrollId: payroll.id,
       },
-      payroll.tenantId,
     );
   }
 
@@ -587,4 +600,25 @@ export class InvoiceHubService {
       data: { invoiceId },
     });
   }
+}
+
+/** Highest numeric suffix in `prefix + n` references (`VPR-2026/9`, `VPR-2026/10…`). */
+function maxSequenceSuffix(references: string[], prefix: string): number {
+  let max = 0;
+  for (const reference of references) {
+    const parsed = Number.parseInt(reference.slice(prefix.length), 10);
+    if (Number.isFinite(parsed) && parsed > max) max = parsed;
+  }
+  return max;
+}
+
+/** P2002 raised on the `reference` column (vs. saleId / payrollId / …). */
+function isReferenceClash(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null) return false;
+  const candidate = error as { code?: unknown; meta?: { target?: unknown } };
+  if (candidate.code !== 'P2002') return false;
+  const target = candidate.meta?.target;
+  if (Array.isArray(target)) return target.map(String).includes('reference');
+  if (typeof target === 'string') return target.includes('reference');
+  return false;
 }

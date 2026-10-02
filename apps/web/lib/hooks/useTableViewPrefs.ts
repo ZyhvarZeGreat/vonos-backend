@@ -46,7 +46,7 @@ export function useTableViewPrefs(storageKey: string | undefined) {
       stored === "regular" ||
       stored === "relaxed"
       ? stored
-      : "regular";
+      : "condensed";
   });
 
   useEffect(() => {

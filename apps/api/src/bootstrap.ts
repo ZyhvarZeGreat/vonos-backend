@@ -13,10 +13,22 @@ import { resolveWebOrigins } from './common/utils/webOrigin';
 /** Product image uploads + large JSON (Express default is 100kb → "entity too large"). */
 const BODY_LIMIT = '15mb';
 
-/** Load apps/api/.env into process.env when keys are unset (local nest start). */
+/**
+ * Load apps/api/.env into process.env when keys are unset (local nest start).
+ * Tries cwd, then paths relative to this file so `npm run dev --workspace=api`
+ * from the monorepo root still picks up apps/api/.env.
+ * Empty string counts as unset (shell/turbo sometimes export DATABASE_URL=).
+ */
 function loadLocalEnvFile(): void {
-  const envPath = resolve(process.cwd(), '.env');
-  if (!existsSync(envPath)) return;
+  const candidates = [
+    resolve(process.cwd(), '.env'),
+    resolve(process.cwd(), 'apps/api/.env'),
+    // dist/bootstrap.js → ../.env ; src under ts-node → ../.env
+    resolve(__dirname, '../.env'),
+    resolve(__dirname, '../../.env'),
+  ];
+  const envPath = candidates.find((p) => existsSync(p));
+  if (!envPath) return;
   try {
     const text = readFileSync(envPath, 'utf8');
     for (const line of text.split(/\r?\n/)) {
@@ -32,7 +44,10 @@ function loadLocalEnvFile(): void {
       ) {
         value = value.slice(1, -1);
       }
-      if (process.env[key] === undefined) process.env[key] = value;
+      const existing = process.env[key];
+      if (existing === undefined || existing === '') {
+        process.env[key] = value;
+      }
     }
   } catch {
     /* ignore */

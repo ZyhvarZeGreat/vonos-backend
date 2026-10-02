@@ -14,6 +14,7 @@ import type {
 } from "@vonos/types";
 import { apiFetch, withTenantQuery } from "@/lib/api/client";
 import { throwApiError } from "@/lib/api/parseApiError";
+import type { WhatsAppTestResult } from "@/lib/api/whatsapp";
 import {
   DEFAULT_TABLE_PAGE_SIZE,
   EXPORT_PAGE_SIZE,
@@ -29,6 +30,10 @@ import {
 import { createAccumulatingPicker } from "@/lib/api/accumulatingPicker";
 import { customerListCursor } from "@/lib/utils/pagination";
 import { createAsyncTtlCache } from "@/lib/utils/asyncTtlCache";
+
+export type CustomerWithWhatsApp = Customer & {
+  whatsappNotify?: WhatsAppTestResult;
+};
 
 /**
  * Picker option cache — search result pages; cleared on mutations.
@@ -298,7 +303,7 @@ export async function getCustomerContact(id: string): Promise<CustomerContact> {
 export async function createCustomer(
   tenantId: string,
   input: CreateCustomerInput,
-): Promise<Customer> {
+): Promise<CustomerWithWhatsApp> {
   const response = await apiFetch(withTenantQuery("/customers", tenantId), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -315,7 +320,7 @@ export async function updateCustomer(
   tenantId: string,
   id: string,
   input: UpdateCustomerInput,
-): Promise<Customer> {
+): Promise<CustomerWithWhatsApp> {
   const response = await apiFetch(withTenantQuery(`/customers/${id}`, tenantId), {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },

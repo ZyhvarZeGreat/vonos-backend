@@ -11,6 +11,12 @@ const CONNECT_RETRY_DELAY_MS = 2_000;
 const DEFAULT_CONNECTION_LIMIT = 20;
 const NEON_POOLER_CONNECTION_LIMIT = 15;
 const DEFAULT_POOL_TIMEOUT_S = 60;
+/**
+ * Interactive transaction budget. Prisma defaults to a 5s timeout, but Neon
+ * round-trips put a 4-query transaction at 3-7s — over budget often enough to
+ * raise spurious P2028s. Callers can still pass their own timeout/maxWait.
+ */
+const DEFAULT_INTERACTIVE_TX_OPTIONS = { maxWait: 10_000, timeout: 20_000 };
 
 function resolveDatabaseUrl(url?: string): string | undefined {
   if (!url) return url;
@@ -331,7 +337,13 @@ function wrapTransactionRetry(client: PrismaClient): void {
       () =>
         (original as (first: unknown, second?: unknown) => Promise<unknown>)(
           arg,
-          options,
+          // Caller-provided timeout/maxWait wins over the default budget.
+          typeof arg === 'function'
+            ? {
+                ...DEFAULT_INTERACTIVE_TX_OPTIONS,
+                ...(options as object | undefined),
+              }
+            : options,
         ),
       { label: '$transaction' },
     )) as PrismaClient['$transaction'];

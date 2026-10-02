@@ -24,6 +24,7 @@ import {
   payCustomerDue,
   updateCustomer,
 } from "@/lib/api/customers";
+import { describeWhatsAppNotify } from "@/lib/api/whatsapp";
 import {
   MODAL_RECORD_STALE_MS,
   MODAL_REF_STALE_MS,
@@ -338,6 +339,13 @@ export function Hq6ContactEditModal({
       successMessage: "Contact updated",
       onSuccess: (updated) => {
         onSaved(updated);
+        const wa = updated.whatsappNotify
+          ? describeWhatsAppNotify(updated.whatsappNotify)
+          : null;
+        if (wa) {
+          if (wa.ok) toast.success(wa.message);
+          else toast.error(wa.message);
+        }
       },
     });
   };

@@ -493,8 +493,9 @@ html.upos-hq6 [data-hq6="true"] .hq6-page .table.table-bordered > tbody > tr > t
   border-top: none !important;
   border-bottom: none !important;
   vertical-align: middle !important;
-  padding: 8px !important;
-  font-size: 13px !important;
+  padding: 4px 8px !important;
+  font-size: 12px !important;
+  line-height: 1.25 !important;
   text-transform: none !important;
   letter-spacing: normal !important;
   font-weight: 600;
@@ -866,14 +867,16 @@ html.upos-shell .hq6-page .table.table-bordered {
 html.upos-shell .hq6-page .table.table-bordered > thead > tr > th {
   border-bottom: 1px solid #f4f4f4 !important;
   vertical-align: middle !important;
-  padding: 8px !important;
-  font-size: 13px !important;
+  padding: 4px 8px !important;
+  font-size: 12px !important;
+  line-height: 1.25 !important;
   font-weight: 600;
 }
 html.upos-shell .hq6-page .table.table-bordered > tbody > tr > td {
   vertical-align: middle !important;
-  padding: 8px !important;
-  font-size: 13px !important;
+  padding: 4px 8px !important;
+  font-size: 12px !important;
+  line-height: 1.25 !important;
   font-weight: 400 !important;
   color: #333;
 }

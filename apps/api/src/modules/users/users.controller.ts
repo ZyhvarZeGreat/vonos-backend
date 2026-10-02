@@ -11,7 +11,11 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
-import type { CreateUserRequest, InviteUserRequest } from '@vonos/types';
+import type {
+  CreateUserRequest,
+  InviteUserRequest,
+  UpdateUserRequest,
+} from '@vonos/types';
 import type { Request } from 'express';
 import type { AuthenticatedUser } from '../../common/decorators/roles.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -77,22 +81,18 @@ export class UsersController {
   update(
     @Req() request: AuthedRequest,
     @Param('id') id: string,
-    @Body()
-    body: {
-      email?: string;
-      name?: string;
-      role?: InviteUserRequest['role'];
-      tenantRoleId?: string | null;
-      status?: 'active' | 'suspended' | 'invited';
-      password?: string;
-    },
+    @Body() body: UpdateUserRequest,
   ) {
     return this.usersService.updateUser(request.user, id, body);
   }
 
   @Delete(':id')
   @Roles('admin', 'super_admin')
-  deactivate(@Req() request: AuthedRequest, @Param('id') id: string) {
-    return this.usersService.deactivateUser(request.user, id);
+  deactivate(
+    @Req() request: AuthedRequest,
+    @Param('id') id: string,
+    @Query('tenantId') tenantId?: string,
+  ) {
+    return this.usersService.deactivateUser(request.user, id, tenantId);
   }
 }

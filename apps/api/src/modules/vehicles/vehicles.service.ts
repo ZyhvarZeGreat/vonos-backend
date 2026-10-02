@@ -11,6 +11,10 @@ import {
 } from '../../common/utils/listPageCache';
 import { toIso } from '../../common/utils/serializers';
 import { vehicleTextSearchWhere } from '../../common/utils/listSearch';
+import {
+  WhatsAppNotifyService,
+  type WhatsAppSendResult,
+} from '../../common/whatsapp/whatsapp-notify.service';
 
 function serialize(row: {
   id: string;
@@ -46,6 +50,7 @@ export class VehiclesService {
     private readonly tenantDb: TenantDbService,
     private readonly auditService: AuditService,
     private readonly cache: CacheService,
+    private readonly whatsapp: WhatsAppNotifyService,
   ) {}
 
   async list(filters: {
@@ -151,8 +156,9 @@ export class VehiclesService {
     year?: number;
     ownerName: string;
     ownerPhone?: string;
-  }): Promise<Vehicle> {
+  }): Promise<Vehicle & { whatsappNotify?: WhatsAppSendResult }> {
     const tenantId = this.tenantDb.requireTenantId();
+    const ownerPhone = body.ownerPhone?.trim() || null;
     const row = await this.tenantDb.db.vehicle.create({
       data: {
         tenantId,
@@ -162,7 +168,7 @@ export class VehiclesService {
         model: body.model,
         year: body.year ?? null,
         ownerName: body.ownerName,
-        ownerPhone: body.ownerPhone ?? null,
+        ownerPhone,
       },
     });
     await this.auditService.log({
@@ -172,7 +178,14 @@ export class VehiclesService {
       summary: `Registered vehicle ${row.plateNumber}`,
     });
     void invalidateTenantDashboardCache(this.cache, tenantId);
-    return serialize(row);
+    const vehicle = serialize(row);
+    const whatsappNotify = await this.whatsapp.notifyWelcomeIfNewPhone({
+      previousPhone: null,
+      nextPhone: ownerPhone,
+      customerName: body.ownerName,
+      shopName: 'Vonos Mechanic',
+    });
+    return whatsappNotify ? { ...vehicle, whatsappNotify } : vehicle;
   }
 
   async update(
@@ -186,12 +199,17 @@ export class VehiclesService {
       ownerName?: string;
       ownerPhone?: string | null;
     },
-  ): Promise<Vehicle> {
+  ): Promise<Vehicle & { whatsappNotify?: WhatsAppSendResult }> {
     const tenantId = this.tenantDb.requireTenantId();
     const existing = await this.tenantDb.db.vehicle.findFirst({
       where: { id, tenantId, deletedAt: null },
     });
     if (!existing) throw new NotFoundException('Vehicle not found');
+
+    const nextPhone =
+      body.ownerPhone !== undefined
+        ? body.ownerPhone?.trim() || null
+        : existing.ownerPhone;
 
     const row = await this.tenantDb.db.vehicle.update({
       where: { id },
@@ -204,7 +222,7 @@ export class VehiclesService {
         ...(body.model !== undefined ? { model: body.model } : {}),
         ...(body.year !== undefined ? { year: body.year } : {}),
         ...(body.ownerName !== undefined ? { ownerName: body.ownerName } : {}),
-        ...(body.ownerPhone !== undefined ? { ownerPhone: body.ownerPhone } : {}),
+        ...(body.ownerPhone !== undefined ? { ownerPhone: nextPhone } : {}),
       },
     });
 
@@ -216,6 +234,16 @@ export class VehiclesService {
     });
 
     void invalidateTenantDashboardCache(this.cache, tenantId);
-    return serialize(row);
+    const vehicle = serialize(row);
+    const whatsappNotify =
+      body.ownerPhone !== undefined
+        ? await this.whatsapp.notifyWelcomeIfNewPhone({
+            previousPhone: existing.ownerPhone,
+            nextPhone,
+            customerName: row.ownerName,
+            shopName: 'Vonos Mechanic',
+          })
+        : null;
+    return whatsappNotify ? { ...vehicle, whatsappNotify } : vehicle;
   }
 }

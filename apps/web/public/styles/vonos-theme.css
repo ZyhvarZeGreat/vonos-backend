@@ -22,11 +22,14 @@ body {
   --color--primary-2-op25: #3b82f640;
 }
 
-/* Marketing — Host Grotesk + outer/inner content shell (does not affect ERP dashboard) */
+/* Marketing — Host Grotesk headings + DM Sans body (does not affect ERP dashboard) */
 .marketing-root {
   --vonos-inner-max: 100%;
   --vonos-marketing-gutter: 16px;
-  --_typography---font-family--heading: var(--font-host-grotesk), "Host Grotesk", sans-serif;
+  --_typography---font-family--heading: var(--font-host-grotesk), "Plus Jakarta Sans", "Host Grotesk",
+    sans-serif;
+  --_typography---font-family--body: var(--font-dm-sans), "DM Sans", system-ui, sans-serif;
+  font-family: var(--_typography---font-family--body);
 }
 
 @media screen and (min-width: 1081px) {
@@ -319,6 +322,26 @@ input.button-primary.w-button:hover {
 .bg-primary-1 .button-primary .button-title,
 .footer-info .button-primary .button-title {
   color: #fff !important;
+}
+
+/* Step badges — white numerals on primary round (home + academy / Motocare variants) */
+.marketing-root .step-number,
+.marketing-root .step-number-round .step-number {
+  color: #fff !important;
+}
+
+/* Academy / About-style hero image carousel */
+.marketing-root .hero-about-carousel {
+  border-radius: var(--border-radius--md, 1rem);
+  overflow: hidden;
+  position: relative;
+  width: 100%;
+  min-height: 280px;
+  aspect-ratio: 16 / 9;
+}
+
+.marketing-root .hero-about-carousel .hero-about-image {
+  border-radius: inherit;
 }
 
 /* Subpage hero headlines */

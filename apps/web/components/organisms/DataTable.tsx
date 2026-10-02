@@ -170,9 +170,9 @@ function compareValues(
 }
 
 function headerPad(density: TableDensity): string {
-  if (density === "condensed") return "px-4 py-1.5";
-  if (density === "relaxed") return "px-4 py-3.5";
-  return "px-4 py-2.5";
+  if (density === "condensed") return "px-3 py-1";
+  if (density === "relaxed") return "px-4 py-3";
+  return "px-3 py-1.5";
 }
 
 export function DataTable<T extends { id: string }>({

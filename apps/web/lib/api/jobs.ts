@@ -292,7 +292,7 @@ export async function updateJobStatus(
 
 export type WhatsAppNotifyResult = {
   sent: boolean;
-  channel: "cloud_api" | "wa_me" | "skipped";
+  channel: "baileys" | "unipile" | "cloud_api" | "wa_me" | "skipped";
   waMeUrl: string | null;
   toE164: string | null;
   error?: string;

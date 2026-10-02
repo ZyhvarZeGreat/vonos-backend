@@ -1,70 +1,80 @@
 import Link from "next/link";
 
-import AboutHeroCarousel from "@/components/marketing/AboutHeroCarousel";
-import { ACADEMY_TICKER } from "@/lib/marketing/academy-courses";
+import { ACADEMY_CONTACT } from "@/lib/marketing/academy-courses";
 import { ACADEMY_HERO_SLIDES } from "@/lib/marketing/vonos-photos";
 
-function MarqueeItem() {
-  return (
-    <div className="marquee-item">
-      {ACADEMY_TICKER.flatMap((label) => [
-        <div key={`${label}-t`} className="text-sm-uppercase text-gray-3">
-          {label}
-        </div>,
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          key={`${label}-i`}
-          src="/images/pages/about/6a741b15a66dd7f5c7dee251_ticker_sepsvg.svg"
-          loading="lazy"
-          alt=""
-          className="marquee-icon"
-        />,
-      ])}
-    </div>
-  );
-}
+const FACTS = [
+  { value: "3", label: "core programmes" },
+  { value: "80%", label: "of time in the bay" },
+  { value: "1:6", label: "trainer to trainee" },
+] as const;
 
 export default function AcademyHero() {
+  const [wide, tall, detail] = ACADEMY_HERO_SLIDES;
+
   return (
-    <section className="hero-section" data-qa-section="academy-hero">
-      <div className="container-full">
-        <div className="hero-about-content">
-          <div className="w-layout-grid grid-about-top">
-            <div className="hero-about-caption">
-              <div data-show="show" className="breadcrumb-item">
-                <Link href="/" className="breadcrumb-link text-black">
-                  Home
-                </Link>
-                <div className="breadcrumb-text text-gray-3">/</div>
-                <div className="breadcrumb-text text-gray-3">Academy</div>
-              </div>
-              <h1 data-show="show" className="no-margin-bottom">
-                Train where the cars actually get fixed.
-              </h1>
+    <section className="ac-hero" id="academy" data-qa-section="academy-hero">
+      <div className="ac-container">
+        <div className="ac-hero__grid">
+          <div>
+            <span className="ac-hero__kicker">Vonos Academy · Kubwa, Abuja</span>
+            <h1 className="ac-hero__title">
+              Train where the cars <em>actually get fixed.</em>
+            </h1>
+            <p className="ac-hero__text">
+              Practical automotive programmes for apprentices, career-changers, and technicians.
+              Manufacturer-minded skills, supervised bay time, and a clear path from apprentice to
+              technician — right beside the working Vonos workshop.
+            </p>
+            <div className="ac-hero__actions">
+              <a href="#enrol" className="ac-btn ac-btn--primary">
+                Enquire to enrol
+                <span className="ac-btn__arrow" aria-hidden="true">
+                  →
+                </span>
+              </a>
+              <a href="#programmes" className="ac-btn ac-btn--ghost">
+                View programmes
+              </a>
             </div>
-            <div className="hero-about-info">
-              <p data-show="show" className="no-margin-bottom">
-                Vonos Academy — practical automotive programmes in Abuja. Manufacturer-minded
-                skills, supervised bay time, and a clear path from apprentice to technician.
-              </p>
-              <div data-show="show">
-                <a href="#enrol" className="button-primary w-inline-block">
-                  <div className="button-title">Enquire to enrol</div>
-                  <div className="button-hover-bg" />
-                </a>
+            <div className="ac-hero__facts">
+              {FACTS.map((fact) => (
+                <div key={fact.label}>
+                  <strong>{fact.value}</strong>
+                  {fact.label}
+                </div>
+              ))}
+              <div>
+                <strong>{ACADEMY_CONTACT.phoneDisplay}</strong>
+                call or WhatsApp
               </div>
             </div>
           </div>
-          <div className="hero-about-bottom">
-            <AboutHeroCarousel images={ACADEMY_HERO_SLIDES} />
-            <div data-show="show" className="marquee-list">
-              <MarqueeItem />
-              <MarqueeItem />
-              <MarqueeItem />
-              <div className="marquee-overlay" />
+
+          <div className="ac-hero__collage">
+            <div className="ac-hero__frame ac-hero__frame--tall">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={tall} alt="Trainee working under a vehicle on the ramp" />
+              <span className="ac-hero__tag">Supervised bay time</span>
+            </div>
+            <div className="ac-hero__frame">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={wide} alt="Vonos workshop floor" />
+              <span className="ac-hero__tag">Live workshop</span>
+            </div>
+            <div className="ac-hero__frame">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={detail} alt="Diagnostics training on a customer vehicle" />
+              <span className="ac-hero__tag">Certificate on completion</span>
             </div>
           </div>
         </div>
+
+        <p style={{ margin: "1.5rem 0 0" }}>
+          <Link href="/contact" className="ac-btn ac-btn--ghost">
+            Visit the training site →
+          </Link>
+        </p>
       </div>
     </section>
   );

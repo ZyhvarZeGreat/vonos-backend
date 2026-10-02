@@ -69,10 +69,14 @@ export default function HeroSection() {
                     />
                   </div>
                   <div className="label">
-                    <label htmlFor="Location" className="field-title">
-                      Location
+                    <label htmlFor="Service-Type" className="field-title">
+                      Service type
                     </label>
-                    <select id="Location" name="Location" className="form-select contact-select w-select">
+                    <select
+                      id="Service-Type"
+                      name="Service type"
+                      className="form-select contact-select w-select"
+                    >
                       <option value="Select…">Select…</option>
                       <option value="Servicing & MOT">Servicing &amp; MOT</option>
                       <option value="Brakes & Suspension">Brakes &amp; Suspension</option>

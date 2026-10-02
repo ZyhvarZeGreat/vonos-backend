@@ -11,7 +11,9 @@ import {
   useHq6ListChrome,
 } from "@/components/hq6/Hq6StandardListShell";
 import { createVehicle, getAllVehicles, getVehiclesPage } from "@/lib/api/vehicles";
+import { describeWhatsAppNotify } from "@/lib/api/whatsapp";
 import { useAppMutation } from "@/lib/hooks/useAppMutation";
+import { toast } from "@/stores/toastStore";
 import {
   optimisticTempId,
   prependEntityInQueries,
@@ -106,6 +108,11 @@ export function Hq6VehiclesListView() {
         ownerName: "",
         ownerPhone: "",
       });
+      if (vehicle.whatsappNotify) {
+        const wa = describeWhatsAppNotify(vehicle.whatsappNotify);
+        if (wa.ok) toast.success(wa.message);
+        else toast.error(wa.message);
+      }
       goToDetail(vehicle.id);
     },
     onError: () => {

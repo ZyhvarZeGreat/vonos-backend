@@ -3,9 +3,9 @@ export type ColumnAlign = "left" | "right";
 export type TableDensity = "condensed" | "regular" | "relaxed";
 
 export const TABLE_DENSITY_PX: Record<TableDensity, number> = {
-  condensed: 40,
-  regular: 48,
-  relaxed: 56,
+  condensed: 32,
+  regular: 40,
+  relaxed: 48,
 };
 
 type AlignableColumn = {

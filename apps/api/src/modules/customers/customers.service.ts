@@ -48,6 +48,10 @@ import {
 } from '../../common/utils/listSearch';
 import { toIso, toNumber } from '../../common/utils/serializers';
 import { AuditService } from '../audit/audit.service';
+import {
+  WhatsAppNotifyService,
+  type WhatsAppSendResult,
+} from '../../common/whatsapp/whatsapp-notify.service';
 
 /** Plate / Contact ID often embedded in legacy customer names (HQ6). */
 function plateFromCustomerName(name: string | null | undefined): string | null {
@@ -222,6 +226,7 @@ export class CustomersService {
     private readonly tenantDb: TenantDbService,
     private readonly auditService: AuditService,
     private readonly cache: CacheService,
+    private readonly whatsapp: WhatsAppNotifyService,
   ) {}
 
   async list(filters: CustomerFilters): Promise<PaginatedList<Customer>> {
@@ -494,7 +499,9 @@ export class CustomersService {
     details.assignedToEmployeeName = employee.name;
   }
 
-  async create(dto: CreateCustomerInput): Promise<Customer> {
+  async create(
+    dto: CreateCustomerInput,
+  ): Promise<Customer & { whatsappNotify?: WhatsAppSendResult }> {
     const tenantId = this.tenantDb.requireTenantId();
     const name = dto.name.trim();
     if (!name) {
@@ -516,12 +523,13 @@ export class CustomersService {
       this.resolveAssignedEmployee(tenantId, parsedDetails),
     ]);
     const detailsJson = toDetailsJson(parsedDetails);
+    const phone = dto.phone?.trim() || null;
     const row = await this.tenantDb.db.customer.create({
       data: {
         tenantId,
         name,
         email: dto.email?.trim() || null,
-        phone: dto.phone?.trim() || null,
+        phone,
         customerGroupId: dto.customerGroupId?.trim() || null,
         assignedToUserId: dto.assignedToUserId?.trim() || null,
         openingBalance: dto.openingBalance ?? 0,
@@ -542,10 +550,19 @@ export class CustomersService {
       summary: `Created customer ${row.name}`,
     });
     void invalidateTenantListCache(this.cache, tenantId, ['customers']);
-    return serializeCustomer({ ...row, sales: [] });
+    const customer = serializeCustomer({ ...row, sales: [] });
+    const whatsappNotify = await this.whatsapp.notifyWelcomeIfNewPhone({
+      previousPhone: null,
+      nextPhone: phone,
+      customerName: customer.name,
+    });
+    return whatsappNotify ? { ...customer, whatsappNotify } : customer;
   }
 
-  async update(id: string, dto: UpdateCustomerInput): Promise<Customer> {
+  async update(
+    id: string,
+    dto: UpdateCustomerInput,
+  ): Promise<Customer & { whatsappNotify?: WhatsAppSendResult }> {
     const tenantId = this.tenantDb.requireTenantId();
     const existing = await this.tenantDb.db.customer.findFirst({
       where: { id, tenantId, deletedAt: null },
@@ -575,12 +592,15 @@ export class CustomersService {
     }
     const detailsJson = toDetailsJson(parsedDetails);
 
+    const nextPhone =
+      dto.phone !== undefined ? dto.phone?.trim() || null : existing.phone;
+
     const row = await this.tenantDb.db.customer.update({
       where: { id },
       data: {
         ...(name !== undefined ? { name } : {}),
         ...(dto.email !== undefined ? { email: dto.email?.trim() || null } : {}),
-        ...(dto.phone !== undefined ? { phone: dto.phone?.trim() || null } : {}),
+        ...(dto.phone !== undefined ? { phone: nextPhone } : {}),
         ...(dto.customerGroupId !== undefined
           ? { customerGroupId: dto.customerGroupId?.trim() || null }
           : {}),
@@ -608,7 +628,16 @@ export class CustomersService {
       summary: `Updated customer ${row.name}`,
     });
     void invalidateTenantListCache(this.cache, tenantId, ['customers']);
-    return serializeCustomer({ ...row, sales: [] });
+    const customer = serializeCustomer({ ...row, sales: [] });
+    const whatsappNotify =
+      dto.phone !== undefined
+        ? await this.whatsapp.notifyWelcomeIfNewPhone({
+            previousPhone: existing.phone,
+            nextPhone,
+            customerName: customer.name,
+          })
+        : null;
+    return whatsappNotify ? { ...customer, whatsappNotify } : customer;
   }
 
   async setStatus(

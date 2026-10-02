@@ -107,8 +107,8 @@ export default function MarketingFooter({
                       <div className="text-white">
                         Mon to Fri 8 am–6 pm&nbsp;&nbsp;&amp;&nbsp;&nbsp;Sat 9 am–1 pm
                       </div>
-                      <a href="tel:+12025550147" className="footer-contact-link">
-                        +1 202 555 0147
+                      <a href="tel:+2349166295819" className="footer-contact-link">
+                        +234 916 629 5819
                       </a>
                     </div>
                     <div className="footer-social-detail">

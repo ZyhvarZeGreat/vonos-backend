@@ -1284,3 +1284,31 @@ html.vonos-reduced-motion [data-show] {
   }
 }
 
+
+/* ---------------------------------------------------------------------------
+   "What we do" service cards — every card the same size.
+   Fixed-ratio image block + detail area that absorbs the remaining height, so
+   all cards in a row share one height regardless of copy length.
+   --------------------------------------------------------------------------- */
+.marketing-root .service-card {
+  align-items: stretch;
+}
+
+.marketing-root .service-image-holder {
+  height: auto;
+  aspect-ratio: 4 / 3;
+  flex: none;
+}
+
+.marketing-root .service-card-detail {
+  height: auto;
+  flex: 1 1 auto;
+}
+
+.marketing-root .grid-service-list {
+  align-items: stretch;
+}
+
+.marketing-root .grid-service-list > * {
+  height: 100%;
+}

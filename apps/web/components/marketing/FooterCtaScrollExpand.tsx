@@ -32,8 +32,8 @@ export default function FooterCtaScrollExpand() {
             </div>
             <div className="button-hover-bg" />
           </Link>
-          <a href="tel:+12025550147" className="button-primary w-inline-block">
-            <div className="button-title">Call&nbsp;&nbsp;+1 202 555 0147</div>
+          <a href="tel:+2349166295819" className="button-primary w-inline-block">
+            <div className="button-title">Call&nbsp;&nbsp;+234 916 629 5819</div>
             <div className="button-hover-bg" />
           </a>
         </div>

@@ -13,6 +13,8 @@ export interface User {
   tenantRoleId?: string | null;
   /** Display name of the assigned TenantRole. */
   tenantRoleName?: string | null;
+  /** Entity codes this user may access / clearance tags. */
+  allowedTenantCodes?: string[];
   createdAt: string;
   lastLoginAt: string | null;
 }
@@ -165,6 +167,10 @@ export interface UpdateUserRequest {
   status?: UserStatus;
   /** Optional — when set, must be at least 8 characters. */
   password?: string;
+  /** Primary / home tenant ID for super_admin user management. */
+  tenantId?: string | null;
+  /** Work-location entity codes this user has access to. */
+  locationCodes?: string[];
 }
 
 export interface UpdateUserResponse {

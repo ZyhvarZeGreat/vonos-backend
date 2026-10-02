@@ -7,7 +7,7 @@ import CardNav, { type CardNavItem } from "@/components/marketing/CardNav";
 import { BRAND } from "@/lib/marketing/asset-map";
 import { CART_ADDED_EVENT, useShopCart } from "@/stores/shopCartStore";
 
-const PHONE_HREF = "tel:+12025550147";
+const PHONE_HREF = "tel:+2349166295819";
 
 type CartAddedDetail = {
   name?: string;

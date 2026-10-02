@@ -8,6 +8,11 @@ import {
   type ListPage,
 } from "@/lib/api/fetchAllPages";
 import { appendListQuery, fetchTenantListPage } from "@/lib/api/listPageHelpers";
+import type { WhatsAppTestResult } from "@/lib/api/whatsapp";
+
+export type VehicleWithWhatsApp = Vehicle & {
+  whatsappNotify?: WhatsAppTestResult;
+};
 
 const LIST_PATH = "/vehicles";
 
@@ -64,7 +69,7 @@ export async function getVehicleHistory(id: string): Promise<VehicleJobHistoryEn
 export async function createVehicle(
   tenantId: string,
   body: Omit<Vehicle, "id" | "tenantId" | "createdAt" | "updatedAt">,
-): Promise<Vehicle> {
+): Promise<VehicleWithWhatsApp> {
   const path = withTenantQuery("/vehicles", tenantId);
   const response = await apiFetch(path, {
     method: "POST",
@@ -81,7 +86,7 @@ export async function updateVehicle(
   body: Partial<
     Pick<Vehicle, "plateNumber" | "vin" | "make" | "model" | "year" | "ownerName" | "ownerPhone">
   >,
-): Promise<Vehicle> {
+): Promise<VehicleWithWhatsApp> {
   const path = withTenantQuery(`/vehicles/${id}`, tenantId);
   const response = await apiFetch(path, {
     method: "PATCH",

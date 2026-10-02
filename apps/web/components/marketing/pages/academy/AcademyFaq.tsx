@@ -6,6 +6,7 @@ export default function AcademyFaq() {
   return (
     <section
       data-scroll="load"
+      id="faqs"
       className="section-spacing-bottom"
       data-qa-section="academy-faq"
     >

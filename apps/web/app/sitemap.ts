@@ -41,7 +41,9 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
   let productEntries: MetadataRoute.Sitemap = [];
   try {
-    const products = await fetchAllStoreProductsForSitemap();
+    // Never let a slow/unreachable API stall the build — sitemap degrades to
+    // static + blog + service entries when the catalog can't be reached.
+    const products = await fetchAllStoreProductsForSitemap(2000, AbortSignal.timeout(8000));
     productEntries = products
       .filter((product) => Boolean(product.sku))
       .map((product) => ({

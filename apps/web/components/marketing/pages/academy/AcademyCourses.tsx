@@ -1,57 +1,53 @@
-import { Fragment } from "react";
-
 import { ACADEMY_COURSES } from "@/lib/marketing/academy-courses";
-
-const scrollItem = { "scroll-item": "show" } as const;
 
 export default function AcademyCourses() {
   return (
-    <section
-      data-scroll="load"
-      className="section-spacing-bottom"
-      data-qa-section="academy-courses"
-    >
-      <div className="container-medium">
-        <div className="section-title">
-          <div {...scrollItem} className="why-choose-caption">
-            <div className="pre-title w-variant-7e8276b8-3fa3-b83e-411c-2eeab6ce4110">
-              Programmes
-            </div>
-            <h2 className="heading-h4 no-margin-bottom">
-              Structured courses with real workshop hours — not videos alone.
+    <section className="ac-section" id="programmes" data-qa-section="academy-courses">
+      <div className="ac-container">
+        <div className="ac-section-head">
+          <div>
+            <span className="ac-eyebrow">Programmes</span>
+            <h2 className="ac-title">
+              Most popular
+              <br />
+              training courses
             </h2>
           </div>
+          <a href="#enrol" className="ac-btn ac-btn--ghost">
+            Enquire about a course →
+          </a>
         </div>
-        <div className="w-layout-grid grid-why-choose">
-          {ACADEMY_COURSES.map((course, index) => {
-            const card = (
-              <div {...scrollItem} className="why-choose-item">
-                <div className="why-choose-wrap">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img loading="lazy" src={course.icon} alt="" className="why-choose-icon" />
+
+        <div className="ac-courses__grid">
+          {ACADEMY_COURSES.map((course) => (
+            <article key={course.id} className="ac-card ac-course">
+              <div className="ac-course__media">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={course.image} alt={course.title} loading="lazy" />
+                <span className="ac-course__level">{course.level}</span>
+              </div>
+              <div className="ac-course__body">
+                <div className="ac-course__meta">
+                  <span>{course.duration}</span>
+                  <span>·</span>
+                  <span>{course.level}</span>
                 </div>
-                <div className="why-choose-content">
-                  <div className="text-sm-uppercase text-gray-3">
-                    {course.level} · {course.duration}
-                  </div>
-                  <div className="why-choose-title">{course.title}</div>
-                  <p className="why-choose-description">{course.summary}</p>
+                <h3 className="ac-course__title">{course.title}</h3>
+                <p className="ac-course__text">{course.summary}</p>
+                <div className="ac-course__actions">
                   <a
                     href={`/academy?course=${course.id}#enrol`}
-                    className="breadcrumb-link text-black"
+                    className="ac-btn ac-btn--primary"
                   >
-                    Enquire about this course →
+                    Enquire now
+                  </a>
+                  <a href="#faqs" className="ac-btn ac-btn--ghost">
+                    Details
                   </a>
                 </div>
               </div>
-            );
-
-            // Motocare wraps only the last column in an extra div.
-            if (index === ACADEMY_COURSES.length - 1) {
-              return <div key={course.id}>{card}</div>;
-            }
-            return <Fragment key={course.id}>{card}</Fragment>;
-          })}
+            </article>
+          ))}
         </div>
       </div>
     </section>

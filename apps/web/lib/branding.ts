@@ -7,7 +7,8 @@ export const VONOS_INVOICE_BUSINESS_NAME = "VONOS GROUP LTD";
 export const VONOS_INVOICE_ADDRESS =
   "Vonos plaza, vonos roundabout, fo1, kubwa";
 
-export const VONOS_INVOICE_MOBILE_PRIMARY = "09128690691";
+export const VONOS_PHONE = "09128690691";
+export const VONOS_INVOICE_MOBILE_PRIMARY = VONOS_PHONE;
 export const VONOS_INVOICE_MOBILE_SECONDARY = "07075179952";
 export const VONOS_INVOICE_EMAIL = "operations@vonosgroupltd.com";
 

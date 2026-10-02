@@ -3,6 +3,9 @@
 import { gsap } from "gsap";
 import { useEffect } from "react";
 
+/** Workshop WhatsApp line (E.164, no "+") — shared by enquiry forms. */
+const WHATSAPP_E164 = "2349166295819";
+
 function accordionContent(node: Element) {
   return node.querySelector<HTMLElement>(".accordion-content");
 }
@@ -74,8 +77,28 @@ function setAccordionOpen(node: Element, open: boolean, animate: boolean) {
   }
 }
 
+/** Booking / contact forms hand off to WhatsApp instead of navigating away. */
+function attachWhatsAppEnquiry(form: HTMLFormElement) {
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const data = new FormData(form);
+    const lines = ["Vonos enquiry", ""];
+    for (const [key, value] of data.entries()) {
+      if (typeof value !== "string") continue;
+      const trimmed = value.trim();
+      if (!trimmed || trimmed === "Select…") continue;
+      lines.push(`${key}: ${trimmed}`);
+    }
+    const url = `https://wa.me/${WHATSAPP_E164}?text=${encodeURIComponent(lines.join("\n"))}`;
+    window.open(url, "_blank", "noopener,noreferrer");
+  });
+}
+
 export default function WebflowClientEffects() {
   useEffect(() => {
+    const enquiryForms = document.querySelectorAll<HTMLFormElement>("form#Contact-Form");
+    enquiryForms.forEach(attachWhatsAppEnquiry);
+
     const lists = document.querySelectorAll(".faqs-right");
     lists.forEach((list) => {
       list.querySelectorAll(".accordion-item, .accordion-active-item").forEach((node) => {

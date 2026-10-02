@@ -95,6 +95,7 @@ export async function fetchStoreCatalog(args?: {
   maxPrice?: number;
   cursor?: string;
   limit?: number;
+  signal?: AbortSignal;
 }): Promise<StoreCatalogResponse> {
   const params = new URLSearchParams();
   if (args?.search) params.set("search", args.search);
@@ -112,7 +113,10 @@ export async function fetchStoreCatalog(args?: {
   const query = params.toString();
   const page = await publicJson<ApiCatalogPage>(
     `/public/store/catalog${query ? `?${query}` : ""}`,
-    { next: { revalidate: 3600, tags: ["store-catalog"] } },
+    {
+      next: { revalidate: 3600, tags: ["store-catalog"] },
+      signal: args?.signal,
+    },
   );
 
   return {
@@ -145,7 +149,10 @@ export async function fetchStoreProduct(sku: string): Promise<ShopProduct | null
   return mapApiProduct(row);
 }
 
-export async function fetchAllStoreProductsForSitemap(maxItems = 2000): Promise<ShopProduct[]> {
+export async function fetchAllStoreProductsForSitemap(
+  maxItems = 2000,
+  signal?: AbortSignal,
+): Promise<ShopProduct[]> {
   const items: ShopProduct[] = [];
   let cursor: string | null = null;
 
@@ -153,6 +160,7 @@ export async function fetchAllStoreProductsForSitemap(maxItems = 2000): Promise<
     const page = await fetchStoreCatalog({
       cursor: cursor ?? undefined,
       limit: 100,
+      signal,
     });
     items.push(...page.items);
     if (!page.nextCursor || page.items.length === 0) break;

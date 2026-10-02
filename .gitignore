@@ -8,6 +8,7 @@ dist
 # Env & secrets
 .env
 .env.*
+.env-*
 !.env.example
 !.env.*.example
 id_rsa
@@ -53,3 +54,8 @@ helvetica-neue-5/
 # Local HEIC conversion scratch
 apps/web/public/images/vonos-photos/_preview/
 apps/web/public/images/vonos-photos/_preview2/
+
+# Local reference clones (not app source)
+/UltimatePOS-V7.1/
+/moovmart-main/
+/postgres-claude-skills-generator/

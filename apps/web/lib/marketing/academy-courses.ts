@@ -1,4 +1,7 @@
-import { ACADEMY_INSTRUCTOR_PHOTOS } from "@/lib/marketing/vonos-photos";
+import {
+  ACADEMY_COURSE_PHOTOS,
+  ACADEMY_INSTRUCTOR_PHOTOS,
+} from "@/lib/marketing/vonos-photos";
 
 export type AcademyCourse = {
   id: string;
@@ -7,6 +10,7 @@ export type AcademyCourse = {
   level: "Foundation" | "Intermediate" | "Advanced";
   summary: string;
   icon: string;
+  image: string;
 };
 
 /** Editable programme list for /academy — no CMS yet. */
@@ -19,6 +23,7 @@ export const ACADEMY_COURSES: AcademyCourse[] = [
     summary:
       "Oil, filters, fluids, multi-point inspection, and workshop safety — the core habits every bay starts with.",
     icon: "/images/icons/tag.svg",
+    image: ACADEMY_COURSE_PHOTOS[0],
   },
   {
     id: "brakes-suspension",
@@ -28,6 +33,7 @@ export const ACADEMY_COURSES: AcademyCourse[] = [
     summary:
       "Pad and disc replacement, bleeding, bushings, shocks, and how to diagnose noise and pull under braking.",
     icon: "/images/icons/calendar.svg",
+    image: ACADEMY_COURSE_PHOTOS[1],
   },
   {
     id: "diagnostics",
@@ -37,10 +43,11 @@ export const ACADEMY_COURSES: AcademyCourse[] = [
     summary:
       "Scan tools, live data, charging systems, sensors, and tracing faults without guessing parts.",
     icon: "/images/icons/security.svg",
+    image: ACADEMY_COURSE_PHOTOS[2],
   },
 ];
 
-/** Three steps — matches Motocare `.grid-step-list` (3 columns). */
+/** Six steps — matches the Gozy-style 2 × 3 "step-by-step" grid. */
 export const ACADEMY_STEPS = [
   {
     title: "Enquire",
@@ -51,8 +58,63 @@ export const ACADEMY_STEPS = [
     body: "We confirm dates, fees, and what to bring. A seat is held once you accept the offer.",
   },
   {
-    title: "Train & certify",
-    body: "Bay-led training with a completion certificate and paths into workshop placement.",
+    title: "Induction & tools",
+    body: "First session covers bay safety, tool discipline, and how work flows through the shop.",
+  },
+  {
+    title: "Bay-led training",
+    body: "You work on live vehicles under working technicians — the same floor as Vonos Mechanic.",
+  },
+  {
+    title: "Assessment",
+    body: "Practical checks on the skills that matter for the programme you enrolled on.",
+  },
+  {
+    title: "Certificate & next steps",
+    body: "Complete the programme and receive a Vonos Academy certificate, with placement considered for strong trainees.",
+  },
+] as const;
+
+/**
+ * Student feedback for the /academy testimonials grid.
+ * TODO(copy): placeholder quotes — replace with real trainee reviews before launch.
+ */
+export const ACADEMY_TESTIMONIALS = [
+  {
+    name: "Chinedu O.",
+    detail: "Service & maintenance fundamentals",
+    quote:
+      "Four weeks in and I was doing real oil services under supervision. The trainers correct you in the moment instead of letting bad habits stick.",
+  },
+  {
+    name: "Amina B.",
+    detail: "Diagnostics & electrics",
+    quote:
+      "I came in knowing how to change parts, not how to find a fault. Live data and wiring work finally made sense after a week on the scan tools.",
+  },
+  {
+    name: "Tunde A.",
+    detail: "Brakes & suspension",
+    quote:
+      "Small group, so you are not waiting your turn. I logged enough brake jobs in three weeks to feel confident doing them solo.",
+  },
+  {
+    name: "Grace E.",
+    detail: "Service & maintenance fundamentals",
+    quote:
+      "Career change from retail. The bay time is the difference — you leave with your hands on real cars, not just notes.",
+  },
+  {
+    name: "Ibrahim S.",
+    detail: "Diagnostics & electrics",
+    quote:
+      "They teach you to prove the fault before quoting. That one habit is what workshop managers ask about in interviews.",
+  },
+  {
+    name: "Blessing N.",
+    detail: "Brakes & suspension",
+    quote:
+      "Certificate came through straight after assessment and the team helped prep my CV for workshop roles.",
   },
 ] as const;
 
@@ -134,9 +196,9 @@ export const ACADEMY_FAQS = [
 
 export const ACADEMY_CONTACT = {
   email: "info@vonos.com",
-  phoneDisplay: "+1 202 555 0147",
-  phoneTel: "+12025550147",
-  whatsappE164: "12025550147",
+  phoneDisplay: "+234 916 629 5819",
+  phoneTel: "+2349166295819",
+  whatsappE164: "2349166295819",
   location: "Vonos Plaza, Military Roundabout, Kubwa, Abuja",
 } as const;
 

@@ -1,29 +1,21 @@
 import { ACADEMY_STATS } from "@/lib/marketing/academy-courses";
 
-const scrollItem = { "scroll-item": "show" } as const;
-
 export default function AcademyStats() {
   return (
-    <section
-      data-scroll="load"
-      className="section-spacing-top"
-      data-qa-section="academy-stats"
-    >
-      <div className="container">
-        <div className="w-layout-grid grid-statistic-list">
+    <section className="ac-section ac-stats" data-qa-section="academy-stats">
+      <div className="ac-container">
+        <div className="ac-section-head ac-section-head--center">
+          <div>
+            <span className="ac-eyebrow">Why Vonos Academy</span>
+            <h2 className="ac-title">What makes the academy different</h2>
+          </div>
+        </div>
+
+        <div className="ac-stats__grid">
           {ACADEMY_STATS.map((stat) => (
-            <div
-              key={stat.label}
-              {...scrollItem}
-              className="statistic-item w-variant-0dd1596a-333c-e3b0-a6fb-a3775f1298c2"
-            >
-              <h2 className="statistic-number w-variant-0dd1596a-333c-e3b0-a6fb-a3775f1298c2">
-                {stat.value}
-              </h2>
-              <div className="statistic-divider w-variant-0dd1596a-333c-e3b0-a6fb-a3775f1298c2" />
-              <div className="statistic-text w-variant-0dd1596a-333c-e3b0-a6fb-a3775f1298c2">
-                {stat.label}
-              </div>
+            <div key={stat.label} className="ac-stat">
+              <span className="ac-stat__value">{stat.value}</span>
+              <span className="ac-stat__label">{stat.label}</span>
             </div>
           ))}
         </div>
