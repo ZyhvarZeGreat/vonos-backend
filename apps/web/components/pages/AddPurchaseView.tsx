@@ -321,7 +321,10 @@ export function AddPurchaseView() {
       purchaseOrder: parsedNotes.purchaseOrder,
       discountType: parsedNotes.discountType,
       discountAmount: parsedNotes.discountAmount,
-      purchaseTax: parsedNotes.purchaseTax,
+      purchaseTax:
+        Number(existing.taxAmount ?? 0) > 0
+          ? String(existing.taxAmount)
+          : parsedNotes.purchaseTax,
       shippingDetails: parsedNotes.shippingDetails,
       shippingCharges: parsedNotes.shippingCharges || "0",
       extraExpenses: parsedNotes.extraExpenses,
@@ -460,6 +463,7 @@ export function AddPurchaseView() {
         locationCode: form.locationCode || undefined,
         date: form.date,
         notes: buildNotes(form),
+        taxAmount: purchaseTax > 0 ? purchaseTax : 0,
         paymentMethod: form.paymentMethod || undefined,
         ...(editId
           ? {}

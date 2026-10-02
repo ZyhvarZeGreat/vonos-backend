@@ -1,5 +1,6 @@
 import {
   inboundReceiptStockDelta,
+  movementGrandTotal,
   movementLineRollups,
   shouldApplyInboundQty,
   shouldApplyOutboundQty,
@@ -72,5 +73,25 @@ describe('stockQuantity', () => {
         },
       ]),
     ).toEqual({ itemCount: 2, grandTotal: 245 });
+  });
+
+  it('adds order-level purchase tax to the movement grand total', () => {
+    const lines = [
+      { itemId: 'a', sku: 'A', name: 'A', quantity: 2, unitCost: 100 },
+      {
+        itemId: 'b',
+        sku: 'B',
+        name: 'B',
+        quantity: 1,
+        unitCost: 100,
+        discountPercent: 10,
+      },
+    ];
+    expect(movementGrandTotal(lines, 25)).toBe(290 + 25);
+    expect(movementGrandTotal(lines, 0)).toBe(290);
+    expect(movementGrandTotal(lines, undefined)).toBe(290);
+    expect(movementGrandTotal(lines, -5)).toBe(290);
+    expect(movementGrandTotal(lines, 'bad')).toBe(290);
+    expect(movementGrandTotal('not-an-array', 10)).toBe(10);
   });
 });

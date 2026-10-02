@@ -75,6 +75,8 @@ export interface StockMovement {
   source: MovementSource | null;
   paymentStatus: PurchasePaymentStatus | null;
   paymentMethod: string | null;
+  /** Order-level purchase tax (amount) — included in the movement's total. */
+  taxAmount?: number;
   /** Cached sum of purchase payments. */
   totalPaid?: number;
   /** Remaining balance: grand total − totalPaid (≥ 0). */

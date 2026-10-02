@@ -95,6 +95,7 @@ export class SalesController {
         quantity: number;
         unitPrice: number;
         discountAmount?: number;
+        taxPercent?: number;
         createPurchase?: boolean;
         sourceTenantCode?: string;
       }>;
@@ -142,6 +143,7 @@ export class SalesController {
         quantity: number;
         unitPrice: number;
         discountAmount?: number;
+        taxPercent?: number;
         createPurchase?: boolean;
         sourceTenantCode?: string;
         supplierId?: string;

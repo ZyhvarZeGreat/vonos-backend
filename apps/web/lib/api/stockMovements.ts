@@ -154,6 +154,7 @@ export interface CreateStockMovementRequest {
   status?: MovementStatus;
   lines: Array<{ itemId: string; sku: string; name: string; quantity: number; unitCost?: number }>;
   notes?: string;
+  taxAmount?: number;
   supplierId?: string;
   source?: MovementSource;
   locationCode?: string;

@@ -383,6 +383,23 @@ export function AddSaleForm({
       .filter((line) => line && !structured.test(line))
       .join("\n");
     const storedDiscount = Number(editSale.discountAmount ?? 0);
+    const editLineTax = editSale.lines.reduce(
+      (sum, line) =>
+        sum +
+        (Math.max(
+          0,
+          line.quantity * line.unitPrice - (line.discountAmount ?? 0),
+        ) *
+          Math.max(0, Number(line.taxPercent ?? 0))) /
+          100,
+      0,
+    );
+    // Persisted taxAmount = order tax + line VAT; keep only the order portion
+    // here so re-saving (with per-line percents) never double-counts.
+    const editOrderTax =
+      Math.round(
+        Math.max(0, Number(editSale.taxAmount ?? 0) - editLineTax) * 100,
+      ) / 100;
     setForm((prev) => ({
       ...prev,
       locationCode: editSale.locationCode ?? "",
@@ -404,7 +421,7 @@ export function AddSaleForm({
       deliveryPerson: noteFields.deliveryPerson ?? "",
       discountType: storedDiscount > 0 ? "fixed" : prev.discountType,
       discountAmount: storedDiscount > 0 ? String(storedDiscount) : "",
-      orderTax: String(editSale.taxAmount ?? 0),
+      orderTax: String(editOrderTax),
       redeemedPoints: noteFields.redeemedPoints ?? "",
       paymentAmount: "",
       paidOn: new Date().toISOString().slice(0, 16),
@@ -456,6 +473,7 @@ export function AddSaleForm({
         quantity: line.quantity,
         unitPrice: line.unitPrice,
         discount: line.discountAmount ?? 0,
+        taxPercent: Number(line.taxPercent ?? 0),
         sourceTenantCode: line.sourceTenantCode ?? undefined,
         supplierId: line.supplierId ?? undefined,
         isOutsideOrService: isOutsideOrServiceCatalogItem({
@@ -505,6 +523,16 @@ export function AddSaleForm({
     [lines],
   );
 
+  const lineTaxTotal = useMemo(
+    () =>
+      lines.reduce(
+        (sum, line) =>
+          sum + (lineSubtotal(line) * Math.max(0, line.taxPercent || 0)) / 100,
+        0,
+      ),
+    [lines],
+  );
+
   const orderDiscount = useMemo(() => {
     const raw = Number(form.discountAmount) || 0;
     if (form.discountType === "percentage") {
@@ -527,6 +555,7 @@ export function AddSaleForm({
     0,
     lineTotal -
       orderDiscount +
+      lineTaxTotal +
       orderTax +
       shippingCharges +
       additionalExpenseTotal,
@@ -913,6 +942,10 @@ export function AddSaleForm({
           quantity: line.quantity,
           unitPrice: line.unitPrice,
           discountAmount: line.discount > 0 ? line.discount : undefined,
+          taxPercent:
+            line.taxPercent && line.taxPercent > 0
+              ? line.taxPercent
+              : undefined,
           createPurchase: line.createPurchase || undefined,
           sourceTenantCode: line.sourceTenantCode,
           supplierId: line.createPurchase ? line.supplierId || undefined : undefined,
@@ -1886,6 +1919,10 @@ export function AddSaleForm({
                 <strong>{formatHq6Currency(orderDiscount)}</strong>
               </div>
               <div className="hq6-form-summary-line">
+                <span>Line Tax:(+)</span>
+                <strong>{formatHq6Currency(lineTaxTotal)}</strong>
+              </div>
+              <div className="hq6-form-summary-line">
                 <span>Order Tax:(+)</span>
                 <strong>{formatHq6Currency(orderTax)}</strong>
               </div>
@@ -2725,6 +2762,9 @@ export function AddSaleForm({
             value={form.redeemedPoints}
             onChange={(e) => patchForm({ redeemedPoints: e.target.value })}
           />
+          <p className="text-sm text-muted">
+            Line Tax:(+) {formatCurrency(lineTaxTotal)}
+          </p>
           <Input
             label="Order Tax"
             type="number"

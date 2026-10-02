@@ -153,3 +153,14 @@ export function movementLineRollups(lines: unknown): {
   }
   return { itemCount, grandTotal };
 }
+
+export function movementGrandTotal(
+  lines: unknown,
+  taxAmount?: unknown,
+): number {
+  const tax = Number(taxAmount ?? 0);
+  return (
+    movementLineRollups(lines).grandTotal +
+    (Number.isFinite(tax) && tax > 0 ? tax : 0)
+  );
+}

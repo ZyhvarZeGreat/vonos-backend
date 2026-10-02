@@ -36,6 +36,7 @@ import type { PaginatedList } from '../../common/utils/paginatedList';
 import { resolveListSort } from '../../common/utils/listSort';
 import {
   computeStockStatus,
+  movementGrandTotal,
   movementLineRollups,
   movementLineQtyByItemId,
   parseMovementLines,
@@ -308,6 +309,7 @@ export class StockMovementsService {
               date: true,
               itemCount: true,
               grandTotal: true,
+              taxAmount: true,
               createdByUserId: true,
               createdByName: true,
               createdAt: true,
@@ -785,7 +787,7 @@ export class StockMovementsService {
     });
     if (!movement) throw new NotFoundException('Purchase not found');
 
-    const total = movementLineRollups(movement.lines).grandTotal;
+    const total = movementGrandTotal(movement.lines, movement.taxAmount);
     if (total <= 0) {
       throw new BadRequestException('Purchase has no payable amount');
     }
@@ -948,7 +950,7 @@ export class StockMovementsService {
     });
     if (!movement) return;
 
-    const total = movementLineRollups(movement.lines).grandTotal;
+    const total = movementGrandTotal(movement.lines, movement.taxAmount);
     const invoiceId = await this.purchaseInvoiceId(movementId, tenantId);
     const paidAgg = await this.tenantDb.db.payment.aggregate({
       where: this.purchasePaymentWhere(tenantId, reference, invoiceId),
@@ -1001,6 +1003,7 @@ export class StockMovementsService {
         paymentStatus: true,
         totalPaid: true,
         grandTotal: true,
+        taxAmount: true,
         supplierId: true,
         lines: true,
       },
@@ -1017,7 +1020,7 @@ export class StockMovementsService {
       const total =
         m.grandTotal != null
           ? toNumber(m.grandTotal)
-          : movementLineRollups(m.lines).grandTotal;
+          : movementGrandTotal(m.lines, m.taxAmount);
       const nextStatus = paymentStatusFromAmounts(
         total,
         paid,
@@ -1218,6 +1221,7 @@ export class StockMovementsService {
       expDate?: string;
     }>;
     notes?: string;
+    taxAmount?: number;
     locationCode?: string;
     supplierId?: string;
     source?: MovementSource;
@@ -1230,6 +1234,7 @@ export class StockMovementsService {
       this.tenantStockContext(tenantId),
     ]);
     const rollups = movementLineRollups(body.lines);
+    const taxAmount = Math.max(0, Number(body.taxAmount ?? 0) || 0);
     const initialStatus = body.status ?? 'Ordered';
     const row = await this.tenantDb.db.stockMovement.create({
       data: {
@@ -1241,7 +1246,8 @@ export class StockMovementsService {
         paymentMethod: body.paymentMethod?.trim() || null,
         lines: body.lines as unknown as import('@prisma/client').Prisma.InputJsonValue,
         itemCount: rollups.itemCount,
-        grandTotal: rollups.grandTotal,
+        grandTotal: rollups.grandTotal + taxAmount,
+        taxAmount,
         notes: body.notes ?? null,
         supplierId: body.supplierId ?? null,
         source: body.source ?? 'standard',
@@ -1314,6 +1320,7 @@ export class StockMovementsService {
         expDate?: string;
       }>;
       notes?: string;
+      taxAmount?: number;
       locationCode?: string;
       supplierId?: string;
       source?: MovementSource;
@@ -1344,6 +1351,10 @@ export class StockMovementsService {
     const nextDate = body.date ? new Date(body.date) : existing.date;
     const nextNotes =
       body.notes !== undefined ? body.notes : existing.notes;
+    const nextTaxAmount =
+      body.taxAmount !== undefined
+        ? Math.max(0, Number(body.taxAmount) || 0)
+        : toNumber(existing.taxAmount ?? 0);
 
     const prevLines = parseMovementLines(existing.lines);
     const wasReceived = existing.status === 'Received';
@@ -1463,7 +1474,8 @@ export class StockMovementsService {
                 : {}),
               lines: nextLines as unknown as import('@prisma/client').Prisma.InputJsonValue,
               itemCount: rollups.itemCount,
-              grandTotal: rollups.grandTotal,
+              grandTotal: rollups.grandTotal + nextTaxAmount,
+              taxAmount: nextTaxAmount,
               notes: nextNotes ?? null,
               supplierId: nextSupplierId ?? null,
               ...(body.source ? { source: body.source } : {}),
@@ -1489,9 +1501,10 @@ export class StockMovementsService {
                   lines:
                     nextLines as unknown as import('@prisma/client').Prisma.InputJsonValue,
                   itemCount: rollups.itemCount,
-                  grandTotal: rollups.grandTotal,
                 }
               : {}),
+            grandTotal: rollups.grandTotal + nextTaxAmount,
+            taxAmount: nextTaxAmount,
             notes: nextNotes ?? null,
             supplierId: nextSupplierId ?? null,
             ...(body.source ? { source: body.source } : {}),
@@ -1696,6 +1709,7 @@ export async function warmDefaultStockMovementListPages(
                   date: true,
                   itemCount: true,
                   grandTotal: true,
+                  taxAmount: true,
                   createdByUserId: true,
                   createdByName: true,
                   createdAt: true,

@@ -353,8 +353,10 @@ model StockMovement {
   lines          Json
   /// Denormalized from lines[] — list pages must not expand jsonb.
   itemCount      Int            @default(0)
-  /// Denormalized Σ(qty × unitCost) from lines[].
+  /// Denormalized Σ(qty × unitCost) from lines[] (+ taxAmount).
   grandTotal     Decimal        @default(0)
+  /** Order-level purchase tax (amount, not %) — included in grandTotal. */
+  taxAmount      Decimal        @default(0)
   notes          String?
   locationCode   String?
   supplierId     String?
@@ -731,6 +733,8 @@ model SaleLine {
   unitPrice        Decimal
   lineTotal        Decimal
   discountAmount   Decimal?
+  /** Line VAT/tax percentage (e.g. 7.5) — folded into Sale.taxAmount. */
+  taxPercent       Decimal        @default(0)
   sourceTenantCode String?
   supplierId       String?
   createdAt        DateTime @default(now())

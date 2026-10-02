@@ -4,6 +4,7 @@ import { TenantDbService } from '../../common/prisma/tenant-db.service';
 import { CacheService } from '../../common/cache/cache.service';
 import { invalidateTenantDashboardCache } from '../../common/cache/cacheInvalidation';
 import { toNumber } from '../../common/utils/serializers';
+import { movementLineRollups } from '../../common/utils/stockQuantity';
 
 type DbClient = Prisma.TransactionClient | TenantDbService['db'];
 
@@ -245,18 +246,16 @@ export class InvoiceHubService {
       date: Date;
       notes: string | null;
       lines: unknown;
+      taxAmount?: { toString(): string } | number | null;
     },
   ) {
     if (movement.type !== 'inbound') return null;
 
     const existing = await this.findByStockMovementId(db, movement.id);
-    const lines = Array.isArray(movement.lines)
-      ? (movement.lines as Array<{ quantity?: number; unitCost?: number }>)
-      : [];
-    const total = lines.reduce(
-      (sum, line) => sum + (line.quantity ?? 0) * (line.unitCost ?? 0),
-      0,
-    );
+    const subtotal = movementLineRollups(movement.lines).grandTotal;
+    const taxAmount =
+      movement.taxAmount != null ? toNumber(movement.taxAmount) : 0;
+    const total = subtotal + taxAmount;
 
     if (existing) {
       return db.invoice.update({
@@ -266,7 +265,8 @@ export class InvoiceHubService {
           status: movement.status.toLowerCase(),
           paymentStatus: movement.paymentStatus,
           total,
-          subtotal: total,
+          subtotal,
+          taxAmount,
           documentDate: movement.date,
           notes: movement.notes,
           supplierId: movement.supplierId,
@@ -283,7 +283,8 @@ export class InvoiceHubService {
         status: movement.status.toLowerCase(),
         paymentStatus: movement.paymentStatus,
         total,
-        subtotal: total,
+        subtotal,
+        taxAmount,
         documentDate: movement.date,
         notes: movement.notes,
         supplierId: movement.supplierId,

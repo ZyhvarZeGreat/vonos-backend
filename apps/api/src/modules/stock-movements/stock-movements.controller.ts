@@ -147,6 +147,7 @@ export class StockMovementsController {
         expDate?: string;
       }>;
       notes?: string;
+      taxAmount?: number;
       supplierId?: string;
       source?: MovementSource;
       locationCode?: string;
@@ -178,6 +179,7 @@ export class StockMovementsController {
         expDate?: string;
       }>;
       notes?: string;
+      taxAmount?: number;
       supplierId?: string;
       source?: MovementSource;
       locationCode?: string;

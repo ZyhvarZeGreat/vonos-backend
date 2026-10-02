@@ -42,6 +42,13 @@ import { saleTextSearchWhere, saleSearchSql } from '../../common/utils/listSearc
 import { resolveListSort } from '../../common/utils/listSort';
 import { computeStockStatus, movementLineRollups } from '../../common/utils/stockQuantity';
 import {
+  buildSaleLineRows,
+  combinedTaxAmount,
+  computeSaleTotal,
+  orderTaxFromPersistedTax,
+  type SaleLineInput,
+} from './saleTotals';
+import {
   adjustItemLocationStock,
   effectiveItemOnHand,
 } from '../../common/utils/itemLocationStock';
@@ -92,56 +99,6 @@ function readSaleNoteLine(
   );
   const match = notes.match(re);
   return match?.[1]?.trim() || null;
-}
-
-type SaleLineInput = {
-  itemId?: string;
-  sku: string;
-  name: string;
-  quantity: number;
-  unitPrice: number;
-  discountAmount?: number;
-  createPurchase?: boolean;
-  sourceTenantCode?: string;
-  supplierId?: string;
-};
-
-function computeLineTotal(line: {
-  quantity: number;
-  unitPrice: number;
-  discountAmount?: number | null;
-}): number {
-  const discount = line.discountAmount ?? 0;
-  return Math.max(0, line.quantity * line.unitPrice - discount);
-}
-
-function buildSaleLineRows(lines: SaleLineInput[]) {
-  return lines.map((line) => {
-    const discountAmount = line.discountAmount ?? 0;
-    const lineTotal = computeLineTotal({ ...line, discountAmount });
-    return {
-      itemId: line.itemId ?? null,
-      sku: line.sku,
-      name: line.name,
-      quantity: line.quantity,
-      unitPrice: line.unitPrice,
-      lineTotal,
-      discountAmount: discountAmount > 0 ? discountAmount : null,
-      sourceTenantCode: line.sourceTenantCode?.trim() || null,
-      supplierId: line.supplierId?.trim() || null,
-    };
-  });
-}
-
-function computeSaleTotal(
-  lineRows: Array<{ lineTotal: number }>,
-  orderDiscount = 0,
-  taxAmount = 0,
-): number {
-  const subtotal = lineRows.reduce((sum, line) => sum + line.lineTotal, 0);
-  const discount = Math.min(subtotal, Math.max(0, orderDiscount));
-  const tax = Math.max(0, taxAmount);
-  return Math.max(0, subtotal - discount + tax);
 }
 
 @Injectable()
@@ -1411,7 +1368,7 @@ export class SalesService {
     }
 
     const orderDiscount = body.discountAmount ?? 0;
-    const taxAmount = body.taxAmount ?? 0;
+    const orderTax = body.taxAmount ?? 0;
     /** Job materials already moved stock — do not deduct again on the sale. */
     const sellingTenant = await this.tenantDb.getTenantCodeAndConfig();
     /** VA/VP: price catalog only — never deduct/validate stock (local or VW/VISP/VSP).
@@ -1441,7 +1398,8 @@ export class SalesService {
     // stay warm.
     if (isProvisional) {
       const lineData = buildSaleLineRows(workingLines);
-      const total = computeSaleTotal(lineData, orderDiscount, taxAmount);
+      const total = computeSaleTotal(lineData, orderDiscount, orderTax);
+      const persistedTax = combinedTaxAmount(orderTax, lineData);
       try {
         const row = await this.tenantDb.db.sale.create({
           data: {
@@ -1451,7 +1409,7 @@ export class SalesService {
             jobId,
             total,
             discountAmount: orderDiscount > 0 ? orderDiscount : null,
-            taxAmount: taxAmount > 0 ? taxAmount : null,
+            taxAmount: persistedTax > 0 ? persistedTax : null,
             notes: body.notes?.trim() || null,
             currency,
             status,
@@ -1791,7 +1749,8 @@ export class SalesService {
       }
 
       const lineData = buildSaleLineRows(workingLines);
-      const total = computeSaleTotal(lineData, orderDiscount, taxAmount);
+      const total = computeSaleTotal(lineData, orderDiscount, orderTax);
+      const persistedTax = combinedTaxAmount(orderTax, lineData);
 
       const resolvedPayments =
         !isProvisional && body.payments && body.payments.length > 0
@@ -1810,12 +1769,12 @@ export class SalesService {
           customerId,
           jobId,
           total,
-          discountAmount: orderDiscount > 0 ? orderDiscount : null,
-          taxAmount: taxAmount > 0 ? taxAmount : null,
-          notes: body.notes?.trim() || null,
-          currency,
-          status,
-          paymentStatus,
+            discountAmount: orderDiscount > 0 ? orderDiscount : null,
+            taxAmount: persistedTax > 0 ? persistedTax : null,
+            notes: body.notes?.trim() || null,
+            currency,
+            status,
+            paymentStatus,
           paymentMethod:
             body.paymentMethod?.trim() ||
             resolvedPayments.find((p) => p.method?.trim())?.method?.trim() ||
@@ -2292,7 +2251,6 @@ export class SalesService {
     }
 
     const orderDiscount = body.discountAmount ?? toNumber(existing.discountAmount ?? 0);
-    const taxAmount = body.taxAmount ?? toNumber(existing.taxAmount ?? 0);
     const sellingTenantForStock = await this.tenantDb.db.tenant.findFirst({
       where: { id: tenantId, deletedAt: null },
       select: { code: true },
@@ -2442,7 +2400,14 @@ export class SalesService {
         }
 
         const lineData = buildSaleLineRows(workingLines);
-        const total = computeSaleTotal(lineData, orderDiscount, taxAmount);
+        // body.taxAmount (form) is order tax only; a persisted legacy value may
+        // already include folded line VAT — strip it so re-saves never double-count.
+        const orderTax =
+          body.taxAmount !== undefined
+            ? body.taxAmount
+            : orderTaxFromPersistedTax(toNumber(existing.taxAmount ?? 0), lineData);
+        const total = computeSaleTotal(lineData, orderDiscount, orderTax);
+        const persistedTax = combinedTaxAmount(orderTax, lineData);
 
         let paidTotal = priorPaid;
         let paymentStatus: PaymentStatus | null = existing.paymentStatus;
@@ -2474,7 +2439,7 @@ export class SalesService {
             jobId,
             total,
             discountAmount: orderDiscount > 0 ? orderDiscount : null,
-            taxAmount: taxAmount > 0 ? taxAmount : null,
+            taxAmount: persistedTax > 0 ? persistedTax : null,
             notes: body.notes !== undefined ? body.notes?.trim() || null : existing.notes,
             currency,
             status,

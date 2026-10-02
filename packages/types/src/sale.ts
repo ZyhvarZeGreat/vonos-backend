@@ -46,6 +46,8 @@ export interface SaleLine {
   unitPrice: number;
   lineTotal: number;
   discountAmount: number | null;
+  /** Line VAT/tax percentage (e.g. 7.5) — folded into Sale.taxAmount. */
+  taxPercent?: number | null;
   sourceTenantCode?: string | null;
   supplierId?: string | null;
 }
