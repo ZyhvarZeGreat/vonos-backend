@@ -13,6 +13,11 @@ export type PayRowForm = {
   method: string;
   /** Tick = include this employee in this payment run (partial pays allowed). */
   selected: boolean;
+  /**
+   * Amount to pay this run. Empty = pay the full remaining net pay;
+   * otherwise a partial payment (must be 0 < amount ≤ remaining).
+   */
+  amount: string;
 };
 
 export function nowPaidOnLocal(): string {
@@ -33,7 +38,30 @@ export function emptyPayRowForm(): PayRowForm {
     accountId: "",
     method: "",
     selected: true,
+    amount: "",
   };
+}
+
+function roundMoney(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
+/** Net pay still owed on a row (full net minus payments already received). */
+export function rowRemainingNet(row: Payroll): number {
+  return Math.max(0, roundMoney(row.netPay - (row.paidToDate ?? 0)));
+}
+
+/**
+ * Effective amount for this run: blank = full remaining balance, otherwise
+ * the entered partial amount (NaN when invalid).
+ */
+export function resolvePayAmount(row: Payroll, form: PayRowForm): number {
+  const remaining = rowRemainingNet(row);
+  const raw = form.amount?.trim();
+  if (!raw) return remaining;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed)) return NaN;
+  return roundMoney(parsed);
 }
 
 /** Rows ticked for this run — unticked rows simply stay unpaid. */
@@ -45,8 +73,8 @@ export function selectedPayRows(
 }
 
 /**
- * Only the ticked rows need an account/method — one employee without an
- * account must not block paying everyone else in the group.
+ * Only the ticked rows need an account/method and a valid amount — one
+ * incomplete row must not block paying everyone else in the group.
  */
 export function arePayRowsReady(
   rows: Payroll[],
@@ -56,7 +84,12 @@ export function arePayRowsReady(
   if (selected.length === 0) return false;
   return selected.every((row) => {
     const form = payRowForms[row.id] ?? emptyPayRowForm();
-    return Boolean(form.accountId?.trim() && form.method?.trim());
+    if (!form.accountId?.trim() || !form.method?.trim()) return false;
+    const amount = resolvePayAmount(row, form);
+    const remaining = rowRemainingNet(row);
+    return (
+      Number.isFinite(amount) && amount > 0 && amount <= remaining + 0.01
+    );
   });
 }
 
@@ -66,6 +99,8 @@ export type PayPayrollBatch = {
   accountId: string;
   method: string;
   paidOn: string;
+  /** Per-payroll amount for this run (full remaining unless edited). */
+  amounts: Record<string, number>;
 };
 
 export function buildPayPayrollBatches(
@@ -76,10 +111,12 @@ export function buildPayPayrollBatches(
   for (const row of selectedPayRows(rows, payRowForms)) {
     const form = payRowForms[row.id] ?? emptyPayRowForm();
     const paidOnIso = paidOnToIso(form.paidOn);
+    const amount = resolvePayAmount(row, form);
     const key = `${row.tenantId}|${form.accountId}|${form.method}|${paidOnIso}`;
     const existing = batchMap.get(key);
     if (existing) {
       existing.payrollIds.push(row.id);
+      if (Number.isFinite(amount)) existing.amounts[row.id] = amount;
       continue;
     }
     batchMap.set(key, {
@@ -88,6 +125,7 @@ export function buildPayPayrollBatches(
       accountId: form.accountId,
       method: form.method,
       paidOn: paidOnIso,
+      amounts: Number.isFinite(amount) ? { [row.id]: amount } : {},
     });
   }
   return [...batchMap.values()];
@@ -131,14 +169,22 @@ function PayrollBankDetailsCell({ row }: { row: Payroll }) {
 }
 
 function PayrollPayEmployeeFields({
-  tenantId,
+  row,
   form,
   onPatch,
 }: {
-  tenantId: string;
+  row: Payroll;
   form: PayRowForm;
   onPatch: (patch: Partial<PayRowForm>) => void;
 }) {
+  const remaining = rowRemainingNet(row);
+  const paidToDate = row.paidToDate ?? 0;
+  const amountValue = resolvePayAmount(row, form);
+  const amountValid =
+    form.amount?.trim() !== "" &&
+    Number.isFinite(amountValue) &&
+    amountValue > 0 &&
+    amountValue <= remaining + 0.01;
   return (
     <div className="hq6-payroll-pay-fields">
       <div className="hq6-add-payment-field hq6-payroll-pay-kv-row">
@@ -159,6 +205,44 @@ function PayrollPayEmployeeFields({
 
       <div className="hq6-add-payment-field hq6-payroll-pay-kv-row">
         <label className="hq6-add-payment-label hq6-payroll-pay-kv-label">
+          Amount: <span className="req">*</span>
+        </label>
+        <div className="input-group hq6-add-payment-input-group hq6-payroll-pay-kv-control">
+          <span className="input-group-addon" aria-hidden>
+            <i className="fa fa-coins" />
+          </span>
+          <input
+            type="number"
+            min="0"
+            step="0.01"
+            className="form-control hq6-modal-input tabular-nums"
+            value={form.amount}
+            placeholder={formatHq6Currency(remaining, "NGN")}
+            aria-label={`Payment amount for ${row.employeeName}`}
+            onChange={(e) => onPatch({ amount: e.target.value })}
+          />
+        </div>
+        <p
+          className={`hq6-payroll-pay-amount-hint${
+            form.amount?.trim() !== "" && !amountValid ? " is-invalid" : ""
+          }`}
+        >
+          {paidToDate > 0 ? (
+            <>
+              Paid {formatHq6Currency(paidToDate, "NGN")} of{" "}
+              {formatHq6Currency(row.netPay, "NGN")} —{" "}
+            </>
+          ) : null}
+          {form.amount?.trim() === ""
+            ? `pays full remaining ${formatHq6Currency(remaining, "NGN")}`
+            : amountValid
+              ? `pays ${formatHq6Currency(amountValue, "NGN")} now`
+              : `enter 0 – ${formatHq6Currency(remaining, "NGN")}`}
+        </p>
+      </div>
+
+      <div className="hq6-add-payment-field hq6-payroll-pay-kv-row">
+        <label className="hq6-add-payment-label hq6-payroll-pay-kv-label">
           Payment Account:
         </label>
         <div className="input-group hq6-add-payment-input-group hq6-payroll-pay-kv-control">
@@ -166,7 +250,7 @@ function PayrollPayEmployeeFields({
             <i className="fas fa-money-bill-alt" />
           </span>
           <PaymentAccountSelect
-            tenantId={tenantId}
+            tenantId={row.tenantId}
             value={form.accountId}
             onChange={(accountId) => onPatch({ accountId })}
             emptyLabel="None"
@@ -265,12 +349,7 @@ export function PayrollGroupPayForm({
                   <td className="hq6-payroll-pay-gross tabular-nums">
                     <div className="hq6-payroll-pay-amount-row">
                       <span className="hq6-payroll-pay-amount-label">Gross</span>
-                      <span>
-                        {formatHq6Currency(
-                          (row.grossPay || 0) + (row.totalAllowance || 0),
-                          "NGN",
-                        )}
-                      </span>
+                      <span>{formatHq6Currency(row.grossPay || 0, "NGN")}</span>
                     </div>
                     <div className="hq6-payroll-pay-amount-row hq6-payroll-pay-amount-row--muted">
                       <span className="hq6-payroll-pay-amount-label">Earnings</span>
@@ -284,13 +363,33 @@ export function PayrollGroupPayForm({
                       <span className="hq6-payroll-pay-amount-label">Net pay</span>
                       <span>{formatHq6Currency(row.netPay, "NGN")}</span>
                     </div>
+                    {(row.paidToDate ?? 0) > 0 ? (
+                      <>
+                        <div className="hq6-payroll-pay-amount-row hq6-payroll-pay-amount-row--muted">
+                          <span className="hq6-payroll-pay-amount-label">
+                            Already paid
+                          </span>
+                          <span>
+                            {formatHq6Currency(row.paidToDate ?? 0, "NGN")}
+                          </span>
+                        </div>
+                        <div className="hq6-payroll-pay-amount-row hq6-payroll-pay-amount-row--net">
+                          <span className="hq6-payroll-pay-amount-label">
+                            Remaining
+                          </span>
+                          <span>
+                            {formatHq6Currency(rowRemainingNet(row), "NGN")}
+                          </span>
+                        </div>
+                      </>
+                    ) : null}
                   </td>
                   <td className="hq6-payroll-pay-bank-cell">
                     <PayrollBankDetailsCell row={row} />
                   </td>
                   <td className="hq6-payroll-pay-form-cell">
                     <PayrollPayEmployeeFields
-                      tenantId={row.tenantId}
+                      row={row}
                       form={form}
                       onPatch={(patch) => onPatchPayRowForm(row.id, patch)}
                     />

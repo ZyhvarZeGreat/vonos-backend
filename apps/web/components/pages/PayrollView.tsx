@@ -656,7 +656,7 @@ export function PayrollView({
     enabled: Boolean(
       payslipTenantId &&
         selectedPayroll?.id &&
-        selectedPayroll.paymentStatus === "paid",
+        selectedPayroll.paymentStatus !== "due",
     ),
     queryFn: () =>
       getPayrollPayments(payslipTenantId!, selectedPayroll!.id),
@@ -828,7 +828,7 @@ export function PayrollView({
       key: "paymentStatus",
       header: "Payment Status",
       render: (r) =>
-        r.paymentStatus === "paid" ? (
+        r.paymentStatus !== "due" ? (
           <button
             type="button"
             className="inline-flex cursor-pointer"
@@ -837,10 +837,10 @@ export function PayrollView({
               setPaymentsModalPayroll(r);
             }}
           >
-            <StatusPill status={r.paymentStatus} vocabulary="movementStatus" />
+            <StatusPill status={r.paymentStatus} vocabulary="payrollStatus" />
           </button>
         ) : (
-          <StatusPill status={r.paymentStatus} vocabulary="movementStatus" />
+          <StatusPill status={r.paymentStatus} vocabulary="payrollStatus" />
         ),
     },
   ];

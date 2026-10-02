@@ -6,10 +6,15 @@ export function payrollGroupGrossTotal(
   payrolls: Array<{
     grossPay: { toString(): string };
     totalAllowance?: { toString(): string } | null;
+    totalDeduction?: { toString(): string } | null;
   }>,
 ): number {
   return payrolls.reduce(
-    (sum, p) => sum + toNumber(p.grossPay) + toNumber(p.totalAllowance ?? 0),
+    (sum, p) =>
+      sum +
+      toNumber(p.grossPay) +
+      toNumber(p.totalAllowance ?? 0) -
+      toNumber(p.totalDeduction ?? 0),
     0,
   );
 }
@@ -22,8 +27,11 @@ export function aggregateGroupPaymentStatus(
   // them as settled so the group is not stuck on "partial" forever.
   const isSettled = (p: { paymentStatus: string; netPay?: unknown }) =>
     p.paymentStatus === 'paid' || toNumber(p.netPay ?? 0) <= 0;
-  const paidCount = payrolls.filter((p) => p.paymentStatus === 'paid').length;
+  // Any money received (full or partial row payment) moves the group off "due".
+  const hasPayment = payrolls.some(
+    (p) => p.paymentStatus === 'paid' || p.paymentStatus === 'partial',
+  );
   if (payrolls.every(isSettled)) return 'paid';
-  if (paidCount === 0) return 'due';
+  if (!hasPayment) return 'due';
   return 'partial';
 }

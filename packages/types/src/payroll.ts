@@ -33,6 +33,8 @@ export interface Payroll {
   taxPayerId?: string | null;
   /** HQ6 payslip reference (VPR-YYYY/nnn). */
   referenceNo?: string | null;
+  /** Sum of payments received on the row's invoice (0 until first payment). */
+  paidToDate?: number;
   department?: string | null;
 }
 
@@ -221,10 +223,14 @@ export interface PayPayrollsRequest {
   method?: string;
   paidOn?: string;
   note?: string;
+  /** Partial payments: per-payroll amount to pay this run (defaults to the full remaining net pay). */
+  amounts?: Record<string, number>;
 }
 
 export interface PayPayrollsResult {
   paid: number;
+  /** Rows left partially paid (amount received but below net pay). */
+  partial: number;
   skipped: number;
   totalDebited: number;
   accountId: string;

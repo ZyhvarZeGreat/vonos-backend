@@ -3,6 +3,8 @@ import {
   arePayRowsReady,
   buildPayPayrollBatches,
   emptyPayRowForm,
+  resolvePayAmount,
+  rowRemainingNet,
   selectedPayRows,
   type PayRowForm,
 } from "./PayrollGroupPayForm";
@@ -89,5 +91,82 @@ describe("payroll group partial payment", () => {
     );
     expect(ready).toBe(false);
     expect(selectedPayRows(rows, forms({ p1: { selected: false }, p2: { selected: false } }))).toHaveLength(0);
+  });
+
+  it("batches carry per-row amounts defaulting to the full remaining net pay", () => {
+    const batches = buildPayPayrollBatches(
+      rows,
+      forms({
+        p1: { accountId: "a1", method: "bank" },
+        p2: { selected: false },
+      }),
+    );
+    expect(batches[0]?.amounts).toEqual({ p1: 105_000 });
+  });
+
+  it("sends an explicit partial amount when one is entered", () => {
+    const formsWithAmount = forms({
+      p1: { accountId: "a1", method: "bank", amount: "40000" },
+      p2: { selected: false },
+    });
+    expect(arePayRowsReady(rows, formsWithAmount)).toBe(true);
+    const batches = buildPayPayrollBatches(rows, formsWithAmount);
+    expect(batches[0]?.amounts).toEqual({ p1: 40_000 });
+  });
+
+  it("is not ready when the amount exceeds the remaining net pay", () => {
+    const ready = arePayRowsReady(
+      rows,
+      forms({
+        p1: { accountId: "a1", method: "bank", amount: "999999" },
+        p2: { selected: false },
+      }),
+    );
+    expect(ready).toBe(false);
+  });
+
+  it("is not ready when the amount is zero or negative", () => {
+    expect(
+      arePayRowsReady(
+        rows,
+        forms({
+          p1: { accountId: "a1", method: "bank", amount: "0" },
+          p2: { selected: false },
+        }),
+      ),
+    ).toBe(false);
+    expect(
+      arePayRowsReady(
+        rows,
+        forms({
+          p1: { accountId: "a1", method: "bank", amount: "-500" },
+          p2: { selected: false },
+        }),
+      ),
+    ).toBe(false);
+  });
+
+  it("treats a fully-paid row (remaining 0) as not payable", () => {
+    const settled = [
+      payrollRow({ id: "p1", paidToDate: 105_000, paymentStatus: "paid" }),
+      rows[1]!,
+    ];
+    const ready = arePayRowsReady(
+      settled,
+      forms({
+        p1: { accountId: "a1", method: "bank" },
+        p2: { selected: false },
+      }),
+    );
+    expect(ready).toBe(false);
+    expect(resolvePayAmount(settled[0]!, emptyPayRowForm())).toBe(0);
+  });
+
+  it("resolves a partially-paid row's default amount to the remaining balance", () => {
+    const partial = [
+      payrollRow({ id: "p1", paidToDate: 60_000, paymentStatus: "partial" }),
+    ];
+    expect(resolvePayAmount(partial[0]!, emptyPayRowForm())).toBe(45_000);
+    expect(rowRemainingNet(partial[0]!)).toBe(45_000);
   });
 });

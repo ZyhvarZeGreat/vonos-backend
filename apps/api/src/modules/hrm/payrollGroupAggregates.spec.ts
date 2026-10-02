@@ -4,20 +4,35 @@ import {
 } from './payrollGroupAggregates';
 
 describe('payrollGroupGrossTotal', () => {
-  it('sums basic + earnings across the group (deductions excluded)', () => {
+  it('sums basic + earnings − deductions across the group', () => {
     const total = payrollGroupGrossTotal([
-      { grossPay: 100_000 as any, totalAllowance: 10_000 as any },
-      { grossPay: 50_000 as any, totalAllowance: null },
-      { grossPay: 20_000 as any },
+      {
+        grossPay: 100_000 as any,
+        totalAllowance: 10_000 as any,
+        totalDeduction: 5_000 as any,
+      },
+      { grossPay: 50_000 as any, totalAllowance: null, totalDeduction: null },
+      { grossPay: 20_000 as any, totalDeduction: 20_000 as any },
     ]);
-    expect(total).toBe(180_000);
+    expect(total).toBe(155_000);
   });
 
   it('handles Prisma Decimal-style values', () => {
     const total = payrollGroupGrossTotal([
-      { grossPay: { toString: () => '1234.5' }, totalAllowance: { toString: () => '0.5' } },
+      {
+        grossPay: { toString: () => '1234.5' },
+        totalAllowance: { toString: () => '0.5' },
+        totalDeduction: { toString: () => '35' },
+      },
     ]);
-    expect(total).toBe(1235);
+    expect(total).toBe(1200);
+  });
+
+  it('treats a missing deduction field as zero (legacy rows)', () => {
+    const total = payrollGroupGrossTotal([
+      { grossPay: 100 as any, totalAllowance: 10 as any },
+    ]);
+    expect(total).toBe(110);
   });
 });
 
@@ -25,8 +40,8 @@ describe('aggregateGroupPaymentStatus', () => {
   it('is due when nothing is paid', () => {
     expect(
       aggregateGroupPaymentStatus([
-        { paymentStatus: 'unpaid', netPay: 100 },
-        { paymentStatus: 'unpaid', netPay: 200 },
+        { paymentStatus: 'due', netPay: 100 },
+        { paymentStatus: 'due', netPay: 200 },
       ]),
     ).toBe('due');
   });
@@ -35,7 +50,26 @@ describe('aggregateGroupPaymentStatus', () => {
     expect(
       aggregateGroupPaymentStatus([
         { paymentStatus: 'paid', netPay: 100 },
-        { paymentStatus: 'unpaid', netPay: 200 },
+        { paymentStatus: 'due', netPay: 200 },
+      ]),
+    ).toBe('partial');
+  });
+
+  it('is partial as soon as any row has a partial payment', () => {
+    expect(
+      aggregateGroupPaymentStatus([
+        { paymentStatus: 'partial', netPay: 100 },
+        { paymentStatus: 'due', netPay: 200 },
+      ]),
+    ).toBe('partial');
+  });
+
+  it('stays partial until the entire group is settled', () => {
+    expect(
+      aggregateGroupPaymentStatus([
+        { paymentStatus: 'paid', netPay: 100 },
+        { paymentStatus: 'partial', netPay: 200 },
+        { paymentStatus: 'due', netPay: 300 },
       ]),
     ).toBe('partial');
   });
@@ -53,7 +87,7 @@ describe('aggregateGroupPaymentStatus', () => {
     expect(
       aggregateGroupPaymentStatus([
         { paymentStatus: 'paid', netPay: 100 },
-        { paymentStatus: 'unpaid', netPay: 0 },
+        { paymentStatus: 'due', netPay: 0 },
       ]),
     ).toBe('paid');
   });
@@ -61,8 +95,8 @@ describe('aggregateGroupPaymentStatus', () => {
   it('is paid when every row is zero/negative net (nothing left to pay)', () => {
     expect(
       aggregateGroupPaymentStatus([
-        { paymentStatus: 'unpaid', netPay: 0 },
-        { paymentStatus: 'unpaid', netPay: -50 },
+        { paymentStatus: 'due', netPay: 0 },
+        { paymentStatus: 'due', netPay: -50 },
       ]),
     ).toBe('paid');
   });

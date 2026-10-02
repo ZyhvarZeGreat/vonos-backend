@@ -54,7 +54,9 @@ export function PayrollGroupPayPage({
     () =>
       (group?.payrolls ?? []).filter((row) => {
         const payment = row.paymentStatus?.toLowerCase();
-        return payment !== "paid" && row.netPay > 0;
+        const remaining =
+          (row.netPay || 0) - (row.paidToDate ?? 0);
+        return payment !== "paid" && remaining > 0.009;
       }),
     [group?.payrolls],
   );
@@ -79,8 +81,21 @@ export function PayrollGroupPayPage({
   );
 
   const payTotal = useMemo(
-    () => selectedRows.reduce((sum, row) => sum + (row.netPay || 0), 0),
-    [selectedRows],
+    () =>
+      selectedRows.reduce((sum, row) => {
+        const form = payRowForms[row.id];
+        const raw = form?.amount?.trim();
+        if (raw) {
+          const parsed = Number(raw);
+          if (Number.isFinite(parsed)) return sum + parsed;
+        }
+        const remaining = Math.max(
+          0,
+          (row.netPay || 0) - (row.paidToDate ?? 0),
+        );
+        return sum + remaining;
+      }, 0),
+    [selectedRows, payRowForms],
   );
 
   const payRowsReady = arePayRowsReady(unpaidRows, payRowForms);
@@ -92,6 +107,7 @@ export function PayrollGroupPayPage({
         throw new Error("No payroll selected");
       }
       let paid = 0;
+      let partial = 0;
       let skipped = 0;
       let totalDebited = 0;
       const accountNames: string[] = [];
@@ -107,14 +123,17 @@ export function PayrollGroupPayPage({
           accountId: batch.accountId,
           method: batch.method,
           paidOn: batch.paidOn,
+          amounts: batch.amounts,
         });
         paid += result.paid;
+        partial += result.partial ?? 0;
         skipped += result.skipped;
         totalDebited += result.totalDebited;
         if (result.accountName) accountNames.push(result.accountName);
       }
       return {
         paid,
+        partial,
         skipped,
         totalDebited,
         accountName: [...new Set(accountNames)].join(", "),
@@ -122,25 +141,46 @@ export function PayrollGroupPayPage({
     },
     progressLabel: "Paying payroll",
     successMessage: (result) =>
-      `Paid ${result.paid} payroll${result.paid === 1 ? "" : "s"} — ${formatHq6Currency(result.totalDebited)}${result.accountName ? ` from ${result.accountName}` : ""}`,
+      `Paid ${result.paid} payroll${result.paid === 1 ? "" : "s"}${result.partial ? `, ${result.partial} left partial` : ""} — ${formatHq6Currency(result.totalDebited)}${result.accountName ? ` from ${result.accountName}` : ""}`,
     invalidateKeys: [
       ["payrolls"],
+      ["payroll-groups"],
       ["payroll-group", tenantId, groupId],
       ["payroll-group-unpaid", tenantId, groupId],
+      ["payroll-payments"],
       ["payment-accounts"],
     ],
     optimistic: {
       keys: [["payrolls"]],
       update: (qc, batches) => {
+        const amountById = new Map<string, number>();
+        for (const batch of batches) {
+          for (const [id, amount] of Object.entries(batch.amounts)) {
+            amountById.set(id, amount);
+          }
+        }
         const ids = new Set(batches.flatMap((b) => b.payrollIds));
         if (ids.size === 0) return;
-        mapQueriesByPrefix<{ id: string; paymentStatus?: string }>(
+        mapQueriesByPrefix<{
+          id: string;
+          paymentStatus?: string;
+          netPay?: number;
+          paidToDate?: number;
+        }>(
           qc,
           ["payrolls"],
           (items) =>
-            items.map((row) =>
-              ids.has(row.id) ? { ...row, paymentStatus: "paid" } : row,
-            ),
+            items.map((row) => {
+              if (!ids.has(row.id)) return row;
+              const amount = amountById.get(row.id);
+              const settled =
+                amount === undefined ||
+                (row.paidToDate ?? 0) + amount >= (row.netPay ?? 0) - 0.01;
+              return {
+                ...row,
+                paymentStatus: settled ? "paid" : "partial",
+              };
+            }),
         );
       },
     },
@@ -176,7 +216,7 @@ export function PayrollGroupPayPage({
     }
     if (!payRowsReady) {
       toast.error(
-        "Select a payment account and method for each ticked employee",
+        "Select a payment account/method and a valid amount for each ticked employee",
       );
       return;
     }
@@ -260,7 +300,8 @@ export function PayrollGroupPayPage({
         <p className="mt-3 text-xs text-[#64748b]">
           Tick the employees to pay in this run — unticked employees stay unpaid
           and the group is marked <strong>Partial</strong> until everyone is
-          paid.
+          paid. Leave the amount blank to pay the full remaining balance, or
+          enter a smaller amount to pay any employee partially.
         </p>
 
         <div className="mt-4 flex flex-wrap gap-2">

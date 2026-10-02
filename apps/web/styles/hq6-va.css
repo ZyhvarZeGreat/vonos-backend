@@ -6645,6 +6645,16 @@ html.upos-shell [data-hq6="true"] .hq6-orders-module {
   font-weight: 600;
 }
 
+[data-hq6="true"] .hq6-payroll-pay-amount-hint {
+  margin-top: 0.2rem;
+  font-size: 0.75rem;
+  color: #64748b;
+}
+
+[data-hq6="true"] .hq6-payroll-pay-amount-hint.is-invalid {
+  color: var(--color-error-text, #b91c1c);
+}
+
 [data-hq6="true"] .hq6-payroll-pay-amount-row--muted
   .hq6-payroll-pay-amount-label {
   font-weight: 500;

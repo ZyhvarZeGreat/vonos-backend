@@ -160,7 +160,15 @@ const PAYROLL_INCLUDE = {
       department: true,
     },
   },
-  invoice: { select: { reference: true } },
+  invoice: {
+    select: {
+      reference: true,
+      payments: {
+        where: { deletedAt: null },
+        select: { amount: true },
+      },
+    },
+  },
   tenant: { select: { code: true, name: true } },
 } as const;
 
@@ -1807,6 +1815,21 @@ export class HrmService {
     const tenantId = this.tenantDb.requireTenantId();
     const allowance = dto.totalAllowance ?? 0;
     const deduction = dto.totalDeduction ?? 0;
+    if (
+      !Number.isFinite(dto.grossPay) ||
+      !Number.isFinite(allowance) ||
+      !Number.isFinite(deduction) ||
+      dto.grossPay < 0 ||
+      allowance < 0 ||
+      deduction < 0
+    ) {
+      throw new BadRequestException('Payroll amounts must be non-negative numbers');
+    }
+    if (deduction > dto.grossPay + allowance) {
+      throw new BadRequestException(
+        'Deduction cannot exceed gross pay plus allowances',
+      );
+    }
     const netPay = dto.grossPay + allowance - deduction;
 
     let employeeName = dto.employeeName?.trim() || '';
@@ -1921,6 +1944,18 @@ export class HrmService {
       await this.invoiceHub.ensurePayrollInvoice(tx, created);
       return created;
     });
+    if (row.payrollGroupId) {
+      try {
+        await this.syncPayrollGroupInvoice(
+          this.tenantDb.db,
+          tenantId,
+          row.payrollGroupId,
+        );
+      } catch {
+        // Row creation must succeed even if group-invoice sync fails — the
+        // next pay/delete run re-syncs the group's PG- invoice.
+      }
+    }
     void invalidateTenantDashboardCache(this.cache, tenantId);
     return this.serializePayroll(row);
   }
@@ -2060,6 +2095,7 @@ export class HrmService {
         }
 
         let paid = 0;
+        let partial = 0;
         let skipped = 0;
         let totalDebited = 0;
         const updated: typeof rows = [];
@@ -2083,6 +2119,68 @@ export class HrmService {
             invoice = await this.invoiceHub.ensurePayrollInvoice(tx, row);
           }
 
+          // Remaining balance = net pay minus everything already paid on this row.
+          const priorPayments = await tx.payment.findMany({
+            where: { tenantId, invoiceId: invoice.id, deletedAt: null },
+            select: { amount: true },
+          });
+          const priorPaid = priorPayments.reduce(
+            (sum, payment) => sum + toNumber(payment.amount),
+            0,
+          );
+          const remaining = Math.max(
+            0,
+            Math.round((netPay - priorPaid) * 100) / 100,
+          );
+          if (remaining <= 0) {
+            // Money already covers net pay (legacy rows) — just settle status.
+            const settledRow = await tx.payroll.update({
+              where: { id: row.id },
+              data: { paymentStatus: 'paid', status: 'paid' },
+              include: {
+                payrollGroup: true,
+                designation: { select: { name: true } },
+                employeeRecord: {
+                  select: {
+                    accountHolderName: true,
+                    bankName: true,
+                    bankBranch: true,
+                    bankCode: true,
+                    bankAccountNo: true,
+                    taxPayerId: true,
+                  },
+                },
+                invoice: {
+                  select: { id: true, reference: true, paymentStatus: true },
+                },
+              },
+            });
+            await tx.invoice.update({
+              where: { id: invoice.id },
+              data: { paymentStatus: 'paid' },
+            });
+            paid += 1;
+            updated.push(settledRow);
+            continue;
+          }
+
+          const rawRequested = dto.amounts?.[row.id];
+          const requested =
+            rawRequested === undefined ? remaining : Number(rawRequested);
+          if (!Number.isFinite(requested) || requested <= 0) {
+            throw new BadRequestException(
+              `Invalid payment amount for ${row.employeeName}`,
+            );
+          }
+          if (requested > remaining + 0.01) {
+            throw new BadRequestException(
+              `Payment amount exceeds remaining net pay for ${row.employeeName}`,
+            );
+          }
+          const payAmount = Math.round(requested * 100) / 100;
+          const newPaid = Math.round((priorPaid + payAmount) * 100) / 100;
+          const settled = newPaid >= netPay - 0.01;
+
           const paymentRefNo =
             await this.invoiceHub.nextPayrollPaymentReference(
               tx,
@@ -2093,7 +2191,7 @@ export class HrmService {
           const payment = await tx.payment.create({
             data: {
               tenantId,
-              amount: netPay,
+              amount: payAmount,
               currency: 'NGN',
               method,
               paidOn,
@@ -2113,7 +2211,7 @@ export class HrmService {
             accountId: account.id,
             type: 'debit',
             subType: 'payroll',
-            amount: netPay,
+            amount: payAmount,
             operationDate: paidOn,
             refNo: invoice.reference,
             note: payment.note,
@@ -2122,7 +2220,8 @@ export class HrmService {
             invoiceId: invoice.id,
           });
 
-          // Accrue wage expense once on pay (till already debited above).
+          // Accrue wage expense once per row (upserted across partial payments;
+          // till already debited above for the actual amount paid).
           const monthLabel = toIso(row.payrollMonth).slice(0, 7);
           const payrollDescription = `Payroll — ${row.employeeName} (${monthLabel})`;
 
@@ -2142,28 +2241,52 @@ export class HrmService {
           }
 
           // Expense row so Finance / Expenses results list payroll with other costs.
-          // Ledger stays linked to payroll (single P&L hit — no second ledger line).
-          await tx.expense.create({
-            data: {
+          // Ledger stays linked to payroll (per-payment P&L entries — no duplicate).
+          const expenseMarker = `payrollId:${row.id}`;
+          const existingExpense = await tx.expense.findFirst({
+            where: {
               tenantId,
-              refNo: paymentRefNo,
-              categoryId: payrollCategory.id,
-              subCategory: 'Wages',
-              totalAmount: netPay,
-              paymentStatus: 'paid',
-              paymentDue: 0,
-              accountId: account.id,
-              note: `${payrollDescription} · payrollId:${row.id}`,
-              expenseDate: paidOn,
-              createdByName: authorizedByName ?? 'HR / Payroll',
+              deletedAt: null,
+              note: { contains: expenseMarker },
             },
+            select: { id: true },
           });
+          const expenseStatus = settled ? 'paid' : 'partial';
+          const expenseDue = Math.max(
+            0,
+            Math.round((netPay - newPaid) * 100) / 100,
+          );
+          const expenseData = {
+            totalAmount: netPay,
+            paymentStatus: expenseStatus,
+            paymentDue: expenseDue,
+            accountId: account.id,
+            expenseDate: paidOn,
+          };
+          if (existingExpense) {
+            await tx.expense.update({
+              where: { id: existingExpense.id },
+              data: expenseData,
+            });
+          } else {
+            await tx.expense.create({
+              data: {
+                tenantId,
+                refNo: paymentRefNo,
+                categoryId: payrollCategory.id,
+                subCategory: 'Wages',
+                note: `${payrollDescription} · ${expenseMarker}`,
+                createdByName: authorizedByName ?? 'HR / Payroll',
+                ...expenseData,
+              },
+            });
+          }
 
           await tx.ledgerEntry.create({
             data: {
               tenantId,
               type: 'expense',
-              amount: netPay,
+              amount: payAmount,
               currency: 'NGN',
               category: 'Payroll',
               description: payrollDescription,
@@ -2176,14 +2299,14 @@ export class HrmService {
 
           await tx.invoice.update({
             where: { id: invoice.id },
-            data: { paymentStatus: 'paid' },
+            data: { paymentStatus: settled ? 'paid' : 'partial' },
           });
 
           const next = await tx.payroll.update({
             where: { id: row.id },
             data: {
-              paymentStatus: 'paid',
-              status: 'paid',
+              paymentStatus: settled ? 'paid' : 'partial',
+              ...(settled ? { status: 'paid' } : {}),
             },
             include: {
               payrollGroup: true,
@@ -2204,12 +2327,25 @@ export class HrmService {
             },
           });
 
-          paid += 1;
-          totalDebited += netPay;
+          if (settled) paid += 1;
+          else partial += 1;
+          totalDebited += payAmount;
           updated.push(next);
         }
 
-        return { paid, skipped, totalDebited, updated };
+        // Keep each touched group's PG- invoice total + status in sync.
+        const touchedGroupIds = [
+          ...new Set(
+            rows
+              .map((row) => row.payrollGroupId)
+              .filter((id): id is string => Boolean(id)),
+          ),
+        ];
+        for (const groupId of touchedGroupIds) {
+          await this.syncPayrollGroupInvoice(tx, tenantId, groupId);
+        }
+
+        return { paid, partial, skipped, totalDebited, updated };
       },
       { maxWait: 15_000, timeout: 60_000 },
     );
@@ -2228,12 +2364,51 @@ export class HrmService {
 
     return {
       paid: result.paid,
+      partial: result.partial,
       skipped: result.skipped,
       totalDebited: result.totalDebited,
       accountId: account.id,
       accountName: account.name,
       payrolls: result.updated.map((row) => this.serializePayroll(row)),
     };
+  }
+
+  /**
+   * Recompute a payroll group's PG- invoice total (gross, net of deductions)
+   * and payment status from its live rows. Runs inside the caller's
+   * transaction so partial payments flip the group off "due" immediately.
+   */
+  private async syncPayrollGroupInvoice(
+    tx: Parameters<InvoiceHubService['ensurePayrollGroupInvoice']>[0],
+    tenantId: string,
+    groupId: string,
+  ): Promise<void> {
+    const group = await tx.payrollGroup.findFirst({
+      where: { id: groupId, tenantId, deletedAt: null },
+      select: { id: true, tenantId: true, name: true, createdAt: true },
+    });
+    if (!group) return;
+    const payrolls = await tx.payroll.findMany({
+      where: { payrollGroupId: groupId, tenantId, deletedAt: null },
+      select: {
+        grossPay: true,
+        totalAllowance: true,
+        totalDeduction: true,
+        netPay: true,
+        paymentStatus: true,
+      },
+    });
+    const grossTotal = payrollGroupGrossTotal(payrolls);
+    const paymentStatus = aggregateGroupPaymentStatus(payrolls);
+    const invoice = await this.invoiceHub.ensurePayrollGroupInvoice(
+      tx,
+      group,
+      grossTotal,
+    );
+    await tx.invoice.update({
+      where: { id: invoice.id },
+      data: { total: grossTotal, subtotal: grossTotal, paymentStatus },
+    });
   }
 
   /**
@@ -2252,19 +2427,25 @@ export class HrmService {
     if (!existing) {
       throw new BadRequestException('Payroll not found');
     }
-    if (existing.status === 'final') {
+    if (
+      existing.status === 'final' &&
+      existing.paymentStatus !== 'partial' &&
+      existing.paymentStatus !== 'paid'
+    ) {
       throw new BadRequestException(
         'Cannot delete a payroll that is marked final',
       );
     }
 
     const wasPaid =
-      existing.paymentStatus === 'paid' || existing.status === 'paid';
+      existing.paymentStatus === 'paid' ||
+      existing.paymentStatus === 'partial' ||
+      existing.status === 'paid';
     let financeDate: Date | null = null;
     let financeAmount = 0;
 
     await this.tenantDb.db.$transaction(async (tx) => {
-      const ledger = await tx.ledgerEntry.findFirst({
+      const ledgers = await tx.ledgerEntry.findMany({
         where: {
           tenantId,
           linkedRecordType: 'payroll',
@@ -2273,9 +2454,9 @@ export class HrmService {
         },
         select: { date: true, amount: true },
       });
-      if (ledger) {
-        financeDate = ledger.date;
-        financeAmount = toNumber(ledger.amount);
+      for (const ledger of ledgers) {
+        financeAmount += toNumber(ledger.amount);
+        if (!financeDate) financeDate = ledger.date;
       }
 
       if (existing.invoice) {
@@ -2357,6 +2538,14 @@ export class HrmService {
         where: { id },
         data: { deletedAt: new Date() },
       });
+
+      if (existing.payrollGroupId) {
+        await this.syncPayrollGroupInvoice(
+          tx,
+          tenantId,
+          existing.payrollGroupId,
+        );
+      }
     });
 
     if (wasPaid && financeAmount > 0) {
@@ -2391,7 +2580,11 @@ export class HrmService {
     if (!existing) {
       throw new BadRequestException('Payroll not found');
     }
-    if (existing.paymentStatus === 'paid' || existing.status === 'paid') {
+    if (
+      existing.paymentStatus === 'paid' ||
+      existing.paymentStatus === 'partial' ||
+      existing.status === 'paid'
+    ) {
       throw new BadRequestException('Cannot change status after payroll is paid');
     }
     if (existing.status === nextStatus) {
@@ -2452,7 +2645,11 @@ export class HrmService {
     if (!existing) {
       throw new BadRequestException('Payroll not found');
     }
-    if (existing.paymentStatus === 'paid' || existing.status === 'paid') {
+    if (
+      existing.paymentStatus === 'paid' ||
+      existing.paymentStatus === 'partial' ||
+      existing.status === 'paid'
+    ) {
       throw new BadRequestException(
         'Cannot add a deduction after payroll is paid',
       );
@@ -2521,6 +2718,17 @@ export class HrmService {
       },
     });
     await this.invoiceHub.ensurePayrollInvoice(this.tenantDb.db, row);
+    if (row.payrollGroupId) {
+      try {
+        await this.syncPayrollGroupInvoice(
+          this.tenantDb.db,
+          tenantId,
+          row.payrollGroupId,
+        );
+      } catch {
+        // Deduction update must succeed even if group-invoice sync fails.
+      }
+    }
     void invalidateTenantDashboardCache(this.cache, tenantId);
     return this.serializePayroll(row);
   }
@@ -2567,6 +2775,7 @@ export class HrmService {
           select: {
             grossPay: true,
             totalAllowance: true,
+            totalDeduction: true,
             netPay: true,
             paymentStatus: true,
           },
@@ -2600,6 +2809,7 @@ export class HrmService {
           select: {
             grossPay: true,
             totalAllowance: true,
+            totalDeduction: true,
             netPay: true,
             paymentStatus: true,
           },
@@ -2619,6 +2829,7 @@ export class HrmService {
       payrolls: payrollRows.map((p) => ({
         grossPay: p.grossPay,
         totalAllowance: p.totalAllowance,
+        totalDeduction: p.totalDeduction,
         netPay: p.netPay,
         paymentStatus: p.paymentStatus,
       })),
@@ -2660,6 +2871,7 @@ export class HrmService {
           select: {
             grossPay: true,
             totalAllowance: true,
+            totalDeduction: true,
             netPay: true,
             paymentStatus: true,
           },
@@ -2734,6 +2946,7 @@ export class HrmService {
           select: {
             grossPay: true,
             totalAllowance: true,
+            totalDeduction: true,
             netPay: true,
             paymentStatus: true,
           },
@@ -2802,6 +3015,7 @@ export class HrmService {
         }
         if (
           existing.paymentStatus === 'paid' ||
+          existing.paymentStatus === 'partial' ||
           existing.status === 'paid'
         ) {
           continue;
@@ -2810,6 +3024,11 @@ export class HrmService {
         const allowance = emp.totalAllowance ?? toNumber(existing.totalAllowance);
         const deduction = emp.totalDeduction ?? toNumber(existing.totalDeduction);
         const grossPay = emp.grossPay ?? toNumber(existing.grossPay);
+        if (grossPay < 0 || allowance < 0 || deduction < 0) {
+          throw new BadRequestException(
+            `Payroll amounts must be non-negative for ${existing.employeeName}`,
+          );
+        }
         const netPay = grossPay + allowance - deduction;
         if (netPay < 0) {
           throw new BadRequestException(
@@ -2843,6 +3062,8 @@ export class HrmService {
           data: { status: 'final' },
         });
       }
+
+      await this.syncPayrollGroupInvoice(tx, tenantId, id);
     });
 
     void invalidateTenantDashboardCache(this.cache, tenantId);
@@ -3201,12 +3422,13 @@ export class HrmService {
     payrolls?: Array<{
       grossPay: { toString(): string };
       totalAllowance?: { toString(): string } | null;
+      totalDeduction?: { toString(): string } | null;
       netPay: { toString(): string };
       paymentStatus: string;
     }>;
   }): PayrollGroup {
     const payrolls = row.payrolls ?? [];
-    // Gross = basic + earnings (allowances); deductions only reduce net.
+    // Gross = basic + earnings − deductions (the group's true payroll cost basis).
     const totalGross = payrollGroupGrossTotal(payrolls);
     return {
       id: row.id,
@@ -3245,7 +3467,10 @@ export class HrmService {
     payrollGroup: { name: string } | null;
     designation?: { name: string } | null;
     tenant?: { code: string; name: string } | null;
-    invoice?: { reference: string } | null;
+    invoice?: {
+      reference: string;
+      payments?: Array<{ amount: { toString(): string } }>;
+    } | null;
     employeeRecord?: {
       accountHolderName: string | null;
       bankName: string | null;
@@ -3280,6 +3505,10 @@ export class HrmService {
       note: row.note,
       createdAt: toIso(row.createdAt),
       referenceNo: row.invoice?.reference ?? null,
+      paidToDate: (row.invoice?.payments ?? []).reduce(
+        (sum, payment) => sum + toNumber(payment.amount),
+        0,
+      ),
       department: bank?.department ?? null,
       accountHolderName: bank?.accountHolderName ?? null,
       bankName: bank?.bankName ?? null,

@@ -274,8 +274,12 @@ export function PayrollGroupEmployeeForm({
           </div>
 
           <div className="hq6-payroll-employee-col hq6-payroll-employee-col--gross">
-            <p className="hq6-payroll-section-title">Gross Amount</p>
-            <p className="hq6-payroll-gross-value">{formatCurrency(grossAmount, "NGN")}</p>
+            <p className="hq6-payroll-section-title">Basic pay</p>
+            <p className="hq6-payroll-gross-value">{formatCurrency(basic, "NGN")}</p>
+            <p className="hq6-payroll-section-title">Earnings</p>
+            <p className="hq6-payroll-gross-value hq6-payroll-gross-value--muted">
+              + {formatCurrency(allowanceTotal, "NGN")}
+            </p>
             <p className="hq6-payroll-section-title">Deductions</p>
             <p className="hq6-payroll-gross-value hq6-payroll-gross-value--muted">
               − {formatCurrency(deductionTotal, "NGN")}

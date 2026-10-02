@@ -50,7 +50,11 @@ function payrollToEmployeePick(row: Payroll): PayrollEmployeePick {
 }
 
 function isPayrollPaid(row: Payroll): boolean {
-  return row.paymentStatus === "paid" || row.status === "paid";
+  return (
+    row.paymentStatus === "paid" ||
+    row.paymentStatus === "partial" ||
+    row.status === "paid"
+  );
 }
 
 export function PayrollGroupEditPage({

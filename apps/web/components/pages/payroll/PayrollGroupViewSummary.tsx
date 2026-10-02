@@ -18,6 +18,8 @@ function bankDetailsSummary(row: Payroll): string {
 }
 
 function employeeWells(row: Payroll) {
+  const paidToDate = row.paidToDate ?? 0;
+  const remaining = Math.max(0, row.netPay - paidToDate);
   return {
     partyLabel: "Employee",
     partyName: row.employeeName,
@@ -33,7 +35,7 @@ function employeeWells(row: Payroll) {
     docRef: bankDetailsSummary(row),
     locationName: row.locationCode?.trim() || null,
     totalAmount: formatCurrency(row.netPay, "NGN"),
-    paymentDue: formatCurrency(row.netPay, "NGN"),
+    paymentDue: formatCurrency(remaining, "NGN"),
   };
 }
 
@@ -60,10 +62,7 @@ export function PayrollGroupViewSummary({ group }: PayrollGroupViewSummaryProps)
               <div>
                 <span className="text-[#64748b]">Gross pay: </span>
                 <span className="font-medium tabular-nums">
-                  {formatCurrency(
-                    (row.grossPay || 0) + (row.totalAllowance || 0),
-                    "NGN",
-                  )}
+                  {formatCurrency(row.grossPay || 0, "NGN")}
                 </span>
               </div>
               <div>
@@ -85,6 +84,27 @@ export function PayrollGroupViewSummary({ group }: PayrollGroupViewSummaryProps)
                 </span>
               </div>
             </div>
+            {(row.paidToDate ?? 0) > 0 &&
+            row.paymentStatus !== "paid" ? (
+              <div className="mt-2 border-t border-[#e5e7eb] pt-2 text-sm">
+                <span className="text-[#64748b]">Paid to date: </span>
+                <span className="font-medium tabular-nums">
+                  {formatCurrency(row.paidToDate ?? 0, "NGN")}
+                </span>{" "}
+                <span className="text-[#64748b]">of</span>{" "}
+                <span className="font-medium tabular-nums">
+                  {formatCurrency(row.netPay, "NGN")}
+                </span>{" "}
+                <span className="text-[#64748b]">
+                  — remaining{" "}
+                  {formatCurrency(
+                    Math.max(0, row.netPay - (row.paidToDate ?? 0)),
+                    "NGN",
+                  )}{" "}
+                  can be paid partially from the Pay button.
+                </span>
+              </div>
+            ) : null}
           </section>
         ))
       )}
