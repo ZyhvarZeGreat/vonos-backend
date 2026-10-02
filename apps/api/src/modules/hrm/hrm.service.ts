@@ -2411,6 +2411,94 @@ export class HrmService {
     });
   }
 
+  /** Sum of live payments received on a payroll row (0 when never paid). */
+  private async getRowPaidToDate(
+    tx: Parameters<InvoiceHubService['ensurePayrollGroupInvoice']>[0],
+    tenantId: string,
+    payrollId: string,
+  ): Promise<number> {
+    const invoice = await tx.invoice.findFirst({
+      where: { tenantId, payrollId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!invoice) return 0;
+    const payments = await tx.payment.findMany({
+      where: { tenantId, invoiceId: invoice.id, deletedAt: null },
+      select: { amount: true },
+    });
+    return (
+      Math.round(
+        payments.reduce((sum, payment) => sum + toNumber(payment.amount), 0) *
+          100,
+      ) / 100
+    );
+  }
+
+  /**
+   * Re-derive a row's payment state after its amounts change (group edit or
+   * deduction PATCH): row paymentStatus, row invoice total/status, and the
+   * wage-expense row all follow the new net vs already-paid. Callers must
+   * guarantee new net >= paidToDate first.
+   */
+  private async syncPayrollMoneyState(
+    tx: Parameters<InvoiceHubService['ensurePayrollGroupInvoice']>[0],
+    tenantId: string,
+    row: {
+      id: string;
+      netPay: { toString(): string } | number;
+      grossPay: { toString(): string } | number;
+    },
+  ): Promise<{ paidToDate: number; paymentStatus: 'due' | 'partial' | 'paid' }> {
+    const paidToDate = await this.getRowPaidToDate(tx, tenantId, row.id);
+    const net = toNumber(row.netPay);
+    const paymentStatus =
+      net - paidToDate <= 0.01
+        ? 'paid'
+        : paidToDate > 0.005
+          ? 'partial'
+          : 'due';
+    await tx.payroll.update({
+      where: { id: row.id },
+      data: {
+        paymentStatus,
+        ...(paymentStatus === 'paid' ? { status: 'paid' } : {}),
+      },
+    });
+    const invoice = await tx.invoice.findFirst({
+      where: { tenantId, payrollId: row.id, deletedAt: null },
+      select: { id: true },
+    });
+    if (invoice) {
+      await tx.invoice.update({
+        where: { id: invoice.id },
+        data: {
+          total: net,
+          subtotal: toNumber(row.grossPay),
+          paymentStatus,
+        },
+      });
+    }
+    const expense = await tx.expense.findFirst({
+      where: {
+        tenantId,
+        deletedAt: null,
+        note: { contains: `payrollId:${row.id}` },
+      },
+      select: { id: true },
+    });
+    if (expense) {
+      await tx.expense.update({
+        where: { id: expense.id },
+        data: {
+          totalAmount: net,
+          paymentDue: Math.max(0, Math.round((net - paidToDate) * 100) / 100),
+          paymentStatus,
+        },
+      });
+    }
+    return { paidToDate, paymentStatus };
+  }
+
   /**
    * Soft-delete a payroll row. Paid runs also reverse the linked payment,
    * payment-account debit, wage expense, ledger line, and invoice so Finance
@@ -2645,15 +2733,9 @@ export class HrmService {
     if (!existing) {
       throw new BadRequestException('Payroll not found');
     }
-    if (
-      existing.paymentStatus === 'paid' ||
-      existing.paymentStatus === 'partial' ||
-      existing.status === 'paid'
-    ) {
-      throw new BadRequestException(
-        'Cannot add a deduction after payroll is paid',
-      );
-    }
+    // No blanket block on paid rows: the paid-to-date guard below allows
+    // deductions that still cover what's already been paid (same rule as the
+    // group bulk edit), and the money-state re-sync flips the row to partial.
 
     const currentDeduction = toNumber(existing.totalDeduction);
     let nextDeduction = currentDeduction;
@@ -2677,6 +2759,16 @@ export class HrmService {
     if (netPay < 0) {
       throw new BadRequestException(
         'Deduction cannot exceed gross pay plus allowances',
+      );
+    }
+    const paidToDate = await this.getRowPaidToDate(
+      this.tenantDb.db,
+      tenantId,
+      id,
+    );
+    if (netPay < paidToDate - 0.01) {
+      throw new BadRequestException(
+        `Deduction cannot reduce net pay below the ${paidToDate} already paid`,
       );
     }
     const reason = dto.reason?.trim();
@@ -2718,6 +2810,11 @@ export class HrmService {
       },
     });
     await this.invoiceHub.ensurePayrollInvoice(this.tenantDb.db, row);
+    await this.syncPayrollMoneyState(this.tenantDb.db, tenantId, {
+      id,
+      netPay,
+      grossPay: gross,
+    });
     if (row.payrollGroupId) {
       try {
         await this.syncPayrollGroupInvoice(
@@ -3013,13 +3110,6 @@ export class HrmService {
         if (!existing) {
           throw new BadRequestException(`Payroll ${payrollId} not found in group`);
         }
-        if (
-          existing.paymentStatus === 'paid' ||
-          existing.paymentStatus === 'partial' ||
-          existing.status === 'paid'
-        ) {
-          continue;
-        }
 
         const allowance = emp.totalAllowance ?? toNumber(existing.totalAllowance);
         const deduction = emp.totalDeduction ?? toNumber(existing.totalDeduction);
@@ -3033,6 +3123,15 @@ export class HrmService {
         if (netPay < 0) {
           throw new BadRequestException(
             `Net pay cannot be negative for ${existing.employeeName}`,
+          );
+        }
+        // Money already paid out cannot be edited away — the new net must
+        // still cover it. The invoice/expense/group re-sync below then
+        // reflects the edited amounts everywhere.
+        const paidToDate = await this.getRowPaidToDate(tx, tenantId, payrollId);
+        if (netPay < paidToDate - 0.01) {
+          throw new BadRequestException(
+            `Net pay cannot be less than the ${paidToDate} already paid to ${existing.employeeName}`,
           );
         }
 
@@ -3049,6 +3148,11 @@ export class HrmService {
           include: PAYROLL_INCLUDE,
         });
         await this.invoiceHub.ensurePayrollInvoice(tx, row);
+        await this.syncPayrollMoneyState(tx, tenantId, {
+          id: payrollId,
+          netPay,
+          grossPay,
+        });
       }
 
       if (dto.status === 'final') {

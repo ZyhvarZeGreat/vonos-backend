@@ -11,6 +11,7 @@ import { Hq6FormShell } from "@/components/hq6/Hq6Chrome";
 import { useAppMutation } from "@/lib/hooks/useAppMutation";
 import { useTenantId } from "@/lib/hooks/useRouteTenant";
 import { getPayrollGroup, updatePayrollGroupPayrolls } from "@/lib/api/hrm";
+import { formatCurrency } from "@/lib/utils/formatCurrency";
 import { toast } from "@/stores/toastStore";
 import { PayrollGroupEmployeeForm } from "./PayrollGroupEmployeeForm";
 import {
@@ -26,7 +27,15 @@ type EditRow = {
   employee: PayrollEmployeePick;
   draft: EmployeePayrollDraft;
   paid: boolean;
+  /** Already paid out — new net pay can never go below this. */
+  paidToDate: number;
 };
+
+function draftNetPay(draft: EmployeePayrollDraft): number {
+  const { grossPay, totalAllowance, totalDeduction } =
+    payrollAmountsFromDraft(draft);
+  return grossPay + totalAllowance - totalDeduction;
+}
 
 export type PayrollGroupEditPageProps = {
   groupId: string;
@@ -89,19 +98,33 @@ export function PayrollGroupEditPage({
         employee: payrollToEmployeePick(payroll),
         draft: employeeDraftFromPayroll(payroll),
         paid: isPayrollPaid(payroll),
+        paidToDate: payroll.paidToDate ?? 0,
       })),
     );
   }, [group]);
 
   const paidCount = useMemo(() => rows.filter((row) => row.paid).length, [rows]);
-  const editableRows = useMemo(() => rows.filter((row) => !row.paid), [rows]);
   const hasPaidRows = paidCount > 0;
+
+  /** Every row is editable; rows with money out must keep net >= paid-to-date. */
+  const rowViolations = useMemo(() => {
+    const out: Record<string, string> = {};
+    for (const row of rows) {
+      if (draftNetPay(row.draft) < row.paidToDate - 0.01) {
+        out[row.payrollId] =
+          `Net pay cannot go below ${formatCurrency(row.paidToDate, "NGN")} already paid — ` +
+          `raise earnings or lower deductions first.`;
+      }
+    }
+    return out;
+  }, [rows]);
 
   const canSave = useMemo(() => {
     if (!groupName.trim()) return false;
-    if (editableRows.length === 0) return true;
-    return editableRows.every((row) => basicSalaryTotal(row.draft) > 0);
-  }, [groupName, editableRows]);
+    if (rows.length === 0) return true;
+    if (Object.keys(rowViolations).length > 0) return false;
+    return rows.every((row) => basicSalaryTotal(row.draft) > 0);
+  }, [groupName, rows, rowViolations]);
 
   const updateMutation = useAppMutation({
     mutationFn: async () => {
@@ -110,7 +133,7 @@ export function PayrollGroupEditPage({
         name: groupName.trim(),
         status: groupStatus,
         sendNotification,
-        employees: editableRows.map((row) => {
+        employees: rows.map((row) => {
           const { grossPay, totalAllowance, totalDeduction } =
             payrollAmountsFromDraft(row.draft);
           return {
@@ -140,7 +163,7 @@ export function PayrollGroupEditPage({
   function patchRowDraft(payrollId: string, patch: Partial<EmployeePayrollDraft>) {
     setRows((prev) =>
       prev.map((row) =>
-        row.payrollId === payrollId && !row.paid
+        row.payrollId === payrollId
           ? { ...row, draft: { ...row.draft, ...patch } }
           : row,
       ),
@@ -213,8 +236,9 @@ export function PayrollGroupEditPage({
             </select>
             {hasPaidRows ? (
               <p className="mt-1 text-xs text-[#b45309]">
-                Paid employees stay locked. You can still update the group name and
-                any unpaid rows.
+                Rows with money paid out stay editable, but net pay cannot go
+                below what was already paid — invoices and balances re-sync on
+                save.
               </p>
             ) : groupStatus === "final" ? (
               <p className="mt-1 text-xs text-[#b45309]">
@@ -248,14 +272,21 @@ export function PayrollGroupEditPage({
           <section key={row.payrollId} className="hq6-form-card">
             <h2 className="hq6-form-card-title">
               Employee {index + 1}
-              {row.paid ? " · Paid (read-only)" : ""}
+              {row.paid
+                ? ` · Paid ${formatCurrency(row.paidToDate, "NGN")} so far`
+                : ""}
             </h2>
             <PayrollGroupEmployeeForm
               employee={row.employee}
               draft={row.draft}
-              readOnly={row.paid}
+              readOnly={false}
               onChange={(patch) => patchRowDraft(row.payrollId, patch)}
             />
+            {rowViolations[row.payrollId] ? (
+              <p className="mt-2 text-xs text-[var(--color-error-text)]">
+                {rowViolations[row.payrollId]}
+              </p>
+            ) : null}
           </section>
         ))
       )}
