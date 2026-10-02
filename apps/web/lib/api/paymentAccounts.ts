@@ -10,7 +10,6 @@ import { throwApiError } from "@/lib/api/parseApiError";
 import {
   DEFAULT_TABLE_PAGE_SIZE,
   EXPORT_PAGE_SIZE,
-  FILTER_ROSTER_TTL_MS,
   IN_MEMORY_FILTER_CATALOG_LIMIT,
   TYPEAHEAD_PAGE_SIZE,
   fetchAllPages,
@@ -23,9 +22,16 @@ import { matchSorter, rankings } from "match-sorter";
 
 const LIST_PATH = "/payment-accounts";
 
-/** Full payment-account roster — cleared only on account mutations. */
+/**
+ * Full payment-account roster. Kept warm briefly (not the 7-day filter
+ * roster TTL): accounts are created by other staff too, and a stale roster
+ * is what makes an account "not show up" in the payment picker. Mutations
+ * from this client still clear it immediately.
+ */
+const PAYMENT_ACCOUNT_ROSTER_TTL_MS = 5 * 60_000;
+
 const paymentAccountOptionCache = createAsyncTtlCache<PaymentAccount[]>({
-  ttlMs: FILTER_ROSTER_TTL_MS,
+  ttlMs: PAYMENT_ACCOUNT_ROSTER_TTL_MS,
   maxEntries: 64,
 });
 

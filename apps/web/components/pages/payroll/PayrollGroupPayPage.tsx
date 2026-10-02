@@ -19,6 +19,7 @@ import {
   buildPayPayrollBatches,
   emptyPayRowForm,
   PayrollGroupPayForm,
+  selectedPayRows,
   type PayRowForm,
 } from "./PayrollGroupPayForm";
 import { PayrollGroupPayHeader } from "./PayrollGroupPayHeader";
@@ -72,12 +73,18 @@ export function PayrollGroupPayPage({
     });
   }, [unpaidRows]);
 
+  const selectedRows = useMemo(
+    () => selectedPayRows(unpaidRows, payRowForms),
+    [unpaidRows, payRowForms],
+  );
+
   const payTotal = useMemo(
-    () => unpaidRows.reduce((sum, row) => sum + (row.netPay || 0), 0),
-    [unpaidRows],
+    () => selectedRows.reduce((sum, row) => sum + (row.netPay || 0), 0),
+    [selectedRows],
   );
 
   const payRowsReady = arePayRowsReady(unpaidRows, payRowForms);
+  const hasSelection = selectedRows.length > 0;
 
   const payMutation = useAppMutation({
     mutationFn: async (batches: ReturnType<typeof buildPayPayrollBatches>) => {
@@ -152,9 +159,25 @@ export function PayrollGroupPayPage({
     });
   }
 
+  function toggleAllRows(selected: boolean) {
+    setPayRowForms((prev) => {
+      const next: Record<string, PayRowForm> = {};
+      for (const row of unpaidRows) {
+        next[row.id] = { ...(prev[row.id] ?? emptyPayRowForm()), selected };
+      }
+      return next;
+    });
+  }
+
   function submitPay() {
+    if (!hasSelection) {
+      toast.error("Tick at least one employee to pay");
+      return;
+    }
     if (!payRowsReady) {
-      toast.error("Select payment account and method for each employee");
+      toast.error(
+        "Select a payment account and method for each ticked employee",
+      );
       return;
     }
     if (!unpaidRows.length) {
@@ -162,6 +185,10 @@ export function PayrollGroupPayPage({
       return;
     }
     const batches = buildPayPayrollBatches(unpaidRows, payRowForms);
+    if (!batches.length) {
+      toast.error("No payroll selected");
+      return;
+    }
     payMutation.mutate(batches);
   }
 
@@ -227,7 +254,14 @@ export function PayrollGroupPayPage({
           rows={unpaidRows}
           payRowForms={payRowForms}
           onPatchPayRowForm={patchPayRowForm}
+          onToggleAllRows={toggleAllRows}
         />
+
+        <p className="mt-3 text-xs text-[#64748b]">
+          Tick the employees to pay in this run — unticked employees stay unpaid
+          and the group is marked <strong>Partial</strong> until everyone is
+          paid.
+        </p>
 
         <div className="mt-4 flex flex-wrap gap-2">
           <Hq6BusyButton
@@ -235,11 +269,11 @@ export function PayrollGroupPayPage({
             className="hq6-btn-purple"
             busy={payMutation.isPending}
             busyLabel="Paying…"
-            disabled={unpaidRows.length === 0 || !payRowsReady}
+            disabled={!hasSelection || !payRowsReady}
             onClick={submitPay}
           >
-            {unpaidRows.length > 1
-              ? `Pay ${unpaidRows.length} · ${formatCurrency(payTotal, "NGN")}`
+            {hasSelection && selectedRows.length > 1
+              ? `Pay ${selectedRows.length} · ${formatCurrency(payTotal, "NGN")}`
               : `Pay ${formatCurrency(payTotal, "NGN")}`}
           </Hq6BusyButton>
           <Link href={backHref} className="btn btn-default">

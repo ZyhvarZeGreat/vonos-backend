@@ -1627,10 +1627,14 @@ html.upos-shell [data-hq6="true"] .hq6-dt-toolbar {
   white-space: nowrap;
   border-bottom: 1px solid #d1d5db !important;
   border-right: 1px solid rgba(0, 0, 0, 0.12) !important;
-  padding-top: 0.55rem !important;
-  padding-bottom: 0.55rem !important;
+  padding-top: 0.35rem !important;
+  padding-bottom: 0.35rem !important;
+  padding-left: 0.5rem !important;
+  padding-right: 0.5rem !important;
   text-align: center !important;
   vertical-align: middle;
+  font-size: 0.75rem !important;
+  line-height: 1.2 !important;
 }
 
 [data-hq6="true"] .hq6-table-wrap tbody td {
@@ -1638,6 +1642,25 @@ html.upos-shell [data-hq6="true"] .hq6-dt-toolbar {
   border-right: 1px solid rgba(0, 0, 0, 0.12) !important;
   vertical-align: middle;
   text-align: center !important;
+  padding-top: 0.25rem !important;
+  padding-bottom: 0.25rem !important;
+  padding-left: 0.5rem !important;
+  padding-right: 0.5rem !important;
+  font-size: 0.8125rem !important;
+  line-height: 1.25 !important;
+}
+
+/* Name / title columns sit at the end visually in action-heavy lists —
+   keep product/contact titles left; push action cells to the far end. */
+[data-hq6="true"] .hq6-table-wrap thead th:first-child,
+[data-hq6="true"] .hq6-table-wrap tbody td:first-child {
+  text-align: left !important;
+}
+
+[data-hq6="true"] .hq6-table-wrap thead th:last-child,
+[data-hq6="true"] .hq6-table-wrap tbody td:last-child {
+  text-align: right !important;
+  white-space: nowrap;
 }
 
 [data-hq6="true"] .hq6-table-wrap tbody tr:last-child td {
@@ -5801,7 +5824,94 @@ html.upos-shell [data-hq6="true"] .hq6-orders-module {
   margin-bottom: 12px;
 }
 [data-hq6="true"] .hq6-notification-templates .hq6-notif-tags {
-  color: #333;
+  margin-bottom: 12px;
+}
+
+/* WhatsApp Baileys connect panel (Notification Templates) */
+[data-hq6="true"] .hq6-whatsapp-connect .hq6-wa-status-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+  margin-top: 4px;
+}
+[data-hq6="true"] .hq6-whatsapp-connect .hq6-wa-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+[data-hq6="true"] .hq6-whatsapp-connect .hq6-wa-pill--ok {
+  background: #ecfdf3;
+  color: #027a48;
+}
+[data-hq6="true"] .hq6-whatsapp-connect .hq6-wa-pill--warn {
+  background: #fffaeb;
+  color: #b54708;
+}
+[data-hq6="true"] .hq6-whatsapp-connect .hq6-wa-pill--muted {
+  background: #f2f4f7;
+  color: #475467;
+}
+[data-hq6="true"] .hq6-whatsapp-connect .hq6-wa-meta {
+  font-size: 13px;
+  color: #667085;
+}
+[data-hq6="true"] .hq6-whatsapp-connect .hq6-wa-qr-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px;
+  align-items: flex-start;
+  margin-top: 16px;
+}
+[data-hq6="true"] .hq6-whatsapp-connect .hq6-wa-qr {
+  width: 280px;
+  height: 280px;
+  max-width: 100%;
+  border: 1px solid #e3e8ef;
+  border-radius: 8px;
+  background: #fff;
+  object-fit: contain;
+}
+[data-hq6="true"] .hq6-whatsapp-connect .hq6-wa-qr--placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  text-align: center;
+  color: #667085;
+  font-size: 14px;
+  background: #f9fafb;
+}
+[data-hq6="true"] .hq6-whatsapp-connect .hq6-wa-steps {
+  margin: 0;
+  padding-left: 18px;
+  color: #344054;
+  font-size: 14px;
+  line-height: 1.6;
+}
+[data-hq6="true"] .hq6-whatsapp-connect .hq6-wa-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 16px;
+}
+[data-hq6="true"] .hq6-whatsapp-connect .hq6-wa-test {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid #e3e8ef;
+}
+[data-hq6="true"] .hq6-whatsapp-connect .hq6-wa-test-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+[data-hq6="true"] .hq6-whatsapp-connect .hq6-wa-test-row .form-control {
+  max-width: 220px;
 }
 
 /* ——— HQ6 Orders staff card full width ——— */
@@ -6471,4 +6581,77 @@ html.upos-shell [data-hq6="true"] .hq6-orders-module {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
+}
+
+/* Partial payroll run — pick which employees to pay in this run ---------- */
+
+[data-hq6="true"] .hq6-payroll-pay-select-cell {
+  width: 3.75rem;
+  min-width: 3.75rem;
+  text-align: center !important;
+  vertical-align: middle;
+}
+
+[data-hq6="true"] .hq6-payroll-pay-select-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #64748b;
+  cursor: pointer;
+  user-select: none;
+}
+
+[data-hq6="true"] .hq6-payroll-pay-select-cell input[type="checkbox"] {
+  width: 1rem;
+  height: 1rem;
+  accent-color: #2563eb;
+  cursor: pointer;
+}
+
+/* Gross / earnings / deductions / net breakdown in the pay table -------- */
+
+[data-hq6="true"] .hq6-payroll-pay-gross {
+  min-width: 12rem;
+}
+
+[data-hq6="true"] .hq6-payroll-pay-amount-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  font-size: 0.875rem;
+  line-height: 1.45;
+}
+
+[data-hq6="true"] .hq6-payroll-pay-amount-row--muted {
+  color: #64748b;
+  font-size: 0.8125rem;
+}
+
+[data-hq6="true"] .hq6-payroll-pay-amount-row--net {
+  margin-top: 0.15rem;
+  padding-top: 0.3rem;
+  border-top: 1px dashed rgba(100, 116, 139, 0.35);
+  font-weight: 600;
+  color: #111827;
+}
+
+[data-hq6="true"] .hq6-payroll-pay-amount-label {
+  font-weight: 600;
+}
+
+[data-hq6="true"] .hq6-payroll-pay-amount-row--muted
+  .hq6-payroll-pay-amount-label {
+  font-weight: 500;
+}
+
+[data-hq6="true"] .hq6-payroll-gross-value--muted {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #64748b;
 }

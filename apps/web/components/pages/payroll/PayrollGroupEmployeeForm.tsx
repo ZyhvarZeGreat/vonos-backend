@@ -153,7 +153,9 @@ export function PayrollGroupEmployeeForm({
   const basic = basicSalaryTotal(draft);
   const allowanceTotal = sumPayLines(draft.allowances, basic);
   const deductionTotal = sumPayLines(draft.deductions, basic);
-  const grossAmount = basic + allowanceTotal - deductionTotal;
+  // Gross = basic + earnings; deductions only reduce the net take-home.
+  const grossAmount = basic + allowanceTotal;
+  const netAmount = grossAmount - deductionTotal;
 
   const fieldProps = readOnly ? { readOnly: true, disabled: true } : {};
 
@@ -274,6 +276,12 @@ export function PayrollGroupEmployeeForm({
           <div className="hq6-payroll-employee-col hq6-payroll-employee-col--gross">
             <p className="hq6-payroll-section-title">Gross Amount</p>
             <p className="hq6-payroll-gross-value">{formatCurrency(grossAmount, "NGN")}</p>
+            <p className="hq6-payroll-section-title">Deductions</p>
+            <p className="hq6-payroll-gross-value hq6-payroll-gross-value--muted">
+              − {formatCurrency(deductionTotal, "NGN")}
+            </p>
+            <p className="hq6-payroll-section-title">Net Amount</p>
+            <p className="hq6-payroll-gross-value">{formatCurrency(netAmount, "NGN")}</p>
           </div>
         </div>
       </div>

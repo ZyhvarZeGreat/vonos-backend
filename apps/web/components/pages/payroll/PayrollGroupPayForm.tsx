@@ -11,6 +11,8 @@ export type PayRowForm = {
   paidOn: string;
   accountId: string;
   method: string;
+  /** Tick = include this employee in this payment run (partial pays allowed). */
+  selected: boolean;
 };
 
 export function nowPaidOnLocal(): string {
@@ -30,16 +32,31 @@ export function emptyPayRowForm(): PayRowForm {
     paidOn: nowPaidOnLocal(),
     accountId: "",
     method: "",
+    selected: true,
   };
 }
 
+/** Rows ticked for this run — unticked rows simply stay unpaid. */
+export function selectedPayRows(
+  rows: Payroll[],
+  payRowForms: Record<string, PayRowForm>,
+): Payroll[] {
+  return rows.filter((row) => (payRowForms[row.id] ?? emptyPayRowForm()).selected);
+}
+
+/**
+ * Only the ticked rows need an account/method — one employee without an
+ * account must not block paying everyone else in the group.
+ */
 export function arePayRowsReady(
   rows: Payroll[],
   payRowForms: Record<string, PayRowForm>,
 ): boolean {
-  return rows.every((row) => {
-    const form = payRowForms[row.id];
-    return Boolean(form?.accountId?.trim() && form?.method?.trim());
+  const selected = selectedPayRows(rows, payRowForms);
+  if (selected.length === 0) return false;
+  return selected.every((row) => {
+    const form = payRowForms[row.id] ?? emptyPayRowForm();
+    return Boolean(form.accountId?.trim() && form.method?.trim());
   });
 }
 
@@ -56,7 +73,7 @@ export function buildPayPayrollBatches(
   payRowForms: Record<string, PayRowForm>,
 ): PayPayrollBatch[] {
   const batchMap = new Map<string, PayPayrollBatch>();
-  for (const row of rows) {
+  for (const row of selectedPayRows(rows, payRowForms)) {
     const form = payRowForms[row.id] ?? emptyPayRowForm();
     const paidOnIso = paidOnToIso(form.paidOn);
     const key = `${row.tenantId}|${form.accountId}|${form.method}|${paidOnIso}`;
@@ -80,6 +97,7 @@ export type PayrollGroupPayFormProps = {
   rows: Payroll[];
   payRowForms: Record<string, PayRowForm>;
   onPatchPayRowForm: (payrollId: string, patch: Partial<PayRowForm>) => void;
+  onToggleAllRows?: (selected: boolean) => void;
 };
 
 function hq6BankDetailLines(row: Payroll): Array<{ label: string; value: string }> {
@@ -187,6 +205,7 @@ export function PayrollGroupPayForm({
   rows,
   payRowForms,
   onPatchPayRowForm,
+  onToggleAllRows,
 }: PayrollGroupPayFormProps) {
   if (rows.length === 0) {
     return (
@@ -194,11 +213,25 @@ export function PayrollGroupPayForm({
     );
   }
 
+  const selected = selectedPayRows(rows, payRowForms);
+  const allSelected = selected.length === rows.length;
+
   return (
     <div className="table-responsive hq6-payroll-group-pay-table-wrap">
       <table className="table table-bordered hq6-payroll-group-pay-table">
         <thead>
           <tr>
+            <th className="hq6-payroll-pay-select-cell">
+              <label className="hq6-payroll-pay-select-label">
+                <input
+                  type="checkbox"
+                  checked={allSelected}
+                  aria-label={allSelected ? "Unselect all" : "Select all"}
+                  onChange={(e) => onToggleAllRows?.(e.target.checked)}
+                />
+                <span>Pay</span>
+              </label>
+            </th>
             <th>Employee</th>
             <th>Gross Amount</th>
             <th>Bank Details</th>
@@ -212,15 +245,45 @@ export function PayrollGroupPayForm({
               <Fragment key={row.id}>
                 {index > 0 ? (
                   <tr className="hq6-payroll-pay-divider-row" aria-hidden>
-                    <td colSpan={4}>
+                    <td colSpan={5}>
                       <div className="hq6-payroll-pay-divider" role="presentation" />
                     </td>
                   </tr>
                 ) : null}
                 <tr className="hq6-payroll-pay-row">
+                  <td className="hq6-payroll-pay-select-cell">
+                    <input
+                      type="checkbox"
+                      checked={form.selected}
+                      aria-label={`Pay ${row.employeeName}`}
+                      onChange={(e) =>
+                        onPatchPayRowForm(row.id, { selected: e.target.checked })
+                      }
+                    />
+                  </td>
                   <td className="hq6-payroll-pay-employee">{row.employeeName}</td>
                   <td className="hq6-payroll-pay-gross tabular-nums">
-                    {formatHq6Currency(row.grossPay, "NGN")}
+                    <div className="hq6-payroll-pay-amount-row">
+                      <span className="hq6-payroll-pay-amount-label">Gross</span>
+                      <span>
+                        {formatHq6Currency(
+                          (row.grossPay || 0) + (row.totalAllowance || 0),
+                          "NGN",
+                        )}
+                      </span>
+                    </div>
+                    <div className="hq6-payroll-pay-amount-row hq6-payroll-pay-amount-row--muted">
+                      <span className="hq6-payroll-pay-amount-label">Earnings</span>
+                      <span>+ {formatHq6Currency(row.totalAllowance || 0, "NGN")}</span>
+                    </div>
+                    <div className="hq6-payroll-pay-amount-row hq6-payroll-pay-amount-row--muted">
+                      <span className="hq6-payroll-pay-amount-label">Deductions</span>
+                      <span>− {formatHq6Currency(row.totalDeduction || 0, "NGN")}</span>
+                    </div>
+                    <div className="hq6-payroll-pay-amount-row hq6-payroll-pay-amount-row--net">
+                      <span className="hq6-payroll-pay-amount-label">Net pay</span>
+                      <span>{formatHq6Currency(row.netPay, "NGN")}</span>
+                    </div>
                   </td>
                   <td className="hq6-payroll-pay-bank-cell">
                     <PayrollBankDetailsCell row={row} />

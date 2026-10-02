@@ -56,15 +56,18 @@ export function PayrollGroupViewSummary({ group }: PayrollGroupViewSummaryProps)
 
             <Hq6AddPaymentWellsRow wells={employeeWells(row)} />
 
-            <div className="mt-3 grid gap-2 border-t border-[#e5e7eb] pt-3 text-sm md:grid-cols-3">
+            <div className="mt-3 grid gap-2 border-t border-[#e5e7eb] pt-3 text-sm md:grid-cols-4">
               <div>
                 <span className="text-[#64748b]">Gross pay: </span>
                 <span className="font-medium tabular-nums">
-                  {formatCurrency(row.grossPay, "NGN")}
+                  {formatCurrency(
+                    (row.grossPay || 0) + (row.totalAllowance || 0),
+                    "NGN",
+                  )}
                 </span>
               </div>
               <div>
-                <span className="text-[#64748b]">Allowances: </span>
+                <span className="text-[#64748b]">Earnings: </span>
                 <span className="font-medium tabular-nums">
                   {formatCurrency(row.totalAllowance, "NGN")}
                 </span>
@@ -73,6 +76,12 @@ export function PayrollGroupViewSummary({ group }: PayrollGroupViewSummaryProps)
                 <span className="text-[#64748b]">Deductions: </span>
                 <span className="font-medium tabular-nums">
                   {formatCurrency(row.totalDeduction, "NGN")}
+                </span>
+              </div>
+              <div>
+                <span className="text-[#64748b]">Net pay: </span>
+                <span className="font-semibold tabular-nums">
+                  {formatCurrency(row.netPay, "NGN")}
                 </span>
               </div>
             </div>

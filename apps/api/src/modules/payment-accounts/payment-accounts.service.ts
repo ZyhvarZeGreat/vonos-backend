@@ -10,10 +10,14 @@ import type {
   PaymentAccountTransferRequest,
   UpdatePaymentAccountRequest,
 } from '@vonos/types';
+import type { PaymentAccount as PaymentAccountRecord } from '@prisma/client';
 import { TenantDbService } from '../../common/prisma/tenant-db.service';
 import { CacheService } from '../../common/cache/cache.service';
 import { invalidateTenantDashboardCache } from '../../common/cache/cacheInvalidation';
-import { buildCompositeCursorQuery } from '../../common/utils/pagination';
+import {
+  buildCompositeCursorQuery,
+  buildCompositeCursorWhere,
+} from '../../common/utils/pagination';
 import {
   listPageFilterKey,
   withListPageCache,
@@ -146,44 +150,80 @@ export class PaymentAccountsService {
   ): Promise<PaymentAccount[]> {
     // Payment pickers: all open tills (cash + banks), excluding chart junk.
     if (filters.openOnly) {
-      const take = Math.min(Math.max(filters.limit ?? 40, 1), 200);
-      const allOpen = await this.tenantDb.db.paymentAccount.findMany({
-        where: {
-          tenantId,
-          deletedAt: null,
-          isClosed: false,
-          ...(filters.search
-            ? {
-                OR: [
-                  {
-                    name: { contains: filters.search, mode: 'insensitive' },
-                  },
-                  {
-                    accountNumber: {
-                      contains: filters.search,
-                      mode: 'insensitive',
-                    },
-                  },
-                ],
-              }
-            : {}),
-        },
-        orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
-        // Over-fetch slightly so in-memory name filter still fills the page.
-        take: take * 3,
-      });
-      const usable = allOpen
-        .filter((row) => isPickerPaymentAccountName(row.name))
-        .slice(0, take);
+      const limit = Math.min(Math.max(filters.limit ?? 40, 1), 500);
+      const searchWhere = filters.search
+        ? {
+            OR: [
+              { name: { contains: filters.search, mode: 'insensitive' as const } },
+              {
+                accountNumber: {
+                  contains: filters.search,
+                  mode: 'insensitive' as const,
+                },
+              },
+            ],
+          }
+        : {};
+      const baseWhere = {
+        tenantId,
+        deletedAt: null,
+        isClosed: false,
+        ...searchWhere,
+      };
+
+      // The picker roster pages with a raw row-id cursor (frontend
+      // fetchAllPages sends `row.id`) — resolve it to the composite
+      // updatedAt/id position so a second page is not an empty page.
+      let cursorWhere: ReturnType<typeof buildCompositeCursorWhere>;
+      if (filters.cursor) {
+        const cursorRow = await this.tenantDb.db.paymentAccount.findUnique({
+          where: { id: filters.cursor },
+          select: { updatedAt: true },
+        });
+        // Cursor row deleted (or unknown): stop paging instead of re-serving page 1.
+        if (!cursorRow) return [];
+        cursorWhere = buildCompositeCursorWhere(
+          'updatedAt',
+          'desc',
+          { sortValue: cursorRow.updatedAt.toISOString(), id: filters.cursor },
+          'date',
+        );
+      }
+
+      // Scan forward until this page has `limit` usable (non-junk) rows —
+      // the in-memory name filter must not silently drop the tail of the list.
+      const usable: PaymentAccountRecord[] = [];
+      for (let guard = 0; guard < 10 && usable.length < limit; guard += 1) {
+        const rows = await this.tenantDb.db.paymentAccount.findMany({
+          where: { ...baseWhere, ...(cursorWhere ?? {}) },
+          orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
+          take: 500,
+        });
+        if (rows.length === 0) break;
+        for (const row of rows) {
+          if (!isPickerPaymentAccountName(row.name)) continue;
+          usable.push(row);
+          if (usable.length >= limit) break;
+        }
+        const last = rows[rows.length - 1];
+        cursorWhere = buildCompositeCursorWhere(
+          'updatedAt',
+          'desc',
+          { sortValue: last.updatedAt.toISOString(), id: last.id },
+          'date',
+        );
+        if (rows.length < 500) break;
+      }
+      const page = usable.slice(0, limit);
       // Pickers don't need live balances — skip the extra aggregate round-trip.
       if (filters.lite) {
-        return Promise.all(usable.map((row) => this.serializeRow(row, 0)));
+        return Promise.all(page.map((row) => this.serializeRow(row, 0)));
       }
       const balances = await this.balancesForAccounts(
-        usable.map((row) => row.id),
+        page.map((row) => row.id),
       );
       return Promise.all(
-        usable.map((row) => this.serializeRow(row, balances.get(row.id) ?? 0)),
+        page.map((row) => this.serializeRow(row, balances.get(row.id) ?? 0)),
       );
     }
 

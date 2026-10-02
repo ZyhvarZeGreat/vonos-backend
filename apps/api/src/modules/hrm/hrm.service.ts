@@ -28,6 +28,11 @@ import type {
   PayPayrollsResult,
   PayrollFilters,
 } from '@vonos/types';
+import {
+  aggregateGroupPaymentStatus,
+  payrollGroupGrossTotal,
+} from './payrollGroupAggregates';
+import { employeeMergeData, fillMissingBankFields } from './employeeMerge';
 import { TenantDbService } from '../../common/prisma/tenant-db.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { buildCompositeCursorQuery } from '../../common/utils/pagination';
@@ -159,15 +164,6 @@ const PAYROLL_INCLUDE = {
   tenant: { select: { code: true, name: true } },
 } as const;
 
-function aggregateGroupPaymentStatus(
-  payrolls: { paymentStatus: string }[],
-): 'due' | 'partial' | 'paid' {
-  if (payrolls.length === 0) return 'due';
-  const paidCount = payrolls.filter((p) => p.paymentStatus === 'paid').length;
-  if (paidCount === payrolls.length) return 'paid';
-  if (paidCount === 0) return 'due';
-  return 'partial';
-}
 
 @Injectable()
 export class HrmService {
@@ -1041,6 +1037,48 @@ export class HrmService {
     return payroll?.employeeRecordId ?? null;
   }
 
+  /**
+   * A user has one employee row per tenant (multi-entity staff). Bank details
+   * belong to the person, not the entity: after writing one row, fill any
+   * blank bank fields on the user's other rows so payroll in another tenant
+   * doesn't show an account number the person already entered elsewhere.
+   * Deliberately unscoped (like mirrorWorkLocationsToPeerEmployees) — it only
+   * touches rows of the same userId and only fills empty fields.
+   */
+  private async propagateBankFieldsToSiblingRows(
+    userId: string,
+    sourceEmployeeId: string,
+  ): Promise<void> {
+    const bankSelect = {
+      accountHolderName: true,
+      bankName: true,
+      bankBranch: true,
+      bankCode: true,
+      bankAccountNo: true,
+      taxPayerId: true,
+    } as const;
+    const [source, siblings] = await Promise.all([
+      this.prisma.employee.findFirst({
+        where: { id: sourceEmployeeId, deletedAt: null },
+        select: bankSelect,
+      }),
+      this.prisma.employee.findMany({
+        where: { userId, deletedAt: null, NOT: { id: sourceEmployeeId } },
+        select: { id: true, ...bankSelect },
+      }),
+    ]);
+    if (!source) return;
+    for (const sibling of siblings) {
+      const patch = fillMissingBankFields(source, sibling);
+      if (Object.keys(patch).length > 0) {
+        await this.prisma.employee.update({
+          where: { id: sibling.id },
+          data: patch,
+        });
+      }
+    }
+  }
+
   async createEmployee(dto: CreateEmployeeRequest): Promise<Employee> {
     const tenantId = this.tenantDb.requireTenantId();
     const name = dto.name?.trim();
@@ -1072,6 +1110,39 @@ export class HrmService {
       dto.locationCodes,
       dto.locationCode,
     );
+    const userId = dto.userId?.trim() || null;
+
+    // One active employee row per user per tenant: the user create/invite
+    // flow re-runs createEmployee for users who already have a row (roster
+    // sync creates it first). Inserting a second row splits bank details
+    // across copies — payrolls attached to the empty copy show no account
+    // number even though HR entered one.
+    if (userId) {
+      const existing = await this.tenantDb.db.employee.findFirst({
+        where: { tenantId, userId, deletedAt: null },
+        orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
+      });
+      if (existing) {
+        const row = await this.tenantDb.db.employee.update({
+          where: { id: existing.id },
+          data: employeeMergeData(existing, dto),
+          include: {
+            designation: { select: { name: true } },
+            payrollGroup: { select: { name: true } },
+          },
+        });
+        void invalidateTenantDashboardCache(this.cache, tenantId);
+        if (locationCodes.length > 0) {
+          await this.mirrorWorkLocationsToPeerEmployees(
+            userId,
+            row.id,
+            locationCodes,
+          );
+        }
+        await this.propagateBankFieldsToSiblingRows(userId, row.id);
+        return this.serializeEmployee(row);
+      }
+    }
 
     const row = await this.tenantDb.db.employee.create({
       data: {
@@ -1082,7 +1153,7 @@ export class HrmService {
         locationCodes,
         payrollGroupId: dto.payrollGroupId?.trim() || null,
         designationId: dto.designationId,
-        userId: dto.userId?.trim() || null,
+        userId,
         isServiceStaff,
         accountHolderName: dto.accountHolderName?.trim() || null,
         bankName: dto.bankName?.trim() || null,
@@ -1099,12 +1170,15 @@ export class HrmService {
     });
     void invalidateTenantDashboardCache(this.cache, tenantId);
     const created = this.serializeEmployee(row);
-    if (dto.userId?.trim() && locationCodes.length > 0) {
-      await this.mirrorWorkLocationsToPeerEmployees(
-        dto.userId.trim(),
-        row.id,
-        locationCodes,
-      );
+    if (userId) {
+      if (locationCodes.length > 0) {
+        await this.mirrorWorkLocationsToPeerEmployees(
+          userId,
+          row.id,
+          locationCodes,
+        );
+      }
+      await this.propagateBankFieldsToSiblingRows(userId, row.id);
     }
     return created;
   }
@@ -1191,6 +1265,7 @@ export class HrmService {
           nextLocations,
         );
       }
+      await this.propagateBankFieldsToSiblingRows(args.userId, row.id);
       return this.serializeEmployee(row);
     }
 
@@ -2489,7 +2564,12 @@ export class HrmService {
         },
         payrolls: {
           where: { deletedAt: null },
-          select: { netPay: true, paymentStatus: true },
+          select: {
+            grossPay: true,
+            totalAllowance: true,
+            netPay: true,
+            paymentStatus: true,
+          },
         },
       },
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
@@ -2517,7 +2597,12 @@ export class HrmService {
         },
         payrolls: {
           where: { deletedAt: null },
-          select: { netPay: true, paymentStatus: true },
+          select: {
+            grossPay: true,
+            totalAllowance: true,
+            netPay: true,
+            paymentStatus: true,
+          },
         },
       },
     });
@@ -2532,6 +2617,8 @@ export class HrmService {
     const header = this.serializePayrollGroup({
       ...row,
       payrolls: payrollRows.map((p) => ({
+        grossPay: p.grossPay,
+        totalAllowance: p.totalAllowance,
         netPay: p.netPay,
         paymentStatus: p.paymentStatus,
       })),
@@ -2570,12 +2657,21 @@ export class HrmService {
         },
         payrolls: {
           where: { deletedAt: null },
-          select: { netPay: true, paymentStatus: true },
+          select: {
+            grossPay: true,
+            totalAllowance: true,
+            netPay: true,
+            paymentStatus: true,
+          },
         },
       },
     });
     try {
-      await this.invoiceHub.ensurePayrollGroupInvoice(this.tenantDb.db, row);
+      await this.invoiceHub.ensurePayrollGroupInvoice(
+        this.tenantDb.db,
+        row,
+        payrollGroupGrossTotal(row.payrolls ?? []),
+      );
     } catch {
       // Department create should succeed even if invoice materialization fails.
     }
@@ -2635,7 +2731,12 @@ export class HrmService {
         },
         payrolls: {
           where: { deletedAt: null },
-          select: { netPay: true, paymentStatus: true },
+          select: {
+            grossPay: true,
+            totalAllowance: true,
+            netPay: true,
+            paymentStatus: true,
+          },
         },
       },
     });
@@ -3098,15 +3199,15 @@ export class HrmService {
     createdAt: Date;
     _count?: { payrolls: number };
     payrolls?: Array<{
+      grossPay: { toString(): string };
+      totalAllowance?: { toString(): string } | null;
       netPay: { toString(): string };
       paymentStatus: string;
     }>;
   }): PayrollGroup {
     const payrolls = row.payrolls ?? [];
-    const totalGross = payrolls.reduce(
-      (sum, p) => sum + toNumber(p.netPay),
-      0,
-    );
+    // Gross = basic + earnings (allowances); deductions only reduce net.
+    const totalGross = payrollGroupGrossTotal(payrolls);
     return {
       id: row.id,
       tenantId: row.tenantId,
