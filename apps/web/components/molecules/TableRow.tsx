@@ -40,7 +40,7 @@ export function TableRow({
         <td
           key={index}
           className={cn(
-            "px-4 text-sm text-foreground align-middle",
+            "px-3 text-sm leading-snug text-foreground align-middle",
             cellClassNames?.[index],
           )}
           style={{

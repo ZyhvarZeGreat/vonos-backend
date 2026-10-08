@@ -84,15 +84,16 @@ function SaleCustomerCell({
   const meta = showVehicleMeta
     ? [carModelYear, plateNumber].filter(Boolean).join(" · ")
     : "";
+  const sub = meta || row.jobReference || "";
+  const title = sub ? `${customerDisplay} · ${sub}` : customerDisplay;
 
   return (
-    <div>
-      <div className="font-medium">{customerDisplay}</div>
-      {meta ? (
-        <div className="text-xs text-[#6b7280]">{meta}</div>
-      ) : row.jobReference ? (
-        <div className="text-xs text-[#6b7280]">{row.jobReference}</div>
-      ) : null}
+    <div
+      className="max-w-56 truncate font-medium"
+      title={title}
+    >
+      {customerDisplay}
+      {sub ? <span className="font-normal text-muted"> · {sub}</span> : null}
     </div>
   );
 }
