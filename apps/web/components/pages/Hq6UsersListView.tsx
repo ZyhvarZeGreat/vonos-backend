@@ -103,7 +103,7 @@ export function Hq6UsersListView() {
   const useAllTenants = isAdminHrm;
   const router = useRouter();
   const queryClient = useQueryClient();
-  const { detailPath, prefetchDetail } = useRecordNavigation("users");
+  const { detailPath } = useRecordNavigation("users");
   const { requireCan } = useHq6Permissions();
   const { search, setSearch } = useListPageFilters();
   const [columnsOpen, setColumnsOpen] = useState(false);
@@ -111,16 +111,15 @@ export function Hq6UsersListView() {
 
   const createHref = `${detailPath("new")}/edit`;
 
-  /** Warm create route + default-home roles so Add User isn't a cold start. */
+  /** Warm default-home roles so Add User isn't a data cold start. */
   useEffect(() => {
-    router.prefetch(createHref);
     if (!tenantId) return;
     void queryClient.prefetchQuery({
       queryKey: ["tenant-roles", tenantId],
       queryFn: () => getTenantRoles(tenantId),
       staleTime: 5 * 60_000,
     });
-  }, [createHref, queryClient, router, tenantId]);
+  }, [queryClient, tenantId]);
 
   const deactivateMutation = useMutation({
     mutationFn: (row: UserListRow) =>
@@ -197,7 +196,6 @@ export function Hq6UsersListView() {
   }, [exportList, search, tenantId, useAllTenants]);
 
   const warmUser = (row: UserListRow) => {
-    prefetchDetail(row.id);
     if (tenantId) prefetchUserDetail(queryClient, tenantId, row.id, row);
   };
 
@@ -237,7 +235,6 @@ export function Hq6UsersListView() {
                   <a
                     href={createHref}
                     className="tw-dw-btn tw-bg-gradient-to-r tw-from-indigo-600 tw-to-blue-500 tw-font-bold tw-text-white tw-border-none tw-rounded-full"
-                    onMouseEnter={() => router.prefetch(createHref)}
                     onClick={(e) => {
                       e.preventDefault();
                       if (!requireCan("user.create")) return;

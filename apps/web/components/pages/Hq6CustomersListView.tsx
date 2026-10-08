@@ -92,7 +92,7 @@ const PlusIcon = (
 export function Hq6CustomersListView() {
   const router = useRouter();
   const queryClient = useQueryClient();
-  const { goToDetail, detailPath, prefetchDetail } =
+  const { goToDetail, detailPath } =
     useRecordNavigation("customers");
   const tenantId = useTenantId();
   const openCreateModal = useUiStore((state) => state.openCreateModal);
@@ -809,7 +809,6 @@ export function Hq6CustomersListView() {
                                   role="row"
                                   className={index % 2 === 0 ? "odd" : "even"}
                                   onMouseEnter={() => {
-                                    prefetchDetail(row.id);
                                     if (tenantId)
                                       prefetchCustomerDetail(
                                         queryClient,

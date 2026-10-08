@@ -1,3 +1,4 @@
+import { cdn } from "@/lib/cdn";
 import {
   ACADEMY_COURSE_PHOTOS,
   ACADEMY_INSTRUCTOR_PHOTOS,
@@ -22,7 +23,7 @@ export const ACADEMY_COURSES: AcademyCourse[] = [
     level: "Foundation",
     summary:
       "Oil, filters, fluids, multi-point inspection, and workshop safety — the core habits every bay starts with.",
-    icon: "/images/icons/tag.svg",
+    icon: cdn("/images/icons/tag.svg"),
     image: ACADEMY_COURSE_PHOTOS[0],
   },
   {
@@ -32,7 +33,7 @@ export const ACADEMY_COURSES: AcademyCourse[] = [
     level: "Intermediate",
     summary:
       "Pad and disc replacement, bleeding, bushings, shocks, and how to diagnose noise and pull under braking.",
-    icon: "/images/icons/calendar.svg",
+    icon: cdn("/images/icons/calendar.svg"),
     image: ACADEMY_COURSE_PHOTOS[1],
   },
   {
@@ -42,7 +43,7 @@ export const ACADEMY_COURSES: AcademyCourse[] = [
     level: "Advanced",
     summary:
       "Scan tools, live data, charging systems, sensors, and tracing faults without guessing parts.",
-    icon: "/images/icons/security.svg",
+    icon: cdn("/images/icons/security.svg"),
     image: ACADEMY_COURSE_PHOTOS[2],
   },
 ];
@@ -136,17 +137,17 @@ export const ACADEMY_OUTCOMES = [
   {
     title: "Hands-on hours logged",
     body: "Real vehicles, real tools, supervised by working technicians — not a theory-only classroom.",
-    icon: "/images/icons/tag.svg",
+    icon: cdn("/images/icons/tag.svg"),
   },
   {
     title: "Completion certificate",
     body: "A clear record of the programme you finished, ready to show employers or attach to a CV.",
-    icon: "/images/icons/calendar.svg",
+    icon: cdn("/images/icons/calendar.svg"),
   },
   {
     title: "Path into the workshop",
     body: "Strong performers get considered for placement and further training inside Vonos Mechanic.",
-    icon: "/images/icons/security.svg",
+    icon: cdn("/images/icons/security.svg"),
   },
 ] as const;
 

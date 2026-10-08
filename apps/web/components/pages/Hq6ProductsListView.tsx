@@ -132,7 +132,7 @@ export function Hq6ProductsListView({
 }: {
   listSlug?: "catalog" | "inventory" | "menu-items";
 } = {}) {
-  const { goToDetail, prefetchDetail } = useRecordNavigation(listSlug);
+  const { goToDetail } = useRecordNavigation(listSlug);
   const tenantId = useTenantId();
   const { config, tenantCode } = useRouteTenant();
   const priceCatalogOnly = isPriceCatalogOnlyTenant(
@@ -975,7 +975,6 @@ export function Hq6ProductsListView({
                               className={index % 2 === 0 ? "odd" : "even"}
                               data-href={`${tenantBasePath(tenantCode)}/${listSlug}/${row.id}`}
                               onMouseEnter={() => {
-                                prefetchDetail(row.id);
                                 if (tenantId) {
                                   prefetchCatalogDetail(
                                     queryClient,
@@ -1079,7 +1078,6 @@ export function Hq6ProductsListView({
                                               );
                                             }
                                             const href = `${tenantBasePath(tenantCode)}/add-product?edit=${row.id}`;
-                                            router.prefetch(href);
                                             router.push(href);
                                           },
               },
@@ -1155,7 +1153,6 @@ export function Hq6ProductsListView({
                                               );
                                             }
                                             const href = `${tenantBasePath(tenantCode)}/add-product?d=${row.id}`;
-                                            router.prefetch(href);
                                             router.push(href);
                 },
               },

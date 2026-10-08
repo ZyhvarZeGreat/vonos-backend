@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import AboutHeroCarousel from "@/components/marketing/AboutHeroCarousel";
+import { cdn } from "@/lib/cdn";
 import { ABOUT_HERO_SLIDES } from "@/lib/marketing/vonos-photos";
 
 const TICKER = [
@@ -22,7 +23,7 @@ function MarqueeItem() {
         // eslint-disable-next-line @next/next/no-img-element
         <img
           key={`${label}-i`}
-          src="/images/pages/about/6a741b15a66dd7f5c7dee251_ticker_sepsvg.svg"
+          src={cdn("/images/pages/about/6a741b15a66dd7f5c7dee251_ticker_sepsvg.svg")}
           loading="lazy"
           alt=""
           className="marquee-icon"

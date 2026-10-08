@@ -121,7 +121,7 @@ export default function MarketingFooter({
                           className="footer-social-link w-inline-block"
                         >
                           <Image
-                            src="/images/icons/facebook.svg"
+                            src={cdn("/images/icons/facebook.svg")}
                             alt="Facebook"
                             width={24}
                             height={24}
@@ -135,7 +135,7 @@ export default function MarketingFooter({
                           className="footer-social-link w-inline-block"
                         >
                           <Image
-                            src="/images/icons/twitter.svg"
+                            src={cdn("/images/icons/twitter.svg")}
                             alt="X"
                             width={24}
                             height={24}
@@ -149,7 +149,7 @@ export default function MarketingFooter({
                           className="footer-social-link w-inline-block"
                         >
                           <Image
-                            src="/images/icons/instagram.svg"
+                            src={cdn("/images/icons/instagram.svg")}
                             alt="Instagram"
                             width={24}
                             height={24}

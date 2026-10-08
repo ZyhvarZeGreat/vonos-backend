@@ -6,7 +6,7 @@ async function publicJson<T>(path: string): Promise<T> {
   const response = await fetch(apiUrl(path), {
     credentials: "omit",
     headers: { Accept: "application/json" },
-    next: { revalidate: 60 },
+    next: { revalidate: 3600 },
   });
   if (!response.ok) {
     throw new Error(`CMS request failed (${response.status})`);

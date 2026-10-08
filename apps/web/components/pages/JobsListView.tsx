@@ -49,7 +49,7 @@ function tabStatusFilter(tab: string): string | undefined {
 
 export function JobsListView() {
   const isHq6 = useIsVaHq6();
-  const { goToDetail, prefetchDetail } = useRecordNavigation("jobs");
+  const { goToDetail } = useRecordNavigation("jobs");
   const tenantId = useTenantId();
   const queryClient = useQueryClient();
   const chrome = useHq6ListChrome("jobs");
@@ -119,7 +119,6 @@ export function JobsListView() {
   });
 
   const warmJob = (row: Job) => {
-    prefetchDetail(row.id);
     if (tenantId) prefetchJobDetail(queryClient, tenantId, row.id, row);
   };
 

@@ -21,7 +21,8 @@ type BlogPostPageProps = {
   params: Promise<{ slug: string }>;
 };
 
-export const revalidate = 60;
+/** Hourly ISR — CMS publishes are rare; editors can revalidate on demand. */
+export const revalidate = 3600;
 
 export async function generateStaticParams() {
   const slugs = await fetchAllPublicCmsSlugs();

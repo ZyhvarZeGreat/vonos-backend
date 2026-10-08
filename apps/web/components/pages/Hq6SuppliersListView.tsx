@@ -75,7 +75,7 @@ const PlusIcon = (
 export function Hq6SuppliersListView() {
   const router = useRouter();
   const queryClient = useQueryClient();
-  const { goToDetail, detailPath, prefetchDetail } = useRecordNavigation("suppliers");
+  const { goToDetail, detailPath } = useRecordNavigation("suppliers");
   const tenantId = useTenantId();
   const openCreateModal = useUiStore((state) => state.openCreateModal);
   const { search, setSearch } = useListPageFilters();
@@ -627,7 +627,6 @@ export function Hq6SuppliersListView() {
                                   role="row"
                                   className={index % 2 === 0 ? "odd" : "even"}
                                   onMouseEnter={() => {
-                                    prefetchDetail(row.id);
                                     if (tenantId)
                                       prefetchSupplierDetail(
                                         queryClient,

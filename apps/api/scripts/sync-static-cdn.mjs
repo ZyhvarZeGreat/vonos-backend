@@ -35,6 +35,12 @@ const SOURCES = ["images", "brand"];
 const PREFIX = "static/";
 const MAX_EDGE = 1600;
 const QUALITY = 82;
+/** Responsive width variants for large JPEGs: target width → encode quality. */
+const VARIANTS = [
+  { suffix: "-w500", width: 500, quality: 70 },
+  { suffix: "-w800", width: 800, quality: 75 },
+  { suffix: "-w1200", width: 1200, quality: 80 },
+];
 const CONCURRENCY = 6;
 const CACHE_CONTROL = "public, max-age=31536000, immutable";
 
@@ -130,6 +136,66 @@ async function exists(key, sha) {
   }
 }
 
+async function putObject(key, body, contentType, sha) {
+  await s3.send(
+    new PutObjectCommand({
+      Bucket: bucket,
+      Key: key,
+      Body: body,
+      ContentType: contentType,
+      CacheControl: CACHE_CONTROL,
+      Metadata: { "source-sha256": sha },
+    }),
+  );
+}
+
+/**
+ * Width variants for a large JPEG (`IMG_0437.jpg` → `IMG_0437-w800.jpg`).
+ * Generated in-memory and uploaded under derived keys — never written to
+ * public/, so they stay off the Vercel deployment bundle. Returns the list
+ * of { key, bytes } uploaded (or skipped when unchanged).
+ */
+async function syncVariants(rel, raw, ext, counters) {
+  if (![".jpg", ".jpeg"].includes(ext)) return;
+  let width = 0;
+  try {
+    const meta = await sharp(raw, { failOn: "none" }).metadata();
+    width = meta.width ?? 0;
+  } catch {
+    return;
+  }
+  const dot = rel.lastIndexOf(".");
+  const base = rel.slice(0, dot);
+  for (const variant of VARIANTS) {
+    if (width <= variant.width) continue;
+    const key = `${PREFIX}${base}${variant.suffix}.jpg`;
+    let body;
+    try {
+      body = await sharp(raw, { failOn: "none" })
+        .rotate()
+        .resize({ width: variant.width, withoutEnlargement: true })
+        .jpeg({ quality: variant.quality, mozjpeg: true, progressive: true })
+        .toBuffer();
+    } catch (error) {
+      console.warn(`  ! variant failed for ${rel}: ${error.message}`);
+      continue;
+    }
+    const sha = createHash("sha256").update(body).digest("hex");
+    if (!force && !dryRun && (await exists(key, sha))) {
+      counters.skipped += 1;
+      continue;
+    }
+    if (dryRun) {
+      counters.uploaded += 1;
+      console.log(`would put ${key} (${body.length} bytes)`);
+      continue;
+    }
+    await putObject(key, body, "image/jpeg", sha);
+    counters.uploaded += 1;
+    counters.cdnBytes += body.length;
+  }
+}
+
 async function pool(items, limit, worker) {
   const queue = [...items];
   const runners = Array.from({ length: Math.min(limit, queue.length) }, async () => {
@@ -175,8 +241,23 @@ async function main() {
     const sha = createHash("sha256").update(raw).digest("hex");
     const contentType = CONTENT_TYPES[ext] ?? "application/octet-stream";
 
+    // Width variants upload under derived keys — track them as seen so
+    // --prune never deletes them while the source still exists.
+    const dot = rel.lastIndexOf(".");
+    if ([".jpg", ".jpeg"].includes(ext)) {
+      for (const variant of VARIANTS) {
+        seen.add(`${PREFIX}${rel.slice(0, dot)}${variant.suffix}.jpg`);
+      }
+    }
+
     if (!force && !dryRun && (await exists(key, sha))) {
       skipped += 1;
+      // Original unchanged, but variants may still be missing (new feature).
+      const counters = { uploaded: 0, skipped: 0, cdnBytes: 0 };
+      await syncVariants(rel, raw, ext, counters);
+      uploaded += counters.uploaded;
+      skipped += counters.skipped;
+      cdnBytes += counters.cdnBytes;
       return;
     }
 
@@ -186,20 +267,19 @@ async function main() {
       console.log(
         `would put ${key} (${raw.length} → ${body.length} bytes${delta > 0 ? `, -${Math.round((delta / raw.length) * 100)}%` : ""})`,
       );
+      const counters = { uploaded: 0, skipped: 0, cdnBytes: 0 };
+      await syncVariants(rel, raw, ext, counters);
+      uploaded += counters.uploaded;
       return;
     }
 
-    await s3.send(
-      new PutObjectCommand({
-        Bucket: bucket,
-        Key: key,
-        Body: body,
-        ContentType: contentType,
-        CacheControl: CACHE_CONTROL,
-        Metadata: { "source-sha256": sha },
-      }),
-    );
+    await putObject(key, body, contentType, sha);
     uploaded += 1;
+    const counters = { uploaded: 0, skipped: 0, cdnBytes: 0 };
+    await syncVariants(rel, raw, ext, counters);
+    uploaded += counters.uploaded;
+    skipped += counters.skipped;
+    cdnBytes += counters.cdnBytes;
     if (uploaded % 25 === 0) console.log(`  … ${uploaded} uploaded`);
   });
 

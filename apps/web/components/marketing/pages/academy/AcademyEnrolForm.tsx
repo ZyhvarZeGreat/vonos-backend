@@ -7,6 +7,7 @@ import {
   ACADEMY_CONTACT,
   ACADEMY_COURSES,
 } from "@/lib/marketing/academy-courses";
+import { cdn } from "@/lib/cdn";
 
 function buildMessage(args: {
   name: string;
@@ -243,7 +244,7 @@ export default function AcademyEnrolForm() {
                   <div className="contact-icon-wrap bg-primary-1">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
-                      src="/images/pages/contact/6a76c48c2d3a718a753f6740_location.svg"
+                      src={cdn("/images/pages/contact/6a76c48c2d3a718a753f6740_location.svg")}
                       loading="lazy"
                       alt=""
                       className="contact-icon"
@@ -265,7 +266,7 @@ export default function AcademyEnrolForm() {
                   <div className="contact-icon-wrap bg-gray-5">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
-                      src="/images/pages/contact/6a76c640aa969a5ffe2e225e_email.svg"
+                      src={cdn("/images/pages/contact/6a76c640aa969a5ffe2e225e_email.svg")}
                       loading="lazy"
                       alt=""
                       className="contact-icon"

@@ -15,7 +15,8 @@ export const metadata: Metadata = {
   alternates: { canonical: "/blog" },
 };
 
-export const revalidate = 60;
+/** Hourly ISR — CMS publishes are rare; editors can revalidate on demand. */
+export const revalidate = 3600;
 
 export default async function BlogPage() {
   const { items } = await fetchPublicCmsPosts(50);

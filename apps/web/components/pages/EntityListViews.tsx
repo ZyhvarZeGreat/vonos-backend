@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useRouter, useSearchParams, useParams } from "next/navigation";
 import { Plus } from "lucide-react";
 import { Button } from "@/components/atoms/Button";
@@ -336,18 +336,10 @@ export function QuotationsListView() {
  */
 export function SellListsRouteView() {
   const params = useParams<{ tenant?: string; listSlug?: string }>();
-  const router = useRouter();
   const slug = params.listSlug ?? "sales";
-  const tenant = params.tenant;
 
-  // Warm sibling sell routes so Sales ↔ Quotations feels instant.
-  useEffect(() => {
-    if (!tenant) return;
-    for (const sibling of ["sales", "quotations", "drafts", "shipments"] as const) {
-      if (sibling === slug) continue;
-      router.prefetch(`${tenantBasePath(tenant)}/${sibling}`);
-    }
-  }, [router, slug, tenant]);
+  // NOTE: sibling-route prefetch intentionally removed — each visit fired 3
+  // edge RSC requests. Sidebar links already prefetch in-viewport via Next.
 
   // No per-slug `key` — reuse the same SalesListView instance so chrome survives
   // and keepPreviousData can show the prior table while the new status loads.
@@ -870,7 +862,7 @@ export function VehiclesListView() {
 }
 
 function VehiclesListViewBody() {
-  const { goToDetail, prefetchDetail } = useRecordNavigation("vehicles");
+  const { goToDetail } = useRecordNavigation("vehicles");
   const tenantId = useTenantId();
   const queryClient = useQueryClient();
   const exportList = useListExport();
@@ -1018,11 +1010,9 @@ function VehiclesListViewBody() {
           isPaging={isPaging}
         error={error ? "Failed to load vehicles" : null}
         onRowPointerEnter={(row) => {
-          prefetchDetail(row.id);
           if (tenantId) prefetchVehicleDetail(queryClient, tenantId, row.id, row);
         }}
         onRowClick={(row) => {
-          prefetchDetail(row.id);
           if (tenantId) prefetchVehicleDetail(queryClient, tenantId, row.id, row);
           goToDetail(row.id);
         }}

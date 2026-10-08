@@ -31,7 +31,7 @@ import type { Vehicle } from "@vonos/types";
 /** VA Operations — Vehicles list on HQ6 chrome (no live HQ6 audit; shared list lift). */
 export function Hq6VehiclesListView() {
   const chrome = useHq6ListChrome("vehicles");
-  const { goToDetail, prefetchDetail } = useRecordNavigation("vehicles");
+  const { goToDetail } = useRecordNavigation("vehicles");
   const tenantId = useTenantId();
   const queryClient = useQueryClient();
   const exportList = useListExport();
@@ -310,12 +310,10 @@ export function Hq6VehiclesListView() {
             "No vehicles in the registry yet. Create a vehicle to track repair history.",
         }}
         onRowPointerEnter={(row) => {
-          prefetchDetail(row.id);
           if (tenantId)
             prefetchVehicleDetail(queryClient, tenantId, row.id, row);
         }}
         onRowClick={(row) => {
-          prefetchDetail(row.id);
           if (tenantId)
             prefetchVehicleDetail(queryClient, tenantId, row.id, row);
           goToDetail(row.id);

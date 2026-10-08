@@ -31,13 +31,8 @@ export function useRecordNavigation(listSlug: string) {
 
   return {
     detailPath,
-    /** Prefetch the Next.js route chunk so the first navigation isn't a compile wait. */
-    prefetchDetail: (recordId: string) => {
-      router.prefetch(detailPath(recordId));
-    },
     goToDetail: (recordId: string, label = "Opening…") => {
       announceRedirect(label);
-      router.prefetch(detailPath(recordId));
       router.push(detailPath(recordId));
     },
     listPath,
