@@ -143,7 +143,7 @@ export function Hq6ProductsListView({
   const router = useRouter();
   const queryClient = useQueryClient();
   const exportList = useListExport();
-  const { requireCan } = useHq6Permissions();
+  const { requireCan, requireCanAny } = useHq6Permissions();
   const { search, setSearch } = useListPageFilters();
   const copy = hq6CopyForSlug(listSlug === "menu-items" ? "catalog" : listSlug);
   const crumbs = useHq6Breadcrumbs({ leafLabel: copy.title });
@@ -1113,9 +1113,10 @@ export function Hq6ProductsListView({
                                                 label: "Adjust stock",
                                                 onClick: () => {
                                                   if (
-                                                    !requireCan(
+                                                    !requireCanAny([
                                                       "product.opening_stock",
-                                                    )
+                                                      "purchase.update",
+                                                    ])
                                                   )
                                                     return;
                                                   setAdjustItem(row);

@@ -26,7 +26,10 @@ import {
   RolesGuard,
   TenantGuard,
 } from '../../common/guards/auth.guards';
-import { userHasPermission } from '../../common/utils/userPermissions';
+import {
+  userHasAnyPermission,
+  userHasPermission,
+} from '../../common/utils/userPermissions';
 import { ItemsService } from './items.service';
 
 @Controller('items')
@@ -238,6 +241,8 @@ export class ItemsController {
    * Manual stock correction — raises or lowers on-hand qty and writes an
    * `ADJ/…` movement so the change shows in Product Stock History.
    * Counterpart to opening stock, which is append-only and can only add.
+   * Reachable via product "Add Opening Stock" or the purchase "Edit purchase
+   * & Stock Adjustment" checkbox (procurement roles typically hold the latter).
    */
   @Post(':id/adjust-stock')
   @Roles('staff', 'manager', 'admin', 'super_admin')
@@ -253,7 +258,12 @@ export class ItemsController {
     },
     @Req() req: { user: AuthenticatedUser },
   ) {
-    if (!userHasPermission(req.user, 'product.opening_stock')) {
+    if (
+      !userHasAnyPermission(req.user, [
+        'product.opening_stock',
+        'purchase.update',
+      ])
+    ) {
       throw new ForbiddenException('Missing product.opening_stock');
     }
     return this.itemsService.adjustStock(id, body);
