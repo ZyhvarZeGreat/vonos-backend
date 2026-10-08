@@ -231,7 +231,18 @@ async function auditFinance() {
 
   // C. Received inbound purchases with no cost ledger.
   const inbound = await prisma.stockMovement.findMany({
-    where: { ...tenantWhere, type: 'inbound', status: 'Received', deletedAt: null },
+    where: {
+      ...tenantWhere,
+      type: 'inbound',
+      status: 'Received',
+      deletedAt: null,
+      // Opening stock / adjustments are not purchases — exclude from the
+      // "received purchase needs a cost row" check.
+      NOT: [
+        { reference: { startsWith: 'OS/' } },
+        { reference: { startsWith: 'ADJ/' } },
+      ],
+    },
     select: { id: true, tenantId: true, reference: true, grandTotal: true },
     orderBy: { createdAt: 'desc' },
     take: LIMIT,
@@ -313,47 +324,42 @@ async function auditFinance() {
   if (negative) console.log(`  ! ${negative} items with negative quantity on hand`);
   else ok('no negative stock quantities');
 
-  // G2. Purchase payments: totalPaid cache vs actual + missing tills + status.
+  // G2. Purchase payments: totalPaid cache vs actual + missing tills.
+  // Purchase payments link by paymentRefNo = purchase reference (see
+  // StockMovementsService.purchasePaymentWhere) — NOT by saleId.
   const purchases = await prisma.stockMovement.findMany({
-    where: { ...tenantWhere, type: 'inbound', deletedAt: null },
+    where: {
+      ...tenantWhere,
+      type: 'inbound',
+      deletedAt: null,
+      NOT: [
+        { reference: { startsWith: 'OS/' } },
+        { reference: { startsWith: 'ADJ/' } },
+      ],
+    },
     select: { id: true, tenantId: true, reference: true, grandTotal: true, totalPaid: true, paymentStatus: true },
     orderBy: { createdAt: 'desc' },
     take: LIMIT,
   });
-  const payAgg = await prisma.payment.groupBy({
-    by: ['saleId'],
-    where: {
-      ...(tenantScope ? { tenantId: tenantScope } : {}),
-      paymentFor: 'purchase',
-      deletedAt: null,
-    },
-    _sum: { amount: true },
-  });
-  // NOTE: purchase payments link via saleId field holding the movement id
-  // in some flows — check both saleId and note references.
   const purchasePayments = await prisma.payment.findMany({
     where: {
       ...(tenantScope ? { tenantId: tenantScope } : {}),
-      paymentFor: 'purchase',
+      paymentFor: { equals: 'purchase', mode: 'insensitive' },
       deletedAt: null,
     },
-    select: { id: true, tenantId: true, amount: true, saleId: true, accountId: true, note: true },
-    orderBy: { createdAt: 'desc' },
-    take: LIMIT * 2,
+    select: { id: true, tenantId: true, amount: true, paymentRefNo: true, accountId: true },
   });
-  const movementIds = new Set(purchases.map((m) => m.id));
-  const payByMovement = new Map();
+  const refKey = (s) => (s ?? '').trim().toLowerCase();
+  const payByRef = new Map();
   for (const p of purchasePayments) {
-    const key = movementIds.has(p.saleId)
-      ? p.saleId
-      : [...movementIds].find((id) => (p.note ?? '').includes(id));
+    const key = refKey(p.paymentRefNo);
     if (!key) continue;
-    if (!payByMovement.has(key)) payByMovement.set(key, []);
-    payByMovement.get(key).push(p);
+    if (!payByRef.has(key)) payByRef.set(key, []);
+    payByRef.get(key).push(p);
   }
   const payProblems = [];
   for (const m of purchases) {
-    const pays = payByMovement.get(m.id) ?? [];
+    const pays = payByRef.get(refKey(m.reference)) ?? [];
     const sum = pays.reduce((s, p) => s + num(p.amount), 0);
     if (Math.abs(num(m.totalPaid) - sum) > 0.01) {
       payProblems.push(
@@ -371,7 +377,6 @@ async function auditFinance() {
   }
   if (payProblems.length) flagFinding('PURCHASE_PAYMENT', 'purchase payment problems', payProblems);
   else ok('purchase totalPaid caches agree; payments have tills', `${purchases.length} sampled`);
-  void payAgg;
 
   // H. Orphan revenue rows (linked sale deleted/missing).
   const revLinks = await prisma.ledgerEntry.findMany({

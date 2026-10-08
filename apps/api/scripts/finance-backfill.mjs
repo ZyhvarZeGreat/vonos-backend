@@ -83,6 +83,12 @@ async function backfillPurchaseCosts(dry) {
       type: 'inbound',
       status: 'Received',
       deletedAt: null,
+      // OS/ (opening stock) and ADJ/ (adjustment) record stock truth, not
+      // supplier purchases — never book cost for them.
+      NOT: [
+        { reference: { startsWith: 'OS/' } },
+        { reference: { startsWith: 'ADJ/' } },
+      ],
     },
     orderBy: { createdAt: 'asc' },
     take: LIMIT,
