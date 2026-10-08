@@ -1204,6 +1204,59 @@ export class StockMovementsService {
     });
   }
 
+  /**
+   * Book the purchase cost ledger row the first time an inbound movement
+   * becomes Received. create() (saved directly as Received — the purchase
+   * UI default) and update() (edit form) both land here; updateStatus()
+   * books its own row on later transitions. The existence check makes every
+   * path idempotent, so re-saves and backfills never double-book.
+   */
+  private async ensureInboundCostEntry(opts: {
+    tenantId: string;
+    movementId: string;
+    reference: string;
+    date: Date;
+    lines: Array<{ quantity: number; unitCost?: number }>;
+  }): Promise<void> {
+    const totalCost = opts.lines.reduce(
+      (sum, line) =>
+        sum + (Number(line.unitCost ?? 0) || 0) * Number(line.quantity ?? 0),
+      0,
+    );
+    if (!(totalCost > 0)) return;
+    const existing = await this.tenantDb.db.ledgerEntry.findFirst({
+      where: {
+        tenantId: opts.tenantId,
+        linkedRecordType: 'stock_movement',
+        linkedRecordId: opts.movementId,
+        type: 'cost',
+        deletedAt: null,
+      },
+      select: { id: true },
+    });
+    if (existing) return;
+    await this.tenantDb.db.ledgerEntry.create({
+      data: {
+        tenantId: opts.tenantId,
+        type: 'cost',
+        amount: totalCost,
+        currency: 'NGN',
+        category: 'Purchases',
+        description: `Inbound ${opts.reference}`,
+        linkedRecordType: 'stock_movement',
+        linkedRecordId: opts.movementId,
+        date: opts.date,
+      },
+    });
+    void applyDailyFinanceDelta(
+      this.prisma,
+      opts.tenantId,
+      opts.date,
+      'cost',
+      totalCost,
+    );
+  }
+
   async create(body: {
     type: MovementType;
     reference: string;
@@ -1277,6 +1330,14 @@ export class StockMovementsService {
           locationCode,
         });
       }, PURCHASE_TX_OPTIONS);
+      // Cost was never booked on this path — only updateStatus() did it.
+      await this.ensureInboundCostEntry({
+        tenantId,
+        movementId: row.id,
+        reference: row.reference,
+        date: row.date,
+        lines: body.lines,
+      });
     }
 
     if (body.type === 'inbound') {
@@ -1528,6 +1589,23 @@ export class StockMovementsService {
 
     if (needsInvoice) {
       await this.invoiceHub.ensurePurchaseInvoice(this.tenantDb.db, row);
+    }
+
+    if (
+      !catalogOnly &&
+      existing.type === 'inbound' &&
+      !wasReceived &&
+      willReceive
+    ) {
+      // Edit form receiving path — updateStatus() never runs here, so book
+      // the cost the same way create-as-Received does (idempotent).
+      await this.ensureInboundCostEntry({
+        tenantId,
+        movementId: row.id,
+        reference: row.reference,
+        date: row.date,
+        lines: nextLines,
+      });
     }
 
     void this.auditService.log({

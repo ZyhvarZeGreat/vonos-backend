@@ -13,6 +13,8 @@
     "start:railway": "bash scripts/railway-start.sh",
     "migrate:deploy": "prisma migrate deploy",
     "cdn:sync": "node --env-file-if-exists=.env scripts/sync-static-cdn.mjs",
+    "audit:finance": "node --env-file-if-exists=.env scripts/finance-audit.mjs",
+    "audit:backfill": "node --env-file-if-exists=.env scripts/finance-backfill.mjs",
     "lint": "eslint \"{src,test}/**/*.ts\"",
     "typecheck": "tsc --noEmit",
     "test": "jest",

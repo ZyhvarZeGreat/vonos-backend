@@ -154,6 +154,17 @@ export function Hq6PaymentAccountsListView() {
   });
   const unlinkedCount = unlinkedMeta?.count ?? 0;
 
+  // Online store checkout posts its till entry to the first open account
+  // with "paystack" or "online" in the name — without one, ecommerce money
+  // lands on payments with no account and stays invisible in the book.
+  const hasOnlineTill = useMemo(
+    () =>
+      items.some(
+        (row) => !row.isClosed && /paystack|online/i.test(row.name ?? ""),
+      ),
+    [items],
+  );
+
   const backfillMutation = useAppMutation({
     mutationFn: () => backfillSalePaymentCredits(tenantId!),
     invalidateKeys: [
@@ -597,6 +608,19 @@ export function Hq6PaymentAccountsListView() {
                         — it does not assign accounts to these {unlinkedCount}.
                       </>
                     ) : null}
+                  </li>
+                </ul>
+              </div>
+            ) : null}
+            {!isLoading && !hasOnlineTill ? (
+              <div className="alert alert-warning" role="alert">
+                <ul>
+                  <li>
+                    No open <b>Paystack / Online</b> till account. Online store
+                    payments post here by name match — without one, ecommerce
+                    money arrives with <b>no Payment Account</b> and stays
+                    invisible in the account book. Add an account with
+                    &ldquo;Paystack&rdquo; or &ldquo;Online&rdquo; in its name.
                   </li>
                 </ul>
               </div>
