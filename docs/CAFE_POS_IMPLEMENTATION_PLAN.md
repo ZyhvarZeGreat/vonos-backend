@@ -94,8 +94,10 @@ dependency.
   `discountAmount` / `taxAmount`.
 - Sell return from invoice no. — **deferred to Phase 3b** (`POST /sales/:id/return`
   exists; needs the return UI + `saleReturnStatus` vocabulary).
-- Shipping charges — **deferred**: `CreateSaleRequest` has no shipping amount field
-  yet (only status/address/tracking), so the till shows shipping read-only.
+- Shipping charges — **still deferred**: `CreateSaleRequest`/`Sale` have no
+  shipping amount field. Low value for a cafe till (no delivery); would need a
+  `Sale.shippingAmount` column + total math. The till shows shipping read-only
+  with a tooltip explaining why.
 - **Accept:** verified in dev DB — discount ₦600→₦540, tax →₦567, draft saved,
   drafts listed, resume restored the ticket. Test rows removed; the migrated draft
   the resume test consumed was restored.
@@ -111,15 +113,33 @@ Delivered: `PosAdjustmentModal.tsx`, `PosDraftsModal.tsx`, `loadCart` in
 - **Quick-add product** modal (`+ Product`) → `POST /items`; refreshes the grid.
 - **Expense-from-till** modal (`Add Expense`) → `POST /expenses` with category,
   amount, method, payment account, reference, note.
-- **Register open/close** — **deferred**: no cash-register backend module exists
-  (only `close_cash_register` / `view_cash_register` permission keys in
-  `legacyRolePermissions.json`). Needs a `cash-register` module + session model
-  before the till can open/close shifts.
+- **Register open/close** — ✅ DONE: `CashRegister` model + `cash-register`
+  module (`open`/`close`/`current`/history), migration `20261008120000_cash_register`,
+  and `PosRegisterModal` (open with cash-in-hand; close with expected-vs-counted
+  cash, card slips, cheques, note). The till now **requires an open register**
+  before taking payment.
 - Cafe extras (modifiers, Kitchen Display, Table Management, Daily Closeout) were
   already present as platform pages (`menu-items`, `kitchen`, `tables`) — POS-side
   wiring, not new builds.
 - **Accept:** verified in browser — calculator computes, both modals open and
   render with no console errors; no writes were submitted.
+
+**Polish landed after Phase 4:**
+- Payment modal captures **card number / holder / expiry / CVV** when the method
+  is Card; they are folded into the payment note (`Card ****1234, Holder: …`),
+  so no schema change is needed.
+- **Zero-stock products are blocked** at add-to-cart (toast) on top of the card
+  warning.
+- **Register enforcement**: payment buttons are disabled and checkout throws until
+  a register is open.
+- **Payroll race fixed** (`PayrollGroupCreatePage`): salary defaults now seed
+  per-employee and never overwrite a draft the user has already edited — the
+  cause of "adding deductions/earnings doesn't reflect".
+
+> **Automation gotcha:** `apps/web/middleware.ts` blocks headless browsers
+> (`headlesschrome`/`playwright`/`puppeteer` in `BOT_RE`) with a 404. Playwright
+> runs against this app must send a normal Chrome `userAgent` (or run headed),
+> or every app route 404s.
 
 Delivered: `PosCalculator.tsx`, `PosQuickAddProductModal.tsx`,
 `PosExpenseModal.tsx`, `.cafe-pos` scoping class, top-bar wiring in `CafePosView`.

@@ -5,7 +5,6 @@ import { useQuery } from "@tanstack/react-query";
 import {
   Calculator,
   Info,
-  ReceiptText,
   Wallet,
 } from "lucide-react";
 import { useRouteTenant } from "@/lib/hooks/useRouteTenant";
@@ -47,6 +46,8 @@ import { PosReturnModal } from "./PosReturnModal";
 import { PosCalculator } from "./PosCalculator";
 import { PosQuickAddProductModal } from "./PosQuickAddProductModal";
 import { PosExpenseModal } from "./PosExpenseModal";
+import { PosRegisterModal } from "./PosRegisterModal";
+import { getCurrentRegister } from "@/lib/api/cashRegister";
 
 const GRID_PAGE_SIZE = 60;
 
@@ -107,6 +108,7 @@ export function CafePosView() {
   const [calculatorOpen, setCalculatorOpen] = useState(false);
   const [quickProductOpen, setQuickProductOpen] = useState(false);
   const [expenseOpen, setExpenseOpen] = useState(false);
+  const [registerOpen, setRegisterOpen] = useState(false);
   const [adjustment, setAdjustment] = useState<null | "discount" | "tax">(null);
   const [confirmIntent, setConfirmIntent] = useState<null | "cash" | "card" | "draft">(null);
 
@@ -154,6 +156,14 @@ export function CafePosView() {
     staleTime: 60_000,
     queryFn: () => getPaymentAccounts(tenantId!, { openOnly: true }),
   });
+
+  const registerQuery = useQuery({
+    queryKey: ["pos-register", tenantId],
+    enabled: Boolean(tenantId),
+    staleTime: 15_000,
+    queryFn: () => getCurrentRegister(tenantId!),
+  });
+  const register = registerQuery.data ?? null;
 
   const expenseCategoriesQuery = useQuery({
     queryKey: ["pos-expense-categories", tenantId],
@@ -209,6 +219,7 @@ export function CafePosView() {
       saleNote?: string;
     }) => {
       if (!tenantId) throw new Error("No tenant selected");
+      if (!register) throw new Error("Open the cash register before selling");
       assertBusinessLocationSelected(locationRequired, locationCode);
       if (lines.length === 0) throw new Error("Add at least one product");
       if (vars.status === "final" && totals.totalPayable <= 0) {
@@ -323,8 +334,15 @@ export function CafePosView() {
           >
             Drafts
           </button>
+          <button
+            type="button"
+            onClick={() => setRegisterOpen(true)}
+            className={register ? "cafe-pos-btn cafe-pos-btn--primary" : "cafe-pos-btn cafe-pos-btn--success"}
+            title={register ? "Current register / close shift" : "Open a cash register"}
+          >
+            {register ? "Register Details" : "Open Register"}
+          </button>
           {[
-            { label: "Register details", Icon: ReceiptText },
             { label: "Payment accounts", Icon: Wallet },
             { label: "About this till", Icon: Info },
           ].map(({ label, Icon }) => (
@@ -429,17 +447,30 @@ export function CafePosView() {
               isLoading={gridQuery.isLoading}
               isError={gridQuery.isError}
               onRetry={() => gridQuery.refetch()}
-              onAdd={(item) => addItem(toCartPick(item))}
+              onAdd={(item) => {
+                if (item.stockQty <= 0) {
+                  toast.error(`${item.name} is out of stock`);
+                  return;
+                }
+                addItem(toCartPick(item));
+              }}
             />
           </div>
         </div>
       </div>
 
+      {!register && !registerQuery.isLoading ? (
+        <p className="cafe-pos-muted px-1 text-xs">
+          Register closed — open the cash register (top bar) before taking payment.
+        </p>
+      ) : null}
+
       {/* Footer action bar */}
       <div className="cafe-pos-footerbar flex flex-wrap items-center gap-2 rounded-lg border border-border bg-card">
         <button
           type="button"
-          disabled={lines.length === 0 || busy}
+          disabled={lines.length === 0 || busy || !register}
+          title={!register ? "Open the cash register first" : undefined}
           onClick={() => setConfirmIntent("draft")}
           className="cafe-pos-btn cafe-pos-btn--dark"
         >
@@ -447,7 +478,8 @@ export function CafePosView() {
         </button>
         <button
           type="button"
-          disabled={lines.length === 0 || busy}
+          disabled={lines.length === 0 || busy || !register}
+          title={!register ? "Open the cash register first" : undefined}
           onClick={() => setConfirmIntent("card")}
           className="cafe-pos-btn cafe-pos-btn--dark"
         >
@@ -455,7 +487,8 @@ export function CafePosView() {
         </button>
         <button
           type="button"
-          disabled={lines.length === 0 || busy}
+          disabled={lines.length === 0 || busy || !register}
+          title={!register ? "Open the cash register first" : undefined}
           onClick={() => setPaymentOpen(true)}
           className="cafe-pos-btn cafe-pos-btn--dark"
         >
@@ -463,7 +496,8 @@ export function CafePosView() {
         </button>
         <button
           type="button"
-          disabled={lines.length === 0 || busy}
+          disabled={lines.length === 0 || busy || !register}
+          title={!register ? "Open the cash register first" : undefined}
           onClick={() => setConfirmIntent("cash")}
           className="cafe-pos-btn cafe-pos-btn--success"
         >
@@ -612,6 +646,20 @@ export function CafePosView() {
           onCreated={() => {
             setQuickProductOpen(false);
             void gridQuery.refetch();
+          }}
+        />
+      ) : null}
+
+      {tenantId ? (
+        <PosRegisterModal
+          open={registerOpen}
+          tenantId={tenantId}
+          locationCode={locationCode}
+          register={register}
+          onClose={() => setRegisterOpen(false)}
+          onChanged={() => {
+            setRegisterOpen(false);
+            void registerQuery.refetch();
           }}
         />
       ) : null}

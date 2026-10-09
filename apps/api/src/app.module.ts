@@ -27,6 +27,7 @@ import { VehiclesModule } from './modules/vehicles/vehicles.module';
 import { RequisitionsModule } from './modules/requisitions/requisitions.module';
 import { SalonServicesModule } from './modules/salon-services/salon-services.module';
 import { CafeTablesModule } from './modules/cafe-tables/cafe-tables.module';
+import { CashRegisterModule } from './modules/cash-register/cash-register.module';
 import { PaymentAccountsModule } from './modules/payment-accounts/payment-accounts.module';
 import { PaymentsModule } from './modules/payments/payments.module';
 import { CatalogMetaModule } from './modules/catalog-meta/catalog-meta.module';
@@ -76,6 +77,7 @@ import { WhatsAppNotifyModule } from './common/whatsapp/whatsapp-notify.module';
     RequisitionsModule,
     SalonServicesModule,
     CafeTablesModule,
+    CashRegisterModule,
     PaymentAccountsModule,
     PaymentsModule,
     CatalogMetaModule,

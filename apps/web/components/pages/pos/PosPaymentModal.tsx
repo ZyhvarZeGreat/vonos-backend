@@ -12,6 +12,24 @@ export interface PosPaymentRow {
   method: string;
   accountId: string;
   note: string;
+  cardNumber?: string;
+  cardHolder?: string;
+  cardExpiry?: string;
+  cardCvv?: string;
+}
+
+/** Card details captured at the till are folded into the payment note. */
+function withCardNote(row: PosPaymentRow): PosPaymentRow {
+  if (row.method !== "card") return row;
+  const last4 = (row.cardNumber ?? "").replace(/\D/g, "").slice(-4);
+  const parts = [
+    last4 ? `Card ****${last4}` : null,
+    row.cardHolder?.trim() ? `Holder: ${row.cardHolder.trim()}` : null,
+    row.cardExpiry?.trim() ? `Exp: ${row.cardExpiry.trim()}` : null,
+    row.cardCvv ? "CVV: ***" : null,
+  ].filter(Boolean);
+  const note = [row.note?.trim(), parts.join(", ")].filter(Boolean).join(" · ");
+  return { ...row, note };
 }
 
 const METHOD_OPTIONS = [
@@ -71,7 +89,7 @@ export function PosPaymentModal({
             type="button"
             className="cafe-pos-btn cafe-pos-btn--primary"
             disabled={!canConfirm || busy}
-            onClick={() => onConfirm(rows, saleNote)}
+            onClick={() => onConfirm(rows.map(withCardNote), saleNote)}
           >
             {busy ? "Processing…" : "Finalize Payment"}
           </button>
@@ -129,6 +147,47 @@ export function PosPaymentModal({
                   ))}
                 </select>
               </label>
+
+              {row.method === "card" ? (
+                <div className="cafe-pos-fields-2">
+                  <label className="cafe-pos-field">
+                    <span className="cafe-pos-label">Card number</span>
+                    <input
+                      className="cafe-pos-number"
+                      inputMode="numeric"
+                      placeholder="•••• •••• •••• ••••"
+                      value={row.cardNumber ?? ""}
+                      onChange={(e) => patchRow(index, { cardNumber: e.target.value })}
+                    />
+                  </label>
+                  <label className="cafe-pos-field">
+                    <span className="cafe-pos-label">Card holder</span>
+                    <input
+                      className="cafe-pos-number"
+                      value={row.cardHolder ?? ""}
+                      onChange={(e) => patchRow(index, { cardHolder: e.target.value })}
+                    />
+                  </label>
+                  <label className="cafe-pos-field">
+                    <span className="cafe-pos-label">Expiry</span>
+                    <input
+                      className="cafe-pos-number"
+                      placeholder="MM/YY"
+                      value={row.cardExpiry ?? ""}
+                      onChange={(e) => patchRow(index, { cardExpiry: e.target.value })}
+                    />
+                  </label>
+                  <label className="cafe-pos-field">
+                    <span className="cafe-pos-label">CVV</span>
+                    <input
+                      className="cafe-pos-number"
+                      inputMode="numeric"
+                      value={row.cardCvv ?? ""}
+                      onChange={(e) => patchRow(index, { cardCvv: e.target.value })}
+                    />
+                  </label>
+                </div>
+              ) : null}
 
               <div className="cafe-pos-fields-2">
                 <label className="cafe-pos-field">

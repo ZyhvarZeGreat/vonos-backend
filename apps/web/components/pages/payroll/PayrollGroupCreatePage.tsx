@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
@@ -79,6 +79,11 @@ export function PayrollGroupCreatePage({
 
   const employeeIdsKey = session?.employees.map((e) => e.id).join(",") ?? "";
 
+  // Salary defaults load asynchronously. Seeding is per-employee and never
+  // clobbers a draft the user already started editing — the server prefill
+  // landing late used to wipe freshly added earnings/deductions.
+  const seededEmployeeIds = useRef<Set<string>>(new Set());
+
   const latestPayrollsQuery = useQuery({
     queryKey: ["payroll-latest-for-create", writeTenantId, employeeIdsKey],
     enabled: Boolean(writeTenantId && session && session.employees.length > 0),
@@ -101,28 +106,34 @@ export function PayrollGroupCreatePage({
   });
 
   useEffect(() => {
-    if (
-      !session ||
-      !latestPayrollsQuery.isSuccess ||
-      employeeDraftsInitialized(employeeDrafts, session.employees)
-    ) {
-      return;
-    }
+    if (!session || !latestPayrollsQuery.isSuccess) return;
+    const pendingIds = session.employees
+      .map((employee) => employee.id)
+      .filter((id) => !seededEmployeeIds.current.has(id));
+    if (pendingIds.length === 0) return;
+
     const latestByEmployee = latestPayrollsQuery.data ?? {};
-    const drafts: Record<string, EmployeePayrollDraft> = {};
-    for (const employee of session.employees) {
-      drafts[employee.id] = buildEmployeeCreateDraft(
-        employee.id,
-        latestByEmployee[employee.id],
-      );
+    for (const id of pendingIds) seededEmployeeIds.current.add(id);
+
+    setEmployeeDrafts((prev) => {
+      const next = { ...prev };
+      for (const id of pendingIds) {
+        // Keep anything the user has already touched (or typed into).
+        if (next[id]) continue;
+        next[id] = buildEmployeeCreateDraft(id, latestByEmployee[id]);
+      }
+      return next;
+    });
+  }, [session, latestPayrollsQuery.data, latestPayrollsQuery.isSuccess]);
+
+  /** Stable empty drafts so pre-init renders don't remount inputs each pass. */
+  const fallbackDrafts = useMemo(() => {
+    const map: Record<string, EmployeePayrollDraft> = {};
+    for (const employee of session?.employees ?? []) {
+      map[employee.id] = emptyEmployeeDraft();
     }
-    setEmployeeDrafts(drafts);
-  }, [
-    session,
-    latestPayrollsQuery.data,
-    latestPayrollsQuery.isSuccess,
-    employeeDrafts,
-  ]);
+    return map;
+  }, [session]);
 
   const createMutation = useAppMutation({
     mutationFn: async () => {
@@ -148,7 +159,7 @@ export function PayrollGroupCreatePage({
       const createdPayrollIds: string[] = [];
       try {
         for (const employee of session.employees) {
-          const draft = employeeDrafts[employee.id] ?? emptyEmployeeDraft();
+          const draft = employeeDrafts[employee.id] ?? fallbackDrafts[employee.id] ?? emptyEmployeeDraft();
           const basic = basicSalaryTotal(draft);
           if (!Number.isFinite(basic) || basic <= 0) {
             throw new Error(
@@ -223,7 +234,7 @@ export function PayrollGroupCreatePage({
   const canSave =
     payrollGroupName.trim().length > 0 &&
     session.employees.every((employee) => {
-      const draft = employeeDrafts[employee.id] ?? emptyEmployeeDraft();
+      const draft = employeeDrafts[employee.id] ?? fallbackDrafts[employee.id] ?? emptyEmployeeDraft();
       return basicSalaryTotal(draft) > 0;
     });
 
@@ -286,7 +297,7 @@ export function PayrollGroupCreatePage({
           <section key={employee.id} className="hq6-form-card p-0">
             <PayrollGroupEmployeeForm
               employee={employee}
-              draft={employeeDrafts[employee.id] ?? emptyEmployeeDraft()}
+              draft={employeeDrafts[employee.id] ?? fallbackDrafts[employee.id] ?? emptyEmployeeDraft()}
               onChange={(patch) =>
                 setEmployeeDrafts((prev) => ({
                   ...prev,
@@ -318,12 +329,4 @@ export function PayrollGroupCreatePage({
       </div>
     </Hq6FormShell>
   );
-}
-
-function employeeDraftsInitialized(
-  drafts: Record<string, EmployeePayrollDraft>,
-  employees: { id: string }[],
-): boolean {
-  if (employees.length === 0) return true;
-  return employees.every((employee) => Boolean(drafts[employee.id]));
 }
