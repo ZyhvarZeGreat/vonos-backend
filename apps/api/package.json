@@ -18,6 +18,7 @@
     "audit:repair-os-adj": "node --env-file-if-exists=.env scripts/repair-os-adj-costs.mjs",
     "audit:payments": "node --env-file-if-exists=.env scripts/payment-audit.mjs",
     "audit:profit": "node --env-file-if-exists=.env scripts/profit-audit.mjs",
+    "audit:cleanup-test": "node --env-file-if-exists=.env scripts/cleanup-test-data.mjs",
     "lint": "eslint \"{src,test}/**/*.ts\"",
     "typecheck": "tsc --noEmit",
     "test": "jest",

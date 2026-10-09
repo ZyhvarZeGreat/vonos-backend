@@ -74,10 +74,12 @@ async function auditStore() {
   }
 
   // 2. Store sales missing payments / payments missing account.
+  // Ignore soft-deleted test sales/payments (e.g. removed ecommerce tests).
   const links = await prisma.storeOrderSale.findMany({
+    where: { sale: { deletedAt: null } },
     include: {
       order: true,
-      sale: { include: { payments: true } },
+      sale: { include: { payments: { where: { deletedAt: null } } } },
     },
     orderBy: { id: 'desc' },
     take: LIMIT,
