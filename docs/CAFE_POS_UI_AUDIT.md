@@ -9,8 +9,8 @@ implemented against real behaviour rather than guesswork.
 | Login used | `victoria` (cashier-level account) |
 | Location | Vonos Cafe |
 | Viewport | 1440 × 900 (Chrome, headful automation) |
-| Date of run | 29 Sep 2026, ~12:24–12:45 WAT |
-| Screenshots | `/var/folders/r0/z4z659xs5h58f7pmgjnjch5w0000gp/T/opencode/cafe-capture/` (60 PNGs + `02-pos-full.html` + `interactions*.json`) |
+| Date of run | 29 Sep 2026 (full walkthrough, 60 screenshots) + 8 Oct 2026 (evidence re-capture) |
+| Screenshots | `docs/audits/cafe-pos/` (23 PNGs + `02-pos-full.html` + `02-inventory.json` + `interactions.json` + `30-cart-row.html`) |
 
 ## 1. Test data created — needs cleanup
 
@@ -68,11 +68,11 @@ re-run the flow with an account holding `sell.delete`.
 
 | Element | id / class | Notes |
 |---|---|---|
-| Customer select | `#customer_id` (select2) | default "Walk-In Customer"; `+` button = `.add_new_customer` → "Add Customer" modal |
+| Customer select | `#customer_id` (select2) | default "Walk-In Customer"; `+` button = `.add_new_customer` → "Add a new contact" modal |
 | Product search | `#search_product` | placeholder "Enter Product name / SKU / Scan bar code"; typing hits `GET /sells/pos/get-product-suggestion?category_id=&brand_id=&location_id=1&page=1`; `+` opens `#configure_search_modal` ("Search products by" with 6 `search_fields[]` checkboxes) |
 | Cart table | `#pos_table` | headers Product / Quantity / Subtotal / ✖ |
 | Cart row | `.product_box` added → row with `-` / qty input / `+`, **unit dropdown** ("Pieces"), subtotal, red ✖ remove |
-| Row edit/delete | icons inside row (`.fa-edit`, `.fa-times`) + per-line discount/subtotal edit | `46-row-delete.png`, `88-cart-row-hover.png` |
+| Row edit/delete | icons inside row (`.fa-edit`, `.fa-times`) + per-line discount/subtotal edit | `31-cart-row-tools.png` |
 | Totals | `#total_discount`, `#pos-edit-discount` (✎), `#pos-edit-tax` (✎), shipping ✎ | Items / Total / Order Tax(+) / Shipping(+) |
 | Hidden fields | `discount_type`, `discount_amount`, `rp_redeemed`, `rp_redeemed_amount` | serialized with the sale |
 
@@ -109,27 +109,27 @@ re-run the flow with an account holding `sell.delete`.
 |---|---|---|---|
 | 1 | Login (`#username`/`#password`, `button[type=submit]`) | → `/home`, "Home - Vonos Cafe" | `00-login.png`, `01-after-login.png` |
 | 2 | POS entry (`Sell ▸ POS` → `/pos/create`) | full POS loads, `#search_product` ready | `02-pos-full.png`, `02-pos-full.html` |
-| 3 | `close_register` | modal, not submitted | `10-close-register.png`, `78-close-register.png` |
-| 4 | `register_details` | modal + print actions | `11-register-details.png`, `77-register-details.png` |
-| 5 | `btnCalculator` | popover calculator | `12-calculator.png`, `76-calculator.png` |
-| 6 | `return_sale` | popover "Invoice No." + Send | `13-sell-return.png`, `81-sell-return-popover.png` |
-| 7 | `view_suspended_sales` | modal "Suspended Sales" → **No records found** | `14-suspended-sales.png`, `79-suspended-sales.png` |
-| 8 | `add_expense` | modal (14 fields) | `15-add-expense.png`, `80-add-expense.png` |
+| 3 | `close_register` | modal, not submitted | `10-close-register.png` |
+| 4 | `register_details` | modal + print actions | `11-register-details.png` |
+| 5 | `btnCalculator` | popover calculator | `12-calculator.png` |
+| 6 | `return_sale` | popover "Invoice No." + Send | `13-sell-return-popover.png` |
+| 7 | `view_suspended_sales` | modal "Suspended Sales" → **No records found** | `14-suspended-sales.png` |
+| 8 | `add_expense` | modal (14 fields) | `15-add-expense.png` |
 | 9 | `full_screen` | toggles fullscreen | `17-full-screen.png` |
-| 10 | customer select2 | dropdown of contacts | `20-customer-dropdown.png`, `86-customer-dropdown.png` |
+| 10 | customer select2 | dropdown of contacts | `20-customer-dropdown.png` |
 | 11 | `.add_new_customer` | "Add Customer" modal (Gross/Opening balance) | `21-add-customer.png` |
-| 12 | product search "salive" | suggestion dropdown | `22-search-products.png`, `87-search-results.png` |
-| 13 | search `+` | `#configure_search_modal` (6 searchable fields) | `23-configure-search.png`, `84-configure-search.png` |
+| 12 | product search "salive" | suggestion dropdown | `22-search-products.png` |
+| 13 | search `+` | `#configure_search_modal` (6 searchable fields) | `23-configure-search.png` |
 | 14 | product card click | row added, totals updated (₦1,500) | `30-cart-add-item.png`, `30-cart-row.html` |
-| 15 | row hover / row icons | row tooling | `31-cart-row-tools.png`, `88-cart-row-hover.png`, `46-row-delete.png` |
-| 16 | discount ✎ | `#posEditDiscountModal`: `discount_type_modal` (fixed/percentage) + `discount_amount_modal` + Update | `70-discount-modal.png` |
-| 17 | order tax ✎ | `#posEditOrderTaxModal`: `order_tax_modal` select + Update | `71-order-tax-modal.png`, `32-order-tax.png` |
-| 18 | shipping ✎ | `#posShippingModal`: details, address, charges, status, delivered to, delivery person + Update | `72-shipping-modal.png`, `34-shipping.png` |
-| 19 | Draft | instant suspend + toast, cart cleared | `73-draft-confirm.png`, `93-suspended-after-draft.png` |
-| 20 | Multiple Pay | `#modal_payment` (see §4.6), closed without finalizing | `74-multiple-pay-modal.png` |
-| 21 | Recent Transactions | modal: "1. 6452 (ISAAC) 700.00 Edit Print", "2. 6451 (Walk-In Customer) 350.00 Edit Print" | `75-recent-transactions.png`, `91-recent-transactions-modal.png` |
+| 15 | row hover / row icons | row tooling | `31-cart-row-tools.png` |
+| 16 | discount ✎ | `#posEditDiscountModal`: `discount_type_modal` (fixed/percentage) + `discount_amount_modal` + Update | `33-discount-modal.png` |
+| 17 | order tax ✎ | `#posEditOrderTaxModal`: `order_tax_modal` select + Update | `32-order-tax-modal.png` |
+| 18 | shipping ✎ | `#posShippingModal`: details, address, charges, status, delivered to, delivery person + Update | `34-shipping-modal.png` |
+| 19 | Draft | instant suspend + toast, cart cleared | `73-draft-confirm.png` (29-Sep capture — draft step not re-run) |
+| 20 | Multiple Pay | `#modal_payment` (see §4.6), closed without finalizing | `42-multiple-pay-modal.png` |
+| 21 | Recent Transactions | modal: "1. 6452 (ISAAC) 700.00 Edit Print", "2. 6451 (Walk-In Customer) 350.00 Edit Print" | `45-recent-transactions.png` |
 | 22 | Category / Brands | right-side drawers | `82-category-drawer.png`, `83-brands-drawer.png` |
-| 23 | quick add product (`.pos_add_quick_product`, `data-href=/products/quick_add`) | "Add new product" modal (name, SKU, barcode type, unit, brand, category, sub-category, enable stock, alert qty, locations, weight, description, **My Favorites**) | `85-quick-add-product.png`, `89-quick-add-modal-close.png` |
+| 23 | quick add product (`.pos_add_quick_product`, `data-href=/products/quick_add`) | "Add new product" modal (name, SKU, barcode type, unit, brand, category, sub-category, enable stock, alert qty, locations, weight, description, **My Favorites**) | `85-quick-add-product.png` |
 
 ## 4. Flow detail
 
@@ -232,27 +232,22 @@ Detailed.
   `POST /pos` (create, `is_suspend` for draft), `GET /sells?suspended=1`,
   `GET /sells/drafts`, `GET /sells?…` (list), `GET /products/quick_add`.
 
-## 7. Screenshot index (folder `.../cafe-capture/`)
+## 7. Screenshot index (`docs/audits/cafe-pos/`)
 
-`00-login` `01-after-login` `02-pos-full` · `10-close-register`
-`11-register-details` `12-calculator` `13-sell-return` `14-suspended-sales`
-`15-add-expense` `16-more-options` `17-full-screen` · `20-customer-dropdown`
-`21-add-customer` `22-search-products` `23-configure-search` ·
-`30-cart-add-item` `31-cart-row-tools` `34-shipping` · `70-discount-modal`
-`71-order-tax-modal` `72-shipping-modal` `73-draft-confirm`
-`74-multiple-pay-modal` `75-recent-transactions` `76-calculator`
-`77-register-details` `78-close-register` `79-suspended-sales` `80-add-expense`
-`81-sell-return-popover` `82-category-drawer` `83-brands-drawer`
-`84-configure-search` `85-quick-add-product` `86-customer-dropdown`
-`87-search-results` `88-cart-row-hover` · `90-suspended-sales-page`
-`91-recent-transactions-modal` `92-pos-list` `93-suspended-after-draft`
-`94-drafts-list` `95-actions-menu` `96-drafts-after-cleanup`
-`97-draft-edit-cancel`.
+`00-login` `01-after-login` `02-pos-full` (+`.html`, `-inventory.json`) ·
+`10-close-register` `11-register-details` `12-calculator`
+`13-sell-return-popover` `14-suspended-sales` `15-add-expense` ·
+`20-customer-dropdown` `21-add-customer` `22-search-products`
+`23-configure-search` · `30-cart-add-item` (+`-row.html`) `31-cart-row-tools` ·
+`32-order-tax-modal` `33-discount-modal` `34-shipping-modal` ·
+`42-multiple-pay-modal` `45-recent-transactions` · `50-category-drawer`
+`51-brands-drawer` · `85-quick-add-product`.
 
-Structured captures: `02-inventory.json`, `interactions.json`,
-`interactions-2.json`, `interactions-3.json`, `30-cart-row.html`,
-`02-pos-full.html`.
+Machine-readable: `interactions.json` (20 steps, per-step modal inventory).
 
-> The screenshots are **not** committed to the repo. Say the word and I'll copy
-> them into `docs/audits/cafe-pos/` (≈9 MB for all 60) or just the 25 essential
-> ones.
+> Re-capture note (8 Oct): all screens above were re-verified. The 29-Sep-only
+> captures (draft-suspend toast, sell-return navigation, express Cash/Card,
+> `/sells/drafts` list, draft-resume edit page) were deliberately **not**
+> re-run to avoid creating new test rows; those findings are carried over
+> unchanged. Test drafts `2026/0004` (id 7384) and `2026/0005` (id 7385) from
+> the first run may still be in the cafe DB — see §1.

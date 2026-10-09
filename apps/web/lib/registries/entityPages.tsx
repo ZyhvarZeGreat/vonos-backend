@@ -10,6 +10,7 @@ import {
   AddSaleView,
   AppointmentsCalendarView,
   BarcodeSettingsView,
+  CafePosView,
   CatalogMetaListView,
   CommissionAgentsListView,
   CustomerGroupsListView,
@@ -468,6 +469,8 @@ const ENTITY_PAGES: Record<TenantCode, SlugMap> = {
     locations: sharedLocations,
     returns: { title: "Returns & Warranty", View: ReturnsListView },
     ...posSellPages(AddOrderView),
+    // VC runs the dedicated Cafe till instead of the generic HQ6 POS stub.
+    "pos-terminal": { title: "POS", View: CafePosView },
     ...posProductPages,
     ...posPaymentPages,
     ...procurementPages,

@@ -1,0 +1,92 @@
+{
+ "title": "POS - Vonos Cafe",
+ "buttons": [
+  {
+   "tag": "button",
+   "text": "",
+   "id": "close_register",
+   "cls": "tw-shadow-[rgba(17,_17,_26,_0.1)_0px_0px_16px] tw-bg-white hover:tw-bg-white/60 tw-cursor-",
+   "href": "",
+   "title": "Close Register"
+  },
+  {
+   "tag": "button",
+   "text": "",
+   "id": "register_details",
+   "cls": "tw-shadow-[rgba(17,_17,_26,_0.1)_0px_0px_16px] tw-bg-white hover:tw-bg-white/60 tw-cursor-",
+   "href": "",
+   "title": "Register Details"
+  },
+  {
+   "tag": "button",
+   "text": "",
+   "id": "btnCalculator",
+   "cls": "tw-shadow-[rgba(17,_17,_26,_0.1)_0px_0px_16px] tw-bg-white hover:tw-bg-white/60 tw-cursor-",
+   "href": "",
+   "title": ""
+  },
+  {
+   "tag": "button",
+   "text": "",
+   "id": "return_sale",
+   "cls": "tw-shadow-[rgba(17,_17,_26,_0.1)_0px_0px_16px] tw-bg-white hover:tw-bg-white/60 tw-cursor-",
+   "href": "",
+   "title": "Sell Return"
+  },
+  {
+   "tag": "button",
+   "text": "",
+   "id": "full_screen",
+   "cls": "tw-shadow-[rgba(17,_17,_26,_0.1)_0px_0px_16px] tw-bg-white hover:tw-bg-white/60 tw-cursor-",
+   "href": "",
+   "title": "Press F11 to go Full Screen"
+  },
+  {
+   "tag": "button",
+   "text": "",
+   "id": "view_suspended_sales",
+   "cls": "tw-shadow-[rgba(17,_17,_26,_0.1)_0px_0px_16px] tw-bg-white hover:tw-bg-white/60 tw-cursor-",
+   "href": "",
+   "title": "View Suspended Sales"
+  },
+  {
+   "tag": "button",
+   "text": "Add Expense",
+   "id": "add_expense",
+   "cls": "tw-shadow-[rgba(17,_17,_26,_0.1)_0px_0px_16px] tw-bg-white hover:tw-bg-white/60 tw-cursor-",
+   "href": "",
+   "title": "Add Expense"
+  },
+  {
+   "tag": "button",
+   "text": "Draft",
+   "id": "pos-draft",
+   "cls": "tw-font-bold tw-text-gray-700 tw-text-xs md:tw-text-sm tw-flex tw-flex-col tw-items-center",
+   "href": "",
+   "title": ""
+  }
+ ],
+ "inputs": [
+  {
+   "tag": "select",
+   "text": "Enter Customer name / phone Walk-In Customer",
+   "id": "customer_id",
+   "cls": "form-control mousetrap select2-hidden-accessible",
+   "href": "",
+   "title": "",
+   "type": "select-one",
+   "name": "contact_id"
+  },
+  {
+   "tag": "input",
+   "text": "",
+   "id": "search_product",
+   "cls": "form-control ui-autocomplete-input",
+   "href": "",
+   "title": "",
+   "type": "text",
+   "name": "search_product",
+   "placeholder": "Enter Product name / SKU / Scan bar code"
+  }
+ ]
+}

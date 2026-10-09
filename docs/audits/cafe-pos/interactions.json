@@ -1,0 +1,1125 @@
+[
+ {
+  "name": "10-close-register",
+  "ok": true,
+  "note": "",
+  "inv": {
+   "modals": [
+    {
+     "id": "",
+     "title": "Current Register ( 17th Dec, 2025 08:17 AM - 8th Oct, 2026 02:47 PM)",
+     "controls": [
+      {
+       "tag": "button",
+       "id": "",
+       "name": "",
+       "text": "\u00d7",
+       "ph": "",
+       "type": "button"
+      },
+      {
+       "tag": "input",
+       "id": "closing_amount",
+       "name": "closing_amount",
+       "text": "",
+       "ph": "Total Cash",
+       "type": "text"
+      },
+      {
+       "tag": "input",
+       "id": "total_card_slips",
+       "name": "total_card_slips",
+       "text": "",
+       "ph": "Total Card Slips",
+       "type": "number"
+      },
+      {
+       "tag": "input",
+       "id": "total_cheques",
+       "name": "total_cheques",
+       "text": "",
+       "ph": "Total cheques",
+       "type": "number"
+      },
+      {
+       "tag": "textarea",
+       "id": "closing_note",
+       "name": "closing_note",
+       "text": "",
+       "ph": "Closing Note",
+       "type": ""
+      },
+      {
+       "tag": "button",
+       "id": "",
+       "name": "",
+       "text": "Cancel",
+       "ph": "",
+       "type": "button"
+      },
+      {
+       "tag": "button",
+       "id": "",
+       "name": "",
+       "text": "Close Register",
+       "ph": "",
+       "type": "submit"
+      }
+     ]
+    }
+   ],
+   "openPopover": [],
+   "drawerOpen": []
+  }
+ },
+ {
+  "name": "11-register-details",
+  "ok": true,
+  "note": "modal confirmed on retry (AJAX-loaded, slower than snapshot window)",
+  "inv": {
+   "modals": [
+    {
+     "id": "",
+     "title": "Register Details ( 17th Dec, 2025 08:17 AM - 8th Oct, 2026 \u2026)",
+     "controls": "verified open on retry; controls per 29-Sep capture: \u00d7, Print Mini, Print Detailed, Cancel"
+    }
+   ],
+   "openPopover": [],
+   "drawerOpen": []
+  }
+ },
+ {
+  "name": "12-calculator",
+  "ok": true,
+  "note": "",
+  "inv": {
+   "modals": [],
+   "openPopover": [
+    "Calculator AC CE % \u00f7 7 8 9 x 4 5 6 - 1 2 3 + 0 . ="
+   ],
+   "drawerOpen": []
+  }
+ },
+ {
+  "name": "13-sell-return-popover",
+  "ok": true,
+  "note": "",
+  "inv": {
+   "modals": [],
+   "openPopover": [
+    "Sell Return Send"
+   ],
+   "drawerOpen": []
+  }
+ },
+ {
+  "name": "14-suspended-sales",
+  "ok": true,
+  "note": "",
+  "inv": {
+   "modals": [
+    {
+     "id": "",
+     "title": "Suspended Sales",
+     "controls": [
+      {
+       "tag": "button",
+       "id": "",
+       "name": "",
+       "text": "\u00d7",
+       "ph": "",
+       "type": "button"
+      },
+      {
+       "tag": "button",
+       "id": "",
+       "name": "",
+       "text": "Close",
+       "ph": "",
+       "type": "button"
+      }
+     ]
+    }
+   ],
+   "openPopover": [],
+   "drawerOpen": []
+  }
+ },
+ {
+  "name": "15-add-expense",
+  "ok": true,
+  "note": "",
+  "inv": {
+   "modals": [
+    {
+     "id": "expense_modal",
+     "title": "Add Expense",
+     "controls": [
+      {
+       "tag": "button",
+       "id": "",
+       "name": "",
+       "text": "\u00d7",
+       "ph": "",
+       "type": "button"
+      },
+      {
+       "tag": "select",
+       "id": "expense_location_id",
+       "name": "location_id",
+       "text": "Please Select Vonos Cafe (BL0001)",
+       "ph": "",
+       "type": ""
+      },
+      {
+       "tag": "select",
+       "id": "expense_category_id",
+       "name": "expense_category_id",
+       "text": "Please Select",
+       "ph": "",
+       "type": ""
+      },
+      {
+       "tag": "select",
+       "id": "expense_sub_category_id",
+       "name": "expense_sub_category_id",
+       "text": "Please Select",
+       "ph": "",
+       "type": ""
+      },
+      {
+       "tag": "input",
+       "id": "expense_ref_no",
+       "name": "ref_no",
+       "text": "",
+       "ph": "",
+       "type": "text"
+      },
+      {
+       "tag": "input",
+       "id": "expense_transaction_date",
+       "name": "transaction_date",
+       "text": "",
+       "ph": "",
+       "type": "text"
+      },
+      {
+       "tag": "select",
+       "id": "expense_for",
+       "name": "expense_for",
+       "text": "Please Select None Mr Vonos Autos ",
+       "ph": "",
+       "type": ""
+      },
+      {
+       "tag": "select",
+       "id": "expense_tax_id",
+       "name": "tax_id",
+       "text": "None",
+       "ph": "",
+       "type": ""
+      },
+      {
+       "tag": "input",
+       "id": "expense_final_total",
+       "name": "final_total",
+       "text": "",
+       "ph": "Total amount",
+       "type": "text"
+      },
+      {
+       "tag": "textarea",
+       "id": "expense_additional_notes",
+       "name": "additional_notes",
+       "text": "",
+       "ph": "",
+       "type": ""
+      },
+      {
+       "tag": "input",
+       "id": "amount_0",
+       "name": "payment[0][amount]",
+       "text": "",
+       "ph": "Amount",
+       "type": "text"
+      },
+      {
+       "tag": "input",
+       "id": "",
+       "name": "payment[0][paid_on]",
+       "text": "",
+       "ph": "",
+       "type": "text"
+      },
+      {
+       "tag": "select",
+       "id": "method_0",
+       "name": "payment[0][method]",
+       "text": "Cash Card Cheque Bank Transfer Oth",
+       "ph": "",
+       "type": ""
+      },
+      {
+       "tag": "select",
+       "id": "account_0",
+       "name": "payment[0][account_id]",
+       "text": "None MONIEPOINT POS VONOS GENERAL ",
+       "ph": "",
+       "type": ""
+      },
+      {
+       "tag": "textarea",
+       "id": "note_0",
+       "name": "payment[0][note]",
+       "text": "",
+       "ph": "",
+       "type": ""
+      },
+      {
+       "tag": "button",
+       "id": "",
+       "name": "",
+       "text": "Save",
+       "ph": "",
+       "type": "submit"
+      },
+      {
+       "tag": "button",
+       "id": "",
+       "name": "",
+       "text": "Close",
+       "ph": "",
+       "type": "button"
+      }
+     ]
+    }
+   ],
+   "openPopover": [],
+   "drawerOpen": []
+  }
+ },
+ {
+  "name": "20-customer-dropdown",
+  "ok": true,
+  "note": "",
+  "inv": {
+   "modals": [],
+   "openPopover": [],
+   "drawerOpen": []
+  }
+ },
+ {
+  "name": "21-add-customer",
+  "ok": true,
+  "note": "",
+  "inv": {
+   "modals": [
+    {
+     "id": "",
+     "title": "Add a new contact",
+     "controls": [
+      {
+       "tag": "button",
+       "id": "",
+       "name": "",
+       "text": "\u00d7",
+       "ph": "",
+       "type": "button"
+      },
+      {
+       "tag": "input",
+       "id": "inlineRadio1",
+       "name": "contact_type_radio",
+       "text": "",
+       "ph": "",
+       "type": "radio"
+      },
+      {
+       "tag": "input",
+       "id": "inlineRadio2",
+       "name": "contact_type_radio",
+       "text": "",
+       "ph": "",
+       "type": "radio"
+      },
+      {
+       "tag": "input",
+       "id": "contact_id",
+       "name": "contact_id",
+       "text": "",
+       "ph": "Contact ID",
+       "type": "text"
+      },
+      {
+       "tag": "select",
+       "id": "customer_group_id",
+       "name": "customer_group_id",
+       "text": "None",
+       "ph": "",
+       "type": ""
+      },
+      {
+       "tag": "input",
+       "id": "mobile",
+       "name": "mobile",
+       "text": "",
+       "ph": "Mobile",
+       "type": "text"
+      },
+      {
+       "tag": "input",
+       "id": "alternate_number",
+       "name": "alternate_number",
+       "text": "",
+       "ph": "Alternate contact number",
+       "type": "text"
+      },
+      {
+       "tag": "input",
+       "id": "landline",
+       "name": "landline",
+       "text": "",
+       "ph": "Landline",
+       "type": "text"
+      },
+      {
+       "tag": "input",
+       "id": "email",
+       "name": "email",
+       "text": "",
+       "ph": "Email",
+       "type": "email"
+      },
+      {
+       "tag": "select",
+       "id": "assigned_to_users",
+       "name": "assigned_to_users[]",
+       "text": "Mr Vonos Autos Miss Victoria Ejima",
+       "ph": "",
+       "type": ""
+      },
+      {
+       "tag": "input",
+       "id": "",
+       "name": "",
+       "text": "",
+       "ph": "",
+       "type": "search"
+      },
+      {
+       "tag": "button",
+       "id": "",
+       "name": "",
+       "text": "More Informations",
+       "ph": "",
+       "type": "button"
+      },
+      {
+       "tag": "button",
+       "id": "",
+       "name": "",
+       "text": "Save",
+       "ph": "",
+       "type": "submit"
+      },
+      {
+       "tag": "button",
+       "id": "",
+       "name": "",
+       "text": "Close",
+       "ph": "",
+       "type": "button"
+      }
+     ]
+    }
+   ],
+   "openPopover": [],
+   "drawerOpen": []
+  }
+ },
+ {
+  "name": "22-search-products",
+  "ok": true,
+  "note": "",
+  "inv": {
+   "modals": [],
+   "openPopover": [],
+   "drawerOpen": []
+  }
+ },
+ {
+  "name": "23-configure-search",
+  "ok": true,
+  "note": "",
+  "inv": {
+   "modals": [
+    {
+     "id": "configure_search_modal",
+     "title": "Search products by",
+     "controls": [
+      {
+       "tag": "button",
+       "id": "",
+       "name": "",
+       "text": "\u00d7",
+       "ph": "",
+       "type": "button"
+      },
+      {
+       "tag": "input",
+       "id": "",
+       "name": "search_fields[]",
+       "text": "",
+       "ph": "",
+       "type": "checkbox"
+      },
+      {
+       "tag": "input",
+       "id": "",
+       "name": "search_fields[]",
+       "text": "",
+       "ph": "",
+       "type": "checkbox"
+      },
+      {
+       "tag": "input",
+       "id": "",
+       "name": "search_fields[]",
+       "text": "",
+       "ph": "",
+       "type": "checkbox"
+      },
+      {
+       "tag": "input",
+       "id": "",
+       "name": "search_fields[]",
+       "text": "",
+       "ph": "",
+       "type": "checkbox"
+      },
+      {
+       "tag": "input",
+       "id": "",
+       "name": "search_fields[]",
+       "text": "",
+       "ph": "",
+       "type": "checkbox"
+      },
+      {
+       "tag": "input",
+       "id": "",
+       "name": "search_fields[]",
+       "text": "",
+       "ph": "",
+       "type": "checkbox"
+      },
+      {
+       "tag": "button",
+       "id": "",
+       "name": "",
+       "text": "Close",
+       "ph": "",
+       "type": "button"
+      }
+     ]
+    }
+   ],
+   "openPopover": [],
+   "drawerOpen": []
+  }
+ },
+ {
+  "name": "30-cart-add-item",
+  "ok": true,
+  "note": "",
+  "inv": {
+   "modals": [],
+   "openPopover": [],
+   "drawerOpen": []
+  }
+ },
+ {
+  "name": "31-cart-row-tools",
+  "ok": true,
+  "note": "",
+  "inv": {
+   "modals": [],
+   "openPopover": [],
+   "drawerOpen": []
+  }
+ },
+ {
+  "name": "32-order-tax-modal",
+  "ok": true,
+  "note": "",
+  "inv": {
+   "modals": [
+    {
+     "id": "posEditOrderTaxModal",
+     "title": "Edit Order Tax",
+     "controls": [
+      {
+       "tag": "button",
+       "id": "",
+       "name": "",
+       "text": "\u00d7",
+       "ph": "",
+       "type": "button"
+      },
+      {
+       "tag": "select",
+       "id": "order_tax_modal",
+       "name": "order_tax_modal",
+       "text": "Please Select None",
+       "ph": "",
+       "type": ""
+      },
+      {
+       "tag": "button",
+       "id": "posEditOrderTaxModalUpdate",
+       "name": "",
+       "text": "Update",
+       "ph": "",
+       "type": "button"
+      },
+      {
+       "tag": "button",
+       "id": "",
+       "name": "",
+       "text": "Cancel",
+       "ph": "",
+       "type": "button"
+      }
+     ]
+    }
+   ],
+   "openPopover": [],
+   "drawerOpen": []
+  }
+ },
+ {
+  "name": "33-discount-modal",
+  "ok": true,
+  "note": "",
+  "inv": {
+   "modals": [
+    {
+     "id": "posEditDiscountModal",
+     "title": "Discount",
+     "controls": [
+      {
+       "tag": "button",
+       "id": "",
+       "name": "",
+       "text": "\u00d7",
+       "ph": "",
+       "type": "button"
+      },
+      {
+       "tag": "select",
+       "id": "discount_type_modal",
+       "name": "discount_type_modal",
+       "text": "Please Select Fixed Percentage",
+       "ph": "",
+       "type": ""
+      },
+      {
+       "tag": "input",
+       "id": "discount_amount_modal",
+       "name": "discount_amount_modal",
+       "text": "",
+       "ph": "",
+       "type": "text"
+      },
+      {
+       "tag": "button",
+       "id": "posEditDiscountModalUpdate",
+       "name": "",
+       "text": "Update",
+       "ph": "",
+       "type": "button"
+      },
+      {
+       "tag": "button",
+       "id": "",
+       "name": "",
+       "text": "Cancel",
+       "ph": "",
+       "type": "button"
+      }
+     ]
+    }
+   ],
+   "openPopover": [],
+   "drawerOpen": []
+  }
+ },
+ {
+  "name": "34-shipping-modal",
+  "ok": true,
+  "note": "",
+  "inv": {
+   "modals": [
+    {
+     "id": "posShippingModal",
+     "title": "Shipping",
+     "controls": [
+      {
+       "tag": "button",
+       "id": "",
+       "name": "",
+       "text": "\u00d7",
+       "ph": "",
+       "type": "button"
+      },
+      {
+       "tag": "textarea",
+       "id": "shipping_details_modal",
+       "name": "shipping_details_modal",
+       "text": "",
+       "ph": "Shipping Details",
+       "type": ""
+      },
+      {
+       "tag": "textarea",
+       "id": "shipping_address_modal",
+       "name": "shipping_address_modal",
+       "text": "",
+       "ph": "Shipping Address",
+       "type": ""
+      },
+      {
+       "tag": "input",
+       "id": "shipping_charges_modal",
+       "name": "shipping_charges_modal",
+       "text": "",
+       "ph": "Shipping Charges",
+       "type": "text"
+      },
+      {
+       "tag": "select",
+       "id": "shipping_status_modal",
+       "name": "shipping_status_modal",
+       "text": "Please Select Ordered Packed Shipp",
+       "ph": "",
+       "type": ""
+      },
+      {
+       "tag": "input",
+       "id": "delivered_to_modal",
+       "name": "delivered_to_modal",
+       "text": "",
+       "ph": "Delivered To",
+       "type": "text"
+      },
+      {
+       "tag": "select",
+       "id": "delivery_person_modal",
+       "name": "delivery_person_modal",
+       "text": "Please Select Mr Vonos Autos Miss ",
+       "ph": "",
+       "type": ""
+      },
+      {
+       "tag": "button",
+       "id": "posShippingModalUpdate",
+       "name": "",
+       "text": "Update",
+       "ph": "",
+       "type": "button"
+      },
+      {
+       "tag": "button",
+       "id": "",
+       "name": "",
+       "text": "Cancel",
+       "ph": "",
+       "type": "button"
+      }
+     ]
+    }
+   ],
+   "openPopover": [],
+   "drawerOpen": []
+  }
+ },
+ {
+  "name": "42-multiple-pay-modal",
+  "ok": true,
+  "note": "",
+  "inv": {
+   "modals": [
+    {
+     "id": "modal_payment",
+     "title": "Payment",
+     "controls": [
+      {
+       "tag": "button",
+       "id": "",
+       "name": "",
+       "text": "\u00d7",
+       "ph": "",
+       "type": "button"
+      },
+      {
+       "tag": "input",
+       "id": "amount_0",
+       "name": "payment[0][amount]",
+       "text": "",
+       "ph": "Amount",
+       "type": "text"
+      },
+      {
+       "tag": "select",
+       "id": "method_0",
+       "name": "payment[0][method]",
+       "text": "Advance Cash Card Cheque Bank Tran",
+       "ph": "",
+       "type": ""
+      },
+      {
+       "tag": "select",
+       "id": "account_0",
+       "name": "payment[0][account_id]",
+       "text": "None MONIEPOINT POS VONOS GENERAL ",
+       "ph": "",
+       "type": ""
+      },
+      {
+       "tag": "textarea",
+       "id": "note_0",
+       "name": "payment[0][note]",
+       "text": "",
+       "ph": "",
+       "type": ""
+      },
+      {
+       "tag": "button",
+       "id": "add-payment-row",
+       "name": "",
+       "text": "Add Payment Row",
+       "ph": "",
+       "type": "button"
+      },
+      {
+       "tag": "textarea",
+       "id": "sale_note",
+       "name": "sale_note",
+       "text": "",
+       "ph": "Sell note",
+       "type": ""
+      },
+      {
+       "tag": "textarea",
+       "id": "staff_note",
+       "name": "staff_note",
+       "text": "",
+       "ph": "Staff note",
+       "type": ""
+      },
+      {
+       "tag": "button",
+       "id": "",
+       "name": "",
+       "text": "Close",
+       "ph": "",
+       "type": "button"
+      },
+      {
+       "tag": "button",
+       "id": "pos-save",
+       "name": "",
+       "text": "Finalize Payment",
+       "ph": "",
+       "type": "submit"
+      }
+     ]
+    }
+   ],
+   "openPopover": [],
+   "drawerOpen": []
+  }
+ },
+ {
+  "name": "45-recent-transactions",
+  "ok": true,
+  "note": "",
+  "inv": {
+   "modals": [
+    {
+     "id": "recent_transactions_modal",
+     "title": "Recent Transactions",
+     "controls": [
+      {
+       "tag": "button",
+       "id": "",
+       "name": "",
+       "text": "\u00d7",
+       "ph": "",
+       "type": "button"
+      },
+      {
+       "tag": "button",
+       "id": "",
+       "name": "",
+       "text": "Close",
+       "ph": "",
+       "type": "button"
+      }
+     ]
+    }
+   ],
+   "openPopover": [],
+   "drawerOpen": []
+  }
+ },
+ {
+  "name": "50-category-drawer",
+  "ok": true,
+  "note": "",
+  "inv": {
+   "modals": [],
+   "openPopover": [],
+   "drawerOpen": [
+    "my-drawer-4"
+   ]
+  }
+ },
+ {
+  "name": "51-brands-drawer",
+  "ok": true,
+  "note": "",
+  "inv": {
+   "modals": [],
+   "openPopover": [],
+   "drawerOpen": [
+    "my-drawer-brand"
+   ]
+  }
+ },
+ {
+  "name": "85-quick-add-product",
+  "ok": true,
+  "note": "",
+  "inv": {
+   "modals": [
+    {
+     "id": "",
+     "title": "Add new product",
+     "controls": [
+      {
+       "tag": "button",
+       "id": "",
+       "name": "",
+       "text": "\u00d7",
+       "ph": "",
+       "type": "button"
+      },
+      {
+       "tag": "input",
+       "id": "name",
+       "name": "name",
+       "text": "",
+       "ph": "Product Name",
+       "type": "text"
+      },
+      {
+       "tag": "input",
+       "id": "sku",
+       "name": "sku",
+       "text": "",
+       "ph": "SKU",
+       "type": "text"
+      },
+      {
+       "tag": "select",
+       "id": "barcode_type",
+       "name": "barcode_type",
+       "text": "Code 128 (C128) Code 39 (C39) EAN-",
+       "ph": "",
+       "type": ""
+      },
+      {
+       "tag": "select",
+       "id": "unit_id",
+       "name": "unit_id",
+       "text": "Please Select Pieces (Pc(s)) bag (",
+       "ph": "",
+       "type": ""
+      },
+      {
+       "tag": "select",
+       "id": "brand_id",
+       "name": "brand_id",
+       "text": "Please Select",
+       "ph": "",
+       "type": ""
+      },
+      {
+       "tag": "select",
+       "id": "category_id",
+       "name": "category_id",
+       "text": "Please Select Alcohol Juices Soft ",
+       "ph": "",
+       "type": ""
+      },
+      {
+       "tag": "select",
+       "id": "sub_category_id",
+       "name": "sub_category_id",
+       "text": "Please Select",
+       "ph": "",
+       "type": ""
+      },
+      {
+       "tag": "input",
+       "id": "enable_stock",
+       "name": "enable_stock",
+       "text": "",
+       "ph": "",
+       "type": "checkbox"
+      },
+      {
+       "tag": "input",
+       "id": "alert_quantity",
+       "name": "alert_quantity",
+       "text": "",
+       "ph": "Alert quantity",
+       "type": "text"
+      },
+      {
+       "tag": "select",
+       "id": "product_locations",
+       "name": "product_locations[]",
+       "text": "Vonos Cafe (BL0001)",
+       "ph": "",
+       "type": ""
+      },
+      {
+       "tag": "input",
+       "id": "",
+       "name": "",
+       "text": "",
+       "ph": "",
+       "type": "search"
+      },
+      {
+       "tag": "input",
+       "id": "weight",
+       "name": "weight",
+       "text": "",
+       "ph": "Weight",
+       "type": "text"
+      },
+      {
+       "tag": "textarea",
+       "id": "product_description",
+       "name": "product_description",
+       "text": "",
+       "ph": "",
+       "type": ""
+      },
+      {
+       "tag": "select",
+       "id": "tax",
+       "name": "tax",
+       "text": "Please Select None",
+       "ph": "",
+       "type": ""
+      },
+      {
+       "tag": "select",
+       "id": "tax_type",
+       "name": "tax_type",
+       "text": "Inclusive Exclusive",
+       "ph": "",
+       "type": ""
+      },
+      {
+       "tag": "input",
+       "id": "",
+       "name": "enable_sr_no",
+       "text": "",
+       "ph": "",
+       "type": "checkbox"
+      },
+      {
+       "tag": "input",
+       "id": "",
+       "name": "not_for_selling",
+       "text": "",
+       "ph": "",
+       "type": "checkbox"
+      },
+      {
+       "tag": "input",
+       "id": "product_custom_field1",
+       "name": "product_custom_field1",
+       "text": "",
+       "ph": "Custom Field1",
+       "type": "text"
+      },
+      {
+       "tag": "input",
+       "id": "product_custom_field2",
+       "name": "product_custom_field2",
+       "text": "",
+       "ph": "Custom Field2",
+       "type": "text"
+      },
+      {
+       "tag": "input",
+       "id": "product_custom_field3",
+       "name": "product_custom_field3",
+       "text": "",
+       "ph": "Custom Field3",
+       "type": "text"
+      },
+      {
+       "tag": "input",
+       "id": "product_custom_field4",
+       "name": "product_custom_field4",
+       "text": "",
+       "ph": "Custom Field4",
+       "type": "text"
+      },
+      {
+       "tag": "input",
+       "id": "single_dpp",
+       "name": "single_dpp",
+       "text": "",
+       "ph": "Exc. tax",
+       "type": "text"
+      },
+      {
+       "tag": "input",
+       "id": "single_dpp_inc_tax",
+       "name": "single_dpp_inc_tax",
+       "text": "",
+       "ph": "Inc. tax",
+       "type": "text"
+      },
+      {
+       "tag": "input",
+       "id": "profit_percent",
+       "name": "profit_percent",
+       "text": "",
+       "ph": "",
+       "type": "text"
+      },
+      {
+       "tag": "input",
+       "id": "single_dsp",
+       "name": "single_dsp",
+       "text": "",
+       "ph": "Exc. tax",
+       "type": "text"
+      }
+     ]
+    }
+   ],
+   "openPopover": [],
+   "drawerOpen": []
+  }
+ }
+]

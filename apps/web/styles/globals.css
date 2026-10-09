@@ -1,6 +1,7 @@
 @import "tailwindcss";
 @import "./tokens.css";
 @import "./hq6-va.css";
+@import "./cafe-pos.css";
 
 @theme inline {
   --color-background: var(--color-surface-page);

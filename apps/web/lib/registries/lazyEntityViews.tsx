@@ -225,6 +225,10 @@ export const PosTerminalView = lazyNamed(
   () => import("@/components/pages/PosTerminalView"),
   "PosTerminalView",
 );
+export const CafePosView = lazyNamed(
+  () => import("@/components/pages/pos/CafePosView"),
+  "CafePosView",
+);
 export const CatalogMetaListView = lazyNamed(
   () => import("@/components/pages/CatalogMetaListView"),
   "CatalogMetaListView",
