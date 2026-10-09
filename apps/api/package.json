@@ -20,6 +20,8 @@
     "audit:profit": "node --env-file-if-exists=.env scripts/profit-audit.mjs",
     "audit:cleanup-test": "node --env-file-if-exists=.env scripts/cleanup-test-data.mjs",
     "audit:cleanup-misc": "node --env-file-if-exists=.env scripts/cleanup-misc.mjs",
+    "audit:payroll-backfill": "node --env-file-if-exists=.env scripts/payroll-backfill.mjs",
+    "audit:recover-costs": "node --env-file-if-exists=.env scripts/recover-costs.mjs",
     "lint": "eslint \"{src,test}/**/*.ts\"",
     "typecheck": "tsc --noEmit",
     "test": "jest",
