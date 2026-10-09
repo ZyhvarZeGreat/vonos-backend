@@ -1289,7 +1289,7 @@ export function Hq6ProductsListView({
             open={Boolean(stockItem)}
             onClose={() => setStockItem(null)}
             item={stockItem}
-        onSave={async (rows, locationCode, unitCost) => {
+        onSave={async (rows, locationCode, unitCost, deletedRowIds) => {
           if (!tenantId || !stockItem) return;
           const loc = locationCode.trim();
           if (!loc) throw new Error("Select a location");
@@ -1300,6 +1300,7 @@ export function Hq6ProductsListView({
               locationCode: loc,
               costPrice: unitCost,
               rows,
+              deletedRowIds,
             },
             tenantId,
             stockItem,

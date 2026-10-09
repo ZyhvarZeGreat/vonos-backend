@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { ImageIcon, Plus, Printer, X } from "lucide-react";
+import { ImageIcon, Plus, Printer, Trash2, X } from "lucide-react";
 import type { Item, ItemLocationStock } from "@vonos/types";
 import {
   PRODUCT_STOCK_BUSINESS_LOCATIONS,
@@ -10,6 +10,7 @@ import {
   productHomeLocationsForTenant,
 } from "@vonos/types";
 import { Hq6Modal, Hq6Field, Hq6ModalSaveClose } from "@/components/hq6/Hq6Modal";
+import { Hq6ConfirmModal } from "@/components/hq6/Hq6ConfirmModal";
 import { ProductThumbnail } from "@/components/atoms/ProductThumbnail";
 import { GroupPeerStockTable } from "@/components/molecules/GroupPeerStockReadout";
 import { isPriceCatalogOnlyTenant } from "@vonos/types";
@@ -521,6 +522,7 @@ export function Hq6OpeningStockModal({
     rows: OpeningStockSaveRow[],
     locationCode: string,
     unitCost: number,
+    deletedRowIds?: string[],
   ) => Promise<void>;
 }) {
   const { config, tenantId } = useRouteTenant();
@@ -532,6 +534,11 @@ export function Hq6OpeningStockModal({
   const [location, setLocation] = useState("");
   const [saving, setSaving] = useState(false);
   const [loadingRecords, setLoadingRecords] = useState(false);
+  /** Saved OS/… row ids the user removed but not yet saved. */
+  const [pendingDeletes, setPendingDeletes] = useState<string[]>([]);
+  const [confirmDelete, setConfirmDelete] = useState<OpeningStockEntry | null>(
+    null,
+  );
 
   useEffect(() => {
     if (!open || !item) return;
@@ -542,6 +549,8 @@ export function Hq6OpeningStockModal({
       openingStockLocationForItem(item, stockLocations, config?.code),
     );
     setLoadingRecords(true);
+    setPendingDeletes([]);
+    setConfirmDelete(null);
 
     void (async () => {
       try {
@@ -617,12 +626,35 @@ export function Hq6OpeningStockModal({
   };
 
   const removeRow = (key: string) => {
+    const target = rows.find((row) => row.key === key);
+    if (!target) return;
+    // Saved rows carry an OS/… movement — confirm before it is deleted.
+    if (target.recordId) {
+      setConfirmDelete(target);
+      return;
+    }
     setRows((prev) => {
-      const target = prev.find((row) => row.key === key);
-      if (!target || target.recordId) return prev;
       const editableCount = prev.filter((row) => !row.recordId).length;
       if (editableCount <= 1) return prev;
       return prev.filter((row) => row.key !== key);
+    });
+  };
+
+  const confirmRemoveSavedRow = () => {
+    const target = confirmDelete;
+    setConfirmDelete(null);
+    if (!target?.recordId) return;
+    const recordId = target.recordId;
+    setPendingDeletes((prev) =>
+      prev.includes(recordId) ? prev : [...prev, recordId],
+    );
+    setRows((prev) => {
+      const next = prev.filter((row) => row.key !== target.key);
+      // Preserve "always one editable row" so the form stays actionable.
+      if (!next.some((row) => !row.recordId)) {
+        next.push(blankOpeningStockEntry(String(item?.costPrice ?? 0)));
+      }
+      return next;
     });
   };
 
@@ -669,17 +701,22 @@ export function Hq6OpeningStockModal({
                 toast.error("No business location configured for this entity");
                 return;
               }
-              // Keep prior OS rows + new editable rows (append-only history).
-              const payload: OpeningStockSaveRow[] = rows.map((row) => ({
-                id: row.recordId,
-                quantity: Number(row.qty) || 0,
-                unitCost: Number(row.unitCost) || 0,
-                date: row.date || localTodayDate(),
-                note: row.note.trim() || undefined,
-              }));
+              // Keep saved rows still on screen + new editable rows.
+              const payload: OpeningStockSaveRow[] = rows
+                .filter(
+                  (row) =>
+                    !row.recordId || !pendingDeletes.includes(row.recordId),
+                )
+                .map((row) => ({
+                  id: row.recordId,
+                  quantity: Number(row.qty) || 0,
+                  unitCost: Number(row.unitCost) || 0,
+                  date: row.date || localTodayDate(),
+                  note: row.note.trim() || undefined,
+                }));
               setSaving(true);
               try {
-                await onSave?.(payload, loc, cost);
+                await onSave?.(payload, loc, cost, pendingDeletes);
                 toast.success("Opening stock updated");
                 onClose();
               } catch (err) {
@@ -707,8 +744,8 @@ export function Hq6OpeningStockModal({
             </span>
             {hasHistory ? (
               <span className="mt-1 block text-xs">
-                Past opening-stock rows are locked. Add a new row to increase
-                stock.
+                Saved rows keep their original values. Add a row to increase
+                stock, or delete a row that was entered by mistake.
               </span>
             ) : null}
           </div>
@@ -877,7 +914,17 @@ export function Hq6OpeningStockModal({
                           >
                             <Plus strokeWidth={2.5} />
                           </button>
-                          {!locked && editableRows.length > 1 ? (
+                          {locked ? (
+                            <button
+                              type="button"
+                              className="hq6-os-icon-btn hq6-os-icon-btn-remove"
+                              aria-label="Delete saved opening stock row"
+                              title="Delete this saved row"
+                              onClick={() => removeRow(row.key)}
+                            >
+                              <Trash2 strokeWidth={2.5} />
+                            </button>
+                          ) : editableRows.length > 1 ? (
                             <button
                               type="button"
                               className="hq6-os-icon-btn hq6-os-icon-btn-remove"
@@ -908,6 +955,22 @@ export function Hq6OpeningStockModal({
           </div>
         </div>
       )}
+
+      <Hq6ConfirmModal
+        open={Boolean(confirmDelete)}
+        onClose={() => setConfirmDelete(null)}
+        alertStyle
+        title="Delete this opening stock row?"
+        message={
+          confirmDelete
+            ? `${confirmDelete.qty} unit(s) at ${confirmDelete.unitCost} each will be removed from opening stock, and on-hand quantity adjusted.`
+            : ""
+        }
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        danger
+        onConfirm={confirmRemoveSavedRow}
+      />
     </Hq6Modal>
   );
 }

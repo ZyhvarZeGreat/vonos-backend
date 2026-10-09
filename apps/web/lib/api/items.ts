@@ -336,6 +336,8 @@ export async function saveItemOpeningStock(
       date: string;
       note?: string;
     }>;
+    /** Stored OS/… row ids to delete. Rows missing from `rows` are kept. */
+    deletedRowIds?: string[];
   },
   tenantId?: string,
   /** Current item — used to preserve other location bins on legacy fallback. */

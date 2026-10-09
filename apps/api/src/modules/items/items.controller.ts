@@ -187,6 +187,8 @@ export class ItemsController {
 
   /**
    * Add/edit opening stock (dated OS/… movements + on-hand qty).
+   * Rows may be deleted by sending their ids in `deletedRowIds` — a row that is
+   * simply missing from `rows` is kept, never removed.
    * POST/PUT/PATCH all accepted — older proxies sometimes only allow PATCH on :id trees.
    */
   @Post(':id/opening-stock')
@@ -204,6 +206,8 @@ export class ItemsController {
         date: string;
         note?: string;
       }>;
+      /** Stored OS/… row ids the user deleted. Rows absent from `rows` are kept. */
+      deletedRowIds?: string[];
     },
     @Req() req: { user: AuthenticatedUser },
   ) {
@@ -228,6 +232,8 @@ export class ItemsController {
         date: string;
         note?: string;
       }>;
+      /** Stored OS/… row ids the user deleted. Rows absent from `rows` are kept. */
+      deletedRowIds?: string[];
     },
     @Req() req: { user: AuthenticatedUser },
   ) {
@@ -240,7 +246,8 @@ export class ItemsController {
   /**
    * Manual stock correction — raises or lowers on-hand qty and writes an
    * `ADJ/…` movement so the change shows in Product Stock History.
-   * Counterpart to opening stock, which is append-only and can only add.
+   * Counterpart to opening stock, which writes dated `OS/…` rows (added or,
+   * via `deletedRowIds`, removed).
    * Reachable via product "Add Opening Stock" or the purchase "Edit purchase
    * & Stock Adjustment" checkbox (procurement roles typically hold the latter).
    */
@@ -348,6 +355,7 @@ export class ItemsController {
           date: string;
           note?: string;
         }>;
+        deletedRowIds?: string[];
       };
     }>,
   ) {

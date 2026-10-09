@@ -46,6 +46,7 @@ import {
   isStockAdjustmentReference,
 } from '../../common/utils/openingStockMovement';
 import { adjustItemLocationStock } from '../../common/utils/itemLocationStock';
+import { applyDailyFinanceDelta } from '../../common/utils/dailyFinanceRollup';
 import { toNumber } from '../../common/utils/serializers';
 import { applyLastPurchasePrices } from '../../common/utils/lastPurchasePrices';
 import {
@@ -626,6 +627,8 @@ export class ItemsService {
         date: string;
         note?: string;
       }>;
+      /** Stored OS/… row ids the user explicitly deleted. Omission alone never deletes. */
+      deletedRowIds?: string[];
     },
   ): Promise<Item> {
     const requestTenantId = this.tenantDb.requireTenantId();
@@ -641,7 +644,7 @@ export class ItemsService {
       throw new BadRequestException('Business location is required');
     }
 
-    const incoming = (body.rows ?? []).map((row) => ({
+    let incoming = (body.rows ?? []).map((row) => ({
       id: row.id?.trim() || undefined,
       quantity: Number.isFinite(row.quantity) ? Math.trunc(row.quantity) : 0,
       unitCost: Number.isFinite(row.unitCost) ? row.unitCost : 0,
@@ -649,36 +652,102 @@ export class ItemsService {
       note: row.note?.trim() || null,
     }));
 
-    if (incoming.length === 0) {
+    const existingOs = await this.listOpeningStock(id);
+    const deletedIds = new Set(
+      (body.deletedRowIds ?? [])
+        .map((v) => String(v ?? '').trim())
+        .filter((v) => v.length > 0),
+    );
+    // A row listed in both `rows` and `deletedRowIds` counts as deleted.
+    incoming = incoming.filter((r) => !(r.id && deletedIds.has(r.id)));
+
+    // Deletion is EXPLICIT: a stored row is removed only when its id appears in
+    // `deletedRowIds`. Rows merely absent from `rows` are kept — the previous
+    // "not in payload ⇒ delete" rule meant any partial payload silently wiped
+    // every stored opening-stock row.
+    const toRemove = existingOs.filter((r) => deletedIds.has(r.id));
+    const retained = existingOs.filter(
+      (r) => !deletedIds.has(r.id) && !incoming.some((i) => i.id === r.id),
+    );
+
+    if (incoming.length === 0 && toRemove.length === 0) {
       throw new BadRequestException('Add at least one opening stock row');
     }
-
-    const existingOs = await this.listOpeningStock(id);
-    const keepIds = new Set(
-      incoming.map((r) => r.id).filter((v): v is string => Boolean(v)),
-    );
-    const toRemove = existingOs.filter((r) => !keepIds.has(r.id));
+    if (incoming.length > 0) {
+      for (const row of incoming) {
+        if (row.id && !deletedIds.has(row.id)) {
+          const owned = existingOs.some((r) => r.id === row.id);
+          if (!owned) {
+            throw new BadRequestException('Unknown opening stock row');
+          }
+        }
+      }
+    }
 
     const createdBy = await this.auditService.createdByFields();
-    const nextQty = incoming.reduce((sum, r) => sum + r.quantity, 0);
+    // On-hand = rows posted this save + stored rows that were neither sent nor
+    // deleted. Counting `retained` keeps quantity aligned with the movements
+    // that actually survive, so a partial payload can no longer drift stock.
+    const nextQty =
+      incoming.reduce((sum, r) => sum + r.quantity, 0) +
+      retained.reduce((sum, r) => sum + Number(r.quantity || 0), 0);
+    const lastUnitCost =
+      incoming[incoming.length - 1]?.unitCost ??
+      retained[retained.length - 1]?.unitCost;
+    // Rows with zero quantity carry no price signal. If every surviving row is
+    // zero/empty (e.g. all real rows were just deleted) keep the existing cost
+    // basis instead of collapsing it to 0.
+    const pricedRows = [...incoming, ...retained].filter((r) => r.quantity > 0);
     const lastCost =
-      body.costPrice != null && Number.isFinite(body.costPrice)
-        ? body.costPrice
-        : (incoming[incoming.length - 1]?.unitCost ??
-          toNumber(existing.costPrice));
+      incoming.length === 0 || pricedRows.length === 0
+        ? toNumber(existing.costPrice)
+        : body.costPrice != null && Number.isFinite(body.costPrice)
+          ? body.costPrice
+          : (lastUnitCost ?? toNumber(existing.costPrice));
     const homeCode = await this.cachedTenantCode(tenantId);
     const catalogOnly = isGroupStockConsumerTenant(homeCode ?? undefined);
 
+    const removedCostByDay = new Map<string, number>();
     await db.$transaction(async (tx) => {
       if (toRemove.length > 0) {
+        const removeIds = toRemove.map((r) => r.id);
         await tx.stockMovement.updateMany({
           where: {
             tenantId,
-            id: { in: toRemove.map((r) => r.id) },
+            id: { in: removeIds },
             deletedAt: null,
           },
           data: { deletedAt: new Date() },
         });
+        // Drop any cost ledger row the removed receipt had booked — otherwise
+        // deleting a mistaken opening stock leaves its cost in the P&L.
+        const costRows = await tx.ledgerEntry.findMany({
+          where: {
+            tenantId,
+            linkedRecordType: 'stock_movement',
+            linkedRecordId: { in: removeIds },
+            deletedAt: null,
+          },
+          select: { amount: true, date: true },
+        });
+        if (costRows.length > 0) {
+          for (const row of costRows) {
+            const key = row.date.toISOString().slice(0, 10);
+            removedCostByDay.set(
+              key,
+              (removedCostByDay.get(key) ?? 0) + toNumber(row.amount),
+            );
+          }
+          await tx.ledgerEntry.updateMany({
+            where: {
+              tenantId,
+              linkedRecordType: 'stock_movement',
+              linkedRecordId: { in: removeIds },
+              deletedAt: null,
+            },
+            data: { deletedAt: new Date() },
+          });
+        }
       }
 
       for (const row of incoming) {
@@ -768,6 +837,12 @@ export class ItemsService {
       });
     });
 
+    // Reverse the cached daily rollup for any cost the removal un-booked, so
+    // dashboards stop counting a receipt that no longer exists.
+    for (const [key, amount] of removedCostByDay) {
+      void applyDailyFinanceDelta(db, tenantId, new Date(key), 'cost', -amount);
+    }
+
     void this.auditService.log({
       action: 'updated',
       entityType: 'item',
@@ -778,6 +853,7 @@ export class ItemsService {
         rowCount: incoming.length,
         quantity: nextQty,
         unitCost: lastCost,
+        deletedRows: toRemove.length,
       },
     });
     void this.invalidateItemCaches(
@@ -1113,6 +1189,7 @@ export class ItemsService {
           date: string;
           note?: string;
         }>;
+        deletedRowIds?: string[];
       };
     },
   ): Promise<Item> {
