@@ -660,11 +660,19 @@ export function Hq6OpeningStockModal({
 
   const rowSubtotal = (row: OpeningStockEntry) =>
     (Number(row.qty) || 0) * (Number(row.unitCost) || 0);
-  const totalQty = rows.reduce((sum, row) => sum + (Number(row.qty) || 0), 0);
-  const totalAmount = rows.reduce((sum, row) => sum + rowSubtotal(row), 0);
-  const lastUnitCost =
-    [...rows].reverse().find((row) => row.unitCost.trim() !== "")?.unitCost ??
-    "0";
+  // On-hand is SET by the newest new row — saved history rows are records only
+  // and are never summed in (matching the API's set semantics).
+  const newRows = rows.filter(
+    (row) => !row.recordId && row.qty.trim() !== "",
+  );
+  const latestNewRow = newRows[newRows.length - 1];
+  const finalQty = latestNewRow
+    ? Number(latestNewRow.qty) || 0
+    : Number(item?.quantity ?? 0);
+  const finalUnitCostRaw =
+    latestNewRow?.unitCost?.trim() || String(item?.costPrice ?? 0);
+  const finalUnitCost = Number(finalUnitCostRaw) || 0;
+  const finalAmount = finalQty * finalUnitCost;
   const locationLabel =
     stockLocations.find((l) => l.code === location)?.name ?? location;
   const editableRows = rows.filter((row) => !row.recordId);
@@ -689,7 +697,7 @@ export function Hq6OpeningStockModal({
                 });
                 if (!valid) return;
               }
-              const cost = Number(lastUnitCost);
+              const cost = finalUnitCost;
               if (!Number.isFinite(cost) || cost < 0) {
                 toast.error("Enter a valid unit cost");
                 return;
@@ -701,12 +709,16 @@ export function Hq6OpeningStockModal({
                 toast.error("No business location configured for this entity");
                 return;
               }
-              // Keep saved rows still on screen + new editable rows.
+              // Saved rows still on screen + new rows that carry a quantity.
+              // A blank new row is only an empty slot — never send it, so it
+              // can never be read as "set stock to 0".
               const payload: OpeningStockSaveRow[] = rows
-                .filter(
-                  (row) =>
-                    !row.recordId || !pendingDeletes.includes(row.recordId),
-                )
+                .filter((row) => {
+                  if (row.recordId) {
+                    return !pendingDeletes.includes(row.recordId);
+                  }
+                  return row.qty.trim() !== "";
+                })
                 .map((row) => ({
                   id: row.recordId,
                   quantity: Number(row.qty) || 0,
@@ -744,8 +756,9 @@ export function Hq6OpeningStockModal({
             </span>
             {hasHistory ? (
               <span className="mt-1 block text-xs">
-                Saved rows keep their original values. Add a row to increase
-                stock, or delete a row that was entered by mistake.
+                The newest row sets the stock — saved rows below are records
+                only and are never added up. Delete a row that was entered by
+                mistake.
               </span>
             ) : null}
           </div>
@@ -946,11 +959,16 @@ export function Hq6OpeningStockModal({
 
           <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
             <span className="text-[#6b7280]">
-              Total qty:{" "}
-              <span className="font-semibold text-[#111827]">{totalQty}</span>
+              Final stock:{" "}
+              <span className="font-semibold text-[#111827]">{finalQty}</span>
+              <span className="ml-1 text-xs">
+                {latestNewRow
+                  ? "— set by the newest row"
+                  : "— unchanged (no new row yet)"}
+              </span>
             </span>
             <span className="font-semibold text-[#111827]">
-              Total Amount (Exc. Tax): {totalAmount.toFixed(2)}
+              Value: {finalAmount.toFixed(2)}
             </span>
           </div>
         </div>

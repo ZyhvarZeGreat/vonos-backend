@@ -612,8 +612,9 @@ export class ItemsService {
   }
 
   /**
-   * Save opening-stock table rows: keep dated records, set on-hand qty to the
-   * sum of rows, and stamp who/when on each StockMovement (OS/…).
+   * Save opening-stock table rows: keep dated records, and SET on-hand qty to
+   * the quantity typed on the newest row (history rows are records only — they
+   * are never summed in), stamping who/when on each StockMovement (OS/…).
    */
   async saveOpeningStock(
     id: string,
@@ -666,9 +667,6 @@ export class ItemsService {
     // "not in payload ⇒ delete" rule meant any partial payload silently wiped
     // every stored opening-stock row.
     const toRemove = existingOs.filter((r) => deletedIds.has(r.id));
-    const retained = existingOs.filter(
-      (r) => !deletedIds.has(r.id) && !incoming.some((i) => i.id === r.id),
-    );
 
     if (incoming.length === 0 && toRemove.length === 0) {
       throw new BadRequestException('Add at least one opening stock row');
@@ -685,25 +683,21 @@ export class ItemsService {
     }
 
     const createdBy = await this.auditService.createdByFields();
-    // On-hand = rows posted this save + stored rows that were neither sent nor
-    // deleted. Counting `retained` keeps quantity aligned with the movements
-    // that actually survive, so a partial payload can no longer drift stock.
-    const nextQty =
-      incoming.reduce((sum, r) => sum + r.quantity, 0) +
-      retained.reduce((sum, r) => sum + Number(r.quantity || 0), 0);
-    const lastUnitCost =
-      incoming[incoming.length - 1]?.unitCost ??
-      retained[retained.length - 1]?.unitCost;
-    // Rows with zero quantity carry no price signal. If every surviving row is
-    // zero/empty (e.g. all real rows were just deleted) keep the existing cost
-    // basis instead of collapsing it to 0.
-    const pricedRows = [...incoming, ...retained].filter((r) => r.quantity > 0);
+    // SET semantics — the quantity typed on a new row IS the final on-hand.
+    // Saved history rows are records only and are never summed in, so a second
+    // opening-stock entry can no longer double the product's stock. With
+    // several new rows, the last one in the payload wins (the latest count).
+    const newRows = incoming.filter((r) => !r.id);
+    const latest = newRows[newRows.length - 1];
+    const nextQty = latest ? latest.quantity : null;
     const lastCost =
-      incoming.length === 0 || pricedRows.length === 0
+      nextQty === null
         ? toNumber(existing.costPrice)
         : body.costPrice != null && Number.isFinite(body.costPrice)
           ? body.costPrice
-          : (lastUnitCost ?? toNumber(existing.costPrice));
+          : latest.unitCost > 0
+            ? latest.unitCost
+            : toNumber(existing.costPrice);
     const homeCode = await this.cachedTenantCode(tenantId);
     const catalogOnly = isGroupStockConsumerTenant(homeCode ?? undefined);
 
@@ -792,49 +786,53 @@ export class ItemsService {
         }
       }
 
-      const existingLoc = await tx.itemLocationStock.findFirst({
-        where: { itemId: existing.id, locationCode },
-      });
-      if (existingLoc) {
-        await tx.itemLocationStock.update({
-          where: { id: existingLoc.id },
-          data: { quantity: nextQty },
+      // No new row means no quantity instruction — leave on-hand alone so a
+      // history-only edit (e.g. deleting a mistaken record) cannot move stock.
+      if (nextQty !== null) {
+        const existingLoc = await tx.itemLocationStock.findFirst({
+          where: { itemId: existing.id, locationCode },
         });
-      } else {
-        await tx.itemLocationStock.create({
-          data: {
-            tenantId,
+        if (existingLoc) {
+          await tx.itemLocationStock.update({
+            where: { id: existingLoc.id },
+            data: { quantity: nextQty },
+          });
+        } else {
+          await tx.itemLocationStock.create({
+            data: {
+              tenantId,
+              itemId: existing.id,
+              locationCode,
+              binLocation: existing.binLocation ?? '',
+              quantity: nextQty,
+            },
+          });
+        }
+
+        const otherSum = await tx.itemLocationStock.aggregate({
+          where: {
             itemId: existing.id,
+            NOT: { locationCode },
+          },
+          _sum: { quantity: true },
+        });
+        const headerQty = nextQty + (otherSum._sum.quantity ?? 0);
+        const nextStatus = catalogOnly
+          ? existing.status === 'out_of_stock'
+            ? 'in_stock'
+            : existing.status
+          : deriveStatus(headerQty, existing.reorderPoint);
+
+        await tx.item.update({
+          where: { id: existing.id },
+          data: {
+            quantity: headerQty,
             locationCode,
-            binLocation: existing.binLocation ?? '',
-            quantity: nextQty,
+            costPrice: lastCost,
+            status: nextStatus,
           },
         });
       }
-
-      const otherSum = await tx.itemLocationStock.aggregate({
-        where: {
-          itemId: existing.id,
-          NOT: { locationCode },
-        },
-        _sum: { quantity: true },
-      });
-      const headerQty = nextQty + (otherSum._sum.quantity ?? 0);
-      const nextStatus = catalogOnly
-        ? existing.status === 'out_of_stock'
-          ? 'in_stock'
-          : existing.status
-        : deriveStatus(headerQty, existing.reorderPoint);
-
-      await tx.item.update({
-        where: { id: existing.id },
-        data: {
-          quantity: headerQty,
-          locationCode,
-          costPrice: lastCost,
-          status: nextStatus,
-        },
-      });
     });
 
     // Reverse the cached daily rollup for any cost the removal un-booked, so
@@ -847,11 +845,14 @@ export class ItemsService {
       action: 'updated',
       entityType: 'item',
       entityId: id,
-      summary: `Opening stock set to ${nextQty} for ${existing.sku}`,
+      summary:
+        nextQty === null
+          ? `Opening stock history updated for ${existing.sku} (on-hand unchanged at ${existing.quantity})`
+          : `Opening stock set to ${nextQty} for ${existing.sku}`,
       metadata: {
         locationCode,
         rowCount: incoming.length,
-        quantity: nextQty,
+        quantity: nextQty ?? existing.quantity,
         unitCost: lastCost,
         deletedRows: toRemove.length,
       },
