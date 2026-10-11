@@ -148,8 +148,8 @@ export function Hq6AddProductFormBody({
   onImageChange,
   onBrochureChange,
 }: Hq6AddProductFormBodyProps) {
-  const { can } = useAppPermissions();
-  const canOpeningStock = can("product.opening_stock");
+  const { canAny } = useAppPermissions();
+  const canOpeningStock = canAny("product.opening_stock", "purchase.update");
   return (
     <div
       className="hq6-add-product-form product_form"
@@ -441,8 +441,7 @@ export function Hq6AddProductFormBody({
                   <div className="col-sm-4" id="alert_quantity_div">
                     <div className="form-group">
                       <label htmlFor="alert_quantity">
-                        Alert quantity:{" "}
-                        <Tip title="Low stock alert quantity" />
+                        Alert quantity: <Tip title="Low stock alert quantity" />
                       </label>
                       <input
                         id="alert_quantity"
@@ -462,8 +461,9 @@ export function Hq6AddProductFormBody({
               <div className="col-sm-8">
                 <p className="help-block">
                   <i>
-                    Product catalog only — no stock. Prices are editable (default
-                    0). Quantity is chosen when adding a sale or job line.
+                    Product catalog only — no stock. Prices are editable
+                    (default 0). Quantity is chosen when adding a sale or job
+                    line.
                   </i>
                 </p>
               </div>
@@ -473,7 +473,9 @@ export function Hq6AddProductFormBody({
 
             <div className="col-sm-8 mb-5">
               <div className="form-group">
-                <label htmlFor="product_description">Product Description:</label>
+                <label htmlFor="product_description">
+                  Product Description:
+                </label>
                 <div className="hq6-tinymce">
                   <div className="hq6-tinymce-menubar" aria-hidden>
                     <span>File</span>

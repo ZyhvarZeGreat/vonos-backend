@@ -187,8 +187,10 @@ export class ItemsController {
 
   /**
    * Add/edit opening stock (dated OS/… movements + on-hand qty).
-   * Rows may be deleted by sending their ids in `deletedRowIds` — a row that is
-   * simply missing from `rows` is kept, never removed.
+   * Rows may be edited in place, or deleted by sending their ids in
+   * `deletedRowIds` — a row that is simply missing from `rows` is kept.
+   * Reachable by `product.opening_stock` OR `purchase.update` (procurement
+   * and store/stock managers), mirroring Adjust Stock.
    * POST/PUT/PATCH all accepted — older proxies sometimes only allow PATCH on :id trees.
    */
   @Post(':id/opening-stock')
@@ -208,11 +210,20 @@ export class ItemsController {
       }>;
       /** Stored OS/… row ids the user deleted. Rows absent from `rows` are kept. */
       deletedRowIds?: string[];
+      /** When present, on-hand for `locationCode` is SET to this value. */
+      finalQuantity?: number;
     },
     @Req() req: { user: AuthenticatedUser },
   ) {
-    if (!userHasPermission(req.user, 'product.opening_stock')) {
-      throw new ForbiddenException('Missing product.opening_stock');
+    if (
+      !userHasAnyPermission(req.user, [
+        'product.opening_stock',
+        'purchase.update',
+      ])
+    ) {
+      throw new ForbiddenException(
+        'Missing product.opening_stock or purchase.update',
+      );
     }
     return this.itemsService.saveOpeningStock(id, body);
   }
@@ -234,11 +245,20 @@ export class ItemsController {
       }>;
       /** Stored OS/… row ids the user deleted. Rows absent from `rows` are kept. */
       deletedRowIds?: string[];
+      /** When present, on-hand for `locationCode` is SET to this value. */
+      finalQuantity?: number;
     },
     @Req() req: { user: AuthenticatedUser },
   ) {
-    if (!userHasPermission(req.user, 'product.opening_stock')) {
-      throw new ForbiddenException('Missing product.opening_stock');
+    if (
+      !userHasAnyPermission(req.user, [
+        'product.opening_stock',
+        'purchase.update',
+      ])
+    ) {
+      throw new ForbiddenException(
+        'Missing product.opening_stock or purchase.update',
+      );
     }
     return this.itemsService.saveOpeningStock(id, body);
   }
@@ -246,8 +266,8 @@ export class ItemsController {
   /**
    * Manual stock correction — raises or lowers on-hand qty and writes an
    * `ADJ/…` movement so the change shows in Product Stock History.
-   * Counterpart to opening stock, which writes dated `OS/…` rows (added or,
-   * via `deletedRowIds`, removed).
+   * Counterpart to opening stock, which writes dated `OS/…` rows (added,
+   * edited, or removed via `deletedRowIds`).
    * Reachable via product "Add Opening Stock" or the purchase "Edit purchase
    * & Stock Adjustment" checkbox (procurement roles typically hold the latter).
    */
@@ -356,6 +376,7 @@ export class ItemsController {
           note?: string;
         }>;
         deletedRowIds?: string[];
+        finalQuantity?: number;
       };
     }>,
   ) {

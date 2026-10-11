@@ -48,8 +48,10 @@ function buildItemsPath(
   if (filters?.locationCode) params.set("locationCode", filters.locationCode);
   if (filters?.unit) params.set("unit", filters.unit);
   if (filters?.brandName) params.set("brandName", filters.brandName);
-  if (filters?.availableForRetail === true) params.set("availableForRetail", "true");
-  if (filters?.availableForRetail === false) params.set("availableForRetail", "false");
+  if (filters?.availableForRetail === true)
+    params.set("availableForRetail", "true");
+  if (filters?.availableForRetail === false)
+    params.set("availableForRetail", "false");
   if (filters?.sortBy) params.set("sortBy", filters.sortBy);
   if (filters?.sortDir) params.set("sortDir", filters.sortDir);
   if (filters?.includeSummary === false) params.set("includeSummary", "false");
@@ -154,7 +156,14 @@ export async function getItemsForPicker(
   const q = search?.trim() ?? "";
   const matched = q
     ? matchSorter(roster, q, {
-        keys: ["name", "sku", "category", "brandName", "carModel", "description"],
+        keys: [
+          "name",
+          "sku",
+          "category",
+          "brandName",
+          "carModel",
+          "description",
+        ],
         threshold: rankings.CONTAINS,
         keepDiacritics: false,
       })
@@ -230,9 +239,10 @@ export async function getStockAvailability(
 export async function getPeerStockBySkus(
   skus: string[],
 ): Promise<PeerStockBySkuResult> {
-  const unique = [
-    ...new Set(skus.map((s) => s.trim()).filter(Boolean)),
-  ].slice(0, 100);
+  const unique = [...new Set(skus.map((s) => s.trim()).filter(Boolean))].slice(
+    0,
+    100,
+  );
   if (unique.length === 0) return { rows: [] };
   const searchParams = new URLSearchParams({ skus: unique.join(",") });
   const response = await apiFetch(`/items/peer-stock?${searchParams}`);
@@ -338,6 +348,8 @@ export async function saveItemOpeningStock(
     }>;
     /** Stored OS/… row ids to delete. Rows missing from `rows` are kept. */
     deletedRowIds?: string[];
+    /** When present, on-hand for this location is SET to this value. */
+    finalQuantity?: number;
   },
   tenantId?: string,
   /** Current item — used to preserve other location bins on legacy fallback. */
@@ -372,7 +384,9 @@ export async function saveItemOpeningStock(
   );
   const loc = body.locationCode.trim();
   const otherLocs = (currentItem?.locationStock ?? [])
-    .filter((row) => row.locationCode.trim().toLowerCase() !== loc.toLowerCase())
+    .filter(
+      (row) => row.locationCode.trim().toLowerCase() !== loc.toLowerCase(),
+    )
     .map((row) => ({
       locationCode: row.locationCode,
       quantity: row.quantity,
@@ -491,7 +505,9 @@ export async function updateItem(
   body: UpdateItemRequest,
   tenantId?: string,
 ): Promise<Item> {
-  const path = tenantId ? withTenantQuery(`/items/${id}`, tenantId) : `/items/${id}`;
+  const path = tenantId
+    ? withTenantQuery(`/items/${id}`, tenantId)
+    : `/items/${id}`;
   const response = await apiFetch(path, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
@@ -540,11 +556,14 @@ export async function bulkUpdatePrices(
     adjustmentValue: number;
   },
 ): Promise<{ updated: number }> {
-  const response = await apiFetch(withTenantQuery("/items/bulk-price", tenantId), {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
+  const response = await apiFetch(
+    withTenantQuery("/items/bulk-price", tenantId),
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    },
+  );
   if (!response.ok) throw new Error("Failed to update prices");
   return response.json();
 }

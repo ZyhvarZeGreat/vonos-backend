@@ -1,4 +1,9 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import type {
   CsvImportResult,
   Item,
@@ -21,7 +26,10 @@ import { Prisma } from '@prisma/client';
 import { TenantDbService } from '../../common/prisma/tenant-db.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { CacheService } from '../../common/cache/cache.service';
-import { invalidateTenantDashboardCache, invalidateTenantListCache } from '../../common/cache/cacheInvalidation';
+import {
+  invalidateTenantDashboardCache,
+  invalidateTenantListCache,
+} from '../../common/cache/cacheInvalidation';
 import { AuditService } from '../audit/audit.service';
 import { buildCompositeCursorQuery } from '../../common/utils/pagination';
 import {
@@ -135,7 +143,9 @@ function normalizeLocationRows(
     const locationCode = validate(raw.locationCode);
     if (!locationCode) continue;
     const binLocation = raw.binLocation?.trim() || '';
-    const quantity = Number.isFinite(raw.quantity) ? Math.trunc(raw.quantity) : 0;
+    const quantity = Number.isFinite(raw.quantity)
+      ? Math.trunc(raw.quantity)
+      : 0;
     const key = `${locationCode}::${binLocation}`;
     const existing = merged.get(key);
     if (existing) {
@@ -249,12 +259,8 @@ export class ItemsService {
       sortDir: filters.sortDir,
       sum: filters.includeSummary === false ? 0 : 1,
     });
-    return withListPageCache(
-      this.cache,
-      tenantId,
-      'items',
-      filterKey,
-      () => this.listUncached(filters, tenantId),
+    return withListPageCache(this.cache, tenantId, 'items', filterKey, () =>
+      this.listUncached(filters, tenantId),
     );
   }
 
@@ -265,23 +271,28 @@ export class ItemsService {
     const db = this.tenantDb.db;
     const limit = filters.limit ?? 10;
 
-    const sort = resolveListSort(filters.sortBy, filters.sortDir, {
-      name: { field: 'name', type: 'string' },
-      sku: { field: 'sku', type: 'string' },
-      quantity: { field: 'quantity', type: 'number' },
-      costPrice: { field: 'costPrice', type: 'number' },
-      sellPrice: { field: 'sellPrice', type: 'number' },
-      // Alias used by some list UIs / older clients
-      sellingPrice: { field: 'sellPrice', type: 'number' },
-      createdAt: { field: 'createdAt', type: 'date' },
-      updatedAt: { field: 'updatedAt', type: 'date' },
-      category: { field: 'category', type: 'string' },
-      status: { field: 'status', type: 'string' },
-    }, {
-      sortField: 'updatedAt',
-      sortDir: 'desc',
-      sortValueType: 'date',
-    });
+    const sort = resolveListSort(
+      filters.sortBy,
+      filters.sortDir,
+      {
+        name: { field: 'name', type: 'string' },
+        sku: { field: 'sku', type: 'string' },
+        quantity: { field: 'quantity', type: 'number' },
+        costPrice: { field: 'costPrice', type: 'number' },
+        sellPrice: { field: 'sellPrice', type: 'number' },
+        // Alias used by some list UIs / older clients
+        sellingPrice: { field: 'sellPrice', type: 'number' },
+        createdAt: { field: 'createdAt', type: 'date' },
+        updatedAt: { field: 'updatedAt', type: 'date' },
+        category: { field: 'category', type: 'string' },
+        status: { field: 'status', type: 'string' },
+      },
+      {
+        sortField: 'updatedAt',
+        sortDir: 'desc',
+        sortValueType: 'date',
+      },
+    );
 
     const pagination = buildCompositeCursorQuery({
       sortField: sort.sortField,
@@ -519,8 +530,7 @@ export class ItemsService {
           quantity: qty,
           quantityChange: change,
           newQuantity: newQty,
-          unitCost:
-            line.unitCost != null ? toNumber(line.unitCost) : null,
+          unitCost: line.unitCost != null ? toNumber(line.unitCost) : null,
           customerSupplierInfo:
             infoParts.length > 0 ? infoParts.join(' · ') : null,
           createdByName: movement.createdByName ?? null,
@@ -597,8 +607,7 @@ export class ItemsService {
         rows.push({
           id: movement.id,
           quantity: Number(line.quantity ?? 0),
-          unitCost:
-            line.unitCost != null ? toNumber(line.unitCost) : null,
+          unitCost: line.unitCost != null ? toNumber(line.unitCost) : null,
           date: `${y}-${m}-${d}`,
           note: movement.notes ?? null,
           createdByName: movement.createdByName ?? null,
@@ -612,9 +621,10 @@ export class ItemsService {
   }
 
   /**
-   * Save opening-stock table rows: keep dated records, and SET on-hand qty to
-   * the quantity typed on the newest row (history rows are records only — they
-   * are never summed in), stamping who/when on each StockMovement (OS/…).
+   * Save opening-stock table rows: keep dated records (editable in place, or
+   * removed via `deletedRowIds`), and SET on-hand to `finalQuantity` when the
+   * caller provides one — never by summing rows. Stamp who/when on each
+   * StockMovement (OS/…).
    */
   async saveOpeningStock(
     id: string,
@@ -630,6 +640,8 @@ export class ItemsService {
       }>;
       /** Stored OS/… row ids the user explicitly deleted. Omission alone never deletes. */
       deletedRowIds?: string[];
+      /** When present, on-hand for `locationCode` is SET to this value. */
+      finalQuantity?: number;
     },
   ): Promise<Item> {
     const requestTenantId = this.tenantDb.requireTenantId();
@@ -683,20 +695,22 @@ export class ItemsService {
     }
 
     const createdBy = await this.auditService.createdByFields();
-    // SET semantics — the quantity typed on a new row IS the final on-hand.
-    // Saved history rows are records only and are never summed in, so a second
-    // opening-stock entry can no longer double the product's stock. With
-    // several new rows, the last one in the payload wins (the latest count).
-    const newRows = incoming.filter((r) => !r.id);
-    const latest = newRows[newRows.length - 1];
-    const nextQty = latest ? latest.quantity : null;
+    // SET semantics — on-hand is set to the quantity the caller confirmed, never
+    // derived by summing rows (summing is what doubled stock whenever a record
+    // was entered twice). No `finalQuantity` (a no-op save) leaves stock alone,
+    // so later purchase/sale quantities are not silently wiped.
+    const nextQty =
+      body.finalQuantity != null && Number.isFinite(body.finalQuantity)
+        ? Math.trunc(body.finalQuantity)
+        : null;
+    const lastRow = incoming[incoming.length - 1];
     const lastCost =
       nextQty === null
         ? toNumber(existing.costPrice)
         : body.costPrice != null && Number.isFinite(body.costPrice)
           ? body.costPrice
-          : latest.unitCost > 0
-            ? latest.unitCost
+          : lastRow && lastRow.unitCost > 0
+            ? lastRow.unitCost
             : toNumber(existing.costPrice);
     const homeCode = await this.cachedTenantCode(tenantId);
     const catalogOnly = isGroupStockConsumerTenant(homeCode ?? undefined);
@@ -759,31 +773,48 @@ export class ItemsService {
         const notes = row.note || 'Opening stock';
 
         if (row.id) {
-          const owned = existingOs.some((r) => r.id === row.id);
-          if (!owned) {
+          const prior = existingOs.find((r) => r.id === row.id);
+          if (!prior) {
             throw new BadRequestException('Unknown opening stock row');
           }
-          // Prior OS rows are append-only history — do not mutate qty/cost/date.
+          // Saved rows stay editable — correct a wrong count in place rather
+          // than having to delete the record and enter it again.
+          const changed =
+            prior.quantity !== row.quantity ||
+            toNumber(prior.unitCost ?? 0) !== row.unitCost ||
+            (prior.date ?? '') !== row.date ||
+            (prior.note ?? '') !== (row.note ?? '');
+          if (changed) {
+            await tx.stockMovement.update({
+              where: { id: row.id },
+              data: {
+                lines: line,
+                grandTotal,
+                date,
+                notes,
+              },
+            });
+          }
           continue;
-        } else {
-          await tx.stockMovement.create({
-            data: {
-              tenantId,
-              type: 'inbound',
-              reference: `OS/${existing.sku}/${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`,
-              status: 'Received',
-              lines: line as unknown as Prisma.InputJsonValue,
-              itemCount: 1,
-              grandTotal,
-              notes,
-              locationCode,
-              date,
-              // Stock history only — never a supplier bill (Purchases list excludes OS/).
-              paymentStatus: null,
-              ...createdBy,
-            },
-          });
         }
+
+        await tx.stockMovement.create({
+          data: {
+            tenantId,
+            type: 'inbound',
+            reference: `OS/${existing.sku}/${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`,
+            status: 'Received',
+            lines: line as unknown as Prisma.InputJsonValue,
+            itemCount: 1,
+            grandTotal,
+            notes,
+            locationCode,
+            date,
+            // Stock history only — never a supplier bill (Purchases list excludes OS/).
+            paymentStatus: null,
+            ...createdBy,
+          },
+        });
       }
 
       // No new row means no quantity instruction — leave on-hand alone so a
@@ -1084,9 +1115,7 @@ export class ItemsService {
 
     const primaryLocation =
       locationRows[0]?.locationCode ??
-      (dto.locationCode?.trim()
-        ? validate(dto.locationCode)
-        : defaultHomeCode);
+      (dto.locationCode?.trim() ? validate(dto.locationCode) : defaultHomeCode);
     const primaryBin =
       locationRows[0]?.binLocation || (dto.binLocation ?? null) || null;
     const quantity =
@@ -1136,7 +1165,8 @@ export class ItemsService {
         carModel: dto.carModel?.trim() || null,
         enableImei: dto.enableImei ?? false,
         preparationMinutes:
-          dto.preparationMinutes != null && Number.isFinite(dto.preparationMinutes)
+          dto.preparationMinutes != null &&
+          Number.isFinite(dto.preparationMinutes)
             ? Math.trunc(dto.preparationMinutes)
             : null,
         quantity,
@@ -1191,6 +1221,7 @@ export class ItemsService {
           note?: string;
         }>;
         deletedRowIds?: string[];
+        finalQuantity?: number;
       };
     },
   ): Promise<Item> {
@@ -1450,7 +1481,9 @@ export class ItemsService {
       select: { id: true, code: true },
     });
     if (!source) {
-      throw new NotFoundException(`Source tenant ${sourceTenantCode} not found`);
+      throw new NotFoundException(
+        `Source tenant ${sourceTenantCode} not found`,
+      );
     }
     const item = await this.prisma.item.findFirst({
       where: {
@@ -1628,8 +1661,7 @@ export class ItemsService {
         status: item.status,
         availableForRetail: item.availableForRetail,
         costPrice: toNumber(item.costPrice),
-        sellPrice:
-          item.sellPrice != null ? toNumber(item.sellPrice) : 0,
+        sellPrice: item.sellPrice != null ? toNumber(item.sellPrice) : 0,
         currency: item.currency || 'NGN',
         locations: item.locationStock.map((loc) => ({
           locationCode: loc.locationCode,
@@ -1740,8 +1772,7 @@ export class ItemsService {
       const reserved =
         reservedByTenant.get(item.tenantId)?.get(skuKey(item.sku)) ?? 0;
       const { available } = breakdownFromOnHand(onHand, reserved);
-      const skuMap =
-        bySkuCode.get(skuKey(item.sku)) ?? new Map<string, Cell>();
+      const skuMap = bySkuCode.get(skuKey(item.sku)) ?? new Map<string, Cell>();
       skuMap.set(tenant.code, {
         itemId: item.id,
         quantity: onHand,
@@ -1792,7 +1823,10 @@ export class ItemsService {
       const sku = pickCsvField(row, 'sku', 'product sku');
       const name = pickCsvField(row, 'name', 'product name');
       if (!sku || !name) {
-        result.errors.push({ row: index + 2, message: 'SKU and name are required' });
+        result.errors.push({
+          row: index + 2,
+          message: 'SKU and name are required',
+        });
         continue;
       }
       const costRaw = pickCsvField(row, 'cost', 'cost price', 'purchase price');
@@ -1836,8 +1870,11 @@ export class ItemsService {
     const config = tenant?.config;
     const locations = businessLocationsFromConfig(config);
     const defaultMargin = Number(
-      (config as { businessSettings?: { business?: { defaultProfitPercent?: string } } })
-        ?.businessSettings?.business?.defaultProfitPercent ?? 0,
+      (
+        config as {
+          businessSettings?: { business?: { defaultProfitPercent?: string } };
+        }
+      )?.businessSettings?.business?.defaultProfitPercent ?? 0,
     );
 
     for (let index = 0; index < rows.length; index += 1) {
@@ -1851,13 +1888,16 @@ export class ItemsService {
           unit: parsed.unit,
           variationName: parsed.variationName,
           variationValues:
-            parsed.productType === 'variable' ? parsed.variationValues : undefined,
+            parsed.productType === 'variable'
+              ? parsed.variationValues
+              : undefined,
         });
 
         let locationCode: string | null =
           resolveBusinessLocationCode(config, parsed.openingStockLocation) ??
           resolveBusinessLocationCode(config, parsed.productLocations[0]) ??
-          (locations[0]?.code ?? null);
+          locations[0]?.code ??
+          null;
 
         for (const variant of parsed.variants) {
           // Catalog import always starts at 0 stock; opening stock is a separate import.
@@ -1967,9 +2007,7 @@ export class ItemsService {
               quantity: nextQuantity,
               costPrice: parsed.unitCost,
               status,
-              ...(locationCode && !item.locationCode
-                ? { locationCode }
-                : {}),
+              ...(locationCode && !item.locationCode ? { locationCode } : {}),
             },
           });
 

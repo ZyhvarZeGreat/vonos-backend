@@ -9,7 +9,11 @@ import {
   isProductStockTenant,
   productHomeLocationsForTenant,
 } from "@vonos/types";
-import { Hq6Modal, Hq6Field, Hq6ModalSaveClose } from "@/components/hq6/Hq6Modal";
+import {
+  Hq6Modal,
+  Hq6Field,
+  Hq6ModalSaveClose,
+} from "@/components/hq6/Hq6Modal";
 import { Hq6ConfirmModal } from "@/components/hq6/Hq6ConfirmModal";
 import { ProductThumbnail } from "@/components/atoms/ProductThumbnail";
 import { GroupPeerStockTable } from "@/components/molecules/GroupPeerStockReadout";
@@ -98,8 +102,7 @@ function parseBin(bin: string | null | undefined): {
   if (!bin?.trim()) return { rack: "", row: "", position: "" };
   const rack = bin.match(/Rack\s+([^·]+)/i)?.[1]?.trim() ?? "";
   const row = bin.match(/Row\s+([^·]+)/i)?.[1]?.trim() ?? "";
-  const position =
-    bin.match(/Pos(?:ition)?\s+([^·]+)/i)?.[1]?.trim() ?? "";
+  const position = bin.match(/Pos(?:ition)?\s+([^·]+)/i)?.[1]?.trim() ?? "";
   if (rack || row || position) return { rack, row, position };
   return { rack: bin, row: "", position: "" };
 }
@@ -146,7 +149,9 @@ export function Hq6ViewProductModal({
     // HQ6 lists business locations here (rack/row/pos may be empty).
     if (locations && locations.length > 0) {
       return locations.map((loc) => {
-        const stock = item.locationStock?.find((s) => s.locationCode === loc.code);
+        const stock = item.locationStock?.find(
+          (s) => s.locationCode === loc.code,
+        );
         const bin =
           stock?.binLocation ??
           (item.locationCode === loc.code ? item.binLocation : null);
@@ -169,7 +174,9 @@ export function Hq6ViewProductModal({
             ]
           : [];
     return stocks.map((row) => ({
-      location: locations?.find((l) => l.code === row.locationCode)?.name ?? row.locationCode,
+      location:
+        locations?.find((l) => l.code === row.locationCode)?.name ??
+        row.locationCode,
       ...parseBin(row.binLocation),
     }));
   }, [item, locations]);
@@ -220,7 +227,9 @@ export function Hq6ViewProductModal({
   const purchase = item.costPrice;
   const selling = item.sellPrice ?? 0;
   const margin =
-    purchase > 0 ? (((selling - purchase) / purchase) * 100).toFixed(2) : "0.00";
+    purchase > 0
+      ? (((selling - purchase) / purchase) * 100).toFixed(2)
+      : "0.00";
   const availableLocations =
     item.locationStock?.length > 0
       ? item.locationStock
@@ -523,6 +532,7 @@ export function Hq6OpeningStockModal({
     locationCode: string,
     unitCost: number,
     deletedRowIds?: string[],
+    finalQuantity?: number,
   ) => Promise<void>;
 }) {
   const { config, tenantId } = useRouteTenant();
@@ -539,6 +549,8 @@ export function Hq6OpeningStockModal({
   const [confirmDelete, setConfirmDelete] = useState<OpeningStockEntry | null>(
     null,
   );
+  /** Row whose quantity/cost the user last touched — it drives final stock. */
+  const [qtyFocusKey, setQtyFocusKey] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open || !item) return;
@@ -551,7 +563,7 @@ export function Hq6OpeningStockModal({
     setLoadingRecords(true);
     setPendingDeletes([]);
     setConfirmDelete(null);
-
+    setQtyFocusKey(null);
     void (async () => {
       try {
         const records = await getItemOpeningStock(item.id);
@@ -569,8 +581,9 @@ export function Hq6OpeningStockModal({
           }));
           // History is read-only; always offer one blank row to add more stock.
           setRows([...history, blankOpeningStockEntry(cost)]);
-          const firstLoc = records.find((r) => r.locationCode?.trim())
-            ?.locationCode;
+          const firstLoc = records.find((r) =>
+            r.locationCode?.trim(),
+          )?.locationCode;
           if (firstLoc) {
             const matched = stockLocations.find(
               (l) => l.code.toLowerCase() === firstLoc.trim().toLowerCase(),
@@ -606,23 +619,28 @@ export function Hq6OpeningStockModal({
   const patchRow = (key: string, patch: Partial<OpeningStockEntry>) => {
     setRows((prev) =>
       prev.map((row) => {
-        if (row.key !== key || row.recordId) return row;
+        // Saved rows are editable too — a wrong count is corrected in place.
+        if (row.key !== key) return row;
         return { ...row, ...patch };
       }),
     );
+    if (patch.qty !== undefined || patch.unitCost !== undefined) {
+      setQtyFocusKey(key);
+    }
   };
 
   const addRow = (afterKey: string) => {
+    const source =
+      rows.find((row) => row.key === afterKey) ?? rows[rows.length - 1];
+    const next = blankOpeningStockEntry(source?.unitCost ?? "0");
     setRows((prev) => {
-      const source =
-        prev.find((row) => row.key === afterKey) ?? prev[prev.length - 1];
-      const next = blankOpeningStockEntry(source?.unitCost ?? "0");
       const index = prev.findIndex((row) => row.key === afterKey);
       if (index < 0) return [...prev, next];
       const copy = [...prev];
       copy.splice(index + 1, 0, next);
       return copy;
     });
+    setQtyFocusKey(next.key);
   };
 
   const removeRow = (key: string) => {
@@ -656,23 +674,29 @@ export function Hq6OpeningStockModal({
       }
       return next;
     });
+    setQtyFocusKey(null);
   };
 
   const rowSubtotal = (row: OpeningStockEntry) =>
     (Number(row.qty) || 0) * (Number(row.unitCost) || 0);
-  // On-hand is SET by the newest new row — saved history rows are records only
-  // and are never summed in (matching the API's set semantics).
-  const newRows = rows.filter(
-    (row) => !row.recordId && row.qty.trim() !== "",
-  );
-  const latestNewRow = newRows[newRows.length - 1];
-  const finalQty = latestNewRow
-    ? Number(latestNewRow.qty) || 0
+  // On-hand is SET from the row the user last put a quantity on; with no such
+  // edit it falls back to the bottom-most row carrying one. Rows are never
+  // summed in (matching the API's set semantics).
+  const rowsWithQty = rows.filter((row) => row.qty.trim() !== "");
+  const focusRow = qtyFocusKey
+    ? (rows.find((row) => row.key === qtyFocusKey && row.qty.trim() !== "") ??
+      null)
+    : null;
+  const chosenRow = focusRow ?? rowsWithQty[rowsWithQty.length - 1];
+  const finalQty = chosenRow
+    ? Number(chosenRow.qty) || 0
     : Number(item?.quantity ?? 0);
   const finalUnitCostRaw =
-    latestNewRow?.unitCost?.trim() || String(item?.costPrice ?? 0);
+    chosenRow?.unitCost?.trim() || String(item?.costPrice ?? 0);
   const finalUnitCost = Number(finalUnitCostRaw) || 0;
   const finalAmount = finalQty * finalUnitCost;
+  /** Only send a quantity instruction when the user actually changed one. */
+  const sendFinalQty = Boolean(qtyFocusKey) || pendingDeletes.length > 0;
   const locationLabel =
     stockLocations.find((l) => l.code === location)?.name ?? location;
   const editableRows = rows.filter((row) => !row.recordId);
@@ -728,7 +752,13 @@ export function Hq6OpeningStockModal({
                 }));
               setSaving(true);
               try {
-                await onSave?.(payload, loc, cost, pendingDeletes);
+                await onSave?.(
+                  payload,
+                  loc,
+                  cost,
+                  pendingDeletes,
+                  sendFinalQty ? finalQty : undefined,
+                );
                 toast.success("Opening stock updated");
                 onClose();
               } catch (err) {
@@ -756,9 +786,9 @@ export function Hq6OpeningStockModal({
             </span>
             {hasHistory ? (
               <span className="mt-1 block text-xs">
-                The newest row sets the stock — saved rows below are records
-                only and are never added up. Delete a row that was entered by
-                mistake.
+                Rows below are editable — fix a wrong count in place, or delete
+                a row. The quantity you enter becomes the stock; rows are never
+                added together.
               </span>
             ) : null}
           </div>
@@ -783,9 +813,7 @@ export function Hq6OpeningStockModal({
             <table className="hq6-os-table">
               <thead>
                 <tr className="bg-[#28a745] text-white">
-                  <th className="text-left font-semibold">
-                    Product Name
-                  </th>
+                  <th className="text-left font-semibold">Product Name</th>
                   <th className="text-center font-semibold">
                     Quantity Remaining
                   </th>
@@ -797,9 +825,7 @@ export function Hq6OpeningStockModal({
                   </th>
                   <th className="text-center font-semibold">Date</th>
                   <th className="text-center font-semibold">Note</th>
-                  <th className="text-left font-semibold">
-                    First added
-                  </th>
+                  <th className="text-left font-semibold">First added</th>
                   <th className="hq6-os-actions-col" aria-label="Row actions" />
                 </tr>
               </thead>
@@ -824,83 +850,59 @@ export function Hq6OpeningStockModal({
                         ) : null}
                       </td>
                       <td>
-                        {locked ? (
-                          <span className="block text-center tabular-nums">
-                            {row.qty}
-                          </span>
-                        ) : (
+                        <input
+                          type="number"
+                          min={0}
+                          step="0.01"
+                          className="hq6-modal-input hq6-os-qty-input"
+                          value={row.qty}
+                          onChange={(e) =>
+                            patchRow(row.key, { qty: e.target.value })
+                          }
+                          aria-label={`Opening stock quantity ${index + 1}`}
+                        />
+                      </td>
+                      <td>
+                        <div className="flex items-center justify-center gap-1">
                           <input
                             type="number"
                             min={0}
                             step="0.01"
-                            className="hq6-modal-input hq6-os-qty-input"
-                            value={row.qty}
+                            className="hq6-modal-input w-28 text-right"
+                            value={row.unitCost}
                             onChange={(e) =>
-                              patchRow(row.key, { qty: e.target.value })
+                              patchRow(row.key, {
+                                unitCost: e.target.value,
+                              })
                             }
-                            aria-label={`Opening stock quantity ${index + 1}`}
+                            aria-label={`Unit cost ${index + 1}`}
                           />
-                        )}
-                      </td>
-                      <td>
-                        {locked ? (
-                          <span className="block text-center tabular-nums">
-                            {Number(row.unitCost || 0).toFixed(2)}
-                          </span>
-                        ) : (
-                          <div className="flex items-center justify-center gap-1">
-                            <input
-                              type="number"
-                              min={0}
-                              step="0.01"
-                              className="hq6-modal-input w-28 text-right"
-                              value={row.unitCost}
-                              onChange={(e) =>
-                                patchRow(row.key, {
-                                  unitCost: e.target.value,
-                                })
-                              }
-                              aria-label={`Unit cost ${index + 1}`}
-                            />
-                          </div>
-                        )}
+                        </div>
                       </td>
                       <td className="text-center tabular-nums">
                         {rowSubtotal(row).toFixed(2)}
                       </td>
                       <td>
-                        {locked ? (
-                          <span className="block text-center tabular-nums text-sm">
-                            {row.date}
-                          </span>
-                        ) : (
-                          <input
-                            type="date"
-                            className="hq6-modal-input mx-auto block w-36"
-                            value={row.date}
-                            onChange={(e) =>
-                              patchRow(row.key, { date: e.target.value })
-                            }
-                            aria-label={`Date ${index + 1}`}
-                          />
-                        )}
+                        <input
+                          type="date"
+                          className="hq6-modal-input mx-auto block w-36"
+                          value={row.date}
+                          onChange={(e) =>
+                            patchRow(row.key, { date: e.target.value })
+                          }
+                          aria-label={`Date ${index + 1}`}
+                        />
                       </td>
                       <td>
-                        {locked ? (
-                          <span className="block text-sm text-[#374151]">
-                            {row.note.trim() || "—"}
-                          </span>
-                        ) : (
-                          <textarea
-                            className="hq6-modal-input w-full"
-                            rows={1}
-                            value={row.note}
-                            onChange={(e) =>
-                              patchRow(row.key, { note: e.target.value })
-                            }
-                            aria-label={`Note ${index + 1}`}
-                          />
-                        )}
+                        <textarea
+                          className="hq6-modal-input w-full"
+                          rows={1}
+                          value={row.note}
+                          onChange={(e) =>
+                            patchRow(row.key, { note: e.target.value })
+                          }
+                          aria-label={`Note ${index + 1}`}
+                        />
                       </td>
                       <td className="text-left text-xs text-[#4b5563]">
                         {locked ? (
@@ -962,9 +964,9 @@ export function Hq6OpeningStockModal({
               Final stock:{" "}
               <span className="font-semibold text-[#111827]">{finalQty}</span>
               <span className="ml-1 text-xs">
-                {latestNewRow
-                  ? "— set by the newest row"
-                  : "— unchanged (no new row yet)"}
+                {sendFinalQty
+                  ? "— set by the quantity you entered"
+                  : "— unchanged until you enter a quantity"}
               </span>
             </span>
             <span className="font-semibold text-[#111827]">
@@ -1029,7 +1031,9 @@ export function Hq6AdjustStockModal({
     setQuantity("");
     setReason("");
     setDate(localTodayDate());
-    setLocation(openingStockLocationForItem(item, stockLocations, config?.code));
+    setLocation(
+      openingStockLocationForItem(item, stockLocations, config?.code),
+    );
   }, [open, item, stockLocations, config?.code]);
 
   const currentQty = Number(item?.quantity ?? 0);
@@ -1120,7 +1124,9 @@ export function Hq6AdjustStockModal({
                 setDirection(e.target.value as StockAdjustmentDirection)
               }
             >
-              <option value="decrease">Decrease (stock out / correction)</option>
+              <option value="decrease">
+                Decrease (stock out / correction)
+              </option>
               <option value="increase">Increase (stock in / correction)</option>
             </select>
           </Hq6Field>
@@ -1233,7 +1239,9 @@ export function Hq6AddLocationModal({
             onChange={(e) => setMode(e.target.value as "add" | "remove")}
           >
             <option value="add">Add location to selected products</option>
-            <option value="remove">Remove location from selected products</option>
+            <option value="remove">
+              Remove location from selected products
+            </option>
           </select>
         </Hq6Field>
         <Hq6Field label="Business Location" required>
