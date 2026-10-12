@@ -2,7 +2,7 @@
 
 import { ChevronLeft, ChevronRight, Search } from "lucide-react";
 import { useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { carModelMatches } from "@vonos/types";
 
@@ -18,6 +18,7 @@ import { matchSearchRows } from "@/lib/utils/listClientSearch";
 const PAGE_SIZE = 12;
 const API_FALLBACK_LIMIT = 100;
 const API_FALLBACK_DEBOUNCE_MS = 250;
+const API_FALLBACK_WARM_DEBOUNCE_MS = 1200;
 const SEARCH_KEYS = [
   "name",
   "sku",
@@ -170,9 +171,32 @@ export default function CatalogBrowser({
     return sortRows(rows, sort);
   }, [products, category, model, min, max, inStockOnly, query, sort]);
 
-  // Local miss on an active search → wait for warm, then one API page.
+  // Local miss on an active search or model filter → one debounced API page.
+  // Keyed on the request identity so the in-memory warm-up (which changes
+  // `localFiltered`/`warming` on every tick) can't restart the debounce and
+  // leave the grid stuck on “Searching…”.
+  const requestKey = [
+    query,
+    category,
+    model,
+    sort,
+    min,
+    max,
+    inStockOnly ? "1" : "0",
+  ].join("\u0000");
+  const fetchKeyRef = useRef("");
+  const timerRef = useRef<number | null>(null);
+
   useEffect(() => {
-    if (!query) {
+    if (fetchKeyRef.current === requestKey) return;
+    fetchKeyRef.current = requestKey;
+
+    if (timerRef.current != null) {
+      window.clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+
+    if (!query && model === "All") {
       setApiItems(null);
       setApiLoading(false);
       setApiError("");
@@ -186,16 +210,10 @@ export default function CatalogBrowser({
       return;
     }
 
-    // Still filling the in-memory catalogue — keep skeleton, don't spam the API.
-    if (loading || warming) {
-      setApiItems(null);
-      setApiLoading(true);
-      setApiError("");
-      return;
-    }
+    const debounceMs =
+      loading || warming ? API_FALLBACK_WARM_DEBOUNCE_MS : API_FALLBACK_DEBOUNCE_MS;
 
-    let cancelled = false;
-    const handle = window.setTimeout(() => {
+    timerRef.current = window.setTimeout(() => {
       void (async () => {
         setApiLoading(true);
         setApiError("");
@@ -209,12 +227,12 @@ export default function CatalogBrowser({
             maxPrice: max,
             limit: API_FALLBACK_LIMIT,
           });
-          if (cancelled) return;
+          if (fetchKeyRef.current !== requestKey) return;
           let rows = page.items;
           if (inStockOnly) rows = rows.filter((item) => item.inStock !== false);
           setApiItems(sortRows(rows, sort));
         } catch (err) {
-          if (cancelled) return;
+          if (fetchKeyRef.current !== requestKey) return;
           setApiItems([]);
           setApiError(
             err instanceof Error
@@ -222,27 +240,30 @@ export default function CatalogBrowser({
               : "We couldn’t search the parts catalogue — please try again.",
           );
         } finally {
-          if (!cancelled) setApiLoading(false);
+          if (fetchKeyRef.current === requestKey) setApiLoading(false);
         }
       })();
-    }, API_FALLBACK_DEBOUNCE_MS);
-
-    return () => {
-      cancelled = true;
-      window.clearTimeout(handle);
-    };
+    }, debounceMs);
   }, [
+    requestKey,
     query,
-    localFiltered.length,
-    loading,
-    warming,
     category,
     model,
     sort,
     min,
     max,
     inStockOnly,
+    localFiltered.length,
+    loading,
+    warming,
   ]);
+
+  useEffect(
+    () => () => {
+      if (timerRef.current != null) window.clearTimeout(timerRef.current);
+    },
+    [],
+  );
 
   const filtered = apiItems ?? localFiltered;
   const usingApiFallback = apiItems != null;
@@ -262,12 +283,14 @@ export default function CatalogBrowser({
     Boolean(minPrice) ||
     Boolean(maxPrice);
 
-  // Searching with no local hits yet → skeleton (no “loading more…” copy).
-  const showSkeleton =
-    (loading && products.length === 0) ||
-    (Boolean(query) &&
-      localFiltered.length === 0 &&
-      (warming || loading || apiLoading));
+  // Searching or filtering with nothing to show yet → skeleton
+  // (server rows count too — otherwise `filtered` fills in but the meta stays
+  // on “Searching…” for as long as the warm-up runs).
+  const awaitingServer =
+    (Boolean(query) || model !== "All") &&
+    filtered.length === 0 &&
+    (warming || loading || apiLoading);
+  const showSkeleton = (loading && products.length === 0) || awaitingServer;
 
   const displayError = apiError || error;
 
@@ -460,11 +483,11 @@ export default function CatalogBrowser({
           <div>
             <p className="vg-catalog__meta">
               {showSkeleton
-                ? query
+                ? query || model !== "All"
                   ? "Searching…"
                   : "Loading parts…"
                 : `${filtered.length} part${filtered.length === 1 ? "" : "s"} · page ${safePage + 1} of ${totalPages}${
-                    !query && warming ? " · loading more…" : ""
+                    !query && model === "All" && warming ? " · loading more…" : ""
                   }${usingApiFallback ? " · full catalogue" : ""}`}
             </p>
 
