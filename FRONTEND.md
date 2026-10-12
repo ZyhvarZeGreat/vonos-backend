@@ -269,11 +269,13 @@ export const statusVocabularies = {
   },
   jobStatus: {
     Received: "neutral",
-    Quoted: "neutral",
+    "Diagnosis and billing": "neutral",
     Approved: "info",
-    "In Progress": "info",
-    QC: "warning",
-    Delivered: "success",
+    "Initial deposit": "warning",
+    "In progress": "info",
+    "Quality check": "warning",
+    "Final payment": "warning",
+    "Vehicle collected": "success",
   },
   orderStatus: {
     New: "neutral",

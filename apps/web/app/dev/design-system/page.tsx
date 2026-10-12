@@ -102,7 +102,7 @@ export default function DesignSystemPage() {
           <StatusStepper
             config={{
               stages: buildAdaptiveJobStages(true),
-              currentStage: "In Progress",
+              currentStage: "In progress",
             }}
           />
         </div>

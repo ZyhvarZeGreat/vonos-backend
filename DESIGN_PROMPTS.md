@@ -297,7 +297,8 @@ history table of past closeouts by date.
 ### VMS — Overview
 Dashboard skeleton where the left hero panel is a **job status distribution**
 chart — a horizontal stacked bar or donut chart showing the proportion of
-jobs in each stage (Received, Quoted, Approved, In Progress, QC, Delivered),
+jobs in each stage (Received, Diagnosis and billing, Approved, Initial
+deposit, In progress, Quality check, Final payment, Vehicle collected),
 each segment colored per the jobStatus vocabulary. Right panel: "Jobs Due
 Soon" — a table of job reference, customer, due date (with overdue dates
 shown in red text), and status pill. KPI row: Active Jobs, Completed Today,
@@ -319,7 +320,7 @@ due date and a large context-aware primary action button on the right
 
 Below the header, the **adaptive Status Stepper** — a horizontal row of
 circles connected by lines, each circle representing a stage the *applicable
-stages for this specific job* (5 circles if no quote, 6 if quoted). Completed
+stages for this specific job* (7 circles if no quote, 8 if quoted). Completed
 stages show a filled circle with a checkmark, the current stage is a larger
 highlighted circle in the accent color, future stages are empty outlined
 circles. Stage labels sit below each circle.
@@ -337,7 +338,7 @@ Below the stepper, a two-column section layout:
   showing "Quoted: ₦X" vs "Actual: ₦Y" with the variance highlighted
   green (under budget) or red (over budget).
 
-If the job has reached the QC stage, an additional full-width "Quality
+If the job has reached the Quality check stage, an additional full-width "Quality
 Control" panel appears below the two columns — a checklist UI (checkbox
 items with labels like "Welds inspected," "Finish quality checked") plus a
 notes textarea and a QC staff sign-off field (name + timestamp once

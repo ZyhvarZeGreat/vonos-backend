@@ -51,7 +51,7 @@ export async function loadJobReportContext(
   const jobs = await db.job.findMany({
     where: {
       deletedAt: null,
-      status: 'Delivered',
+      status: 'Vehicle collected',
       updatedAt: { gte: window.from, lte: window.to },
       // Job-linked sales own the commercial revenue — avoid double-count in P&L.
       sales: { none: { deletedAt: null } },
@@ -149,7 +149,7 @@ export async function computeJobRevenueTotal(
       INNER JOIN "Job" j2 ON j2.id = jm."jobId"
       WHERE j2."tenantId" = ${tenantId}
         AND j2."deletedAt" IS NULL
-        AND j2.status = 'Delivered'
+        AND j2.status = 'Vehicle collected'
         AND j2."updatedAt" >= ${window.from}
         AND j2."updatedAt" <= ${window.to}
       GROUP BY jm."jobId"
@@ -160,14 +160,14 @@ export async function computeJobRevenueTotal(
       INNER JOIN "Job" j3 ON j3.id = jl."jobId"
       WHERE j3."tenantId" = ${tenantId}
         AND j3."deletedAt" IS NULL
-        AND j3.status = 'Delivered'
+        AND j3.status = 'Vehicle collected'
         AND j3."updatedAt" >= ${window.from}
         AND j3."updatedAt" <= ${window.to}
       GROUP BY jl."jobId"
     ) l ON l."jobId" = j.id
     WHERE j."tenantId" = ${tenantId}
       AND j."deletedAt" IS NULL
-      AND j.status = 'Delivered'
+      AND j.status = 'Vehicle collected'
       AND j."updatedAt" >= ${window.from}
       AND j."updatedAt" <= ${window.to}
       AND NOT EXISTS (

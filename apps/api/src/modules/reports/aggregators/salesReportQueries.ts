@@ -328,7 +328,7 @@ export async function sumSalesWindow(
       where: {
         tenantId,
         deletedAt: null,
-        status: 'Delivered',
+        status: 'Vehicle collected',
         updatedAt: { gte: window.from, lte: window.to },
         sales: { none: { deletedAt: null } },
       },

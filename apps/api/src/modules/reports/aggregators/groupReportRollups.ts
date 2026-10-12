@@ -330,7 +330,7 @@ export async function buildEntityRollupForReport(
                   where: {
                     tenantId: tenant.id,
                     deletedAt: null,
-                    status: 'Delivered',
+                    status: 'Vehicle collected',
                     updatedAt: { gte: window.from, lte: window.to },
                   },
                   _sum: { invoiceAmount: true, quoteAmount: true },

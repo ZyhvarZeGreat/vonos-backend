@@ -30,6 +30,7 @@ import {
   applySaleJobStatusNotes,
   readSaleJobStatus,
 } from '../../common/utils/saleJobStatusNotes';
+import { assertCanReach, toQcChecklist } from '../../common/utils/jobStages';
 import {
   HQ6_LIST_WARM_LIMITS,
   hq6WarmSorts,
@@ -1944,12 +1945,57 @@ export class SalesService {
       include: {
         lines: true,
         payments: { where: { deletedAt: null }, orderBy: { paidOn: 'asc' } },
-        job: { select: { id: true, hasQuote: true, status: true } },
+        job: {
+          select: {
+            id: true,
+            hasQuote: true,
+            status: true,
+            invoiceAmount: true,
+            quoteAmount: true,
+            qcChecklist: true,
+          },
+        },
       },
     });
     if (!existing) throw new NotFoundException('Sale not found');
 
     const previousStatus = readSaleJobStatus(existing.notes);
+
+    // Sale-driven stage changes must honour the same gates as job-driven ones
+    // (deposit before work starts, balance before handover, QC before invoicing).
+    if (body.status.trim() && body.status.trim() !== previousStatus) {
+      const paidAmount = existing.payments.reduce(
+        (sum, payment) =>
+          payment.isReturn ? sum : sum + toNumber(payment.amount),
+        0,
+      );
+      const saleTotal = toNumber(existing.total);
+      const fallback =
+        existing.job?.invoiceAmount != null
+          ? toNumber(existing.job.invoiceAmount)
+          : existing.job?.quoteAmount != null
+            ? toNumber(existing.job.quoteAmount)
+            : null;
+      try {
+        assertCanReach({
+          currentStatus: previousStatus,
+          requestedStatus: body.status,
+          hasQuote: existing.job?.hasQuote ?? false,
+          quoteAmount:
+            existing.job?.quoteAmount != null
+              ? toNumber(existing.job.quoteAmount)
+              : null,
+          qcChecklist: toQcChecklist(existing.job?.qcChecklist),
+          expectedAmount: saleTotal > 0 ? saleTotal : fallback,
+          paidAmount,
+        });
+      } catch (err) {
+        throw new BadRequestException(
+          err instanceof Error ? err.message : 'Invalid job status',
+        );
+      }
+    }
+
     let applied;
     try {
       applied = applySaleJobStatusNotes({

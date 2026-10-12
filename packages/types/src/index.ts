@@ -9,6 +9,7 @@ export * from "./ledger";
 export * from "./stockMovement";
 export * from "./supplier";
 export * from "./job";
+export * from "./jobStages";
 export * from "./vehicle";
 export * from "./appointment";
 export * from "./sale";

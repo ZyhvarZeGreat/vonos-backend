@@ -1,7 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import type { Sale, SaleDetail } from "@vonos/types";
+import {
+  JOB_STAGES,
+  QUOTED_STAGE,
+  normalizeJobStage,
+  type Sale,
+  type SaleDetail,
+} from "@vonos/types";
 import {
   Hq6Field,
   Hq6Modal,
@@ -14,20 +20,13 @@ import {
 import { useTenantId } from "@/lib/hooks/useRouteTenant";
 import { toast } from "@/stores/toastStore";
 
-const ALL_STAGES = [
-  "Received",
-  "Quoted",
-  "Approved",
-  "In Progress",
-  "QC",
-  "Delivered",
-] as const;
-
+/** Read the workshop stage from Sale.notes, mapping pre-rename labels. */
 function readSaleJobStatus(notes: string | null | undefined): string {
   if (!notes?.trim()) return "Received";
   const match = notes.match(/^Job status:\s*(.+)$/im);
   const raw = match?.[1]?.trim();
-  return raw || "Received";
+  if (!raw) return "Received";
+  return normalizeJobStage(raw) ?? "Received";
 }
 
 type Props = {
@@ -61,13 +60,13 @@ export function Hq6UpdateJobStatusModal({
     : "Received";
 
   const statusOptions = useMemo(() => {
-    // Quoted only when a linked job has a quote; otherwise skip that stage.
     if (detail?.jobId) {
-      // Keep Quoted available when a job is linked (job may or may not have quote;
-      // server validates against hasQuote).
-      return [...ALL_STAGES];
+      // With a linked job the server validates against `hasQuote`, so every
+      // stage stays selectable here.
+      return [...JOB_STAGES];
     }
-    return ALL_STAGES.filter((s) => s !== "Quoted");
+    // No job means no quote — that stage can never apply.
+    return JOB_STAGES.filter((stage) => stage !== QUOTED_STAGE);
   }, [detail?.jobId]);
 
   useEffect(() => {

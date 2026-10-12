@@ -20,7 +20,7 @@ import { chronoListCursor } from "@/lib/utils/pagination";
 import { useIsVaHq6 } from "@/lib/hooks/useIsVaHq6";
 import { prefetchJobDetail } from "@/lib/query/prefetchListDetails";
 import { formatCurrency } from "@/lib/utils/formatCurrency";
-import type { Job } from "@vonos/types";
+import { JOB_STAGES, type Job } from "@vonos/types";
 import { useTenantId } from "@/lib/hooks/useRouteTenant";
 
 const JOB_TABS = [
@@ -30,20 +30,20 @@ const JOB_TABS = [
   { id: "completed", label: "Completed" },
 ];
 
-const ACTIVE_STATUSES = ["Received", "Quoted", "Approved", "In Progress"];
+/** Everything before QC is still “in flight”. */
+const ACTIVE_STATUSES = JOB_STAGES.slice(
+  0,
+  JOB_STAGES.indexOf("Quality check"),
+);
 
-const JOB_STATUS_OPTIONS = [
-  "Received",
-  "Quoted",
-  "Approved",
-  "In Progress",
-  "QC",
-  "Delivered",
-].map((value) => ({ value, label: value }));
+const JOB_STATUS_OPTIONS = JOB_STAGES.map((value) => ({
+  value,
+  label: value,
+}));
 
 function tabStatusFilter(tab: string): string | undefined {
-  if (tab === "qc") return "QC";
-  if (tab === "completed") return "Delivered";
+  if (tab === "qc") return "Quality check";
+  if (tab === "completed") return "Vehicle collected";
   return undefined;
 }
 

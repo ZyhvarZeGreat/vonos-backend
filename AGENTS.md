@@ -170,14 +170,15 @@ templates.
 These are **separate components** with separate purposes:
 
 ### Status Pill (atom)
-- `<StatusPill status="In Progress" vocabulary="jobStatus" />` — looks up a
+- `<StatusPill status="In progress" vocabulary="jobStatus" />` — looks up a
   color (success/warning/error/info/neutral) from a vocabulary config. Used
   in lists, kanban cards, anywhere a status needs a colored label without a
   progress visualization.
 - Vocabularies identified:
   - `stockStatus`: In Stock / Low Stock / Out of Stock
   - `movementStatus`: Pending / Received / Shipped / Delivered / Approved
-  - `jobStatus`: Received / Quoted / Approved / In Progress / QC / Delivered
+  - `jobStatus`: Received / Diagnosis and billing / Approved / Initial
+    deposit / In progress / Quality check / Final payment / Vehicle collected
   - `orderStatus`: New / Preparing / Ready / Served
   - `appointmentStatus`: Booked / Confirmed / In Progress / Completed /
     No-show / Cancelled
@@ -187,17 +188,25 @@ These are **separate components** with separate purposes:
 ### Status Stepper (organism, Job-centric Detail Template only)
 - **Adaptive**: renders only the stages applicable to the specific record —
   never shows a greyed-out "skipped" step.
-- Mech Shop (VMS) reference stages: `Received → Quoted (conditional) →
-  Approved → In Progress → QC → Delivered`. If a job has no quote, the
-  stepper renders 5 steps, not 6.
-- Mechanics (VM) follows the same adaptive principle with its own stage set.
-- Stepper width is flexible — 5-step and 6-step jobs render at different
+- Canonical stages (`JOB_STAGES`, defined once in `packages/types/src/jobStages.ts`
+  and shared by the API and the app):
+  `Received → Diagnosis and billing (conditional) → Approved → Initial deposit
+  → In progress → Quality check → Final payment → Vehicle collected`.
+  If a job has no quote, the stepper renders 7 steps, not 8.
+- **Transition guards** (same shared module): a quote amount is required
+  before `Approved`; the QC checklist before `Final payment`; a recorded
+  deposit before `In progress`; a settled balance before `Vehicle collected`.
+  Guards run on one-step advances *and* explicit stage jumps, on both the
+  job path and the sale-as-job (VA) path. When no amount is known to be owed,
+  the payment gates are skipped so a job can never be stranded.
+- Stepper width is flexible — 7-step and 8-step jobs render at different
   widths; consistency across a job list was explicitly deprioritized in
   favor of per-job accuracy.
 - The Detail page's primary action button is context-aware: it always
-  advances to the *next applicable* stage (e.g. "Mark Approved," "Start
-  Work," "Send to QC," "Mark Delivered") — label computed from current stage
-  + applicable stage list, not a generic "Next" button.
+  advances to the *next applicable* stage (e.g. "Mark Approved," "Request
+  deposit," "Start Work," "Send to QC," "Mark Vehicle collected") — label
+  computed from current stage + applicable stage list, not a generic
+  "Next" button.
 - Reusable wherever a multi-stage lifecycle exists (future: requisition
   status).
 - Does NOT cover: transition validation/state machine logic (backend), or

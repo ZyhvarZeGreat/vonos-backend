@@ -18,11 +18,13 @@ import { computeDelta, priorWindow, resolveDateWindow, asChartData } from '../re
 import { buildLedgerFinanceSlice } from './overviewFinance';
 const JOB_STATUS_COLORS: Record<string, string> = {
   Received: '#94a3b8',
-  Quoted: '#64748b',
+  'Diagnosis and billing': '#64748b',
   Approved: '#3b82f6',
-  'In Progress': '#475569',
-  QC: '#f59e0b',
-  Delivered: '#22c55e',
+  'Initial deposit': '#0ea5e9',
+  'In progress': '#475569',
+  'Quality check': '#f59e0b',
+  'Final payment': '#a855f7',
+  'Vehicle collected': '#22c55e',
   Cancelled: '#ef4444',
 };
 
@@ -72,16 +74,16 @@ async function jobOverviewPhase1(
     counts AS (
       SELECT
         COUNT(*) FILTER (
-          WHERE status NOT IN ('Delivered', 'Cancelled')
+          WHERE status NOT IN ('Vehicle collected', 'Cancelled')
         )::bigint AS active_jobs,
-        COUNT(*) FILTER (WHERE status = 'QC')::bigint AS pending_qc,
+        COUNT(*) FILTER (WHERE status = 'Quality check')::bigint AS pending_qc,
         COUNT(*) FILTER (
-          WHERE status = 'Delivered'
+          WHERE status = 'Vehicle collected'
             AND "createdAt" >= ${window.from}
             AND "createdAt" <= ${window.to}
         )::bigint AS completed_jobs,
         COUNT(*) FILTER (
-          WHERE status = 'Delivered'
+          WHERE status = 'Vehicle collected'
             AND "createdAt" >= ${prior.from}
             AND "createdAt" <= ${prior.to}
         )::bigint AS prior_completed
@@ -106,7 +108,7 @@ async function jobOverviewPhase1(
        AND r."tenantId" = ${tenantId}
        AND r."deletedAt" IS NULL
        AND r.status IN ('Pending', 'Approved')
-      WHERE j.status <> 'Delivered'
+      WHERE j.status <> 'Vehicle collected'
     ),
     sample AS (
       SELECT COALESCE(
@@ -127,11 +129,11 @@ async function jobOverviewPhase1(
         FROM base
         WHERE (
           ${inShopSample} = true
-          AND status = 'In Progress'
+          AND status = 'In progress'
           AND "vehicleId" IS NOT NULL
         ) OR (
           ${inShopSample} = false
-          AND status <> 'Delivered'
+          AND status <> 'Vehicle collected'
           AND "dueDate" IS NOT NULL
           AND "dueDate" <= ${soon}
         )

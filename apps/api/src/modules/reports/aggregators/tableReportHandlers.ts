@@ -321,7 +321,7 @@ async function buildProductSellFromJobs(
   const jobFilter: Prisma.JobWhereInput = {
     tenantId,
     deletedAt: null,
-    status: 'Delivered',
+    status: 'Vehicle collected',
     updatedAt: { gte: window.from, lte: window.to },
     sales: { none: { deletedAt: null } },
     ...(options?.customerId ? { customerId: options.customerId } : {}),

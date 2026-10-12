@@ -169,7 +169,9 @@ export function JobDetailView({ job, listPath, onJobChange }: JobDetailViewProps
   const labourTotal = job.labourEntries.reduce((sum, row) => sum + row.totalCost, 0);
 
   const stepper = { stages, currentStage };
-  const showQc = ["QC", "Delivered"].includes(job.status) || ["QC", "Delivered"].includes(currentStage);
+  const showQc =
+    ["Quality check", "Vehicle collected"].includes(job.status) ||
+    ["Quality check", "Vehicle collected"].includes(currentStage);
 
   const descriptionSection: SectionInstance = {
     type: "genericFields",

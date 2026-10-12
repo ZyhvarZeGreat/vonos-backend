@@ -7,7 +7,7 @@ import { PrismaService } from '../../common/prisma/prisma.service';
 import {
   coerceJobStatus,
   getApplicableStages,
-  isJobStage,
+  normalizeJobStage,
   type JobStage,
 } from '../../common/utils/jobStages';
 import { compactPlateToken } from '../../common/utils/listSearch';
@@ -23,20 +23,26 @@ const TRACK_TENANT_CODES = ['VA', 'VP'] as const;
 
 const STAGE_LABELS: Record<JobStage, string> = {
   Received: 'Checked in',
-  Quoted: 'Quote ready',
+  'Diagnosis and billing': 'Diagnosis & billing',
   Approved: 'Work approved',
-  'In Progress': 'Repair in progress',
-  QC: 'Quality check',
-  Delivered: 'Ready for collection',
+  'Initial deposit': 'Deposit',
+  'In progress': 'Repair in progress',
+  'Quality check': 'Quality check',
+  'Final payment': 'Final payment',
+  'Vehicle collected': 'Ready for collection',
 };
 
 const STAGE_DETAILS: Record<JobStage, string> = {
   Received: 'Your vehicle has been checked in and logged on the schedule.',
-  Quoted: 'Inspection finished. A fixed-price quote is ready for approval.',
+  'Diagnosis and billing':
+    'Inspection finished. Your diagnosis and bill are ready for approval.',
   Approved: 'Work has been authorised and is queued for the technicians.',
-  'In Progress': 'Technicians are actively working on your vehicle.',
-  QC: 'Repair complete — the team is running final quality checks.',
-  Delivered: 'Your vehicle is ready for collection. Bring your ID and paperwork.',
+  'Initial deposit': 'The initial deposit is being confirmed so work can start.',
+  'In progress': 'Technicians are actively working on your vehicle.',
+  'Quality check': 'Repair complete — the team is running final quality checks.',
+  'Final payment': 'Work is complete and the final balance is ready to settle.',
+  'Vehicle collected':
+    'Your vehicle is ready for collection. Bring your ID and paperwork.',
 };
 
 export type PublicTrackStep = {
@@ -166,7 +172,7 @@ export class PublicTrackService {
         vehicleId: { in: vehicleIds },
         tenantId: { in: tenantIds },
         deletedAt: null,
-        status: { not: 'Delivered' },
+        status: { not: 'Vehicle collected' },
       },
       orderBy: { updatedAt: 'desc' },
       take: 20,
@@ -179,7 +185,7 @@ export class PublicTrackService {
           vehicleId: { in: vehicleIds },
           tenantId: { in: tenantIds },
           deletedAt: null,
-          status: 'Delivered',
+          status: 'Vehicle collected',
         },
         orderBy: { updatedAt: 'desc' },
         take: 5,
@@ -366,7 +372,7 @@ export class PublicTrackService {
     fallbackName: string,
   ): PublicTrackResult {
     const stage = coerceJobStatus(job.status, job.hasQuote);
-    const completed = stage === 'Delivered';
+    const completed = stage === 'Vehicle collected';
     const stages = getApplicableStages(job.hasQuote);
     const currentIndex = stages.indexOf(stage);
     const enteredAt = parseStageEnteredAt(job.statusHistory);
@@ -382,7 +388,7 @@ export class PublicTrackService {
         timestamp = formatTrackDate(fromLog);
       } else if (
         status === 'current' ||
-        (completed && s === 'Delivered')
+        (completed && s === 'Vehicle collected')
       ) {
         timestamp = formatTrackDate(job.updatedAt);
       }
@@ -391,7 +397,7 @@ export class PublicTrackService {
         id: s.toLowerCase().replace(/\s+/g, '-'),
         label: STAGE_LABELS[s],
         detail:
-          completed && s === 'Delivered'
+          completed && s === 'Vehicle collected'
             ? 'Your repair is marked complete. Collect your vehicle if you have not already, or contact the team with any follow-up.'
             : STAGE_DETAILS[s],
         status,
@@ -551,7 +557,7 @@ export class PublicTrackService {
         vehicleId: { in: vehicleIds },
         tenantId: { in: tenantIds },
         deletedAt: null,
-        status: { not: 'Delivered' },
+        status: { not: 'Vehicle collected' },
       },
       orderBy: { updatedAt: 'desc' },
       take: 20,
@@ -568,7 +574,7 @@ export class PublicTrackService {
           vehicleId: { in: vehicleIds },
           tenantId: { in: tenantIds },
           deletedAt: null,
-          status: 'Delivered',
+          status: 'Vehicle collected',
         },
         orderBy: { updatedAt: 'desc' },
         take: 5,
@@ -661,9 +667,11 @@ function parseStageEnteredAt(
       }
     }
 
-    if (!entered || !isJobStage(entered)) continue;
-    if (!map.has(entered)) {
-      map.set(entered, at);
+    // Logs written before a stage rename still carry the old label.
+    const stage = entered ? normalizeJobStage(entered) : null;
+    if (!stage) continue;
+    if (!map.has(stage)) {
+      map.set(stage, at);
     }
   }
 

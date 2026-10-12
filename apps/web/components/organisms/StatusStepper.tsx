@@ -1,4 +1,9 @@
 import { Check } from "lucide-react";
+import {
+  advanceLabelForStage,
+  coerceJobStatus,
+  getApplicableStages,
+} from "@vonos/types";
 import { Button } from "@/components/atoms/Button";
 import { cn } from "@/lib/utils/cn";
 
@@ -24,18 +29,7 @@ function getNextStage(stages: string[], currentStage: string): string | null {
 
 export function getAdvanceLabel(currentStage: string, nextStage: string | null): string {
   if (!nextStage) return "Complete";
-  const labels: Record<string, string> = {
-    Received: "Mark Received",
-    Quoted: "Send Quote",
-    Approved: "Mark Approved",
-    "In Progress": "Start Work",
-    QC: "Send to QC",
-    Delivered: "Mark Delivered",
-    Preparing: "Start Preparing",
-    Ready: "Mark Ready",
-    Served: "Mark Served",
-  };
-  return labels[nextStage] ?? `Mark ${nextStage}`;
+  return advanceLabelForStage(nextStage);
 }
 
 export function StatusStepper({
@@ -109,19 +103,15 @@ export function StatusStepper({
   );
 }
 
+/** Stages for a job, dropping “Diagnosis and billing” when there is no quote. */
 export function buildAdaptiveJobStages(hasQuote: boolean): string[] {
-  const base = ["Received"];
-  if (hasQuote) base.push("Quoted");
-  return [...base, "Approved", "In Progress", "QC", "Delivered"];
+  return getApplicableStages(hasQuote);
 }
 
-/** Align orphan statuses with the adaptive stage list for the stepper UI. */
+/** Align orphan/legacy statuses with the adaptive stage list for the stepper UI. */
 export function coerceJobStatusForStepper(
   currentStage: string,
   hasQuote: boolean,
 ): string {
-  if (currentStage === "Quoted" && !hasQuote) return "Received";
-  const stages = buildAdaptiveJobStages(hasQuote);
-  if (stages.includes(currentStage)) return currentStage;
-  return stages[0] ?? "Received";
+  return coerceJobStatus(currentStage, hasQuote);
 }

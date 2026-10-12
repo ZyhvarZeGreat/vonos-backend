@@ -52,7 +52,10 @@ export function readSaleJobStatus(
   notes: string | null | undefined,
 ): JobStage {
   const raw = readNoteLine(notes, JOB_STATUS_KEY);
-  if (raw && isJobStage(raw)) return raw;
+  // Coerce so labels written before a stage rename (Quoted/QC/Delivered) still
+  // resolve instead of silently falling back to Received. `hasQuote` is passed
+  // as true here: this is a plain label read, not an applicability decision.
+  if (raw) return coerceJobStatus(raw, true);
   return 'Received';
 }
 

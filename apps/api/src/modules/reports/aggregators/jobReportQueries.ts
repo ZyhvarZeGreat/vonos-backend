@@ -224,7 +224,7 @@ export async function deliveredTurnaroundDays(
     FROM "Job" j
     WHERE j."tenantId" = ${tenantId}
       AND j."deletedAt" IS NULL
-      AND j.status = 'Delivered'
+      AND j.status = 'Vehicle collected'
       AND j."createdAt" >= ${from}
       AND j."createdAt" <= ${to}
   `;
@@ -253,7 +253,7 @@ export async function deliveredTurnaroundHistogram(
       FROM "Job" j
       WHERE j."tenantId" = ${tenantId}
         AND j."deletedAt" IS NULL
-        AND j.status = 'Delivered'
+        AND j.status = 'Vehicle collected'
         AND j."createdAt" >= ${from}
         AND j."createdAt" <= ${to}
     )
@@ -324,7 +324,7 @@ export async function avgDeliveredTurnaroundPair(
       FROM "Job" j
       WHERE j."tenantId" = ${tenantId}
         AND j."deletedAt" IS NULL
-        AND j.status = 'Delivered'
+        AND j.status = 'Vehicle collected'
         AND j."createdAt" >= ${earliest}
         AND j."createdAt" <= ${latest}
     ) d
@@ -399,7 +399,7 @@ export async function deliveredQuoteRevenuePair(
     FROM "Job"
     WHERE "tenantId" = ${tenantId}
       AND "deletedAt" IS NULL
-      AND status = 'Delivered'
+      AND status = 'Vehicle collected'
       AND "createdAt" >= ${earliest}
       AND "createdAt" <= ${latest}
   `;

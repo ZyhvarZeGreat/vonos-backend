@@ -241,9 +241,9 @@ async function loadGroupAlertInputs(
                 SELECT
                   "tenantId",
                   COUNT(*) FILTER (
-                    WHERE status NOT IN ('Delivered', 'Cancelled')
+                    WHERE status NOT IN ('Vehicle collected', 'Cancelled')
                   )::bigint AS active,
-                  COUNT(*) FILTER (WHERE status = 'QC')::bigint AS pending_qc
+                  COUNT(*) FILTER (WHERE status = 'Quality check')::bigint AS pending_qc
                 FROM "Job"
                 WHERE "deletedAt" IS NULL
                   AND "tenantId" IN (${Prisma.join(jobIds)})

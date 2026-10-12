@@ -89,7 +89,7 @@ export class WhatsAppController {
       this.notify.composeStatusMessage({
         ownerName: 'Test Owner',
         plate: 'TEST-001',
-        statusLabel: 'In Progress',
+        statusLabel: 'In progress',
         trackUrl: this.notify.publicJobTrackUrl('test-token'),
         shopName: 'Vonos Mechanic',
       });

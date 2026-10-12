@@ -40,7 +40,7 @@ export async function buildJobReports(
             where: {
               tenantId,
               deletedAt: null,
-              status: { notIn: ['Delivered', 'Cancelled'] },
+              status: { notIn: ['Vehicle collected', 'Cancelled'] },
             },
           }),
         () =>
@@ -131,7 +131,7 @@ export async function buildJobReports(
           where: {
             tenantId,
             deletedAt: null,
-            status: { notIn: ['Delivered', 'Cancelled'] },
+            status: { notIn: ['Vehicle collected', 'Cancelled'] },
           },
         }),
       () =>

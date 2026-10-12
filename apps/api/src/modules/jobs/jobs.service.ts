@@ -13,9 +13,11 @@ import { AuditService } from '../audit/audit.service';
 import { InvoiceHubService } from '../invoices/invoice-hub.service';
 import {
   assertCanAdvance,
+  assertCanReach,
   coerceJobStatus,
   getApplicableStages,
   isJobStage,
+  toQcChecklist,
 } from '../../common/utils/jobStages';
 import { buildCompositeCursorQuery } from '../../common/utils/pagination';
 import {
@@ -469,6 +471,88 @@ export class JobsService {
     return this.getById(jobId);
   }
 
+  /**
+   * Money expected and received against a job — the input to the deposit and
+   * final-payment transition gates.
+   *
+   * A job's commercial record is its Sale (VA sales act as jobs); payments may
+   * hang off the sale or off a job invoice, so both are summed. When nothing
+   * is known (no sale, no invoice, no quote) `expectedAmount` is null, which
+   * deliberately skips the payment gates so a job can never be stranded by
+   * missing money data.
+   */
+  private async getStageGateMoney(job: {
+    id: string;
+    tenantId: string;
+    invoiceAmount: Prisma.Decimal | null;
+    quoteAmount: Prisma.Decimal | null;
+  }): Promise<{ expectedAmount: number | null; paidAmount: number }> {
+    const [sales, invoices] = await Promise.all([
+      this.tenantDb.db.sale.findMany({
+        where: { jobId: job.id, tenantId: job.tenantId, deletedAt: null },
+        select: { id: true, total: true },
+      }),
+      this.tenantDb.db.invoice.findMany({
+        where: { jobId: job.id, tenantId: job.tenantId, deletedAt: null },
+        select: { id: true, saleId: true, total: true },
+      }),
+    ]);
+
+    const saleIds = [
+      ...new Set([
+        ...sales.map((sale) => sale.id),
+        ...invoices
+          .map((invoice) => invoice.saleId)
+          .filter((saleId): saleId is string => Boolean(saleId)),
+      ]),
+    ];
+    const invoiceIds = invoices.map((invoice) => invoice.id);
+
+    let paidAmount = 0;
+    if (saleIds.length > 0 || invoiceIds.length > 0) {
+      const aggregate = await this.tenantDb.db.payment.aggregate({
+        where: {
+          tenantId: job.tenantId,
+          deletedAt: null,
+          isReturn: false,
+          OR: [
+            ...(saleIds.length > 0 ? [{ saleId: { in: saleIds } }] : []),
+            ...(invoiceIds.length > 0
+              ? [{ invoiceId: { in: invoiceIds } }]
+              : []),
+          ],
+        },
+        _sum: { amount: true },
+      });
+      paidAmount = toNumber(aggregate._sum.amount);
+    }
+
+    if (sales.length > 0) {
+      return {
+        expectedAmount: sales.reduce(
+          (sum, sale) => sum + toNumber(sale.total),
+          0,
+        ),
+        paidAmount,
+      };
+    }
+
+    const invoiceTotal = invoices.reduce(
+      (sum, invoice) => sum + toNumber(invoice.total),
+      0,
+    );
+    const expectedAmount =
+      job.invoiceAmount != null
+        ? toNumber(job.invoiceAmount)
+        : invoices.length > 0
+          ? invoiceTotal
+          : job.quoteAmount != null
+            ? toNumber(job.quoteAmount)
+            : null;
+
+    return { expectedAmount, paidAmount };
+  }
+
   async advanceStatus(id: string): Promise<JobWithWhatsApp> {
     const tenantId = this.tenantDb.requireTenantId();
     const existing = await this.tenantDb.db.job.findFirst({
@@ -476,12 +560,8 @@ export class JobsService {
     });
     if (!existing) throw new NotFoundException('Job not found');
 
-    const qcChecklist =
-      existing.qcChecklist &&
-      typeof existing.qcChecklist === 'object' &&
-      !Array.isArray(existing.qcChecklist)
-        ? (existing.qcChecklist as Record<string, boolean>)
-        : null;
+    const qcChecklist = toQcChecklist(existing.qcChecklist);
+    const money = await this.getStageGateMoney(existing);
 
     let next;
     try {
@@ -492,6 +572,8 @@ export class JobsService {
           ? toNumber(existing.quoteAmount)
           : null,
         qcChecklist,
+        expectedAmount: money.expectedAmount,
+        paidAmount: money.paidAmount,
       });
     } catch (err) {
       throw new BadRequestException(
@@ -554,6 +636,29 @@ export class JobsService {
         );
       }
       nextStatus = requested;
+    }
+
+    // Explicit jumps must pass the same gates as a one-step advance, for every
+    // forward transition in between (backwards moves are always allowed).
+    if (nextStatus !== existing.status) {
+      try {
+        const money = await this.getStageGateMoney(existing);
+        assertCanReach({
+          currentStatus: existing.status,
+          requestedStatus: nextStatus,
+          hasQuote: existing.hasQuote,
+          quoteAmount: existing.quoteAmount
+            ? toNumber(existing.quoteAmount)
+            : null,
+          qcChecklist: toQcChecklist(existing.qcChecklist),
+          expectedAmount: money.expectedAmount,
+          paidAmount: money.paidAmount,
+        });
+      } catch (err) {
+        throw new BadRequestException(
+          err instanceof Error ? err.message : 'Cannot change job status',
+        );
+      }
     }
 
     const noteTrim = body.notes?.trim() ?? '';
