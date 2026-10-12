@@ -1,10 +1,16 @@
 "use client";
 
-import { Plus, ShoppingCart } from "lucide-react";
+import { Car, Plus, ShoppingCart } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 
-import { formatShopLabel, formatShopPrice, type ShopProduct } from "@/lib/marketing/shop-catalog";
+import { carModelTokens } from "@vonos/types";
+
+import {
+  formatShopLabel,
+  formatShopPrice,
+  type ShopProduct,
+} from "@/lib/marketing/shop-catalog";
 import { useShopCart } from "@/stores/shopCartStore";
 
 type ProductDetailViewProps = {
@@ -20,9 +26,12 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
   const unpriced = product.price <= 0;
   const name = formatShopLabel(product.name);
   const category = formatShopLabel(product.category);
-  const maxQty = product.availableQuantity && product.availableQuantity > 0
-    ? product.availableQuantity
-    : undefined;
+  const maxQty =
+    product.availableQuantity && product.availableQuantity > 0
+      ? product.availableQuantity
+      : undefined;
+  const fitmentTokens = carModelTokens(product.carModel);
+  const fitmentText = product.carModel?.trim() || null;
 
   return (
     <div className="vg-pdp__grid" data-node-id="63:313">
@@ -67,6 +76,18 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
               </span>
               <span className="vg-pdp__spec-val">{category}</span>
             </li>
+            {fitmentText ? (
+              <li className="vg-pdp__spec">
+                <span className="vg-pdp__spec-key">
+                  <span className="vg-dot" aria-hidden />
+                  Fits:
+                </span>
+                <span className="vg-pdp__spec-val vg-pdp__spec-val--fits">
+                  <Car size={14} strokeWidth={1.8} aria-hidden />
+                  <span>{fitmentText}</span>
+                </span>
+              </li>
+            ) : null}
             <li className="vg-pdp__spec">
               <span className="vg-pdp__spec-key">
                 <span className="vg-dot" aria-hidden />
@@ -99,7 +120,9 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
                     max={maxQty}
                     value={qty}
                     disabled={outOfStock}
-                    onChange={(event) => setQty(Math.max(1, Number(event.target.value) || 1))}
+                    onChange={(event) =>
+                      setQty(Math.max(1, Number(event.target.value) || 1))
+                    }
                   />
                 </label>
                 <button
@@ -131,11 +154,29 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
           <div>
             <dt>Categories:</dt>
             <dd>
-              <Link href={`/shop?q=${encodeURIComponent(product.category)}#shop-catalog`}>
+              <Link
+                href={`/shop?q=${encodeURIComponent(product.category)}#shop-catalog`}
+              >
                 {category}
               </Link>
             </dd>
           </div>
+          {fitmentTokens.length > 0 ? (
+            <div>
+              <dt>Vehicle models:</dt>
+              <dd className="vg-pdp__models">
+                {fitmentTokens.map((token) => (
+                  <Link
+                    key={token}
+                    className="vg-model-chip"
+                    href={`/shop?model=${encodeURIComponent(token)}#shop-catalog`}
+                  >
+                    {token}
+                  </Link>
+                ))}
+              </dd>
+            </div>
+          ) : null}
         </dl>
       </div>
     </div>

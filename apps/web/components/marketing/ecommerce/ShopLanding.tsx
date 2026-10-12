@@ -8,7 +8,11 @@ import CatalogBrowser from "@/components/marketing/ecommerce/CatalogBrowser";
 import ProductCard from "@/components/marketing/ecommerce/ProductCard";
 import SectionHead from "@/components/marketing/ecommerce/SectionHead";
 import { refreshMarketingScroll } from "@/components/marketing/MotocareMotion";
-import { formatShopLabel, formatShopPrice, type ShopProduct } from "@/lib/marketing/shop-catalog";
+import {
+  formatShopLabel,
+  formatShopPrice,
+  type ShopProduct,
+} from "@/lib/marketing/shop-catalog";
 import { BROWSE_STOCK_IMAGES } from "@/lib/marketing/shop-stock-images";
 import { fetchStoreCatalog } from "@/lib/marketing/store-api";
 import { SHOP_FEATURE_IMAGE } from "@/lib/marketing/vonos-photos";
@@ -54,15 +58,32 @@ const BROWSE = [
 
 /** Figma 56:4 — service promises band. */
 const TRUST = [
-  { icon: PackageCheck, title: "Free Shipping", desc: "On workshop orders above ₦250,000" },
-  { icon: Wallet, title: "Flexible Payment", desc: "Transfer, card, or on-collection" },
-  { icon: Truck, title: "Fast Delivery", desc: "Same-day dispatch across Abuja" },
-  { icon: Headset, title: "Premium Support", desc: "Parts advisors on WhatsApp daily" },
+  {
+    icon: PackageCheck,
+    title: "Free Shipping",
+    desc: "On workshop orders above ₦250,000",
+  },
+  {
+    icon: Wallet,
+    title: "Flexible Payment",
+    desc: "Transfer, card, or on-collection",
+  },
+  {
+    icon: Truck,
+    title: "Fast Delivery",
+    desc: "Same-day dispatch across Abuja",
+  },
+  {
+    icon: Headset,
+    title: "Premium Support",
+    desc: "Parts advisors on WhatsApp daily",
+  },
 ] as const;
 
 export default function ShopLanding() {
   const [catalog, setCatalog] = useState<ShopProduct[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
+  const [models, setModels] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [warming, setWarming] = useState(false);
   const [error, setError] = useState("");
@@ -76,6 +97,7 @@ export default function ShopLanding() {
       let items = first.items;
       setCatalog(items);
       setCategories(first.categories);
+      setModels(first.models);
       setLoading(false);
 
       // Warm the rest in the background so search/filters cover the whole catalogue.
@@ -83,7 +105,10 @@ export default function ShopLanding() {
       if (!cursor) return;
       setWarming(true);
       while (cursor && items.length < CATALOG_MAX_ITEMS) {
-        const next = await fetchStoreCatalog({ cursor, limit: CATALOG_PAGE_SIZE });
+        const next = await fetchStoreCatalog({
+          cursor,
+          limit: CATALOG_PAGE_SIZE,
+        });
         if (next.items.length === 0) break;
         items = [...items, ...next.items];
         setCatalog(items);
@@ -112,7 +137,9 @@ export default function ShopLanding() {
 
   // Showcase rails: priced + in-stock. Real product photos first; stock packshots fill gaps.
   const showcase = useMemo(() => {
-    const sellable = catalog.filter((item) => item.inStock !== false && item.price > 0);
+    const sellable = catalog.filter(
+      (item) => item.inStock !== false && item.price > 0,
+    );
     const photographed = sellable.filter(
       (item) =>
         !item.icon.includes("/shop/stock/") &&
@@ -131,9 +158,16 @@ export default function ShopLanding() {
 
   return (
     <>
-      <section className="vg-sec" data-node-id="59:170" data-qa-section="shop-categories">
+      <section
+        className="vg-sec"
+        data-node-id="59:170"
+        data-qa-section="shop-categories"
+      >
         <div className="vg-container">
-          <SectionHead title="Browse by Categories" viewAllHref="/shop#shop-catalog" />
+          <SectionHead
+            title="Browse by Categories"
+            viewAllHref="/shop#shop-catalog"
+          />
           <div className="vg-cats">
             {BROWSE.map((entry) => (
               <Link
@@ -163,11 +197,18 @@ export default function ShopLanding() {
         data-qa-section="shop-featured"
       >
         <div className="vg-container">
-          <SectionHead title="Featured Products" viewAllHref="/shop#shop-catalog" />
+          <SectionHead
+            title="Featured Products"
+            viewAllHref="/shop#shop-catalog"
+          />
           {error ? (
             <div className="vg-error" role="alert">
               <p>{error}</p>
-              <button type="button" className="vg-btn vg-btn--ghost" onClick={() => void loadCatalog()}>
+              <button
+                type="button"
+                className="vg-btn vg-btn--ghost"
+                onClick={() => void loadCatalog()}
+              >
                 Try again
               </button>
             </div>
@@ -185,7 +226,11 @@ export default function ShopLanding() {
       </section>
 
       {feature ? (
-        <section className="vg-sec" data-node-id="39:1563" data-qa-section="shop-promo">
+        <section
+          className="vg-sec"
+          data-node-id="39:1563"
+          data-qa-section="shop-promo"
+        >
           <div className="vg-container vg-promo">
             <div className="vg-promo__stack">
               {promoTiles.map((product, index) => (
@@ -197,22 +242,33 @@ export default function ShopLanding() {
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={product.icon} alt="" loading="lazy" />
                   <div>
-                    <p className="vg-promo__eyebrow">{index === 0 ? "Get 45% Off" : "New Product"}</p>
-                    <p className="vg-promo__title">{formatShopLabel(product.name)}</p>
+                    <p className="vg-promo__eyebrow">
+                      {index === 0 ? "Get 45% Off" : "New Product"}
+                    </p>
+                    <p className="vg-promo__title">
+                      {formatShopLabel(product.name)}
+                    </p>
                   </div>
                   <span className="vg-promo__cta">Shop Now →</span>
                 </Link>
               ))}
             </div>
 
-            <Link href={shopProductPath(feature.sku ?? feature.id)} className="vg-promo__feature">
+            <Link
+              href={shopProductPath(feature.sku ?? feature.id)}
+              className="vg-promo__feature"
+            >
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={feature.icon} alt="" loading="lazy" />
               <div className="vg-promo__feature-body">
                 <p className="vg-promo__eyebrow">New Arrivals</p>
-                <p className="vg-promo__feature-title">{formatShopLabel(feature.name)}</p>
+                <p className="vg-promo__feature-title">
+                  {formatShopLabel(feature.name)}
+                </p>
                 <p className="vg-promo__feature-desc">{feature.description}</p>
-                <span className="vg-promo__price">Starting from {formatShopPrice(feature.price)}</span>
+                <span className="vg-promo__price">
+                  Starting from {formatShopPrice(feature.price)}
+                </span>
               </div>
               <span className="vg-promo__cta">Shop Now →</span>
             </Link>
@@ -220,15 +276,24 @@ export default function ShopLanding() {
         </section>
       ) : null}
 
-      <section className="vg-sec" data-node-id="50:1793" data-qa-section="shop-latest">
+      <section
+        className="vg-sec"
+        data-node-id="50:1793"
+        data-qa-section="shop-latest"
+      >
         <div className="vg-container">
-          <SectionHead title="Latest Products" viewAllHref="/shop#shop-catalog" />
+          <SectionHead
+            title="Latest Products"
+            viewAllHref="/shop#shop-catalog"
+          />
           <div className="vg-latest">
             <div className="vg-latest__spot">
               <div className="vg-latest__spot-body">
                 <p className="vg-latest__spot-eyebrow">Hello Mechanic</p>
                 <p className="vg-latest__spot-title">
-                  {spotlight ? formatShopLabel(spotlight.name) : "Workshop-grade parts"}
+                  {spotlight
+                    ? formatShopLabel(spotlight.name)
+                    : "Workshop-grade parts"}
                 </p>
                 <p className="vg-latest__spot-desc">
                   {spotlight?.description ??
@@ -236,7 +301,11 @@ export default function ShopLanding() {
                 </p>
               </div>
               <Link
-                href={spotlight ? shopProductPath(spotlight.sku ?? spotlight.id) : "/shop#shop-catalog"}
+                href={
+                  spotlight
+                    ? shopProductPath(spotlight.sku ?? spotlight.id)
+                    : "/shop#shop-catalog"
+                }
                 className="vg-textlink"
               >
                 Shop Now →
@@ -260,7 +329,11 @@ export default function ShopLanding() {
         </div>
       </section>
 
-      <section className="vg-sec vg-sec--tint vg-sec--tight" data-node-id="56:4" data-qa-section="shop-trust">
+      <section
+        className="vg-sec vg-sec--tint vg-sec--tight"
+        data-node-id="56:4"
+        data-qa-section="shop-trust"
+      >
         <div className="vg-container vg-trust">
           {TRUST.map(({ icon: Icon, title, desc }) => (
             <div key={title} className="vg-trust__item">
@@ -279,15 +352,23 @@ export default function ShopLanding() {
       <CatalogBrowser
         products={catalog}
         categories={categories}
+        models={models}
         loading={loading}
         warming={warming}
         error={error}
       />
 
       {moreProducts.length > 0 ? (
-        <section className="vg-sec" data-node-id="56:85" data-qa-section="shop-more-products">
+        <section
+          className="vg-sec"
+          data-node-id="56:85"
+          data-qa-section="shop-more-products"
+        >
           <div className="vg-container">
-            <SectionHead title="More parts for you" viewAllHref="/shop#shop-catalog" />
+            <SectionHead
+              title="More parts for you"
+              viewAllHref="/shop#shop-catalog"
+            />
             <div className="vg-products">
               {moreProducts.map((product) => (
                 <ProductCard key={product.id} product={product} />
@@ -300,7 +381,13 @@ export default function ShopLanding() {
   );
 }
 
-function ProductSkeletons({ count, bare = false }: { count: number; bare?: boolean }) {
+function ProductSkeletons({
+  count,
+  bare = false,
+}: {
+  count: number;
+  bare?: boolean;
+}) {
   const cards = Array.from({ length: count }, (_, index) => (
     <div key={index}>
       <div className="vg-skeleton vg-skeleton--card" />

@@ -41,6 +41,7 @@ export class PublicStoreController {
   listCatalog(
     @Query('search') search?: string,
     @Query('category') category?: string,
+    @Query('model') model?: string,
     @Query('sort') sort?: string,
     @Query('minPrice') minPrice?: string,
     @Query('maxPrice') maxPrice?: string,
@@ -50,9 +51,12 @@ export class PublicStoreController {
     return this.catalog.listCatalog({
       search,
       category,
+      model,
       sort,
-      minPrice: minPrice != null && minPrice !== '' ? Number(minPrice) : undefined,
-      maxPrice: maxPrice != null && maxPrice !== '' ? Number(maxPrice) : undefined,
+      minPrice:
+        minPrice != null && minPrice !== '' ? Number(minPrice) : undefined,
+      maxPrice:
+        maxPrice != null && maxPrice !== '' ? Number(maxPrice) : undefined,
       cursor,
       limit: limit ? Number(limit) : undefined,
     });

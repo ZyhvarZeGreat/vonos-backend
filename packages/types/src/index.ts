@@ -3,6 +3,7 @@ export * from "./role";
 export * from "./tenantRole";
 export * from "./user";
 export * from "./item";
+export * from "./carModel";
 export * from "./notification";
 export * from "./ledger";
 export * from "./stockMovement";

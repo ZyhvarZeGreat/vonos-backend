@@ -8,6 +8,8 @@ export type ShopProduct = {
   sku?: string;
   inStock?: boolean;
   availableQuantity?: number;
+  /** Raw fitment text, e.g. "AVALON 2006-2010, CAMRY 2007-2011". */
+  carModel?: string | null;
 };
 
 export type CartLine = {
@@ -31,7 +33,12 @@ export type ShopOrder = {
   };
   fulfillment: FulfillmentType;
   notes: string;
-  lines: Array<{ productId: string; name: string; qty: number; unitPrice: number }>;
+  lines: Array<{
+    productId: string;
+    name: string;
+    qty: number;
+    unitPrice: number;
+  }>;
   total: number;
   paid?: boolean;
 };
@@ -112,13 +119,16 @@ export function mapApiProduct(row: {
   imageUrl: string | null;
   inStock: boolean;
   availableQuantity: number;
+  carModel?: string | null;
 }): ShopProduct {
   return {
     id: row.id,
     name: row.name,
     category: row.category || "General",
     price: row.price,
-    description: row.description?.trim() || "Genuine auto part from the Vonos SP marketplace.",
+    description:
+      row.description?.trim() ||
+      "Genuine auto part from the Vonos SP marketplace.",
     icon: resolveShopProductImage({
       imageUrl: row.imageUrl,
       name: row.name,
@@ -128,5 +138,6 @@ export function mapApiProduct(row: {
     sku: row.sku,
     inStock: row.inStock,
     availableQuantity: row.availableQuantity,
+    carModel: row.carModel?.trim() || null,
   };
 }

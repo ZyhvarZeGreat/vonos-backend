@@ -1,10 +1,14 @@
 import { Injectable } from '@nestjs/common';
+import { collectCarModelOptions } from '@vonos/types';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import {
   breakdownFromOnHand,
   reservedQtyBySku,
 } from '../../common/utils/availableStock';
-import { buildCompositeCursorQuery, nextCompositeCursor } from '../../common/utils/pagination';
+import {
+  buildCompositeCursorQuery,
+  nextCompositeCursor,
+} from '../../common/utils/pagination';
 import { isStrictStoreCatalog } from './store-catalog-mode';
 
 /** Public shop catalog — VISP institute + VSP marketplace (consolidated by SKU). */
@@ -26,12 +30,16 @@ export type PublicStoreProduct = {
   tenantId: string;
   availableQuantity: number;
   inStock: boolean;
+  /** Raw fitment text, e.g. "AVALON 2006-2010, CAMRY 2007-2011". */
+  carModel: string | null;
 };
 
 export type PublicStoreCatalogPage = {
   items: PublicStoreProduct[];
   nextCursor: string | null;
   categories: string[];
+  /** Curated vehicle models parsed out of every carModel value in the catalogue. */
+  models: string[];
   /** strict = production retail filters; testing = all priced VISP/VSP items */
   catalogMode: 'strict' | 'testing';
 };
@@ -54,6 +62,18 @@ export type ResolvedStoreCartLine = {
   availableQuantity: number;
 };
 
+/** Fitment is sparse — combine whatever the two tenants recorded. */
+function mergeCarModel(
+  left: string | null | undefined,
+  right: string | null | undefined,
+): string | null {
+  const a = left?.trim();
+  const b = right?.trim();
+  if (!a) return b || null;
+  if (!b) return a;
+  return a.toLowerCase() === b.toLowerCase() ? a : `${a}, ${b}`;
+}
+
 type CatalogItemRow = {
   id: string;
   tenantId: string;
@@ -66,6 +86,7 @@ type CatalogItemRow = {
   imageUrl: string | null;
   quantity: number;
   updatedAt: Date;
+  carModel: string | null;
   tenant: { code: string };
   locationStock: Array<{ quantity: number }>;
 };
@@ -110,15 +131,31 @@ export class StoreCatalogService {
   } {
     switch (sort) {
       case 'price_asc':
-        return { sortField: 'sellPrice', sortDir: 'asc', sortValueType: 'number' };
+        return {
+          sortField: 'sellPrice',
+          sortDir: 'asc',
+          sortValueType: 'number',
+        };
       case 'price_desc':
-        return { sortField: 'sellPrice', sortDir: 'desc', sortValueType: 'number' };
+        return {
+          sortField: 'sellPrice',
+          sortDir: 'desc',
+          sortValueType: 'number',
+        };
       case 'name_asc':
         return { sortField: 'name', sortDir: 'asc', sortValueType: 'string' };
       case 'newest':
-        return { sortField: 'updatedAt', sortDir: 'desc', sortValueType: 'date' };
+        return {
+          sortField: 'updatedAt',
+          sortDir: 'desc',
+          sortValueType: 'date',
+        };
       default:
-        return { sortField: 'updatedAt', sortDir: 'desc', sortValueType: 'date' };
+        return {
+          sortField: 'updatedAt',
+          sortDir: 'desc',
+          sortValueType: 'date',
+        };
     }
   }
 
@@ -175,6 +212,7 @@ export class StoreCatalogService {
         tenantId: row.tenantId,
         availableQuantity: available,
         inStock: available > 0,
+        carModel: row.carModel?.trim() || null,
       };
 
       const existing = bySku.get(skuKey);
@@ -192,7 +230,9 @@ export class StoreCatalogService {
           existing.product.availableQuantity + candidate.availableQuantity > 0,
         // Keep preferred tenant ids on the display product.
         id: preferMeta ? candidate.id : existing.product.id,
-        tenantCode: preferMeta ? candidate.tenantCode : existing.product.tenantCode,
+        tenantCode: preferMeta
+          ? candidate.tenantCode
+          : existing.product.tenantCode,
         tenantId: preferMeta ? candidate.tenantId : existing.product.tenantId,
         name: preferMeta ? candidate.name : existing.product.name,
         category: preferMeta ? candidate.category : existing.product.category,
@@ -202,6 +242,8 @@ export class StoreCatalogService {
         price: preferMeta ? candidate.price : existing.product.price,
         currency: preferMeta ? candidate.currency : existing.product.currency,
         imageUrl: preferMeta ? candidate.imageUrl : existing.product.imageUrl,
+        // Fitment is sparse, so keep whichever tenant actually filled it in.
+        carModel: mergeCarModel(existing.product.carModel, candidate.carModel),
         sku: existing.product.sku,
       };
       bySku.set(skuKey, {
@@ -218,6 +260,7 @@ export class StoreCatalogService {
   async listCatalog(args: {
     search?: string;
     category?: string;
+    model?: string;
     sort?: string;
     minPrice?: number;
     maxPrice?: number;
@@ -232,12 +275,14 @@ export class StoreCatalogService {
         items: [],
         nextCursor: null,
         categories: [],
+        models: [],
         catalogMode: isStrictStoreCatalog() ? 'strict' : 'testing',
       };
     }
 
     const search = args.search?.trim();
     const category = args.category?.trim();
+    const model = args.model?.trim();
     const { sortField, sortDir, sortValueType } = this.resolveSort(args.sort);
     const minPrice =
       typeof args.minPrice === 'number' && Number.isFinite(args.minPrice)
@@ -279,9 +324,18 @@ export class StoreCatalogService {
               OR: [
                 { name: { contains: search, mode: 'insensitive' as const } },
                 { sku: { contains: search, mode: 'insensitive' as const } },
-                { category: { contains: search, mode: 'insensitive' as const } },
+                {
+                  category: { contains: search, mode: 'insensitive' as const },
+                },
+                {
+                  carModel: { contains: search, mode: 'insensitive' as const },
+                },
               ],
             }
+          : {}),
+        // Fitment is free text, so a chosen model is a substring test.
+        ...(model
+          ? { carModel: { contains: model, mode: 'insensitive' as const } }
           : {}),
         ...priceFilter,
         ...(cursorQuery.where ?? {}),
@@ -300,6 +354,7 @@ export class StoreCatalogService {
         imageUrl: true,
         quantity: true,
         updatedAt: true,
+        carModel: true,
         tenant: { select: { code: true } },
         locationStock: { select: { quantity: true } },
       },
@@ -331,6 +386,7 @@ export class StoreCatalogService {
               imageUrl: true,
               quantity: true,
               updatedAt: true,
+              carModel: true,
               tenant: { select: { code: true } },
               locationStock: { select: { quantity: true } },
             },
@@ -356,6 +412,15 @@ export class StoreCatalogService {
       distinct: ['category'],
       select: { category: true },
       orderBy: { category: 'asc' },
+    });
+
+    // Fitment is free text, so the option list is parsed, not distinct().
+    const fitments = await this.prisma.item.findMany({
+      where: this.catalogItemWhere(tenantIds, {
+        carModel: { not: null },
+      }),
+      distinct: ['carModel'],
+      select: { carModel: true },
     });
 
     const last = pageRows.at(-1);
@@ -388,6 +453,7 @@ export class StoreCatalogService {
       categories: categories
         .map((row) => row.category?.trim())
         .filter((value): value is string => Boolean(value)),
+      models: collectCarModelOptions(fitments.map((row) => row.carModel)),
       catalogMode: isStrictStoreCatalog() ? 'strict' : 'testing',
     };
   }
@@ -414,6 +480,7 @@ export class StoreCatalogService {
         imageUrl: true,
         quantity: true,
         updatedAt: true,
+        carModel: true,
         tenant: { select: { code: true } },
         locationStock: { select: { quantity: true } },
       },
@@ -423,7 +490,9 @@ export class StoreCatalogService {
 
     const reservedByTenant = new Map<string, Map<string, number>>();
     for (const tenantId of tenantIds) {
-      const skus = rows.filter((r) => r.tenantId === tenantId).map((r) => r.sku);
+      const skus = rows
+        .filter((r) => r.tenantId === tenantId)
+        .map((r) => r.sku);
       reservedByTenant.set(
         tenantId,
         await reservedQtyBySku(this.prisma, tenantId, [...new Set(skus)]),
@@ -519,7 +588,8 @@ export class StoreCatalogService {
       const skuKey = seed.sku.trim().toUpperCase();
       const matches = [...(rowsBySku.get(skuKey) ?? [])].sort(
         (a, b) =>
-          this.tenantPriority(a.tenant.code) - this.tenantPriority(b.tenant.code),
+          this.tenantPriority(a.tenant.code) -
+          this.tenantPriority(b.tenant.code),
       );
       if (matches.length === 0) {
         throw new Error(`${seed.sku} is not available in the store`);

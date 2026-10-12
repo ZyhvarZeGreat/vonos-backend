@@ -606,6 +606,29 @@ main.main.main--subpage.vg-page > section.vg-pdp {
   color: var(--vg-body);
 }
 
+/* Fitment line — the vehicle models this part is listed against. */
+.vg-pcard__fits {
+  display: flex;
+  align-items: flex-start;
+  gap: 5px;
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--vg-muted);
+}
+
+.vg-pcard__fits svg {
+  flex: none;
+  margin-top: 2px;
+}
+
+.vg-pcard__fits span {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+}
+
 .vg-pcard__was {
   color: var(--vg-faint);
   text-decoration: line-through;
@@ -986,6 +1009,12 @@ main.main.main--subpage.vg-page > section.vg-pdp {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.vg-field__hint {
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--vg-faint);
 }
 
 .vg-check {
@@ -1393,6 +1422,48 @@ main.main.main--subpage.vg-page > section.vg-pdp {
 
 .vg-pdp__spec-val {
   color: var(--vg-body);
+}
+
+/* Fitment wraps — the raw carModel can list many models at once. */
+.vg-pdp__spec-val--fits {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 6px;
+  line-height: 1.5;
+}
+
+.vg-pdp__spec-val--fits svg {
+  flex: none;
+  margin-top: 3px;
+  color: var(--vg-muted);
+}
+
+/* ── Model chips (PDP footer) ────────────────────────────────── */
+
+.vg-pdp__models {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.vg-model-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 999px;
+  background: var(--vg-tint);
+  font-size: 12px;
+  color: var(--vg-body);
+  text-decoration: none;
+  transition:
+    border-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.vg-model-chip:hover {
+  border-color: var(--vg-accent);
+  color: var(--vg-accent);
 }
 
 .vg-pdp__buy {

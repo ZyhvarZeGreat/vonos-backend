@@ -1,11 +1,17 @@
 import { apiUrl } from "@/lib/api/client";
 import { throwApiError } from "@/lib/api/parseApiError";
-import { mapApiProduct, type FulfillmentType, type ShopProduct } from "@/lib/marketing/shop-catalog";
+import {
+  mapApiProduct,
+  type FulfillmentType,
+  type ShopProduct,
+} from "@/lib/marketing/shop-catalog";
 
 export type StoreCatalogResponse = {
   items: ShopProduct[];
   nextCursor: string | null;
   categories: string[];
+  /** Curated vehicle models parsed out of the catalogue's fitment text. */
+  models: string[];
 };
 
 type ApiCatalogPage = {
@@ -22,9 +28,11 @@ type ApiCatalogPage = {
     tenantId: string;
     availableQuantity: number;
     inStock: boolean;
+    carModel: string | null;
   }>;
   nextCursor: string | null;
   categories: string[];
+  models: string[];
 };
 
 export type StoreCheckoutResponse = {
@@ -90,6 +98,7 @@ async function publicJson<T>(path: string, init?: RequestInit): Promise<T> {
 export async function fetchStoreCatalog(args?: {
   search?: string;
   category?: string;
+  model?: string;
   sort?: string;
   minPrice?: number;
   maxPrice?: number;
@@ -99,7 +108,9 @@ export async function fetchStoreCatalog(args?: {
 }): Promise<StoreCatalogResponse> {
   const params = new URLSearchParams();
   if (args?.search) params.set("search", args.search);
-  if (args?.category && args.category !== "All") params.set("category", args.category);
+  if (args?.category && args.category !== "All")
+    params.set("category", args.category);
+  if (args?.model && args.model !== "All") params.set("model", args.model);
   if (args?.sort) params.set("sort", args.sort);
   if (args?.minPrice != null && Number.isFinite(args.minPrice)) {
     params.set("minPrice", String(args.minPrice));
@@ -123,15 +134,21 @@ export async function fetchStoreCatalog(args?: {
     items: page.items.map(mapApiProduct),
     nextCursor: page.nextCursor,
     categories: page.categories,
+    models: page.models ?? [],
   };
 }
 
-export async function fetchStoreProduct(sku: string): Promise<ShopProduct | null> {
+export async function fetchStoreProduct(
+  sku: string,
+): Promise<ShopProduct | null> {
   let response: Response;
   try {
-    response = await fetch(apiUrl(`/public/store/catalog/${encodeURIComponent(sku)}`), {
-      next: { revalidate: 3600, tags: ["store-catalog"] },
-    });
+    response = await fetch(
+      apiUrl(`/public/store/catalog/${encodeURIComponent(sku)}`),
+      {
+        next: { revalidate: 3600, tags: ["store-catalog"] },
+      },
+    );
   } catch {
     throw new Error(
       "We can’t reach the server right now — please try again in a moment.",
@@ -186,13 +203,17 @@ export async function createStoreCheckout(body: {
   });
 }
 
-export async function fetchStoreOrder(reference: string): Promise<StoreOrderResponse> {
+export async function fetchStoreOrder(
+  reference: string,
+): Promise<StoreOrderResponse> {
   return publicJson<StoreOrderResponse>(
     `/public/store/orders/${encodeURIComponent(reference)}`,
   );
 }
 
-export async function confirmStoreOrder(reference: string): Promise<StoreOrderResponse> {
+export async function confirmStoreOrder(
+  reference: string,
+): Promise<StoreOrderResponse> {
   return publicJson<StoreOrderResponse>(
     `/public/store/orders/${encodeURIComponent(reference)}/confirm`,
     { method: "POST", body: "{}" },
