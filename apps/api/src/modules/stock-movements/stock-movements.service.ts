@@ -863,6 +863,15 @@ export class StockMovementsService {
       return payment.id;
     });
 
+    // Bust list + dashboard caches. Without this, a refetch can serve the
+    // stale pre-payment "due" page and the purchase flips Paid → Due.
+    void invalidateTenantDashboardCache(this.cache, tenantId);
+    await invalidateTenantListCache(this.cache, tenantId, [
+      'stock-movements:v3',
+      'stock-movements:v2',
+      'stock-movements',
+    ]);
+
     if (movement.supplierId) {
       await refreshSupplierPurchaseRollups(
         this.tenantDb.db,

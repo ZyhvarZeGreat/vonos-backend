@@ -1,7 +1,11 @@
 import type { CacheService } from '../cache/cache.service';
 
-/** Short TTL — list pages change often; version bump invalidates earlier. */
-export const LIST_PAGE_CACHE_TTL_S = 600;
+/**
+ * List-page cache TTL — a safety net only. Freshness comes from the per-resource
+ * version bump on every write; this bounds staleness if a write ever misses a
+ * bump. Kept short for a finance/ops tool; active lists stay warm via hits.
+ */
+export const LIST_PAGE_CACHE_TTL_S = 300;
 
 /** In-flight loaders keyed by cache key — collapses concurrent identical misses. */
 const inflight = new Map<string, Promise<unknown>>();
