@@ -8,6 +8,13 @@ export interface DateWindow {
 /** Max span for report/finance queries — prevents full-history scans. */
 export const MAX_QUERY_WINDOW_MS = 365 * 24 * 60 * 60 * 1000;
 
+/**
+ * Group go-live. Report / finance / dashboard windows are clamped to this so
+ * pre-migration (legacy Ultimate POS) data never pollutes the numbers. Only
+ * the app-era data (July 2026 onward) is meant to be reported.
+ */
+export const LAUNCH_DATE = new Date('2026-07-01T00:00:00.000Z');
+
 function capWindow(from: Date, to: Date): DateWindow {
   const spanMs = to.getTime() - from.getTime();
   if (spanMs <= MAX_QUERY_WINDOW_MS) {
@@ -21,16 +28,20 @@ function capWindow(from: Date, to: Date): DateWindow {
 
 export function resolveDateWindow(from?: string, to?: string): DateWindow {
   const toDate = to ? new Date(to) : new Date();
+  let fromDate: Date;
   // No query params = capped recent window (UI "All time" maps to same cap client-side).
   if (!from && !to) {
-    return capWindow(
-      new Date(toDate.getTime() - MAX_QUERY_WINDOW_MS),
-      toDate,
-    );
+    fromDate = new Date(toDate.getTime() - MAX_QUERY_WINDOW_MS);
+  } else if (from) {
+    fromDate = new Date(from);
+  } else {
+    fromDate = new Date(toDate.getTime() - 30 * 24 * 60 * 60 * 1000);
   }
-  const fromDate = from
-    ? new Date(from)
-    : new Date(toDate.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+  // Ignore anything before the group launched.
+  if (fromDate < LAUNCH_DATE) fromDate = LAUNCH_DATE;
+  if (fromDate > toDate) fromDate = toDate;
+
   return capWindow(fromDate, toDate);
 }
 

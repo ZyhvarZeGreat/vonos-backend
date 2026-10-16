@@ -3,6 +3,7 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
+import { useFiltersPanelOpen } from "@/lib/hooks/useFiltersPanelOpen";
 import type { Customer } from "@vonos/types";
 import { Hq6ActionsMenu } from "@/components/hq6/Hq6ActionsMenu";
 import { Hq6Breadcrumbs, useHq6Breadcrumbs } from "@/components/hq6/Hq6Breadcrumbs";
@@ -97,7 +98,7 @@ export function Hq6CustomersListView() {
   const tenantId = useTenantId();
   const openCreateModal = useUiStore((state) => state.openCreateModal);
   const { search, setSearch } = useListPageFilters();
-  const [filtersOpen, setFiltersOpen] = useState(true);
+  const [filtersOpen, setFiltersOpen] = useFiltersPanelOpen();
   const chrome = useHq6ListChrome("customers");
 
   const [sellDue, setSellDue] = useState(false);
@@ -328,11 +329,7 @@ export function Hq6CustomersListView() {
   // Footer sell-due must come from the deferred list summary (full filtered
   // catalog). Falling back to the visible page sum makes totals look wrong.
   const dueTotal = amountSummary?.totalDue;
-  // Return-due has no API aggregate yet — page sum only (labeled in footer).
-  const returnDueTotal = customers.reduce(
-    (sum, row) => sum + (row.totalSellReturn ?? 0),
-    0,
-  );
+  const returnDueTotal = amountSummary?.totalReturn ?? 0;
 
   const exportList = useListExport();
 

@@ -45,6 +45,7 @@ export interface ListPage<T> {
     totalAmount?: number;
     totalPaid?: number;
     totalDue?: number;
+    totalReturn?: number;
     currency?: string;
   };
 }

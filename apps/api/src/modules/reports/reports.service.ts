@@ -80,7 +80,7 @@ export class ReportsService {
     from?: string,
     to?: string,
   ): string {
-    return `pl-ctx:${tenantId}:${from ?? ''}:${to ?? ''}`;
+    return `pl-ctx:v2:${tenantId}:${from ?? ''}:${to ?? ''}`;
   }
 
   private logReportTiming(

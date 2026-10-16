@@ -877,7 +877,9 @@ html.upos-hq6 .hq6-agents-page .table.table-bordered > tbody > tr > td,
 .hq6-catalog-meta-page .dataTables_scroll,
 .hq6-products-page .dataTables_scroll {
   overflow-x: auto;
-  max-height: 75vh;
+  /* Fill the remaining viewport so the sticky totals sit near the screen bottom. */
+  max-height: calc(100vh - 230px);
+  min-height: 240px;
 }
 .hq6-suppliers-page table thead th,
 .hq6-customers-page table thead th,
@@ -913,6 +915,27 @@ html.upos-hq6 .hq6-agents-page .table.table-bordered > tbody > tr > td,
   white-space: nowrap;
   text-align: center !important;
 }
+/* Compact rows: the row action button was inflating every list row (~42px). */
+table tbody td .hq6-actions-toggle {
+  height: 24px !important;
+  min-height: 24px !important;
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+  margin: 0 !important;
+  line-height: 1 !important;
+  vertical-align: middle !important;
+}
+/* Compact every HQ6 data table row (generic DataTable + hand-built lists). */
+html.upos-shell .hq6-page .table.table-bordered.dataTable > tbody > tr {
+  height: 34px !important;
+}
+html.upos-shell .hq6-page .table.table-bordered.dataTable > tbody > tr > td,
+html.upos-shell .hq6-page .table.table-bordered.dataTable > tbody > tr > th {
+  padding-top: 4px !important;
+  padding-bottom: 4px !important;
+  line-height: 1.3 !important;
+  white-space: nowrap !important;
+}
 .hq6-suppliers-page .table-striped > tbody > tr:nth-of-type(odd),
 .hq6-customers-page .table-striped > tbody > tr:nth-of-type(odd),
 .hq6-customer-groups-page .table-striped > tbody > tr:nth-of-type(odd),
@@ -944,7 +967,20 @@ html.upos-hq6 .hq6-agents-page .table.table-bordered > tbody > tr > td,
 .hq6-catalog-meta-page tr.footer-total,
 .hq6-products-page tr.footer-total {
   background: #d2d6de !important;
-  font-size: 17px;
+  font-size: 14px !important;
+}
+/* Sticky totals: keep the column totals pinned to the bottom of the scroll area. */
+.hq6-suppliers-page .dataTables_scroll table tfoot,
+.hq6-customers-page .dataTables_scroll table tfoot,
+.hq6-customer-groups-page .dataTables_scroll table tfoot,
+.hq6-variations-page .dataTables_scroll table tfoot,
+.hq6-catalog-meta-page .dataTables_scroll table tfoot,
+.hq6-products-page .dataTables_scroll table tfoot {
+  position: sticky;
+  bottom: 0;
+  background: #d2d6de !important;
+  z-index: 2;
+  box-shadow: 0 -1px 0 #b8bdc6;
 }
 .hq6-suppliers-page .dataTables_processing,
 .hq6-customers-page .dataTables_processing,

@@ -952,6 +952,9 @@ export function AddSaleForm({
         })),
         payments: (() => {
           if (isProvisional) return [];
+          const paidOn = form.paidOn
+            ? new Date(form.paidOn).toISOString()
+            : undefined;
           // Convert without a payment account → empty payments → sale stays due.
           if (convertingToFinal) {
             if (amountToCharge <= 0 || !paymentAccountId) return [];
@@ -961,6 +964,7 @@ export function AddSaleForm({
                 method: form.paymentMethod,
                 note: form.paymentNote.trim() || undefined,
                 accountId: paymentAccountId,
+                paidOn,
               },
             ];
           }
@@ -971,6 +975,7 @@ export function AddSaleForm({
                 method: form.paymentMethod,
                 note: form.paymentNote.trim() || undefined,
                 accountId: paymentAccountId || undefined,
+                paidOn,
               },
             ];
           }

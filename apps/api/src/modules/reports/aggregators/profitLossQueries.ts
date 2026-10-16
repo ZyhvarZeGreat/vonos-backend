@@ -1,4 +1,5 @@
 import type {
+  LedgerSummary,
   ProfitLossBreakdownTab,
   ProfitLossLine,
   ProfitLossReport,
@@ -8,6 +9,7 @@ import type {
 import { Prisma } from '@prisma/client';
 import type { TenantScopedPrisma } from '../../../common/prisma/prisma.service';
 import { ledgerDateFilter } from '../../../common/utils/ledgerAggregates';
+import { computeFinanceSummary } from '../../../common/utils/financeSummary';
 import { computeSalesRevenueTotal } from '../../../common/utils/salesRevenue';
 import { excludeCashBookLedgerWhere } from '../../../common/utils/ledgerCashBook';
 import { toNumber } from '../../../common/utils/serializers';
@@ -840,6 +842,8 @@ export interface ProfitLossLoadContext {
   itemMeta: Map<string, ItemMeta>;
   jobTotals: { revenue: number; directCost: number };
   hasBreakdownData: boolean;
+  /** Single source of truth for the summary headline (matches Finance page). */
+  financeSummary: LedgerSummary;
 }
 
 export type LoadProfitLossOptions = {
@@ -957,6 +961,7 @@ export async function loadProfitLossContext(
     saleDiscountAgg,
     returnSales,
     jobTotalsAgg,
+    financeSummary,
   ] = await Promise.all([
     stockValuation(db, tenantId),
     db.ledgerEntry.groupBy({
@@ -989,6 +994,7 @@ export async function loadProfitLossContext(
     includeBreakdown
       ? Promise.resolve({ revenue: 0, directCost: 0 })
       : computeJobRevenueTotal(db, tenantId, from, to),
+    computeFinanceSummary(db, tenantId, from, to),
   ]);
 
   const inboundTotal = movementTotals.inbound;
@@ -1025,6 +1031,7 @@ export async function loadProfitLossContext(
     itemMeta,
     jobTotals,
     hasBreakdownData,
+    financeSummary,
   };
 }
 
@@ -1047,115 +1054,29 @@ export async function ensureProfitLossBreakdownData(
 export function buildProfitLossSummaryFromContext(
   loaded: ProfitLossLoadContext,
 ): ProfitLossSummary {
-  const {
-    stock,
-    ledgerGroups,
-    salesRevenue,
-    payrollTotal,
-    inboundTotal,
-    transferTotal,
-    outboundTotal,
-    saleDiscountTotal,
-    returnSalesTotal,
-    jobTotals,
-  } = loaded;
-
-  const currency = stock.currency || salesRevenue.currency || 'NGN';
-
-  let totalExpense = 0;
-  for (const group of ledgerGroups) {
-    if (group.type !== 'expense') continue;
-    const cat = (group.category ?? '').toLowerCase();
-    if (cat.includes('payroll')) continue;
-    totalExpense += toNumber(group._sum.amount ?? 0);
-  }
-
-  const totalPurchase = inboundTotal;
-  const totalStockAdjustment = 0;
-  const totalTransferShipping = transferTotal;
-  const totalSellDiscount = saleDiscountTotal;
-  const totalSellReturn = returnSalesTotal;
-  const totalSales = salesRevenue.revenue + jobTotals.revenue;
-
-  const closingStockPurchase = stock.byPurchase;
-  const closingStockSale = stock.bySale;
-
-  const outboundCost = outboundTotal;
-  const openingStockPurchase = Math.max(
-    0,
-    closingStockPurchase - totalPurchase + outboundCost,
-  );
-  const openingStockSale = Math.max(
-    0,
-    closingStockSale - totalPurchase * 1.1 + totalSales * 0.1,
-  );
+  // The P&L headline now mirrors the Finance page (single accrual summary),
+  // instead of its own warehouse-style COGS math that was wrong for job /
+  // service tenants. Stock-based lines (opening/closing stock, COGS, gross)
+  // are intentionally dropped.
+  const { financeSummary, salesRevenue, stock } = loaded;
+  const currency = financeSummary.currency || stock.currency || salesRevenue.currency || 'NGN';
+  const revenue = financeSummary.revenue;
+  const costs = financeSummary.costs;
 
   const debits: ProfitLossLine[] = [
-    lineAmount(
-      'Opening Stock (By purchase price)',
-      'openingStockPurchase',
-      openingStockPurchase,
-    ),
-    lineAmount(
-      'Opening Stock (By sale price)',
-      'openingStockSale',
-      openingStockSale,
-    ),
-    lineAmount('Total purchase', 'totalPurchase', totalPurchase),
-    lineAmount('Total Stock Adjustment', 'totalStockAdjustment', totalStockAdjustment),
-    lineAmount('Total Expense', 'totalExpense', totalExpense),
-    lineAmount('Total purchase shipping charge', 'purchaseShipping', 0),
-    lineAmount('Purchase additional expenses', 'purchaseAdditional', 0),
-    lineAmount('Total transfer shipping charge', 'transferShipping', totalTransferShipping),
-    lineAmount('Total Sell discount', 'sellDiscount', totalSellDiscount),
-    lineAmount('Total customer reward', 'customerReward', 0),
-    lineAmount('Total Sell Return', 'sellReturn', totalSellReturn),
-    lineAmount('Total Payroll', 'totalPayroll', payrollTotal),
+    lineAmount('Total Costs & Expenses', 'totalExpense', costs),
   ];
-
   const credits: ProfitLossLine[] = [
-    lineAmount(
-      'Closing stock (By purchase price)',
-      'closingStockPurchase',
-      closingStockPurchase,
-    ),
-    lineAmount(
-      'Closing stock (By sale price)',
-      'closingStockSale',
-      closingStockSale,
-    ),
-    lineAmount('Total Sales', 'totalSales', totalSales),
-    lineAmount('Total sell shipping charge', 'sellShipping', 0),
-    lineAmount('Sell additional expenses', 'sellAdditional', 0),
-    lineAmount('Total Stock Recovered', 'stockRecovered', 0),
-    lineAmount('Total Purchase Return', 'purchaseReturn', 0),
-    lineAmount('Total Purchase discount', 'purchaseDiscount', 0),
-    lineAmount('Total sell reward', 'sellReward', 0),
+    lineAmount('Total Sales', 'totalSales', revenue),
   ];
-
-  const cogs =
-    openingStockPurchase +
-    totalPurchase +
-    totalStockAdjustment +
-    totalTransferShipping -
-    closingStockPurchase +
-    jobTotals.directCost;
-
-  const grossProfit = totalSales - cogs;
-  const netProfit =
-    grossProfit -
-    totalExpense -
-    payrollTotal -
-    totalSellDiscount -
-    totalSellReturn;
 
   return {
     currency,
     debits,
     credits,
-    cogs: Math.round(cogs * 100) / 100,
-    grossProfit: Math.round(grossProfit * 100) / 100,
-    netProfit: Math.round(netProfit * 100) / 100,
+    cogs: 0,
+    grossProfit: Math.round(revenue * 100) / 100,
+    netProfit: Math.round(financeSummary.net * 100) / 100,
   };
 }
 

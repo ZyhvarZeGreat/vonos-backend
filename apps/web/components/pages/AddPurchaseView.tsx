@@ -305,9 +305,8 @@ export function AddPurchaseView() {
     const latestPayment =
       existingPayments.find((p) => p.accountId?.trim()) ??
       existingPayments[0];
-    const paidOnIso = latestPayment?.paidOn
-      ? new Date(latestPayment.paidOn).toISOString().slice(0, 16)
-      : new Date().toISOString().slice(0, 16);
+    // New payments default to "now" — never inherit an earlier payment's date.
+    const paidOnIso = new Date().toISOString().slice(0, 16);
     setForm({
       ...emptyForm(),
       reference: existing.reference,

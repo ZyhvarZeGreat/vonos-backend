@@ -401,6 +401,10 @@ table.dataTable tbody>tr.selected{
 tr.footer-total > td {
     vertical-align: middle !important;
 }
+/* Normalize the oversized totals row (was 17px via .font-17) to match the table. */
+tr.footer-total {
+    font-size: 14px !important;
+}
 .error{
 	color: red !important;
 }

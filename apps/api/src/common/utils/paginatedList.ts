@@ -5,6 +5,7 @@ export interface ListAmountSummary {
   totalAmount?: number;
   totalPaid?: number;
   totalDue?: number;
+  totalReturn?: number;
   currency?: string;
 }
 

@@ -6,7 +6,7 @@ type SaleRollupRow = {
   total: Prisma.Decimal;
   status: string;
   paymentStatus: string | null;
-  payments: { amount: Prisma.Decimal }[];
+  payments: { amount: Prisma.Decimal; isReturn: boolean }[];
 };
 
 export type CustomerFinancialRollupTotals = {
@@ -27,7 +27,7 @@ function saleTotalsFromRows(sales: SaleRollupRow[]): CustomerFinancialRollupTota
   for (const sale of sales) {
     const total = toNumber(sale.total);
     const paid = sale.payments.reduce(
-      (sum, payment) => sum + toNumber(payment.amount),
+      (sum, payment) => (payment.isReturn ? sum : sum + toNumber(payment.amount)),
       0,
     );
     const isReturn =
@@ -98,7 +98,7 @@ export async function computeCustomerFinancialRollupsForIds(
       paymentStatus: true,
       payments: {
         where: { deletedAt: null },
-        select: { amount: true },
+        select: { amount: true, isReturn: true },
       },
     },
   });
@@ -130,7 +130,7 @@ export async function refreshCustomerFinancialRollups(
       paymentStatus: true,
       payments: {
         where: { deletedAt: null },
-        select: { amount: true },
+        select: { amount: true, isReturn: true },
       },
     },
   });

@@ -968,6 +968,12 @@ export class StockMovementsService {
       data: { paymentStatus, totalPaid: paid },
     });
 
+    // Keep the purchase bill in step with the movement payment status.
+    await this.tenantDb.db.invoice.updateMany({
+      where: { tenantId, stockMovementId: movementId, deletedAt: null },
+      data: { paymentStatus },
+    });
+
     if (supplierId) {
       await refreshSupplierPurchaseRollups(this.tenantDb.db, supplierId);
     }

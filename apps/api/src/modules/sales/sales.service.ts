@@ -1205,6 +1205,7 @@ export class SalesService {
       method?: string;
       note?: string;
       accountId?: string;
+      paidOn?: string;
     }>;
   }): Promise<SaleDetail> {
     const tenantId = this.tenantDb.requireTenantId();
@@ -1847,6 +1848,7 @@ export class SalesService {
 
         for (const payment of resolvedPayments) {
           if (payment.amount <= 0) continue;
+          const paidOn = payment.paidOn ? new Date(payment.paidOn) : new Date();
           const createdPayment = await tx.payment.create({
             data: {
               tenantId,
@@ -1854,7 +1856,7 @@ export class SalesService {
               currency,
               method: payment.method ?? 'cash',
               paymentRefNo: `SP${saleDate.getFullYear()}/${sale.reference}`,
-              paidOn: saleDate,
+              paidOn,
               paymentFor: 'sale',
               saleId: sale.id,
               invoiceId: invoice.id,
@@ -1870,7 +1872,7 @@ export class SalesService {
               type: 'credit',
               subType: 'sale_payment',
               amount: payment.amount,
-              operationDate: saleDate,
+              operationDate: paidOn,
               refNo: createdPayment.paymentRefNo,
               note: payment.note ?? `Sale payment — ${sale.reference}`,
               paymentMethod: payment.method ?? 'cash',
@@ -2168,6 +2170,7 @@ export class SalesService {
         method?: string;
         note?: string;
         accountId?: string;
+        paidOn?: string;
       }>;
     },
   ): Promise<SaleDetail> {
@@ -2606,6 +2609,7 @@ export class SalesService {
             if (payment.amount <= 0) continue;
             // Convert without a payment account → no payment row (sale stays due).
             if (!payment.accountId?.trim()) continue;
+            const paidOn = payment.paidOn ? new Date(payment.paidOn) : new Date();
             const createdPayment = await tx.payment.create({
               data: {
                 tenantId,
@@ -2613,7 +2617,7 @@ export class SalesService {
                 currency,
                 method: payment.method ?? 'cash',
                 paymentRefNo: `SP${saleDate.getFullYear()}/${updated.reference}`,
-                paidOn: saleDate,
+                paidOn,
                 paymentFor: 'sale',
                 saleId: id,
                 invoiceId: invoice.id,
@@ -2628,7 +2632,7 @@ export class SalesService {
               type: 'credit',
               subType: 'sale_payment',
               amount: payment.amount,
-              operationDate: saleDate,
+              operationDate: paidOn,
               refNo: createdPayment.paymentRefNo,
               note: payment.note ?? `Sale payment — ${updated.reference}`,
               paymentMethod: payment.method ?? 'cash',
@@ -2739,6 +2743,7 @@ export class SalesService {
         method?: string;
         note?: string;
         accountId?: string;
+        paidOn?: string;
       }>;
     } = {},
   ): Promise<SaleDetail> {
@@ -2920,6 +2925,7 @@ export class SalesService {
 
       for (const payment of paymentRows) {
         if (payment.amount <= 0) continue;
+        const paidOn = payment.paidOn ? new Date(payment.paidOn) : new Date();
         const createdPayment = await tx.payment.create({
           data: {
             tenantId,
@@ -2927,7 +2933,7 @@ export class SalesService {
             currency: existing.currency,
             method: payment.method ?? 'cash',
             paymentRefNo: `SP${existing.date.getFullYear()}/${sale.reference}`,
-            paidOn: existing.date,
+            paidOn,
             paymentFor: 'sale',
             saleId: sale.id,
             accountId: payment.accountId ?? null,
@@ -2942,7 +2948,7 @@ export class SalesService {
             type: 'credit',
             subType: 'sale_payment',
             amount: payment.amount,
-            operationDate: existing.date,
+            operationDate: paidOn,
             refNo: createdPayment.paymentRefNo,
             note: payment.note ?? `Sale payment — ${sale.reference}`,
             paymentMethod: payment.method ?? 'cash',
@@ -2995,6 +3001,7 @@ export class SalesService {
       disposition: 'refunded' | 'restocked' | 'written_off';
       notes?: string;
       lines?: Array<{ saleLineId: string; quantity: number }>;
+      accountId?: string;
     },
   ): Promise<SaleDetail> {
     const tenantId = this.tenantDb.requireTenantId();
@@ -3083,6 +3090,37 @@ export class SalesService {
     if (isFullReturn) {
       returnTotal = toNumber(original.total);
     }
+
+    // `refunded` / `restocked` pay money back out of the till. `written_off`
+    // is a pure loss — no cash movement.
+    const refundsCash =
+      body.disposition === 'refunded' || body.disposition === 'restocked';
+    let refundAccountId: string | null = null;
+    if (refundsCash) {
+      refundAccountId = body.accountId?.trim() || null;
+      if (!refundAccountId) {
+        throw new BadRequestException(
+          'Select a Payment Account so the refund posts to the account book',
+        );
+      }
+      const account = await this.tenantDb.db.paymentAccount.findFirst({
+        where: { id: refundAccountId, tenantId, deletedAt: null },
+        select: { id: true, isClosed: true },
+      });
+      if (!account) throw new NotFoundException('Payment account not found');
+      if (account.isClosed) {
+        throw new BadRequestException(
+          'Cannot refund from a closed payment account',
+        );
+      }
+    }
+
+    const originalInvoice = refundsCash
+      ? await this.tenantDb.db.invoice.findFirst({
+          where: { tenantId, saleId: original.id, deletedAt: null },
+          select: { id: true },
+        })
+      : null;
 
     let reference = `RET-${original.reference}`;
     let suffix = 1;
@@ -3179,6 +3217,44 @@ export class SalesService {
           date: saleDate,
         },
       });
+
+      // Cash refund: money leaves the till. Recorded as an isReturn Payment on
+      // the original sale (excluded from "paid" sums) plus an account-book
+      // debit, so the cash book matches the store credit/expense line.
+      if (refundAccountId) {
+        const refundPayment = await tx.payment.create({
+          data: {
+            tenantId,
+            amount: returnTotal,
+            currency: original.currency,
+            method: 'cash',
+            paymentRefNo: `SR${saleDate.getFullYear()}/${reference}`,
+            paidOn: saleDate,
+            paymentFor: 'sale_return',
+            isReturn: true,
+            saleId: original.id,
+            invoiceId: originalInvoice?.id ?? null,
+            accountId: refundAccountId,
+            note: notes ?? `Refund for return ${reference}`,
+            createdByName: createdBy.createdByName ?? null,
+          },
+        });
+        await recordPaymentAccountTxn(tx, {
+          tenantId,
+          accountId: refundAccountId,
+          type: 'debit',
+          subType: 'sale_refund',
+          amount: returnTotal,
+          operationDate: saleDate,
+          refNo: refundPayment.paymentRefNo,
+          note: notes ?? `Refund for return ${reference}`,
+          paymentMethod: 'cash',
+          saleId: original.id,
+          paymentId: refundPayment.id,
+          invoiceId: originalInvoice?.id ?? null,
+          createdByName: createdBy.createdByName ?? null,
+        });
+      }
 
       return sale;
     },
@@ -3485,6 +3561,13 @@ export class SalesService {
         totalPaid: paidTotal,
         ...(paymentMethod ? { paymentMethod } : {}),
       },
+    });
+
+    // Keep the printed document in step — a later payment used to leave the
+    // linked invoice stuck on its create-time status ("Due" after paid).
+    await this.tenantDb.db.invoice.updateMany({
+      where: { tenantId, saleId, deletedAt: null },
+      data: { paymentStatus },
     });
 
     if (sale.customerId) {

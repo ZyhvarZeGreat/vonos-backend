@@ -3,6 +3,7 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
+import { useFiltersPanelOpen } from "@/lib/hooks/useFiltersPanelOpen";
 import { Hq6ActionsMenu } from "@/components/hq6/Hq6ActionsMenu";
 import { Hq6Breadcrumbs, useHq6Breadcrumbs } from "@/components/hq6/Hq6Breadcrumbs";
 import { Hq6ColumnVisibilityModal } from "@/components/hq6/Hq6ColumnVisibilityModal";
@@ -79,7 +80,7 @@ export function Hq6SuppliersListView() {
   const tenantId = useTenantId();
   const openCreateModal = useUiStore((state) => state.openCreateModal);
   const { search, setSearch } = useListPageFilters();
-  const [filtersOpen, setFiltersOpen] = useState(true);
+  const [filtersOpen, setFiltersOpen] = useFiltersPanelOpen();
   const [purchaseDue, setPurchaseDue] = useState(false);
   const [purchaseReturn, setPurchaseReturn] = useState(false);
   const [advanceBalance, setAdvanceBalance] = useState(false);
@@ -215,10 +216,7 @@ export function Hq6SuppliersListView() {
     suppliers.length === 0 && (isLoading || isSearching);
 
   const dueTotal = amountSummary?.totalDue;
-  const returnDueTotal = suppliers.reduce(
-    (sum, row) => sum + (row.totalPurchaseReturn ?? 0),
-    0,
-  );
+  const returnDueTotal = amountSummary?.totalReturn ?? 0;
 
   const exportList = useListExport();
 

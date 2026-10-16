@@ -2,6 +2,7 @@
 
 import { useCallback, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useFiltersPanelOpen } from "@/lib/hooks/useFiltersPanelOpen";
 import { useRouter } from "next/navigation";
 import {
   useServerListPage,
@@ -184,7 +185,7 @@ export function Hq6ProductsListView({
   );
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const chrome = useHq6ListChrome("products");
-  const [filtersOpen, setFiltersOpen] = useState(true);
+  const [filtersOpen, setFiltersOpen] = useFiltersPanelOpen();
 
   // Moves: product homes (VW/VISP/VSP) + VA/VP as move destinations only.
   // `Hq6MoveProductModal` already blocks negative stock via `qty > available at source`.

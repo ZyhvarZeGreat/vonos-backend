@@ -9,6 +9,7 @@ import { Select } from "@/components/atoms/Select";
 import { StatusPill } from "@/components/atoms/StatusPill";
 import { Hq6SaleViewModal } from "@/components/hq6/Hq6SaleViewModal";
 import { Hq6PrintInvoiceModal } from "@/components/hq6/Hq6PrintInvoiceModal";
+import { PaymentAccountSelect } from "@/components/hq6/PaymentAccountSelect";
 import { RecordViewModal } from "@/components/organisms/RecordViewModal";
 import { InvoiceDocument } from "@/components/organisms/InvoiceDocument";
 import { DocumentPreviewModal } from "@/components/organisms/DocumentPreviewModal";
@@ -65,6 +66,7 @@ export function SaleRecordModal({
   const [returnOpen, setReturnOpen] = useState(false);
   const [disposition, setDisposition] = useState<SaleReturnDisposition>("refunded");
   const [returnNotes, setReturnNotes] = useState("");
+  const [returnAccountId, setReturnAccountId] = useState("");
 
   const queryClient = useQueryClient();
   const { data: bundle, isLoading, error } = useQuery({
@@ -176,6 +178,8 @@ export function SaleRecordModal({
       return createSaleReturn(tenantId, saleId, {
         disposition,
         notes: returnNotes.trim() || undefined,
+        accountId:
+          disposition === "written_off" ? undefined : returnAccountId.trim(),
       });
     },
     successMessage: "Return recorded",
@@ -185,10 +189,13 @@ export function SaleRecordModal({
       ["returns"],
       ["items"],
       ["ledgerTablePage"],
+      ["payment-accounts", tenantId],
+      ["payments", tenantId],
     ],
     onSuccess: () => {
       setReturnOpen(false);
       setReturnNotes("");
+      setReturnAccountId("");
     },
   });
 
@@ -256,6 +263,16 @@ export function SaleRecordModal({
                       { label: "Written off", value: "written_off" },
                     ]}
                   />
+                  {disposition !== "written_off" ? (
+                    <label className="flex flex-col gap-1.5 text-sm font-medium text-foreground">
+                      Refund from account <span className="text-[#b91c1c]">*</span>
+                      <PaymentAccountSelect
+                        value={returnAccountId}
+                        onChange={setReturnAccountId}
+                        emptyLabel="Select till/bank"
+                      />
+                    </label>
+                  ) : null}
                   <label className="flex flex-col gap-1.5 text-sm font-medium text-foreground">
                     Notes
                     <textarea
@@ -283,7 +300,11 @@ export function SaleRecordModal({
                   <>
                     <Button
                       size="sm"
-                      disabled={returnMutation.isPending}
+                      disabled={
+                        returnMutation.isPending ||
+                        (disposition !== "written_off" &&
+                          !returnAccountId.trim())
+                      }
                       onClick={() => returnMutation.mutate()}
                     >
                       Record return

@@ -80,7 +80,10 @@ type SaleRow = {
   status?: string;
   paymentStatus?: string | null;
   date?: Date;
-  payments?: { amount: string | number | { toString(): string } | null }[];
+  payments?: {
+    amount: string | number | { toString(): string } | null;
+    isReturn?: boolean;
+  }[];
 };
 
 function monthsAgo(months: number): Date {
@@ -97,7 +100,7 @@ function saleTotals(sales: SaleRow[]) {
   for (const sale of sales) {
     const total = toNumber(sale.total);
     const paid = (sale.payments ?? []).reduce(
-      (sum, p) => sum + toNumber(p.amount),
+      (sum, p) => (p.isReturn ? sum : sum + toNumber(p.amount)),
       0,
     );
     const isReturn =
@@ -403,6 +406,7 @@ export class CustomersService {
               totalSell: true,
               totalSellDue: true,
               totalSellPaid: true,
+              totalSellReturn: true,
             },
           })
         : Promise.resolve(undefined),
@@ -443,6 +447,7 @@ export class CustomersService {
         totalAmount: toNumber(amountAgg._sum.totalSell),
         totalPaid: toNumber(amountAgg._sum.totalSellPaid),
         totalDue: toNumber(amountAgg._sum.totalSellDue),
+        totalReturn: toNumber(amountAgg._sum.totalSellReturn),
         currency: 'NGN',
       },
     };
@@ -698,7 +703,10 @@ export class CustomersService {
         status: { notIn: ['draft', 'quotation', 'refunded', 'written_off'] },
       },
       include: {
-        payments: { where: { deletedAt: null }, select: { amount: true } },
+        payments: {
+          where: { deletedAt: null },
+          select: { amount: true, isReturn: true },
+        },
       },
       orderBy: [{ date: 'asc' }, { id: 'asc' }],
     });
@@ -718,7 +726,8 @@ export class CustomersService {
         if (remaining <= 0) break;
         const total = toNumber(sale.total);
         const paid = sale.payments.reduce(
-          (sum, payment) => sum + toNumber(payment.amount),
+          (sum, payment) =>
+            payment.isReturn ? sum : sum + toNumber(payment.amount),
           0,
         );
         const due = Math.max(0, total - paid);
@@ -1137,6 +1146,7 @@ export async function warmDefaultCustomerListPages(
                     totalSell: true,
                     totalSellDue: true,
                     totalSellPaid: true,
+                    totalSellReturn: true,
                   },
                 })
               : Promise.resolve(undefined),
@@ -1163,6 +1173,7 @@ export async function warmDefaultCustomerListPages(
               totalAmount: toNumber(amountAgg._sum.totalSell),
               totalPaid: toNumber(amountAgg._sum.totalSellPaid),
               totalDue: toNumber(amountAgg._sum.totalSellDue),
+              totalReturn: toNumber(amountAgg._sum.totalSellReturn),
               currency: 'NGN',
             },
           };

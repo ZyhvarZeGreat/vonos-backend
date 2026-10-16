@@ -201,6 +201,8 @@ export interface CreateSalePaymentRequest {
   method?: string;
   note?: string;
   accountId?: string;
+  /** When omitted, the payment is stamped with the current time, not the sale date. */
+  paidOn?: string;
 }
 
 export interface CreateSaleRequest {
@@ -257,4 +259,9 @@ export interface CreateSaleReturnRequest {
   notes?: string;
   /** Omit to return all lines at full quantity. */
   lines?: CreateSaleReturnLineRequest[];
+  /**
+   * Required for cash-refunding dispositions (`refunded`, `restocked`) — the
+   * till/bank the refund is paid out of. Ignored for `written_off`.
+   */
+  accountId?: string;
 }

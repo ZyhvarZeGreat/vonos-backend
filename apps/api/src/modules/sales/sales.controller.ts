@@ -296,6 +296,7 @@ export class SalesController {
       disposition: 'refunded' | 'restocked' | 'written_off';
       notes?: string;
       lines?: Array<{ saleLineId: string; quantity: number }>;
+      accountId?: string;
     },
   ) {
     return this.salesService.createReturn(id, body);

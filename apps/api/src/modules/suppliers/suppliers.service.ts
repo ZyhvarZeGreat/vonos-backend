@@ -236,6 +236,7 @@ export class SuppliersService {
               totalPurchase: true,
               totalPurchaseDue: true,
               totalPurchasePaid: true,
+              totalPurchaseReturn: true,
             },
           })
         : Promise.resolve(undefined),
@@ -265,6 +266,7 @@ export class SuppliersService {
         totalAmount: toNumber(amountAgg._sum.totalPurchase),
         totalDue: toNumber(amountAgg._sum.totalPurchaseDue),
         totalPaid: toNumber(amountAgg._sum.totalPurchasePaid),
+        totalReturn: toNumber(amountAgg._sum.totalPurchaseReturn),
         currency: 'NGN',
       },
     };
@@ -803,6 +805,7 @@ export async function warmDefaultSupplierListPages(
                     totalPurchase: true,
                     totalPurchaseDue: true,
                     totalPurchasePaid: true,
+                    totalPurchaseReturn: true,
                   },
                 })
               : Promise.resolve(undefined),
@@ -827,6 +830,7 @@ export async function warmDefaultSupplierListPages(
               totalAmount: toNumber(amountAgg._sum.totalPurchase),
               totalDue: toNumber(amountAgg._sum.totalPurchaseDue),
               totalPaid: toNumber(amountAgg._sum.totalPurchasePaid),
+              totalReturn: toNumber(amountAgg._sum.totalPurchaseReturn),
               currency: 'NGN',
             },
           };
