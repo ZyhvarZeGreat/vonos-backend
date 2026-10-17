@@ -209,6 +209,14 @@ body {
   overflow: visible;
 }
 
+/* About "How it works" card — match the rest of the content column. */
+.marketing-root .step-info {
+  max-width: var(--vonos-inner-max);
+}
+.marketing-root .step-info > .container {
+  max-width: 100%;
+}
+
 /* Hero — height scales with the viewport (vh); content sits lower in the hero. */
 .marketing-root #home .hero-detail {
   min-height: 90vh;

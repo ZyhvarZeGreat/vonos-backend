@@ -66,10 +66,12 @@ export default function AboutPageHeroSection() {
           </div>
           <div className="hero-about-bottom">
             <AboutHeroCarousel images={ABOUT_HERO_SLIDES} />
-            <div data-show="show" className="marquee-list">
-              <MarqueeItem />
-              <MarqueeItem />
-              <MarqueeItem />
+            <div className="marquee-window">
+              <div data-show="show" className="marquee-list">
+                <MarqueeItem />
+                <MarqueeItem />
+                <MarqueeItem />
+              </div>
               <div className="marquee-overlay" />
             </div>
           </div>
