@@ -1140,6 +1140,7 @@ export class HrmService {
           },
         });
         void invalidateTenantDashboardCache(this.cache, tenantId);
+        void this.cache.bumpListVersion(tenantId, 'hrm-employees');
         if (locationCodes.length > 0) {
           await this.mirrorWorkLocationsToPeerEmployees(
             userId,
@@ -1177,6 +1178,7 @@ export class HrmService {
       },
     });
     void invalidateTenantDashboardCache(this.cache, tenantId);
+    void this.cache.bumpListVersion(tenantId, 'hrm-employees');
     const created = this.serializeEmployee(row);
     if (userId) {
       if (locationCodes.length > 0) {
@@ -1274,6 +1276,8 @@ export class HrmService {
         );
       }
       await this.propagateBankFieldsToSiblingRows(args.userId, row.id);
+      void invalidateTenantDashboardCache(this.cache, tenantId);
+      void this.cache.bumpListVersion(tenantId, 'hrm-employees');
       return this.serializeEmployee(row);
     }
 
