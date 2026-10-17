@@ -13,8 +13,16 @@ const UPOS_STYLESHEET_PATHS = [
   "/upos/hq6-users-lift.css",
 ] as const;
 
-export const UPOS_STYLESHEETS = UPOS_STYLESHEET_PATHS.map((href) =>
-  withBasePath(href),
+/**
+ * Stable-named CSS isn't content-hashed, so cache-bust with `?v=` derived from
+ * the newest /upos mtime (see next.config.ts). Immutable cache is only used in
+ * production; dev serves no-store.
+ */
+const UPOS_CSS_VERSION =
+  process.env.NEXT_PUBLIC_UPOS_CSS_VERSION ?? "1";
+
+export const UPOS_STYLESHEETS = UPOS_STYLESHEET_PATHS.map(
+  (href) => `${withBasePath(href)}?v=${UPOS_CSS_VERSION}`,
 );
 
 export function uposStylesheetId(href: string): string {

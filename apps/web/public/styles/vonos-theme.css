@@ -34,7 +34,7 @@ body {
 
 @media screen and (min-width: 1081px) {
   .marketing-root {
-    --vonos-inner-max: 1440px;
+    --vonos-inner-max: 1720px;
     --vonos-marketing-gutter: 2rem;
   }
 }
@@ -68,15 +68,25 @@ body {
  * Applied to the primary wrapper inside each outer container.
  */
 .marketing-root .vonos-inner-shell,
-.marketing-root .container > *:only-child,
-.marketing-root .container-medium > *:only-child,
-.marketing-root .container-full > *:only-child,
+.marketing-root .container > *,
+.marketing-root .container-medium > *,
+.marketing-root .container-full > *,
 .marketing-root .nav-container > *:only-child {
   box-sizing: border-box;
   max-width: var(--vonos-inner-max) !important;
   margin-left: auto;
   margin-right: auto;
   width: 100%;
+}
+
+/* Full-bleed bands (footer blue band + CTA band) stay edge-to-edge — only the
+   content column inside them is capped at 1440. */
+.marketing-root .container-full > .vonos-footer-bleed,
+.marketing-root .container-full > .vonos-footer-cta-band {
+  max-width: none !important;
+  width: 100vw !important;
+  margin-left: calc(50% - 50vw) !important;
+  margin-right: calc(50% - 50vw) !important;
 }
 
 /* Footer — full-width blue band, inner content aligned to page shell */
@@ -189,17 +199,30 @@ body {
   color: var(--vonos-on-blue-muted) !important;
 }
 
-/* Full-bleed heroes — background spans viewport; content aligns via nested grids */
-.marketing-root section.none > .container-full > .hero-detail,
-.marketing-root section:has(.hero-bg-item) > .container-full > .hero-service-detail {
-  max-width: none !important;
+/* Marquee: stationary, centered clip window; the animated track scrolls inside
+   it so the toolbar/band itself never drifts off-centre. */
+.marketing-root .marquee-window {
+  position: relative;
+  overflow: clip;
+}
+.marketing-root .marquee-window .marquee-list {
+  overflow: visible;
 }
 
-/* Tickers run edge-to-edge inside the outer shell padding */
-.marketing-root .marquee-section > .container-full > *,
-.marketing-root .marquee-simple-section > .container-full > * {
-  max-width: none !important;
+/* Hero — height scales with the viewport (vh); content sits lower in the hero. */
+.marketing-root #home .hero-detail {
+  min-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  padding-bottom: 5rem;
 }
+.marketing-root #home .hero-content {
+  padding-top: 2rem;
+  padding-bottom: 2rem;
+}
+
+/* Marquee tickers are capped with the rest of the sections (no edge-to-edge). */
 
 body,
 .body {
