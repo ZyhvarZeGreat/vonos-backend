@@ -9,6 +9,8 @@ import {
   type PaymentLinkAuditResult,
   type PaymentLinkAuditRow,
   type PaymentLinkAuditStatus,
+  type PaymentLinkReconcileResult,
+  type PaymentLinkReconcileSkip,
   type PaymentRecord,
 } from '@vonos/types';
 import { TenantDbService } from '../../common/prisma/tenant-db.service';
@@ -20,7 +22,10 @@ import {
   withListPageCache,
 } from '../../common/utils/listPageCache';
 import type { PaginatedList } from '../../common/utils/paginatedList';
-import { syncSalePaymentAccountCredit } from '../../common/utils/recordPaymentAccountTxn';
+import {
+  recordPaymentAccountTxn,
+  syncSalePaymentAccountCredit,
+} from '../../common/utils/recordPaymentAccountTxn';
 import { toIso, toNumber } from '../../common/utils/serializers';
 import {
   paymentTextSearchWhere,
@@ -620,5 +625,273 @@ export class PaymentsService {
 
   private linkAuditKey(accountId: string, amount: number, date: Date): string {
     return `${accountId}|${amount.toFixed(2)}|${toIso(date)}`;
+  }
+
+  /**
+   * Reconcile imported/historical payments with the account book.
+   *
+   * - Links a ledger row to a payment when account + amount + date match
+   *   exactly (1:1 per key — never guesses across different amounts).
+   * - Creates the missing credit/debit leg for payments that have an account
+   *   but no ledger row at all, when the direction is unambiguous.
+   *
+   * Idempotent: re-running links nothing again and creates nothing again.
+   * Defaults to a dry run.
+   */
+  async reconcilePaymentLinks(body: {
+    dryRun?: boolean;
+  }): Promise<PaymentLinkReconcileResult> {
+    const tenantId = this.tenantDb.requireTenantId();
+    const dryRun = body.dryRun !== false;
+
+    const [payments, txns] = await Promise.all([
+      this.tenantDb.db.payment.findMany({
+        where: { tenantId, deletedAt: null, accountId: { not: null } },
+        select: {
+          id: true,
+          amount: true,
+          currency: true,
+          method: true,
+          paymentRefNo: true,
+          paidOn: true,
+          paymentFor: true,
+          accountId: true,
+          saleId: true,
+          invoiceId: true,
+          note: true,
+          createdByName: true,
+          createdAt: true,
+          invoice: { select: { kind: true } },
+        },
+      }),
+      this.tenantDb.db.accountTransaction.findMany({
+        where: { tenantId, deletedAt: null },
+        select: {
+          id: true,
+          paymentId: true,
+          saleId: true,
+          expenseId: true,
+          subType: true,
+          amount: true,
+          accountId: true,
+          refNo: true,
+          paymentMethod: true,
+          operationDate: true,
+        },
+      }),
+    ]);
+
+    const linkedPaymentIds = new Set(
+      txns.filter((t) => t.paymentId).map((t) => t.paymentId as string),
+    );
+    const unlinkedPayments = payments.filter(
+      (p) => !linkedPaymentIds.has(p.id),
+    );
+    const orphans = txns.filter(
+      (t) =>
+        !t.paymentId &&
+        !t.saleId &&
+        !t.expenseId &&
+        !['opening_balance', 'transfer', 'deposit'].includes(t.subType ?? ''),
+    );
+
+    const orphansByKey = new Map<string, (typeof orphans)[number][]>();
+    for (const txn of orphans) {
+      const key = this.linkAuditKey(
+        txn.accountId,
+        toNumber(txn.amount),
+        txn.operationDate,
+      );
+      const list = orphansByKey.get(key) ?? [];
+      list.push(txn);
+      orphansByKey.set(key, list);
+    }
+
+    const usedTxnIds = new Set<string>();
+    const linkPlan: {
+      paymentId: string;
+      txnId: string;
+      paymentRefNo: string | null;
+      method: string | null;
+      amount: number;
+    }[] = [];
+    const createPlan: {
+      payment: (typeof payments)[number];
+      direction: 'credit' | 'debit';
+    }[] = [];
+    const skipped: PaymentLinkReconcileSkip[] = [];
+    let ambiguous = 0;
+
+    for (const payment of unlinkedPayments) {
+      if (!payment.accountId) {
+        skipped.push({
+          paymentId: payment.id,
+          paymentRefNo: payment.paymentRefNo,
+          reason: 'no_account',
+        });
+        continue;
+      }
+      const key = payment.paidOn
+        ? this.linkAuditKey(
+            payment.accountId,
+            toNumber(payment.amount),
+            payment.paidOn,
+          )
+        : null;
+      const candidates = key ? (orphansByKey.get(key) ?? []) : [];
+      const match = candidates.find((txn) => !usedTxnIds.has(txn.id));
+      if (match) {
+        usedTxnIds.add(match.id);
+        if (candidates.length > 1) ambiguous += 1;
+        linkPlan.push({
+          paymentId: payment.id,
+          txnId: match.id,
+          paymentRefNo: payment.paymentRefNo,
+          method: payment.method,
+          amount: toNumber(payment.amount),
+        });
+        continue;
+      }
+      const direction = this.inferPaymentDirection(payment);
+      if (!direction) {
+        skipped.push({
+          paymentId: payment.id,
+          paymentRefNo: payment.paymentRefNo,
+          reason: 'direction_unknown',
+        });
+        continue;
+      }
+      createPlan.push({ payment, direction });
+    }
+
+    const linkedAmount = linkPlan.reduce((sum, item) => sum + item.amount, 0);
+    const createdAmount = createPlan.reduce(
+      (sum, item) => sum + toNumber(item.payment.amount),
+      0,
+    );
+
+    if (!dryRun) {
+      await this.tenantDb.db.$transaction(
+        async (tx) => {
+          for (const item of linkPlan) {
+            const txn = await tx.accountTransaction.findFirst({
+              where: {
+                id: item.txnId,
+                tenantId,
+                deletedAt: null,
+                paymentId: null,
+              },
+              select: { id: true, refNo: true, paymentMethod: true },
+            });
+            if (!txn) continue;
+            await tx.accountTransaction.update({
+              where: { id: txn.id },
+              data: {
+                paymentId: item.paymentId,
+                ...(txn.refNo ? {} : { refNo: item.paymentRefNo }),
+                ...(txn.paymentMethod ? {} : { paymentMethod: item.method }),
+              },
+            });
+          }
+          for (const item of createPlan) {
+            const exists = await tx.accountTransaction.findFirst({
+              where: {
+                tenantId,
+                paymentId: item.payment.id,
+                deletedAt: null,
+              },
+              select: { id: true },
+            });
+            if (exists) continue;
+            await recordPaymentAccountTxn(tx, {
+              tenantId,
+              accountId: item.payment.accountId as string,
+              type: item.direction,
+              subType: this.paymentTxnSubType(item.payment, item.direction),
+              amount: toNumber(item.payment.amount),
+              operationDate: item.payment.paidOn ?? item.payment.createdAt,
+              refNo: item.payment.paymentRefNo,
+              note: item.payment.note ?? null,
+              paymentMethod: item.payment.method,
+              saleId: item.payment.saleId,
+              invoiceId: item.payment.invoiceId,
+              paymentId: item.payment.id,
+              createdByName: item.payment.createdByName,
+            });
+          }
+        },
+        { maxWait: 15_000, timeout: 120_000 },
+      );
+      void invalidateTenantDashboardCache(this.cache, tenantId);
+    }
+
+    return {
+      dryRun,
+      linked: linkPlan.length,
+      created: createPlan.length,
+      ambiguous,
+      skipped,
+      linkedAmount,
+      createdAmount,
+      currency: payments[0]?.currency ?? 'NGN',
+    };
+  }
+
+  private inferPaymentDirection(payment: {
+    saleId: string | null;
+    paymentFor: string | null;
+    paymentRefNo: string | null;
+    invoice: { kind: string } | null;
+  }): 'credit' | 'debit' | null {
+    const kind = payment.invoice?.kind ?? null;
+    if (kind === 'payroll' || kind === 'payroll_group') return 'debit';
+    if (kind === 'purchase' || kind === 'expense') return 'debit';
+    if (kind === 'sale' || kind === 'job_invoice' || kind === 'job_quote') {
+      return 'credit';
+    }
+    if (
+      payment.paymentFor === 'payroll' ||
+      payment.paymentFor === 'purchase' ||
+      payment.paymentFor === 'expense'
+    ) {
+      return 'debit';
+    }
+    if (
+      payment.saleId ||
+      payment.paymentFor === 'sale' ||
+      payment.paymentFor?.startsWith('contact:') ||
+      payment.paymentRefNo?.startsWith('SP')
+    ) {
+      return 'credit';
+    }
+    return null;
+  }
+
+  private paymentTxnSubType(
+    payment: {
+      saleId: string | null;
+      paymentFor: string | null;
+      invoice: { kind: string } | null;
+    },
+    direction: 'credit' | 'debit',
+  ): string {
+    if (direction === 'credit') {
+      return payment.saleId ? 'sale_payment' : 'payment_receipt';
+    }
+    const kind = payment.invoice?.kind ?? null;
+    if (
+      kind === 'payroll' ||
+      kind === 'payroll_group' ||
+      payment.paymentFor === 'payroll'
+    ) {
+      return 'payroll';
+    }
+    if (kind === 'purchase' || payment.paymentFor === 'purchase') {
+      return 'purchase_payment';
+    }
+    if (kind === 'expense' || payment.paymentFor === 'expense') {
+      return 'expense_payment';
+    }
+    return 'payment';
   }
 }

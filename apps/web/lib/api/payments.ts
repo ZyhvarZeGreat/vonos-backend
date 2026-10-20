@@ -11,6 +11,7 @@ import { appendListQuery, fetchJsonListPage, fetchTenantListPage } from "@/lib/a
 import type {
   AccountTransaction,
   PaymentLinkAuditResult,
+  PaymentLinkReconcileResult,
   PaymentRecord,
 } from "@vonos/types";
 
@@ -192,5 +193,23 @@ export async function getPaymentLinkAudit(
   );
   const response = await apiFetch(url);
   if (!response.ok) throw new Error("Failed to fetch payment link audit");
+  return response.json();
+}
+
+export async function reconcilePaymentLinks(
+  tenantId: string,
+  body: { dryRun: boolean },
+): Promise<PaymentLinkReconcileResult> {
+  const response = await apiFetch(
+    withTenantQuery(`${PAYMENTS_PATH}/link-audit/reconcile`, tenantId),
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    },
+  );
+  if (!response.ok) {
+    return throwApiError(response, "Failed to reconcile payment links");
+  }
   return response.json();
 }

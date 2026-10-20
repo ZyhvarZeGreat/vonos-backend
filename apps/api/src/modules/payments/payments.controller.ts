@@ -12,6 +12,7 @@ import {
   RolesGuard,
   TenantGuard,
 } from '../../common/guards/auth.guards';
+import { Roles } from '../../common/decorators/roles.decorator';
 import { PaymentsService } from './payments.service';
 
 @Controller('payments')
@@ -54,6 +55,13 @@ export class PaymentsController {
   @Get('link-audit')
   linkAudit(@Query('from') from?: string, @Query('to') to?: string) {
     return this.service.getPaymentLinkAudit({ from, to });
+  }
+
+  /** Link matched ledger rows + create missing legs. Dry run by default. */
+  @Post('link-audit/reconcile')
+  @Roles('manager', 'admin', 'super_admin')
+  reconcile(@Body() body: { dryRun?: boolean }) {
+    return this.service.reconcilePaymentLinks(body ?? {});
   }
 
   /** Assign payment account to unlinked sale payments (+ book credits). */

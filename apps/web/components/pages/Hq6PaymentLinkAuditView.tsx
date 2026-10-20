@@ -1,14 +1,20 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type {
   PaymentLinkAuditResult,
   PaymentLinkAuditRow,
   PaymentLinkAuditStatus,
+  PaymentLinkReconcileResult,
 } from "@vonos/types";
-import { getPaymentLinkAudit } from "@/lib/api/payments";
+import {
+  getPaymentLinkAudit,
+  reconcilePaymentLinks,
+} from "@/lib/api/payments";
 import { useTenantId } from "@/lib/hooks/useRouteTenant";
+import { useAuthStore } from "@/stores/authStore";
+import { toast } from "@/stores/toastStore";
 import {
   formatHq6Currency,
   formatHq6Date,
@@ -72,6 +78,38 @@ export function Hq6PaymentLinkAuditView() {
       }),
     enabled: Boolean(tenantId),
     staleTime: 30_000,
+  });
+
+  const queryClient = useQueryClient();
+  const role = useAuthStore((state) => state.role);
+  const canApply =
+    role === "manager" || role === "admin" || role === "super_admin";
+  const [plan, setPlan] = useState<PaymentLinkReconcileResult | null>(null);
+
+  const dryRun = useMutation({
+    mutationFn: () => reconcilePaymentLinks(tenantId!, { dryRun: true }),
+    onSuccess: (result) => {
+      setPlan(result);
+      toast.success(
+        `Dry run: ${result.linked} to link, ${result.created} to create.`,
+      );
+    },
+    onError: () => toast.error("Dry run failed."),
+  });
+
+  const apply = useMutation({
+    mutationFn: () => reconcilePaymentLinks(tenantId!, { dryRun: false }),
+    onSuccess: (result) => {
+      setPlan(null);
+      toast.success(
+        `Reconciled: linked ${result.linked}, created ${result.created}.`,
+      );
+      void queryClient.invalidateQueries({
+        queryKey: ["payment-link-audit", tenantId],
+      });
+      void audit.refetch();
+    },
+    onError: () => toast.error("Reconcile failed. Nothing was changed."),
   });
 
   const rows = useMemo(() => {
@@ -167,20 +205,68 @@ export function Hq6PaymentLinkAuditView() {
           <button
             type="button"
             onClick={() => void audit.refetch()}
-            className="rounded-lg border border-border bg-card px-3 py-1.5 text-sm font-medium hover:bg-[var(--color-surface-muted)]"
+            className="tw-dw-btn tw-dw-btn-sm"
           >
             Refresh
           </button>
+          {canApply ? (
+            <button
+              type="button"
+              onClick={() => dryRun.mutate()}
+              disabled={dryRun.isPending || audit.isLoading}
+              className="tw-dw-btn tw-dw-btn-sm tw-dw-btn-outline tw-dw-btn-primary"
+            >
+              {dryRun.isPending ? "Checking…" : "Reconcile (dry run)"}
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={handleExport}
             disabled={!rows.length}
-            className="rounded-lg border border-border bg-card px-3 py-1.5 text-sm font-medium hover:bg-[var(--color-surface-muted)] disabled:opacity-50"
+            className="tw-dw-btn tw-dw-btn-sm"
           >
             Export CSV
           </button>
         </div>
       </div>
+
+      {plan ? (
+        <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950">
+          <div className="font-semibold">Dry run — nothing changed yet</div>
+          <p className="mt-1">
+            Link <strong>{plan.linked}</strong> ledger row
+            {plan.linked === 1 ? "" : "s"} (
+            {formatHq6Currency(plan.linkedAmount, plan.currency)}) and create{" "}
+            <strong>{plan.created}</strong> missing leg
+            {plan.created === 1 ? "" : "s"} (
+            {formatHq6Currency(plan.createdAmount, plan.currency)}).
+            {plan.ambiguous > 0
+              ? ` ${plan.ambiguous} match(es) had identical duplicates — attribution only, balances unaffected.`
+              : ""}
+            {plan.skipped.length > 0
+              ? ` ${plan.skipped.length} skipped (could not determine direction).`
+              : ""}
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => apply.mutate()}
+              disabled={apply.isPending}
+              className="tw-dw-btn tw-dw-btn-sm tw-dw-btn-primary tw-text-white"
+            >
+              {apply.isPending ? "Applying…" : "Apply changes"}
+            </button>
+            <button
+              type="button"
+              onClick={() => setPlan(null)}
+              disabled={apply.isPending}
+              className="tw-dw-btn tw-dw-btn-sm"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       {audit.isError ? (
         <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">

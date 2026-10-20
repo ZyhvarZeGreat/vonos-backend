@@ -115,6 +115,26 @@ export interface PaymentLinkAuditResult {
   currency: string;
 }
 
+export interface PaymentLinkReconcileSkip {
+  paymentId: string;
+  paymentRefNo: string | null;
+  reason: string;
+}
+
+export interface PaymentLinkReconcileResult {
+  dryRun: boolean;
+  /** Ledger rows that would be/have been linked to a payment. */
+  linked: number;
+  /** Missing ledger legs that would be/have been created. */
+  created: number;
+  /** Matched a key with more than one identical candidate (attribution only). */
+  ambiguous: number;
+  skipped: PaymentLinkReconcileSkip[];
+  linkedAmount: number;
+  createdAmount: number;
+  currency: string;
+}
+
 export interface CreatePaymentAccountRequest {
   name: string;
   accountNumber?: string;
