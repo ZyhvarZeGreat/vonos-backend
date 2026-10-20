@@ -379,7 +379,10 @@ export function Hq6ReturnsListView() {
         emptyState={{ message: "No data available in table" }}
         totalRow={
           amountSummary
-            ? { amount: formatHq6Currency(amountSummary.totalAmount ?? 0) }
+            ? {
+                amount: formatHq6Currency(amountSummary.totalAmount ?? 0),
+                paymentDue: formatHq6Currency(0),
+              }
             : undefined
         }
       />

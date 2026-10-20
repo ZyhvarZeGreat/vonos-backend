@@ -847,7 +847,10 @@ function ReturnsListViewBody() {
         onRowClick={(row) => openRecord(row.id, saleSeedFromReturnRow(row))}
         totalRow={
           amountSummary
-            ? { amount: formatCurrency(amountSummary.totalAmount ?? 0, "NGN") }
+            ? {
+                amount: formatCurrency(amountSummary.totalAmount ?? 0, "NGN"),
+                paymentDue: formatCurrency(0, "NGN"),
+              }
             : undefined
         }
       />
