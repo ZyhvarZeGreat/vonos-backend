@@ -12,7 +12,6 @@ import {
   Hq6FilterGrid,
   Hq6FilterSelect,
 } from "@/components/hq6/Hq6FilterFields";
-import { Hq6ListAmountFooter } from "@/components/hq6/Hq6ListAmountFooter";
 import { Hq6Modal, Hq6ModalSaveClose } from "@/components/hq6/Hq6Modal";
 import { Hq6ConfirmModal } from "@/components/hq6/Hq6ConfirmModal";
 import { Hq6PayExpenseModal } from "@/components/hq6/Hq6PayExpenseModal";
@@ -538,16 +537,6 @@ export function Hq6ExpensesListView() {
     return columns.filter((c) => allowed.has(c.key));
   }, [chrome.visibleColumnKeys, columns]);
 
-  const totals = useMemo(() => {
-    let totalAmount = 0;
-    let paymentDue = 0;
-    for (const row of items) {
-      totalAmount += row.totalAmount;
-      paymentDue += row.paymentDue;
-    }
-    return { totalAmount, paymentDue };
-  }, [items]);
-
   return (
     <Hq6StandardListShell
       slug="expenses"
@@ -665,36 +654,6 @@ export function Hq6ExpensesListView() {
               ]}
             />
           </Hq6FilterGrid>
-      }
-      tableFooter={
-        items.length > 0 ? (
-          <div className="space-y-0">
-            {amountSummary ? (
-              <Hq6ListAmountFooter
-                title="All matching"
-                cells={[
-                  {
-                    label: "Total",
-                    amount: amountSummary.totalAmount ?? 0,
-                    currency: "NGN",
-                  },
-                  {
-                    label: "Due",
-                    amount: amountSummary.totalDue ?? 0,
-                    currency: "NGN",
-                  },
-                ]}
-              />
-            ) : null}
-            <Hq6ListAmountFooter
-              title="Page total"
-              cells={[
-                { label: "Total", amount: totals.totalAmount, currency: "NGN" },
-                { label: "Due", amount: totals.paymentDue, currency: "NGN" },
-              ]}
-            />
-          </div>
-        ) : null
       }
       pagination={{
         pageIndex,
@@ -831,6 +790,13 @@ export function Hq6ExpensesListView() {
         isFetching={isFetching && !isLoading}
         error={error ? "Could not load expenses." : null}
         emptyState={{ message: "No data available in table" }}
+        totalRow={{
+          totalAmount: formatHq6Currency(
+            amountSummary?.totalAmount ?? 0,
+            "NGN",
+          ),
+          paymentDue: formatHq6Currency(amountSummary?.totalDue ?? 0, "NGN"),
+        }}
       />
     </Hq6StandardListShell>
   );

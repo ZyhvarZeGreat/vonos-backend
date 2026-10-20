@@ -8,7 +8,6 @@ import { SaleRecordModal } from "@/components/organisms/SaleRecordModal";
 import { Hq6ActionsMenu } from "@/components/hq6/Hq6ActionsMenu";
 import { Hq6ConfirmModal } from "@/components/hq6/Hq6ConfirmModal";
 import { Hq6EditShippingModal } from "@/components/hq6/Hq6EditShippingModal";
-import { Hq6ListAmountFooter } from "@/components/hq6/Hq6ListAmountFooter";
 import {
   Hq6FilterDateRange,
   Hq6FilterGrid,
@@ -1260,67 +1259,6 @@ export function Hq6SalesListView({
             />
           </Hq6FilterGrid>
         }
-        tableFooter={
-          saleStatus === "draft" || saleStatus === "quotation" ? null : (
-            <div className="space-y-0">
-              {sales.length > 0 && amountSummary ? (
-                <Hq6ListAmountFooter
-                  title="All matching"
-                  cells={[
-                    {
-                      label: "Total",
-                      amount: amountSummary.totalAmount ?? 0,
-                      currency: sales[0]?.currency,
-                    },
-                    ...(amountSummary.totalPaid != null
-                      ? [
-                          {
-                            label: "Paid",
-                            amount: amountSummary.totalPaid,
-                            currency: sales[0]?.currency,
-                          },
-                        ]
-                      : []),
-                    ...(amountSummary.totalDue != null
-                      ? [
-                          {
-                            label: "Due",
-                            amount: amountSummary.totalDue,
-                            currency: sales[0]?.currency,
-                          },
-                        ]
-                      : []),
-                  ]}
-                />
-              ) : null}
-              <Hq6ListAmountFooter
-                title="Total:"
-                cells={[
-                  {
-                    label: "Total amount",
-                    amount: totals.totalAmount,
-                    currency: sales[0]?.currency ?? "NGN",
-                  },
-                  {
-                    label: "Total paid",
-                    amount: totals.totalPaid,
-                    currency: sales[0]?.currency ?? "NGN",
-                  },
-                  {
-                    label: "Sell Due",
-                    amount: totals.totalDue,
-                    currency: sales[0]?.currency ?? "NGN",
-                  },
-                  {
-                    label: "Sell Return Due",
-                    amount: 0,
-                    currency: sales[0]?.currency ?? "NGN",
-                  },
-                ]}
-              />
-            </div>
-          )
-        }
         summaryStrip={
           sales.length > 0 ? (
             <Hq6SalesSummaryStrip
@@ -1565,6 +1503,24 @@ export function Hq6SalesListView({
           error={error ? "Could not load sales." : null}
           onRowClick={(row) => openRecord(row.id, row)}
           emptyState={{ message: "No data available in table" }}
+          totalRow={
+            saleStatus === "draft" || saleStatus === "quotation"
+              ? undefined
+              : {
+                  total: formatHq6Currency(
+                    amountSummary?.totalAmount ?? 0,
+                    "NGN",
+                  ),
+                  totalPaid: formatHq6Currency(
+                    amountSummary?.totalPaid ?? 0,
+                    "NGN",
+                  ),
+                  sellDue: formatHq6Currency(
+                    amountSummary?.totalDue ?? 0,
+                    "NGN",
+                  ),
+                }
+          }
           serverSort={serverSortProps({ sort, setSort })}
         />
       </Hq6StandardListShell>

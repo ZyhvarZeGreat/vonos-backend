@@ -139,6 +139,11 @@ export interface DataTableProps<T extends { id: string }> {
   toolbar?: ReactNode;
   /** Bulk actions shown when selectable and one+ rows selected. */
   bulkActions?: DataTableBulkAction[];
+  /**
+   * Column-keyed totals rendered as a sticky <tfoot> aligned under the columns.
+   * Values are looked up by `column.key`; omit a key to leave that cell blank.
+   */
+  totalRow?: Record<string, ReactNode>;
 }
 
 function isColumnSortable<T>(column: ColumnConfig<T>): boolean {
@@ -208,6 +213,7 @@ export function DataTable<T extends { id: string }>({
   tableId,
   toolbar,
   bulkActions,
+  totalRow,
 }: DataTableProps<T>) {
   const listBridge = useListTableBridge();
   const pathname = usePathname();
@@ -1011,6 +1017,32 @@ export function DataTable<T extends { id: string }>({
                 visibleData.map((row) => renderRow(row))
               )}
             </tbody>
+            {totalRow ? (
+              <tfoot className="hq6-total-row">
+                <tr>
+                  {selectable ? <td className="hq6-total-cell" /> : null}
+                  {visibleColumns.map((column, colIndex) => {
+                    const value = totalRow[String(column.key)];
+                    return (
+                      <td
+                        key={String(column.key)}
+                        className={cn(
+                          "hq6-total-cell",
+                          upos
+                            ? "text-left tabular-nums"
+                            : columnCellClassName(column),
+                          colIndex === 0 &&
+                            stickyFirstColumn &&
+                            "sticky left-0 z-[2]",
+                        )}
+                      >
+                        {value ?? null}
+                      </td>
+                    );
+                  })}
+                </tr>
+              </tfoot>
+            ) : null}
           </table>
         </div>
       )}

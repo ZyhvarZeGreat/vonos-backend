@@ -477,10 +477,12 @@ export class SalesService {
       const page = await this.listSalesPageRaw(tenantId, filters, sort, limit);
       let totalCount: number | undefined;
       let totalAmount: number | undefined;
+      let totalPaid: number | undefined;
       if (includeSummary) {
         const summary = await this.salesListSummaryCached(tenantId, filters);
         totalCount = summary.totalCount;
         totalAmount = summary.totalAmount;
+        totalPaid = summary.totalPaid;
       }
 
       const ms = Date.now() - startedAt;
@@ -502,10 +504,9 @@ export class SalesService {
         hasMore: page.length >= limit,
         pageSize: limit,
         totalCount,
-        amountSummary: {
-          totalAmount,
-          currency: 'NGN',
-        },
+        amountSummary: this.saleAmountSummary({
+          _sum: { total: totalAmount, totalPaid: totalPaid ?? 0 },
+        }),
       };
     }
 
@@ -625,7 +626,7 @@ export class SalesService {
       includeSummary
         ? this.tenantDb.db.sale.aggregate({
             where: baseWhere,
-            _sum: { total: true },
+            _sum: { total: true, totalPaid: true },
           })
         : Promise.resolve(undefined),
     ]);
@@ -660,10 +661,7 @@ export class SalesService {
     return {
       items: rows.map(mapRow),
       totalCount,
-      amountSummary: {
-        totalAmount: toNumber(saleAmountAgg._sum.total),
-        currency: 'NGN',
-      },
+      amountSummary: this.saleAmountSummary(saleAmountAgg),
     };
   }
 
@@ -671,6 +669,22 @@ export class SalesService {
    * Single-round-trip sales page: Sale + Customer + Job + paid sum + line count.
    * Avoids Prisma relation fan-out (was ~3s) + follow-up payment queries (~5s).
    */
+  private saleAmountSummary(agg: {
+    _sum: {
+      total: { toString(): string } | null;
+      totalPaid: { toString(): string } | null;
+    };
+  }) {
+    const totalAmount = toNumber(agg._sum.total);
+    const totalPaid = toNumber(agg._sum.totalPaid);
+    return {
+      totalAmount,
+      totalPaid,
+      totalDue: Math.max(0, totalAmount - totalPaid),
+      currency: 'NGN',
+    };
+  }
+
   private async listSalesPageRaw(
     tenantId: string,
     filters: SaleFilters,
@@ -866,7 +880,7 @@ export class SalesService {
   private async salesListSummaryCached(
     tenantId: string,
     filters: SaleFilters,
-  ): Promise<{ totalCount: number; totalAmount: number }> {
+  ): Promise<{ totalCount: number; totalAmount: number; totalPaid: number }> {
     const filterKey = listPageFilterKey({
       search: filters.search,
       from: filters.from,
@@ -892,9 +906,11 @@ export class SalesService {
       filterKey,
       async () => {
         const rows = await this.tenantDb.db.$queryRaw<
-          Array<{ c: number; s: number }>
+          Array<{ c: number; s: number; p: number }>
         >`
-          SELECT COUNT(*)::int AS c, COALESCE(SUM(s.total), 0)::float AS s
+          SELECT COUNT(*)::int AS c,
+                 COALESCE(SUM(s.total), 0)::float AS s,
+                 COALESCE(SUM(s."totalPaid"), 0)::float AS p
           FROM "Sale" s
           LEFT JOIN "Customer" c ON c.id = s."customerId"
           LEFT JOIN "Job" j ON j.id = s."jobId"
@@ -936,6 +952,7 @@ export class SalesService {
         return {
           totalCount: Number(rows[0]?.c ?? 0),
           totalAmount: Number(rows[0]?.s ?? 0),
+          totalPaid: Number(rows[0]?.p ?? 0),
         };
       },
       900,
@@ -4297,7 +4314,7 @@ export async function warmDefaultSalesListPages(
               includeSummary
                 ? prisma.sale.aggregate({
                     where: baseWhere,
-                    _sum: { total: true },
+                    _sum: { total: true, totalPaid: true },
                   })
                 : Promise.resolve(undefined),
             ]);
@@ -4360,10 +4377,7 @@ export async function warmDefaultSalesListPages(
             return {
               items,
               totalCount,
-              amountSummary: {
-                totalAmount: toNumber(saleAmountAgg._sum.total),
-                currency: 'NGN',
-              },
+              amountSummary: this.saleAmountSummary(saleAmountAgg),
             };
           },
           600,

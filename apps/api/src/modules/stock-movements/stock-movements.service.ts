@@ -119,6 +119,19 @@ function transferDbStatuses(
   }
 }
 
+function movementAmountSummary(agg: {
+  _sum: { grandTotal: { toString(): string } | null; totalPaid: { toString(): string } | null };
+}) {
+  const grandTotal = toNumber(agg._sum.grandTotal);
+  const totalPaid = toNumber(agg._sum.totalPaid);
+  return {
+    totalAmount: grandTotal,
+    totalPaid,
+    totalDue: Math.max(0, grandTotal - totalPaid),
+    currency: 'NGN',
+  };
+}
+
 @Injectable()
 export class StockMovementsService {
   constructor(
@@ -281,13 +294,21 @@ export class StockMovementsService {
           includeSummary && !filters.cursor && (filters.limit ?? 10) === 1;
 
         if (countOnly) {
-          const totalCount = await this.tenantDb.db.stockMovement.count({
-            where: baseWhere,
-          });
-          return { items: [], totalCount };
+          const [totalCount, amountAgg] = await Promise.all([
+            this.tenantDb.db.stockMovement.count({ where: baseWhere }),
+            this.tenantDb.db.stockMovement.aggregate({
+              where: baseWhere,
+              _sum: { grandTotal: true, totalPaid: true },
+            }),
+          ]);
+          return {
+            items: [],
+            totalCount,
+            amountSummary: movementAmountSummary(amountAgg),
+          };
         }
 
-        const [rows, totalCount] = await Promise.all([
+        const [rows, totalCount, amountAgg] = await Promise.all([
           this.tenantDb.db.stockMovement.findMany({
             where: {
               ...baseWhere,
@@ -323,6 +344,12 @@ export class StockMovementsService {
           includeSummary
             ? this.tenantDb.db.stockMovement.count({ where: baseWhere })
             : Promise.resolve(undefined as number | undefined),
+          includeSummary
+            ? this.tenantDb.db.stockMovement.aggregate({
+                where: baseWhere,
+                _sum: { grandTotal: true, totalPaid: true },
+              })
+            : Promise.resolve(undefined),
         ]);
 
         return {
@@ -333,6 +360,9 @@ export class StockMovementsService {
             }),
           ),
           ...(totalCount != null ? { totalCount } : {}),
+          ...(amountAgg
+            ? { amountSummary: movementAmountSummary(amountAgg) }
+            : {}),
         };
       },
     );
@@ -1783,7 +1813,7 @@ export async function warmDefaultStockMovementListPages(
               type: 'inbound' as const,
               ...excludeOpeningStockPurchasesWhere(),
             };
-            const [rows, totalCount] = await Promise.all([
+            const [rows, totalCount, amountAgg] = await Promise.all([
               prisma.stockMovement.findMany({
                 where: baseWhere,
                 select: {
@@ -1816,6 +1846,12 @@ export async function warmDefaultStockMovementListPages(
               includeSummary
                 ? prisma.stockMovement.count({ where: baseWhere })
                 : Promise.resolve(undefined as number | undefined),
+              includeSummary
+                ? prisma.stockMovement.aggregate({
+                    where: baseWhere,
+                    _sum: { grandTotal: true, totalPaid: true },
+                  })
+                : Promise.resolve(undefined),
             ]);
             return {
               items: rows.map((row) =>
@@ -1825,6 +1861,9 @@ export async function warmDefaultStockMovementListPages(
                 }),
               ),
               ...(totalCount != null ? { totalCount } : {}),
+              ...(amountAgg
+                ? { amountSummary: movementAmountSummary(amountAgg) }
+                : {}),
             };
           },
           600,

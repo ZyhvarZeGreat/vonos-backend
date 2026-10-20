@@ -177,6 +177,7 @@ export function Hq6PurchasesListView() {
 
   const {
     items: purchases,
+    amountSummary,
     hasMore,
     totalCount,
     pageIndex,
@@ -509,16 +510,6 @@ export function Hq6PurchasesListView() {
     return columns.filter((c) => allowed.has(c.key));
   }, [chrome.visibleColumnKeys, columns]);
 
-  const totals = useMemo(() => {
-    let grandTotal = 0;
-    let paymentDue = 0;
-    for (const row of purchases) {
-      grandTotal += row.grandTotal ?? 0;
-      paymentDue += row.paymentDue ?? 0;
-    }
-    return { grandTotal, paymentDue };
-  }, [purchases]);
-
   return (
     <Hq6StandardListShell
       slug="purchases"
@@ -580,19 +571,6 @@ export function Hq6PurchasesListView() {
             onCustomChange={setCustomDateRange}
           />
         </Hq6FilterGrid>
-      }
-      tableFooter={
-        purchases.length > 0 ? (
-          <div className="hq6-amount-footer flex border-t border-[var(--hq6-border)] bg-[#f9fafb] text-xs font-bold text-[#374151]">
-            <div className="min-w-0 flex-1 px-3 py-2">Total:</div>
-            <div className="w-[7.5rem] shrink-0 px-2 py-2 text-right tabular-nums">
-              {formatHq6Currency(totals.grandTotal, "NGN")}
-            </div>
-            <div className="w-[7.5rem] shrink-0 px-2 py-2 text-right tabular-nums">
-              {formatHq6Currency(totals.paymentDue, "NGN")}
-            </div>
-          </div>
-        ) : null
       }
       pagination={{
         pageIndex,
@@ -753,6 +731,16 @@ export function Hq6PurchasesListView() {
         error={error ? "Could not load purchases." : null}
         onRowClick={(row) => openRecord(row.id, row)}
         emptyState={{ message: "No data available in table" }}
+        totalRow={{
+          grandTotal: formatHq6Currency(
+            amountSummary?.totalAmount ?? 0,
+            "NGN",
+          ),
+          paymentDue: formatHq6Currency(
+            amountSummary?.totalDue ?? 0,
+            "NGN",
+          ),
+        }}
         serverSort={serverSortProps({ sort, setSort })}
       />
     </Hq6StandardListShell>
