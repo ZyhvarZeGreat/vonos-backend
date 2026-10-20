@@ -502,6 +502,17 @@ export function Hq6PaymentsListView() {
             if (tenantCode) router.push(`${paymentsBase}?unlinked=1`);
           },
         },
+        {
+          id: "link-audit",
+          label: "Link audit",
+          active: false,
+          iconClass: "fa fa-link",
+          onClick: () => {
+            if (tenantCode) {
+              router.push(`${tenantBasePath(tenantCode)}/payment-link-audit`);
+            }
+          },
+        },
       ]}
       tabActions={
         unlinkedOnly ? (

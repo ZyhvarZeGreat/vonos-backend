@@ -3,7 +3,14 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import type { AccountTransaction, PaymentRecord } from '@vonos/types';
+import {
+  PAYMENT_LINK_AUDIT_STATUSES,
+  type AccountTransaction,
+  type PaymentLinkAuditResult,
+  type PaymentLinkAuditRow,
+  type PaymentLinkAuditStatus,
+  type PaymentRecord,
+} from '@vonos/types';
 import { TenantDbService } from '../../common/prisma/tenant-db.service';
 import { CacheService } from '../../common/cache/cache.service';
 import { invalidateTenantDashboardCache } from '../../common/cache/cacheInvalidation';
@@ -452,5 +459,166 @@ export class PaymentsService {
       createdAt: toIso(row.createdAt),
       ...(balances.has(row.id) ? { accountBalance: balances.get(row.id) } : {}),
     }));
+  }
+
+  /**
+   * Read-only audit: for every payment, show the source document and the
+   * account-book entry (if any) and classify the linkage. Also surfaces
+   * ledger rows that have no payment/document behind them.
+   */
+  async getPaymentLinkAudit(filters: {
+    from?: string;
+    to?: string;
+  }): Promise<PaymentLinkAuditResult> {
+    const tenantId = this.tenantDb.requireTenantId();
+    const window =
+      filters.from || filters.to
+        ? {
+            ...(filters.from ? { gte: new Date(filters.from) } : {}),
+            ...(filters.to ? { lte: new Date(filters.to) } : {}),
+          }
+        : undefined;
+
+    const [payments, txns] = await Promise.all([
+      this.tenantDb.db.payment.findMany({
+        where: {
+          tenantId,
+          deletedAt: null,
+          ...(window
+            ? { OR: [{ paidOn: window }, { paidOn: null, createdAt: window }] }
+            : {}),
+        },
+        select: {
+          id: true,
+          amount: true,
+          currency: true,
+          method: true,
+          paymentRefNo: true,
+          paidOn: true,
+          paymentFor: true,
+          accountId: true,
+          saleId: true,
+          invoiceId: true,
+          createdByName: true,
+          createdAt: true,
+          account: { select: { name: true } },
+          sale: { select: { reference: true } },
+          invoice: { select: { reference: true, kind: true } },
+        },
+        orderBy: [{ paidOn: 'desc' }, { createdAt: 'desc' }],
+      }),
+      this.tenantDb.db.accountTransaction.findMany({
+        where: { tenantId, deletedAt: null },
+        select: {
+          id: true,
+          paymentId: true,
+          saleId: true,
+          expenseId: true,
+          type: true,
+          subType: true,
+          amount: true,
+          accountId: true,
+          refNo: true,
+          operationDate: true,
+        },
+      }),
+    ]);
+
+    const linkedByPayment = new Map<string, (typeof txns)[number]>();
+    for (const txn of txns) {
+      if (txn.paymentId && !linkedByPayment.has(txn.paymentId)) {
+        linkedByPayment.set(txn.paymentId, txn);
+      }
+    }
+
+    const isOrphan = (txn: (typeof txns)[number]) =>
+      !txn.paymentId &&
+      !txn.saleId &&
+      !txn.expenseId &&
+      !['opening_balance', 'transfer', 'deposit'].includes(txn.subType ?? '');
+    const orphans = txns.filter(isOrphan);
+
+    const orphanByKey = new Map<string, (typeof txns)[number]>();
+    for (const txn of orphans) {
+      const key = this.linkAuditKey(
+        txn.accountId,
+        toNumber(txn.amount),
+        txn.operationDate,
+      );
+      if (!orphanByKey.has(key)) orphanByKey.set(key, txn);
+    }
+
+    const summary = Object.fromEntries(
+      PAYMENT_LINK_AUDIT_STATUSES.map((status) => [status, 0]),
+    ) as Record<PaymentLinkAuditStatus, number>;
+
+    const rows: PaymentLinkAuditRow[] = payments.map((payment) => {
+      const linked = linkedByPayment.get(payment.id) ?? null;
+      const suggested =
+        !linked && payment.accountId && payment.paidOn
+          ? (orphanByKey.get(
+              this.linkAuditKey(
+                payment.accountId,
+                toNumber(payment.amount),
+                payment.paidOn,
+              ),
+            ) ?? null)
+          : null;
+
+      const documentType = payment.saleId
+        ? 'sale'
+        : (payment.invoice?.kind ?? null);
+      const documentRef =
+        payment.sale?.reference ?? payment.invoice?.reference ?? null;
+
+      let status: PaymentLinkAuditStatus;
+      if (!payment.accountId) status = 'no_account';
+      else if (linked) status = documentType ? 'fully_linked' : 'no_document';
+      else if (suggested) status = 'unlinked_ledger';
+      else status = 'no_ledger';
+
+      summary[status] += 1;
+
+      return {
+        paymentId: payment.id,
+        paymentRefNo: payment.paymentRefNo,
+        paidOn: payment.paidOn ? toIso(payment.paidOn) : null,
+        createdAt: toIso(payment.createdAt),
+        amount: toNumber(payment.amount),
+        currency: payment.currency,
+        method: payment.method,
+        paymentFor: payment.paymentFor,
+        createdByName: payment.createdByName,
+        accountId: payment.accountId,
+        accountName: payment.account?.name ?? null,
+        documentType,
+        documentRef,
+        ledgerId: linked?.id ?? null,
+        ledgerType: linked?.type ?? null,
+        ledgerRefNo: linked?.refNo ?? null,
+        ledgerDate: linked ? toIso(linked.operationDate) : null,
+        suggestedLedgerId: suggested?.id ?? null,
+        suggestedLedgerType: suggested?.type ?? null,
+        suggestedLedgerDate: suggested ? toIso(suggested.operationDate) : null,
+        status,
+      };
+    });
+
+    const orphanLedgerTotal = orphans.reduce(
+      (sum, txn) => sum + toNumber(txn.amount),
+      0,
+    );
+
+    return {
+      rows,
+      summary,
+      orphanLedgerCount: orphans.length,
+      orphanLedgerTotal,
+      currency: payments[0]?.currency ?? 'NGN',
+    };
+  }
+
+  private linkAuditKey(accountId: string, amount: number, date: Date): string {
+    return `${accountId}|${amount.toFixed(2)}|${toIso(date)}`;
   }
 }

@@ -59,6 +59,62 @@ export interface PaymentRecord {
   createdAt: string;
 }
 
+/**
+ * Payment ↔ ledger/document linkage audit.
+ *
+ * - `fully_linked`   — has a linked account transaction AND a source document.
+ * - `no_document`    — money is in the account book but no sale/invoice is linked.
+ * - `unlinked_ledger`— an account transaction exists with the same
+ *                      account + amount + date but its `paymentId` is null
+ *                      (i.e. the ledger leg was imported/created separately).
+ * - `no_ledger`      — no account transaction exists or matches.
+ * - `no_account`     — the payment has no payment account at all.
+ */
+export const PAYMENT_LINK_AUDIT_STATUSES = [
+  "fully_linked",
+  "no_document",
+  "unlinked_ledger",
+  "no_ledger",
+  "no_account",
+] as const;
+export type PaymentLinkAuditStatus =
+  (typeof PAYMENT_LINK_AUDIT_STATUSES)[number];
+
+export interface PaymentLinkAuditRow {
+  paymentId: string;
+  paymentRefNo: string | null;
+  paidOn: string | null;
+  createdAt: string;
+  amount: number;
+  currency: string;
+  method: string | null;
+  paymentFor: string | null;
+  createdByName: string | null;
+  accountId: string | null;
+  accountName: string | null;
+  /** `sale` or the invoice kind (`purchase` / `expense` / `payroll` / …). */
+  documentType: string | null;
+  documentRef: string | null;
+  ledgerId: string | null;
+  ledgerType: AccountTxnType | null;
+  ledgerRefNo: string | null;
+  ledgerDate: string | null;
+  /** An unlinked ledger row that appears to be the same transaction. */
+  suggestedLedgerId: string | null;
+  suggestedLedgerType: AccountTxnType | null;
+  suggestedLedgerDate: string | null;
+  status: PaymentLinkAuditStatus;
+}
+
+export interface PaymentLinkAuditResult {
+  rows: PaymentLinkAuditRow[];
+  summary: Record<PaymentLinkAuditStatus, number>;
+  /** Ledger rows that have no payment, sale or expense behind them. */
+  orphanLedgerCount: number;
+  orphanLedgerTotal: number;
+  currency: string;
+}
+
 export interface CreatePaymentAccountRequest {
   name: string;
   accountNumber?: string;

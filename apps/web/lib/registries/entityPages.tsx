@@ -45,6 +45,7 @@ import {
   PaymentAccountReportView,
   PaymentAccountsListView,
   PaymentsListView,
+  PaymentLinkAuditView,
   PosTerminalView,
   PrintLabelsView,
   PurchaseOrdersView,
@@ -306,6 +307,10 @@ const posPaymentPages: SlugMap = {
   // HQ6 / UPOS URL alias
   accounts: { title: "Payment Accounts", View: PaymentAccountsListView },
   payments: { title: "Payments", View: PaymentsListView },
+  "payment-link-audit": {
+    title: "Payment Link Audit",
+    View: PaymentLinkAuditView,
+  },
   "account-book": { title: "Account Book", View: AccountBookView },
   "balance-sheet": {
     title: "Balance Sheet",

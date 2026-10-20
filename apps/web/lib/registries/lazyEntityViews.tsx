@@ -217,6 +217,10 @@ export const PaymentsListView = lazyNamed(
   () => import("@/components/pages/Hq6PaymentsListView"),
   "PaymentsListView",
 );
+export const PaymentLinkAuditView = lazyNamed(
+  () => import("@/components/pages/Hq6PaymentLinkAuditView"),
+  "Hq6PaymentLinkAuditView",
+);
 export const AccountBookView = lazyNamed(
   () => import("@/components/pages/Hq6AccountBookView"),
   "AccountBookView",

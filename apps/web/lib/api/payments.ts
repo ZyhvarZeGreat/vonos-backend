@@ -8,7 +8,11 @@ import {
   type ListPage,
 } from "@/lib/api/fetchAllPages";
 import { appendListQuery, fetchJsonListPage, fetchTenantListPage } from "@/lib/api/listPageHelpers";
-import type { AccountTransaction, PaymentRecord } from "@vonos/types";
+import type {
+  AccountTransaction,
+  PaymentLinkAuditResult,
+  PaymentRecord,
+} from "@vonos/types";
 
 const PAYMENTS_PATH = "/payments";
 
@@ -176,4 +180,17 @@ export async function getAccountBook(
   return fetchFirstPage((cursor, limit) =>
     fetchAccountBookRaw(accountId, cursor, limit),
   );
+}
+
+export async function getPaymentLinkAudit(
+  tenantId: string,
+  filters: { from?: string; to?: string } = {},
+): Promise<PaymentLinkAuditResult> {
+  const url = appendListQuery(
+    withTenantQuery(`${PAYMENTS_PATH}/link-audit`, tenantId),
+    { from: filters.from, to: filters.to },
+  );
+  const response = await apiFetch(url);
+  if (!response.ok) throw new Error("Failed to fetch payment link audit");
+  return response.json();
 }

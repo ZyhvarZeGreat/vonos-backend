@@ -50,6 +50,12 @@ export class PaymentsController {
     });
   }
 
+  /** Read-only audit of payment ↔ ledger/document linkage. */
+  @Get('link-audit')
+  linkAudit(@Query('from') from?: string, @Query('to') to?: string) {
+    return this.service.getPaymentLinkAudit({ from, to });
+  }
+
   /** Assign payment account to unlinked sale payments (+ book credits). */
   @Post('bulk-link')
   bulkLink(
