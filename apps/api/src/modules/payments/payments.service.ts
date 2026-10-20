@@ -35,6 +35,20 @@ import {
 const BULK_LINK_MAX = 500;
 const BULK_LINK_DEFAULT = 200;
 
+function paymentSummaryFrom(
+  receipts: { _sum: { amount: { toString(): string } | null } },
+  returns: { _sum: { amount: { toString(): string } | null } },
+) {
+  const gross = toNumber(receipts._sum.amount);
+  const returned = toNumber(returns._sum.amount);
+  return {
+    totalAmount: gross - returned,
+    totalPaid: gross,
+    totalReturn: returned,
+    currency: 'NGN',
+  };
+}
+
 @Injectable()
 export class PaymentsService {
   constructor(
@@ -84,7 +98,7 @@ export class PaymentsService {
   ) {
     return {
       tenantId,
-      deletedAt: null as null,
+      deletedAt: null,
       ...(filters.unlinkedOnly
         ? { accountId: null, saleId: { not: null }, isReturn: false }
         : filters.accountId
@@ -168,13 +182,27 @@ export class PaymentsService {
 
     // Summary-only (limit=1 from deferred count).
     if (includeSummary && limit <= 1 && !filters.cursor) {
-      const totalCount = await this.tenantDb.db.payment.count({
-        where: baseWhere,
-      });
-      return { items: [], totalCount, hasMore: false, pageSize: limit };
+      const [totalCount, receiptAgg, returnAgg] = await Promise.all([
+        this.tenantDb.db.payment.count({ where: baseWhere }),
+        this.tenantDb.db.payment.aggregate({
+          where: { ...baseWhere, isReturn: false },
+          _sum: { amount: true },
+        }),
+        this.tenantDb.db.payment.aggregate({
+          where: { ...baseWhere, isReturn: true },
+          _sum: { amount: true },
+        }),
+      ]);
+      return {
+        items: [],
+        totalCount,
+        hasMore: false,
+        pageSize: limit,
+        amountSummary: paymentSummaryFrom(receiptAgg, returnAgg),
+      };
     }
 
-    const [rows, totalCount] = await Promise.all([
+    const [rows, totalCount, receiptAgg, returnAgg] = await Promise.all([
       this.tenantDb.db.payment.findMany({
         where: {
           ...baseWhere,
@@ -191,6 +219,18 @@ export class PaymentsService {
       includeSummary
         ? this.tenantDb.db.payment.count({ where: baseWhere })
         : Promise.resolve(undefined as number | undefined),
+      includeSummary
+        ? this.tenantDb.db.payment.aggregate({
+            where: { ...baseWhere, isReturn: false },
+            _sum: { amount: true },
+          })
+        : Promise.resolve(undefined),
+      includeSummary
+        ? this.tenantDb.db.payment.aggregate({
+            where: { ...baseWhere, isReturn: true },
+            _sum: { amount: true },
+          })
+        : Promise.resolve(undefined),
     ]);
 
     const items = rows.map((row) => this.serializePayment(row));
@@ -199,6 +239,9 @@ export class PaymentsService {
         items,
         hasMore: items.length >= limit,
         pageSize: limit,
+        ...(receiptAgg && returnAgg
+          ? { amountSummary: paymentSummaryFrom(receiptAgg, returnAgg) }
+          : {}),
       };
     }
     return {
@@ -206,6 +249,9 @@ export class PaymentsService {
       totalCount,
       hasMore: items.length >= limit,
       pageSize: limit,
+      ...(receiptAgg && returnAgg
+        ? { amountSummary: paymentSummaryFrom(receiptAgg, returnAgg) }
+        : {}),
     };
   }
 
@@ -243,9 +289,7 @@ export class PaymentsService {
       throw new BadRequestException('Cannot link payments to a closed account');
     }
 
-    const ids = (body.paymentIds ?? [])
-      .map((id) => id.trim())
-      .filter(Boolean);
+    const ids = (body.paymentIds ?? []).map((id) => id.trim()).filter(Boolean);
     const batchLimit = Math.min(
       Math.max(Number(body.limit) || BULK_LINK_DEFAULT, 1),
       BULK_LINK_MAX,
@@ -331,7 +375,10 @@ export class PaymentsService {
 
     return {
       linked,
-      skipped: Math.max(0, (body.allUnlinked ? targets.length : ids.length) - linked),
+      skipped: Math.max(
+        0,
+        (body.allUnlinked ? targets.length : ids.length) - linked,
+      ),
       remaining,
       accountId: account.id,
       accountName: account.name,
@@ -399,9 +446,7 @@ export class PaymentsService {
         accountId,
         tenantId,
         deletedAt: null,
-        ...(filters.type
-          ? { type: filters.type as 'debit' | 'credit' }
-          : {}),
+        ...(filters.type ? { type: filters.type as 'debit' | 'credit' } : {}),
         ...(filters.from || filters.to
           ? {
               operationDate: {
@@ -419,7 +464,7 @@ export class PaymentsService {
 
     if (rows.length === 0) return [];
 
-    const oldest = rows[rows.length - 1]!;
+    const oldest = rows[rows.length - 1];
     const priorRows = await this.tenantDb.db.$queryRaw<
       Array<{ balance: unknown }>
     >`

@@ -1,9 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import type {
-  InvoiceDetail,
-  InvoiceKind,
-  InvoiceListRow,
-} from '@vonos/types';
+import type { InvoiceDetail, InvoiceKind, InvoiceListRow } from '@vonos/types';
 import { TenantDbService } from '../../common/prisma/tenant-db.service';
 import { CacheService } from '../../common/cache/cache.service';
 import { buildCompositeCursorQuery } from '../../common/utils/pagination';
@@ -38,7 +34,15 @@ export class InvoicesService {
     jobId?: string;
     cursor?: string;
     limit?: number;
-  }): Promise<InvoiceListRow[]> {
+    includeSummary?: boolean;
+  }): Promise<
+    | InvoiceListRow[]
+    | {
+        items: InvoiceListRow[];
+        totalCount: number;
+        amountSummary: { totalAmount: number; currency: string };
+      }
+  > {
     const tenantId = this.tenantDb.requireTenantId();
     const filterKey = listPageFilterKey({
       kind: filters.kind,
@@ -57,13 +61,10 @@ export class InvoicesService {
       jobId: filters.jobId,
       cursor: filters.cursor,
       limit: filters.limit ?? 10,
+      sum: filters.includeSummary ? 1 : 0,
     });
-    return withListPageCache(
-      this.cache,
-      tenantId,
-      'invoices',
-      filterKey,
-      () => this.listUncached(filters, tenantId),
+    return withListPageCache(this.cache, tenantId, 'invoices', filterKey, () =>
+      this.listUncached(filters, tenantId),
     );
   }
 
@@ -85,9 +86,17 @@ export class InvoicesService {
       jobId?: string;
       cursor?: string;
       limit?: number;
+      includeSummary?: boolean;
     },
     tenantId: string,
-  ): Promise<InvoiceListRow[]> {
+  ): Promise<
+    | InvoiceListRow[]
+    | {
+        items: InvoiceListRow[];
+        totalCount: number;
+        amountSummary: { totalAmount: number; currency: string };
+      }
+  > {
     const pagination = buildCompositeCursorQuery({
       sortField: 'documentDate',
       sortDir: 'desc',
@@ -95,45 +104,66 @@ export class InvoicesService {
       limit: filters.limit ?? 10,
       sortValueType: 'date',
     });
-    const rows = await this.tenantDb.db.invoice.findMany({
-      where: {
-        tenantId,
-        deletedAt: null,
-        ...(filters.kind ? { kind: filters.kind } : {}),
-        ...(filters.paymentStatus
-          ? { paymentStatus: filters.paymentStatus }
-          : {}),
-        ...(filters.customerId ? { customerId: filters.customerId } : {}),
-        ...(filters.supplierId ? { supplierId: filters.supplierId } : {}),
-        ...(filters.employeeRecordId
-          ? { employeeRecordId: filters.employeeRecordId }
-          : {}),
-        ...(filters.saleId ? { saleId: filters.saleId } : {}),
-        ...(filters.stockMovementId
-          ? { stockMovementId: filters.stockMovementId }
-          : {}),
-        ...(filters.expenseId ? { expenseId: filters.expenseId } : {}),
-        ...(filters.payrollId ? { payrollId: filters.payrollId } : {}),
-        ...(filters.payrollGroupId
-          ? { payrollGroupId: filters.payrollGroupId }
-          : {}),
-        ...(filters.jobId ? { jobId: filters.jobId } : {}),
-        ...(filters.from || filters.to
-          ? {
-              documentDate: {
-                ...(filters.from ? { gte: new Date(filters.from) } : {}),
-                ...(filters.to ? { lte: new Date(filters.to) } : {}),
-              },
-            }
-          : {}),
-        ...(invoiceTextSearchWhere(filters.search) ?? {}),
-        ...(pagination.where ?? {}),
+    const baseWhere = {
+      tenantId,
+      deletedAt: null,
+      ...(filters.kind ? { kind: filters.kind } : {}),
+      ...(filters.paymentStatus
+        ? { paymentStatus: filters.paymentStatus }
+        : {}),
+      ...(filters.customerId ? { customerId: filters.customerId } : {}),
+      ...(filters.supplierId ? { supplierId: filters.supplierId } : {}),
+      ...(filters.employeeRecordId
+        ? { employeeRecordId: filters.employeeRecordId }
+        : {}),
+      ...(filters.saleId ? { saleId: filters.saleId } : {}),
+      ...(filters.stockMovementId
+        ? { stockMovementId: filters.stockMovementId }
+        : {}),
+      ...(filters.expenseId ? { expenseId: filters.expenseId } : {}),
+      ...(filters.payrollId ? { payrollId: filters.payrollId } : {}),
+      ...(filters.payrollGroupId
+        ? { payrollGroupId: filters.payrollGroupId }
+        : {}),
+      ...(filters.jobId ? { jobId: filters.jobId } : {}),
+      ...(filters.from || filters.to
+        ? {
+            documentDate: {
+              ...(filters.from ? { gte: new Date(filters.from) } : {}),
+              ...(filters.to ? { lte: new Date(filters.to) } : {}),
+            },
+          }
+        : {}),
+      ...(invoiceTextSearchWhere(filters.search) ?? {}),
+    };
+    const [rows, totalCount, amountAgg] = await Promise.all([
+      this.tenantDb.db.invoice.findMany({
+        where: { ...baseWhere, ...(pagination.where ?? {}) },
+        orderBy: [{ documentDate: 'desc' }, { id: 'desc' }],
+        take: pagination.take,
+      }),
+      filters.includeSummary
+        ? this.tenantDb.db.invoice.count({ where: baseWhere })
+        : Promise.resolve(undefined as number | undefined),
+      filters.includeSummary
+        ? this.tenantDb.db.invoice.aggregate({
+            where: baseWhere,
+            _sum: { total: true },
+          })
+        : Promise.resolve(undefined),
+    ]);
+    const items = rows.map((row) => this.toListRow(row));
+    if (!filters.includeSummary || totalCount == null || amountAgg == null) {
+      return items;
+    }
+    return {
+      items,
+      totalCount,
+      amountSummary: {
+        totalAmount: toNumber(amountAgg._sum.total),
+        currency: 'NGN',
       },
-      orderBy: [{ documentDate: 'desc' }, { id: 'desc' }],
-      take: pagination.take,
-    });
-
-    return rows.map((row) => this.toListRow(row));
+    };
   }
 
   async getById(id: string): Promise<InvoiceDetail> {
@@ -182,9 +212,7 @@ export class InvoicesService {
     });
     if (!row) throw new NotFoundException('Invoice not found');
 
-    const lineItems = this.buildLineItems(
-      row as Parameters<InvoicesService['buildLineItems']>[0],
-    );
+    const lineItems = this.buildLineItems(row);
     const linked = this.linkedRecord(row);
 
     return {
@@ -229,7 +257,7 @@ export class InvoicesService {
       id: row.id,
       tenantId: row.tenantId,
       reference: row.reference,
-      kind: row.kind as InvoiceKind,
+      kind: row.kind,
       status: row.status,
       paymentStatus: row.paymentStatus,
       currency: row.currency,

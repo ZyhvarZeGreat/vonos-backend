@@ -83,7 +83,7 @@ export function InvoicesListView() {
     getCursor: (row) => invoiceListCursor(row),
   });
 
-  const { items, isLoading, error } = listPage;
+  const { items, isLoading, error, amountSummary } = listPage;
   const { data: previewDetail, isPending: previewLoading } = useQuery({
     queryKey: ["invoice-detail", tenantId, previewId],
     queryFn: () => getInvoice(tenantId!, previewId!),
@@ -216,6 +216,12 @@ export function InvoicesListView() {
           isLoading={isLoading}
           error={error ? "Failed to load invoices" : null}
           onRowClick={(row) => setPreviewId(row.id)}
+          totalRow={{
+            total: formatCurrency(
+              amountSummary?.totalAmount ?? 0,
+              amountSummary?.currency ?? "NGN",
+            ),
+          }}
           emptyState={{
             message:
               "Documents appear here when sales, purchases, expenses, payroll, or job billing records are created.",

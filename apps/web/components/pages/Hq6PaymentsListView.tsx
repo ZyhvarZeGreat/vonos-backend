@@ -145,6 +145,7 @@ export function Hq6PaymentsListView() {
     totalCount,
     isPaging,
     isSearching,
+    amountSummary,
   } = listPage;
 
   const rows: PaymentRow[] = useMemo(
@@ -727,6 +728,17 @@ export function Hq6PaymentsListView() {
           message: unlinkedOnly
             ? "No unlinked payments — every sale payment has an account."
             : "No data available in table",
+        }}
+        totalRow={{
+          amount: (
+            <span
+              title={`Net of ${formatHq6Currency(
+                amountSummary?.totalReturn ?? 0,
+              )} returns`}
+            >
+              {formatHq6Currency(amountSummary?.totalAmount ?? 0)}
+            </span>
+          ),
         }}
       />
     </Hq6StandardListShell>

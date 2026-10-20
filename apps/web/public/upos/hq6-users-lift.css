@@ -960,6 +960,18 @@ html.upos-shell .hq6-page .hq6-table-wrap .hq6-table-footer {
   box-shadow: 0 -1px 0 #b8bdc6;
 }
 
+
+/* Aligned column totals on the alternate list shell (ServerPaginatedTable). */
+table tfoot.hq6-total-row > tr > td {
+  background: #f9fafb !important;
+  border-top: 1px solid #d1d5db !important;
+  color: #374151 !important;
+  font-size: 14px !important;
+  font-weight: 700 !important;
+  padding: 8px !important;
+  white-space: nowrap !important;
+}
+
 /* Aligned column totals (DataTable totalRow) — pinned under the columns. */
 html.upos-shell .hq6-page .hq6-table-wrap table tfoot.hq6-total-row {
   position: sticky;

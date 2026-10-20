@@ -30,6 +30,7 @@ export class InvoicesController {
     @Query('jobId') jobId?: string,
     @Query('cursor') cursor?: string,
     @Query('limit') limit?: string,
+    @Query('includeSummary') includeSummary?: string,
   ) {
     return this.service.list({
       kind,
@@ -48,6 +49,7 @@ export class InvoicesController {
       jobId,
       cursor,
       limit: limit ? Number(limit) : undefined,
+      includeSummary: includeSummary === '1' || includeSummary === 'true',
     });
   }
 

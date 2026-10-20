@@ -32,6 +32,8 @@ type ServerPaginatedTableBaseProps<T extends { id: string }> = {
   enableColumnVisibility?: boolean;
   tableId?: string;
   bulkActions?: DataTableBulkAction[];
+  /** Column-keyed totals rendered as a sticky aligned footer. */
+  totalRow?: Record<string, ReactNode>;
   /**
    * Table overlay. From `useServerListPage`, pass `isFetching` (empty-only).
    * Do not pass true on cache-hit page flips.
@@ -96,6 +98,7 @@ export function ServerPaginatedTable<T extends { id: string }>(
     enableColumnVisibility = false,
     tableId,
     bulkActions,
+    totalRow,
     isFetching: overlayFetching = false,
     isPaging,
   } = props;
@@ -141,6 +144,7 @@ export function ServerPaginatedTable<T extends { id: string }>(
         tableId={tableId}
         toolbar={toolbar}
         bulkActions={bulkActions}
+        totalRow={totalRow}
         isLoading={isLoading}
         isFetching={showOverlay}
         error={error}

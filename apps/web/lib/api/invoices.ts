@@ -24,12 +24,23 @@ export interface InvoiceFilters {
   includeSummary?: boolean;
 }
 
+type InvoiceListPayload =
+  | InvoiceListRow[]
+  | {
+      items: InvoiceListRow[];
+      totalCount?: number;
+      amountSummary?: {
+        totalAmount?: number;
+        currency?: string;
+      };
+    };
+
 async function fetchInvoicesRaw(
   tenantId: string,
   filters: InvoiceFilters | undefined,
   cursor?: string,
   limit?: number,
-): Promise<InvoiceListRow[]> {
+): Promise<InvoiceListPayload> {
   const params = new URLSearchParams();
   if (filters?.kind) params.set("kind", filters.kind);
   if (filters?.paymentStatus) params.set("paymentStatus", filters.paymentStatus);
@@ -53,6 +64,7 @@ async function fetchInvoicesRaw(
   if (filters?.jobId) params.set("jobId", filters.jobId);
   if (cursor) params.set("cursor", cursor);
   if (limit) params.set("limit", String(limit));
+  if (filters?.includeSummary) params.set("includeSummary", "1");
   const query = params.toString();
   const path = withTenantQuery(query ? `/invoices?${query}` : "/invoices", tenantId);
   const response = await apiFetch(path);
@@ -74,6 +86,10 @@ export async function getInvoicesPage(
   );
 }
 
+function invoiceRows(payload: InvoiceListPayload): InvoiceListRow[] {
+  return Array.isArray(payload) ? payload : payload.items;
+}
+
 export async function getInvoice(
   tenantId: string,
   invoiceId: string,
@@ -88,7 +104,9 @@ export async function findInvoiceForPayroll(
   tenantId: string,
   payrollId: string,
 ): Promise<InvoiceListRow | null> {
-  const rows = await fetchInvoicesRaw(tenantId, { payrollId }, undefined, 1);
+  const rows = invoiceRows(
+    await fetchInvoicesRaw(tenantId, { payrollId }, undefined, 1),
+  );
   return rows[0] ?? null;
 }
 
@@ -96,11 +114,8 @@ export async function findInvoiceForPayrollGroup(
   tenantId: string,
   payrollGroupId: string,
 ): Promise<InvoiceListRow | null> {
-  const rows = await fetchInvoicesRaw(
-    tenantId,
-    { payrollGroupId },
-    undefined,
-    1,
+  const rows = invoiceRows(
+    await fetchInvoicesRaw(tenantId, { payrollGroupId }, undefined, 1),
   );
   return rows[0] ?? null;
 }
