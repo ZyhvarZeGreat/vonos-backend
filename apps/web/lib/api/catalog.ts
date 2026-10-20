@@ -61,14 +61,14 @@ export async function getCatalogPage(
 export async function getCatalogListSummary(
   tenantId: string,
   filters?: ItemFilters,
-): Promise<Pick<ListPage<Item>, "totalCount">> {
+): Promise<Pick<ListPage<Item>, "totalCount" | "amountSummary">> {
   const page = await getCatalogPage(
     tenantId,
     { ...filters, includeSummary: true },
     undefined,
     1,
   );
-  return { totalCount: page.totalCount };
+  return { totalCount: page.totalCount, amountSummary: page.amountSummary };
 }
 
 export async function getAllCatalog(

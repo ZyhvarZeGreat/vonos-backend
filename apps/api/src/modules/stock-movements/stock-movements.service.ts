@@ -120,7 +120,11 @@ function transferDbStatuses(
 }
 
 function movementAmountSummary(agg: {
-  _sum: { grandTotal: { toString(): string } | null; totalPaid: { toString(): string } | null };
+  _sum: {
+    grandTotal: { toString(): string } | null;
+    totalPaid: { toString(): string } | null;
+    itemCount: number | null;
+  };
 }) {
   const grandTotal = toNumber(agg._sum.grandTotal);
   const totalPaid = toNumber(agg._sum.totalPaid);
@@ -128,6 +132,7 @@ function movementAmountSummary(agg: {
     totalAmount: grandTotal,
     totalPaid,
     totalDue: Math.max(0, grandTotal - totalPaid),
+    totalItems: Number(agg._sum.itemCount ?? 0),
     currency: 'NGN',
   };
 }
@@ -298,7 +303,7 @@ export class StockMovementsService {
             this.tenantDb.db.stockMovement.count({ where: baseWhere }),
             this.tenantDb.db.stockMovement.aggregate({
               where: baseWhere,
-              _sum: { grandTotal: true, totalPaid: true },
+              _sum: { grandTotal: true, totalPaid: true, itemCount: true },
             }),
           ]);
           return {
@@ -347,7 +352,7 @@ export class StockMovementsService {
           includeSummary
             ? this.tenantDb.db.stockMovement.aggregate({
                 where: baseWhere,
-                _sum: { grandTotal: true, totalPaid: true },
+                _sum: { grandTotal: true, totalPaid: true, itemCount: true },
               })
             : Promise.resolve(undefined),
         ]);
@@ -1849,7 +1854,7 @@ export async function warmDefaultStockMovementListPages(
               includeSummary
                 ? prisma.stockMovement.aggregate({
                     where: baseWhere,
-                    _sum: { grandTotal: true, totalPaid: true },
+                    _sum: { grandTotal: true, totalPaid: true, itemCount: true },
                   })
                 : Promise.resolve(undefined),
             ]);

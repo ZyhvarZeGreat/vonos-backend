@@ -19,6 +19,7 @@ import {
   reservedQtyBySku,
 } from '../../common/utils/availableStock';
 import { serializeItem } from '../items/items.mapper';
+import { toNumber } from '../../common/utils/serializers';
 import { applyLastPurchasePrices } from '../../common/utils/lastPurchasePrices';
 import {
   fetchItemFtsIds,
@@ -275,11 +276,24 @@ export class CatalogService {
 
     // Summary-only (limit=1 from deferred count) — skip heavy row mapping.
     if (includeSummary && limit <= 1 && !filters.cursor) {
-      const totalCount = await this.prisma.item.count({ where: baseWhere });
-      return { items: [], totalCount };
+      const [totalCount, qtyAgg] = await Promise.all([
+        this.prisma.item.count({ where: baseWhere }),
+        this.prisma.item.aggregate({
+          where: baseWhere,
+          _sum: { quantity: true },
+        }),
+      ]);
+      return {
+        items: [],
+        totalCount,
+        amountSummary: {
+          totalQuantity: toNumber(qtyAgg._sum.quantity),
+          currency: 'NGN',
+        },
+      };
     }
 
-    const [rows, totalCount] = await Promise.all([
+    const [rows, totalCount, qtyAgg] = await Promise.all([
       this.prisma.item.findMany({
         where: {
           ...baseWhere,
@@ -295,6 +309,12 @@ export class CatalogService {
       includeSummary
         ? this.prisma.item.count({ where: baseWhere })
         : Promise.resolve(undefined as number | undefined),
+      includeSummary
+        ? this.prisma.item.aggregate({
+            where: baseWhere,
+            _sum: { quantity: true },
+          })
+        : Promise.resolve(undefined),
     ]);
 
     const items = await applyLastPurchasePrices(
@@ -306,11 +326,18 @@ export class CatalogService {
     // Approved-requisition JSONB scan — it dominated page-flip latency.
     // Detail/getById still computes availableQuantity.
 
-    if (!includeSummary || totalCount == null) {
+    if (!includeSummary || totalCount == null || qtyAgg == null) {
       return { items };
     }
 
-    return { items, totalCount };
+    return {
+      items,
+      totalCount,
+      amountSummary: {
+        totalQuantity: toNumber(qtyAgg._sum.quantity),
+        currency: 'NGN',
+      },
+    };
   }
 
   async getById(id: string): Promise<Item> {

@@ -102,6 +102,7 @@ function MovementListViewBody({
     items: data,
     hasMore,
     totalCount,
+    amountSummary,
     pageIndex,
     pageSize,
     canGoPrev,
@@ -325,6 +326,10 @@ function MovementListViewBody({
         }}
         onRowClick={(row) => openRecord(row.id, row)}
         emptyState={{ message: `No ${title?.toLowerCase() ?? type} records yet.` }}
+        totalRow={{
+          grandTotal: formatCurrency(amountSummary?.totalAmount ?? 0, "NGN"),
+          itemCount: String(amountSummary?.totalItems ?? 0),
+        }}
         serverSort={serverSortProps({ sort, setSort })}
       />
       <MovementRecordModal

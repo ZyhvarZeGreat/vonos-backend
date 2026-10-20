@@ -261,6 +261,7 @@ export function Hq6ProductsListView({
     goToPage,
     canSelectPage,
     totalCount,
+    amountSummary,
     sort,
     setSort,
     reset,
@@ -1309,6 +1310,33 @@ export function Hq6ProductsListView({
                           ))
                         )}
                       </tbody>
+                      <tfoot>
+                        <tr className="footer-total">
+                          <td />
+                          {isColVisible("image") ? <td /> : null}
+                          {isColVisible("actions") ? <td /> : null}
+                          {isColVisible("name") ? (
+                            <td className="font-semibold">Total</td>
+                          ) : null}
+                          {isColVisible("binLocation") ? <td /> : null}
+                          {isColVisible("costPrice") ? <td /> : null}
+                          {isColVisible("sellPrice") ? <td /> : null}
+                          {isColVisible("quantity") ? (
+                            <td className="font-semibold">
+                              {Number(
+                                amountSummary?.totalQuantity ?? 0,
+                              ).toFixed(2)}
+                            </td>
+                          ) : null}
+                          {isColVisible("groupStock") ? <td /> : null}
+                          {isColVisible("productType") ? <td /> : null}
+                          {isColVisible("category") ? <td /> : null}
+                          {isColVisible("brandName") ? <td /> : null}
+                          {isColVisible("tax") ? <td /> : null}
+                          {isColVisible("sku") ? <td /> : null}
+                          {isColVisible("carModel") ? <td /> : null}
+                        </tr>
+                      </tfoot>
                     </table>
                   </UposDataTablesShell>
                 </div>

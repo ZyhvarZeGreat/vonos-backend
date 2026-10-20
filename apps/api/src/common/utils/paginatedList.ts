@@ -6,6 +6,10 @@ export interface ListAmountSummary {
   totalPaid?: number;
   totalDue?: number;
   totalReturn?: number;
+  /** Sum of line/item counts (movement "Items" column). */
+  totalItems?: number;
+  /** Sum of on-hand quantity (inventory "Current stock"). */
+  totalQuantity?: number;
   currency?: string;
 }
 
