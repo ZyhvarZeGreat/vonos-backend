@@ -927,7 +927,7 @@ table tbody td .hq6-actions-toggle {
 }
 /* Compact every HQ6 data table row (generic DataTable + hand-built lists). */
 html.upos-shell .hq6-page .table.table-bordered.dataTable > tbody > tr {
-  height: 48px !important;
+  height: 50px !important;
 }
 html.upos-shell .hq6-page .table.table-bordered.dataTable > tbody > tr > td,
 html.upos-shell .hq6-page .table.table-bordered.dataTable > tbody > tr > th {
@@ -1007,7 +1007,7 @@ html.upos-shell .hq6-page .hq6-table-wrap table tfoot.hq6-total-row > tr > td.hq
 
 /* Alternate list shell (ServerPaginatedTable) — same taller rows. */
 html.upos-shell .server-paginated-table table > tbody > tr > td {
-  height: 48px;
+  height: 50px;
 }
 .hq6-suppliers-page .table-striped > tbody > tr:nth-of-type(odd),
 .hq6-customers-page .table-striped > tbody > tr:nth-of-type(odd),
