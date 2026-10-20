@@ -86,6 +86,7 @@ export function KidsWearInventoryView() {
     error,
     goToPage,
     canSelectPage,
+    amountSummary,
   } = useServerListPage({
     queryKey: ["items", tenantId],
     enabled: Boolean(tenantId),
@@ -170,6 +171,9 @@ export function KidsWearInventoryView() {
           isFetching={isFetching}
           isPaging={isPaging}
           error={error ? "Failed to load inventory" : null}
+          totalRow={{
+            quantity: formatNumber(amountSummary?.totalQuantity ?? 0),
+          }}
           onRowClick={(row) => goToDetail(row.id)}
         />
       </ListPageShell>

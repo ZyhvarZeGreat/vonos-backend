@@ -238,7 +238,14 @@ export class ItemsService {
 
   async list(
     filters: ItemFilters & { availableForRetail?: boolean },
-  ): Promise<Item[]> {
+  ): Promise<
+    | Item[]
+    | {
+        items: Item[];
+        totalCount: number;
+        amountSummary: { totalQuantity: number; currency: string };
+      }
+  > {
     const tenantId = this.tenantDb.requireTenantId();
     const filterKey = listPageFilterKey({
       search: filters.search,
@@ -257,7 +264,7 @@ export class ItemsService {
       limit: filters.limit ?? 10,
       sortBy: filters.sortBy,
       sortDir: filters.sortDir,
-      sum: filters.includeSummary === false ? 0 : 1,
+      sum: filters.includeSummary === true ? 1 : 0,
     });
     return withListPageCache(this.cache, tenantId, 'items', filterKey, () =>
       this.listUncached(filters, tenantId),
@@ -267,7 +274,14 @@ export class ItemsService {
   private async listUncached(
     filters: ItemFilters & { availableForRetail?: boolean },
     tenantId: string,
-  ): Promise<Item[]> {
+  ): Promise<
+    | Item[]
+    | {
+        items: Item[];
+        totalCount: number;
+        amountSummary: { totalQuantity: number; currency: string };
+      }
+  > {
     const db = this.tenantDb.db;
     const limit = filters.limit ?? 10;
 
@@ -349,11 +363,10 @@ export class ItemsService {
       (clause): clause is NonNullable<typeof clause> => clause != null,
     );
 
-    const rows = await db.item.findMany({
-      where: {
-        tenantId,
-        deletedAt: null,
-        ...(filters.status ? { status: filters.status } : {}),
+    const baseWhere = {
+      tenantId,
+      deletedAt: null as null,
+      ...(filters.status ? { status: filters.status } : {}),
         ...(filters.category ? { category: filters.category } : {}),
         ...(filters.unit
           ? { unit: { equals: filters.unit, mode: 'insensitive' as const } }
@@ -371,9 +384,11 @@ export class ItemsService {
         ...(filters.availableForRetail !== undefined
           ? { availableForRetail: filters.availableForRetail }
           : {}),
-        ...(andClauses.length > 0 ? { AND: andClauses } : {}),
-        ...(pagination.where ?? {}),
-      },
+      ...(andClauses.length > 0 ? { AND: andClauses } : {}),
+    };
+    const [rows, totalCount, qtyAgg] = await Promise.all([
+      db.item.findMany({
+      where: { ...baseWhere, ...(pagination.where ?? {}) },
       orderBy: [{ [sort.sortField]: sort.sortDir }, { id: sort.sortDir }],
       // List projection — never pull full Item + all locationStock columns.
       select: {
@@ -415,13 +430,38 @@ export class ItemsService {
         },
       },
       take: pagination.take,
-    });
+      }),
+      filters.includeSummary === true
+        ? db.item.count({ where: baseWhere })
+        : Promise.resolve(undefined as number | undefined),
+      filters.includeSummary === true
+        ? db.item.aggregate({
+            where: baseWhere,
+            _sum: { quantity: true },
+          })
+        : Promise.resolve(undefined),
+    ]);
 
-    return applyLastPurchasePrices(
+    const items = await applyLastPurchasePrices(
       this.tenantDb.db,
       tenantId,
       rows.map(serializeItem),
     );
+    if (
+      filters.includeSummary !== true ||
+      totalCount == null ||
+      qtyAgg == null
+    ) {
+      return items;
+    }
+    return {
+      items,
+      totalCount,
+      amountSummary: {
+        totalQuantity: toNumber(qtyAgg._sum.quantity),
+        currency: 'NGN',
+      },
+    };
   }
 
   async getById(id: string): Promise<Item> {

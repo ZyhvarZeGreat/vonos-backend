@@ -118,7 +118,12 @@ export class ItemsController {
       limit: limit ? Number(limit) : undefined,
       sortBy,
       sortDir: sortDir === 'asc' || sortDir === 'desc' ? sortDir : undefined,
-      includeSummary: includeSummary === 'false' ? false : undefined,
+      includeSummary:
+        includeSummary === 'false'
+          ? false
+          : includeSummary === '1' || includeSummary === 'true'
+            ? true
+            : undefined,
     };
     if (availableForRetail === 'true') {
       filters.availableForRetail = true;

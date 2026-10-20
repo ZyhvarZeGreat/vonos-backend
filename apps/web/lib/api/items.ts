@@ -54,12 +54,24 @@ function buildItemsPath(
     params.set("availableForRetail", "false");
   if (filters?.sortBy) params.set("sortBy", filters.sortBy);
   if (filters?.sortDir) params.set("sortDir", filters.sortDir);
-  if (filters?.includeSummary === false) params.set("includeSummary", "false");
+  if (filters?.includeSummary === true) params.set("includeSummary", "1");
+  else if (filters?.includeSummary === false) params.set("includeSummary", "false");
   if (cursor) params.set("cursor", cursor);
   if (limit) params.set("limit", String(limit));
   const query = params.toString();
   return withTenantQuery(query ? `/items?${query}` : "/items", tenantId);
 }
+
+type ItemListPayload =
+  | Item[]
+  | {
+      items: Item[];
+      totalCount?: number;
+      amountSummary?: {
+        totalQuantity?: number;
+        currency?: string;
+      };
+    };
 
 async function fetchItemsRaw(
   tenantId: string,
@@ -67,7 +79,7 @@ async function fetchItemsRaw(
   cursor?: string,
   limit?: number,
   signal?: AbortSignal,
-): Promise<Item[]> {
+): Promise<ItemListPayload> {
   const response = await apiFetch(
     buildItemsPath(tenantId, filters, cursor, limit),
     signal ? { signal } : undefined,
@@ -195,7 +207,9 @@ export async function getItems(
   }
 
   if (filters?.cursor || filters?.limit) {
-    return fetchItemsRaw(tenantId, filters, filters.cursor, filters.limit);
+    return fetchFirstPage(() =>
+      fetchItemsRaw(tenantId, filters, filters.cursor, filters.limit),
+    );
   }
 
   return fetchFirstPage(

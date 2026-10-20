@@ -136,6 +136,7 @@ export function Hq6ReturnsListView() {
     goToPage,
     canSelectPage,
     totalCount,
+    amountSummary,
   } = useServerListPage<SaleReturnRow>({
     queryKey: ["returns", tenantId, "hq6"],
     enabled: Boolean(tenantId),
@@ -376,6 +377,9 @@ export function Hq6ReturnsListView() {
         error={error ? "Failed to load returns." : null}
         onRowClick={(row) => openRecord(row.id, saleSeedFromReturnRow(row))}
         emptyState={{ message: "No data available in table" }}
+        totalRow={{
+          amount: formatHq6Currency(amountSummary?.totalAmount ?? 0),
+        }}
       />
     </Hq6StandardListShell>
   );
