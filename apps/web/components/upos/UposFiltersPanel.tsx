@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useState, type ReactNode } from "react";
+import { useEffect, useId, useState, type ReactNode } from "react";
 
 /**
  * Ultimate POS filters card — components/filters.blade.php (fa-filter link).
@@ -19,6 +19,12 @@ export function UposFiltersPanel({
   const reactId = useId().replace(/:/g, "");
   const filterId = `collapseFilter_${reactId}`;
   const [open, setOpen] = useState(defaultOpen);
+
+  // Give the table more vertical room on mobile: collapse by default there.
+  useEffect(() => {
+    if (!defaultOpen || typeof window === "undefined") return;
+    if (window.matchMedia("(max-width: 767px)").matches) setOpen(false);
+  }, [defaultOpen]);
 
   return (
     <div className="tw-transition-all tw-mb-4 lg:tw-col-span-1 tw-duration-200 tw-bg-white tw-shadow-sm tw-rounded-xl tw-ring-1 hover:tw-shadow-md tw-ring-gray-200">

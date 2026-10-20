@@ -152,7 +152,9 @@ export function Hq6DataListPage({
         )}
       >
         {children}
-        {tableFooter}
+        {tableFooter ? (
+          <div className="hq6-table-footer">{tableFooter}</div>
+        ) : null}
         {summaryStrip}
       </div>
     </>

@@ -15,7 +15,7 @@ export function Hq6ListAmountFooter({
   cells: Hq6AmountFooterCell[];
 }) {
   return (
-    <div className="flex flex-wrap items-center justify-end gap-x-6 gap-y-1 border-t border-[var(--hq6-border)] bg-[#f9fafb] px-3 py-2 text-xs font-bold text-[#374151]">
+    <div className="hq6-amount-footer flex flex-wrap items-center justify-end gap-x-6 gap-y-1 border-t border-[var(--hq6-border)] bg-[#f9fafb] px-3 py-2 text-xs font-bold text-[#374151]">
       <span className="mr-auto text-[#6b7280]">{title}</span>
       {cells.map((cell, index) => (
         <div

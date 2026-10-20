@@ -583,7 +583,7 @@ export function Hq6PurchasesListView() {
       }
       tableFooter={
         purchases.length > 0 ? (
-          <div className="flex border-t border-[var(--hq6-border)] bg-[#f9fafb] text-xs font-bold text-[#374151]">
+          <div className="hq6-amount-footer flex border-t border-[var(--hq6-border)] bg-[#f9fafb] text-xs font-bold text-[#374151]">
             <div className="min-w-0 flex-1 px-3 py-2">Total:</div>
             <div className="w-[7.5rem] shrink-0 px-2 py-2 text-right tabular-nums">
               {formatHq6Currency(totals.grandTotal, "NGN")}

@@ -123,7 +123,7 @@ export function ServerPaginatedTable<T extends { id: string }>(
     (isPaging ?? paginationFetching ?? overlayFetching) && !isLoading;
 
   return (
-    <div className="overflow-hidden rounded-xl border border-border bg-card shadow-card">
+    <div className="server-paginated-table overflow-hidden rounded-xl border border-border bg-card shadow-card">
       <DataTable
         data={items}
         columns={columns}

@@ -927,14 +927,42 @@ table tbody td .hq6-actions-toggle {
 }
 /* Compact every HQ6 data table row (generic DataTable + hand-built lists). */
 html.upos-shell .hq6-page .table.table-bordered.dataTable > tbody > tr {
-  height: 34px !important;
+  height: 48px !important;
 }
 html.upos-shell .hq6-page .table.table-bordered.dataTable > tbody > tr > td,
 html.upos-shell .hq6-page .table.table-bordered.dataTable > tbody > tr > th {
-  padding-top: 4px !important;
-  padding-bottom: 4px !important;
-  line-height: 1.3 !important;
+  padding-top: 8px !important;
+  padding-bottom: 8px !important;
+  line-height: 1.4 !important;
   white-space: nowrap !important;
+}
+
+/*
+ * Shared React list pages (Hq6DataListPage → .hq6-table-wrap): give the table
+ * its own scroll area with a sticky header and a sticky totals footer, matching
+ * the legacy DataTables pages (Customers/Products/Suppliers).
+ */
+html.upos-shell .hq6-page .hq6-table-wrap {
+  max-height: calc(100vh - 250px);
+  min-height: 240px;
+  overflow: auto;
+}
+html.upos-shell .hq6-page .hq6-table-wrap table > thead > tr > th {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  background: #ecf0f5 !important;
+}
+html.upos-shell .hq6-page .hq6-table-wrap .hq6-table-footer {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  box-shadow: 0 -1px 0 #b8bdc6;
+}
+
+/* Alternate list shell (ServerPaginatedTable) — same taller rows. */
+html.upos-shell .server-paginated-table table > tbody > tr > td {
+  height: 48px;
 }
 .hq6-suppliers-page .table-striped > tbody > tr:nth-of-type(odd),
 .hq6-customers-page .table-striped > tbody > tr:nth-of-type(odd),
