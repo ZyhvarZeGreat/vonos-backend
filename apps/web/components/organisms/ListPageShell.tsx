@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import {
   ChevronDown,
@@ -240,6 +240,44 @@ function Hq6ListPageShell({
   pageSize = 25,
   onPageSizeChange,
 }: ListPageShellProps) {
+
+  // Fit the table area to the viewport when the table has a totals footer, so
+  // the sticky totals are visible on load rather than only after page scroll.
+  const tableWrapRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = tableWrapRef.current;
+    if (!el) return;
+    const fit = () => {
+      if (!el.querySelector("table tfoot")) {
+        el.style.maxHeight = "";
+        return;
+      }
+      const top = el.getBoundingClientRect().top;
+      if (top < 0) return;
+      const next = `${Math.max(240, Math.round(window.innerHeight - top - 64))}px`;
+      if (el.style.maxHeight !== next) el.style.maxHeight = next;
+    };
+    fit();
+    window.addEventListener("resize", fit);
+    const observer = new ResizeObserver(fit);
+    observer.observe(document.documentElement);
+    // Table rows/tfoot mount after the first paint (data load) — re-fit then.
+    const mutations = new MutationObserver(fit);
+    mutations.observe(el, { childList: true, subtree: true });
+    // Layout can settle after the first fit (toolbar/filters/data) — re-fit.
+    const timers = [60, 300, 900].map((ms) => window.setTimeout(fit, ms));
+    const poll = window.setInterval(fit, 500);
+    const stopPoll = window.setTimeout(() => window.clearInterval(poll), 6000);
+    return () => {
+      window.removeEventListener("resize", fit);
+      observer.disconnect();
+      mutations.disconnect();
+      for (const timer of timers) window.clearTimeout(timer);
+      window.clearInterval(poll);
+      window.clearTimeout(stopPoll);
+    };
+  }, []);
+
   const pathname = usePathname();
   const { section } = parseTenantPath(pathname);
   const copy = useMemo(() => hq6CopyForSlug(section), [section]);
@@ -494,7 +532,12 @@ function Hq6ListPageShell({
       </div>
       ) : null}
 
-      <div className={cn("hq6-table-wrap tw-py-2 sm:tw-px-5 overflow-x-auto", contentClassName)}>{children}</div>
+      <div
+        ref={tableWrapRef}
+        className={cn("hq6-table-wrap tw-py-2 sm:tw-px-5 overflow-x-auto", contentClassName)}
+      >
+        {children}
+      </div>
       </div>
     </div>
   );
