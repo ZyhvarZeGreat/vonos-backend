@@ -216,12 +216,16 @@ export function InvoicesListView() {
           isLoading={isLoading}
           error={error ? "Failed to load invoices" : null}
           onRowClick={(row) => setPreviewId(row.id)}
-          totalRow={{
-            total: formatCurrency(
-              amountSummary?.totalAmount ?? 0,
-              amountSummary?.currency ?? "NGN",
-            ),
-          }}
+          totalRow={
+            amountSummary
+              ? {
+                  total: formatCurrency(
+                    amountSummary.totalAmount ?? 0,
+                    amountSummary.currency ?? "NGN",
+                  ),
+                }
+              : undefined
+          }
           emptyState={{
             message:
               "Documents appear here when sales, purchases, expenses, payroll, or job billing records are created.",

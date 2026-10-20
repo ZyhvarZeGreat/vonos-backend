@@ -1,6 +1,6 @@
 "use client";
 
-import { type ReactNode } from "react";
+import { type ReactNode, useEffect, useRef } from "react";
 import {
   Hq6Breadcrumbs,
   useHq6Breadcrumbs,
@@ -110,6 +110,28 @@ export function Hq6DataListPage({
   className,
   freezeFirstColumn = true,
 }: Hq6DataListPageProps) {
+  // Size the table scroll area to the viewport so the sticky totals row is
+  // visible immediately (not only after scrolling the page).
+  const tableWrapRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = tableWrapRef.current;
+    if (!el) return;
+    const fit = () => {
+      const top = el.getBoundingClientRect().top;
+      if (top < 0) return;
+      const next = `${Math.max(240, Math.round(window.innerHeight - top - 16))}px`;
+      if (el.style.maxHeight !== next) el.style.maxHeight = next;
+    };
+    fit();
+    window.addEventListener("resize", fit);
+    const observer = new ResizeObserver(fit);
+    observer.observe(document.documentElement);
+    return () => {
+      window.removeEventListener("resize", fit);
+      observer.disconnect();
+    };
+  }, []);
+
   const crumbs = useHq6Breadcrumbs({ leafLabel: title });
   const visibleActions = primaryActions.filter(
     (a) => !a.hidden && (a.onClick || a.href),
@@ -146,6 +168,7 @@ export function Hq6DataListPage({
   const tableBody = (
     <>
       <div
+        ref={tableWrapRef}
         className={cn(
           "hq6-table-wrap relative",
           freezeFirstColumn && "hq6-table-freeze-first",

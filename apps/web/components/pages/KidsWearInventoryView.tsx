@@ -171,9 +171,11 @@ export function KidsWearInventoryView() {
           isFetching={isFetching}
           isPaging={isPaging}
           error={error ? "Failed to load inventory" : null}
-          totalRow={{
-            quantity: formatNumber(amountSummary?.totalQuantity ?? 0),
-          }}
+          totalRow={
+            amountSummary
+              ? { quantity: formatNumber(amountSummary.totalQuantity ?? 0) }
+              : undefined
+          }
           onRowClick={(row) => goToDetail(row.id)}
         />
       </ListPageShell>

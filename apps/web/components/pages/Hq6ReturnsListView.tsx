@@ -377,9 +377,11 @@ export function Hq6ReturnsListView() {
         error={error ? "Failed to load returns." : null}
         onRowClick={(row) => openRecord(row.id, saleSeedFromReturnRow(row))}
         emptyState={{ message: "No data available in table" }}
-        totalRow={{
-          amount: formatHq6Currency(amountSummary?.totalAmount ?? 0),
-        }}
+        totalRow={
+          amountSummary
+            ? { amount: formatHq6Currency(amountSummary.totalAmount ?? 0) }
+            : undefined
+        }
       />
     </Hq6StandardListShell>
   );

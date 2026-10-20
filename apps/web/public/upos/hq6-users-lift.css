@@ -961,6 +961,14 @@ html.upos-shell .hq6-page .hq6-table-wrap .hq6-table-footer {
 }
 
 
+
+/* Hand-built tables (Products/Inventory) — sticky totals inside the wrap. */
+html.upos-shell .hq6-page .hq6-table-wrap table tfoot {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+}
+
 /* Aligned column totals on the alternate list shell (ServerPaginatedTable). */
 table tfoot.hq6-total-row > tr > td {
   background: #f9fafb !important;

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useState, useEffect, useRef } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useFiltersPanelOpen } from "@/lib/hooks/useFiltersPanelOpen";
 import { useRouter } from "next/navigation";
@@ -147,6 +147,27 @@ export function Hq6ProductsListView({
 }: {
   listSlug?: "catalog" | "inventory" | "menu-items";
 } = {}) {
+
+  const tableWrapRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = tableWrapRef.current;
+    if (!el) return;
+    const fit = () => {
+      const top = el.getBoundingClientRect().top;
+      if (top < 0) return;
+      const next = `${Math.max(240, Math.round(window.innerHeight - top - 16))}px`;
+      if (el.style.maxHeight !== next) el.style.maxHeight = next;
+    };
+    fit();
+    window.addEventListener("resize", fit);
+    const observer = new ResizeObserver(fit);
+    observer.observe(document.documentElement);
+    return () => {
+      window.removeEventListener("resize", fit);
+      observer.disconnect();
+    };
+  }, []);
+
   const { goToDetail } = useRecordNavigation(listSlug);
   const tenantId = useTenantId();
   const { config, tenantCode } = useRouteTenant();
@@ -854,6 +875,7 @@ export function Hq6ProductsListView({
                       </div>
                     }
                   >
+                    <div ref={tableWrapRef} className="hq6-table-wrap relative">
                     <table
                       className="table table-bordered table-striped ajax_view hide-footer dataTable"
                       id="product_table"
@@ -1323,9 +1345,9 @@ export function Hq6ProductsListView({
                           {isColVisible("sellPrice") ? <td /> : null}
                           {isColVisible("quantity") ? (
                             <td className="font-semibold">
-                              {Number(
-                                amountSummary?.totalQuantity ?? 0,
-                              ).toFixed(2)}
+                              {amountSummary
+                                ? Number(amountSummary.totalQuantity ?? 0).toFixed(2)
+                                : ""}
                             </td>
                           ) : null}
                           {isColVisible("groupStock") ? <td /> : null}
@@ -1338,6 +1360,7 @@ export function Hq6ProductsListView({
                         </tr>
                       </tfoot>
                     </table>
+                    </div>
                   </UposDataTablesShell>
                 </div>
               ) : (

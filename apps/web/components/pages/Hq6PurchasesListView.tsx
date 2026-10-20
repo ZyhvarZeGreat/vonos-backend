@@ -731,16 +731,14 @@ export function Hq6PurchasesListView() {
         error={error ? "Could not load purchases." : null}
         onRowClick={(row) => openRecord(row.id, row)}
         emptyState={{ message: "No data available in table" }}
-        totalRow={{
-          grandTotal: formatHq6Currency(
-            amountSummary?.totalAmount ?? 0,
-            "NGN",
-          ),
-          paymentDue: formatHq6Currency(
-            amountSummary?.totalDue ?? 0,
-            "NGN",
-          ),
-        }}
+        totalRow={
+          amountSummary
+            ? {
+                grandTotal: formatHq6Currency(amountSummary.totalAmount ?? 0, "NGN"),
+                paymentDue: formatHq6Currency(amountSummary.totalDue ?? 0, "NGN"),
+              }
+            : undefined
+        }
         serverSort={serverSortProps({ sort, setSort })}
       />
     </Hq6StandardListShell>

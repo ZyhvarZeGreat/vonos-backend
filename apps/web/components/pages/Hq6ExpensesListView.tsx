@@ -790,13 +790,14 @@ export function Hq6ExpensesListView() {
         isFetching={isFetching && !isLoading}
         error={error ? "Could not load expenses." : null}
         emptyState={{ message: "No data available in table" }}
-        totalRow={{
-          totalAmount: formatHq6Currency(
-            amountSummary?.totalAmount ?? 0,
-            "NGN",
-          ),
-          paymentDue: formatHq6Currency(amountSummary?.totalDue ?? 0, "NGN"),
-        }}
+        totalRow={
+          amountSummary
+            ? {
+                totalAmount: formatHq6Currency(amountSummary.totalAmount ?? 0, "NGN"),
+                paymentDue: formatHq6Currency(amountSummary.totalDue ?? 0, "NGN"),
+              }
+            : undefined
+        }
       />
     </Hq6StandardListShell>
   );

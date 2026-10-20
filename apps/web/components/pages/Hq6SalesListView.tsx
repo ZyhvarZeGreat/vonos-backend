@@ -1504,21 +1504,12 @@ export function Hq6SalesListView({
           onRowClick={(row) => openRecord(row.id, row)}
           emptyState={{ message: "No data available in table" }}
           totalRow={
-            saleStatus === "draft" || saleStatus === "quotation"
+            saleStatus === "draft" || saleStatus === "quotation" || !amountSummary
               ? undefined
               : {
-                  total: formatHq6Currency(
-                    amountSummary?.totalAmount ?? 0,
-                    "NGN",
-                  ),
-                  totalPaid: formatHq6Currency(
-                    amountSummary?.totalPaid ?? 0,
-                    "NGN",
-                  ),
-                  sellDue: formatHq6Currency(
-                    amountSummary?.totalDue ?? 0,
-                    "NGN",
-                  ),
+                  total: formatHq6Currency(amountSummary.totalAmount ?? 0, "NGN"),
+                  totalPaid: formatHq6Currency(amountSummary.totalPaid ?? 0, "NGN"),
+                  sellDue: formatHq6Currency(amountSummary.totalDue ?? 0, "NGN"),
                 }
           }
           serverSort={serverSortProps({ sort, setSort })}

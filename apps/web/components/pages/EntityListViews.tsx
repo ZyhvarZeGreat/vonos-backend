@@ -845,9 +845,11 @@ function ReturnsListViewBody() {
           isPaging={isPaging}
         error={error ? "Failed to load returns" : null}
         onRowClick={(row) => openRecord(row.id, saleSeedFromReturnRow(row))}
-        totalRow={{
-          amount: formatCurrency(amountSummary?.totalAmount ?? 0, "NGN"),
-        }}
+        totalRow={
+          amountSummary
+            ? { amount: formatCurrency(amountSummary.totalAmount ?? 0, "NGN") }
+            : undefined
+        }
       />
       <SaleRecordModal
         saleId={recordId}

@@ -658,10 +658,14 @@ export function Hq6PurchaseReturnsListView() {
         isFetching={isFetching && !isLoading}
         error={error ? "Failed to load purchase returns" : null}
         emptyState={{ message: "No data available in table" }}
-        totalRow={{
-          grandTotal: formatHq6Currency(amountSummary?.totalAmount ?? 0),
-          paymentDue: formatHq6Currency(amountSummary?.totalDue ?? 0),
-        }}
+        totalRow={
+          amountSummary
+            ? {
+                grandTotal: formatHq6Currency(amountSummary.totalAmount ?? 0),
+                paymentDue: formatHq6Currency(amountSummary.totalDue ?? 0),
+              }
+            : undefined
+        }
         onRowClick={(row) => openRecord(row.id, row)}
       />
       <MovementRecordModal
