@@ -666,6 +666,8 @@ model Sale {
   /// Cafe: table this order is served at (label stored for history even if the table is later renamed/deleted).
   tableId         String?
   tableName       String?
+  /// Cafe kitchen lifecycle: new | preparing | ready | served.
+  orderStatus     String          @default("served")
   createdByUserId String?
   createdByUser   User?          @relation("SaleCreatedBy", fields: [createdByUserId], references: [id])
   createdByName   String?

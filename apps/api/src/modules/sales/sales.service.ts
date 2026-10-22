@@ -623,6 +623,7 @@ export class SalesService {
           trackingNumber: true,
           tableId: true,
           tableName: true,
+          orderStatus: true,
           date: true,
           createdByUserId: true,
           createdByName: true,
@@ -756,6 +757,7 @@ export class SalesService {
     trackingNumber: string | null;
     tableId: string | null;
     tableName: string | null;
+    orderStatus: string;
     date: Date;
         createdByUserId: string | null;
         createdByName: string | null;
@@ -1219,6 +1221,7 @@ export class SalesService {
     locationCode?: string;
     tableId?: string;
     tableName?: string;
+    orderStatus?: string;
     paymentMethod?: string;
     cleanerUserId?: string;
     cleanerName?: string;
@@ -1839,6 +1842,7 @@ export class SalesService {
           trackingNumber: body.trackingNumber?.trim() || null,
           tableId: body.tableId?.trim() || null,
           tableName: body.tableName?.trim() || null,
+          orderStatus: body.orderStatus?.trim() || 'served',
           date: saleDate,
           lines: { create: lineData },
           ...createdBy,
@@ -2784,6 +2788,22 @@ export class SalesService {
   }
 
   /** Convert a draft or quotation into a completed sale (stock + ledger + payments). */
+  /** Advance a cafe order's kitchen lifecycle (new → preparing → ready → served). */
+  async updateOrderStatus(id: string, orderStatus: string): Promise<SaleDetail> {
+    const tenantId = this.tenantDb.requireTenantId();
+    const allowed = new Set(['new', 'preparing', 'ready', 'served']);
+    if (!allowed.has(orderStatus)) {
+      throw new BadRequestException('Invalid order status');
+    }
+    const existing = await this.tenantDb.db.sale.findFirst({
+      where: { id, tenantId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!existing) throw new NotFoundException('Sale not found');
+    await this.tenantDb.db.sale.update({ where: { id }, data: { orderStatus } });
+    return this.getById(id);
+  }
+
   async finalize(
     id: string,
     body: {
@@ -4095,6 +4115,7 @@ export class SalesService {
     trackingNumber: string | null;
     tableId: string | null;
     tableName: string | null;
+    orderStatus: string;
     date: Date;
     createdByUserId: string | null;
     createdByName: string | null;
@@ -4175,6 +4196,7 @@ export class SalesService {
       trackingNumber: row.trackingNumber,
       tableId: row.tableId ?? null,
       tableName: row.tableName ?? null,
+      orderStatus: row.orderStatus ?? 'served',
       itemCount: row._count?.lines ?? row.lines?.length ?? 0,
       date: toIso(row.date).slice(0, 10),
       createdByUserId: row.createdByUserId,
@@ -4217,6 +4239,7 @@ export class SalesService {
     trackingNumber: string | null;
     tableId: string | null;
     tableName: string | null;
+    orderStatus: string;
     date: Date;
     createdByUserId: string | null;
     createdByName: string | null;
@@ -4339,6 +4362,7 @@ export async function warmDefaultSalesListPages(
                   trackingNumber: true,
           tableId: true,
           tableName: true,
+          orderStatus: true,
                   date: true,
                   createdByUserId: true,
                   createdByName: true,

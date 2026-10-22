@@ -245,6 +245,7 @@ export function CafePosView() {
         locationCode: locationCode || undefined,
         tableId: tableId || undefined,
         tableName: tableName ?? undefined,
+        orderStatus: vars.status === "final" ? "new" : undefined,
         status: vars.status,
         lines: lines.map((line) => ({
           itemId: line.itemId,

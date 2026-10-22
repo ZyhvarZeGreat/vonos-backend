@@ -60,7 +60,9 @@ table; `POST /sales` with no open register → 400; with one → 201.
 
 ---
 
-### B2 — Order lifecycle + Kitchen Display (blocking, ~1 day)
+### B2 — Order lifecycle + Kitchen Display (blocking, ~1 day) — ✅ DONE
+> `Sale.orderStatus` (new/preparing/ready/served), `PATCH /sales/:id/order-status`,
+> POS creates orders as **new**, Kitchen Display kanban has an **Advance** button.
 **Goal: a POS sale enters the kitchen as "New" and moves New → Preparing → Ready → Served.**
 
 1. Schema: enum `CafeOrderStatus { new, preparing, ready, served }`,

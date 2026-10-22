@@ -239,6 +239,15 @@ export class SalesController {
   }
 
   /** VA/VP: workshop stage on the sale (sales act as jobs). */
+  @Patch(':id/order-status')
+  @Roles('staff', 'manager', 'admin', 'super_admin')
+  updateOrderStatus(
+    @Param('id') id: string,
+    @Body() body: { orderStatus: string },
+  ) {
+    return this.salesService.updateOrderStatus(id, body.orderStatus);
+  }
+
   @Patch(':id/workshop-status')
   @Roles('staff', 'manager', 'admin', 'super_admin')
   updateWorkshopStatus(

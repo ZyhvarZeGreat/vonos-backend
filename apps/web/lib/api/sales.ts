@@ -224,6 +224,23 @@ export async function createSaleReturn(
   return response.json();
 }
 
+export async function updateSaleOrderStatus(
+  tenantId: string,
+  saleId: string,
+  orderStatus: string,
+): Promise<SaleDetail> {
+  const path = withTenantQuery(`/sales/${saleId}/order-status`, tenantId);
+  const response = await apiFetch(path, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ orderStatus }),
+  });
+  if (!response.ok) {
+    return throwApiError(response, "Failed to update order status");
+  }
+  return response.json();
+}
+
 export async function updateSaleShipping(
   tenantId: string,
   saleId: string,

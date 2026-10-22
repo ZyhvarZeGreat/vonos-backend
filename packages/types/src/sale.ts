@@ -82,6 +82,8 @@ export interface Sale {
   locationCode: string | null;
   tableId?: string | null;
   tableName?: string | null;
+  /** Cafe kitchen lifecycle: new | preparing | ready | served. */
+  orderStatus?: string | null;
   cleanerUserId?: string | null;
   cleanerName?: string | null;
   serviceStaffEmployeeId?: string | null;
@@ -217,6 +219,7 @@ export interface CreateSaleRequest {
   locationCode?: string;
   tableId?: string;
   tableName?: string;
+  orderStatus?: string;
   paymentMethod?: string;
   cleanerUserId?: string;
   cleanerName?: string;

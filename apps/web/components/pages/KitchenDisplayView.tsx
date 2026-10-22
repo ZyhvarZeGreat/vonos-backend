@@ -14,6 +14,8 @@ import { formatCurrency } from "@/lib/utils/formatCurrency";
 import { useListPageFilters } from "@/lib/hooks/useListPageFilters";
 import { uniqueFieldOptions } from "@/lib/utils/listFilters";
 import { useTenantId } from "@/lib/hooks/useRouteTenant";
+import { updateSaleOrderStatus } from "@/lib/api/sales";
+import { useAppMutation } from "@/lib/hooks/useAppMutation";
 import type { Order } from "@/lib/types/entityRows";
 import { cn } from "@/lib/utils/cn";
 
@@ -35,6 +37,16 @@ export function KitchenDisplayView() {
   const tenantId = useTenantId();
   const { dateRange, setDateRange, search, setSearch, bounds } = useListPageFilters();
   const [statusFilter, setStatusFilter] = useState("");
+  const NEXT_STATUS: Record<string, string> = {
+    New: "Preparing",
+    Preparing: "Ready",
+    Ready: "Served",
+  };
+  const advanceMutation = useAppMutation({
+    mutationFn: ({ id, status }: { id: string; status: string }) =>
+      updateSaleOrderStatus(tenantId!, id, status),
+    invalidateKeys: [["kitchen-orders", tenantId]],
+  });
 
   const {
     items: orders,
@@ -170,6 +182,21 @@ export function KitchenDisplayView() {
                           <p className="mt-3 text-base font-semibold text-foreground">
                             {formatCurrency(order.total, order.currency)}
                           </p>
+                          {NEXT_STATUS[order.status] ? (
+                            <button
+                              type="button"
+                              disabled={advanceMutation.isPending}
+                              onClick={() =>
+                                advanceMutation.mutate({
+                                  id: order.id,
+                                  status: NEXT_STATUS[order.status]!.toLowerCase(),
+                                })
+                              }
+                              className="mt-3 w-full rounded-md bg-[#646ee4] px-3 py-2 text-xs font-semibold text-white hover:bg-[#4f57cf] disabled:opacity-50"
+                            >
+                              Advance to {NEXT_STATUS[order.status]}
+                            </button>
+                          ) : null}
                         </div>
                         );
                       })

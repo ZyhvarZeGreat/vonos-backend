@@ -10,6 +10,11 @@ const ORDER_STATUS_MAP: Record<string, string> = {
   "Written Off": "Served",
 };
 
+function titleCase(value?: string | null): string | null {
+  if (!value) return null;
+  return value.charAt(0).toUpperCase() + value.slice(1).toLowerCase();
+}
+
 export function saleToOrder(sale: Sale): Order {
   return {
     id: sale.id,
@@ -18,7 +23,7 @@ export function saleToOrder(sale: Sale): Order {
     tableNumber: sale.tableName ?? null,
     total: sale.total,
     currency: sale.currency,
-    status: ORDER_STATUS_MAP[sale.status] ?? "New",
+    status: titleCase(sale.orderStatus) ?? ORDER_STATUS_MAP[sale.status] ?? "New",
     itemCount: sale.itemCount,
     createdAt: sale.createdAt,
     saleDate: sale.date,
