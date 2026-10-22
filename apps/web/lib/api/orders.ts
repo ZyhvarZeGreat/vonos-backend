@@ -15,7 +15,7 @@ export function saleToOrder(sale: Sale): Order {
     id: sale.id,
     tenantId: sale.tenantId,
     reference: sale.reference,
-    tableNumber: null,
+    tableNumber: sale.tableName ?? null,
     total: sale.total,
     currency: sale.currency,
     status: ORDER_STATUS_MAP[sale.status] ?? "New",

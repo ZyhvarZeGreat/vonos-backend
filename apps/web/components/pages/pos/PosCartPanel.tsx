@@ -61,6 +61,10 @@ export function PosCartPanel({
   totals,
   onEditDiscount,
   onEditTax,
+  onAddCustomer,
+  tables,
+  tableId,
+  onTableChange,
 }: {
   search: string;
   onSearchChange: (value: string) => void;
@@ -68,6 +72,10 @@ export function PosCartPanel({
   totals: PosTotals;
   onEditDiscount: () => void;
   onEditTax: () => void;
+  onAddCustomer: () => void;
+  tables: { id: string; label: string }[];
+  tableId: string;
+  onTableChange: (id: string) => void;
 }) {
   const lines = usePosCartStore((s) => s.lines);
   const customerId = usePosCartStore((s) => s.customerId);
@@ -91,14 +99,28 @@ export function PosCartPanel({
         </div>
         <button
           type="button"
-          disabled
-          title="Add customer — available in Phase 2"
+          title="Add customer"
           aria-label="Add customer"
+          onClick={onAddCustomer}
           className="cafe-pos-icon-btn h-10 w-10 shrink-0 text-lg leading-none"
         >
           +
         </button>
       </div>
+
+      {tables.length > 0 ? (
+        <div>
+          <Select
+            aria-label="Table"
+            value={tableId}
+            onChange={(e) => onTableChange(e.target.value)}
+            options={[
+              { value: "", label: "Takeaway / No table" },
+              ...tables.map((t) => ({ value: t.id, label: t.label })),
+            ]}
+          />
+        </div>
+      ) : null}
 
       <div className="cafe-pos-search">
         <span aria-hidden className="cafe-pos-search-icon">

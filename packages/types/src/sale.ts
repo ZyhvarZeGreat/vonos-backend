@@ -80,6 +80,8 @@ export interface Sale {
   paymentStatus: PaymentStatus | null;
   paymentMethod?: string | null;
   locationCode: string | null;
+  tableId?: string | null;
+  tableName?: string | null;
   cleanerUserId?: string | null;
   cleanerName?: string | null;
   serviceStaffEmployeeId?: string | null;
@@ -213,6 +215,8 @@ export interface CreateSaleRequest {
   /** Optional link to a job (Automotive). Not required to create or update a sale. */
   jobId?: string;
   locationCode?: string;
+  tableId?: string;
+  tableName?: string;
   paymentMethod?: string;
   cleanerUserId?: string;
   cleanerName?: string;

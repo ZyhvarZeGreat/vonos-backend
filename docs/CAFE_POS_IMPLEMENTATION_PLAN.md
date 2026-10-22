@@ -147,6 +147,19 @@ Delivered: `PosCalculator.tsx`, `PosQuickAddProductModal.tsx`,
 > Top-bar naming collision: the HQ6 shell also has "Calculator" / "Add Expense"
 > buttons, so the till root carries `.cafe-pos` and tests scope to it.
 
+### Phase 4.5 — Gap closure (see `CAFE_POS_GAP_CLOSURE_PLAN.md`)
+Remaining till/cafe gaps found after Phases 1–4, batched:
+
+- **B1** add-customer from the till, table assignment, server-side register
+  enforcement.
+- **B2** order lifecycle (`new → preparing → ready → served`) so Kitchen Display
+  stops showing every POS sale as "Served".
+- **B3** UPOS parity: line unit/price/discount, keyboard shortcuts, category
+  paging, register history.
+- **B4** Cafe features: **modifiers** (schema + editor + till picker),
+  Daily Closeout, live Table Management.
+- **B5** polish: shipping amount, structured card fields, oversell setting.
+
 ### Phase 5 — Cutover
 - Cafe is a **new build, no migration** (AGENTS.md §1): seed catalog from the
   live UPOS via export, train `victoria` (cashier) + manager, run parallel

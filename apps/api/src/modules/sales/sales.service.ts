@@ -259,6 +259,16 @@ export class SalesService {
     }
   }
 
+  /**
+   * POS tenants must have an open cash register before recording a live sale.
+   * Scoped to VC for now — the only tenant with a register UI — so existing
+   * VA/VW/VISP/VSP sale flows keep working unchanged.
+   */
+  private async requiresOpenRegister(): Promise<boolean> {
+    const tenant = await this.tenantDb.getTenantCodeAndConfig();
+    return tenant?.code === 'VC';
+  }
+
   private saleOutboundNotesMarker(saleId: string): string {
     return `saleId:${saleId}`;
   }
@@ -611,6 +621,8 @@ export class SalesService {
           shippingStatus: true,
           shippingAddress: true,
           trackingNumber: true,
+          tableId: true,
+          tableName: true,
           date: true,
           createdByUserId: true,
           createdByName: true,
@@ -738,11 +750,13 @@ export class SalesService {
         cleanerName: string | null;
         serviceStaffEmployeeId: string | null;
         service_staff_name: string | null;
-        locationCode: string | null;
-        shippingStatus: string | null;
-        shippingAddress: string | null;
-        trackingNumber: string | null;
-        date: Date;
+    locationCode: string | null;
+    shippingStatus: string | null;
+    shippingAddress: string | null;
+    trackingNumber: string | null;
+    tableId: string | null;
+    tableName: string | null;
+    date: Date;
         createdByUserId: string | null;
         createdByName: string | null;
         createdAt: Date;
@@ -1203,6 +1217,8 @@ export class SalesService {
     customerId?: string;
     jobId?: string;
     locationCode?: string;
+    tableId?: string;
+    tableName?: string;
     paymentMethod?: string;
     cleanerUserId?: string;
     cleanerName?: string;
@@ -1236,6 +1252,20 @@ export class SalesService {
     const saleDate = body.date ? new Date(body.date) : new Date();
     const status = normalizeCreateStatus(body.status);
     const isProvisional = status === 'draft' || status === 'quotation';
+
+    // POS tenants must have an open cash register before recording a live sale.
+    // Drafts/quotations are exempt (they don't move stock or money yet).
+    if (!isProvisional && (await this.requiresOpenRegister())) {
+      const open = await this.tenantDb.db.cashRegister.findFirst({
+        where: { tenantId, status: 'open', deletedAt: null },
+        select: { id: true },
+      });
+      if (!open) {
+        throw new BadRequestException(
+          'Open the cash register before recording a sale',
+        );
+      }
+    }
 
     let jobId: string | null = body.jobId?.trim() || null;
     let linkedJob: {
@@ -1807,6 +1837,8 @@ export class SalesService {
           shippingStatus: body.shippingStatus ?? (isProvisional ? null : 'pending'),
           shippingAddress: body.shippingAddress?.trim() || null,
           trackingNumber: body.trackingNumber?.trim() || null,
+          tableId: body.tableId?.trim() || null,
+          tableName: body.tableName?.trim() || null,
           date: saleDate,
           lines: { create: lineData },
           ...createdBy,
@@ -4061,6 +4093,8 @@ export class SalesService {
     shippingStatus: string | null;
     shippingAddress: string | null;
     trackingNumber: string | null;
+    tableId: string | null;
+    tableName: string | null;
     date: Date;
     createdByUserId: string | null;
     createdByName: string | null;
@@ -4139,6 +4173,8 @@ export class SalesService {
       shippingStatus: row.shippingStatus as Sale['shippingStatus'],
       shippingAddress: row.shippingAddress,
       trackingNumber: row.trackingNumber,
+      tableId: row.tableId ?? null,
+      tableName: row.tableName ?? null,
       itemCount: row._count?.lines ?? row.lines?.length ?? 0,
       date: toIso(row.date).slice(0, 10),
       createdByUserId: row.createdByUserId,
@@ -4179,6 +4215,8 @@ export class SalesService {
     shippingStatus: string | null;
     shippingAddress: string | null;
     trackingNumber: string | null;
+    tableId: string | null;
+    tableName: string | null;
     date: Date;
     createdByUserId: string | null;
     createdByName: string | null;
@@ -4299,6 +4337,8 @@ export async function warmDefaultSalesListPages(
                   shippingStatus: true,
                   shippingAddress: true,
                   trackingNumber: true,
+          tableId: true,
+          tableName: true,
                   date: true,
                   createdByUserId: true,
                   createdByName: true,

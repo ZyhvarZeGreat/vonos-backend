@@ -663,6 +663,9 @@ model Sale {
   shippingAddress String?
   trackingNumber  String?
   date            DateTime
+  /// Cafe: table this order is served at (label stored for history even if the table is later renamed/deleted).
+  tableId         String?
+  tableName       String?
   createdByUserId String?
   createdByUser   User?          @relation("SaleCreatedBy", fields: [createdByUserId], references: [id])
   createdByName   String?

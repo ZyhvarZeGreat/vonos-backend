@@ -47,6 +47,8 @@ import { PosCalculator } from "./PosCalculator";
 import { PosQuickAddProductModal } from "./PosQuickAddProductModal";
 import { PosExpenseModal } from "./PosExpenseModal";
 import { PosRegisterModal } from "./PosRegisterModal";
+import { PosCustomerModal } from "./PosCustomerModal";
+import { getCafeTables } from "@/lib/api/cafeTables";
 import { getCurrentRegister } from "@/lib/api/cashRegister";
 
 const GRID_PAGE_SIZE = 60;
@@ -109,6 +111,8 @@ export function CafePosView() {
   const [quickProductOpen, setQuickProductOpen] = useState(false);
   const [expenseOpen, setExpenseOpen] = useState(false);
   const [registerOpen, setRegisterOpen] = useState(false);
+  const [customerModalOpen, setCustomerModalOpen] = useState(false);
+  const [tableId, setTableId] = useState<string>("");
   const [adjustment, setAdjustment] = useState<null | "discount" | "tax">(null);
   const [confirmIntent, setConfirmIntent] = useState<null | "cash" | "card" | "draft">(null);
 
@@ -165,6 +169,14 @@ export function CafePosView() {
   });
   const register = registerQuery.data ?? null;
 
+  const isCafe = config?.code === "VC";
+  const tablesQuery = useQuery({
+    queryKey: ["pos-tables", tenantId],
+    enabled: Boolean(tenantId) && isCafe,
+    staleTime: 60_000,
+    queryFn: () => getCafeTables(tenantId!),
+  });
+
   const expenseCategoriesQuery = useQuery({
     queryKey: ["pos-expense-categories", tenantId],
     enabled: Boolean(tenantId) && expenseOpen,
@@ -202,6 +214,7 @@ export function CafePosView() {
   const orderTax = usePosCartStore((s) => s.orderTax);
   const shipping = usePosCartStore((s) => s.shipping);
   const customerId = usePosCartStore((s) => s.customerId);
+  const setCustomer = usePosCartStore((s) => s.setCustomer);
   const addItem = usePosCartStore((s) => s.addItem);
   const clearCart = usePosCartStore((s) => s.clearCart);
   const setDiscount = usePosCartStore((s) => s.setDiscount);
@@ -209,6 +222,8 @@ export function CafePosView() {
   const totals = computePosTotals({ lines, discount, orderTax, shipping });
 
   const accounts = accountsQuery.data ?? [];
+  const tables = tablesQuery.data ?? [];
+  const tableName = tables.find((t) => t.id === tableId)?.label ?? null;
   const defaultAccountId = accounts[0]?.id ?? "";
   const locationCode = defaultCode ?? "";
 
@@ -228,6 +243,8 @@ export function CafePosView() {
       return createSale(tenantId, {
         customerId: customerId ?? undefined,
         locationCode: locationCode || undefined,
+        tableId: tableId || undefined,
+        tableName: tableName ?? undefined,
         status: vars.status,
         lines: lines.map((line) => ({
           itemId: line.itemId,
@@ -421,6 +438,10 @@ export function CafePosView() {
           totals={totals}
           onEditDiscount={() => setAdjustment("discount")}
           onEditTax={() => setAdjustment("tax")}
+          onAddCustomer={() => setCustomerModalOpen(true)}
+          tables={tables}
+          tableId={tableId}
+          onTableChange={setTableId}
         />
 
         <div className="flex min-h-0 flex-col gap-3">
@@ -687,6 +708,18 @@ export function CafePosView() {
           onCreated={() => {
             setQuickProductOpen(false);
             void gridQuery.refetch();
+          }}
+        />
+      ) : null}
+
+      {tenantId ? (
+        <PosCustomerModal
+          open={customerModalOpen}
+          tenantId={tenantId}
+          onClose={() => setCustomerModalOpen(false)}
+          onCreated={(customer) => {
+            setCustomer(customer.id);
+            setCustomerModalOpen(false);
           }}
         />
       ) : null}
