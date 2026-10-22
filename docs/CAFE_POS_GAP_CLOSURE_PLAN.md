@@ -80,7 +80,11 @@ advancing it updates the kanban; table and items render.
 
 ---
 
-### B3 — UPOS parity polish (~0.5 day)
+### B3 — UPOS parity polish (~0.5 day) — ✅ DONE
+> Keyboard shortcuts (`shift+e/c/d/p/i`), category sub-paging (`Next »`), line price
+> edit (permission `edit_product_price_from_pos_screen`), and a Past Shifts modal.
+> Line **unit** dropdown and line **discount** deferred (single-unit items; discount
+> needs per-line math).
 1. **Line controls**: per-line unit dropdown and price/discount editing.
    - Schema: `SaleLine.unit String?` (persist what was sold, independent of the
      item's current unit).

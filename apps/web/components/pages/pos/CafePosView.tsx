@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   Calculator,
@@ -48,6 +48,7 @@ import { PosQuickAddProductModal } from "./PosQuickAddProductModal";
 import { PosExpenseModal } from "./PosExpenseModal";
 import { PosRegisterModal } from "./PosRegisterModal";
 import { PosCustomerModal } from "./PosCustomerModal";
+import { PosShiftsModal } from "./PosShiftsModal";
 import { getCafeTables } from "@/lib/api/cafeTables";
 import { getCurrentRegister } from "@/lib/api/cashRegister";
 
@@ -112,6 +113,7 @@ export function CafePosView() {
   const [expenseOpen, setExpenseOpen] = useState(false);
   const [registerOpen, setRegisterOpen] = useState(false);
   const [customerModalOpen, setCustomerModalOpen] = useState(false);
+  const [shiftsOpen, setShiftsOpen] = useState(false);
   const [tableId, setTableId] = useState<string>("");
   const [adjustment, setAdjustment] = useState<null | "discount" | "tax">(null);
   const [confirmIntent, setConfirmIntent] = useState<null | "cash" | "card" | "draft">(null);
@@ -299,22 +301,66 @@ export function CafePosView() {
    * Payment actions need an open register. Rather than dead disabled buttons,
    * a click opens the register dialog (and surfaces API problems explicitly).
    */
-  function requireRegister(action: () => void) {
-    if (registerQuery.isLoading) {
-      toast.error("Checking the register — try again in a moment");
-      return;
-    }
-    if (registerQuery.isError) {
-      toast.error("Could not check the cash register — retrying");
-      void registerQuery.refetch();
-      return;
-    }
-    if (!register) {
-      setRegisterOpen(true);
-      return;
-    }
-    action();
-  }
+  const requireRegister = useCallback(
+    (action: () => void) => {
+      if (registerQuery.isLoading) {
+        toast.error("Checking the register — try again in a moment");
+        return;
+      }
+      if (registerQuery.isError) {
+        toast.error("Could not check the cash register — retrying");
+        void registerQuery.refetch();
+        return;
+      }
+      if (!register) {
+        setRegisterOpen(true);
+        return;
+      }
+      action();
+    },
+    [registerQuery.isLoading, registerQuery.isError, registerQuery.refetch, register],
+  );
+
+  const requireRegisterRef = useRef(requireRegister);
+  useEffect(() => {
+    requireRegisterRef.current = requireRegister;
+  }, [requireRegister]);
+
+  // Keyboard shortcuts (audit parity): ignore when typing into a field.
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      const el = event.target as HTMLElement | null;
+      if (
+        el &&
+        (el.tagName === "INPUT" ||
+          el.tagName === "TEXTAREA" ||
+          el.tagName === "SELECT" ||
+          el.isContentEditable)
+      ) {
+        return;
+      }
+      if (!event.shiftKey) return;
+      const key = event.key.toLowerCase();
+      if (key === "e" && lines.length > 0) {
+        event.preventDefault();
+        requireRegisterRef.current(() => setConfirmIntent("cash"));
+      } else if (key === "c") {
+        event.preventDefault();
+        clearCart();
+      } else if (key === "d" && lines.length > 0) {
+        event.preventDefault();
+        requireRegisterRef.current(() => setConfirmIntent("draft"));
+      } else if (key === "p" && lines.length > 0) {
+        event.preventDefault();
+        requireRegisterRef.current(() => setPaymentOpen(true));
+      } else if (key === "i") {
+        event.preventDefault();
+        setAdjustment("discount");
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [lines.length, clearCart, setConfirmIntent, setPaymentOpen, setAdjustment]);
 
   function submitExpress(method: "cash" | "card") {
     checkout.mutate({
@@ -380,6 +426,14 @@ export function CafePosView() {
             title={register ? "Current register / close shift" : "Open a cash register"}
           >
             {register ? "Register Details" : "Open Register"}
+          </button>
+          <button
+            type="button"
+            onClick={() => setShiftsOpen(true)}
+            className="cafe-pos-btn cafe-pos-btn--dark"
+            title="Past shifts"
+          >
+            Shifts
           </button>
           {[
             { label: "Payment accounts", Icon: Wallet },
@@ -710,6 +764,14 @@ export function CafePosView() {
             setQuickProductOpen(false);
             void gridQuery.refetch();
           }}
+        />
+      ) : null}
+
+      {tenantId ? (
+        <PosShiftsModal
+          open={shiftsOpen}
+          tenantId={tenantId}
+          onClose={() => setShiftsOpen(false)}
         />
       ) : null}
 

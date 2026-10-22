@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { X } from "lucide-react";
 
 export interface PosFilterGroup {
@@ -23,6 +23,8 @@ export function PosFilterDrawer({
   onSelect: (name: string | null) => void;
   onClose: () => void;
 }) {
+  const [childPage, setChildPage] = useState<Record<string, number>>({});
+
   useEffect(() => {
     if (!open) return;
     const onKey = (event: KeyboardEvent) => {
@@ -82,16 +84,32 @@ export function PosFilterDrawer({
                 >
                   All
                 </button>
-                {group.children.map((child) => (
+                {group.children
+                  .slice(childPage[group.name] ?? 0, (childPage[group.name] ?? 0) + 4)
+                  .map((child) => (
+                    <button
+                      key={child}
+                      type="button"
+                      onClick={() => pick(child)}
+                      className={`cafe-pos-chip ${selected === child ? "cafe-pos-chip--active" : ""}`}
+                    >
+                      {child}
+                    </button>
+                  ))}
+                {group.children.length > 4 ? (
                   <button
-                    key={child}
                     type="button"
-                    onClick={() => pick(child)}
-                    className={`cafe-pos-chip ${selected === child ? "cafe-pos-chip--active" : ""}`}
+                    className="cafe-pos-chip"
+                    onClick={() =>
+                      setChildPage((prev) => ({
+                        ...prev,
+                        [group.name]: ((prev[group.name] ?? 0) + 4) % group.children.length,
+                      }))
+                    }
                   >
-                    {child}
+                    Next »
                   </button>
-                ))}
+                ) : null}
               </div>
             </div>
           ))}

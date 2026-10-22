@@ -8,6 +8,7 @@ import {
   type PosTotals,
 } from "@/lib/pos/posTotals";
 import { usePosCartStore } from "@/stores/posCartStore";
+import { useHq6Permissions } from "@/lib/hooks/useHq6Permissions";
 
 export interface PosCustomerOption {
   id: string;
@@ -81,7 +82,9 @@ export function PosCartPanel({
   const customerId = usePosCartStore((s) => s.customerId);
   const setCustomer = usePosCartStore((s) => s.setCustomer);
   const setQuantity = usePosCartStore((s) => s.setQuantity);
+  const setUnitPrice = usePosCartStore((s) => s.setUnitPrice);
   const removeLine = usePosCartStore((s) => s.removeLine);
+  const { can } = useHq6Permissions();
 
   return (
     <div className="cafe-pos-panel flex min-h-0 flex-col gap-3 rounded-lg border border-border bg-card">
@@ -164,6 +167,17 @@ export function PosCartPanel({
                       {line.sku}
                       {line.unit ? ` · ${line.unit}` : ""}
                     </p>
+                    {can("edit_product_price_from_pos_screen") ? (
+                      <input
+                        type="number"
+                        min={0}
+                        step="any"
+                        aria-label={`Price of ${line.name}`}
+                        value={line.unitPrice}
+                        onChange={(e) => setUnitPrice(line.key, Number(e.target.value))}
+                        className="mt-1 w-24 rounded border border-border px-2 py-0.5 text-xs tabular-nums"
+                      />
+                    ) : null}
                     {line.stockQty <= 0 ? (
                       <p className="text-xs font-medium text-amber-600" title="Out of stock">
                         ⚠ Out of stock
