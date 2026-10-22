@@ -277,6 +277,27 @@ export function CafePosView() {
 
   const busy = checkout.isPending;
 
+  /**
+   * Payment actions need an open register. Rather than dead disabled buttons,
+   * a click opens the register dialog (and surfaces API problems explicitly).
+   */
+  function requireRegister(action: () => void) {
+    if (registerQuery.isLoading) {
+      toast.error("Checking the register — try again in a moment");
+      return;
+    }
+    if (registerQuery.isError) {
+      toast.error("Could not check the cash register — retrying");
+      void registerQuery.refetch();
+      return;
+    }
+    if (!register) {
+      setRegisterOpen(true);
+      return;
+    }
+    action();
+  }
+
   function submitExpress(method: "cash" | "card") {
     checkout.mutate({
       status: "final",
@@ -459,9 +480,29 @@ export function CafePosView() {
         </div>
       </div>
 
-      {!register && !registerQuery.isLoading ? (
+      {registerQuery.isError ? (
         <p className="cafe-pos-muted px-1 text-xs">
-          Register closed — open the cash register (top bar) before taking payment.
+          Could not check the cash register —{" "}
+          <button
+            type="button"
+            className="underline"
+            onClick={() => void registerQuery.refetch()}
+          >
+            retry
+          </button>
+          .
+        </p>
+      ) : !register && !registerQuery.isLoading ? (
+        <p className="cafe-pos-muted px-1 text-xs">
+          Register closed —{" "}
+          <button
+            type="button"
+            className="font-semibold underline"
+            onClick={() => setRegisterOpen(true)}
+          >
+            open the cash register
+          </button>{" "}
+          to take payment.
         </p>
       ) : null}
 
@@ -469,36 +510,36 @@ export function CafePosView() {
       <div className="cafe-pos-footerbar flex flex-wrap items-center gap-2 rounded-lg border border-border bg-card">
         <button
           type="button"
-          disabled={lines.length === 0 || busy || !register}
-          title={!register ? "Open the cash register first" : undefined}
-          onClick={() => setConfirmIntent("draft")}
+          disabled={lines.length === 0 || busy}
+          title={!register ? "Opens the cash register first" : undefined}
+          onClick={() => requireRegister(() => setConfirmIntent("draft"))}
           className="cafe-pos-btn cafe-pos-btn--dark"
         >
           Draft
         </button>
         <button
           type="button"
-          disabled={lines.length === 0 || busy || !register}
-          title={!register ? "Open the cash register first" : undefined}
-          onClick={() => setConfirmIntent("card")}
+          disabled={lines.length === 0 || busy}
+          title={!register ? "Opens the cash register first" : undefined}
+          onClick={() => requireRegister(() => setConfirmIntent("card"))}
           className="cafe-pos-btn cafe-pos-btn--dark"
         >
           Card
         </button>
         <button
           type="button"
-          disabled={lines.length === 0 || busy || !register}
-          title={!register ? "Open the cash register first" : undefined}
-          onClick={() => setPaymentOpen(true)}
+          disabled={lines.length === 0 || busy}
+          title={!register ? "Opens the cash register first" : undefined}
+          onClick={() => requireRegister(() => setPaymentOpen(true))}
           className="cafe-pos-btn cafe-pos-btn--dark"
         >
           Multiple Pay
         </button>
         <button
           type="button"
-          disabled={lines.length === 0 || busy || !register}
-          title={!register ? "Open the cash register first" : undefined}
-          onClick={() => setConfirmIntent("cash")}
+          disabled={lines.length === 0 || busy}
+          title={!register ? "Opens the cash register first" : undefined}
+          onClick={() => requireRegister(() => setConfirmIntent("cash"))}
           className="cafe-pos-btn cafe-pos-btn--success"
         >
           Cash
