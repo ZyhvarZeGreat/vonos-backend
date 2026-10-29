@@ -40,14 +40,27 @@ describe('resolveHrmAccess', () => {
     ).toBe('full');
   });
 
-  it('grants full access when an essentials.* HRM checkbox is ticked', () => {
+  it('does NOT grant full from a non-HR essentials.* checkbox', () => {
     expect(
       resolveHrmAccess({
         role: 'staff',
         tenantRoleName: 'MANAGER',
         tenantRolePermissions: ['product.view', 'essentials.view_all_payroll'],
       }),
-    ).toBe('full');
+    ).toBe('own-payroll');
+    expect(
+      resolveHrmAccess({
+        role: 'staff',
+        tenantRoleName: 'PARTS AUDITOR',
+        tenantRolePermissions: [
+          'essentials.crud_own_leave',
+          'essentials.view_own_attendance',
+        ],
+      }),
+    ).toBe('own-payroll');
+  });
+
+  it('grants full access to the master wildcard permission', () => {
     expect(
       resolveHrmAccess({
         role: 'viewer',
@@ -100,9 +113,18 @@ describe('isAccountantRoleName', () => {
 });
 
 describe('hasHrmEssentialsPermission', () => {
-  it('matches wildcard and essentials.* keys', () => {
+  it('matches wildcard and management essentials, not self-service', () => {
     expect(hasHrmEssentialsPermission(['*'])).toBe(true);
     expect(hasHrmEssentialsPermission(['essentials.crud_leave'])).toBe(true);
+    expect(hasHrmEssentialsPermission(['essentials.view_all_payroll'])).toBe(
+      true,
+    );
+    expect(hasHrmEssentialsPermission(['essentials.crud_own_leave'])).toBe(
+      false,
+    );
+    expect(hasHrmEssentialsPermission(['essentials.view_own_attendance'])).toBe(
+      false,
+    );
     expect(hasHrmEssentialsPermission(['user.view'])).toBe(false);
     expect(hasHrmEssentialsPermission([])).toBe(false);
     expect(hasHrmEssentialsPermission(null)).toBe(false);
