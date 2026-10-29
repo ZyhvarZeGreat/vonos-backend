@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useMemo, useState, useEffect, useRef } from "react";
+import { useCallback, useMemo, useState, useRef } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useFiltersPanelOpen } from "@/lib/hooks/useFiltersPanelOpen";
+import { useFitTableWrap } from "@/lib/hooks/useFitTableWrap";
 import { useRouter } from "next/navigation";
 import {
   useServerListPage,
@@ -149,24 +150,7 @@ export function Hq6ProductsListView({
 } = {}) {
 
   const tableWrapRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const el = tableWrapRef.current;
-    if (!el) return;
-    const fit = () => {
-      const top = el.getBoundingClientRect().top;
-      if (top < 0) return;
-      const next = `${Math.max(240, Math.round(window.innerHeight - top - 16))}px`;
-      if (el.style.maxHeight !== next) el.style.maxHeight = next;
-    };
-    fit();
-    window.addEventListener("resize", fit);
-    const observer = new ResizeObserver(fit);
-    observer.observe(document.documentElement);
-    return () => {
-      window.removeEventListener("resize", fit);
-      observer.disconnect();
-    };
-  }, []);
+  useFitTableWrap(tableWrapRef);
 
   const { goToDetail } = useRecordNavigation(listSlug);
   const tenantId = useTenantId();
