@@ -77,6 +77,7 @@ export class BaileysWhatsAppService implements OnModuleInit, OnModuleDestroy {
   private retryCount = 0;
   private readonly maxRetries = 8;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private watchdogTimer: ReturnType<typeof setInterval> | null = null;
   private static processGuardsInstalled = false;
 
   isEnabled(): boolean {
@@ -145,6 +146,19 @@ export class BaileysWhatsAppService implements OnModuleInit, OnModuleDestroy {
       this.lastError = err instanceof Error ? err.message : String(err);
       this.logger.warn(`Baileys start failed: ${this.lastError}`);
     });
+    this.startWatchdog();
+  }
+
+  /** Ensure the socket is always trying to come back when it drops. */
+  private startWatchdog(): void {
+    if (this.watchdogTimer) return;
+    this.watchdogTimer = setInterval(() => {
+      if (this.stopped || this.starting || this.connected || this.sock || this.reconnectTimer) {
+        return;
+      }
+      this.scheduleReconnect('watchdog (idle socket)');
+    }, 60_000);
+    this.watchdogTimer.unref?.();
   }
 
   async onModuleDestroy(): Promise<void> {
@@ -152,6 +166,10 @@ export class BaileysWhatsAppService implements OnModuleInit, OnModuleDestroy {
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
+    }
+    if (this.watchdogTimer) {
+      clearInterval(this.watchdogTimer);
+      this.watchdogTimer = null;
     }
     await this.safeCloseSocket();
   }
@@ -258,23 +276,23 @@ export class BaileysWhatsAppService implements OnModuleInit, OnModuleDestroy {
     const isRestartRequired = /515|restartRequired/i.test(reason);
     if (!isRestartRequired) {
       this.retryCount += 1;
-      if (this.retryCount > this.maxRetries) {
-        this.logger.error(
-          `Baileys reconnect gave up after ${this.maxRetries} tries (${reason})`,
-        );
-        return;
-      }
     } else {
       // Pairing / stream restart — expected once; don't burn retry budget.
       this.retryCount = Math.min(this.retryCount, 1);
     }
 
+    // Indefinite self-healing: after the fast-retry budget, keep retrying on a
+    // slow fixed cadence instead of giving up — a dead socket would otherwise
+    // lose every message with no recovery until a manual reconnect.
+    const exhausted = this.retryCount > this.maxRetries;
     const delayMs = opts?.immediate || isRestartRequired
       ? 1500
-      : Math.min(30_000, Math.max(1, this.retryCount) * 3000);
+      : exhausted
+        ? 60_000
+        : Math.min(30_000, Math.max(1, this.retryCount) * 3000);
 
     this.logger.warn(
-      `Baileys will reconnect (${reason}) — try ${this.retryCount}/${this.maxRetries} in ${delayMs}ms`,
+      `Baileys will reconnect (${reason}) — try ${Math.min(this.retryCount, this.maxRetries)}${exhausted ? "+" : ""}/${this.maxRetries} in ${delayMs}ms`,
     );
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
@@ -402,6 +420,8 @@ export class BaileysWhatsAppService implements OnModuleInit, OnModuleDestroy {
       syncFullHistory: false,
       markOnlineOnConnect: false,
       emitOwnEvents: false,
+      keepAliveIntervalMs: 30_000,
+      connectTimeoutMs: 30_000,
       // MoovMart: empty conversation stub — avoids retry/decrypt crashes
       getMessage: async () => ({ conversation: '' }),
     }) as WaSocket;
