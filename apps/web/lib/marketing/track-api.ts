@@ -6,6 +6,14 @@ export type PublicTrackStep = {
   detail: string;
   status: "complete" | "current" | "upcoming";
   timestamp?: string;
+  /** Latest workshop note left on this stage (visible to the customer). */
+  note?: string | null;
+};
+
+export type PublicTrackUpdate = {
+  timestamp: string;
+  statusLabel: string;
+  note: string;
 };
 
 export type PublicTrackResult = {
@@ -25,6 +33,8 @@ export type PublicTrackResult = {
   eta: string | null;
   reference: string;
   steps: PublicTrackStep[];
+  /** Chronological workshop notes/comments for the customer. */
+  updates: PublicTrackUpdate[];
 };
 
 export async function lookupVehicleTrack(args: {

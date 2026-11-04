@@ -177,11 +177,37 @@ export default function TrackResultView({
                   ) : null}
                 </div>
                 <p className="track-timeline-detail no-margin-bottom">{detail}</p>
+                {step.note ? (
+                  <p className="track-timeline-note no-margin-bottom">
+                    {step.note}
+                  </p>
+                ) : null}
               </div>
             </li>
           );
         })}
       </ol>
+
+      {result.updates?.length ? (
+        <section className="track-updates" aria-label="Workshop notes">
+          <h3 className="track-updates-title">Workshop notes</h3>
+          <ul className="track-updates-list">
+            {result.updates.map((update, index) => (
+              <li
+                key={`${update.timestamp}-${index}`}
+                className="track-update-item"
+              >
+                <span className="track-update-meta">
+                  {update.statusLabel} · {update.timestamp}
+                </span>
+                <p className="track-update-note no-margin-bottom">
+                  {update.note}
+                </p>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
 
       <footer className="track-result-footer">
         <p className="track-footer-note no-margin-bottom">

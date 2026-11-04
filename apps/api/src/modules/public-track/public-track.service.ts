@@ -51,6 +51,14 @@ export type PublicTrackStep = {
   detail: string;
   status: 'complete' | 'current' | 'upcoming';
   timestamp?: string;
+  /** Latest workshop note left on this stage (visible to the customer). */
+  note?: string | null;
+};
+
+export type PublicTrackUpdate = {
+  timestamp: string;
+  statusLabel: string;
+  note: string;
 };
 
 export type PublicTrackResult = {
@@ -73,6 +81,8 @@ export type PublicTrackResult = {
   eta: string | null;
   reference: string;
   steps: PublicTrackStep[];
+  /** Chronological workshop notes/comments for the customer. */
+  updates: PublicTrackUpdate[];
 };
 
 type JobTrackRow = {
@@ -375,7 +385,27 @@ export class PublicTrackService {
     const completed = stage === 'Vehicle collected';
     const stages = getApplicableStages(job.hasQuote);
     const currentIndex = stages.indexOf(stage);
-    const enteredAt = parseStageEnteredAt(job.statusHistory);
+    const enteredAt = new Map<JobStage, Date>();
+    const noteByStage = new Map<JobStage, string>();
+    const updates: PublicTrackUpdate[] = [];
+    let running: JobStage | null = null;
+    for (const entry of parseStageLog(job.statusHistory)) {
+      if (entry.stage) running = entry.stage;
+      const entryStage = entry.stage ?? running;
+      if (entryStage && !enteredAt.has(entryStage)) {
+        enteredAt.set(entryStage, entry.at);
+      }
+      if (entryStage && entry.note) noteByStage.set(entryStage, entry.note);
+      if (entry.note) {
+        updates.push({
+          timestamp: formatTrackDate(entry.at),
+          statusLabel: entryStage
+            ? (STAGE_LABELS[entryStage] ?? entryStage)
+            : 'Update',
+          note: entry.note,
+        });
+      }
+    }
 
     const steps: PublicTrackStep[] = stages.map((s, index) => {
       let status: PublicTrackStep['status'] = 'upcoming';
@@ -402,6 +432,7 @@ export class PublicTrackService {
             : STAGE_DETAILS[s],
         status,
         timestamp,
+        note: noteByStage.get(s) ?? null,
       };
     });
 
@@ -429,6 +460,7 @@ export class PublicTrackService {
           : null,
       reference: job.reference,
       steps,
+      updates,
     };
   }
 
@@ -633,11 +665,17 @@ function formatTrackDate(value: Date): string {
  * - `[2026-09-20 14:30] Status → Approved: note`
  * Pipe- or newline-separated segments.
  */
-function parseStageEnteredAt(
-  history: string | null | undefined,
-): Map<JobStage, Date> {
-  const map = new Map<JobStage, Date>();
-  if (!history?.trim()) return map;
+function parseStageLog(history: string | null | undefined): {
+  at: Date;
+  stage: JobStage | null;
+  note: string | null;
+}[] {
+  const out: {
+    at: Date;
+    stage: JobStage | null;
+    note: string | null;
+  }[] = [];
+  if (!history?.trim()) return out;
 
   const cleaned = history.replace(/^Job status log:\s*/im, '');
   const segments = cleaned
@@ -652,30 +690,31 @@ function parseStageEnteredAt(
     const match = segment.match(stampRe);
     if (!match) continue;
     const stampRaw = match[1]!.replace(' ', 'T');
-    const rest = match[2]!.trim();
     const at = new Date(stampRaw.length === 16 ? `${stampRaw}:00` : stampRaw);
     if (Number.isNaN(at.getTime())) continue;
 
-    let entered: string | null = null;
-    const statusArrow = rest.match(/^Status\s*→\s*([^:]+)/i);
+    const rest = match[2]!.trim();
+    let stage: JobStage | null = null;
+    let note: string | null = null;
+
+    const statusArrow = rest.match(/^Status\s*→\s*([^:]+)(?::\s*(.*))?/i);
     if (statusArrow) {
-      entered = statusArrow[1]!.trim();
+      stage = normalizeJobStage(statusArrow[1]!.trim());
+      note = statusArrow[2]?.trim() || null;
     } else {
-      const transition = rest.match(/^(.+?)\s*→\s*([^:]+)/);
+      const transition = rest.match(/^(.+?)\s*→\s*([^:]+)(?::\s*(.*))?/);
       if (transition) {
-        entered = transition[2]!.trim();
+        stage = normalizeJobStage(transition[2]!.trim());
+        note = transition[3]?.trim() || null;
+      } else {
+        note = rest;
       }
     }
 
-    // Logs written before a stage rename still carry the old label.
-    const stage = entered ? normalizeJobStage(entered) : null;
-    if (!stage) continue;
-    if (!map.has(stage)) {
-      map.set(stage, at);
-    }
+    out.push({ at, stage, note });
   }
 
-  return map;
+  return out;
 }
 
 function readPublicSaleNoteLine(
