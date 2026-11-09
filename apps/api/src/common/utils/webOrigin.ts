@@ -6,7 +6,11 @@ const DEFAULT_ORIGINS = [
   'https://app.vonosautosmarket.com',
   'https://vonosgroup.com',
   'https://www.vonosgroup.com',
+  'https://web-production-477b3.up.railway.app',
 ];
+
+/** Suffixes matched for any Railway preview deploy (URL hash changes per build). */
+const WILDCARD_SUFFIXES = ['.up.railway.app'];
 
 function normalizeOrigin(value: string): string {
   return value.trim().replace(/\/$/, '');
@@ -28,6 +32,14 @@ export function resolveWebOrigins(): string[] {
   }
 
   return [...origins];
+}
+
+/** True when a request Origin is an allowed web client (exact or Railway preview). */
+export function isAllowedWebOrigin(origin: string | undefined | null): boolean {
+  if (!origin) return false;
+  const normalized = normalizeOrigin(origin);
+  if (new Set(resolveWebOrigins()).has(normalized)) return true;
+  return WILDCARD_SUFFIXES.some((suffix) => normalized.endsWith(suffix));
 }
 
 export function resolvePrimaryWebOrigin(): string {

@@ -8,7 +8,7 @@ import type { NestExpressApplication } from '@nestjs/platform-express';
 import type { Express } from 'express';
 import { AppModule } from './app.module';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
-import { resolveWebOrigins } from './common/utils/webOrigin';
+import { isAllowedWebOrigin } from './common/utils/webOrigin';
 
 /** Product image uploads + large JSON (Express default is 100kb → "entity too large"). */
 const BODY_LIMIT = '15mb';
@@ -119,7 +119,10 @@ async function createNestApp(): Promise<INestApplication> {
   app.use(compression());
   app.use(cookieParser());
   app.enableCors({
-    origin: resolveWebOrigins(),
+    origin: (origin, callback) => {
+      // Allow non-browser requests (no Origin header) and any known web client.
+      callback(null, !origin || isAllowedWebOrigin(origin));
+    },
     credentials: true,
   });
   app.useGlobalFilters(new AllExceptionsFilter());
