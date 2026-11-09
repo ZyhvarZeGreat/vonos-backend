@@ -21,7 +21,7 @@ import {
 } from "@/components/organisms/ProductMetaPanel";
 import { getCustomersPage, getCustomerView, importCustomers } from "@/lib/api/customers";
 import { getCatalogPage } from "@/lib/api/catalog";
-import { getSalesPage } from "@/lib/api/sales";
+import { deleteSale, getSalesPage } from "@/lib/api/sales";
 import { getOrdersPage } from "@/lib/api/orders";
 import { getReturnsPage } from "@/lib/api/returns";
 import { getAllRequisitions, getAllIncomingRequisitions, getIncomingRequisitionsPage, getRequisitionsPage } from "@/lib/api/requisitions";
@@ -377,6 +377,8 @@ export function SellListsRouteView() {
 export function OrdersListView() {
   const tenantId = useTenantId();
   const queryClient = useQueryClient();
+  const router = useRouter();
+  const { tenantCode } = useRouteTenant();
   const { recordId, recordSeed, openRecord, closeRecord } = useListRecordModal<Sale>({
     onPrefetchRecord: (id) => {
       if (!tenantId) return;
@@ -446,7 +448,36 @@ export function OrdersListView() {
     [],
   );
 
+  const deleteMutation = useAppMutation({
+    mutationFn: (id: string) => deleteSale(tenantId!, id),
+    successMessage: "Order deleted",
+    invalidateKeys: [["orders", tenantId], ["sales"], ["items"], ["catalog"], ["kitchen-orders", tenantId]],
+  });
+
   const columns: ColumnConfig<Order>[] = [
+    {
+      key: "actions",
+      header: "Action",
+      sortable: false,
+      render: (row) => (
+        <RowActionsMenu
+          actions={[
+            { id: "view", label: "View", onClick: () => openRecord(row.id, saleSeedFromOrder(row)) },
+            { id: "edit", label: "Edit", onClick: () => router.push(`${tenantBasePath(tenantCode)}/add-sale?edit=${row.id}`) },
+            {
+              id: "delete",
+              label: "Delete",
+              destructive: true,
+              onClick: () => {
+                if (window.confirm(`Delete order ${row.reference}?`)) {
+                  deleteMutation.mutate(row.id);
+                }
+              },
+            },
+          ]}
+        />
+      ),
+    },
     { key: "reference", header: "Order #", render: (r) => <span className="font-medium">{r.reference}</span> },
     { key: "tableNumber", header: "Table", render: (r) => r.tableNumber ?? "Takeaway" },
     { key: "itemCount", header: "Items", sortValue: (r) => r.itemCount },

@@ -55,7 +55,7 @@ export function PosFilterDrawer({
             type="button"
             onClick={onClose}
             aria-label={`Close ${title}`}
-            className="cafe-pos-icon-btn p-1"
+            className="tw-dw-btn p-1"
           >
             <X className="h-5 w-5" />
           </button>

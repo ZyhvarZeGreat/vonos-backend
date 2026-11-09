@@ -33,7 +33,7 @@ export function PosShiftsModal({
       title="Past Shifts"
       onClose={onClose}
       footer={
-        <button type="button" className="cafe-pos-btn cafe-pos-btn--dark" onClick={onClose}>
+        <button type="button" className="tw-dw-btn" onClick={onClose}>
           Close
         </button>
       }

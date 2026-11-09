@@ -404,3 +404,56 @@
     grid-template-columns: minmax(0, 1fr) 15rem;
   }
 }
+
+/* ------------------------------------------------------------------ */
+/* HQ6/DaisyUI button variants — the DaisyUI theme vars (--p/--b2) are  */
+/* not reliably initialized on tenant pages, so pin the colors to the   */
+/* HQ6 palette (matches VA). Applies to the POS till + its portalled    */
+/* modals, and keeps other HQ6 pages consistent.                        */
+/* ------------------------------------------------------------------ */
+
+.tw-dw-btn {
+  background-color: #334155 !important;
+  border-color: #334155 !important;
+  color: #ffffff !important;
+}
+
+.tw-dw-btn.tw-dw-btn-warning {
+  background-color: #d97706 !important;
+  border-color: #d97706 !important;
+  color: #ffffff !important;
+}
+
+.tw-dw-btn.tw-dw-btn-primary {
+  background-color: #155eef !important;
+  border-color: #155eef !important;
+  color: #ffffff !important;
+}
+
+.tw-dw-btn.tw-dw-btn-primary:hover:not(:disabled) {
+  background-color: #0f4fd0 !important;
+}
+
+.tw-dw-btn.tw-dw-btn-success {
+  background-color: #16a34a !important;
+  border-color: #16a34a !important;
+  color: #ffffff !important;
+}
+
+.tw-dw-btn.tw-dw-btn-error {
+  background-color: #dc2626 !important;
+  border-color: #dc2626 !important;
+  color: #ffffff !important;
+}
+
+.tw-dw-btn.tw-dw-btn-info {
+  background-color: #0ea5e9 !important;
+  border-color: #0ea5e9 !important;
+  color: #ffffff !important;
+}
+
+.tw-dw-btn:disabled {
+  background-color: #e5e7eb !important;
+  border-color: transparent !important;
+  color: #9ca3af !important;
+}

@@ -54,7 +54,7 @@ export function PosModal({
             type="button"
             onClick={onClose}
             aria-label={`Close ${title}`}
-            className="cafe-pos-icon-btn h-8 w-8"
+            className="tw-dw-btn h-8 w-8"
           >
             <X className="h-4 w-4" />
           </button>

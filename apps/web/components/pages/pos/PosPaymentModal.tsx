@@ -63,6 +63,9 @@ export function PosPaymentModal({
 }) {
   const [rows, setRows] = useState<PosPaymentRow[]>(initialRows);
   const [saleNote, setSaleNote] = useState("");
+  // Raw text per row so the amount field can be cleared / partially typed
+  // without snapping back to "0" (Number("") === 0 on every keystroke).
+  const [amountText, setAmountText] = useState<Record<number, string>>({});
 
   const totalPaying = useMemo(
     () => rows.reduce((sum, row) => sum + (Number.isFinite(row.amount) ? row.amount : 0), 0),
@@ -82,12 +85,12 @@ export function PosPaymentModal({
       onClose={onClose}
       footer={
         <>
-          <button type="button" className="cafe-pos-btn cafe-pos-btn--dark" onClick={onClose}>
+          <button type="button" className="tw-dw-btn" onClick={onClose}>
             Close
           </button>
           <button
             type="button"
-            className="cafe-pos-btn cafe-pos-btn--primary"
+            className="tw-dw-btn tw-dw-btn-primary tw-text-white"
             disabled={!canConfirm || busy}
             onClick={() => onConfirm(rows.map(withCardNote), saleNote)}
           >
@@ -108,18 +111,22 @@ export function PosPaymentModal({
                 <label className="cafe-pos-field">
                   <span className="cafe-pos-label">Amount*</span>
                   <input
-                    type="number"
-                    min={0}
-                    step="any"
-                    className="cafe-pos-number"
-                    value={row.amount}
-                    onChange={(e) => patchRow(index, { amount: Number(e.target.value) })}
+                    type="text"
+                    inputMode="decimal"
+                    autoComplete="off"
+                    className="form-control"
+                    value={amountText[index] ?? String(row.amount)}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setAmountText((prev) => ({ ...prev, [index]: v }));
+                      patchRow(index, { amount: Number(v) || 0 });
+                    }}
                   />
                 </label>
                 <label className="cafe-pos-field">
                   <span className="cafe-pos-label">Payment Method*</span>
                   <select
-                    className="cafe-pos-select"
+                    className="form-control"
                     value={row.method}
                     onChange={(e) => patchRow(index, { method: e.target.value })}
                   >
@@ -135,7 +142,7 @@ export function PosPaymentModal({
               <label className="cafe-pos-field">
                 <span className="cafe-pos-label">Payment Account</span>
                 <select
-                  className="cafe-pos-select"
+                  className="form-control"
                   value={row.accountId}
                   onChange={(e) => patchRow(index, { accountId: e.target.value })}
                 >
@@ -153,7 +160,7 @@ export function PosPaymentModal({
                   <label className="cafe-pos-field">
                     <span className="cafe-pos-label">Card number</span>
                     <input
-                      className="cafe-pos-number"
+                      className="form-control"
                       inputMode="numeric"
                       placeholder="•••• •••• •••• ••••"
                       value={row.cardNumber ?? ""}
@@ -163,7 +170,7 @@ export function PosPaymentModal({
                   <label className="cafe-pos-field">
                     <span className="cafe-pos-label">Card holder</span>
                     <input
-                      className="cafe-pos-number"
+                      className="form-control"
                       value={row.cardHolder ?? ""}
                       onChange={(e) => patchRow(index, { cardHolder: e.target.value })}
                     />
@@ -171,7 +178,7 @@ export function PosPaymentModal({
                   <label className="cafe-pos-field">
                     <span className="cafe-pos-label">Expiry</span>
                     <input
-                      className="cafe-pos-number"
+                      className="form-control"
                       placeholder="MM/YY"
                       value={row.cardExpiry ?? ""}
                       onChange={(e) => patchRow(index, { cardExpiry: e.target.value })}
@@ -180,7 +187,7 @@ export function PosPaymentModal({
                   <label className="cafe-pos-field">
                     <span className="cafe-pos-label">CVV</span>
                     <input
-                      className="cafe-pos-number"
+                      className="form-control"
                       inputMode="numeric"
                       value={row.cardCvv ?? ""}
                       onChange={(e) => patchRow(index, { cardCvv: e.target.value })}
@@ -193,7 +200,7 @@ export function PosPaymentModal({
                 <label className="cafe-pos-field">
                   <span className="cafe-pos-label">Payment note</span>
                   <input
-                    className="cafe-pos-number"
+                    className="form-control"
                     value={row.note}
                     onChange={(e) => patchRow(index, { note: e.target.value })}
                   />
@@ -202,7 +209,7 @@ export function PosPaymentModal({
                   <button
                     type="button"
                     aria-label={`Remove payment row ${index + 1}`}
-                    className="cafe-pos-icon-btn h-9 w-9 text-red-600"
+                    className="tw-dw-btn h-9 w-9 text-red-600"
                     disabled={rows.length === 1}
                     onClick={() => setRows((prev) => prev.filter((_, i) => i !== index))}
                   >
@@ -215,7 +222,7 @@ export function PosPaymentModal({
 
           <button
             type="button"
-            className="cafe-pos-btn cafe-pos-btn--pill mt-3 w-full"
+            className="tw-dw-btn tw-dw-btn-info tw-text-white tw-rounded-full mt-3 w-full"
             onClick={() => setRows((prev) => [...prev, newPaymentRow(balance, prev[0]?.accountId ?? "")])}
           >
             <Plus className="h-4 w-4" /> Add Payment Row
@@ -225,7 +232,7 @@ export function PosPaymentModal({
             <label className="cafe-pos-field">
               <span className="cafe-pos-label">Sell note</span>
               <textarea
-                className="cafe-pos-textarea"
+                className="form-control"
                 rows={3}
                 value={saleNote}
                 onChange={(e) => setSaleNote(e.target.value)}
@@ -233,7 +240,7 @@ export function PosPaymentModal({
             </label>
             <label className="cafe-pos-field">
               <span className="cafe-pos-label">Staff note</span>
-              <textarea className="cafe-pos-textarea" rows={3} disabled />
+              <textarea className="form-control" rows={3} disabled />
             </label>
           </div>
         </div>

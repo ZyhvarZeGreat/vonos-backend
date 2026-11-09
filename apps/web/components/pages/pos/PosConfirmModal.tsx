@@ -23,10 +23,10 @@ export function PosConfirmModal({
 }) {
   const confirmClass =
     tone === "danger"
-      ? "cafe-pos-btn cafe-pos-btn--danger"
+      ? "tw-dw-btn tw-dw-btn-error tw-text-white"
       : tone === "success"
-        ? "cafe-pos-btn cafe-pos-btn--success"
-        : "cafe-pos-btn cafe-pos-btn--primary";
+        ? "tw-dw-btn tw-dw-btn-success tw-text-white"
+        : "tw-dw-btn tw-dw-btn-primary tw-text-white";
 
   return (
     <PosModal
@@ -36,7 +36,7 @@ export function PosConfirmModal({
       onClose={onClose}
       footer={
         <>
-          <button type="button" className="cafe-pos-btn cafe-pos-btn--dark" onClick={onClose}>
+          <button type="button" className="tw-dw-btn" onClick={onClose}>
             Cancel
           </button>
           <button

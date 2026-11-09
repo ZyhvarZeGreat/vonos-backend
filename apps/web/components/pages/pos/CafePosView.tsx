@@ -406,7 +406,7 @@ export function CafePosView() {
           <button
             type="button"
             onClick={() => setReturnOpen(true)}
-            className="cafe-pos-btn cafe-pos-btn--dark"
+            className="tw-dw-btn"
             title="Sell return against an invoice"
           >
             Sell Return
@@ -414,7 +414,7 @@ export function CafePosView() {
           <button
             type="button"
             onClick={() => setDraftsOpen(true)}
-            className="cafe-pos-btn cafe-pos-btn--dark"
+            className="tw-dw-btn"
             title="Suspended sales / drafts"
           >
             Drafts
@@ -422,7 +422,7 @@ export function CafePosView() {
           <button
             type="button"
             onClick={() => setRegisterOpen(true)}
-            className={register ? "cafe-pos-btn cafe-pos-btn--primary" : "cafe-pos-btn cafe-pos-btn--success"}
+            className={register ? "tw-dw-btn tw-dw-btn-primary tw-text-white" : "tw-dw-btn tw-dw-btn-success tw-text-white"}
             title={register ? "Current register / close shift" : "Open a cash register"}
           >
             {register ? "Register Details" : "Open Register"}
@@ -430,7 +430,7 @@ export function CafePosView() {
           <button
             type="button"
             onClick={() => setShiftsOpen(true)}
-            className="cafe-pos-btn cafe-pos-btn--dark"
+            className="tw-dw-btn"
             title="Past shifts"
           >
             Shifts
@@ -445,7 +445,7 @@ export function CafePosView() {
               disabled
               title={`${label} — not enabled yet`}
               aria-label={label}
-              className="cafe-pos-icon-btn h-9 w-9"
+              className="tw-dw-btn h-9 w-9"
             >
               <Icon className="h-4 w-4" />
             </button>
@@ -453,7 +453,7 @@ export function CafePosView() {
           <button
             type="button"
             onClick={() => setQuickProductOpen(true)}
-            className="cafe-pos-btn cafe-pos-btn--dark"
+            className="tw-dw-btn"
             title="Quick add product"
           >
             + Product
@@ -461,7 +461,7 @@ export function CafePosView() {
           <button
             type="button"
             onClick={() => setExpenseOpen(true)}
-            className="cafe-pos-btn cafe-pos-btn--dark"
+            className="tw-dw-btn"
             title="Add expense"
           >
             Add Expense
@@ -472,7 +472,7 @@ export function CafePosView() {
               onClick={() => setCalculatorOpen((v) => !v)}
               aria-label="Calculator"
               title="Calculator"
-              className="cafe-pos-icon-btn h-9 w-9"
+              className="tw-dw-btn h-9 w-9"
             >
               <Calculator className="h-4 w-4" />
             </button>
@@ -504,14 +504,14 @@ export function CafePosView() {
             <button
               type="button"
               onClick={() => setCategoryOpen(true)}
-              className="cafe-pos-btn cafe-pos-btn--primary cafe-pos-btn--lg flex-1"
+              className="tw-dw-btn tw-dw-btn-primary tw-text-white tw-dw-btn-lg flex-1"
             >
               Category{category ? `: ${category}` : ""}
             </button>
             <button
               type="button"
               onClick={() => setBrandOpen(true)}
-              className="cafe-pos-btn cafe-pos-btn--primary cafe-pos-btn--lg flex-1"
+              className="tw-dw-btn tw-dw-btn-primary tw-text-white tw-dw-btn-lg flex-1"
             >
               Brands{brand ? `: ${brand}` : ""}
             </button>
@@ -589,7 +589,7 @@ export function CafePosView() {
           disabled={lines.length === 0 || busy}
           title={!register ? "Opens the cash register first" : undefined}
           onClick={() => requireRegister(() => setConfirmIntent("draft"))}
-          className="cafe-pos-btn cafe-pos-btn--dark"
+          className="tw-dw-btn"
         >
           Draft
         </button>
@@ -598,7 +598,7 @@ export function CafePosView() {
           disabled={lines.length === 0 || busy}
           title={!register ? "Opens the cash register first" : undefined}
           onClick={() => requireRegister(() => setConfirmIntent("card"))}
-          className="cafe-pos-btn cafe-pos-btn--dark"
+          className="tw-dw-btn"
         >
           Card
         </button>
@@ -607,7 +607,7 @@ export function CafePosView() {
           disabled={lines.length === 0 || busy}
           title={!register ? "Opens the cash register first" : undefined}
           onClick={() => requireRegister(() => setPaymentOpen(true))}
-          className="cafe-pos-btn cafe-pos-btn--dark"
+          className="tw-dw-btn"
         >
           Multiple Pay
         </button>
@@ -616,7 +616,7 @@ export function CafePosView() {
           disabled={lines.length === 0 || busy}
           title={!register ? "Opens the cash register first" : undefined}
           onClick={() => requireRegister(() => setConfirmIntent("cash"))}
-          className="cafe-pos-btn cafe-pos-btn--success"
+          className="tw-dw-btn tw-dw-btn-success tw-text-white"
         >
           Cash
         </button>
@@ -624,7 +624,7 @@ export function CafePosView() {
           type="button"
           onClick={clearCart}
           disabled={lines.length === 0 || busy}
-          className="cafe-pos-btn cafe-pos-btn--danger"
+          className="tw-dw-btn tw-dw-btn-error tw-text-white"
         >
           Cancel
         </button>
@@ -637,7 +637,7 @@ export function CafePosView() {
         <button
           type="button"
           onClick={() => setRecentOpen(true)}
-          className="cafe-pos-btn cafe-pos-btn--pill ml-auto"
+          className="tw-dw-btn tw-dw-btn-info tw-text-white tw-rounded-full ml-auto"
         >
           Recent Transactions
         </button>

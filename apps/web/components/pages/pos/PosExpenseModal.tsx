@@ -71,12 +71,12 @@ export function PosExpenseModal({
       onClose={onClose}
       footer={
         <>
-          <button type="button" className="cafe-pos-btn cafe-pos-btn--dark" onClick={onClose}>
+          <button type="button" className="tw-dw-btn" onClick={onClose}>
             Cancel
           </button>
           <button
             type="button"
-            className="cafe-pos-btn cafe-pos-btn--primary"
+            className="tw-dw-btn tw-dw-btn-primary tw-text-white"
             disabled={create.isPending}
             onClick={() => create.mutate()}
           >
@@ -88,7 +88,7 @@ export function PosExpenseModal({
       <div className="cafe-pos-fields-2">
         <label className="cafe-pos-field">
           <span className="cafe-pos-label">Category</span>
-          <select className="cafe-pos-select" value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
+          <select className="form-control" value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
             <option value="">None</option>
             {categories.map((c) => (
               <option key={c.id} value={c.id}>
@@ -105,14 +105,14 @@ export function PosExpenseModal({
             type="number"
             min={0}
             step="any"
-            className="cafe-pos-number"
+            className="form-control"
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
           />
         </label>
         <label className="cafe-pos-field">
           <span className="cafe-pos-label">Payment Method</span>
-          <select className="cafe-pos-select" value={method} onChange={(e) => setMethod(e.target.value)}>
+          <select className="form-control" value={method} onChange={(e) => setMethod(e.target.value)}>
             {METHOD_OPTIONS.map((m) => (
               <option key={m} value={m}>
                 {m.charAt(0).toUpperCase() + m.slice(1)}
@@ -122,7 +122,7 @@ export function PosExpenseModal({
         </label>
         <label className="cafe-pos-field">
           <span className="cafe-pos-label">Payment Account</span>
-          <select className="cafe-pos-select" value={accountId} onChange={(e) => setAccountId(e.target.value)}>
+          <select className="form-control" value={accountId} onChange={(e) => setAccountId(e.target.value)}>
             <option value="">None</option>
             {accounts.map((a) => (
               <option key={a.id} value={a.id}>
@@ -133,12 +133,12 @@ export function PosExpenseModal({
         </label>
         <label className="cafe-pos-field">
           <span className="cafe-pos-label">Reference No.</span>
-          <input className="cafe-pos-number" value={refNo} onChange={(e) => setRefNo(e.target.value)} />
+          <input className="form-control" value={refNo} onChange={(e) => setRefNo(e.target.value)} />
         </label>
       </div>
       <label className="cafe-pos-field mt-3">
         <span className="cafe-pos-label">Note</span>
-        <textarea className="cafe-pos-textarea" rows={2} value={note} onChange={(e) => setNote(e.target.value)} />
+        <textarea className="form-control" rows={2} value={note} onChange={(e) => setNote(e.target.value)} />
       </label>
     </PosModal>
   );

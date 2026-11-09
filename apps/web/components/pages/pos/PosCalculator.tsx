@@ -51,7 +51,7 @@ export function PosCalculator({ onClose }: { onClose: () => void }) {
             key={k}
             type="button"
             onClick={() => press(k)}
-            className={k === "=" ? "cafe-pos-btn cafe-pos-btn--primary" : "cafe-pos-icon-btn h-9"}
+            className={k === "=" ? "tw-dw-btn tw-dw-btn-primary tw-text-white" : "tw-dw-btn h-9"}
           >
             {k}
           </button>

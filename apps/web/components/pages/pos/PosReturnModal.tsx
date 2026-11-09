@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+// (useState already imported)
 import type { SaleDetail, SaleReturnDisposition } from "@vonos/types";
 import { formatCurrency } from "@/lib/utils/formatCurrency";
 import { createSaleReturn, getSale, getSales } from "@/lib/api/sales";
@@ -27,6 +28,7 @@ export function PosReturnModal({
   const [reference, setReference] = useState("");
   const [sale, setSale] = useState<SaleDetail | null>(null);
   const [qtys, setQtys] = useState<Record<string, number>>({});
+  const [qtyText, setQtyText] = useState<Record<string, string>>({});
   const [disposition, setDisposition] = useState<SaleReturnDisposition>("restocked");
   const [notes, setNotes] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -93,12 +95,12 @@ export function PosReturnModal({
       onClose={onClose}
       footer={
         <>
-          <button type="button" className="cafe-pos-btn cafe-pos-btn--dark" onClick={onClose}>
+          <button type="button" className="tw-dw-btn" onClick={onClose}>
             Close
           </button>
           <button
             type="button"
-            className="cafe-pos-btn cafe-pos-btn--primary"
+            className="tw-dw-btn tw-dw-btn-primary tw-text-white"
             disabled={!sale || submitReturn.isPending}
             onClick={() => submitReturn.mutate()}
           >
@@ -111,7 +113,7 @@ export function PosReturnModal({
         <label className="cafe-pos-field">
           <span className="cafe-pos-label">Invoice No.</span>
           <input
-            className="cafe-pos-number"
+            className="form-control"
             placeholder="e.g. 2026/4842"
             value={reference}
             onChange={(e) => setReference(e.target.value)}
@@ -123,7 +125,7 @@ export function PosReturnModal({
         <div className="flex items-end">
           <button
             type="button"
-            className="cafe-pos-btn cafe-pos-btn--dark"
+            className="tw-dw-btn"
             disabled={findMutation.isPending}
             onClick={() => findMutation.mutate()}
           >
@@ -159,18 +161,22 @@ export function PosReturnModal({
                   </td>
                   <td className="px-2 py-2">
                     <input
-                      type="number"
-                      min={0}
-                      max={line.quantity}
-                      step="any"
-                      className="cafe-pos-number w-24"
-                      value={qtys[line.id] ?? 0}
-                      onChange={(e) =>
+                      type="text"
+                      inputMode="decimal"
+                      autoComplete="off"
+                      className="form-control w-24"
+                      value={qtyText[line.id] ?? String(qtys[line.id] ?? 0)}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setQtyText((prev) => ({ ...prev, [line.id]: v }));
+                        const n = Number(v);
                         setQtys((prev) => ({
                           ...prev,
-                          [line.id]: Math.min(line.quantity, Math.max(0, Number(e.target.value))),
-                        }))
-                      }
+                          [line.id]: Number.isFinite(n)
+                            ? Math.min(line.quantity, Math.max(0, n))
+                            : 0,
+                        }));
+                      }}
                     />
                   </td>
                 </tr>
@@ -182,7 +188,7 @@ export function PosReturnModal({
             <label className="cafe-pos-field">
               <span className="cafe-pos-label">Disposition</span>
               <select
-                className="cafe-pos-select"
+                className="form-control"
                 value={disposition}
                 onChange={(e) => setDisposition(e.target.value as SaleReturnDisposition)}
               >
@@ -196,7 +202,7 @@ export function PosReturnModal({
             <label className="cafe-pos-field">
               <span className="cafe-pos-label">Return value</span>
               <input
-                className="cafe-pos-number"
+                className="form-control"
                 value={formatCurrency(returnTotal, sale.currency || "NGN")}
                 readOnly
               />
@@ -206,7 +212,7 @@ export function PosReturnModal({
           <label className="cafe-pos-field mt-3">
             <span className="cafe-pos-label">Notes</span>
             <textarea
-              className="cafe-pos-textarea"
+              className="form-control"
               rows={2}
               value={notes}
               onChange={(e) => setNotes(e.target.value)}

@@ -31,12 +31,12 @@ export function PosAdjustmentModal({
       onClose={onClose}
       footer={
         <>
-          <button type="button" className="cafe-pos-btn cafe-pos-btn--dark" onClick={onClose}>
+          <button type="button" className="tw-dw-btn" onClick={onClose}>
             Cancel
           </button>
           <button
             type="button"
-            className="cafe-pos-btn cafe-pos-btn--primary"
+            className="tw-dw-btn tw-dw-btn-primary tw-text-white"
             disabled={!valid}
             onClick={() => onSave({ kind, amount: valid ? parsed : 0 })}
           >
@@ -49,7 +49,7 @@ export function PosAdjustmentModal({
         <label className="cafe-pos-field">
           <span className="cafe-pos-label">Type</span>
           <select
-            className="cafe-pos-select"
+            className="form-control"
             value={kind}
             onChange={(e) => setKind(e.target.value as PosPercentOrFixed["kind"])}
           >
@@ -66,7 +66,7 @@ export function PosAdjustmentModal({
             min={0}
             step="any"
             autoFocus
-            className="cafe-pos-number"
+            className="form-control"
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
           />

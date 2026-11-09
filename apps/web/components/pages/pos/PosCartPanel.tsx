@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { Minus, Plus, Trash2 } from "lucide-react";
 import { Select } from "@/components/atoms/Select";
 import { formatCurrency } from "@/lib/utils/formatCurrency";
@@ -83,6 +84,7 @@ export function PosCartPanel({
   const setCustomer = usePosCartStore((s) => s.setCustomer);
   const setQuantity = usePosCartStore((s) => s.setQuantity);
   const setUnitPrice = usePosCartStore((s) => s.setUnitPrice);
+  const [priceText, setPriceText] = useState<Record<string, string>>({});
   const removeLine = usePosCartStore((s) => s.removeLine);
   const { can } = useHq6Permissions();
 
@@ -105,7 +107,7 @@ export function PosCartPanel({
           title="Add customer"
           aria-label="Add customer"
           onClick={onAddCustomer}
-          className="cafe-pos-icon-btn h-10 w-10 shrink-0 text-lg leading-none"
+          className="tw-dw-btn h-10 w-10 shrink-0 text-lg leading-none"
         >
           +
         </button>
@@ -134,7 +136,7 @@ export function PosCartPanel({
           onChange={(e) => onSearchChange(e.target.value)}
           placeholder="Enter Product name / SKU / Scan bar code"
           aria-label="Search products"
-          className="cafe-pos-input"
+          className="form-control"
         />
       </div>
 
@@ -169,12 +171,16 @@ export function PosCartPanel({
                     </p>
                     {can("edit_product_price_from_pos_screen") ? (
                       <input
-                        type="number"
-                        min={0}
-                        step="any"
+                        type="text"
+                        inputMode="decimal"
+                        autoComplete="off"
                         aria-label={`Price of ${line.name}`}
-                        value={line.unitPrice}
-                        onChange={(e) => setUnitPrice(line.key, Number(e.target.value))}
+                        value={priceText[line.key] ?? String(line.unitPrice)}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          setPriceText((prev) => ({ ...prev, [line.key]: v }));
+                          setUnitPrice(line.key, Number(v) || 0);
+                        }}
                         className="mt-1 w-24 rounded border border-border px-2 py-0.5 text-xs tabular-nums"
                       />
                     ) : null}
@@ -190,7 +196,7 @@ export function PosCartPanel({
                         type="button"
                         aria-label={`Decrease quantity of ${line.name}`}
                         onClick={() => setQuantity(line.key, line.quantity - 1)}
-                        className="cafe-pos-icon-btn h-6 w-6"
+                        className="tw-dw-btn h-6 w-6"
                       >
                         <Minus className="h-3 w-3" />
                       </button>
@@ -207,7 +213,7 @@ export function PosCartPanel({
                         type="button"
                         aria-label={`Increase quantity of ${line.name}`}
                         onClick={() => setQuantity(line.key, line.quantity + 1)}
-                        className="cafe-pos-icon-btn h-6 w-6"
+                        className="tw-dw-btn h-6 w-6"
                       >
                         <Plus className="h-3 w-3" />
                       </button>

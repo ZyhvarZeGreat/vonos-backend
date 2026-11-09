@@ -67,7 +67,7 @@ export function PosQuickAddProductModal({
         {opts?.required ? <span className="text-red-600"> *</span> : null}
       </span>
       <input
-        className="cafe-pos-number"
+        className="form-control"
         type={opts?.type ?? "text"}
         placeholder={opts?.placeholder}
         value={value}
@@ -83,12 +83,12 @@ export function PosQuickAddProductModal({
       onClose={onClose}
       footer={
         <>
-          <button type="button" className="cafe-pos-btn cafe-pos-btn--dark" onClick={onClose}>
+          <button type="button" className="tw-dw-btn" onClick={onClose}>
             Cancel
           </button>
           <button
             type="button"
-            className="cafe-pos-btn cafe-pos-btn--primary"
+            className="tw-dw-btn tw-dw-btn-primary tw-text-white"
             disabled={create.isPending}
             onClick={() => create.mutate()}
           >
