@@ -457,3 +457,7 @@
   border-color: transparent !important;
   color: #9ca3af !important;
 }
+
+.cafe-pos-search .form-control {
+  padding-left: 2.25rem;
+}

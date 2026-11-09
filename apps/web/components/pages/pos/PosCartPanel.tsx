@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Minus, Plus, Trash2 } from "lucide-react";
+import { Minus, Plus, Search, Trash2 } from "lucide-react";
 import { Select } from "@/components/atoms/Select";
 import { formatCurrency } from "@/lib/utils/formatCurrency";
 import {
@@ -128,9 +128,7 @@ export function PosCartPanel({
       ) : null}
 
       <div className="cafe-pos-search">
-        <span aria-hidden className="cafe-pos-search-icon">
-          🔍
-        </span>
+        <Search aria-hidden className="cafe-pos-search-icon h-4 w-4" />
         <input
           value={search}
           onChange={(e) => onSearchChange(e.target.value)}

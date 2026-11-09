@@ -123,7 +123,7 @@ export function CmsPostEditor({
       })),
   });
 
-  const handleSave = async () => {
+  const handleSave = async (targetStatus: CmsPostStatus) => {
     if (!title.trim() || !excerpt.trim()) {
       toast.error("Title and excerpt are required");
       return;
@@ -131,12 +131,20 @@ export function CmsPostEditor({
     setSaving(true);
     try {
       const payload = buildPayload();
+      payload.status = targetStatus;
+      if (targetStatus === "draft") {
+        payload.publishedAt = null;
+      } else if (!payload.publishedAt) {
+        payload.publishedAt = new Date().toISOString();
+      }
       if (isEdit && postId) {
         await updateCmsPost(postId, payload, scope);
-        toast.success("Post updated");
+        setStatus(targetStatus);
+        toast.success(targetStatus === "draft" ? "Draft saved" : "Post published");
       } else {
         const created = await createCmsPost(payload, scope);
-        toast.success("Post created");
+        setStatus(targetStatus);
+        toast.success(targetStatus === "draft" ? "Draft saved" : "Post published");
         const editPath = basePath.startsWith("/admin")
           ? `${basePath}/${created.id}/edit`
           : `${basePath}?edit=${created.id}`;
@@ -164,7 +172,18 @@ export function CmsPostEditor({
       subtitle="Blog article for the public marketing site"
     >
       <section className="hq6-form-card">
-        <h2 className="hq6-form-card-title">Post details</h2>
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <h2 className="hq6-form-card-title mb-0">Post details</h2>
+          <span
+            className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+              status === "published"
+                ? "bg-[#059669]/10 text-[#059669]"
+                : "bg-[#f59e0b]/10 text-[#b45309]"
+            }`}
+          >
+            {status === "published" ? "Published" : "Draft"}
+          </span>
+        </div>
         <div className="grid gap-4 md:grid-cols-2">
           <label className="hq6-form-label">
             <span>
@@ -220,18 +239,10 @@ export function CmsPostEditor({
             />
           </label>
           <label className="hq6-form-label">
-            <span>Status</span>
-            <select
-              className="form-control"
-              value={status}
-              onChange={(event) => setStatus(event.target.value as CmsPostStatus)}
-            >
-              <option value="draft">Draft</option>
-              <option value="published">Published</option>
-            </select>
-          </label>
-          <label className="hq6-form-label">
-            <span>Published date</span>
+            <span>Publish date</span>
+            <p className="mb-1 text-xs text-[#64748b]">
+              Optional — set automatically when you Publish.
+            </p>
             <input
               type="date"
               className="form-control"
@@ -340,15 +351,24 @@ export function CmsPostEditor({
         </div>
       </section>
 
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <Hq6BusyButton
+          className="hq6-btn"
+          busy={saving}
+          busyLabel="Saving draft…"
+          disabled={!title.trim() || !excerpt.trim()}
+          onClick={() => void handleSave("draft")}
+        >
+          Save draft
+        </Hq6BusyButton>
         <Hq6BusyButton
           className="hq6-btn-purple"
           busy={saving}
-          busyLabel="Saving…"
+          busyLabel="Publishing…"
           disabled={!title.trim() || !excerpt.trim()}
-          onClick={() => void handleSave()}
+          onClick={() => void handleSave("published")}
         >
-          {isEdit ? "Save changes" : "Create post"}
+          Publish
         </Hq6BusyButton>
         <Link href={basePath} className="btn btn-default">
           Back to list
