@@ -2120,10 +2120,12 @@ export class SalesService {
     void invalidateTenantDashboardCache(this.cache, tenantId);
 
     const detail = this.toSaleDetail(row);
+    const noteTrim = body.notes?.trim() ?? '';
     const statusChanged = previousStatus !== applied.status;
-    const shouldNotify = statusChanged && body.notifyWhatsApp !== false;
+    const shouldNotify =
+      (statusChanged || Boolean(noteTrim)) && body.notifyWhatsApp !== false;
     const whatsappNotify = shouldNotify
-      ? await this.notifySaleWorkshopWhatsApp(id, applied.status)
+      ? await this.notifySaleWorkshopWhatsApp(id, applied.status, noteTrim || null)
       : undefined;
     return whatsappNotify ? { ...detail, whatsappNotify } : detail;
   }
@@ -2132,6 +2134,7 @@ export class SalesService {
   async notifySaleWorkshopWhatsApp(
     saleId: string,
     statusLabel?: string,
+    note?: string | null,
   ): Promise<WhatsAppSendResult> {
     const tenantId = this.tenantDb.requireTenantId();
     const sale = await this.tenantDb.db.sale.findFirst({
@@ -2182,6 +2185,7 @@ export class SalesService {
       statusLabel: stage,
       trackUrl,
       shopName: sale.tenant?.name,
+      note: note?.trim() || undefined,
     });
     return this.whatsapp.notifyCustomer({
       phone,

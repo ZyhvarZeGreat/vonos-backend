@@ -432,7 +432,13 @@ export class JobsService {
       summary: `Created job ${row.reference}`,
     });
     void invalidateTenantDashboardCache(this.cache, tenantId);
-    return this.serializeJob(row);
+    const job = this.serializeJob(row);
+    const auto =
+      process.env.WHATSAPP_AUTO_NOTIFY?.trim().toLowerCase() !== 'false';
+    if (auto) {
+      void this.notifyJobStatusWhatsApp(row.id, 'Received').catch(() => undefined);
+    }
+    return job;
   }
 
   /** Link (or unlink with null) a vehicle to a job. */
@@ -696,9 +702,9 @@ export class JobsService {
     void invalidateTenantDashboardCache(this.cache, tenantId);
     const job = this.serializeJob(row);
     const shouldNotify =
-      statusChanged && body.notifyWhatsApp !== false;
+      (statusChanged || Boolean(noteTrim)) && body.notifyWhatsApp !== false;
     const whatsappNotify = shouldNotify
-      ? await this.notifyJobStatusWhatsApp(id, nextStatus)
+      ? await this.notifyJobStatusWhatsApp(id, nextStatus, noteTrim || null)
       : undefined;
     return whatsappNotify ? { ...job, whatsappNotify } : job;
   }
@@ -728,6 +734,7 @@ export class JobsService {
   async notifyJobStatusWhatsApp(
     jobId: string,
     statusLabel: string,
+    note?: string | null,
   ): Promise<WhatsAppSendResult> {
     const tenantId = this.tenantDb.requireTenantId();
     const job = await this.tenantDb.db.job.findFirst({
@@ -773,6 +780,7 @@ export class JobsService {
       statusLabel,
       trackUrl,
       shopName: job.tenant?.name,
+      note: note?.trim() || undefined,
     });
     return this.whatsapp.notifyCustomer({
       phone,
@@ -898,6 +906,24 @@ export class JobsService {
       entityId: id,
       summary: `Updated QC checklist for ${existing.reference}`,
     });
+
+    // Notify the customer when QC notes change (new/updated note), but not on
+    // every checklist toggle (qcNotes unchanged).
+    const qcNotesChanged =
+      body.qcNotes !== undefined &&
+      (body.qcNotes ?? '') !== (existing.qcNotes ?? '') &&
+      Boolean(body.qcNotes?.trim());
+    if (qcNotesChanged) {
+      const auto =
+        process.env.WHATSAPP_AUTO_NOTIFY?.trim().toLowerCase() !== 'false';
+      if (auto) {
+        void this.notifyJobStatusWhatsApp(
+          id,
+          existing.status,
+          body.qcNotes,
+        ).catch(() => undefined);
+      }
+    }
 
     return this.getById(id);
   }

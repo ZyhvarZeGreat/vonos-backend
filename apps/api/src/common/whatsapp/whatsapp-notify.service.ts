@@ -142,14 +142,20 @@ export class WhatsAppNotifyService {
     statusLabel: string;
     trackUrl: string;
     shopName?: string;
+    note?: string;
   }): string {
     const shop = args.shopName?.trim() || 'Vonos';
     const who = args.ownerName.trim() || 'Customer';
-    return (
-      `${shop} update for ${who}:\n` +
-      `Vehicle ${args.plate.trim().toUpperCase()} is now: ${args.statusLabel}.\n` +
-      `Track progress: ${args.trackUrl}`
-    );
+    const statusLine = `Vehicle ${args.plate.trim().toUpperCase()} is now: ${args.statusLabel}.`;
+    const noteLine = args.note?.trim() ? `Note: ${args.note.trim()}` : null;
+    return [
+      `${shop} update for ${who}:`,
+      statusLine,
+      noteLine,
+      `Track progress: ${args.trackUrl}`,
+    ]
+      .filter(Boolean)
+      .join('\n');
   }
 
   /**

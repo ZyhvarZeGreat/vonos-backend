@@ -117,7 +117,7 @@ export function Hq6UpdateJobStatusModal({
       const result = await updateSaleWorkshopStatus(tenantId, sale.id, {
         status,
         ...(trimmedNotes ? { notes: trimmedNotes } : {}),
-        notifyWhatsApp: status !== currentStatus ? notifyWhatsApp : false,
+        notifyWhatsApp: notifyWhatsApp,
       });
       toast.success(
         status !== currentStatus
@@ -130,7 +130,7 @@ export function Hq6UpdateJobStatusModal({
       } else if (wa?.channel === "wa_me" && wa.waMeUrl) {
         toast.success("Opening WhatsApp…");
         window.open(wa.waMeUrl, "_blank", "noopener,noreferrer");
-      } else if (wa?.error && notifyWhatsApp && status !== currentStatus) {
+      } else if (wa?.error && notifyWhatsApp) {
         toast.error(wa.error);
       }
       onUpdated?.();
