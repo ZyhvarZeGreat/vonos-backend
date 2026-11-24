@@ -30,6 +30,7 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:push": "prisma db push",
     "prisma:seed": "prisma db seed",
+    "prisma:publish-thermostat": "ts-node --compiler-options '{\"module\":\"CommonJS\"}' prisma/scripts/publish-thermostat-post.ts",
     "prisma:merge-va": "ts-node --compiler-options '{\"module\":\"CommonJS\"}' prisma/scripts/merge-vm-vms-into-va.ts",
     "prisma:dedupe-suppliers": "tsx prisma/scripts/dedupe-suppliers.ts",
     "prisma:soft-delete-bad-prices": "tsx prisma/scripts/soft-delete-bad-profit-percent-prices.ts",
