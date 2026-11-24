@@ -427,6 +427,154 @@ export const BLOG_POSTS: BlogPost[] = [
       },
     ],
   },
+  {
+    slug: "car-thermostat-explained",
+    title: "Car thermostat explained: how it works, how it fails, and how we test it",
+    excerpt:
+      "A small valve with a big job — how the thermostat regulates coolant flow, what the symptoms of failure look like, and why the correct temperature rating matters.",
+    category: "Technical",
+    publishedAt: "2026-11-24",
+    image: cdn("/images/vonos-photos/IMG_0436.jpg"),
+    author: "Vonos Technical Team",
+    readMinutes: 13,
+    intro: [
+      "Becoming a competent automotive technician starts with knowing how each part of a car functions. The thermostat is a small but crucial part that affects engine performance, longevity, and efficiency. Inside the engine cooling system sits a temperature-sensitive valve whose main duty is to control coolant flow between the engine and the radiator so the engine runs within its recommended temperature range.",
+      "This guide covers what a thermostat is, how it is built, the main designs on the road today, how it behaves through a warm-up cycle, the symptoms and failure modes technicians diagnose most often, and the maintenance habits that keep a cooling system healthy.",
+    ],
+    sections: [
+      {
+        id: "what-the-thermostat-does",
+        title: "What the thermostat does",
+        paragraphs: [
+          "The thermostat stays closed when a cold engine is started, which limits the amount of coolant that can reach the radiator. As a result the engine warms up quickly to its normal operating temperature. As coolant temperature rises to the thermostat's designed opening temperature, the valve gradually opens and lets hot coolant flow to the radiator, where heat is transferred to the surrounding air. During operation this continuous cycle helps keep engine temperature stable.",
+          "Despite its diminutive size, the thermostat plays a crucial role. A well-functioning thermostat encourages economical fuel use, lowers dangerous exhaust emissions, supports adequate engine lubrication, and guards against overheating. It also helps the heating system produce warm air for the passenger compartment.",
+          "A malfunctioning thermostat causes major problems. A thermostat stuck closed stops coolant flowing through the radiator and can overheat the engine. A thermostat stuck open lets the engine take too long to reach its normal operating temperature, which can mean higher fuel consumption, poor heater performance, and inefficient running.",
+          "Learning about the thermostat is more than understanding one small part of the cooling system — it is learning how several automotive parts cooperate to protect the engine and guarantee dependable vehicle operation. Technicians must be able to recognise thermostat-related complaints, examine the thermostat's physical condition, test its opening and closing function, and replace it in line with the vehicle manufacturer's procedures.",
+        ],
+      },
+      {
+        id: "definition",
+        title: "Definition: a temperature-controlled gate",
+        paragraphs: [
+          "An automotive thermostat is a temperature-sensing device that gauges engine coolant temperature. In an internal combustion engine it is designed to open and close as needed to maintain an effective operating temperature.",
+          "More precisely, it is a temperature-sensitive valve in the engine cooling system that automatically controls coolant flow between the engine and the radiator. When the engine is cold the thermostat stays closed, preventing coolant from passing through the radiator, which allows a rapid warm-up after starting. When coolant temperature reaches the pre-set opening temperature the thermostat gradually opens, allowing coolant to pass through the radiator and shed excess heat.",
+          "By continuously opening and closing in response to coolant temperature, the thermostat keeps the engine within its intended range under a variety of driving conditions. If the coolant is not hot enough, the thermostat stays closed; once it reaches its rating, the valve admits hot coolant to the radiator. It behaves like a gate that permits or blocks coolant flow from the engine to the radiator, and it is mounted between the engine and the radiator.",
+        ],
+      },
+      {
+        id: "construction",
+        title: "Construction of an automotive thermostat",
+        paragraphs: [
+          "Designs differ between manufacturers, but a typical automotive thermostat contains the following components.",
+          "Thermostat valve — the movable component that regulates coolant flow. Flow to the radiator is restricted when the thermostat is closed and admitted when it opens.",
+          "Wax pellet — the temperature-sensitive element. It contains a specially formulated wax that expands when heated.",
+          "Piston or operating pin — transfers the movement created by the expanding wax to the valve, which opens as the pin moves.",
+          "Spring — holds the valve in its normal closed position when the engine is cold and helps return the valve toward closed as temperature drops.",
+          "Thermostat housing — supports the thermostat and allows coolant to flow through it. Depending on the vehicle, the thermostat may sit in a separate housing or be integrated into a coolant outlet assembly.",
+          "Gasket or O-ring — seals the housing against coolant leaks. The correct seal must be used on installation.",
+          "Bleed features — some thermostats include a jiggle pin, bypass, or small bleed hole that helps purge trapped air during warm-up and maintain controlled coolant circulation.",
+        ],
+      },
+      {
+        id: "thermostat-types-bypass",
+        title: "Bypass vs non-bypass thermostats",
+        paragraphs: [
+          "Thermostats can be divided into two main categories based on whether they incorporate a bypass valve.",
+          "A thermostat without a bypass valve is more common in older vehicles. It sits at the radiator inlet, and the cooling circuit keeps supplying coolant even if the thermostat fails. When the engine is cold, water is held in the water jacket and radiator. This design is inexpensive, but it has drawbacks: if it malfunctions there is no safety line, and no additional water lines to cool a hot engine.",
+          "A bypass-valve thermostat is used in modern vehicles and has a built-in bypass at the radiator outlet. Instead of cycling through the radiator, this type routes coolant from the water jacket back to the thermostat and into the water pump before returning to the jacket. In the event of a fault it can still cool the engine through its bypass path, but the more complex design costs more.",
+        ],
+      },
+      {
+        id: "thermostat-types-control",
+        title: "Wax-pellet, electronic, and map-controlled thermostats",
+        paragraphs: [
+          "The traditional wax-pellet thermostat is the most prevalent type in diesel and petrol engines. Coolant flow is controlled solely by the expansion and contraction of wax inside a sealed capsule. Its straightforward design offers outstanding reliability, a long service life, and inexpensive production.",
+          "An electronic thermostat, found on many current vehicles, still uses a wax element but adds an electrical heating element managed by the engine control module. The ECM can open the thermostat earlier or later by heating the wax independently of coolant temperature, optimising economy, emissions, and performance under different driving conditions. Modern turbocharged and high-efficiency engines frequently use them.",
+          "A map-controlled thermostat is a more advanced variant of the electronic type. It continuously adjusts coolant flow in response to engine load, vehicle speed, throttle position, and other operating factors, letting manufacturers improve engine longevity and fuel efficiency while lowering emissions.",
+        ],
+      },
+      {
+        id: "how-it-works",
+        title: "How the thermostat works through a warm-up cycle",
+        paragraphs: [
+          "In traditional designs the thermostat operates on its own without needing electricity. It sits between the engine and the radiator as a valve designed to open and close at specific temperatures.",
+          "When the engine is cold, the thermostat stays closed and coolant cannot reach the radiator. Coolant circulates only through a smaller internal bypass path inside the block and cylinder head, allowing the engine to warm up quickly.",
+          "As combustion proceeds and coolant temperature climbs, the wax inside the sealed capsule starts to melt and expand. The expanding wax pushes a piston attached to the valve, progressively opening it so hot coolant can enter the radiator from the engine.",
+          "Once operating temperature is reached, the thermostat opens further and more coolant passes through the radiator. Heat transfers from the coolant to the surrounding air, and the cooled coolant returns to the engine to help regulate temperature. The thermostat then keeps opening and closing in response to variations in coolant temperature.",
+          "On cold starts the cool coolant keeps the wax contracted, allowing the spring to hold the valve closed so radiator circulation is restricted. Coolant may still flow through internal engine channels and bypass circuits depending on how the cooling system is designed.",
+        ],
+      },
+      {
+        id: "opening-temperature",
+        title: "Opening temperature and correct specification",
+        paragraphs: [
+          "Every thermostat is designed to operate within a set temperature range. Depending on the vehicle and engine architecture, for example, a thermostat may begin to open between 80°C and 90°C and be fully open at a higher temperature.",
+          "The precise specification always comes from the manufacturer's service information. A thermostat should never be chosen only because it fits the housing — the temperature rating and design must be correct for the engine to operate properly.",
+          "Fitting the wrong rating is a common and expensive mistake. A thermostat that opens too early causes overcooling, poor heater output, and higher fuel use; one that opens too late raises combustion and coolant temperatures above design limits. Match the part number to the engine code, not just to the shape of the housing.",
+        ],
+      },
+      {
+        id: "symptoms",
+        title: "Symptoms of a failing thermostat",
+        paragraphs: [
+          "Engine performance and cooling efficiency are greatly affected by a malfunctioning thermostat. Overheating is one of the most common symptoms: if the thermostat sticks closed, coolant cannot pass through the radiator and engine temperature rises quickly. An engine that never reaches its normal operating temperature is another classic sign, usually caused by a thermostat stuck open that lets coolant flow through the radiator continuously.",
+          "Because the heater core cannot receive enough heat from inadequately warmed coolant, drivers may also notice poor cabin heater performance. Other indicators include fluctuating temperature gauge readings, reduced fuel economy, elevated emissions, poor engine performance, and an illuminated check engine light. In some vehicles the engine control module stores diagnostic trouble codes relating to coolant temperature.",
+          "Overheating and overcooling — the most common pair. Age or corrosion can stick the thermostat closed, stopping coolant from reaching the radiator and allowing the engine to overheat and suffer serious damage. Overcooling happens when engine temperature drops below the level needed for normal operation: a stuck-open thermostat lets coolant flow freely through the radiator, which shortens engine life.",
+          "Strange noises and temperature variation — knocking, boiling, or rumbling sounds from the radiator all point to a cooling system problem. The thermostat also influences the temperature of air entering the cabin through the vents, so air that swings abruptly from hot to cold, or the reverse, is a clear indication of a fault.",
+          "Coolant leakage — if the car has been overheating or liquid is seeping underneath it, suspect a coolant leak. The thermostat itself holds no coolant, so the leak is more likely a gasket failing to seal the thermostat housing. Check for drops, drip marks, or dried deposits around the housing; if nothing shows there, inspect the rest of the system before condemning the thermostat.",
+        ],
+      },
+      {
+        id: "failure-causes",
+        title: "Why thermostats fail",
+        paragraphs: [
+          "Despite their long service life, thermostats can malfunction for several reasons. After years of repeated heating and cooling cycles, normal wear progressively weakens the wax element and spring, and valve movement may be restricted by corrosion caused by old or contaminated coolant.",
+          "Rust, debris, or mineral deposits in the cooling system can prevent the valve opening or closing correctly. Using the wrong coolant or skipping coolant replacement intervals accelerates internal corrosion. Severe overheating events can cause irreversible damage to the wax capsule or mechanical parts, and poor housing tightness or physical damage during installation can cause premature failure.",
+        ],
+      },
+      {
+        id: "stuck-closed",
+        title: "Failure mode 1 — thermostat stuck closed",
+        paragraphs: [
+          "When a thermostat remains closed after the engine reaches operating temperature, coolant flow to the radiator is restricted. This can cause engine overheating, rapidly rising coolant temperature, coolant boiling in severe cases, increased cooling-system pressure, and coolant loss.",
+          "If operation continues, the consequences escalate: possible cylinder-head damage, head-gasket failure, degraded engine oil, and severe engine damage. A stuck-closed thermostat is a stop-driving condition, not something to monitor over the coming weeks.",
+        ],
+      },
+      {
+        id: "stuck-open",
+        title: "Failure mode 2 — thermostat stuck open",
+        paragraphs: [
+          "When a thermostat is stuck open, coolant keeps flowing through the radiator even when the engine is cold. This may cause slow warm-up, low operating temperature, poor fuel economy, reduced heater performance, increased emissions, poor cold-running performance, and engine management fault codes on some vehicles.",
+          "A stuck-open thermostat is less dramatic than overheating but still costly. The engine runs below its designed temperature, wear rates and fuel consumption rise, and the driver is left with a weak heater — a complaint that is often misdiagnosed as a heater matrix problem.",
+        ],
+      },
+      {
+        id: "fault-list",
+        title: "Common thermostat faults at a glance",
+        paragraphs: [
+          "In workshop practice, the faults we encounter most often are: thermostat stuck closed; thermostat stuck open; opening at the wrong temperature; valve sticking; wax element failure; a weak or damaged spring; corrosion of thermostat components; physical damage to the valve; blockage caused by contamination; incorrect thermostat installation; a damaged gasket or O-ring; coolant leakage around the thermostat housing; air trapped around the thermostat; and installation of an incorrect thermostat.",
+          "A thermostat can also become partially stuck or operate slowly, which produces intermittent temperature complaints that are harder to pin down than a simple stuck valve. Those cases need live data during a road test rather than a single gauge reading.",
+        ],
+      },
+      {
+        id: "maintenance",
+        title: "Maintenance and testing considerations",
+        paragraphs: [
+          "In most cars the thermostat is not a regular maintenance item, but whenever the cooling system is serviced or an unusual engine temperature is reported, its condition should be considered.",
+          "Proper cooling system maintenance means using the correct coolant, keeping the coolant level correct, inspecting hoses regularly, checking for leaks, maintaining the radiator, checking the water pump, inspecting the cooling fan system, monitoring engine temperature, and replacing coolant according to manufacturer recommendations.",
+          "When testing confirms a thermostat is faulty, replace it. Bench testing the opening temperature in a heated water bath and comparing it with the specified rating is quick and decisive; on the vehicle, temperature data during warm-up shows whether the valve opens at the right point and how far it opens.",
+        ],
+      },
+      {
+        id: "conclusion",
+        title: "Conclusion",
+        paragraphs: [
+          "The thermostat is a crucial part of the engine cooling system because it controls coolant flow and keeps the engine at its proper operating temperature. A well-functioning thermostat prevents overheating, avoids excessive fuel consumption, and supports engine performance.",
+          "To guarantee engine reliability, longevity, and peak performance, Vonos Automotive Engineering stresses the importance of understanding, examining, testing, and maintaining the thermostat — and of always using the correct specification when replacing a faulty unit.",
+        ],
+      },
+    ],
+  },
 ];
 
 export function getBlogPost(slug: string): BlogPost | undefined {
